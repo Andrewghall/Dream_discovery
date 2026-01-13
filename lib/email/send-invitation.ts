@@ -89,6 +89,15 @@ export async function sendDiscoveryInvitation(params: SendInvitationParams) {
       html,
     });
 
+    const maybeResult = result as any;
+    if (maybeResult?.error) {
+      const message =
+        typeof maybeResult.error === 'string'
+          ? maybeResult.error
+          : maybeResult.error?.message || JSON.stringify(maybeResult.error);
+      throw new Error(message);
+    }
+
     console.log('✅ Email sent successfully:', result);
     return result;
   } catch (error) {

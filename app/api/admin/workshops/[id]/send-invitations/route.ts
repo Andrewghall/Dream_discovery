@@ -11,6 +11,16 @@ export async function POST(
     const url = new URL(request.url);
     const resendAll = url.searchParams.get('resend') === 'true';
 
+    if (!process.env.RESEND_API_KEY) {
+      return NextResponse.json(
+        {
+          error: 'Email sending is not configured',
+          details: { message: 'Missing RESEND_API_KEY environment variable' },
+        },
+        { status: 500 }
+      );
+    }
+
     // Get workshop and participants
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },
@@ -35,7 +45,9 @@ export async function POST(
       });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
     let emailsSent = 0;
     const errors = [];
 
@@ -71,24 +83,32 @@ export async function POST(
         });
 
         emailsSent++;
-      } catch (error) {
+      } catch (error: unknown) {
         console.error(`   - ❌ Failed to send email to ${participant.email}:`, error);
-        errors.push({ email: participant.email, error: String(error) });
+        const message =
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : JSON.stringify(error);
+        errors.push({ email: participant.email, error: message });
       }
     }
     
     console.log(`\n📧 Summary: ${emailsSent} emails sent, ${errors.length} errors`);
 
-    // Update workshop status
-    await prisma.workshop.update({
-      where: { id: workshopId },
-      data: {
-        status: 'DISCOVERY_SENT',
-      },
-    });
+    if (emailsSent > 0) {
+      // Update workshop status
+      await prisma.workshop.update({
+        where: { id: workshopId },
+        data: {
+          status: 'DISCOVERY_SENT',
+        },
+      });
+    }
 
     return NextResponse.json({
-      success: true,
+      success: errors.length === 0,
       emailsSent,
       errors: errors.length > 0 ? errors : undefined,
     });

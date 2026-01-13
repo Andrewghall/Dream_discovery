@@ -149,6 +149,13 @@ export default function WorkshopDetailPage({ params }: PageProps) {
       if (response.ok) {
         const data = await response.json();
         console.log('📊 Response data:', data);
+
+        if (data.errors?.length) {
+          const errorText = data.errors
+            .map((e: any) => `${e.email}: ${e.error}`)
+            .join('\n');
+          alert(`Some emails failed to send:\n\n${errorText}`);
+        }
         
         if (data.emailsSent === 0 && data.message) {
           // All emails already sent, ask if they want to resend
@@ -171,6 +178,10 @@ export default function WorkshopDetailPage({ params }: PageProps) {
           setShowSuccessDialog(true);
           fetchWorkshop();
         }
+      } else {
+        const data = await response.json().catch(() => null);
+        const message = data?.details?.message || data?.error || 'Failed to send invitations';
+        alert(message);
       }
     } catch (error) {
       console.error('Failed to send invitations:', error);
