@@ -39,7 +39,13 @@ export default function NewWorkshopPage() {
         const data = await response.json();
         router.push(`/admin/workshops/${data.workshop.id}`);
       } else {
-        alert('Failed to create workshop');
+        const data = await response.json().catch(() => null);
+        const detailsMessage =
+          data?.details?.message ||
+          (typeof data?.details === 'string' ? data.details : null) ||
+          data?.error ||
+          'Failed to create workshop';
+        alert(detailsMessage);
       }
     } catch (error) {
       console.error('Error creating workshop:', error);

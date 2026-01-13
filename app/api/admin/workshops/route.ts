@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,14 +26,14 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const workshopsWithStats = workshops.map((workshop) => ({
+    const workshopsWithStats = workshops.map((workshop: any) => ({
       id: workshop.id,
       name: workshop.name,
       workshopType: workshop.workshopType,
       status: workshop.status,
       scheduledDate: workshop.scheduledDate,
       participantCount: workshop._count.participants,
-      completedResponses: workshop.participants.filter((p) => p.responseCompletedAt).length,
+      completedResponses: workshop.participants.filter((p: any) => p.responseCompletedAt).length,
     }));
 
     return NextResponse.json({ workshops: workshopsWithStats });
@@ -52,7 +53,27 @@ export async function POST(request: NextRequest) {
 
     // TODO: Add authentication and get userId and orgId from session
     // For now, we'll need to create a default org and user first
-    
+
+    await prisma.organization.upsert({
+      where: { id: 'demo-org' },
+      update: {},
+      create: {
+        id: 'demo-org',
+        name: 'Demo Organization',
+      },
+    });
+
+    await prisma.user.upsert({
+      where: { id: 'demo-user' },
+      update: {},
+      create: {
+        id: 'demo-user',
+        email: 'demo@dream.local',
+        name: 'Demo User',
+        organizationId: 'demo-org',
+      },
+    });
+
     // Create workshop
     const workshop = await prisma.workshop.create({
       data: {
@@ -69,8 +90,35 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ workshop });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error creating workshop:', error);
+
+    if (error instanceof PrismaClientKnownRequestError) {
+      return NextResponse.json(
+        {
+          error: 'Failed to create workshop',
+          details: {
+            code: error.code,
+            message: error.message,
+            meta: error.meta,
+          },
+        },
+        { status: 500 }
+      );
+    }
+
+    if (error instanceof Error) {
+      return NextResponse.json(
+        {
+          error: 'Failed to create workshop',
+          details: {
+            message: error.message,
+          },
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Failed to create workshop' },
       { status: 500 }
