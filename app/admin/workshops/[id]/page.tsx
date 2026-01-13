@@ -1,0 +1,465 @@
+'use client';
+
+import { use, useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { ArrowLeft, Send, UserPlus, Copy, Check } from 'lucide-react';
+import Link from 'next/link';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+
+interface PageProps {
+  params: Promise<{
+    id: string;
+  }>;
+}
+
+interface Participant {
+  id: string;
+  name: string;
+  email: string;
+  role: string | null;
+  department: string | null;
+  discoveryToken: string;
+  emailSentAt: Date | null;
+  responseStartedAt: Date | null;
+  responseCompletedAt: Date | null;
+}
+
+interface Workshop {
+  id: string;
+  name: string;
+  description: string | null;
+  businessContext: string | null;
+  includeRegulation?: boolean;
+  workshopType: string;
+  status: string;
+  scheduledDate: Date | null;
+  responseDeadline: Date | null;
+  participants: Participant[];
+}
+
+export default function WorkshopDetailPage({ params }: PageProps) {
+  const { id } = use(params);
+  const [workshop, setWorkshop] = useState<Workshop | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [includeRegulation, setIncludeRegulation] = useState(true);
+  const [newParticipant, setNewParticipant] = useState({
+    name: '',
+    email: '',
+    role: '',
+    department: '',
+  });
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  useEffect(() => {
+    fetchWorkshop();
+  }, [id]);
+
+  const fetchWorkshop = async () => {
+    try {
+      const response = await fetch(`/api/admin/workshops/${id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setWorkshop(data.workshop);
+        setIncludeRegulation(data.workshop?.includeRegulation ?? true);
+      }
+    } catch (error) {
+      console.error('Failed to fetch workshop:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateIncludeRegulation = async (value: boolean) => {
+    try {
+      setIncludeRegulation(value);
+      await fetch(`/api/admin/workshops/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ includeRegulation: value }),
+      });
+      fetchWorkshop();
+    } catch (error) {
+      console.error('Failed to update workshop setting:', error);
+    }
+  };
+
+  const handleAddParticipant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`/api/admin/workshops/${id}/participants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newParticipant),
+      });
+
+      if (response.ok) {
+        setNewParticipant({ name: '', email: '', role: '', department: '' });
+        fetchWorkshop();
+      }
+    } catch (error) {
+      console.error('Failed to add participant:', error);
+    }
+  };
+
+  const handleClearEmailStatus = async () => {
+    if (!confirm('Clear email sent status for all participants? This will allow you to resend emails.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/workshops/${id}/clear-email-status`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        alert(`Cleared email status for ${data.clearedCount} participant(s)`);
+        fetchWorkshop();
+      }
+    } catch (error) {
+      console.error('Failed to clear email status:', error);
+      alert('Failed to clear email status');
+    }
+  };
+
+  const handleSendInvitations = async () => {
+    alert('Button clicked! Sending emails...');
+    console.log('🚀 Send Invitations clicked');
+    
+    try {
+      // Simple, direct fetch call
+      const response = await fetch(`/api/admin/workshops/${id}/send-invitations`, {
+        method: 'POST',
+      });
+
+      console.log('📥 Response received:', response.status);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📊 Response data:', data);
+        
+        if (data.emailsSent === 0 && data.message) {
+          // All emails already sent, ask if they want to resend
+          console.log('⚠️ No emails sent, showing resend dialog');
+          const resend = confirm(data.message + '\n\nDo you want to resend to all participants?');
+          console.log('User chose to resend:', resend);
+          if (resend) {
+            const resendResponse = await fetch(`/api/admin/workshops/${id}/send-invitations?resend=true`, {
+              method: 'POST',
+            });
+            if (resendResponse.ok) {
+              const resendData = await resendResponse.json();
+              setSuccessMessage(`Invitations resent successfully to ${resendData.emailsSent} participant(s)!`);
+              setShowSuccessDialog(true);
+              fetchWorkshop();
+            }
+          }
+        } else {
+          setSuccessMessage(`Invitations sent successfully to ${data.emailsSent} participant(s)!`);
+          setShowSuccessDialog(true);
+          fetchWorkshop();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send invitations:', error);
+      alert('Failed to send invitations');
+    }
+  };
+
+  const copyDiscoveryLink = (token: string) => {
+    const link = `${window.location.origin}/discovery/${id}/${token}`;
+    navigator.clipboard.writeText(link);
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(null), 2000);
+  };
+
+  const getCompletionRate = () => {
+    if (!workshop || workshop.participants.length === 0) return 0;
+    const completed = workshop.participants.filter((p) => p.responseCompletedAt).length;
+    return Math.round((completed / workshop.participants.length) * 100);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading workshop...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!workshop) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Workshop not found</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-8">
+        <Link href="/admin">
+          <Button variant="ghost" className="mb-6">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Dashboard
+          </Button>
+        </Link>
+
+        {/* Workshop Header */}
+        <div className="mb-8">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight mb-2">{workshop.name}</h1>
+              <div className="flex items-center gap-3">
+                <Badge variant="outline" className="capitalize">
+                  {workshop.workshopType.toLowerCase()}
+                </Badge>
+                <Badge>{workshop.status.replace('_', ' ')}</Badge>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleClearEmailStatus} variant="outline" size="lg">
+                Clear Email Status
+              </Button>
+              <Button onClick={handleSendInvitations} size="lg">
+                <Send className="h-4 w-4 mr-2" />
+                Send Invitations
+              </Button>
+            </div>
+          </div>
+          {workshop.description && (
+            <p className="text-muted-foreground">{workshop.description}</p>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Participants</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{workshop.participants.length}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Completed</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {workshop.participants.filter((p) => p.responseCompletedAt).length}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">In Progress</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {
+                  workshop.participants.filter(
+                    (p) => p.responseStartedAt && !p.responseCompletedAt
+                  ).length
+                }
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{getCompletionRate()}%</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Workshop Settings</CardTitle>
+                <CardDescription>Configure which sections are included in participant discovery</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Label>Optional Sections</Label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={includeRegulation}
+                      onChange={(e) => handleUpdateIncludeRegulation(e.target.checked)}
+                    />
+                    Include Regulation / Risk questions
+                  </label>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Participants</CardTitle>
+                <CardDescription>
+                  Manage workshop participants and send discovery invitations
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {workshop.participants.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      No participants yet. Add participants to get started.
+                    </p>
+                  ) : (
+                    workshop.participants.map((participant) => (
+                      <div
+                        key={participant.id}
+                        className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-semibold">{participant.name}</h4>
+                              {participant.responseCompletedAt && (
+                                <Badge variant="secondary" className="text-xs">
+                                  ✓ Completed
+                                </Badge>
+                              )}
+                              {participant.responseStartedAt && !participant.responseCompletedAt && (
+                                <Badge variant="outline" className="text-xs">
+                                  In Progress
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">{participant.email}</p>
+                            {(participant.role || participant.department) && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {participant.role}
+                                {participant.role && participant.department && ' • '}
+                                {participant.department}
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyDiscoveryLink(participant.discoveryToken)}
+                          >
+                            {copiedToken === participant.discoveryToken ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Add Participant Form */}
+          <div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Add Participant</CardTitle>
+                <CardDescription>Invite someone to the discovery session</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleAddParticipant} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Name *</Label>
+                    <Input
+                      id="name"
+                      placeholder="John Doe"
+                      value={newParticipant.name}
+                      onChange={(e) =>
+                        setNewParticipant({ ...newParticipant, name: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="john@company.com"
+                      value={newParticipant.email}
+                      onChange={(e) =>
+                        setNewParticipant({ ...newParticipant, email: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Role</Label>
+                    <Input
+                      id="role"
+                      placeholder="Product Manager"
+                      value={newParticipant.role}
+                      onChange={(e) =>
+                        setNewParticipant({ ...newParticipant, role: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="department">Department</Label>
+                    <Input
+                      id="department"
+                      placeholder="Engineering"
+                      value={newParticipant.department}
+                      onChange={(e) =>
+                        setNewParticipant({ ...newParticipant, department: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  <Button type="submit" className="w-full">
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Add Participant
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Success Dialog */}
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent className="bg-white">
+          <DialogHeader>
+            <DialogTitle>Success!</DialogTitle>
+            <DialogDescription>{successMessage}</DialogDescription>
+          </DialogHeader>
+          <Button onClick={() => setShowSuccessDialog(false)}>Close</Button>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
