@@ -1,10 +1,146 @@
 let currentAudio: HTMLAudioElement | null = null;
-
-let fallbackTimer: number | null = null;
-let fallbackUtterance: SpeechSynthesisUtterance | null = null;
+let currentUtterance: SpeechSynthesisUtterance | null = null;
 
 let hasUserInteracted = false;
 let pendingText: string | null = null;
+
+function isLikelyFemaleVoiceName(name: string): boolean {
+  const n = name.toLowerCase();
+  if (n.includes('female')) return true;
+  if (n.includes('male')) return false;
+
+  const likelyFemaleTokens = [
+    'samantha',
+    'victoria',
+    'kate',
+    'serena',
+    'moira',
+    'tessa',
+    'amelie',
+    'olivia',
+    'ava',
+    'emily',
+    'fiona',
+    'zoe',
+    'joanna',
+    'kendra',
+    'kimberly',
+    'salli',
+    'ivy',
+    'emma',
+    'amy',
+    'catherine',
+    'charlotte',
+  ];
+
+  return likelyFemaleTokens.some((t) => n.includes(t));
+}
+
+async function getPreferredUkVoice(): Promise<SpeechSynthesisVoice | null> {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+
+  const pick = (voices: SpeechSynthesisVoice[]) => {
+    const preferredLangStarts = ['en-gb', 'en-ie', 'en-au', 'en-nz', 'en-za', 'en-in'];
+
+    const normalize = (s: string | null | undefined) => (s || '').toLowerCase();
+    const lang = (v: SpeechSynthesisVoice) => normalize(v.lang);
+
+    const englishNonUs = voices.filter((v) => {
+      const l = lang(v);
+      return l.startsWith('en-') && !l.startsWith('en-us');
+    });
+
+    const preferredBucket = englishNonUs.filter((v) => preferredLangStarts.some((p) => lang(v).startsWith(p)));
+    const pool = preferredBucket.length > 0 ? preferredBucket : englishNonUs;
+    if (pool.length === 0) return null;
+
+    const female = pool.find((v) => isLikelyFemaleVoiceName(v.name || ''));
+    if (female) return female;
+
+    return pool[0] || null;
+  };
+
+  const existing = pick(window.speechSynthesis.getVoices());
+  if (existing) return existing;
+
+  // Voices often load asynchronously; wait briefly for the voiceschanged event.
+  return await new Promise((resolve) => {
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        window.speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged);
+      } catch {
+        // ignore
+      }
+      resolve(pick(window.speechSynthesis.getVoices()));
+    };
+
+    const onVoicesChanged = () => settle();
+
+    try {
+      window.speechSynthesis.addEventListener('voiceschanged', onVoicesChanged);
+    } catch {
+      // ignore
+    }
+
+    window.setTimeout(() => settle(), 500);
+  });
+}
+
+async function speakWithBrowserTts(text: string): Promise<boolean> {
+  if (
+    typeof window === 'undefined' ||
+    !window.speechSynthesis ||
+    typeof SpeechSynthesisUtterance === 'undefined'
+  ) {
+    return false;
+  }
+
+  try {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // ignore
+    }
+
+    const u = new SpeechSynthesisUtterance(text);
+    const preferredVoice = await getPreferredUkVoice();
+    if (preferredVoice) {
+      u.voice = preferredVoice;
+      u.lang = preferredVoice.lang;
+    } else {
+      u.lang = 'en-GB';
+    }
+
+    u.rate = 1.0;
+
+    u.onstart = () => {
+      try {
+        window.dispatchEvent(new CustomEvent('dream-tts-start'));
+      } catch {
+        // ignore
+      }
+    };
+
+    u.onend = () => {
+      currentUtterance = null;
+      try {
+        window.dispatchEvent(new CustomEvent('dream-tts-end'));
+      } catch {
+        // ignore
+      }
+    };
+
+    currentUtterance = u;
+    window.speechSynthesis.speak(u);
+    return true;
+  } catch {
+    currentUtterance = null;
+    return false;
+  }
+}
 
 function ensureInteractionListeners() {
   if (typeof window === 'undefined') return;
@@ -45,6 +181,8 @@ export async function speakWithOpenAI(text: string): Promise<void> {
       currentAudio = null;
     }
 
+    currentUtterance = null;
+
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
@@ -53,33 +191,13 @@ export async function speakWithOpenAI(text: string): Promise<void> {
       }
     }
 
-    if (fallbackTimer != null) {
-      window.clearTimeout(fallbackTimer);
-      fallbackTimer = null;
+    const spokeInBrowser = await speakWithBrowserTts(text);
+    if (spokeInBrowser) {
+      console.log('✅ Playing browser TTS');
+      return;
     }
-    fallbackUtterance = null;
 
     console.log('🔊 Requesting OpenAI TTS for:', text.substring(0, 50) + '...');
-
-    let openAiAudioStarted = false;
-
-    if (typeof window !== 'undefined' && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
-      try {
-        fallbackTimer = window.setTimeout(() => {
-          if (openAiAudioStarted) return;
-          try {
-            const u = new SpeechSynthesisUtterance(text);
-            u.rate = 1.05;
-            fallbackUtterance = u;
-            window.speechSynthesis.speak(u);
-          } catch {
-            // ignore
-          }
-        }, 700);
-      } catch {
-        // ignore
-      }
-    }
 
     const response = await fetch('/api/speak', {
       method: 'POST',
@@ -126,31 +244,8 @@ export async function speakWithOpenAI(text: string): Promise<void> {
       currentAudio = null;
     };
 
-    const cancelFallback = () => {
-      openAiAudioStarted = true;
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        try {
-          if (fallbackUtterance) {
-            window.speechSynthesis.cancel();
-          }
-        } catch {
-          // ignore
-        }
-      }
-      if (fallbackTimer != null) {
-        window.clearTimeout(fallbackTimer);
-        fallbackTimer = null;
-      }
-      fallbackUtterance = null;
-    };
-
-    audio.onplaying = () => {
-      cancelFallback();
-    };
-
     try {
       await audio.play();
-      cancelFallback();
       console.log('✅ Playing OpenAI TTS audio');
     } catch (e: any) {
       // Most common in Chrome/Safari: autoplay policy blocks play() before user interaction.
@@ -160,11 +255,6 @@ export async function speakWithOpenAI(text: string): Promise<void> {
         hasUserInteracted = false;
         ensureInteractionListeners();
 
-        if (fallbackTimer != null) {
-          window.clearTimeout(fallbackTimer);
-          fallbackTimer = null;
-        }
-        fallbackUtterance = null;
         return;
       }
       throw e;
@@ -196,10 +286,15 @@ export function stopSpeaking(): void {
       // ignore
     }
   }
-  if (fallbackTimer != null) {
-    window.clearTimeout(fallbackTimer);
-    fallbackTimer = null;
+  if (currentUtterance) {
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('dream-tts-end'));
+      }
+    } catch {
+      // ignore
+    }
   }
-  fallbackUtterance = null;
+  currentUtterance = null;
   pendingText = null;
 }
