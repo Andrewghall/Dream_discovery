@@ -157,6 +157,19 @@
     page-break-inside: avoid;
   }
 
+  /* Ensure Themes & Intent doesn't get split by starting it on a fresh page */
+  #discovery-report .report-themes-card {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  /* Word cloud can be tall; scale slightly for print to keep it on one page */
+  #discovery-report .word-cloud {
+    transform: scale(0.9);
+    transform-origin: top left;
+    gap: 0.5rem 0.75rem;
+  }
+
   /* Print cleaner */
   #discovery-report [data-slot='card'] {
     box-shadow: none !important;

@@ -132,7 +132,7 @@ export function ConversationReport({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="report-themes-card">
           <CardHeader>
             <CardTitle>Themes & Intent</CardTitle>
             <CardDescription>Most common cleaned keywords across narrative responses</CardDescription>

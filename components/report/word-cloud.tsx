@@ -31,7 +31,7 @@ export function WordCloud({
   ];
 
   return (
-    <div className={cn('flex flex-wrap gap-x-3 gap-y-2', className)}>
+    <div className={cn('word-cloud flex flex-wrap gap-x-3 gap-y-2', className)}>
       {words.map((w, idx) => {
         const t = w.value / max;
         const fontSize = 12 + clamp(t, 0, 1) * 20;
