@@ -12,6 +12,14 @@ export interface RadarSeries {
   data: RadarDatum[];
 }
 
+function chartColor(idx: number): string {
+  if (idx === 0) return 'var(--chart-1)';
+  if (idx === 1) return 'var(--chart-2)';
+  if (idx === 2) return 'var(--chart-3)';
+  if (idx === 3) return 'var(--chart-4)';
+  return 'var(--chart-5)';
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -40,6 +48,7 @@ export function RadarChart({
   const cx = size / 2;
   const cy = size / 2;
   const radius = (size - padding * 2) / 2;
+  const labelFontSize = 11;
 
   const baseData = (series?.[0]?.data?.length ? series[0].data : data) || [];
   const n = baseData.length;
@@ -80,7 +89,7 @@ export function RadarChart({
             cy={cy}
             r={r}
             fill="none"
-            stroke="hsl(var(--border))"
+            stroke="var(--border)"
             strokeWidth={1}
             opacity={0.7}
           />
@@ -96,7 +105,7 @@ export function RadarChart({
               y1={cy}
               x2={end.x}
               y2={end.y}
-              stroke="hsl(var(--border))"
+              stroke="var(--border)"
               strokeWidth={1}
               opacity={0.7}
             />
@@ -104,14 +113,7 @@ export function RadarChart({
         })}
 
         {seriesPolygons.map((s, idx) => {
-          const stroke =
-            idx === 0
-              ? 'hsl(var(--chart-1))'
-              : idx === 1
-                ? 'hsl(var(--chart-2))'
-                : idx === 2
-                  ? 'hsl(var(--chart-3))'
-                  : 'hsl(var(--primary))';
+          const stroke = chartColor(idx);
           const fillOpacity = idx === 0 ? 0.18 : idx === 1 ? 0.14 : 0.1;
           return (
             <g key={s.name}>
@@ -131,7 +133,7 @@ export function RadarChart({
 
         {baseData.map((d, i) => {
           const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-          const labelPos = polarToCartesian(cx, cy, radius + 18, angle);
+          const labelPos = polarToCartesian(cx, cy, radius + 16, angle);
           const anchor =
             Math.abs(Math.cos(angle)) < 0.2
               ? 'middle'
@@ -139,15 +141,31 @@ export function RadarChart({
                 ? 'start'
                 : 'end';
 
+          // Keep labels inside the SVG bounds to avoid clipping on small screens.
+          // Approx width estimate: ~0.6em per character.
+          const estWidth = d.label.length * labelFontSize * 0.6;
+          const minPad = 6;
+
+          let x = labelPos.x;
+          if (anchor === 'start') {
+            x = clamp(x, minPad, size - estWidth - minPad);
+          } else if (anchor === 'end') {
+            x = clamp(x, estWidth + minPad, size - minPad);
+          } else {
+            x = clamp(x, estWidth / 2 + minPad, size - estWidth / 2 - minPad);
+          }
+
+          const y = clamp(labelPos.y, labelFontSize + minPad, size - minPad);
+
           return (
             <text
               key={d.label}
-              x={labelPos.x}
-              y={labelPos.y}
+              x={x}
+              y={y}
               textAnchor={anchor}
               dominantBaseline="middle"
-              fontSize={12}
-              fill="hsl(var(--muted-foreground))"
+              fontSize={labelFontSize}
+              fill="var(--muted-foreground)"
             >
               {d.label}
             </text>
@@ -158,17 +176,10 @@ export function RadarChart({
       {series && series.length > 1 && (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {series.map((s, idx) => {
-            const colorClass =
-              idx === 0
-                ? 'text-[hsl(var(--chart-1))]'
-                : idx === 1
-                  ? 'text-[hsl(var(--chart-2))]'
-                  : idx === 2
-                    ? 'text-[hsl(var(--chart-3))]'
-                    : 'text-[hsl(var(--primary))]';
+            const color = chartColor(idx);
             return (
               <div key={s.name} className="flex items-center gap-2">
-                <span className={cn('inline-block h-2 w-2 rounded-sm', colorClass)} style={{ background: 'currentColor' }} />
+                <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: color }} />
                 <span>{s.name}</span>
               </div>
             );

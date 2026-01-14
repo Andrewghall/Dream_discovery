@@ -22,25 +22,33 @@ export function WordCloud({
 }) {
   const max = Math.max(1, ...words.map((w) => w.value));
 
-  const colorClass =
-    variant === 'ambition'
-      ? 'text-emerald-700'
-      : variant === 'reality'
-        ? 'text-rose-700'
-        : 'text-foreground';
+  const neutralPalette = [
+    'var(--chart-1)',
+    'var(--chart-2)',
+    'var(--chart-3)',
+    'var(--chart-4)',
+    'var(--chart-5)',
+  ];
 
   return (
     <div className={cn('flex flex-wrap gap-x-3 gap-y-2', className)}>
-      {words.map((w) => {
+      {words.map((w, idx) => {
         const t = w.value / max;
         const fontSize = 12 + clamp(t, 0, 1) * 20;
         const opacity = 0.5 + clamp(t, 0, 1) * 0.5;
 
+        const color =
+          variant === 'ambition'
+            ? 'rgb(4 120 87)'
+            : variant === 'reality'
+              ? 'rgb(190 18 60)'
+              : neutralPalette[idx % neutralPalette.length];
+
         return (
           <span
             key={w.text}
-            className={cn('leading-none', colorClass)}
-            style={{ fontSize, opacity }}
+            className={cn('leading-none')}
+            style={{ fontSize, opacity, color }}
             title={`${w.text}: ${w.value}`}
           >
             {w.text}
