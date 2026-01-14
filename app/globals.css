@@ -132,4 +132,33 @@
   .no-print {
     display: none !important;
   }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #discovery-report {
+    max-width: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  /* Force the report's responsive 2-col grid to print as 1-col */
+  #discovery-report .md\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Don't split key report sections across pages */
+  #discovery-report [data-slot='card'],
+  #discovery-report svg,
+  #discovery-report .flex {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Print cleaner */
+  #discovery-report [data-slot='card'] {
+    box-shadow: none !important;
+  }
 }
