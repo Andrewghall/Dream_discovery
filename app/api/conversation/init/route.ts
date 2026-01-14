@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getIntroMessage } from '@/lib/conversation/fixed-questions';
+import { getFixedQuestionObject, getIntroMessage } from '@/lib/conversation/fixed-questions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       });
 
       const firstMessage = getIntroMessage(includeRegulation);
+      const qObj = getFixedQuestionObject('intro', 0, includeRegulation);
 
       await prisma.conversationMessage.create({
         data: {
@@ -82,6 +83,14 @@ export async function POST(request: NextRequest) {
           role: 'AI',
           content: firstMessage,
           phase: 'intro',
+          metadata: qObj
+            ? {
+                kind: 'question',
+                tag: qObj.tag,
+                index: 0,
+                phase: 'intro',
+              }
+            : undefined,
         },
       });
 
