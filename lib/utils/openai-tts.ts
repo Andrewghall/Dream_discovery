@@ -40,24 +40,16 @@ async function getPreferredUkVoice(): Promise<SpeechSynthesisVoice | null> {
   if (typeof window === 'undefined' || !window.speechSynthesis) return null;
 
   const pick = (voices: SpeechSynthesisVoice[]) => {
-    const preferredLangStarts = ['en-gb', 'en-ie', 'en-au', 'en-nz', 'en-za', 'en-in'];
-
     const normalize = (s: string | null | undefined) => (s || '').toLowerCase();
     const lang = (v: SpeechSynthesisVoice) => normalize(v.lang);
 
-    const englishNonUs = voices.filter((v) => {
-      const l = lang(v);
-      return l.startsWith('en-') && !l.startsWith('en-us');
-    });
+    const enGb = voices.filter((v) => lang(v).startsWith('en-gb'));
+    if (enGb.length === 0) return null;
 
-    const preferredBucket = englishNonUs.filter((v) => preferredLangStarts.some((p) => lang(v).startsWith(p)));
-    const pool = preferredBucket.length > 0 ? preferredBucket : englishNonUs;
-    if (pool.length === 0) return null;
-
-    const female = pool.find((v) => isLikelyFemaleVoiceName(v.name || ''));
+    const female = enGb.find((v) => isLikelyFemaleVoiceName(v.name || ''));
     if (female) return female;
 
-    return pool[0] || null;
+    return enGb[0] || null;
   };
 
   const existing = pick(window.speechSynthesis.getVoices());
@@ -107,12 +99,12 @@ async function speakWithBrowserTts(text: string): Promise<boolean> {
 
     const u = new SpeechSynthesisUtterance(text);
     const preferredVoice = await getPreferredUkVoice();
-    if (preferredVoice) {
-      u.voice = preferredVoice;
-      u.lang = preferredVoice.lang;
-    } else {
-      u.lang = 'en-GB';
-    }
+    // ONLY speak with browser TTS if we can select a real en-GB voice.
+    // Otherwise, avoid the browser choosing an Australian/other fallback accent.
+    if (!preferredVoice) return false;
+
+    u.voice = preferredVoice;
+    u.lang = preferredVoice.lang;
 
     u.rate = 1.0;
 
