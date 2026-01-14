@@ -144,9 +144,17 @@
     padding-right: 0 !important;
   }
 
-  /* Force the report's responsive 2-col grid to print as 1-col */
-  #discovery-report .md\:grid-cols-2 {
-    grid-template-columns: 1fr !important;
+  /* Radix ScrollArea can clip print output to the visible viewport. */
+  [data-slot='scroll-area'],
+  [data-slot='scroll-area-viewport'] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  [data-slot='scroll-area-scrollbar'],
+  [data-slot='scroll-area-thumb'],
+  [data-slot='scroll-area-corner'] {
+    display: none !important;
   }
 
   /* Don't split key report sections across pages */
@@ -157,17 +165,16 @@
     page-break-inside: avoid;
   }
 
-  /* Ensure Themes & Intent doesn't get split by starting it on a fresh page */
-  #discovery-report .report-themes-card {
-    break-before: page;
-    page-break-before: always;
+  /* Word cloud can be tall; scale for print to keep it on one page */
+  #discovery-report .word-cloud {
+    transform: scale(0.78);
+    transform-origin: top left;
+    gap: 0.4rem 0.6rem;
   }
 
-  /* Word cloud can be tall; scale slightly for print to keep it on one page */
-  #discovery-report .word-cloud {
-    transform: scale(0.9);
-    transform-origin: top left;
-    gap: 0.5rem 0.75rem;
+  /* Print the domain cards two-up (D1/D2, D3/D4). */
+  #discovery-report .report-domain-grid {
+    grid-template-columns: 1fr 1fr !important;
   }
 
   /* Print cleaner */
