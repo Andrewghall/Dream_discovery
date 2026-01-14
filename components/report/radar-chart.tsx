@@ -7,6 +7,11 @@ export interface RadarDatum {
   value: number;
 }
 
+export interface RadarSeries {
+  name: string;
+  data: RadarDatum[];
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -20,11 +25,13 @@ function polarToCartesian(cx: number, cy: number, r: number, angleRad: number) {
 
 export function RadarChart({
   data,
+  series,
   size = 320,
   max = 10,
   className,
 }: {
   data: RadarDatum[];
+  series?: RadarSeries[];
   size?: number;
   max?: number;
   className?: string;
@@ -34,14 +41,32 @@ export function RadarChart({
   const cy = size / 2;
   const radius = (size - padding * 2) / 2;
 
-  const n = data.length;
-  const points = data.map((d, i) => {
-    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-    const r = (clamp(d.value, 0, max) / max) * radius;
-    return polarToCartesian(cx, cy, r, angle);
-  });
+  const baseData = (series?.[0]?.data?.length ? series[0].data : data) || [];
+  const n = baseData.length;
 
-  const polygon = points.map((p) => `${p.x},${p.y}`).join(' ');
+  const normalizedSeries: RadarSeries[] =
+    series && series.length
+      ? series
+      : [
+          {
+            name: 'Value',
+            data,
+          },
+        ];
+
+  const seriesPolygons = normalizedSeries.map((s) => {
+    const points = s.data.map((d, i) => {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      const r = (clamp(d.value, 0, max) / max) * radius;
+      return polarToCartesian(cx, cy, r, angle);
+    });
+
+    return {
+      name: s.name,
+      points,
+      polygon: points.map((p) => `${p.x},${p.y}`).join(' '),
+    };
+  });
 
   const rings = [0.25, 0.5, 0.75, 1].map((t) => t * radius);
 
@@ -61,7 +86,7 @@ export function RadarChart({
           />
         ))}
 
-        {data.map((d, i) => {
+        {baseData.map((d, i) => {
           const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
           const end = polarToCartesian(cx, cy, radius, angle);
           return (
@@ -78,25 +103,33 @@ export function RadarChart({
           );
         })}
 
-        <polygon
-          points={polygon}
-          fill="hsl(var(--primary))"
-          opacity={0.18}
-          stroke="hsl(var(--primary))"
-          strokeWidth={2}
-        />
+        {seriesPolygons.map((s, idx) => {
+          const stroke =
+            idx === 0
+              ? 'hsl(var(--chart-1))'
+              : idx === 1
+                ? 'hsl(var(--chart-2))'
+                : idx === 2
+                  ? 'hsl(var(--chart-3))'
+                  : 'hsl(var(--primary))';
+          const fillOpacity = idx === 0 ? 0.18 : idx === 1 ? 0.14 : 0.1;
+          return (
+            <g key={s.name}>
+              <polygon
+                points={s.polygon}
+                fill={stroke}
+                opacity={fillOpacity}
+                stroke={stroke}
+                strokeWidth={2}
+              />
+              {s.points.map((p, i) => (
+                <circle key={i} cx={p.x} cy={p.y} r={3} fill={stroke} />
+              ))}
+            </g>
+          );
+        })}
 
-        {points.map((p, i) => (
-          <circle
-            key={i}
-            cx={p.x}
-            cy={p.y}
-            r={3}
-            fill="hsl(var(--primary))"
-          />
-        ))}
-
-        {data.map((d, i) => {
+        {baseData.map((d, i) => {
           const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
           const labelPos = polarToCartesian(cx, cy, radius + 18, angle);
           const anchor =
@@ -121,6 +154,27 @@ export function RadarChart({
           );
         })}
       </svg>
+
+      {series && series.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {series.map((s, idx) => {
+            const colorClass =
+              idx === 0
+                ? 'text-[hsl(var(--chart-1))]'
+                : idx === 1
+                  ? 'text-[hsl(var(--chart-2))]'
+                  : idx === 2
+                    ? 'text-[hsl(var(--chart-3))]'
+                    : 'text-[hsl(var(--primary))]';
+            return (
+              <div key={s.name} className="flex items-center gap-2">
+                <span className={cn('inline-block h-2 w-2 rounded-sm', colorClass)} style={{ background: 'currentColor' }} />
+                <span>{s.name}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

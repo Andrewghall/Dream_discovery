@@ -17,38 +17,21 @@ function extractRatingFromAnswer(answer: string): number | null {
   return n;
 }
 
-function isRatingQuestion(question: string): boolean {
-  const q = question.toLowerCase();
-  return q.includes('scale of 1-10') || q.includes('rate 1-10') || q.includes('rate 1 to 10');
-}
+type QuestionMeta =
+  | {
+      kind: 'question';
+      tag: string;
+      index: number;
+      phase: string;
+    }
+  | { kind: string; [k: string]: any };
 
-function isConfidenceQuestion(question: string): boolean {
-  const q = question.toLowerCase();
-  return q.includes('how confident') && (q.includes('rate 1-10') || q.includes('rate 1 to 10') || q.includes('1-10'));
-}
-
-function isAmbitionQuestion(question: string): boolean {
-  return /\bin\s*3\s*years\b/i.test(question) || /what should customers say/i.test(question);
-}
-
-function isRealityQuestion(question: string): boolean {
-  const q = question.toLowerCase();
-  return (
-    q.includes('biggest') ||
-    q.includes('challenge') ||
-    q.includes('holding back') ||
-    q.includes('preventing') ||
-    q.includes('barrier') ||
-    q.includes('constrain') ||
-    q.includes('cost') ||
-    q.includes('delay') ||
-    q.includes('risk')
-  );
-}
-
-function isStrengthQuestion(question: string): boolean {
-  const q = question.toLowerCase();
-  return q.includes("what's working well") || q.includes('actually help') || q.includes('genuinely help');
+function getQuestionMeta(m: any): QuestionMeta | null {
+  const meta = (m?.metadata as any) || null;
+  if (!meta) return null;
+  if (meta.kind !== 'question') return null;
+  if (!meta.tag || !meta.phase) return null;
+  return meta as QuestionMeta;
 }
 
 function tokenize(text: string): string[] {
@@ -77,44 +60,82 @@ function buildWordFrequencies(texts: string[], maxWords: number = 60) {
     .map(([text, value]) => ({ text, value }));
 }
 
-async function generateSummary(params: {
+async function generateReportText(params: {
   workshopName: string | null | undefined;
   participantName: string | null | undefined;
   phaseInsights: Array<{
     phase: string;
-    rating: number | null;
-    confidence: number | null;
+    currentScore: number | null;
+    futureScore: number | null;
+    confidenceScore: number | null;
     strengths: string[];
-    reality: string[];
-    ambition: string[];
+    working: string[];
+    barriers: string[];
+    frictions: string[];
+    gaps: string[];
+    future: string[];
+    support: string[];
+    constraint: string[];
+    painPoints: string[];
   }>;
-  prioritization: { mostConstraining?: string; biggestImpact?: string; optimism?: string };
-}): Promise<string> {
+  prioritization: {
+    biggestConstraint?: string;
+    highImpact?: string;
+    optimism?: string;
+    finalThoughts?: string;
+  };
+}): Promise<{
+  executiveSummary: string;
+  feedback: string;
+  tone: string | null;
+}> {
   const lines: string[] = [];
   if (params.participantName) lines.push(`Participant: ${params.participantName}`);
   if (params.workshopName) lines.push(`Workshop: ${params.workshopName}`);
 
   for (const p of params.phaseInsights) {
-    const parts: string[] = [];
-    if (p.rating !== null) parts.push(`rating ${p.rating}/10`);
-    if (p.confidence !== null) parts.push(`confidence ${p.confidence}/10`);
-
-    lines.push(`\n${p.phase.toUpperCase()}${parts.length ? ` (${parts.join(', ')})` : ''}`);
+    lines.push(`\n${p.phase.toUpperCase()}`);
+    if (p.currentScore !== null) lines.push(`- Current score: ${p.currentScore}/10`);
+    if (p.futureScore !== null) lines.push(`- Desired future score: ${p.futureScore}/10`);
+    if (p.confidenceScore !== null) lines.push(`- Confidence score: ${p.confidenceScore}/10`);
     if (p.strengths.length) lines.push(`- Strengths: ${p.strengths.join(' | ')}`);
-    if (p.reality.length) lines.push(`- Reality: ${p.reality.join(' | ')}`);
-    if (p.ambition.length) lines.push(`- Ambition: ${p.ambition.join(' | ')}`);
+    if (p.working.length) lines.push(`- What's working: ${p.working.join(' | ')}`);
+    if (p.gaps.length) lines.push(`- Gaps: ${p.gaps.join(' | ')}`);
+    if (p.painPoints.length) lines.push(`- Pain points: ${p.painPoints.join(' | ')}`);
+    if (p.frictions.length) lines.push(`- Friction: ${p.frictions.join(' | ')}`);
+    if (p.barriers.length) lines.push(`- Barriers: ${p.barriers.join(' | ')}`);
+    if (p.constraint.length) lines.push(`- Constraints: ${p.constraint.join(' | ')}`);
+    if (p.future.length) lines.push(`- Future vision: ${p.future.join(' | ')}`);
+    if (p.support.length) lines.push(`- Support needed: ${p.support.join(' | ')}`);
   }
 
-  if (params.prioritization.mostConstraining || params.prioritization.biggestImpact || params.prioritization.optimism) {
-    lines.push(`\nPRIORITIZATION`);
-    if (params.prioritization.mostConstraining) lines.push(`- Most constraining: ${params.prioritization.mostConstraining}`);
-    if (params.prioritization.biggestImpact) lines.push(`- Biggest impact if improved: ${params.prioritization.biggestImpact}`);
-    if (params.prioritization.optimism) lines.push(`- Change sentiment: ${params.prioritization.optimism}`);
+  if (
+    params.prioritization.biggestConstraint ||
+    params.prioritization.highImpact ||
+    params.prioritization.optimism ||
+    params.prioritization.finalThoughts
+  ) {
+    lines.push(`\nPRIORITISATION`);
+    if (params.prioritization.biggestConstraint)
+      lines.push(`- Biggest constraint: ${params.prioritization.biggestConstraint}`);
+    if (params.prioritization.highImpact)
+      lines.push(`- High-impact improvement: ${params.prioritization.highImpact}`);
+    if (params.prioritization.optimism)
+      lines.push(`- Change sentiment: ${params.prioritization.optimism}`);
+    if (params.prioritization.finalThoughts)
+      lines.push(`- Final thoughts: ${params.prioritization.finalThoughts}`);
   }
 
   const fallback = lines.join('\n').trim();
 
-  if (!process.env.OPENAI_API_KEY) return fallback;
+  if (!process.env.OPENAI_API_KEY) {
+    return {
+      executiveSummary: fallback,
+      feedback:
+        'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+      tone: null,
+    };
+  }
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -123,21 +144,111 @@ async function generateSummary(params: {
       {
         role: 'system',
         content:
-          'You produce a concise end-of-interview report. Use only the provided content. Emphasize ambition vs reality and the biggest gaps. Keep it to 8-14 short bullet points plus a 2-3 sentence narrative summary.',
+          'You are writing a discovery interview report focused on the interviewee\'s view of the organisation and operating environment. Do NOT judge the individual. Start with an Executive Summary that captures tone (hopeful/skeptical/neutral/frustrated, etc.) and key themes. Then provide D1–D5 domain summaries with: Current state, Ambition, Barriers/enablers, Confidence. End with a short appreciative feedback paragraph to the interviewee that highlights actionable opportunities and support. Use only the provided notes. Keep language concrete and grounded in what was said; avoid generic filler. Output in the following format:\n\nExecutive Summary:\n<1 short paragraph>\n\nTone:\n<one of: hopeful | optimistic | neutral | skeptical | frustrated | mixed>\n\nFeedback to interviewee:\n<1 short paragraph>',
       },
       {
         role: 'user',
-        content: `Create the report from these extracted notes:\n\n${fallback}`,
+        content: `Notes (source of truth):\n\n${fallback}`,
       },
     ],
   });
 
-  return completion.choices?.[0]?.message?.content?.trim() || fallback;
+  const text = completion.choices?.[0]?.message?.content?.trim() || '';
+
+  const execMatch = text.match(/Executive Summary:\s*([\s\S]*?)(?:\n\nTone:|$)/i);
+  const toneMatch = text.match(/Tone:\s*([^\n]+)/i);
+  const feedbackMatch = text.match(/Feedback to interviewee:\s*([\s\S]*?)$/i);
+
+  const executiveSummary = (execMatch?.[1] || fallback).trim();
+  const tone = (toneMatch?.[1] || '').trim() || null;
+  const feedback = (feedbackMatch?.[1] || '').trim() ||
+    'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.';
+
+  return { executiveSummary, feedback, tone };
+}
+
+function buildSyntheticResponse(includeRegulation: boolean) {
+  const phases = includeRegulation
+    ? ['people', 'corporate', 'customer', 'technology', 'regulation']
+    : ['people', 'corporate', 'customer', 'technology'];
+
+  const phaseInsights = phases.map((phase) => {
+    const base = phase === 'technology' ? 4 : phase === 'customer' ? 6 : 5;
+    return {
+      phase,
+      currentScore: base,
+      futureScore: 8,
+      confidenceScore: 5,
+      strengths: phase === 'people' ? ['Strong peer collaboration and resilience.'] : [],
+      working: phase === 'customer' ? ['Frontline teams are responsive when issues are escalated.'] : [],
+      gaps: phase === 'technology' ? ['Fragmented systems and inconsistent data quality.'] : [],
+      painPoints: phase === 'customer' ? ['Slow resolution for complex requests across channels.'] : [],
+      frictions: phase === 'corporate' ? ['Approvals and governance add delay and uncertainty.'] : [],
+      barriers: phase === 'technology' ? ['Legacy platforms and unclear ownership of integration.'] : [],
+      constraint: phase === 'regulation' ? ['Compliance checks create rework and slow delivery.'] : [],
+      future: phase === 'technology' ? ['Integrated data, AI-assisted workflows, and real-time reporting.'] : ['Clearer decision rights and faster execution.'],
+      support: phase === 'people' ? ['Role clarity, targeted training, and capacity uplift.'] : [],
+    };
+  });
+
+  const prioritization = {
+    biggestConstraint: 'Technology',
+    highImpact: 'Corporate/Organisational',
+    optimism: 'Mixed — optimistic about the vision, skeptical about the pace of change without clearer ownership.',
+    finalThoughts: 'Focus on simplifying decisions and making data trustworthy and accessible.',
+  };
+
+  const narrativeTexts = phaseInsights.flatMap((p) => [
+    ...p.strengths,
+    ...p.working,
+    ...p.gaps,
+    ...p.painPoints,
+    ...p.frictions,
+    ...p.barriers,
+    ...p.constraint,
+    ...p.future,
+    ...p.support,
+  ]);
+
+  return {
+    participant: { name: 'Demo Participant', role: 'Manager', department: 'Operations' },
+    phaseInsights,
+    prioritization,
+    narrativeTexts,
+  };
 }
 
 export async function GET(request: NextRequest) {
   try {
     const sessionId = request.nextUrl.searchParams.get('sessionId');
+    const demo = request.nextUrl.searchParams.get('demo');
+
+    if (demo === '1') {
+      const includeRegulation = request.nextUrl.searchParams.get('includeRegulation') !== '0';
+      const synthetic = buildSyntheticResponse(includeRegulation);
+
+      const reportText = await generateReportText({
+        workshopName: 'Demo Workshop',
+        participantName: synthetic.participant.name,
+        phaseInsights: synthetic.phaseInsights,
+        prioritization: synthetic.prioritization,
+      });
+
+      const wordCloudThemes = buildWordFrequencies(synthetic.narrativeTexts);
+
+      return NextResponse.json({
+        sessionId: 'demo',
+        status: 'COMPLETED',
+        includeRegulation,
+        participant: synthetic.participant,
+        executiveSummary: reportText.executiveSummary,
+        tone: reportText.tone,
+        feedback: reportText.feedback,
+        phaseInsights: synthetic.phaseInsights,
+        wordCloudThemes,
+      });
+    }
+
     if (!sessionId) {
       return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 });
     }
@@ -155,18 +266,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    const qaPairs: Array<{ phase: string | null; question: string; answer: string; createdAt: Date }> = [];
+    const qaPairs: Array<{ phase: string | null; question: string; answer: string; createdAt: Date; tag: string | null }> = [];
 
-    const ratingByPhase: Record<string, number> = {};
+    const currentByPhase: Record<string, number> = {};
+    const futureByPhase: Record<string, number> = {};
     const confidenceByPhase: Record<string, number> = {};
 
-    const realityTexts: string[] = [];
-    const ambitionTexts: string[] = [];
-    const allFreeText: string[] = [];
-
     const strengthsByPhase: Record<string, string[]> = {};
-    const realityByPhase: Record<string, string[]> = {};
-    const ambitionByPhase: Record<string, string[]> = {};
+    const workingByPhase: Record<string, string[]> = {};
+    const gapsByPhase: Record<string, string[]> = {};
+    const painPointsByPhase: Record<string, string[]> = {};
+    const frictionsByPhase: Record<string, string[]> = {};
+    const barriersByPhase: Record<string, string[]> = {};
+    const constraintByPhase: Record<string, string[]> = {};
+    const futureTextByPhase: Record<string, string[]> = {};
+    const supportByPhase: Record<string, string[]> = {};
+
+    const narrativeTexts: string[] = [];
 
     const messages = session.messages;
 
@@ -189,30 +305,40 @@ export async function GET(request: NextRequest) {
 
       const question = questionMsg?.content || '';
       const phase = (m.phase || questionMsg?.phase || null) as string | null;
+      const meta = getQuestionMeta(questionMsg);
+      const tag = meta?.tag || null;
 
-      qaPairs.push({ phase, question, answer: m.content, createdAt: m.createdAt });
+      qaPairs.push({ phase, question, answer: m.content, createdAt: m.createdAt, tag });
 
-      if (question && isRatingQuestion(question)) {
-        const n = extractRatingFromAnswer(m.content);
-        if (n !== null && phase) {
-          if (isConfidenceQuestion(question)) confidenceByPhase[phase] = n;
-          else ratingByPhase[phase] = n;
+      if (phase && tag) {
+        if (tag === 'current_score' || tag === 'awareness_current') {
+          const n = extractRatingFromAnswer(m.content);
+          if (n !== null) currentByPhase[phase] = n;
+          continue;
         }
-        continue;
-      }
+        if (tag === 'future_score' || tag === 'awareness_future') {
+          const n = extractRatingFromAnswer(m.content);
+          if (n !== null) futureByPhase[phase] = n;
+          continue;
+        }
+        if (tag === 'confidence_score') {
+          const n = extractRatingFromAnswer(m.content);
+          if (n !== null) confidenceByPhase[phase] = n;
+          continue;
+        }
 
-      allFreeText.push(m.content);
+        narrativeTexts.push(m.content);
 
-      if (question && isAmbitionQuestion(question)) {
-        ambitionTexts.push(m.content);
-        if (phase) ambitionByPhase[phase] = [...(ambitionByPhase[phase] || []), m.content];
-      } else if (question && isRealityQuestion(question)) {
-        realityTexts.push(m.content);
-        if (phase) realityByPhase[phase] = [...(realityByPhase[phase] || []), m.content];
-      }
-
-      if (question && isStrengthQuestion(question) && phase) {
-        strengthsByPhase[phase] = [...(strengthsByPhase[phase] || []), m.content];
+        if (tag === 'strengths') strengthsByPhase[phase] = [...(strengthsByPhase[phase] || []), m.content];
+        else if (tag === 'working') workingByPhase[phase] = [...(workingByPhase[phase] || []), m.content];
+        else if (tag === 'helpful') workingByPhase[phase] = [...(workingByPhase[phase] || []), m.content];
+        else if (tag === 'gaps') gapsByPhase[phase] = [...(gapsByPhase[phase] || []), m.content];
+        else if (tag === 'pain_points') painPointsByPhase[phase] = [...(painPointsByPhase[phase] || []), m.content];
+        else if (tag === 'friction') frictionsByPhase[phase] = [...(frictionsByPhase[phase] || []), m.content];
+        else if (tag === 'barrier') barriersByPhase[phase] = [...(barriersByPhase[phase] || []), m.content];
+        else if (tag === 'constraint') constraintByPhase[phase] = [...(constraintByPhase[phase] || []), m.content];
+        else if (tag === 'future') futureTextByPhase[phase] = [...(futureTextByPhase[phase] || []), m.content];
+        else if (tag === 'support') supportByPhase[phase] = [...(supportByPhase[phase] || []), m.content];
       }
     }
 
@@ -224,31 +350,42 @@ export async function GET(request: NextRequest) {
 
     const phaseInsights = phases.map((phase) => ({
       phase,
-      rating: ratingByPhase[phase] ?? null,
-      confidence: confidenceByPhase[phase] ?? null,
+      currentScore: currentByPhase[phase] ?? null,
+      futureScore: futureByPhase[phase] ?? null,
+      confidenceScore: confidenceByPhase[phase] ?? null,
       strengths: strengthsByPhase[phase] || [],
-      reality: realityByPhase[phase] || [],
-      ambition: ambitionByPhase[phase] || [],
+      working: workingByPhase[phase] || [],
+      gaps: gapsByPhase[phase] || [],
+      painPoints: painPointsByPhase[phase] || [],
+      frictions: frictionsByPhase[phase] || [],
+      barriers: barriersByPhase[phase] || [],
+      constraint: constraintByPhase[phase] || [],
+      future: futureTextByPhase[phase] || [],
+      support: supportByPhase[phase] || [],
     }));
 
-    const prioritization: { mostConstraining?: string; biggestImpact?: string; optimism?: string } = {};
+    const prioritization: {
+      biggestConstraint?: string;
+      highImpact?: string;
+      optimism?: string;
+      finalThoughts?: string;
+    } = {};
     for (const qa of qaPairs) {
       if (qa.phase !== 'prioritization') continue;
-      const q = qa.question.toLowerCase();
-      if (q.includes('constrains you most')) prioritization.mostConstraining = qa.answer;
-      else if (q.includes('biggest impact')) prioritization.biggestImpact = qa.answer;
-      else if (q.includes('optimistic') || q.includes('skeptical')) prioritization.optimism = qa.answer;
+      if (qa.tag === 'biggest_constraint') prioritization.biggestConstraint = qa.answer;
+      else if (qa.tag === 'high_impact') prioritization.highImpact = qa.answer;
+      else if (qa.tag === 'optimism') prioritization.optimism = qa.answer;
+      else if (qa.tag === 'final_thoughts') prioritization.finalThoughts = qa.answer;
     }
 
-    const summary = await generateSummary({
+    const reportText = await generateReportText({
       workshopName: session.workshop?.name,
       participantName: session.participant?.name,
       phaseInsights,
       prioritization,
     });
 
-    const ambitionWordCloud = buildWordFrequencies(ambitionTexts);
-    const realityWordCloud = buildWordFrequencies(realityTexts);
+    const wordCloudThemes = buildWordFrequencies(narrativeTexts);
 
     return NextResponse.json({
       sessionId: session.id,
@@ -259,12 +396,12 @@ export async function GET(request: NextRequest) {
         role: session.participant?.role || null,
         department: session.participant?.department || null,
       },
-      summary,
+      executiveSummary: reportText.executiveSummary,
+      tone: reportText.tone,
+      feedback: reportText.feedback,
       phaseInsights,
-      ambitionWordCloud,
-      realityWordCloud,
+      wordCloudThemes,
       qaPairs,
-      wordCloudAll: buildWordFrequencies(allFreeText),
     });
   } catch (error) {
     console.error('Error generating conversation report:', error);

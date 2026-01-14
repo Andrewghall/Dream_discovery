@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ConversationPhase } from '@/lib/types/conversation';
 import OpenAI from 'openai';
-import { FIXED_QUESTIONS, getFixedQuestion, getNextPhase, getPhaseProgressPercent } from '@/lib/conversation/fixed-questions';
+import { FIXED_QUESTIONS, getFixedQuestion, getFixedQuestionObject, getNextPhase, getPhaseProgressPercent } from '@/lib/conversation/fixed-questions';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
     }
 
     const aiResponse = getFixedQuestion(newPhase, nextQuestionIndex, includeRegulation);
+    const qObj = getFixedQuestionObject(newPhase, nextQuestionIndex, includeRegulation);
     const isFinalClosingLine =
       newPhase === 'summary' && nextQuestionIndex === FIXED_QUESTIONS.summary.length - 1;
 
@@ -195,6 +196,14 @@ export async function POST(request: NextRequest) {
         role: 'AI',
         content: aiResponse,
         phase: newPhase,
+        metadata: qObj
+          ? {
+              kind: 'question',
+              tag: qObj.tag,
+              index: nextQuestionIndex,
+              phase: newPhase,
+            }
+          : undefined,
       },
     });
 

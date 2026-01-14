@@ -11,6 +11,7 @@ import { LanguageSelector } from '@/components/chat/language-selector';
 import { ConversationPhase, Message } from '@/lib/types/conversation';
 import { speakWithOpenAI } from '@/lib/utils/openai-tts';
 import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
+import { Button } from '@/components/ui/button';
 
 interface PageProps {
   params: Promise<{
@@ -41,11 +42,13 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [showLanguageSelector, setShowLanguageSelector] = useState(true);
   const [draftMessage, setDraftMessage] = useState('');
   const [report, setReport] = useState<null | {
-    summary: string;
+    executiveSummary: string;
+    tone: string | null;
+    feedback: string;
     phaseInsights: PhaseInsight[];
-    ambitionWordCloud: Array<{ text: string; value: number }>;
-    realityWordCloud: Array<{ text: string; value: number }>;
+    wordCloudThemes: Array<{ text: string; value: number }>;
   }>(null);
+  const [previewingDemoReport, setPreviewingDemoReport] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastSpokenMessageIdRef = useRef<string | null>(null);
 
@@ -137,15 +140,36 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         if (r.ok) {
           const reportData = await r.json();
           setReport({
-            summary: reportData.summary,
+            executiveSummary: reportData.executiveSummary,
+            tone: reportData.tone,
+            feedback: reportData.feedback,
             phaseInsights: reportData.phaseInsights,
-            ambitionWordCloud: reportData.ambitionWordCloud,
-            realityWordCloud: reportData.realityWordCloud,
+            wordCloudThemes: reportData.wordCloudThemes,
           });
         }
       }
     } catch (error) {
       console.error('Failed to initialize session:', error);
+    }
+  };
+
+  const handlePreviewDemoReport = async () => {
+    try {
+      const r = await fetch(
+        `/api/conversation/report?demo=1&includeRegulation=${includeRegulation ? '1' : '0'}`
+      );
+      if (!r.ok) return;
+      const reportData = await r.json();
+      setReport({
+        executiveSummary: reportData.executiveSummary,
+        tone: reportData.tone,
+        feedback: reportData.feedback,
+        phaseInsights: reportData.phaseInsights,
+        wordCloudThemes: reportData.wordCloudThemes,
+      });
+      setPreviewingDemoReport(true);
+    } catch {
+      // ignore
     }
   };
 
@@ -187,10 +211,11 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         if (r.ok) {
           const reportData = await r.json();
           setReport({
-            summary: reportData.summary,
+            executiveSummary: reportData.executiveSummary,
+            tone: reportData.tone,
+            feedback: reportData.feedback,
             phaseInsights: reportData.phaseInsights,
-            ambitionWordCloud: reportData.ambitionWordCloud,
-            realityWordCloud: reportData.realityWordCloud,
+            wordCloudThemes: reportData.wordCloudThemes,
           });
         }
       }
@@ -212,17 +237,41 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   return (
     <div className="flex h-screen">
       <div className="flex flex-col flex-1 lg:mr-80">
-        <div className="bg-muted/50 border-b px-4 py-1 text-xs text-muted-foreground">
-          Build: Whisper+OpenAI-TTS | Voice: Nova (Female) | Speed: 1.15x
-          {deployInfo?.sha ? ` | Deploy: ${deployInfo.env || 'unknown'} ${deployInfo.ref || ''} ${deployInfo.sha.slice(0, 7)}` : ''}
+        <div className="bg-muted/50 border-b px-4 py-1 text-xs text-muted-foreground flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1 truncate">
+            Build: Whisper+OpenAI-TTS | Voice: Nova (Female) | Speed: 1.15x
+            {deployInfo?.sha
+              ? ` | Deploy: ${deployInfo.env || 'unknown'} ${deployInfo.ref || ''} ${deployInfo.sha.slice(0, 7)}`
+              : ''}
+          </div>
+          <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap">
+            {!previewingDemoReport && (
+              <Button variant="outline" size="sm" onClick={handlePreviewDemoReport}>
+                Preview Demo Report
+              </Button>
+            )}
+            {previewingDemoReport && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPreviewingDemoReport(false);
+                  setReport(null);
+                }}
+              >
+                Back to Interview
+              </Button>
+            )}
+          </div>
         </div>
         <ScrollArea className="flex-1 pb-32 sm:pb-40" ref={scrollRef}>
-          {sessionStatus === 'COMPLETED' && report ? (
+          {((sessionStatus === 'COMPLETED' && report) || (previewingDemoReport && report)) ? (
             <ConversationReport
-              summary={report.summary}
+              executiveSummary={report.executiveSummary}
+              tone={report.tone}
+              feedback={report.feedback}
               phaseInsights={report.phaseInsights}
-              ambitionWordCloud={report.ambitionWordCloud}
-              realityWordCloud={report.realityWordCloud}
+              wordCloudThemes={report.wordCloudThemes}
             />
           ) : (
             <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -239,7 +288,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
           )}
         </ScrollArea>
 
-        {sessionStatus !== 'COMPLETED' && (
+        {sessionStatus !== 'COMPLETED' && !previewingDemoReport && (
           <div className="fixed bottom-0 left-0 right-0 lg:right-80 border-t bg-background/95 backdrop-blur safe-area-bottom">
             <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
               {showLanguageSelector && (

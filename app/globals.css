@@ -127,3 +127,9 @@
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
