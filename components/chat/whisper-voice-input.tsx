@@ -1,23 +1,28 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Circle, Square, Volume2, VolumeX } from 'lucide-react';
+import { Mic, Square, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { stopSpeaking as stopOpenAITts } from '@/lib/utils/openai-tts';
 
 interface WhisperVoiceInputProps {
   onTranscript: (text: string) => void;
+  autoStartNonce?: number;
   voiceEnabled: boolean;
   onVoiceToggle: (enabled: boolean) => void;
 }
 
-export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }: WhisperVoiceInputProps) {
+export function WhisperVoiceInput({ onTranscript, autoStartNonce, voiceEnabled, onVoiceToggle }: WhisperVoiceInputProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [inputLevel, setInputLevel] = useState<number>(0);
+
+  const isRecordingRef = useRef(false);
+  const isProcessingRef = useRef(false);
+  const stopRecordingFnRef = useRef<() => void>(() => {});
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -31,7 +36,111 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
   const recordedChunksRef = useRef<BlobPart[]>([]);
   const recordingModeRef = useRef<'pcm' | 'media'>('pcm');
 
+  const monitorAudioContextRef = useRef<AudioContext | null>(null);
+  const monitorSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const monitorAnalyserRef = useRef<AnalyserNode | null>(null);
+  const monitorRafRef = useRef<number | null>(null);
+  const silenceSinceRef = useRef<number | null>(null);
+  const lastAutoStartNonceRef = useRef<number | undefined>(undefined);
+
   const TARGET_SAMPLE_RATE = 16000;
+
+  const SILENCE_THRESHOLD = 0.06;
+  const SILENCE_MS_TO_STOP = 900;
+  const MIN_RECORDING_MS_BEFORE_AUTO_STOP = 900;
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
+
+  const cleanupMonitor = () => {
+    if (monitorRafRef.current != null) {
+      cancelAnimationFrame(monitorRafRef.current);
+      monitorRafRef.current = null;
+    }
+    try {
+      monitorSourceRef.current?.disconnect();
+    } catch {
+      // ignore
+    }
+    try {
+      monitorAnalyserRef.current?.disconnect();
+    } catch {
+      // ignore
+    }
+    monitorSourceRef.current = null;
+    monitorAnalyserRef.current = null;
+
+    const ctx = monitorAudioContextRef.current;
+    monitorAudioContextRef.current = null;
+    if (ctx) {
+      void ctx.close().catch(() => {});
+    }
+  };
+
+  const startMonitor = async (stream: MediaStream) => {
+    cleanupMonitor();
+    try {
+      const ctx = new AudioContext();
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+      monitorAudioContextRef.current = ctx;
+      monitorSourceRef.current = source;
+      monitorAnalyserRef.current = analyser;
+      silenceSinceRef.current = null;
+
+      const buf = new Uint8Array(analyser.fftSize);
+      const tick = () => {
+        const a = monitorAnalyserRef.current;
+        if (!a) return;
+
+        a.getByteTimeDomainData(buf);
+        let sumSq = 0;
+        for (let i = 0; i < buf.length; i++) {
+          const v = (buf[i] - 128) / 128;
+          sumSq += v * v;
+        }
+        const rms = Math.sqrt(sumSq / buf.length);
+        const normalized = Math.min(1, rms / 0.12);
+        setInputLevel(normalized);
+
+        const now = Date.now();
+        const since = silenceSinceRef.current;
+        if (normalized < SILENCE_THRESHOLD) {
+          if (since == null) silenceSinceRef.current = now;
+        } else {
+          silenceSinceRef.current = null;
+        }
+
+        const durationMs = now - recordingStartRef.current;
+        if (
+          isRecordingRef.current &&
+          !isProcessingRef.current &&
+          silenceSinceRef.current != null &&
+          now - silenceSinceRef.current > SILENCE_MS_TO_STOP &&
+          durationMs > MIN_RECORDING_MS_BEFORE_AUTO_STOP
+        ) {
+          stopRecordingFnRef.current();
+          return;
+        }
+
+        monitorRafRef.current = requestAnimationFrame(tick);
+      };
+
+      monitorRafRef.current = requestAnimationFrame(tick);
+    } catch {
+      cleanupMonitor();
+    }
+  };
 
   const isAndroid = () => {
     if (typeof navigator === 'undefined') return false;
@@ -245,6 +354,9 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
 
       recordingStartRef.current = Date.now();
 
+      // Track input level + silence for auto-stop (works for both MediaRecorder and PCM)
+      await startMonitor(stream);
+
       // Android browsers are often more reliable with MediaRecorder than ScriptProcessor.
       const shouldUseMediaRecorder = isAndroid() && typeof MediaRecorder !== 'undefined';
       if (shouldUseMediaRecorder) {
@@ -260,6 +372,7 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
             recordedChunksRef.current = [];
             await transcribeAndEmit(blob);
           } finally {
+            cleanupMonitor();
             stream.getTracks().forEach((t) => t.stop());
             mediaStreamRef.current = null;
             mediaRecorderRef.current = null;
@@ -317,23 +430,25 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
     } catch (err: any) {
       console.error('❌ Microphone access error:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setError('Microphone access denied. Please allow microphone access.');
+        setError('Microphone access denied. Please allow microphone access (tap Start once).');
       } else if (err.name === 'NotFoundError') {
         setError('No microphone found. Please connect a microphone.');
       } else {
         setError('Could not access microphone. Please check your settings.');
       }
       setTimeout(() => setError(null), 5000);
+      cleanupMonitor();
     }
   };
 
   const stopRecording = () => {
-    if (!isRecording) return;
+    if (!isRecordingRef.current) return;
 
     if (recordingModeRef.current === 'media') {
       const recorder = mediaRecorderRef.current;
       if (!recorder) {
         setIsRecording(false);
+        cleanupMonitor();
         mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
         mediaStreamRef.current = null;
         return;
@@ -365,6 +480,8 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
     } catch {
       // ignore
     }
+
+    cleanupMonitor();
 
     stream?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
@@ -399,6 +516,19 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
 
     void transcribeAndEmit(wavBlob);
   };
+
+  // Allow analyser loop to call the latest stopRecording implementation.
+  stopRecordingFnRef.current = stopRecording;
+
+  useEffect(() => {
+    if (autoStartNonce == null) return;
+    if (lastAutoStartNonceRef.current === autoStartNonce) return;
+    lastAutoStartNonceRef.current = autoStartNonce;
+    if (isRecording || isProcessing) return;
+
+    // Best-effort. If the browser requires a user gesture, we'll show an error and the user can press Start.
+    void startRecording();
+  }, [autoStartNonce]);
 
   const toggleRecording = () => {
     if (isRecording) {
@@ -460,25 +590,27 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
           {isRecording ? (
             <>
               <Square className="h-4 w-4 mr-2" />
-              Stop Recording
+              <span className="sm:hidden">Stop</span>
+              <span className="hidden sm:inline">Stop Recording</span>
             </>
           ) : (
             <>
-              <Circle className="h-4 w-4 mr-2" />
-              Start Recording
+              <Mic className="h-4 w-4 mr-2" />
+              <span className="sm:hidden">Start</span>
+              <span className="hidden sm:inline">Start Recording</span>
             </>
           )}
         </Button>
         
         {isRecording && (
           <div className="absolute bottom-full mb-2 right-0 bg-red-600 text-white text-xs px-3 py-2 rounded-md whitespace-nowrap shadow-lg z-10 animate-pulse">
-            🔴 Recording... Click to stop
+            Recording… Tap to stop
           </div>
         )}
         
         {isProcessing && (
           <div className="absolute bottom-full mb-2 right-0 bg-blue-600 text-white text-xs px-3 py-2 rounded-md whitespace-nowrap shadow-lg z-10">
-            ⏳ Transcribing...
+            Transcribing…
           </div>
         )}
         

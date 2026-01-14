@@ -62,9 +62,25 @@ export async function speakWithOpenAI(text: string): Promise<void> {
     const audio = new Audio(audioUrl);
     currentAudio = audio;
 
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('dream-tts-start'));
+      }
+    } catch {
+      // ignore
+    }
+
     audio.onended = () => {
       URL.revokeObjectURL(audioUrl);
       currentAudio = null;
+
+      try {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('dream-tts-end'));
+        }
+      } catch {
+        // ignore
+      }
     };
 
     audio.onerror = (error) => {
@@ -98,6 +114,14 @@ export function stopSpeaking(): void {
   if (currentAudio) {
     currentAudio.pause();
     currentAudio = null;
+
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('dream-tts-end'));
+      }
+    } catch {
+      // ignore
+    }
   }
   pendingText = null;
 }
