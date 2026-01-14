@@ -8,8 +8,8 @@ const openai = new OpenAI({
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
 const getTtsSpeed = () => {
-  const raw = Number(process.env.OPENAI_TTS_SPEED ?? '1.25');
-  if (!Number.isFinite(raw)) return 1.25;
+  const raw = Number(process.env.OPENAI_TTS_SPEED ?? '1.15');
+  if (!Number.isFinite(raw)) return 1.15;
   return clamp(raw, 0.25, 4);
 };
 

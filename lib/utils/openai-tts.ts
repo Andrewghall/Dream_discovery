@@ -1,5 +1,8 @@
 let currentAudio: HTMLAudioElement | null = null;
 
+let fallbackTimer: number | null = null;
+let fallbackUtterance: SpeechSynthesisUtterance | null = null;
+
 let hasUserInteracted = false;
 let pendingText: string | null = null;
 
@@ -42,7 +45,41 @@ export async function speakWithOpenAI(text: string): Promise<void> {
       currentAudio = null;
     }
 
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+    }
+
+    if (fallbackTimer != null) {
+      window.clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+    fallbackUtterance = null;
+
     console.log('🔊 Requesting OpenAI TTS for:', text.substring(0, 50) + '...');
+
+    let openAiAudioStarted = false;
+
+    if (typeof window !== 'undefined' && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
+      try {
+        fallbackTimer = window.setTimeout(() => {
+          if (openAiAudioStarted) return;
+          try {
+            const u = new SpeechSynthesisUtterance(text);
+            u.rate = 1.05;
+            fallbackUtterance = u;
+            window.speechSynthesis.speak(u);
+          } catch {
+            // ignore
+          }
+        }, 700);
+      } catch {
+        // ignore
+      }
+    }
 
     const response = await fetch('/api/speak', {
       method: 'POST',
@@ -89,8 +126,31 @@ export async function speakWithOpenAI(text: string): Promise<void> {
       currentAudio = null;
     };
 
+    const cancelFallback = () => {
+      openAiAudioStarted = true;
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        try {
+          if (fallbackUtterance) {
+            window.speechSynthesis.cancel();
+          }
+        } catch {
+          // ignore
+        }
+      }
+      if (fallbackTimer != null) {
+        window.clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      fallbackUtterance = null;
+    };
+
+    audio.onplaying = () => {
+      cancelFallback();
+    };
+
     try {
       await audio.play();
+      cancelFallback();
       console.log('✅ Playing OpenAI TTS audio');
     } catch (e: any) {
       // Most common in Chrome/Safari: autoplay policy blocks play() before user interaction.
@@ -99,6 +159,12 @@ export async function speakWithOpenAI(text: string): Promise<void> {
         pendingText = text;
         hasUserInteracted = false;
         ensureInteractionListeners();
+
+        if (fallbackTimer != null) {
+          window.clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+        fallbackUtterance = null;
         return;
       }
       throw e;
@@ -123,5 +189,17 @@ export function stopSpeaking(): void {
       // ignore
     }
   }
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // ignore
+    }
+  }
+  if (fallbackTimer != null) {
+    window.clearTimeout(fallbackTimer);
+    fallbackTimer = null;
+  }
+  fallbackUtterance = null;
   pendingText = null;
 }

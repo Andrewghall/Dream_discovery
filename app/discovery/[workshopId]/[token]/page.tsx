@@ -35,7 +35,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     serverTime: string;
   }>(null);
   const [pendingVoiceTranscript, setPendingVoiceTranscript] = useState<string | null>(null);
-  const [autoRecordNonce, setAutoRecordNonce] = useState(0);
   const [language, setLanguage] = useState('en');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
@@ -59,7 +58,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setSessionStatus('IN_PROGRESS');
     setDeployInfo(null);
     setPendingVoiceTranscript(null);
-    setAutoRecordNonce(0);
     setLanguage('en');
     setVoiceEnabled(true);
     setIncludeRegulation(true);
@@ -74,7 +72,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   useEffect(() => {
     void (async () => {
       try {
-        const r = await fetch('/api/version', { cache: 'no-store' });
+        const r = await fetch(`/api/version?bust=${Date.now()}`, { cache: 'no-store' });
         if (!r.ok) return;
         const data = await r.json();
         setDeployInfo(data);
@@ -83,16 +81,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       }
     })();
   }, [workshopId, token]);
-
-  useEffect(() => {
-    const onTtsEnd = () => {
-      setAutoRecordNonce((n) => n + 1);
-    };
-    window.addEventListener('dream-tts-end', onTtsEnd as any);
-    return () => {
-      window.removeEventListener('dream-tts-end', onTtsEnd as any);
-    };
-  }, []);
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
@@ -193,10 +181,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setCurrentPhase(data.currentPhase);
       setPhaseProgress(data.phaseProgress);
 
-      if (!voiceEnabled) {
-        setAutoRecordNonce((n) => n + 1);
-      }
-
       if (data.status === 'COMPLETED') {
         setSessionStatus('COMPLETED');
         const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(sessionId)}`);
@@ -229,7 +213,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     <div className="flex h-screen">
       <div className="flex flex-col flex-1 lg:mr-80">
         <div className="bg-muted/50 border-b px-4 py-1 text-xs text-muted-foreground">
-          Build: Whisper+OpenAI-TTS | Voice: Nova (Female) | Speed: 1.25x
+          Build: Whisper+OpenAI-TTS | Voice: Nova (Female) | Speed: 1.15x
           {deployInfo?.sha ? ` | Deploy: ${deployInfo.env || 'unknown'} ${deployInfo.ref || ''} ${deployInfo.sha.slice(0, 7)}` : ''}
         </div>
         <ScrollArea className="flex-1 pb-32 sm:pb-40" ref={scrollRef}>
@@ -299,7 +283,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                       setPendingVoiceTranscript(cleaned);
                       setShowLanguageSelector(false);
                     }}
-                    autoStartNonce={autoRecordNonce}
                     voiceEnabled={voiceEnabled}
                     onVoiceToggle={async (enabled: boolean) => {
                       setVoiceEnabled(enabled);

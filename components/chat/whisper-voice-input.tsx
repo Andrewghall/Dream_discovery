@@ -7,22 +7,17 @@ import { stopSpeaking as stopOpenAITts } from '@/lib/utils/openai-tts';
 
 interface WhisperVoiceInputProps {
   onTranscript: (text: string) => void;
-  autoStartNonce?: number;
   voiceEnabled: boolean;
   onVoiceToggle: (enabled: boolean) => void;
 }
 
-export function WhisperVoiceInput({ onTranscript, autoStartNonce, voiceEnabled, onVoiceToggle }: WhisperVoiceInputProps) {
+export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }: WhisperVoiceInputProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [inputLevel, setInputLevel] = useState<number>(0);
-
-  const isRecordingRef = useRef(false);
-  const isProcessingRef = useRef(false);
-  const stopRecordingFnRef = useRef<() => void>(() => {});
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -40,22 +35,8 @@ export function WhisperVoiceInput({ onTranscript, autoStartNonce, voiceEnabled, 
   const monitorSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const monitorAnalyserRef = useRef<AnalyserNode | null>(null);
   const monitorRafRef = useRef<number | null>(null);
-  const silenceSinceRef = useRef<number | null>(null);
-  const lastAutoStartNonceRef = useRef<number | undefined>(undefined);
 
   const TARGET_SAMPLE_RATE = 16000;
-
-  const SILENCE_THRESHOLD = 0.06;
-  const SILENCE_MS_TO_STOP = 900;
-  const MIN_RECORDING_MS_BEFORE_AUTO_STOP = 900;
-
-  useEffect(() => {
-    isRecordingRef.current = isRecording;
-  }, [isRecording]);
-
-  useEffect(() => {
-    isProcessingRef.current = isProcessing;
-  }, [isProcessing]);
 
   const cleanupMonitor = () => {
     if (monitorRafRef.current != null) {
@@ -96,7 +77,6 @@ export function WhisperVoiceInput({ onTranscript, autoStartNonce, voiceEnabled, 
       monitorAudioContextRef.current = ctx;
       monitorSourceRef.current = source;
       monitorAnalyserRef.current = analyser;
-      silenceSinceRef.current = null;
 
       const buf = new Uint8Array(analyser.fftSize);
       const tick = () => {
@@ -112,26 +92,6 @@ export function WhisperVoiceInput({ onTranscript, autoStartNonce, voiceEnabled, 
         const rms = Math.sqrt(sumSq / buf.length);
         const normalized = Math.min(1, rms / 0.12);
         setInputLevel(normalized);
-
-        const now = Date.now();
-        const since = silenceSinceRef.current;
-        if (normalized < SILENCE_THRESHOLD) {
-          if (since == null) silenceSinceRef.current = now;
-        } else {
-          silenceSinceRef.current = null;
-        }
-
-        const durationMs = now - recordingStartRef.current;
-        if (
-          isRecordingRef.current &&
-          !isProcessingRef.current &&
-          silenceSinceRef.current != null &&
-          now - silenceSinceRef.current > SILENCE_MS_TO_STOP &&
-          durationMs > MIN_RECORDING_MS_BEFORE_AUTO_STOP
-        ) {
-          stopRecordingFnRef.current();
-          return;
-        }
 
         monitorRafRef.current = requestAnimationFrame(tick);
       };
@@ -442,7 +402,7 @@ export function WhisperVoiceInput({ onTranscript, autoStartNonce, voiceEnabled, 
   };
 
   const stopRecording = () => {
-    if (!isRecordingRef.current) return;
+    if (!isRecording) return;
 
     if (recordingModeRef.current === 'media') {
       const recorder = mediaRecorderRef.current;
@@ -516,19 +476,6 @@ export function WhisperVoiceInput({ onTranscript, autoStartNonce, voiceEnabled, 
 
     void transcribeAndEmit(wavBlob);
   };
-
-  // Allow analyser loop to call the latest stopRecording implementation.
-  stopRecordingFnRef.current = stopRecording;
-
-  useEffect(() => {
-    if (autoStartNonce == null) return;
-    if (lastAutoStartNonceRef.current === autoStartNonce) return;
-    lastAutoStartNonceRef.current = autoStartNonce;
-    if (isRecording || isProcessing) return;
-
-    // Best-effort. If the browser requires a user gesture, we'll show an error and the user can press Start.
-    void startRecording();
-  }, [autoStartNonce]);
 
   const toggleRecording = () => {
     if (isRecording) {
