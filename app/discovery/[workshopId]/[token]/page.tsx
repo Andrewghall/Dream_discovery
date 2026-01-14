@@ -27,6 +27,13 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [phaseProgress, setPhaseProgress] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<'IN_PROGRESS' | 'COMPLETED'>('IN_PROGRESS');
+  const [deployInfo, setDeployInfo] = useState<null | {
+    sha: string | null;
+    ref: string | null;
+    env: string | null;
+    deploymentUrl: string | null;
+    serverTime: string;
+  }>(null);
   const [language, setLanguage] = useState('en');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
@@ -48,6 +55,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setCurrentPhase('intro');
     setPhaseProgress(0);
     setSessionStatus('IN_PROGRESS');
+    setDeployInfo(null);
     setLanguage('en');
     setVoiceEnabled(true);
     setIncludeRegulation(true);
@@ -57,6 +65,19 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     
     // Initialize conversation session
     initializeSession();
+  }, [workshopId, token]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch('/api/version', { cache: 'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+        setDeployInfo(data);
+      } catch {
+        setDeployInfo(null);
+      }
+    })();
   }, [workshopId, token]);
 
   useEffect(() => {
@@ -179,8 +200,9 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       <div className="flex flex-col flex-1 lg:mr-80">
         <div className="bg-muted/50 border-b px-4 py-1 text-xs text-muted-foreground">
           Build: Whisper+OpenAI-TTS | Voice: Nova (Female) | Speed: 1.1x
+          {deployInfo?.sha ? ` | Deploy: ${deployInfo.env || 'unknown'} ${deployInfo.ref || ''} ${deployInfo.sha.slice(0, 7)}` : ''}
         </div>
-        <ScrollArea className="flex-1 pb-40" ref={scrollRef}>
+        <ScrollArea className="flex-1 pb-32 sm:pb-40" ref={scrollRef}>
           {sessionStatus === 'COMPLETED' && report ? (
             <ConversationReport
               summary={report.summary}
@@ -224,24 +246,53 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 </div>
               )}
 
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <ChatInput
-                    onSend={(content) => {
-                      handleSendMessage(content);
-                      setShowLanguageSelector(false);
-                      setDraftMessage('');
-                    }}
-                    disabled={isLoading}
-                    placeholder="Press Record, speak, then press Enter to send..."
-                    value={draftMessage}
-                    onChange={setDraftMessage}
-                  />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-2">
+                <div className="w-full sm:flex-1">
+                  <div className="sm:hidden">
+                    <ChatInput
+                      onSend={(content) => {
+                        handleSendMessage(content);
+                        setShowLanguageSelector(false);
+                        setDraftMessage('');
+                      }}
+                      disabled={isLoading}
+                      placeholder="Type your response, or use Start Recording…"
+                      value={draftMessage}
+                      onChange={setDraftMessage}
+                      singleLine
+                      showSendButton={false}
+                    />
+                  </div>
+
+                  <div className="hidden sm:block">
+                    <ChatInput
+                      onSend={(content) => {
+                        handleSendMessage(content);
+                        setShowLanguageSelector(false);
+                        setDraftMessage('');
+                      }}
+                      disabled={isLoading}
+                      placeholder="Type your response, or use Start Recording…"
+                      value={draftMessage}
+                      onChange={setDraftMessage}
+                      showSendButton
+                    />
+                  </div>
                 </div>
-                <WhisperVoiceInput
-                  onTranscript={(text: string) => {
-                    setDraftMessage(text);
-                  }}
+
+                <div className="w-full sm:hidden flex items-center justify-end gap-2">
+                  <WhisperVoiceInput
+                    onTranscript={(text: string) => {
+                      const cleaned = (text || '').trim();
+                      if (!cleaned) return;
+                      if (!sessionId || isLoading) {
+                        setDraftMessage(cleaned);
+                        return;
+                      }
+                      setDraftMessage('');
+                      setShowLanguageSelector(false);
+                      void handleSendMessage(cleaned);
+                    }}
                   voiceEnabled={voiceEnabled}
                   onVoiceToggle={async (enabled: boolean) => {
                     setVoiceEnabled(enabled);
@@ -261,10 +312,46 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                       }
                     }
                   }}
-                />
+                  />
+                </div>
+
+                <div className="hidden sm:flex sm:w-auto sm:items-end sm:justify-end">
+                  <WhisperVoiceInput
+                    onTranscript={(text: string) => {
+                      const cleaned = (text || '').trim();
+                      if (!cleaned) return;
+                      if (!sessionId || isLoading) {
+                        setDraftMessage(cleaned);
+                        return;
+                      }
+                      setDraftMessage('');
+                      setShowLanguageSelector(false);
+                      void handleSendMessage(cleaned);
+                    }}
+                    voiceEnabled={voiceEnabled}
+                    onVoiceToggle={async (enabled: boolean) => {
+                      setVoiceEnabled(enabled);
+                      if (sessionId) {
+                        await fetch(`/api/conversation/update-preferences`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ sessionId, voiceEnabled: enabled }),
+                        });
+                      }
+
+                      if (enabled) {
+                        const lastAi = [...messages].reverse().find((m) => m.role === 'AI');
+                        if (lastAi && lastSpokenMessageIdRef.current !== lastAi.id) {
+                          lastSpokenMessageIdRef.current = lastAi.id;
+                          void speakWithOpenAI(lastAi.content).catch(() => {});
+                        }
+                      }
+                    }}
+                  />
+                </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2 hidden sm:block">
-                Press Record to record your voice, then press Record again to stop. Review the transcription, then press Enter to send.
+                Use Start Recording / Stop Recording to dictate. Your transcription will be sent automatically.
               </p>
             </div>
           </div>

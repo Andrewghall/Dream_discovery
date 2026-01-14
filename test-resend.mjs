@@ -1,14 +1,19 @@
 import { Resend } from 'resend';
 
-const resend = new Resend('re_gQfoyJnm_DQ7wSK3tLqEKC6KH9Wv1vF8o');
+if (!process.env.RESEND_API_KEY) {
+  console.error('Missing RESEND_API_KEY. Set it in your environment before running this script.');
+  process.exit(1);
+}
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function testResend() {
   console.log('Testing Resend API...\n');
   
   try {
     const result = await resend.emails.send({
-      from: 'DREAM Discovery <discovery@mail.ethenta.com>',
-      to: 'andrew.hall@ethenta.com',
+      from: process.env.FROM_EMAIL || 'DREAM Discovery <onboarding@resend.dev>',
+      to: process.env.TEST_TO_EMAIL || 'andrew.hall@ethenta.com',
       subject: 'Test Email from DREAM Discovery Platform',
       html: '<h1>Test Email</h1><p>This is a test to verify Resend is working.</p>',
     });

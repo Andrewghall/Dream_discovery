@@ -1,7 +1,5 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 interface SendInvitationParams {
   to: string;
   participantName: string;
@@ -17,6 +15,10 @@ export async function sendDiscoveryInvitation(params: SendInvitationParams) {
   console.log('📧 Attempting to send email to:', to);
   console.log('📧 From email:', process.env.FROM_EMAIL);
   console.log('📧 Resend API Key exists:', !!process.env.RESEND_API_KEY);
+
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('Missing RESEND_API_KEY environment variable');
+  }
 
   const html = `
 <!DOCTYPE html>
@@ -82,6 +84,7 @@ export async function sendDiscoveryInvitation(params: SendInvitationParams) {
   `;
 
   try {
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const result = await resend.emails.send({
       from: process.env.FROM_EMAIL || 'DREAM Discovery <onboarding@resend.dev>',
       to,

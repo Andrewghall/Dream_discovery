@@ -27,7 +27,38 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
   const recordingStartRef = useRef<number>(0);
   const lastLevelUpdateRef = useRef<number>(0);
 
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<BlobPart[]>([]);
+  const recordingModeRef = useRef<'pcm' | 'media'>('pcm');
+
   const TARGET_SAMPLE_RATE = 16000;
+
+  const isAndroid = () => {
+    if (typeof navigator === 'undefined') return false;
+    return /Android/i.test(navigator.userAgent);
+  };
+
+  const getSupportedRecorderMimeType = () => {
+    if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+      return '';
+    }
+
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4',
+    ];
+
+    for (const t of candidates) {
+      try {
+        if (MediaRecorder.isTypeSupported(t)) return t;
+      } catch {
+        // ignore
+      }
+    }
+    return '';
+  };
 
   const mergeFloat32Arrays = (chunks: Float32Array[]) => {
     const length = chunks.reduce((sum, c) => sum + c.length, 0);
@@ -113,6 +144,38 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
     return new Blob([buffer], { type: 'audio/wav' });
   };
 
+  const transcribeAndEmit = async (audioBlob: Blob) => {
+    try {
+      setIsProcessing(true);
+
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording');
+
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = (payload as any)?.error || 'Transcription failed';
+        throw new Error(message);
+      }
+
+      const text = (payload as any)?.text;
+      console.log('✅ Transcription received:', text);
+      if (text) onTranscript(text);
+      setError(null);
+    } catch (err: any) {
+      console.error('❌ Transcription error:', err);
+      setError(err?.message || 'Failed to transcribe audio. Please try again.');
+      setTimeout(() => setError(null), 4000);
+    } finally {
+      setIsProcessing(false);
+      setInputLevel(0);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -180,6 +243,41 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
         // ignore
       }
 
+      recordingStartRef.current = Date.now();
+
+      // Android browsers are often more reliable with MediaRecorder than ScriptProcessor.
+      const shouldUseMediaRecorder = isAndroid() && typeof MediaRecorder !== 'undefined';
+      if (shouldUseMediaRecorder) {
+        const mimeType = getSupportedRecorderMimeType();
+        const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        recordedChunksRef.current = [];
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) recordedChunksRef.current.push(e.data);
+        };
+        recorder.onstop = async () => {
+          try {
+            const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+            recordedChunksRef.current = [];
+            await transcribeAndEmit(blob);
+          } finally {
+            stream.getTracks().forEach((t) => t.stop());
+            mediaStreamRef.current = null;
+            mediaRecorderRef.current = null;
+          }
+        };
+
+        recordingModeRef.current = 'media';
+        mediaStreamRef.current = stream;
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+        setError(null);
+        setInputLevel(0);
+        recorder.start();
+        console.log('🎤 Recording started (MediaRecorder)');
+        return;
+      }
+
+      recordingModeRef.current = 'pcm';
       const audioContext = new AudioContext();
       // On some browsers, the AudioContext starts suspended until resumed from a user gesture.
       if (audioContext.state === 'suspended') {
@@ -189,7 +287,6 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
       audioBufferRef.current = [];
-      recordingStartRef.current = Date.now();
 
       processor.onaudioprocess = (e) => {
         const input = e.inputBuffer.getChannelData(0);
@@ -232,6 +329,21 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
 
   const stopRecording = () => {
     if (!isRecording) return;
+
+    if (recordingModeRef.current === 'media') {
+      const recorder = mediaRecorderRef.current;
+      if (!recorder) {
+        setIsRecording(false);
+        mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+        return;
+      }
+
+      setIsRecording(false);
+      setInputLevel(0);
+      recorder.stop();
+      return;
+    }
 
     const stopTime = Date.now();
     const durationSeconds = (stopTime - recordingStartRef.current) / 1000;
@@ -285,36 +397,7 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
     console.log('🎤 WAV size:', wavBlob.size, 'bytes');
     console.log('🎤 Duration:', durationSeconds.toFixed(1), 'seconds');
 
-    (async () => {
-      try {
-        setIsProcessing(true);
-        const formData = new FormData();
-        formData.append('audio', wavBlob, 'recording.wav');
-
-        const response = await fetch('/api/transcribe', {
-          method: 'POST',
-          body: formData,
-        });
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const message = (payload as any)?.error || 'Transcription failed';
-          throw new Error(message);
-        }
-
-        const text = (payload as any)?.text;
-        console.log('✅ Transcription received:', text);
-        if (text) onTranscript(text);
-        setError(null);
-      } catch (err: any) {
-        console.error('❌ Transcription error:', err);
-        setError(err?.message || 'Failed to transcribe audio. Please try again.');
-        setTimeout(() => setError(null), 4000);
-      } finally {
-        setIsProcessing(false);
-        setInputLevel(0);
-      }
-    })();
+    void transcribeAndEmit(wavBlob);
   };
 
   const toggleRecording = () => {
@@ -326,7 +409,7 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 w-full justify-between sm:w-auto sm:justify-end">
       <Button
         type="button"
         variant="outline"
@@ -337,9 +420,9 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
         {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
       </Button>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
         <select
-          className="h-9 max-w-[180px] rounded-md border bg-background px-2 text-xs"
+          className="h-9 max-w-[140px] sm:max-w-[180px] rounded-md border bg-background px-2 text-xs"
           value={selectedDeviceId}
           onChange={(e) => setSelectedDeviceId(e.target.value)}
           title="Microphone input device"
@@ -356,7 +439,7 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
           )}
         </select>
 
-        <div className="h-2 w-16 overflow-hidden rounded-full bg-muted" title="Live input level">
+        <div className="h-2 w-14 sm:w-16 shrink-0 overflow-hidden rounded-full bg-muted" title="Live input level">
           <div
             className="h-full bg-primary transition-[width]"
             style={{ width: `${Math.round(inputLevel * 100)}%` }}
@@ -377,12 +460,12 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
           {isRecording ? (
             <>
               <Square className="h-4 w-4 mr-2" />
-              Stop
+              Stop Recording
             </>
           ) : (
             <>
               <Circle className="h-4 w-4 mr-2" />
-              Record
+              Start Recording
             </>
           )}
         </Button>

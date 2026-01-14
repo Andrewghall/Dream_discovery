@@ -11,11 +11,21 @@ export async function POST(
     const url = new URL(request.url);
     const resendAll = url.searchParams.get('resend') === 'true';
 
+    const diagnostics = {
+      nodeEnv: process.env.NODE_ENV ?? null,
+      hasResendApiKey: !!process.env.RESEND_API_KEY,
+      fromEmail: process.env.FROM_EMAIL ?? null,
+      nextPublicAppUrl: process.env.NEXT_PUBLIC_APP_URL ?? null,
+      vercelUrl: process.env.VERCEL_URL ?? null,
+      requestHost: request.headers.get('host') ?? null,
+    };
+
     if (!process.env.RESEND_API_KEY) {
       return NextResponse.json(
         {
           error: 'Email sending is not configured',
           details: { message: 'Missing RESEND_API_KEY environment variable' },
+          diagnostics,
         },
         { status: 500 }
       );
@@ -50,10 +60,12 @@ export async function POST(
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
     let emailsSent = 0;
     const errors = [];
+    const results: Array<{ email: string; ok: boolean; resendId?: string | null; error?: string }> = [];
 
     console.log(`📧 Sending emails to ${workshop.participants.length} participant(s)...`);
     console.log(`📧 Workshop: ${workshop.name} (${workshopId})`);
     console.log(`📧 Resend mode: ${resendAll ? 'YES' : 'NO'}`);
+    console.log('📧 Diagnostics:', diagnostics);
 
     // Send emails to each participant
     for (const participant of workshop.participants) {
@@ -73,8 +85,16 @@ export async function POST(
           discoveryUrl,
           responseDeadline: workshop.responseDeadline || undefined,
         });
-        
+
         console.log(`   - ✅ Email sent! Result:`, emailResult);
+
+        const maybeResult = emailResult as any;
+        const resendId =
+          maybeResult?.data?.id ??
+          maybeResult?.id ??
+          maybeResult?.data?.messageId ??
+          maybeResult?.messageId ??
+          null;
 
         // Mark email as sent
         await prisma.workshopParticipant.update({
@@ -83,6 +103,7 @@ export async function POST(
         });
 
         emailsSent++;
+        results.push({ email: participant.email, ok: true, resendId });
       } catch (error: unknown) {
         console.error(`   - ❌ Failed to send email to ${participant.email}:`, error);
         const message =
@@ -92,6 +113,7 @@ export async function POST(
               ? error
               : JSON.stringify(error);
         errors.push({ email: participant.email, error: message });
+        results.push({ email: participant.email, ok: false, error: message });
       }
     }
     
@@ -111,11 +133,23 @@ export async function POST(
       success: errors.length === 0,
       emailsSent,
       errors: errors.length > 0 ? errors : undefined,
+      diagnostics: {
+        ...diagnostics,
+        appUrl,
+        resendAll,
+        participantsConsidered: workshop.participants.length,
+      },
+      results,
     });
   } catch (error) {
     console.error('Error sending invitations:', error);
     return NextResponse.json(
-      { error: 'Failed to send invitations' },
+      {
+        error: 'Failed to send invitations',
+        details: {
+          message: error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error',
+        },
+      },
       { status: 500 }
     );
   }
