@@ -34,6 +34,49 @@ function getQuestionMeta(m: any): QuestionMeta | null {
   return meta as QuestionMeta;
 }
 
+function inferTagFromQuestionText(question: string, phase: string | null): string | null {
+  const q = (question || '').toLowerCase();
+  const p = (phase || '').toLowerCase();
+  if (!q) return null;
+
+  // Ratings
+  const hasScale = q.includes('1-10') || q.includes('1–10') || q.includes('scale') || q.includes('rate');
+  const isConfidence = q.includes('confiden');
+  if (hasScale && isConfidence) return 'confidence_score';
+
+  if (p === 'regulation') {
+    if (q.includes('awareness') && hasScale && (q.includes('upcoming') || q.includes('current'))) return 'awareness_current';
+    if (q.includes('awareness') && (q.includes('1.5') || q.includes('future') || q.includes('years'))) return 'awareness_future';
+    if (q.includes('materially constrain') || q.includes('constrain your ability')) return 'constraint';
+  }
+
+  if (hasScale && (q.includes('today') || q.includes('current') || q.includes('how would you rate'))) return 'current_score';
+  if (hasScale && (q.includes('1.5') || q.includes('years') || q.includes('future') || q.includes('where should'))) return 'future_score';
+
+  // Prioritisation
+  if (p === 'prioritization') {
+    if (q.includes('constrain') && (q.includes('most') || q.includes('day-to-day'))) return 'biggest_constraint';
+    if (q.includes('biggest') && q.includes('impact')) return 'high_impact';
+    if (q.includes('optimistic') || q.includes('skeptical') || q.includes('sceptical')) return 'optimism';
+    if (q.includes('other insights') || q.includes('anything else') || q.includes('final')) return 'final_thoughts';
+  }
+
+  // Intro
+  if (p === 'intro') return 'context';
+
+  // Narrative buckets
+  if (q.includes('strength') || q.includes('behaviour') || q.includes('enabler')) return 'strengths';
+  if (q.includes("what's working") || q.includes('working well') || q.includes('genuinely help') || q.includes('actually help') || q.includes('appreciate')) return 'working';
+  if (q.includes('pain') || q.includes('frustrat') || q.includes('struggle')) return 'pain_points';
+  if (q.includes('friction') || q.includes('slow you down') || q.includes('create friction')) return 'friction';
+  if (q.includes('gap') || q.includes('challenge') || q.includes('frustration') || q.includes('hold your team back')) return 'gaps';
+  if (q.includes('barrier') || q.includes('prevent') || q.includes('holding back')) return 'barrier';
+  if (q.includes('support') || q.includes('training') || q.includes('resources')) return 'support';
+  if (q.includes('looking ahead') || q.includes('in 1.5') || q.includes('in 3') || q.includes('future') || q.includes('how would you like')) return 'future';
+
+  return null;
+}
+
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
@@ -283,6 +326,7 @@ export async function GET(request: NextRequest) {
     const supportByPhase: Record<string, string[]> = {};
 
     const narrativeTexts: string[] = [];
+    let introContext: string | null = null;
 
     const messages = session.messages;
 
@@ -306,9 +350,15 @@ export async function GET(request: NextRequest) {
       const question = questionMsg?.content || '';
       const phase = (m.phase || questionMsg?.phase || null) as string | null;
       const meta = getQuestionMeta(questionMsg);
-      const tag = meta?.tag || null;
+      const tag = meta?.tag || inferTagFromQuestionText(question, phase) || null;
 
       qaPairs.push({ phase, question, answer: m.content, createdAt: m.createdAt, tag });
+
+      if (phase === 'intro' && tag === 'context') {
+        introContext = m.content;
+        narrativeTexts.push(m.content);
+        continue;
+      }
 
       if (phase && tag) {
         if (tag === 'current_score' || tag === 'awareness_current') {
@@ -339,6 +389,11 @@ export async function GET(request: NextRequest) {
         else if (tag === 'constraint') constraintByPhase[phase] = [...(constraintByPhase[phase] || []), m.content];
         else if (tag === 'future') futureTextByPhase[phase] = [...(futureTextByPhase[phase] || []), m.content];
         else if (tag === 'support') supportByPhase[phase] = [...(supportByPhase[phase] || []), m.content];
+      }
+
+      // Backwards-compatible fallback: if we couldn't infer a tag, still include text in the themes cloud.
+      if (!tag) {
+        narrativeTexts.push(m.content);
       }
     }
 
@@ -399,6 +454,7 @@ export async function GET(request: NextRequest) {
       executiveSummary: reportText.executiveSummary,
       tone: reportText.tone,
       feedback: reportText.feedback,
+      introContext,
       phaseInsights,
       wordCloudThemes,
       qaPairs,
