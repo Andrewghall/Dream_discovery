@@ -55,6 +55,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   }>(null);
   const [previewingDemoReport, setPreviewingDemoReport] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastSpokenMessageIdRef = useRef<string | null>(null);
 
   const lastAiQuestionMessage = [...messages]
@@ -106,9 +107,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, isLoading]);
 
   useEffect(() => {
@@ -453,33 +452,36 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
           <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap" />
         </div>
         <ScrollArea className="flex-1 pb-32 sm:pb-40" ref={scrollRef}>
-          {(sessionStatus === 'COMPLETED' && !previewingDemoReport && (isPreparingReport || !report)) ? (
-            <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-10">
-              <div className="text-center text-lg font-semibold animate-pulse">
-                Preparing your summary report from the dialogue session.
+          <>
+            {(sessionStatus === 'COMPLETED' && !previewingDemoReport && (isPreparingReport || !report)) ? (
+              <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-10">
+                <div className="text-center text-lg font-semibold animate-pulse">
+                  Preparing your summary report from the dialogue session.
+                </div>
               </div>
-            </div>
-          ) : ((sessionStatus === 'COMPLETED' && report) || (previewingDemoReport && report)) ? (
-            <ConversationReport
-              executiveSummary={report.executiveSummary}
-              tone={report.tone}
-              feedback={report.feedback}
-              phaseInsights={report.phaseInsights}
-              wordCloudThemes={report.wordCloudThemes}
-            />
-          ) : (
-            <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-              {messages.map((message) => (
-                <ChatMessage
-                  key={message.id}
-                  role={message.role}
-                  content={message.content}
-                  timestamp={message.createdAt}
-                />
-              ))}
-              {isLoading && <TypingIndicator />}
-            </div>
-          )}
+            ) : ((sessionStatus === 'COMPLETED' && report) || (previewingDemoReport && report)) ? (
+              <ConversationReport
+                executiveSummary={report.executiveSummary}
+                tone={report.tone}
+                feedback={report.feedback}
+                phaseInsights={report.phaseInsights}
+                wordCloudThemes={report.wordCloudThemes}
+              />
+            ) : (
+              <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+                {messages.map((message) => (
+                  <ChatMessage
+                    key={message.id}
+                    role={message.role}
+                    content={message.content}
+                    timestamp={message.createdAt}
+                  />
+                ))}
+                {isLoading && <TypingIndicator />}
+              </div>
+            )}
+            <div ref={bottomRef} className="h-px w-full" />
+          </>
         </ScrollArea>
 
         {sessionStatus !== 'COMPLETED' && !previewingDemoReport && (
