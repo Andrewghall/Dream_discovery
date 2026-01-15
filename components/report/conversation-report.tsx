@@ -42,12 +42,26 @@ export function ConversationReport({
   executiveSummary,
   tone,
   feedback,
+  inputQuality,
+  keyInsights,
   phaseInsights,
   wordCloudThemes,
 }: {
   executiveSummary: string;
   tone: string | null;
   feedback: string;
+  inputQuality?: {
+    score: number;
+    label: 'high' | 'medium' | 'low';
+    rationale: string;
+    missingInfoSuggestions: string[];
+  };
+  keyInsights?: Array<{
+    title: string;
+    insight: string;
+    confidence: 'high' | 'medium' | 'low';
+    evidence: string[];
+  }>;
   phaseInsights: PhaseInsight[];
   wordCloudThemes: WordCloudItem[];
 }) {
@@ -123,6 +137,62 @@ export function ConversationReport({
           <div className="whitespace-pre-wrap text-sm leading-relaxed">{executiveSummary}</div>
         </CardContent>
       </Card>
+
+      {(inputQuality || (Array.isArray(keyInsights) && keyInsights.length > 0)) && (
+        <div className="grid grid-cols-1 gap-4">
+          {inputQuality && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Input Quality (Evidence Check)</CardTitle>
+                <CardDescription>How much usable detail was captured in the discovery answers</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="text-sm">
+                  Score: <span className="font-semibold">{inputQuality.score}/100</span> (
+                  <span className="font-semibold">{inputQuality.label}</span>)
+                </div>
+                {inputQuality.rationale && <div className="whitespace-pre-wrap">{inputQuality.rationale}</div>}
+                {Array.isArray(inputQuality.missingInfoSuggestions) && inputQuality.missingInfoSuggestions.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-muted-foreground mb-1">To improve this report next time</div>
+                    <div className="whitespace-pre-wrap">
+                      {inputQuality.missingInfoSuggestions.map((s, idx) => `- ${s}`).join('\n')}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {Array.isArray(keyInsights) && keyInsights.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Key Insights (Evidence-backed)</CardTitle>
+                <CardDescription>Only insights supported by quotes from the participant’s answers</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                {keyInsights.map((k, idx) => (
+                  <div key={`${k.title}-${idx}`} className="space-y-1">
+                    <div className="font-semibold">{idx + 1}. {k.title}</div>
+                    <div className="whitespace-pre-wrap">{k.insight}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Confidence: <span className="font-medium text-foreground">{k.confidence}</span>
+                    </div>
+                    {Array.isArray(k.evidence) && k.evidence.length > 0 && (
+                      <div className="text-xs">
+                        <div className="text-xs font-semibold text-muted-foreground mb-1">Evidence quotes</div>
+                        <div className="whitespace-pre-wrap">
+                          {k.evidence.map((q) => `“${q}”`).join('\n')}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>

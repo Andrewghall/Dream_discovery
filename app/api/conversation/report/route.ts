@@ -122,7 +122,125 @@ function buildWordFrequencies(texts: string[], maxWords: number = 60) {
     .map(([text, value]) => ({ text, value }));
 }
 
-async function generateReportText(params: {
+type InputQualityLabel = 'high' | 'medium' | 'low';
+
+type KeyInsight = {
+  title: string;
+  insight: string;
+  confidence: 'high' | 'medium' | 'low';
+  evidence: string[];
+};
+
+type ReportInputQuality = {
+  score: number;
+  label: InputQualityLabel;
+  rationale: string;
+  missingInfoSuggestions: string[];
+};
+
+type ReviewedReportText = {
+  executiveSummary: string;
+  feedback: string;
+  tone: string | null;
+  inputQuality: ReportInputQuality;
+  keyInsights: KeyInsight[];
+};
+
+function clampScore(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function labelFromScore(score: number): InputQualityLabel {
+  if (score >= 70) return 'high';
+  if (score >= 40) return 'medium';
+  return 'low';
+}
+
+function safeParseJson<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function reviewDiscoveryNotes(params: {
+  notes: string;
+}): Promise<ReportInputQuality & { keyInsights: KeyInsight[] }> {
+  const notes = (params.notes || '').trim();
+  const wordCount = notes.split(/\s+/).filter(Boolean).length;
+
+  if (!process.env.OPENAI_API_KEY) {
+    const score = clampScore(wordCount >= 250 ? 70 : wordCount >= 140 ? 55 : wordCount >= 60 ? 35 : 15);
+    return {
+      score,
+      label: labelFromScore(score),
+      rationale:
+        'Automatic assessment (no AI configured). Enable OPENAI_API_KEY for evidence-based review and higher quality synthesis.',
+      missingInfoSuggestions: [
+        'Provide concrete examples (what happened, how often, which teams/systems were involved).',
+        'Describe specific blockers, dependencies, and decision points.',
+        'Include measurable impacts (time, cost, risk, customer outcomes).',
+      ],
+      keyInsights: [],
+    };
+  }
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.1,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a strict reviewer of discovery interview notes. Your job is to evaluate whether the notes contain meaningful, specific, internally consistent information. Be skeptical and do NOT reward nonsense.\n\nReturn ONLY valid JSON with this schema:\n{\n  "score": number (0-100),\n  "label": "high"|"medium"|"low",\n  "rationale": string,\n  "missingInfoSuggestions": string[] (3-8 items),\n  "keyInsights": [\n    {\n      "title": string,\n      "insight": string,\n      "confidence": "high"|"medium"|"low",\n      "evidence": string[] (1-4 short verbatim quotes from the notes)\n    }\n  ]\n}\n\nRules:\n- If notes are nonsense, repetitive filler, or too vague, score low and provide missingInfoSuggestions.\n- Evidence MUST be copied verbatim from the notes.\n- If you cannot find evidence quotes, set confidence="low" and keep keyInsights minimal.' ,
+      },
+      {
+        role: 'user',
+        content: `Discovery notes (source of truth):\n\n${notes}`,
+      },
+    ],
+  });
+
+  const raw = completion.choices?.[0]?.message?.content?.trim() || '';
+  const parsed = safeParseJson<{
+    score: number;
+    label: InputQualityLabel;
+    rationale: string;
+    missingInfoSuggestions: string[];
+    keyInsights: KeyInsight[];
+  }>(raw);
+
+  if (!parsed) {
+    const score = clampScore(wordCount >= 250 ? 65 : wordCount >= 140 ? 50 : wordCount >= 60 ? 30 : 10);
+    return {
+      score,
+      label: labelFromScore(score),
+      rationale: 'Reviewer returned an invalid response; using a conservative heuristic assessment.',
+      missingInfoSuggestions: [
+        'Provide concrete examples (what happened, how often, which teams/systems were involved).',
+        'Describe specific blockers, dependencies, and decision points.',
+        'Include measurable impacts (time, cost, risk, customer outcomes).',
+      ],
+      keyInsights: [],
+    };
+  }
+
+  const score = clampScore(parsed.score);
+  const label = parsed.label || labelFromScore(score);
+  const keyInsights = Array.isArray(parsed.keyInsights) ? parsed.keyInsights : [];
+
+  return {
+    score,
+    label,
+    rationale: (parsed.rationale || '').trim(),
+    missingInfoSuggestions: Array.isArray(parsed.missingInfoSuggestions) ? parsed.missingInfoSuggestions : [],
+    keyInsights,
+  };
+}
+
+async function generateReviewedReportText(params: {
   workshopName: string | null | undefined;
   participantName: string | null | undefined;
   phaseInsights: Array<{
@@ -146,11 +264,7 @@ async function generateReportText(params: {
     optimism?: string;
     finalThoughts?: string;
   };
-}): Promise<{
-  executiveSummary: string;
-  feedback: string;
-  tone: string | null;
-}> {
+}): Promise<ReviewedReportText> {
   const lines: string[] = [];
   if (params.participantName) lines.push(`Participant: ${params.participantName}`);
   if (params.workshopName) lines.push(`Workshop: ${params.workshopName}`);
@@ -188,45 +302,121 @@ async function generateReportText(params: {
       lines.push(`- Final thoughts: ${params.prioritization.finalThoughts}`);
   }
 
-  const fallback = lines.join('\n').trim();
+  const notes = lines.join('\n').trim();
+  const review = await reviewDiscoveryNotes({ notes });
 
   if (!process.env.OPENAI_API_KEY) {
+    const lowData = review.label === 'low';
     return {
-      executiveSummary: fallback,
-      feedback:
-        'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+      executiveSummary: lowData
+        ? 'Insufficient usable detail was captured to produce meaningful insights. The notes appear too thin or too vague to support confident conclusions.'
+        : notes,
+      feedback: lowData
+        ? 'Thank you for participating. To produce a more meaningful report, please include concrete examples (what happened, where, how often) and specific constraints.'
+        : 'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
       tone: null,
+      inputQuality: {
+        score: review.score,
+        label: review.label,
+        rationale: review.rationale,
+        missingInfoSuggestions: review.missingInfoSuggestions,
+      },
+      keyInsights: review.keyInsights,
     };
   }
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
-    temperature: 0.2,
+    temperature: 0.15,
     messages: [
       {
         role: 'system',
         content:
-          'You are writing a discovery interview report focused on the interviewee\'s view of the organisation and operating environment. Do NOT judge the individual. Start with an Executive Summary that captures tone (hopeful/skeptical/neutral/frustrated, etc.) and key themes. Then provide D1–D5 domain summaries with: Current state, Ambition, Barriers/enablers, Confidence. End with a short appreciative feedback paragraph to the interviewee that highlights actionable opportunities and support. Use only the provided notes. Keep language concrete and grounded in what was said; avoid generic filler. Output in the following format:\n\nExecutive Summary:\n<1 short paragraph>\n\nTone:\n<one of: hopeful | optimistic | neutral | skeptical | frustrated | mixed>\n\nFeedback to interviewee:\n<1 short paragraph>',
+          'You are writing a discovery interview report focused on the interviewee\'s view of the organisation and operating environment. Do NOT judge the individual.\n\nYou MUST follow these rules:\n- Be strict and evidence-based. Do not add positivity unless supported by the notes.\n- If input quality is low, explicitly state that insights are limited/insufficient and do not invent conclusions.\n- Do not introduce facts not present in the notes.\n\nReturn ONLY valid JSON with this schema:\n{\n  "executiveSummary": string,\n  "tone": null | "hopeful" | "optimistic" | "neutral" | "skeptical" | "frustrated" | "mixed",\n  "feedback": string\n}\n',
       },
       {
         role: 'user',
-        content: `Notes (source of truth):\n\n${fallback}`,
+        content:
+          `Notes (source of truth):\n\n${notes}\n\nInput quality assessment (must be respected):\n- score: ${review.score}\n- label: ${review.label}\n- rationale: ${review.rationale}\n\nEvidence-backed key insights (use these; do not invent):\n${(review.keyInsights || [])
+            .map((k, idx) => {
+              const ev = (k.evidence || []).map((e) => `"${e}"`).join(' | ');
+              return `${idx + 1}. ${k.title} (${k.confidence})\n   Insight: ${k.insight}\n   Evidence: ${ev}`;
+            })
+            .join('\n\n')}`,
       },
     ],
   });
 
-  const text = completion.choices?.[0]?.message?.content?.trim() || '';
+  const raw = completion.choices?.[0]?.message?.content?.trim() || '';
+  const parsed = safeParseJson<{ executiveSummary: string; tone: string | null; feedback: string }>(raw);
 
-  const execMatch = text.match(/Executive Summary:\s*([\s\S]*?)(?:\n\nTone:|$)/i);
-  const toneMatch = text.match(/Tone:\s*([^\n]+)/i);
-  const feedbackMatch = text.match(/Feedback to interviewee:\s*([\s\S]*?)$/i);
+  if (!parsed) {
+    const lowData = review.label === 'low';
+    return {
+      executiveSummary: lowData
+        ? 'Insufficient usable detail was captured to produce meaningful insights. The notes appear too thin or too vague to support confident conclusions.'
+        : notes,
+      feedback: lowData
+        ? 'Thank you for participating. To produce a more meaningful report, please include concrete examples (what happened, where, how often) and specific constraints.'
+        : 'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+      tone: null,
+      inputQuality: {
+        score: review.score,
+        label: review.label,
+        rationale: review.rationale,
+        missingInfoSuggestions: review.missingInfoSuggestions,
+      },
+      keyInsights: review.keyInsights,
+    };
+  }
 
-  const executiveSummary = (execMatch?.[1] || fallback).trim();
-  const tone = (toneMatch?.[1] || '').trim() || null;
-  const feedback = (feedbackMatch?.[1] || '').trim() ||
-    'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.';
+  return {
+    executiveSummary: (parsed.executiveSummary || '').trim() || notes,
+    tone: (parsed.tone || '').trim() || null,
+    feedback:
+      (parsed.feedback || '').trim() ||
+      'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+    inputQuality: {
+      score: review.score,
+      label: review.label,
+      rationale: review.rationale,
+      missingInfoSuggestions: review.missingInfoSuggestions,
+    },
+    keyInsights: review.keyInsights,
+  };
+}
 
-  return { executiveSummary, feedback, tone };
+async function generateReportText(params: {
+  workshopName: string | null | undefined;
+  participantName: string | null | undefined;
+  phaseInsights: Array<{
+    phase: string;
+    currentScore: number | null;
+    targetScore: number | null;
+    projectedScore: number | null;
+    strengths: string[];
+    working: string[];
+    barriers: string[];
+    frictions: string[];
+    gaps: string[];
+    future: string[];
+    support: string[];
+    constraint: string[];
+    painPoints: string[];
+  }>;
+  prioritization: {
+    biggestConstraint?: string;
+    highImpact?: string;
+    optimism?: string;
+    finalThoughts?: string;
+  };
+}): Promise<{
+  executiveSummary: string;
+  feedback: string;
+  tone: string | null;
+}> {
+  const reviewed = await generateReviewedReportText(params);
+  return { executiveSummary: reviewed.executiveSummary, feedback: reviewed.feedback, tone: reviewed.tone };
 }
 
 function buildSyntheticResponse(includeRegulation: boolean) {
@@ -289,7 +479,7 @@ export async function GET(request: NextRequest) {
       const includeRegulation = request.nextUrl.searchParams.get('includeRegulation') !== '0';
       const synthetic = buildSyntheticResponse(includeRegulation);
 
-      const reportText = await generateReportText({
+      const reviewed = await generateReviewedReportText({
         workshopName: 'Demo Workshop',
         participantName: synthetic.participant.name,
         phaseInsights: synthetic.phaseInsights,
@@ -303,9 +493,11 @@ export async function GET(request: NextRequest) {
         status: 'COMPLETED',
         includeRegulation,
         participant: synthetic.participant,
-        executiveSummary: reportText.executiveSummary,
-        tone: reportText.tone,
-        feedback: reportText.feedback,
+        executiveSummary: reviewed.executiveSummary,
+        tone: reviewed.tone,
+        feedback: reviewed.feedback,
+        inputQuality: reviewed.inputQuality,
+        keyInsights: reviewed.keyInsights,
         phaseInsights: synthetic.phaseInsights,
         wordCloudThemes,
       });
@@ -461,7 +653,7 @@ export async function GET(request: NextRequest) {
       else if (qa.tag === 'final_thoughts') prioritization.finalThoughts = qa.answer;
     }
 
-    const reportText = await generateReportText({
+    const reviewed = await generateReviewedReportText({
       workshopName: session.workshop?.name,
       participantName: session.participant?.name,
       phaseInsights,
@@ -501,9 +693,11 @@ export async function GET(request: NextRequest) {
           participantName,
           workshopName: session.workshop?.name,
           discoveryUrl,
-          executiveSummary: reportText.executiveSummary,
-          tone: reportText.tone,
-          feedback: reportText.feedback,
+          executiveSummary: reviewed.executiveSummary,
+          tone: reviewed.tone,
+          feedback: reviewed.feedback,
+          inputQuality: reviewed.inputQuality,
+          keyInsights: reviewed.keyInsights,
           phaseInsights: phaseInsights.map((p) => ({
             phase: p.phase,
             currentScore: p.currentScore,
@@ -566,9 +760,11 @@ export async function GET(request: NextRequest) {
         role: session.participant?.role || null,
         department: session.participant?.department || null,
       },
-      executiveSummary: reportText.executiveSummary,
-      tone: reportText.tone,
-      feedback: reportText.feedback,
+      executiveSummary: reviewed.executiveSummary,
+      tone: reviewed.tone,
+      feedback: reviewed.feedback,
+      inputQuality: reviewed.inputQuality,
+      keyInsights: reviewed.keyInsights,
       introContext,
       phaseInsights,
       wordCloudThemes,

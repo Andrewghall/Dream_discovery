@@ -50,6 +50,18 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     executiveSummary: string;
     tone: string | null;
     feedback: string;
+    inputQuality?: {
+      score: number;
+      label: 'high' | 'medium' | 'low';
+      rationale: string;
+      missingInfoSuggestions: string[];
+    };
+    keyInsights?: Array<{
+      title: string;
+      insight: string;
+      confidence: 'high' | 'medium' | 'low';
+      evidence: string[];
+    }>;
     phaseInsights: PhaseInsight[];
     wordCloudThemes: Array<{ text: string; value: number }>;
   }>(null);
@@ -191,6 +203,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             executiveSummary: reportData.executiveSummary,
             tone: reportData.tone,
             feedback: reportData.feedback,
+            inputQuality: reportData.inputQuality,
+            keyInsights: reportData.keyInsights,
             phaseInsights: reportData.phaseInsights,
             wordCloudThemes: reportData.wordCloudThemes,
           });
@@ -290,6 +304,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         executiveSummary: reportData.executiveSummary,
         tone: reportData.tone,
         feedback: reportData.feedback,
+        inputQuality: reportData.inputQuality,
+        keyInsights: reportData.keyInsights,
         phaseInsights: reportData.phaseInsights,
         wordCloudThemes: reportData.wordCloudThemes,
       });
@@ -418,6 +434,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             executiveSummary: reportData.executiveSummary,
             tone: reportData.tone,
             feedback: reportData.feedback,
+            inputQuality: reportData.inputQuality,
+            keyInsights: reportData.keyInsights,
             phaseInsights: reportData.phaseInsights,
             wordCloudThemes: reportData.wordCloudThemes,
           });
@@ -549,6 +567,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 executiveSummary={report.executiveSummary}
                 tone={report.tone}
                 feedback={report.feedback}
+                inputQuality={report.inputQuality}
+                keyInsights={report.keyInsights}
                 phaseInsights={report.phaseInsights}
                 wordCloudThemes={report.wordCloudThemes}
               />

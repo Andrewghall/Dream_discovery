@@ -9,6 +9,17 @@ export async function sendDiscoveryReportEmail(params: {
   executiveSummary: string;
   tone: string | null;
   feedback: string;
+  inputQuality?: {
+    score: number;
+    label: 'high' | 'medium' | 'low';
+    rationale: string;
+  };
+  keyInsights?: Array<{
+    title: string;
+    insight: string;
+    confidence: 'high' | 'medium' | 'low';
+    evidence: string[];
+  }>;
   phaseInsights: Array<{
     phase: string;
     currentScore: number | null;
@@ -24,6 +35,8 @@ export async function sendDiscoveryReportEmail(params: {
     executiveSummary,
     tone,
     feedback,
+    inputQuality,
+    keyInsights,
     phaseInsights,
   } = params;
 
@@ -113,6 +126,24 @@ export async function sendDiscoveryReportEmail(params: {
 
   drawLabel('Executive Summary');
   drawParagraph(executiveSummary || '');
+
+  if (inputQuality) {
+    drawLabel('Input Quality (Evidence Check)');
+    drawParagraph(`Score: ${Math.round(inputQuality.score)}/100 (${inputQuality.label})`);
+    if (inputQuality.rationale) drawParagraph(inputQuality.rationale);
+  }
+
+  if (Array.isArray(keyInsights) && keyInsights.length > 0) {
+    drawLabel('Key Insights (Evidence-backed)');
+    for (const k of keyInsights.slice(0, 6)) {
+      drawParagraph(`${k.title} (confidence: ${k.confidence})`);
+      drawParagraph(k.insight);
+      if (Array.isArray(k.evidence) && k.evidence.length > 0) {
+        drawParagraph(`Evidence: ${k.evidence.slice(0, 3).map((q) => `"${q}"`).join(' | ')}`);
+      }
+      y -= 4;
+    }
+  }
 
   drawLabel('Scores by domain');
   for (const p of phaseInsights) {
