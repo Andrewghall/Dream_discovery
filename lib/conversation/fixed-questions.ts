@@ -71,7 +71,8 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   ],
   people: [
     {
-      text: 'Rate how well-equipped you and your colleagues are to do your jobs effectively',
+      text:
+        'When looking specifically at People, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well-equipped you and your colleagues are to do your jobs effectively',
       tag: 'triple_rating',
       maturityScale: [
         "Skills gaps everywhere. People leave frequently. Teams don't talk to each other.",
@@ -100,7 +101,8 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   ],
   corporate: [
     {
-      text: "Rate how well the organisation's processes and decision-making help you do your job",
+      text:
+        "When looking specifically at Corporate/Organisational, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation's processes and decision-making help you do your job",
       tag: 'triple_rating',
       maturityScale: [
         'Decisions take forever. Nobody knows who owns what. Constant firefighting.',
@@ -125,7 +127,8 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   ],
   customer: [
     {
-      text: 'Rate how well the organisation meets customer needs and expectations',
+      text:
+        'When looking specifically at Customer, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation meets customer needs and expectations',
       tag: 'triple_rating',
       maturityScale: [
         'Inconsistent experiences. Complaints pile up. No clear view of customer history.',
@@ -154,7 +157,8 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   ],
   technology: [
     {
-      text: 'Rate the technology, systems, and tools you use in terms of reliability and ease of use',
+      text:
+        'When looking specifically at Technology, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate the technology, systems, and tools you use in terms of reliability and ease of use',
       tag: 'triple_rating',
       maturityScale: [
         'Old systems everywhere. Manual workarounds constant. Data unreliable.',
@@ -183,7 +187,8 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   ],
   regulation: [
     {
-      text: 'Rate how well the organisation handles regulatory and compliance requirements',
+      text:
+        'When looking specifically at Regulation, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation handles regulatory and compliance requirements',
       tag: 'triple_rating',
       maturityScale: [
         'Compliance reactive. Regulatory changes surprise us. Fines happen.',
