@@ -30,3 +30,39 @@ export async function POST(
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: workshopId } = await params;
+    const body = await request.json().catch(() => ({}));
+    const participantId = body?.participantId as string | undefined;
+
+    if (!participantId) {
+      return NextResponse.json({ error: 'participantId is required' }, { status: 400 });
+    }
+
+    const participant = await prisma.workshopParticipant.findUnique({
+      where: { id: participantId },
+      select: { id: true, workshopId: true },
+    });
+
+    if (!participant || participant.workshopId !== workshopId) {
+      return NextResponse.json({ error: 'Participant not found' }, { status: 404 });
+    }
+
+    await prisma.workshopParticipant.delete({
+      where: { id: participantId },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error removing participant:', error);
+    return NextResponse.json(
+      { error: 'Failed to remove participant' },
+      { status: 500 }
+    );
+  }
+}

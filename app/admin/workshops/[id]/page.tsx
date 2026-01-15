@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Send, UserPlus, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Send, UserPlus, Copy, Check, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import {
   Dialog,
@@ -79,6 +79,30 @@ export default function WorkshopDetailPage({ params }: PageProps) {
       console.error('Failed to fetch workshop:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRemoveParticipant = async (participantId: string, email: string) => {
+    if (!confirm(`Remove ${email} from this workshop? This will delete their discovery session data.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/workshops/${id}/participants`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId }),
+      });
+
+      if (response.ok) {
+        fetchWorkshop();
+      } else {
+        const data = await response.json().catch(() => null);
+        alert(data?.error || 'Failed to remove participant');
+      }
+    } catch (error) {
+      console.error('Failed to remove participant:', error);
+      alert('Failed to remove participant');
     }
   };
 
@@ -156,28 +180,16 @@ export default function WorkshopDetailPage({ params }: PageProps) {
             .join('\n');
           alert(`Some emails failed to send:\n\n${errorText}`);
         }
-        
+
         if (data.emailsSent === 0 && data.message) {
-          // All emails already sent, ask if they want to resend
-          console.log('⚠️ No emails sent, showing resend dialog');
-          const resend = confirm(data.message + '\n\nDo you want to resend to all participants?');
-          console.log('User chose to resend:', resend);
-          if (resend) {
-            const resendResponse = await fetch(`/api/admin/workshops/${id}/send-invitations?resend=true`, {
-              method: 'POST',
-            });
-            if (resendResponse.ok) {
-              const resendData = await resendResponse.json();
-              setSuccessMessage(`Invitations resent successfully to ${resendData.emailsSent} participant(s)!`);
-              setShowSuccessDialog(true);
-              fetchWorkshop();
-            }
-          }
-        } else {
-          setSuccessMessage(`Invitations sent successfully to ${data.emailsSent} participant(s)!`);
-          setShowSuccessDialog(true);
+          alert(data.message);
           fetchWorkshop();
+          return;
         }
+
+        setSuccessMessage(`Invitations sent successfully to ${data.emailsSent} participant(s)!`);
+        setShowSuccessDialog(true);
+        fetchWorkshop();
       } else {
         const data = await response.json().catch(() => null);
         const message = data?.details?.message || data?.error || 'Failed to send invitations';
@@ -350,6 +362,11 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <h4 className="font-semibold">{participant.name}</h4>
+                              {participant.emailSentAt && (
+                                <Badge variant="outline" className="text-xs">
+                                  Email Sent
+                                </Badge>
+                              )}
                               {participant.responseCompletedAt && (
                                 <Badge variant="secondary" className="text-xs">
                                   ✓ Completed
@@ -370,17 +387,26 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                               </p>
                             )}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => copyDiscoveryLink(participant.discoveryToken)}
-                          >
-                            {copiedToken === participant.discoveryToken ? (
-                              <Check className="h-4 w-4" />
-                            ) : (
-                              <Copy className="h-4 w-4" />
-                            )}
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => copyDiscoveryLink(participant.discoveryToken)}
+                            >
+                              {copiedToken === participant.discoveryToken ? (
+                                <Check className="h-4 w-4" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveParticipant(participant.id, participant.email)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ))

@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChatMessage } from '@/components/chat/chat-message';
 import { ChatInput } from '@/components/chat/chat-input';
@@ -249,6 +250,39 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   return (
     <div className="flex h-screen">
       <div className="flex flex-col flex-1 lg:mr-80">
+        <div className="border-b bg-background">
+          <div className="px-4 py-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Image src="/ethenta-logo.png" alt="Ethenta" width={120} height={32} className="h-8 w-auto" priority />
+            </div>
+            <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap">
+              {typeof questionNumber === 'number' && (
+                <div className="text-xs text-muted-foreground">
+                  Question <span className="font-medium text-foreground">{questionNumber}</span> of{' '}
+                  <span className="font-medium text-foreground">{totalQuestions}</span>
+                </div>
+              )}
+              {!previewingDemoReport && (
+                <Button variant="outline" size="sm" onClick={handlePreviewDemoReport}>
+                  Preview Demo Report
+                </Button>
+              )}
+              {previewingDemoReport && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setPreviewingDemoReport(false);
+                    setReport(null);
+                  }}
+                >
+                  Back to Interview
+                </Button>
+              )}
+            </div>
+          </div>
+          <img src="/dream-banner.svg" alt="DREAM" className="w-full h-auto" />
+        </div>
         <div className="bg-muted/50 border-b px-4 py-1 text-xs text-muted-foreground flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1 truncate">
             Build: Whisper+OpenAI-TTS | Voice: Nova (Female) | Speed: 1.15x
@@ -256,31 +290,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
               ? ` | Deploy: ${deployInfo.env || 'unknown'} ${deployInfo.ref || ''} ${deployInfo.sha.slice(0, 7)}`
               : ''}
           </div>
-          <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap">
-            {typeof questionNumber === 'number' && (
-              <div className="text-xs text-muted-foreground">
-                Question <span className="font-medium text-foreground">{questionNumber}</span> of{' '}
-                <span className="font-medium text-foreground">{totalQuestions}</span>
-              </div>
-            )}
-            {!previewingDemoReport && (
-              <Button variant="outline" size="sm" onClick={handlePreviewDemoReport}>
-                Preview Demo Report
-              </Button>
-            )}
-            {previewingDemoReport && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setPreviewingDemoReport(false);
-                  setReport(null);
-                }}
-              >
-                Back to Interview
-              </Button>
-            )}
-          </div>
+          <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap" />
         </div>
         <ScrollArea className="flex-1 pb-32 sm:pb-40" ref={scrollRef}>
           {((sessionStatus === 'COMPLETED' && report) || (previewingDemoReport && report)) ? (

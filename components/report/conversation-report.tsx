@@ -82,6 +82,12 @@ export function ConversationReport({
 
   return (
     <div id="discovery-report" className="container max-w-4xl mx-auto px-3 sm:px-4 py-6 space-y-4">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <img src="/ethenta-logo.png" alt="Ethenta" className="h-8 w-auto" />
+        </div>
+        <img src="/dream-banner.svg" alt="DREAM" className="w-full h-auto" />
+      </div>
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">

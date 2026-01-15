@@ -8,6 +8,7 @@ export async function POST(
 ) {
   try {
     const { id: workshopId } = await params;
+    const resend = request.nextUrl.searchParams.get('resend') === 'true';
 
     const diagnostics = {
       nodeEnv: process.env.NODE_ENV ?? null,
@@ -38,18 +39,37 @@ export async function POST(
       });
     }
 
+    const participantsToSend = resend
+      ? workshop.participants
+      : workshop.participants.filter((p: { emailSentAt: Date | null }) => !p.emailSentAt);
+
+    if (participantsToSend.length === 0) {
+      return NextResponse.json({
+        success: true,
+        emailsSent: 0,
+        message: 'All participants have already been sent an invitation. Use Clear Email Status if you need to resend.',
+        diagnostics: {
+          ...diagnostics,
+          participantsConsidered: workshop.participants.length,
+          participantsToSend: 0,
+          resend,
+        },
+        results: [],
+      });
+    }
+
     const appUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
     let emailsSent = 0;
     const results: Array<{ email: string; ok: boolean; resendId?: string | null; error?: string }> = [];
 
-    console.log(`📧 Sending emails to ${workshop.participants.length} participant(s)...`);
+    console.log(`📧 Sending emails to ${participantsToSend.length} participant(s)...`);
     console.log(`📧 Workshop: ${workshop.name} (${workshopId})`);
     console.log('📧 Diagnostics:', diagnostics);
 
     // Send emails to each participant
-    for (const participant of workshop.participants) {
+    for (const participant of participantsToSend) {
       console.log(`\n📧 Processing participant: ${participant.name} (${participant.email})`);
       console.log(`   - Email sent before: ${participant.emailSentAt ? 'YES' : 'NO'}`);
 
@@ -117,6 +137,8 @@ export async function POST(
         ...diagnostics,
         appUrl,
         participantsConsidered: workshop.participants.length,
+        participantsToSend: participantsToSend.length,
+        resend,
       },
       results,
     });
