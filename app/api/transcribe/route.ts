@@ -1,12 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { env } from '@/lib/env';
 
 export async function POST(request: NextRequest) {
   try {
+    const referer = request.headers.get('referer');
+    const origin = request.headers.get('origin');
+    const userAgent = request.headers.get('user-agent');
+    console.log('🎤 /api/transcribe called', { referer, origin, userAgent });
+
+    if (!env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: 'OpenAI is not configured (missing OPENAI_API_KEY)' },
+        { status: 500 }
+      );
+    }
+
+    const openai = new OpenAI({
+      apiKey: env.OPENAI_API_KEY,
+    });
+
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File;
 
@@ -56,9 +70,21 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('❌ Transcription error:', error);
     console.error('Error details:', error.message);
+
+    const status = typeof error?.status === 'number' ? error.status : 500;
+    if (status === 401) {
+      return NextResponse.json(
+        {
+          error: 'OpenAI authentication failed (invalid OPENAI_API_KEY)',
+          detail: error?.message || 'Unauthorized',
+        },
+        { status: 401 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Failed to transcribe audio: ' + error.message },
-      { status: 500 }
+      { status }
     );
   }
 }
