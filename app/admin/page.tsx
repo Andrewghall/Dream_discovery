@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Plus, Users, MessageSquare, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface Workshop {
   id: string;
@@ -67,7 +68,10 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">DREAM Discovery</h1>
+            <div className="flex items-center gap-3">
+              <Image src="/ethenta-logo.png" alt="Ethenta" width={128} height={37} priority />
+              <h1 className="text-3xl font-bold tracking-tight">DREAM Discovery</h1>
+            </div>
             <p className="text-muted-foreground mt-1">
               Manage workshops and discovery conversations
             </p>
