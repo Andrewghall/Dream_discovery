@@ -12,7 +12,7 @@ import { LanguageSelector } from '@/components/chat/language-selector';
 import { TripleRatingInput } from '@/components/chat/triple-rating-input';
 import { ConversationPhase, Message } from '@/lib/types/conversation';
 import { getOverallQuestionNumber, getTotalQuestionCount } from '@/lib/conversation/fixed-questions';
-import { speakWithOpenAI } from '@/lib/utils/openai-tts';
+import { setTtsEnabled, speakWithOpenAI } from '@/lib/utils/openai-tts';
 import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
 import { Button } from '@/components/ui/button';
 
@@ -627,6 +627,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                     }}
                     voiceEnabled={voiceEnabled}
                     onVoiceToggle={async (enabled: boolean) => {
+                      setTtsEnabled(enabled);
                       setVoiceEnabled(enabled);
                       if (sessionId) {
                         await fetch(`/api/conversation/update-preferences`, {

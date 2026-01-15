@@ -3,6 +3,7 @@ let currentUtterance: SpeechSynthesisUtterance | null = null;
 
 let hasUserInteracted = false;
 let pendingText: string | null = null;
+let ttsEnabled = true;
 
 function isLikelyFemaleVoiceName(name: string): boolean {
   const n = name.toLowerCase();
@@ -146,7 +147,7 @@ function ensureInteractionListeners() {
       const text = pendingText;
       pendingText = null;
       // Fire and forget
-      void speakWithOpenAI(text);
+      if (ttsEnabled) void speakWithOpenAI(text);
     }
     window.removeEventListener('pointerdown', mark);
     window.removeEventListener('keydown', mark);
@@ -158,6 +159,11 @@ function ensureInteractionListeners() {
 
 export async function speakWithOpenAI(text: string): Promise<void> {
   try {
+    if (!ttsEnabled) {
+      pendingText = null;
+      return;
+    }
+
     ensureInteractionListeners();
 
     // Avoid autoplay errors by waiting until the user interacts with the page.
@@ -289,4 +295,11 @@ export function stopSpeaking(): void {
   }
   currentUtterance = null;
   pendingText = null;
+}
+
+export function setTtsEnabled(enabled: boolean): void {
+  ttsEnabled = enabled;
+  if (!enabled) {
+    stopSpeaking();
+  }
 }

@@ -56,7 +56,7 @@ export default function NewWorkshopPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-transparent">
       <div className="container max-w-3xl mx-auto px-4 py-8">
         <Link href="/admin">
           <Button variant="ghost" className="mb-6">
