@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 export async function sendDiscoveryReportEmail(params: {
   to: string;
@@ -32,78 +33,116 @@ export async function sendDiscoveryReportEmail(params: {
 
   const safeWorkshopName = workshopName || 'DREAM Discovery';
 
-  const scoreLine = (label: string, n: number | null) => {
-    const v = typeof n === 'number' ? `${n}/10` : '—';
-    return `${label}: ${v}`;
+  const toTitleCase = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const scoreText = (n: number | null) => (typeof n === 'number' ? `${n}/10` : '—');
+
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const margin = 48;
+  const fontSize = 11;
+  const lineHeight = 15;
+  const titleSize = 18;
+
+  const wrapLines = (text: string, maxWidth: number, f: any, size: number) => {
+    const words = (text || '').replace(/\r\n/g, '\n').split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let current = '';
+    for (const w of words) {
+      const candidate = current ? `${current} ${w}` : w;
+      const width = f.widthOfTextAtSize(candidate, size);
+      if (width <= maxWidth) {
+        current = candidate;
+      } else {
+        if (current) lines.push(current);
+        current = w;
+      }
+    }
+    if (current) lines.push(current);
+    return lines;
   };
 
-  const domainHtml = phaseInsights
-    .map((p) => {
-      const title = p.phase.charAt(0).toUpperCase() + p.phase.slice(1);
-      return `
-        <div style="margin-top: 16px; padding: 14px; border: 1px solid #e5e7eb; border-radius: 8px;">
-          <div style="font-weight: 600; margin-bottom: 6px;">${title}</div>
-          <div style="color: #374151; font-size: 14px;">
-            ${scoreLine('Current', p.currentScore)}<br/>
-            ${scoreLine('Target', p.targetScore)}<br/>
-            ${scoreLine('Projected', p.projectedScore)}
-          </div>
-        </div>
-      `;
-    })
-    .join('');
+  let page = pdfDoc.addPage();
+  const { width, height } = page.getSize();
+  const contentWidth = width - margin * 2;
+  let y = height - margin;
+
+  const newPage = () => {
+    page = pdfDoc.addPage();
+    const size = page.getSize();
+    y = size.height - margin;
+    return size;
+  };
+
+  const ensureSpace = (needed: number) => {
+    if (y - needed < margin) {
+      newPage();
+    }
+  };
+
+  const drawHeading = (text: string) => {
+    ensureSpace(titleSize + 12);
+    page.drawText(text, { x: margin, y: y - titleSize, size: titleSize, font: bold, color: rgb(0.07, 0.09, 0.16) });
+    y -= titleSize + 18;
+  };
+
+  const drawLabel = (text: string) => {
+    ensureSpace(lineHeight + 6);
+    page.drawText(text, { x: margin, y: y - fontSize, size: fontSize, font: bold, color: rgb(0.11, 0.11, 0.18) });
+    y -= lineHeight;
+  };
+
+  const drawParagraph = (text: string) => {
+    const paragraphs = (text || '').split(/\n+/);
+    for (const p of paragraphs) {
+      const lines = wrapLines(p, contentWidth, font, fontSize);
+      for (const line of lines) {
+        ensureSpace(lineHeight + 2);
+        page.drawText(line, { x: margin, y: y - fontSize, size: fontSize, font, color: rgb(0.22, 0.25, 0.32) });
+        y -= lineHeight;
+      }
+      y -= 6;
+    }
+  };
+
+  drawHeading('DREAM Discovery Summary Report');
+  drawParagraph(`Workshop: ${safeWorkshopName}`);
+  drawParagraph(`Participant: ${participantName}`);
+  if (tone) drawParagraph(`Tone: ${tone}`);
+
+  drawLabel('Executive Summary');
+  drawParagraph(executiveSummary || '');
+
+  drawLabel('Scores by domain');
+  for (const p of phaseInsights) {
+    ensureSpace(lineHeight * 4 + 10);
+    page.drawText(toTitleCase(p.phase), { x: margin, y: y - fontSize, size: fontSize, font: bold, color: rgb(0.11, 0.11, 0.18) });
+    y -= lineHeight;
+    page.drawText(`Current: ${scoreText(p.currentScore)}`, { x: margin, y: y - fontSize, size: fontSize, font, color: rgb(0.22, 0.25, 0.32) });
+    y -= lineHeight;
+    page.drawText(`Target: ${scoreText(p.targetScore)}`, { x: margin, y: y - fontSize, size: fontSize, font, color: rgb(0.22, 0.25, 0.32) });
+    y -= lineHeight;
+    page.drawText(`Projected: ${scoreText(p.projectedScore)}`, { x: margin, y: y - fontSize, size: fontSize, font, color: rgb(0.22, 0.25, 0.32) });
+    y -= lineHeight + 6;
+  }
+
+  drawLabel('Feedback');
+  drawParagraph(feedback || '');
+
+  ensureSpace(lineHeight + 6);
+  drawParagraph(`Report link: ${discoveryUrl}`);
+
+  const pdfBytes = await pdfDoc.save();
+  const attachmentContent = Buffer.from(pdfBytes);
 
   const html = `
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background: #f3f4f6;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 18px;">
-    <div style="background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb;">
-      <div style="padding: 18px 18px 0 18px;">
-        <h1 style="margin: 0; font-size: 18px; color: #111827;">Your DREAM Discovery Summary</h1>
-        <div style="margin-top: 6px; color: #6b7280; font-size: 14px;">${safeWorkshopName}</div>
-      </div>
-
-      <div style="padding: 18px;">
-        <p style="margin: 0 0 12px 0; color: #111827;">Hi ${participantName},</p>
-        <p style="margin: 0 0 12px 0; color: #374151;">
-          Thank you for completing the DREAM Discovery questionnaire. Your summary report is now ready.
-        </p>
-
-        <div style="margin: 16px 0; padding: 14px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
-          <div style="font-weight: 600; color: #111827; margin-bottom: 6px;">Executive Summary</div>
-          ${tone ? `<div style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">Tone: <strong style="color:#111827;">${tone}</strong></div>` : ''}
-          <div style="white-space: pre-wrap; color: #374151; font-size: 14px; line-height: 1.4;">${(executiveSummary || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-        </div>
-
-        <div style="margin-top: 14px;">
-          <div style="font-weight: 600; color: #111827;">Scores by domain</div>
-          ${domainHtml}
-        </div>
-
-        <div style="margin: 16px 0; padding: 14px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
-          <div style="font-weight: 600; color: #111827; margin-bottom: 6px;">Feedback</div>
-          <div style="white-space: pre-wrap; color: #374151; font-size: 14px; line-height: 1.4;">${(feedback || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-        </div>
-
-        <div style="text-align: center; margin-top: 18px;">
-          <a href="${discoveryUrl}" style="display: inline-block; background: #4a90a4; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 8px; font-weight: 600;">
-            View report in browser
-          </a>
-        </div>
-
-        <p style="margin-top: 18px; font-size: 12px; color: #6b7280;">
-          This link is unique to you. Please don't share it with others.
-        </p>
-      </div>
-    </div>
-
-    <div style="text-align:center; color:#9ca3af; font-size:12px; margin-top: 12px;">© Ethenta Ltd</div>
-  </div>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <p>Hi ${participantName},</p>
+  <p>Thank you for participating in the DREAM Discovery questionnaire. Attached is your summary report (PDF).</p>
+  <p>Kind regards,<br/>Ethenta</p>
 </body>
 </html>
 `;
@@ -114,6 +153,13 @@ export async function sendDiscoveryReportEmail(params: {
     to,
     subject: `Your DREAM Discovery Summary — ${safeWorkshopName}`,
     html,
+    attachments: [
+      {
+        filename: 'DREAM-Discovery-Summary-Report.pdf',
+        content: attachmentContent,
+        contentType: 'application/pdf',
+      },
+    ],
   });
 
   const maybeResult = result as any;

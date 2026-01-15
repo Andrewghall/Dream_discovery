@@ -30,10 +30,12 @@ export function TripleRatingInput({
   disabled,
   onSubmit,
   maturityScale,
+  questionText,
 }: {
   disabled?: boolean;
   onSubmit: (value: string) => void;
   maturityScale?: string[];
+  questionText?: string;
 }) {
   const [ratings, setRatings] = useState<Record<RatingKey, number | null>>({
     current: null,
@@ -66,6 +68,9 @@ export function TripleRatingInput({
 
   return (
     <div className="w-full rounded-lg border bg-background p-3 sm:p-4 space-y-3">
+      {questionText && (
+        <div className="text-sm font-medium whitespace-pre-wrap leading-snug">{questionText}</div>
+      )}
       <div className="text-sm font-medium">Quick rating (click 1–10 for each)</div>
       <div className="text-xs text-muted-foreground">Maturity bands: 1–2 Reactive, 3–4 Emerging, 5–6 Defined, 7–8 Optimised, 9–10 Intelligent</div>
 

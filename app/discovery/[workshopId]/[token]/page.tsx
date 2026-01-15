@@ -68,10 +68,16 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       : null;
   const totalQuestions = getTotalQuestionCount(includeRegulation);
   const isTripleRatingQuestion = lastQuestionMeta?.kind === 'question' && lastQuestionMeta?.tag === 'triple_rating';
+  const ratingQuestionText = isTripleRatingQuestion ? (lastAiQuestionMessage?.content || '') : '';
   const maturityScale =
     lastQuestionMeta?.kind === 'question' && Array.isArray(lastQuestionMeta?.maturityScale)
       ? (lastQuestionMeta.maturityScale as string[])
       : undefined;
+
+  const displayMessages =
+    isTripleRatingQuestion && lastAiQuestionMessage?.id
+      ? messages.filter((m) => m.id !== lastAiQuestionMessage.id)
+      : messages;
 
   useEffect(() => {
     // Reset all state when token changes (new user/session)
@@ -469,7 +475,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
               />
             ) : (
               <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-                {messages.map((message) => (
+                {displayMessages.map((message) => (
                   <ChatMessage
                     key={message.id}
                     role={message.role}
@@ -510,6 +516,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                   <TripleRatingInput
                     disabled={isLoading}
                     maturityScale={maturityScale}
+                    questionText={ratingQuestionText}
                     onSubmit={(value) => {
                       handleSendMessage(value);
                       setShowLanguageSelector(false);
