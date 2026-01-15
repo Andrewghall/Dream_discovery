@@ -563,17 +563,20 @@ export async function GET(request: NextRequest) {
       const meta = getQuestionMeta(questionMsg);
       const tag = meta?.tag || inferTagFromQuestionText(question, phase) || null;
 
-      qaPairs.push({ phase, question, answer: m.content, createdAt: m.createdAt, tag });
+      const translatedEn = (m.metadata as any)?.translation?.en;
+      const answerText = typeof translatedEn === 'string' && translatedEn.trim() ? translatedEn : m.content;
+
+      qaPairs.push({ phase, question, answer: answerText, createdAt: m.createdAt, tag });
 
       if (phase === 'intro' && tag === 'context') {
-        introContext = m.content;
-        narrativeTexts.push(m.content);
+        introContext = answerText;
+        narrativeTexts.push(answerText);
         continue;
       }
 
       if (phase && tag) {
         if (tag === 'triple_rating') {
-          const t = extractTripleRatings(m.content);
+          const t = extractTripleRatings(answerText);
           if (t.current !== null) currentByPhase[phase] = t.current;
           if (t.target !== null) targetByPhase[phase] = t.target;
           if (t.projected !== null) projectedByPhase[phase] = t.projected;
@@ -582,38 +585,38 @@ export async function GET(request: NextRequest) {
 
         // Backward compatibility for older sessions
         if (tag === 'current_score' || tag === 'awareness_current') {
-          const n = extractRatingFromAnswer(m.content);
+          const n = extractRatingFromAnswer(answerText);
           if (n !== null) currentByPhase[phase] = n;
           continue;
         }
         if (tag === 'future_score' || tag === 'awareness_future' || tag === 'target_score') {
-          const n = extractRatingFromAnswer(m.content);
+          const n = extractRatingFromAnswer(answerText);
           if (n !== null) targetByPhase[phase] = n;
           continue;
         }
         if (tag === 'confidence_score' || tag === 'projected_score') {
-          const n = extractRatingFromAnswer(m.content);
+          const n = extractRatingFromAnswer(answerText);
           if (n !== null) projectedByPhase[phase] = n;
           continue;
         }
 
-        narrativeTexts.push(m.content);
+        narrativeTexts.push(answerText);
 
-        if (tag === 'strengths') strengthsByPhase[phase] = [...(strengthsByPhase[phase] || []), m.content];
-        else if (tag === 'working') workingByPhase[phase] = [...(workingByPhase[phase] || []), m.content];
-        else if (tag === 'helpful') workingByPhase[phase] = [...(workingByPhase[phase] || []), m.content];
-        else if (tag === 'gaps') gapsByPhase[phase] = [...(gapsByPhase[phase] || []), m.content];
-        else if (tag === 'pain_points') painPointsByPhase[phase] = [...(painPointsByPhase[phase] || []), m.content];
-        else if (tag === 'friction') frictionsByPhase[phase] = [...(frictionsByPhase[phase] || []), m.content];
-        else if (tag === 'barrier') barriersByPhase[phase] = [...(barriersByPhase[phase] || []), m.content];
-        else if (tag === 'constraint') constraintByPhase[phase] = [...(constraintByPhase[phase] || []), m.content];
-        else if (tag === 'future') futureTextByPhase[phase] = [...(futureTextByPhase[phase] || []), m.content];
-        else if (tag === 'support') supportByPhase[phase] = [...(supportByPhase[phase] || []), m.content];
+        if (tag === 'strengths') strengthsByPhase[phase] = [...(strengthsByPhase[phase] || []), answerText];
+        else if (tag === 'working') workingByPhase[phase] = [...(workingByPhase[phase] || []), answerText];
+        else if (tag === 'helpful') workingByPhase[phase] = [...(workingByPhase[phase] || []), answerText];
+        else if (tag === 'gaps') gapsByPhase[phase] = [...(gapsByPhase[phase] || []), answerText];
+        else if (tag === 'pain_points') painPointsByPhase[phase] = [...(painPointsByPhase[phase] || []), answerText];
+        else if (tag === 'friction') frictionsByPhase[phase] = [...(frictionsByPhase[phase] || []), answerText];
+        else if (tag === 'barrier') barriersByPhase[phase] = [...(barriersByPhase[phase] || []), answerText];
+        else if (tag === 'constraint') constraintByPhase[phase] = [...(constraintByPhase[phase] || []), answerText];
+        else if (tag === 'future') futureTextByPhase[phase] = [...(futureTextByPhase[phase] || []), answerText];
+        else if (tag === 'support') supportByPhase[phase] = [...(supportByPhase[phase] || []), answerText];
       }
 
       // Backwards-compatible fallback: if we couldn't infer a tag, still include text in the themes cloud.
       if (!tag) {
-        narrativeTexts.push(m.content);
+        narrativeTexts.push(answerText);
       }
     }
 

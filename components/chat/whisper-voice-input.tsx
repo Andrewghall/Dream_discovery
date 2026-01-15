@@ -7,11 +7,12 @@ import { stopSpeaking as stopOpenAITts } from '@/lib/utils/openai-tts';
 
 interface WhisperVoiceInputProps {
   onTranscript: (text: string) => void;
+  language?: string;
   voiceEnabled: boolean;
   onVoiceToggle: (enabled: boolean) => void;
 }
 
-export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }: WhisperVoiceInputProps) {
+export function WhisperVoiceInput({ onTranscript, language, voiceEnabled, onVoiceToggle }: WhisperVoiceInputProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -219,6 +220,9 @@ export function WhisperVoiceInput({ onTranscript, voiceEnabled, onVoiceToggle }:
 
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording');
+      if (language) {
+        formData.append('language', language);
+      }
 
       const response = await fetch('/api/transcribe', {
         method: 'POST',

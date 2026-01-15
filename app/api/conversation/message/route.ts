@@ -8,6 +8,36 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+async function translateToEnglish(params: {
+  text: string;
+  sourceLanguage: string;
+}): Promise<string> {
+  const text = (params.text || '').trim();
+  const sourceLanguage = (params.sourceLanguage || 'en').trim() || 'en';
+
+  if (!text) return '';
+  if (sourceLanguage === 'en') return text;
+  if (!process.env.OPENAI_API_KEY) return text;
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'Translate the user text to English. Preserve meaning, intent, and any numbers/ratings exactly. Return ONLY the translated text (no quotes, no preface).',
+      },
+      {
+        role: 'user',
+        content: `Source language: ${sourceLanguage}\n\nText:\n${text}`,
+      },
+    ],
+  });
+
+  return (completion.choices?.[0]?.message?.content || '').trim() || text;
+}
+
 function isClarificationQuestion(text: string): boolean {
   const t = text.trim().toLowerCase();
   if (!t) return false;
@@ -88,9 +118,16 @@ export async function POST(request: NextRequest) {
 
     // If user sent a message, save it and analyze
     if (userMessage) {
-      const clarification = isClarificationQuestion(userMessage);
-      const normalized = userMessage.trim().toLowerCase();
-      const isSkipRegulation = normalized === 'skip' && currentPhase === 'regulation';
+      const sessionLanguage = ((session as any)?.language || 'en') as string;
+      const translatedToEnglish = await translateToEnglish({ text: userMessage, sourceLanguage: sessionLanguage }).catch(
+        () => userMessage
+      );
+
+      const clarification = isClarificationQuestion(translatedToEnglish);
+      const normalizedOriginal = userMessage.trim().toLowerCase();
+      const normalizedTranslated = translatedToEnglish.trim().toLowerCase();
+      const isSkipRegulation =
+        (normalizedOriginal === 'skip' || normalizedTranslated === 'skip') && currentPhase === 'regulation';
 
       // Save user message
       await prisma.conversationMessage.create({
@@ -99,7 +136,17 @@ export async function POST(request: NextRequest) {
           role: 'PARTICIPANT',
           content: userMessage,
           phase: session.currentPhase,
-          metadata: isSkipRegulation ? { kind: 'skip' } : clarification ? { kind: 'clarification' } : undefined,
+          metadata: {
+            ...(isSkipRegulation ? { kind: 'skip' } : clarification ? { kind: 'clarification' } : {}),
+            ...(sessionLanguage && sessionLanguage !== 'en'
+              ? {
+                  translation: {
+                    sourceLanguage: sessionLanguage,
+                    en: translatedToEnglish,
+                  },
+                }
+              : {}),
+          },
         },
       });
 

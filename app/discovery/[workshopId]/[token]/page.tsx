@@ -44,7 +44,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [language, setLanguage] = useState('en');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
-  const [showLanguageSelector, setShowLanguageSelector] = useState(true);
   const [draftMessage, setDraftMessage] = useState('');
   const [report, setReport] = useState<null | {
     executiveSummary: string;
@@ -105,7 +104,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setLanguage('en');
     setVoiceEnabled(true);
     setIncludeRegulation(true);
-    setShowLanguageSelector(true);
     setIsLoading(false);
     setReport(null);
   }, [workshopId, token]);
@@ -136,7 +134,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     const text = pendingVoiceTranscript;
     setPendingVoiceTranscript(null);
     setDraftMessage('');
-    setShowLanguageSelector(false);
     void handleSendMessage(text);
   }, [pendingVoiceTranscript, sessionId, isLoading]);
 
@@ -182,11 +179,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setLanguage(data.language || 'en');
       setVoiceEnabled(data.voiceEnabled ?? true);
       setIncludeRegulation(data.includeRegulation ?? true);
-      
-      // Hide language selector after first message
-      if (data.messages && data.messages.length > 0) {
-        setShowLanguageSelector(false);
-      }
 
       const last = data.messages?.[data.messages.length - 1];
       if (last && last.role === 'AI' && (data.voiceEnabled ?? true)) {
@@ -231,7 +223,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setReport(null);
     setPreviewingDemoReport(false);
     setPendingVoiceTranscript(null);
-    setShowLanguageSelector(true);
     setDraftMessage('');
     setIsLoading(false);
 
@@ -277,10 +268,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setLanguage(data.language || 'en');
       setVoiceEnabled(data.voiceEnabled ?? true);
       setIncludeRegulation(data.includeRegulation ?? true);
-
-      if (incomingMessages.length > 0) {
-        setShowLanguageSelector(false);
-      }
 
       const last = incomingMessages?.[incomingMessages.length - 1];
       if (last && last.role === 'AI' && (data.voiceEnabled ?? true)) {
@@ -593,23 +580,21 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         {sessionStatus !== 'COMPLETED' && !previewingDemoReport && (
           <div className="fixed bottom-0 left-0 right-0 lg:right-80 border-t bg-background/95 backdrop-blur safe-area-bottom">
             <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
-              {showLanguageSelector && (
-                <div className="mb-3 pb-3 border-b">
-                  <LanguageSelector
-                    value={language}
-                    onChange={async (newLang) => {
-                      setLanguage(newLang);
-                      if (sessionId) {
-                        await fetch(`/api/conversation/update-preferences`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ sessionId, language: newLang }),
-                        });
-                      }
-                    }}
-                  />
-                </div>
-              )}
+              <div className="mb-3 pb-3 border-b">
+                <LanguageSelector
+                  value={language}
+                  onChange={async (newLang) => {
+                    setLanguage(newLang);
+                    if (sessionId) {
+                      await fetch(`/api/conversation/update-preferences`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionId, language: newLang }),
+                      });
+                    }
+                  }}
+                />
+              </div>
 
               <div className="flex flex-col gap-2">
                 {isTripleRatingQuestion && (
@@ -619,7 +604,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                     questionText={ratingQuestionText}
                     onSubmit={(value) => {
                       handleSendMessage(value);
-                      setShowLanguageSelector(false);
                       setDraftMessage('');
                     }}
                   />
@@ -627,7 +611,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 <ChatInput
                   onSend={(content) => {
                     handleSendMessage(content);
-                    setShowLanguageSelector(false);
                     setDraftMessage('');
                   }}
                   disabled={isLoading}
@@ -640,11 +623,11 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
                 <div className="w-full flex items-center justify-end gap-2">
                   <WhisperVoiceInput
+                    language={language}
                     onTranscript={(text: string) => {
                       const cleaned = (text || '').trim();
                       if (!cleaned) return;
                       setPendingVoiceTranscript(cleaned);
-                      setShowLanguageSelector(false);
                     }}
                     voiceEnabled={voiceEnabled}
                     onVoiceToggle={async (enabled: boolean) => {

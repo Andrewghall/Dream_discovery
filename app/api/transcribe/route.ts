@@ -23,6 +23,8 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File;
+    const languageRaw = formData.get('language');
+    const language = typeof languageRaw === 'string' && languageRaw.trim() ? languageRaw.trim() : 'en';
 
     if (!audioFile) {
       return NextResponse.json(
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest) {
     const transcription = await openai.audio.transcriptions.create({
       file: audioFile,
       model: 'whisper-1',
-      language: 'en',
+      language,
       response_format: 'text',
       temperature: 0.2, // Lower temperature for more accurate transcription
     });
