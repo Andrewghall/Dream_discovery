@@ -565,6 +565,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 {isLoading && <TypingIndicator />}
               </div>
             )}
+            <div aria-hidden className="h-40 sm:h-44" />
             <div ref={bottomRef} className="h-px w-full" />
           </>
         </ScrollArea>
