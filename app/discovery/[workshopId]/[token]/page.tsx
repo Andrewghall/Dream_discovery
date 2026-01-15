@@ -32,6 +32,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [phaseProgress, setPhaseProgress] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<'IN_PROGRESS' | 'COMPLETED'>('IN_PROGRESS');
+  const [isPreparingReport, setIsPreparingReport] = useState(false);
   const [deployInfo, setDeployInfo] = useState<null | {
     sha: string | null;
     ref: string | null;
@@ -79,6 +80,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setCurrentPhase('intro');
     setPhaseProgress(0);
     setSessionStatus('IN_PROGRESS');
+    setIsPreparingReport(false);
     setDeployInfo(null);
     setPendingVoiceTranscript(null);
     setLanguage('en');
@@ -176,6 +178,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       }
 
       if (data.status === 'COMPLETED' && data.sessionId) {
+        setIsPreparingReport(true);
         const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(data.sessionId)}`);
         if (r.ok) {
           const reportData = await r.json();
@@ -187,9 +190,11 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             wordCloudThemes: reportData.wordCloudThemes,
           });
         }
+        setIsPreparingReport(false);
       }
     } catch (error) {
       console.error('Failed to initialize session:', error);
+      setIsPreparingReport(false);
     }
   };
 
@@ -324,6 +329,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
       if (data.status === 'COMPLETED') {
         setSessionStatus('COMPLETED');
+        setIsPreparingReport(true);
         const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(sessionId)}`);
         if (r.ok) {
           const reportData = await r.json();
@@ -335,10 +341,12 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             wordCloudThemes: reportData.wordCloudThemes,
           });
         }
+        setIsPreparingReport(false);
       }
     } catch (error) {
       console.error('Failed to send message:', error);
       setIsLoading(false);
+      setIsPreparingReport(false);
     } finally {
       // Loading state is handled above so we can support delayed transitions.
     }
@@ -358,7 +366,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             alt="DREAM"
             width={1412}
             height={510}
-            className="w-full h-auto"
+            className="w-full h-auto max-h-40 object-contain"
             priority
             sizes="100vw"
           />
@@ -430,7 +438,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             alt="DREAM"
             width={1412}
             height={510}
-            className="w-full h-auto"
+            className="w-full h-auto max-h-28 object-contain"
             priority
             sizes="100vw"
           />
@@ -445,7 +453,13 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
           <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap" />
         </div>
         <ScrollArea className="flex-1 pb-32 sm:pb-40" ref={scrollRef}>
-          {((sessionStatus === 'COMPLETED' && report) || (previewingDemoReport && report)) ? (
+          {(sessionStatus === 'COMPLETED' && !previewingDemoReport && (isPreparingReport || !report)) ? (
+            <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-10">
+              <div className="text-center text-lg font-semibold animate-pulse">
+                Preparing your summary report from the dialogue session.
+              </div>
+            </div>
+          ) : ((sessionStatus === 'COMPLETED' && report) || (previewingDemoReport && report)) ? (
             <ConversationReport
               executiveSummary={report.executiveSummary}
               tone={report.tone}
