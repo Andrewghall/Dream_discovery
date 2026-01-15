@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
+import { sendDiscoveryReportEmail } from '@/lib/email/send-report';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -468,6 +469,93 @@ export async function GET(request: NextRequest) {
     });
 
     const wordCloudThemes = buildWordFrequencies(narrativeTexts);
+
+    try {
+      const participantEmail = session.participant?.email || null;
+      const participantName = session.participant?.name || 'Participant';
+      const participantToken = (session.participant as any)?.discoveryToken as string | undefined;
+      const hasEmailConfig = !!process.env.RESEND_API_KEY && !!process.env.FROM_EMAIL;
+
+      const alreadyEmailed = (session.messages || []).some((m: any) => {
+        const meta = (m?.metadata as any) || null;
+        if (!meta) return false;
+        if (meta?.reportEmail?.sentAt) return true;
+        if (meta?.kind === 'report_email' && meta?.sentAt) return true;
+        return false;
+      });
+
+      if (
+        session.status === 'COMPLETED' &&
+        hasEmailConfig &&
+        participantEmail &&
+        participantToken &&
+        !alreadyEmailed
+      ) {
+        const appUrl =
+          process.env.NEXT_PUBLIC_APP_URL ||
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+        const discoveryUrl = `${appUrl}/discovery/${session.workshopId}/${participantToken}`;
+
+        const emailResult = await sendDiscoveryReportEmail({
+          to: participantEmail,
+          participantName,
+          workshopName: session.workshop?.name,
+          discoveryUrl,
+          executiveSummary: reportText.executiveSummary,
+          tone: reportText.tone,
+          feedback: reportText.feedback,
+          phaseInsights: phaseInsights.map((p) => ({
+            phase: p.phase,
+            currentScore: p.currentScore,
+            targetScore: p.targetScore,
+            projectedScore: p.projectedScore,
+          })),
+        });
+
+        const maybe = emailResult as any;
+        const resendId =
+          maybe?.data?.id ??
+          maybe?.id ??
+          maybe?.data?.messageId ??
+          maybe?.messageId ??
+          null;
+
+        const latestAi = [...(session.messages || [])]
+          .reverse()
+          .find((m: any) => m?.role === 'AI');
+
+        const marker = {
+          kind: 'report_email',
+          sentAt: new Date().toISOString(),
+          resendId,
+        };
+
+        if (latestAi?.id) {
+          const prevMeta = (latestAi.metadata as any) || {};
+          await prisma.conversationMessage.update({
+            where: { id: latestAi.id },
+            data: {
+              metadata: {
+                ...prevMeta,
+                reportEmail: marker,
+              },
+            },
+          });
+        } else {
+          await prisma.conversationMessage.create({
+            data: {
+              sessionId: session.id,
+              role: 'AI',
+              content: '',
+              phase: 'summary',
+              metadata: marker,
+            },
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to email discovery report:', e);
+    }
 
     return NextResponse.json({
       sessionId: session.id,
