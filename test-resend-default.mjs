@@ -1,13 +1,13 @@
 import { Resend } from 'resend';
 
-const resend = new Resend('re_gQfoyJnm_DQ7wSK3tLqEKC6KH9Wv1vF8o');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function testResend() {
   console.log('Testing Resend API with default onboarding domain...\n');
   
   try {
     const result = await resend.emails.send({
-      from: 'onboarding@resend.dev',
+      from: process.env.FROM_EMAIL,
       to: 'andrew.hall@ethenta.com',
       subject: 'Test Email - Default Domain',
       html: '<h1>Test Email</h1><p>This test uses Resend default domain to verify API is working.</p>',

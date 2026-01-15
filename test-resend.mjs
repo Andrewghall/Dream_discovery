@@ -12,7 +12,7 @@ async function testResend() {
   
   try {
     const result = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'DREAM Discovery <onboarding@resend.dev>',
+      from: process.env.FROM_EMAIL,
       to: process.env.TEST_TO_EMAIL || 'andrew.hall@ethenta.com',
       subject: 'Test Email from DREAM Discovery Platform',
       html: '<h1>Test Email</h1><p>This is a test to verify Resend is working.</p>',

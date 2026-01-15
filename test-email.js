@@ -11,7 +11,7 @@ async function testEmail() {
   
   try {
     const result = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'DREAM Discovery <onboarding@resend.dev>',
+      from: process.env.FROM_EMAIL,
       to: 'andrew@ethenta.com', // Replace with your test email
       subject: 'Test Email from DREAM Discovery',
       html: '<h1>Test Email</h1><p>If you receive this, email sending is working!</p>',
