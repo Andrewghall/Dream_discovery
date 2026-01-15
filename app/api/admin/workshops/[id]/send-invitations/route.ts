@@ -8,8 +8,6 @@ export async function POST(
 ) {
   try {
     const { id: workshopId } = await params;
-    const url = new URL(request.url);
-    const resendAll = url.searchParams.get('resend') === 'true';
 
     const diagnostics = {
       nodeEnv: process.env.NODE_ENV ?? null,
@@ -20,26 +18,11 @@ export async function POST(
       requestHost: request.headers.get('host') ?? null,
     };
 
-    if (!process.env.RESEND_API_KEY) {
-      return NextResponse.json(
-        {
-          error: 'Email sending is not configured',
-          details: { message: 'Missing RESEND_API_KEY environment variable' },
-          diagnostics,
-        },
-        { status: 500 }
-      );
-    }
-
     // Get workshop and participants
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },
       include: {
-        participants: resendAll ? true : {
-          where: {
-            emailSentAt: null, // Only send to those who haven't received email yet
-          },
-        },
+        participants: true,
       },
     });
 
@@ -51,7 +34,7 @@ export async function POST(
       return NextResponse.json({
         success: true,
         emailsSent: 0,
-        message: resendAll ? 'No participants found' : 'All participants have already received invitations. Use ?resend=true to resend.',
+        message: 'No participants found',
       });
     }
 
@@ -59,24 +42,22 @@ export async function POST(
       process.env.NEXT_PUBLIC_APP_URL ||
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
     let emailsSent = 0;
-    const errors = [];
     const results: Array<{ email: string; ok: boolean; resendId?: string | null; error?: string }> = [];
 
     console.log(`📧 Sending emails to ${workshop.participants.length} participant(s)...`);
     console.log(`📧 Workshop: ${workshop.name} (${workshopId})`);
-    console.log(`📧 Resend mode: ${resendAll ? 'YES' : 'NO'}`);
     console.log('📧 Diagnostics:', diagnostics);
 
     // Send emails to each participant
     for (const participant of workshop.participants) {
+      console.log(`\n📧 Processing participant: ${participant.name} (${participant.email})`);
+      console.log(`   - Email sent before: ${participant.emailSentAt ? 'YES' : 'NO'}`);
+
+      const discoveryUrl = `${appUrl}/discovery/${workshopId}/${participant.discoveryToken}`;
+      console.log(`   - Discovery URL: ${discoveryUrl}`);
+
+      console.log(`   - Calling Resend API...`);
       try {
-        console.log(`\n📧 Processing participant: ${participant.name} (${participant.email})`);
-        console.log(`   - Email sent before: ${participant.emailSentAt ? 'YES' : 'NO'}`);
-        
-        const discoveryUrl = `${appUrl}/discovery/${workshopId}/${participant.discoveryToken}`;
-        console.log(`   - Discovery URL: ${discoveryUrl}`);
-        
-        console.log(`   - Calling Resend API...`);
         const emailResult = await sendDiscoveryInvitation({
           to: participant.email,
           participantName: participant.name,
@@ -112,12 +93,12 @@ export async function POST(
             : typeof error === 'string'
               ? error
               : JSON.stringify(error);
-        errors.push({ email: participant.email, error: message });
         results.push({ email: participant.email, ok: false, error: message });
+        throw new Error(`Failed to send email to ${participant.email}: ${message}`);
       }
     }
     
-    console.log(`\n📧 Summary: ${emailsSent} emails sent, ${errors.length} errors`);
+    console.log(`\n📧 Summary: ${emailsSent} emails sent, 0 errors`);
 
     if (emailsSent > 0) {
       // Update workshop status
@@ -130,13 +111,11 @@ export async function POST(
     }
 
     return NextResponse.json({
-      success: errors.length === 0,
+      success: true,
       emailsSent,
-      errors: errors.length > 0 ? errors : undefined,
       diagnostics: {
         ...diagnostics,
         appUrl,
-        resendAll,
         participantsConsidered: workshop.participants.length,
       },
       results,

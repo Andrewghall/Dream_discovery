@@ -16,10 +16,6 @@ export async function sendDiscoveryInvitation(params: SendInvitationParams) {
   console.log('📧 From email:', process.env.FROM_EMAIL);
   console.log('📧 Resend API Key exists:', !!process.env.RESEND_API_KEY);
 
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error('Missing RESEND_API_KEY environment variable');
-  }
-
   const html = `
 <!DOCTYPE html>
 <html>
@@ -80,31 +76,26 @@ export async function sendDiscoveryInvitation(params: SendInvitationParams) {
     </div>
   </div>
 </body>
-</html>
+  </html>
   `;
 
-  try {
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    const result = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'DREAM Discovery <onboarding@resend.dev>',
-      to,
-      subject: `You're invited: ${workshopName} - Discovery Phase`,
-      html,
-    });
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const result = await resend.emails.send({
+    from: process.env.FROM_EMAIL as string,
+    to,
+    subject: `You're invited: ${workshopName} - Discovery Phase`,
+    html,
+  });
 
-    const maybeResult = result as any;
-    if (maybeResult?.error) {
-      const message =
-        typeof maybeResult.error === 'string'
-          ? maybeResult.error
-          : maybeResult.error?.message || JSON.stringify(maybeResult.error);
-      throw new Error(message);
-    }
-
-    console.log('✅ Email sent successfully:', result);
-    return result;
-  } catch (error) {
-    console.error('❌ Failed to send email:', error);
-    throw error;
+  const maybeResult = result as any;
+  if (maybeResult?.error) {
+    const message =
+      typeof maybeResult.error === 'string'
+        ? maybeResult.error
+        : maybeResult.error?.message || JSON.stringify(maybeResult.error);
+    throw new Error(message);
   }
+
+  console.log('✅ Email sent successfully:', result);
+  return result;
 }
