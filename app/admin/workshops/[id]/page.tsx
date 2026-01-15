@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Send, UserPlus, Copy, Check, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
@@ -50,6 +51,7 @@ interface Workshop {
 
 export default function WorkshopDetailPage({ params }: PageProps) {
   const { id } = use(params);
+  const router = useRouter();
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [loading, setLoading] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
@@ -201,6 +203,29 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     }
   };
 
+  const handleDeleteWorkshop = async () => {
+    if (!workshop) return;
+    if (!confirm(`Delete workshop "${workshop.name}"? This will permanently delete participants and all discovery data.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/workshops/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        router.push('/admin');
+      } else {
+        const data = await response.json().catch(() => null);
+        alert(data?.error || 'Failed to delete workshop');
+      }
+    } catch (error) {
+      console.error('Failed to delete workshop:', error);
+      alert('Failed to delete workshop');
+    }
+  };
+
   const copyDiscoveryLink = (token: string) => {
     const link = `${window.location.origin}/discovery/${id}/${token}`;
     navigator.clipboard.writeText(link);
@@ -262,6 +287,10 @@ export default function WorkshopDetailPage({ params }: PageProps) {
               <Button onClick={handleSendInvitations} size="lg">
                 <Send className="h-4 w-4 mr-2" />
                 Send Invitations
+              </Button>
+              <Button onClick={handleDeleteWorkshop} variant="destructive" size="lg">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Workshop
               </Button>
             </div>
           </div>

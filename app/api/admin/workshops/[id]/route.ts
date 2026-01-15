@@ -30,3 +30,68 @@ export async function GET(
     );
   }
 }
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const includeRegulation = body?.includeRegulation as boolean | undefined;
+
+    const workshop = await prisma.workshop.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!workshop) {
+      return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+    }
+
+    const updated = await prisma.workshop.update({
+      where: { id },
+      data: {
+        ...(typeof includeRegulation === 'boolean' ? { includeRegulation } : {}),
+      },
+    });
+
+    return NextResponse.json({ workshop: updated });
+  } catch (error) {
+    console.error('Error updating workshop:', error);
+    return NextResponse.json(
+      { error: 'Failed to update workshop' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+
+    const workshop = await prisma.workshop.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!workshop) {
+      return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+    }
+
+    await prisma.workshop.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting workshop:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete workshop' },
+      { status: 500 }
+    );
+  }
+}
