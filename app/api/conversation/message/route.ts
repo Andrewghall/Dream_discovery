@@ -127,6 +127,7 @@ export async function POST(request: NextRequest) {
                   tag: qObj.tag,
                   index: nextQuestionIndex,
                   phase: nextPhase,
+                  maturityScale: qObj.maturityScale,
                 }
               : undefined,
           },
@@ -261,6 +262,7 @@ export async function POST(request: NextRequest) {
               tag: qObj.tag,
               index: nextQuestionIndex,
               phase: newPhase,
+              maturityScale: qObj.maturityScale,
             }
           : undefined,
       },

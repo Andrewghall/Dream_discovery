@@ -51,6 +51,7 @@ export type FixedQuestionTag =
 export interface FixedQuestion {
   text: string;
   tag: FixedQuestionTag;
+  maturityScale?: string[];
 }
 
 export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
@@ -64,14 +65,21 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
       tag: 'working',
     },
     {
-      text: "And what is the single most frustrating thing? I appreciate your honesty. Let's dig into some specific areas, starting with people and skills.",
+      text: 'And what is the single most frustrating thing?',
       tag: 'pain_points',
     },
   ],
   people: [
     {
-      text: "This section is about how well-equipped you and your colleagues are to do your jobs. Rate how well-equipped you and your colleagues are to do your jobs effectively. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).",
+      text: 'Rate how well-equipped you and your colleagues are to do your jobs effectively',
       tag: 'triple_rating',
+      maturityScale: [
+        "Skills gaps everywhere. People leave frequently. Teams don't talk to each other.",
+        'Roles defined but overlap confusing. Some training exists. Collaboration when pushed.',
+        'Clear expectations and development paths. People work across teams. Learning encouraged.',
+        'Skills planning proactive. AI helps with routine work. Continuous learning normal.',
+        'People and AI work seamlessly. Humans focus on judgement and relationships.',
+      ],
     },
     {
       text: 'What helps you do your best work here? Think of a specific time when everything came together and the job went well.',
@@ -86,14 +94,21 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
       tag: 'future',
     },
     {
-      text: "How do you think AI and automation will change your work over the next few years? What parts of your job should stay human? Now let's talk about how things get done around here — decisions, processes, approvals.",
+      text: 'How do you think AI and automation will change your work over the next few years? What parts of your job should stay human?',
       tag: 'future',
     },
   ],
   corporate: [
     {
-      text: "This section is about decisions, processes, and getting things done. Rate how well the organisation's processes and decision-making help you do your job. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).",
+      text: "Rate how well the organisation's processes and decision-making help you do your job",
       tag: 'triple_rating',
+      maturityScale: [
+        'Decisions take forever. Nobody knows who owns what. Constant firefighting.',
+        'Some structure exists but applied inconsistently. Approval is hit-or-miss.',
+        'Clear accountability. Policies make sense. Decisions happen at reasonable speed.',
+        'Governance adapts to context. Decisions with guardrails. AI informs choices.',
+        'Organisation runs smoothly. Policies evolve. Trust high. Bureaucracy minimal.',
+      ],
     },
     {
       text: "Describe something that should be simple but isn't. What makes it harder than it needs to be?",
@@ -104,14 +119,21 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
       tag: 'friction',
     },
     {
-      text: "If you could fix one thing about how decisions get made or work gets approved, what would it be? Let's shift to thinking about customers and their experience.",
+      text: 'If you could fix one thing about how decisions get made or work gets approved, what would it be?',
       tag: 'future',
     },
   ],
   customer: [
     {
-      text: 'This section is about how customers experience the organisation. Rate how well the organisation meets customer needs and expectations. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).',
+      text: 'Rate how well the organisation meets customer needs and expectations',
       tag: 'triple_rating',
+      maturityScale: [
+        'Inconsistent experiences. Complaints pile up. No clear view of customer history.',
+        'Basic systems in place. Some visibility across channels. Service recovery reactive.',
+        'Single view of customer. Consistent across channels. AI helps with common queries.',
+        'Customer needs anticipated. Personalised service. AI and humans seamless.',
+        'Effortless experience. Issues resolved before noticed. Customers love us.',
+      ],
     },
     {
       text: 'Think of a time when a customer had a great experience. What made it work?',
@@ -126,14 +148,21 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
       tag: 'pain_points',
     },
     {
-      text: "If customers could describe their ideal experience with us in 18 months, what would they say? Now let's talk about the tools and systems you work with every day.",
+      text: 'If customers could describe their ideal experience with us in 18 months, what would they say?',
       tag: 'future',
     },
   ],
   technology: [
     {
-      text: 'This section is about the systems and information you work with. Rate the technology, systems, and tools you use in terms of reliability and ease of use. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).',
+      text: 'Rate the technology, systems, and tools you use in terms of reliability and ease of use',
       tag: 'triple_rating',
+      maturityScale: [
+        'Old systems everywhere. Manual workarounds constant. Data unreliable.',
+        'Core systems work but inflexible. Some automation. Data improving but patchy.',
+        'Systems talk to each other. Data trustworthy. AI handles routine tasks.',
+        'Modern flexible systems. AI assists decisions. Self-service works.',
+        'Technology just works. AI handles complexity. Innovation fast.',
+      ],
     },
     {
       text: 'Which system or tool genuinely makes your job easier? What works well?',
@@ -148,14 +177,21 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
       tag: 'gaps',
     },
     {
-      text: "If you could automate or fix one thing about your tools tomorrow, what would make the biggest difference? A few questions about regulation and compliance — if they don't apply to your role, you can reply 'skip'.",
+      text: 'If you could automate or fix one thing about your tools tomorrow, what would make the biggest difference?',
       tag: 'future',
     },
   ],
   regulation: [
     {
-      text: 'Rate how well the organisation handles regulatory and compliance requirements. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).',
+      text: 'Rate how well the organisation handles regulatory and compliance requirements',
       tag: 'triple_rating',
+      maturityScale: [
+        'Compliance reactive. Regulatory changes surprise us. Fines happen.',
+        'Framework exists. Some horizon scanning. Training available but basic.',
+        'Regulations tracked systematically. Compliance built into processes.',
+        'Changes anticipated. Compliance automated where possible.',
+        'Compliance invisible and embedded. AI monitors. Organisation shapes conversation.',
+      ],
     },
     {
       text: 'Do compliance or regulatory requirements make your job harder? How?',
@@ -166,7 +202,7 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
       tag: 'friction',
     },
     {
-      text: "Is there a rule or compliance requirement that doesn't make sense to you? What is it and why? Nearly there. Just a few final questions to wrap up.",
+      text: "Is there a rule or compliance requirement that doesn't make sense to you? What is it and why?",
       tag: 'future',
     },
   ],

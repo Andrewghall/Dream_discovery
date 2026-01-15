@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
                 tag: qObj.tag,
                 index: 0,
                 phase: 'intro',
+                maturityScale: qObj.maturityScale,
               }
             : undefined,
         },

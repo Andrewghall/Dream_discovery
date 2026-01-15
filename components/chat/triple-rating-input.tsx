@@ -6,6 +6,14 @@ import { cn } from '@/lib/utils';
 
 type RatingKey = 'current' | 'target' | 'projected';
 
+const MATURITY_BANDS: Array<{ label: string; bg: string }> = [
+  { label: 'Reactive', bg: '#ffcccc' },
+  { label: 'Emerging', bg: '#ffe6cc' },
+  { label: 'Defined', bg: '#fff2cc' },
+  { label: 'Optimised', bg: '#ccffcc' },
+  { label: 'Intelligent', bg: '#cce6ff' },
+];
+
 function bandForScore(score: number | null): {
   band: string;
   colorClass: string;
@@ -21,9 +29,11 @@ function bandForScore(score: number | null): {
 export function TripleRatingInput({
   disabled,
   onSubmit,
+  maturityScale,
 }: {
   disabled?: boolean;
   onSubmit: (value: string) => void;
+  maturityScale?: string[];
 }) {
   const [ratings, setRatings] = useState<Record<RatingKey, number | null>>({
     current: null,
@@ -58,6 +68,20 @@ export function TripleRatingInput({
     <div className="w-full rounded-lg border bg-background p-3 sm:p-4 space-y-3">
       <div className="text-sm font-medium">Quick rating (click 1–10 for each)</div>
       <div className="text-xs text-muted-foreground">Maturity bands: 1–2 Reactive, 3–4 Emerging, 5–6 Defined, 7–8 Optimised, 9–10 Intelligent</div>
+
+      {Array.isArray(maturityScale) && maturityScale.length === 5 && (
+        <div className="space-y-1">
+          {maturityScale.map((t, idx) => (
+            <div
+              key={idx}
+              className="rounded-md border px-3 py-2 text-xs leading-snug"
+              style={{ backgroundColor: MATURITY_BANDS[idx]?.bg || undefined }}
+            >
+              <span className="font-medium">{MATURITY_BANDS[idx]?.label}:</span> {t}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-3">
         {rows.map((row) => {

@@ -25,6 +25,7 @@ interface PageProps {
 
 export default function DiscoveryConversationPage({ params }: PageProps) {
   const { workshopId, token } = use(params);
+  const [hasStarted, setHasStarted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPhase, setCurrentPhase] = useState<ConversationPhase>('intro');
@@ -55,17 +56,24 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastSpokenMessageIdRef = useRef<string | null>(null);
 
-  const lastAiMessage = [...messages].reverse().find((m) => m.role === 'AI');
-  const lastQuestionMeta = (lastAiMessage as any)?.metadata;
+  const lastAiQuestionMessage = [...messages]
+    .reverse()
+    .find((m) => m.role === 'AI' && (m as any)?.metadata?.kind === 'question');
+  const lastQuestionMeta = (lastAiQuestionMessage as any)?.metadata;
   const questionNumber =
     lastQuestionMeta?.kind === 'question'
       ? getOverallQuestionNumber(lastQuestionMeta.phase, lastQuestionMeta.index, includeRegulation)
       : null;
   const totalQuestions = getTotalQuestionCount(includeRegulation);
   const isTripleRatingQuestion = lastQuestionMeta?.kind === 'question' && lastQuestionMeta?.tag === 'triple_rating';
+  const maturityScale =
+    lastQuestionMeta?.kind === 'question' && Array.isArray(lastQuestionMeta?.maturityScale)
+      ? (lastQuestionMeta.maturityScale as string[])
+      : undefined;
 
   useEffect(() => {
     // Reset all state when token changes (new user/session)
+    setHasStarted(false);
     setMessages([]);
     setSessionId(null);
     setCurrentPhase('intro');
@@ -79,9 +87,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setShowLanguageSelector(true);
     setIsLoading(false);
     setReport(null);
-    
-    // Initialize conversation session
-    initializeSession();
   }, [workshopId, token]);
 
   useEffect(() => {
@@ -128,7 +133,30 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
       const data = await response.json();
       setSessionId(data.sessionId);
-      setMessages(data.messages || []);
+      const incomingMessages = (data.messages || []) as Message[];
+      const shouldPrependIntroHeader =
+        incomingMessages.length > 0 &&
+        incomingMessages[0]?.role === 'AI' &&
+        (incomingMessages[0] as any)?.metadata?.kind === 'question' &&
+        (incomingMessages[0] as any)?.metadata?.phase === 'intro' &&
+        (incomingMessages[0] as any)?.metadata?.index === 0;
+
+      const hasIntroHeaderAlready =
+        incomingMessages.length > 0 && incomingMessages[0]?.role === 'AI' && incomingMessages[0]?.content === 'About You';
+
+      setMessages(
+        shouldPrependIntroHeader && !hasIntroHeaderAlready
+          ? ([
+              {
+                id: `section-intro-${Date.now()}`,
+                role: 'AI',
+                content: 'About You',
+                createdAt: new Date(),
+              } as any,
+              ...incomingMessages,
+            ] as any)
+          : incomingMessages
+      );
       setCurrentPhase(data.currentPhase || 'intro');
       setPhaseProgress(data.phaseProgress || 0);
       setSessionStatus(data.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS');
@@ -199,6 +227,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setIsLoading(true);
 
     try {
+      const phaseBefore = currentPhase;
       // Send user message and get AI response in one call
       const response = await fetch(`/api/conversation/message`, {
         method: 'POST',
@@ -212,11 +241,86 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       if (!response.ok) throw new Error('Failed to get AI response');
 
       const data = await response.json();
-      
-      setMessages((prev) => [...prev, data.message]);
+
+      const transitions: Record<string, string> = {
+        intro: "Thanks for that context. Let's dig into some specific areas, starting with people and skills.",
+        people: "That's really helpful. Now let's talk about how things get done around here - decisions, processes, approvals.",
+        corporate: "I appreciate your honesty. Let's shift to thinking about customers and their experience.",
+        customer: "Great insights. Now let's talk about the tools and systems you work with every day.",
+        technology: "Nearly there. A few questions about regulation and compliance - feel free to skip if these don't apply to your role.",
+        regulation: 'Just a few final questions to wrap up.',
+      };
+
+      const sectionLabels: Record<string, string> = {
+        intro: 'About You',
+        people: 'People & Skills',
+        corporate: 'How Things Work',
+        customer: 'Customer Experience',
+        technology: 'Technology & Tools',
+        regulation: 'Regulation & Compliance',
+        prioritization: 'Overall Perspective',
+      };
+
+      const phaseAfter = data.currentPhase as string;
+      const phaseChanged = !!phaseAfter && phaseAfter !== phaseBefore;
+
       setCurrentPhase(data.currentPhase);
       setPhaseProgress(data.phaseProgress);
       if (typeof data.includeRegulation === 'boolean') setIncludeRegulation(data.includeRegulation);
+
+      const now = Date.now();
+      if (phaseChanged) {
+        const transitionText =
+          phaseBefore === 'technology' && phaseAfter === 'prioritization'
+            ? 'Just a few final questions to wrap up.'
+            : transitions[phaseBefore];
+        const sectionHeader = sectionLabels[phaseAfter];
+
+        const preMessages: Message[] = [];
+        if (transitionText) {
+          preMessages.push({
+            id: `transition-${now}`,
+            role: 'AI',
+            content: transitionText,
+            createdAt: new Date(),
+          } as any);
+        }
+        if (sectionHeader) {
+          preMessages.push({
+            id: `section-${now}`,
+            role: 'AI',
+            content: sectionHeader,
+            createdAt: new Date(),
+          } as any);
+        }
+
+        window.setTimeout(() => {
+          if (preMessages.length) {
+            setMessages((prev) => [...prev, ...preMessages, data.message]);
+          } else {
+            setMessages((prev) => [...prev, data.message]);
+          }
+
+          setIsLoading(false);
+
+          if (voiceEnabled) {
+            if (lastSpokenMessageIdRef.current !== data.message.id) {
+              lastSpokenMessageIdRef.current = data.message.id;
+              void speakWithOpenAI(data.message.content).catch(() => {});
+            }
+          }
+        }, 500);
+      } else {
+        setMessages((prev) => [...prev, data.message]);
+        setIsLoading(false);
+
+        if (voiceEnabled) {
+          if (lastSpokenMessageIdRef.current !== data.message.id) {
+            lastSpokenMessageIdRef.current = data.message.id;
+            void speakWithOpenAI(data.message.content).catch(() => {});
+          }
+        }
+      }
 
       if (data.status === 'COMPLETED') {
         setSessionStatus('COMPLETED');
@@ -232,20 +336,60 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
           });
         }
       }
-      
-      // Speak the AI response if voice is enabled
-      if (voiceEnabled) {
-        if (lastSpokenMessageIdRef.current !== data.message.id) {
-          lastSpokenMessageIdRef.current = data.message.id;
-          void speakWithOpenAI(data.message.content).catch(() => {});
-        }
-      }
     } catch (error) {
       console.error('Failed to send message:', error);
-    } finally {
       setIsLoading(false);
+    } finally {
+      // Loading state is handled above so we can support delayed transitions.
     }
   };
+
+  if (!hasStarted) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="border-b bg-background">
+          <div className="px-4 py-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Image src="/ethenta-logo.png" alt="Ethenta" width={120} height={32} className="h-8 w-auto" priority />
+            </div>
+          </div>
+          <Image
+            src="/Dream.PNG"
+            alt="DREAM"
+            width={1412}
+            height={510}
+            className="w-full h-auto"
+            priority
+            sizes="100vw"
+          />
+        </div>
+
+        <div className="container max-w-2xl mx-auto px-4 py-10">
+          <h1 className="text-3xl font-semibold text-[#1a1a2e]">DREAM Discovery</h1>
+          <h2 className="text-lg font-medium text-[#4a90a4] mt-1">Diagnostic Questionnaire</h2>
+
+          <div className="mt-6 whitespace-pre-wrap text-base text-foreground">
+            {"Welcome to the DREAM Discovery questionnaire.\n\nI'm going to ask you about your experience working here - what's going well, what's frustrating, and where you see opportunities for improvement.\n\nThis takes about 15-20 minutes. Your responses are confidential and will help shape the upcoming DREAM session.\n\nReady to begin?"}
+          </div>
+
+          <div className="mt-8">
+            <button
+              type="button"
+              className="bg-[#4a90a4] text-white px-8 py-3 rounded-lg shadow-sm"
+              onClick={async () => {
+                setHasStarted(true);
+                await initializeSession();
+              }}
+            >
+              Begin
+            </button>
+          </div>
+
+          <div className="mt-10 text-xs text-muted-foreground">© Ethenta Ltd</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen">
@@ -281,7 +425,15 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
               )}
             </div>
           </div>
-          <img src="/dream-banner.svg" alt="DREAM" className="w-full h-auto" />
+          <Image
+            src="/Dream.PNG"
+            alt="DREAM"
+            width={1412}
+            height={510}
+            className="w-full h-auto"
+            priority
+            sizes="100vw"
+          />
         </div>
         <div className="bg-muted/50 border-b px-4 py-1 text-xs text-muted-foreground flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1 truncate">
@@ -341,6 +493,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 {isTripleRatingQuestion && (
                   <TripleRatingInput
                     disabled={isLoading}
+                    maturityScale={maturityScale}
                     onSubmit={(value) => {
                       handleSendMessage(value);
                       setShowLanguageSelector(false);
