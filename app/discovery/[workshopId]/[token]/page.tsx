@@ -203,6 +203,82 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     }
   };
 
+  const restartDiscovery = async () => {
+    if (!confirm('Start over? This will delete your current discovery session and restart from the beginning.')) {
+      return;
+    }
+
+    setMessages([]);
+    setSessionId(null);
+    setCurrentPhase('intro');
+    setPhaseProgress(0);
+    setSessionStatus('IN_PROGRESS');
+    setIsPreparingReport(false);
+    setReport(null);
+    setPreviewingDemoReport(false);
+    setPendingVoiceTranscript(null);
+    setShowLanguageSelector(true);
+    setDraftMessage('');
+    setIsLoading(false);
+
+    try {
+      const response = await fetch(`/api/conversation/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workshopId, token, restart: true }),
+      });
+
+      if (!response.ok) throw new Error('Failed to restart session');
+
+      const data = await response.json();
+      setSessionId(data.sessionId);
+      const incomingMessages = (data.messages || []) as Message[];
+      const shouldPrependIntroHeader =
+        incomingMessages.length > 0 &&
+        incomingMessages[0]?.role === 'AI' &&
+        (incomingMessages[0] as any)?.metadata?.kind === 'question' &&
+        (incomingMessages[0] as any)?.metadata?.phase === 'intro' &&
+        (incomingMessages[0] as any)?.metadata?.index === 0;
+
+      const hasIntroHeaderAlready =
+        incomingMessages.length > 0 && incomingMessages[0]?.role === 'AI' && incomingMessages[0]?.content === 'About You';
+
+      setMessages(
+        shouldPrependIntroHeader && !hasIntroHeaderAlready
+          ? ([
+              {
+                id: `section-intro-${Date.now()}`,
+                role: 'AI',
+                content: 'About You',
+                createdAt: new Date(),
+              } as any,
+              ...incomingMessages,
+            ] as any)
+          : incomingMessages
+      );
+
+      setCurrentPhase(data.currentPhase || 'intro');
+      setPhaseProgress(data.phaseProgress || 0);
+      setSessionStatus(data.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS');
+      setLanguage(data.language || 'en');
+      setVoiceEnabled(data.voiceEnabled ?? true);
+      setIncludeRegulation(data.includeRegulation ?? true);
+
+      if (incomingMessages.length > 0) {
+        setShowLanguageSelector(false);
+      }
+
+      const last = incomingMessages?.[incomingMessages.length - 1];
+      if (last && last.role === 'AI' && (data.voiceEnabled ?? true)) {
+        lastSpokenMessageIdRef.current = last.id;
+        void speakWithOpenAI(last.content).catch(() => {});
+      }
+    } catch (e) {
+      console.error('Failed to restart session:', e);
+      alert('Failed to restart discovery');
+    }
+  };
+
   const handlePreviewDemoReport = async () => {
     try {
       const r = await fetch(
@@ -436,6 +512,9 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                   Back to Interview
                 </Button>
               )}
+              <Button variant="outline" size="sm" onClick={restartDiscovery}>
+                Start Over
+              </Button>
             </div>
           </div>
           <Image

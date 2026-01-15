@@ -4,7 +4,9 @@ import { getFixedQuestion, getFixedQuestionObject } from '@/lib/conversation/fix
 
 export async function POST(request: NextRequest) {
   try {
-    const { workshopId, token } = await request.json();
+    const body = await request.json();
+    const { workshopId, token } = body as { workshopId: string; token: string; restart?: boolean };
+    const restart = body?.restart === true;
 
     // Validate token and get participant
     const participant = await prisma.workshopParticipant.findUnique({
@@ -19,6 +21,88 @@ export async function POST(request: NextRequest) {
         { error: 'Invalid token or workshop ID' },
         { status: 401 }
       );
+    }
+
+    if (restart) {
+      await prisma.conversationSession.deleteMany({
+        where: {
+          workshopId,
+          participantId: participant.id,
+        },
+      });
+
+      await prisma.workshopParticipant.update({
+        where: { id: participant.id },
+        data: {
+          responseStartedAt: new Date(),
+          responseCompletedAt: null,
+        },
+      });
+
+      const includeRegulation = (participant.workshop as any).includeRegulation ?? true;
+
+      let session: any = await prisma.conversationSession.create({
+        data: {
+          workshopId,
+          participantId: participant.id,
+          currentPhase: 'intro',
+          phaseProgress: 0,
+          voiceEnabled: true,
+          includeRegulation,
+        } as any,
+        include: {
+          messages: true,
+        },
+      });
+
+      const firstMessage = getFixedQuestion('intro', 0, includeRegulation);
+      const qObj = getFixedQuestionObject('intro', 0, includeRegulation);
+
+      await prisma.conversationMessage.create({
+        data: {
+          sessionId: session.id,
+          role: 'AI',
+          content: firstMessage,
+          phase: 'intro',
+          metadata: qObj
+            ? {
+                kind: 'question',
+                tag: qObj.tag,
+                index: 0,
+                phase: 'intro',
+                maturityScale: qObj.maturityScale,
+              }
+            : undefined,
+        },
+      });
+
+      session = await prisma.conversationSession.findUnique({
+        where: { id: session.id },
+        include: {
+          messages: {
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+
+      const safeSession = session as any;
+      return NextResponse.json({
+        sessionId: safeSession.id,
+        status: safeSession.status,
+        currentPhase: safeSession.currentPhase,
+        phaseProgress: safeSession.phaseProgress,
+        language: safeSession.language,
+        voiceEnabled: safeSession.voiceEnabled,
+        includeRegulation: safeSession.includeRegulation,
+        messages: (safeSession.messages || []).map((msg: any) => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          phase: msg.phase,
+          metadata: msg.metadata,
+          createdAt: msg.createdAt,
+        })),
+      });
     }
 
     // Check if an active (incomplete) session already exists
