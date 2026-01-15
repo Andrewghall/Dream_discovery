@@ -8,7 +8,9 @@ import { ProgressIndicator } from '@/components/chat/progress-indicator';
 import { TypingIndicator } from '@/components/chat/typing-indicator';
 import { WhisperVoiceInput } from '@/components/chat/whisper-voice-input';
 import { LanguageSelector } from '@/components/chat/language-selector';
+import { TripleRatingInput } from '@/components/chat/triple-rating-input';
 import { ConversationPhase, Message } from '@/lib/types/conversation';
+import { getOverallQuestionNumber, getTotalQuestionCount } from '@/lib/conversation/fixed-questions';
 import { speakWithOpenAI } from '@/lib/utils/openai-tts';
 import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
 import { Button } from '@/components/ui/button';
@@ -51,6 +53,15 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [previewingDemoReport, setPreviewingDemoReport] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastSpokenMessageIdRef = useRef<string | null>(null);
+
+  const lastAiMessage = [...messages].reverse().find((m) => m.role === 'AI');
+  const lastQuestionMeta = (lastAiMessage as any)?.metadata;
+  const questionNumber =
+    lastQuestionMeta?.kind === 'question'
+      ? getOverallQuestionNumber(lastQuestionMeta.phase, lastQuestionMeta.index, includeRegulation)
+      : null;
+  const totalQuestions = getTotalQuestionCount(includeRegulation);
+  const isTripleRatingQuestion = lastQuestionMeta?.kind === 'question' && lastQuestionMeta?.tag === 'triple_rating';
 
   useEffect(() => {
     // Reset all state when token changes (new user/session)
@@ -204,6 +215,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setMessages((prev) => [...prev, data.message]);
       setCurrentPhase(data.currentPhase);
       setPhaseProgress(data.phaseProgress);
+      if (typeof data.includeRegulation === 'boolean') setIncludeRegulation(data.includeRegulation);
 
       if (data.status === 'COMPLETED') {
         setSessionStatus('COMPLETED');
@@ -245,6 +257,12 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
               : ''}
           </div>
           <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap">
+            {typeof questionNumber === 'number' && (
+              <div className="text-xs text-muted-foreground">
+                Question <span className="font-medium text-foreground">{questionNumber}</span> of{' '}
+                <span className="font-medium text-foreground">{totalQuestions}</span>
+              </div>
+            )}
             {!previewingDemoReport && (
               <Button variant="outline" size="sm" onClick={handlePreviewDemoReport}>
                 Preview Demo Report
@@ -310,6 +328,16 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
               )}
 
               <div className="flex flex-col gap-2">
+                {isTripleRatingQuestion && (
+                  <TripleRatingInput
+                    disabled={isLoading}
+                    onSubmit={(value) => {
+                      handleSendMessage(value);
+                      setShowLanguageSelector(false);
+                      setDraftMessage('');
+                    }}
+                  />
+                )}
                 <ChatInput
                   onSend={(content) => {
                     handleSendMessage(content);
@@ -317,7 +345,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                     setDraftMessage('');
                   }}
                   disabled={isLoading}
-                  placeholder="Type your response, or use Start Recording…"
+                  placeholder={isTripleRatingQuestion ? 'Use the ratings above, or type your response…' : 'Type your response, or use Start Recording…'}
                   value={draftMessage}
                   onChange={setDraftMessage}
                   singleLine

@@ -16,20 +16,20 @@ export function getPhaseOrder(includeRegulation: boolean): ConversationPhase[] {
 }
 
 export function getIntroMessage(includeRegulation: boolean): string {
-  return "Please briefly describe your role, how long you've been in the organisation and your core responsibilities. What drives your work?";
+  return "Please describe your role, how long you've been in the organisation, and what you spend most of your time doing.";
 }
 
 export function getPrioritizationAreaList(includeRegulation: boolean): string {
-  const areas = ['People', 'Corporate', 'Customer', 'Technology'];
+  const areas = ['People', 'Processes', 'Customer', 'Technology'];
   if (includeRegulation) areas.push('Regulation');
   return areas.join(', ');
 }
 
 export type FixedQuestionTag =
   | 'context'
-  | 'current_score'
-  | 'future_score'
-  | 'confidence_score'
+  | 'triple_rating'
+  | 'target_score'
+  | 'projected_score'
   | 'strengths'
   | 'gaps'
   | 'future'
@@ -40,12 +40,12 @@ export type FixedQuestionTag =
   | 'working'
   | 'pain_points'
   | 'constraint'
-  | 'awareness_current'
-  | 'awareness_future'
   | 'optimism'
   | 'biggest_constraint'
   | 'high_impact'
   | 'final_thoughts'
+  | 'lessons_learned'
+  | 'missing_question'
   | 'closing';
 
 export interface FixedQuestion {
@@ -56,175 +56,139 @@ export interface FixedQuestion {
 export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   intro: [
     {
-      text: "Please briefly describe your role, how long you've been in the organisation and your core responsibilities. What drives your work?",
+      text: "Please describe your role, how long you've been in the organisation, and what you spend most of your time doing.",
       tag: 'context',
+    },
+    {
+      text: 'What is the best thing about working here? What keeps you going?',
+      tag: 'working',
+    },
+    {
+      text: "And what is the single most frustrating thing? I appreciate your honesty. Let's dig into some specific areas, starting with people and skills.",
+      tag: 'pain_points',
     },
   ],
   people: [
     {
-      text: "On a scale of 1–10, how would you rate your team's current capacity and capability to meet your objectives? (1 = severely lacking, 10 = excellent)",
-      tag: 'current_score',
+      text: "This section is about how well-equipped you and your colleagues are to do your jobs. Rate how well-equipped you and your colleagues are to do your jobs effectively. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).",
+      tag: 'triple_rating',
     },
     {
-      text: "Where should your team's capacity and skills be in 1.5 years on that same 1–10 scale?",
-      tag: 'future_score',
-    },
-    {
-      text: "How confident are you that the organisation will enable that future level of capacity and capability? (1 = not confident, 10 = very confident)",
-      tag: 'confidence_score',
-    },
-    {
-      text: 'What specific strengths or behaviours within your team help you succeed today (e.g., collaboration, resilience, expertise)?',
+      text: 'What helps you do your best work here? Think of a specific time when everything came together and the job went well.',
       tag: 'strengths',
     },
     {
-      text: 'What specific gaps or cultural challenges hold your team back (e.g., misaligned incentives, skill gaps, siloed knowledge)?',
+      text: "Where do you feel unsupported or under-skilled for what's expected of you? What's missing?",
       tag: 'gaps',
     },
     {
-      text: 'How would you like the culture and roles to evolve over the next 1.5 years? To what extent should AI augment or automate roles versus empower people?',
+      text: 'If you could change one thing about how people work together here, what would it be?',
       tag: 'future',
     },
     {
-      text: 'What support (training, resources, new roles) would accelerate progress toward that vision?',
-      tag: 'support',
+      text: "How do you think AI and automation will change your work over the next few years? What parts of your job should stay human? Now let's talk about how things get done around here — decisions, processes, approvals.",
+      tag: 'future',
     },
   ],
   corporate: [
     {
-      text: 'On a scale of 1–10, how effective are our current governance, policies and decision-making processes in enabling you to perform your role?',
-      tag: 'current_score',
+      text: "This section is about decisions, processes, and getting things done. Rate how well the organisation's processes and decision-making help you do your job. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).",
+      tag: 'triple_rating',
     },
     {
-      text: 'Where would you like our organisational effectiveness to be in 1.5 years?',
-      tag: 'future_score',
-    },
-    {
-      text: 'How confident are you that changes in corporate policies and structures will enable that level?',
-      tag: 'confidence_score',
-    },
-    {
-      text: 'Which processes or structures genuinely help you do your job (e.g., clear accountability, rapid decision-making, cross-functional alignment)?',
-      tag: 'helpful',
-    },
-    {
-      text: 'Where do policies or governance structures slow you down or create friction? Please provide examples.',
+      text: "Describe something that should be simple but isn't. What makes it harder than it needs to be?",
       tag: 'friction',
     },
     {
-      text: 'What is the main barrier preventing better organisational effectiveness (e.g., risk aversion, bureaucracy, unclear ownership)?',
-      tag: 'barrier',
+      text: "Are there rules or processes you work around to get things done? What does that tell us?",
+      tag: 'friction',
     },
     {
-      text: 'Looking ahead 1.5 years, how should governance and decision-making adapt to support innovation, collaboration and compliance (e.g., decentralised decision authority, integrated oversight)?',
+      text: "If you could fix one thing about how decisions get made or work gets approved, what would it be? Let's shift to thinking about customers and their experience.",
       tag: 'future',
     },
   ],
   customer: [
     {
-      text: 'On a scale of 1–10, how would you rate our current ability to meet and exceed customer needs and expectations?',
-      tag: 'current_score',
+      text: 'This section is about how customers experience the organisation. Rate how well the organisation meets customer needs and expectations. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).',
+      tag: 'triple_rating',
     },
     {
-      text: 'Where should our ability to deliver customer experience be in 1.5 years?',
-      tag: 'future_score',
-    },
-    {
-      text: 'How confident are you that our organisation will achieve that customer experience vision?',
-      tag: 'confidence_score',
-    },
-    {
-      text: 'What do customers currently appreciate about our services or interactions?',
+      text: 'Think of a time when a customer had a great experience. What made it work?',
       tag: 'working',
     },
     {
-      text: 'Where do customers struggle or get frustrated with our service or communications? Please provide examples.',
+      text: 'Think of a time when a customer had a poor experience. What went wrong and why?',
       tag: 'pain_points',
     },
     {
-      text: 'What is preventing the organisation from delivering a consistently excellent customer experience (e.g., processes, technology, policies, mindset)?',
-      tag: 'barrier',
+      text: "What do customers have to do that they shouldn't have to? Where is their time or effort wasted?",
+      tag: 'pain_points',
     },
     {
-      text: 'In 1.5 years, how would you like customers to describe their experience with us (e.g., seamless, personalised, proactive)? What innovations or approaches will get us there?',
+      text: "If customers could describe their ideal experience with us in 18 months, what would they say? Now let's talk about the tools and systems you work with every day.",
       tag: 'future',
     },
   ],
   technology: [
     {
-      text: 'On a scale of 1–10, how would you rate our current technology, data systems and tools in terms of reliability, integration and usability?',
-      tag: 'current_score',
+      text: 'This section is about the systems and information you work with. Rate the technology, systems, and tools you use in terms of reliability and ease of use. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).',
+      tag: 'triple_rating',
     },
     {
-      text: 'Where should our technology capability be in 1.5 years on the same 1–10 scale (think of ideal integration, automation and AI augmentation)?',
-      tag: 'future_score',
+      text: 'Which system or tool genuinely makes your job easier? What works well?',
+      tag: 'working',
     },
     {
-      text: 'How confident are you that our technology strategy and investments will enable that future state?',
-      tag: 'confidence_score',
+      text: 'What manual task or workaround wastes the most of your time? How often do you have to do it?',
+      tag: 'pain_points',
     },
     {
-      text: 'Which systems or tools genuinely empower you to do your job effectively today?',
-      tag: 'helpful',
-    },
-    {
-      text: 'What are the most significant technology frustrations or gaps you face (e.g., manual processes, lack of integration, poor data quality)?',
+      text: 'What information do you need but struggle to get? What suffers as a result?',
       tag: 'gaps',
     },
     {
-      text: "What's the main barrier preventing technology improvements (e.g., budget, legacy systems, governance)?",
-      tag: 'barrier',
-    },
-    {
-      text: 'Looking 1.5 years ahead, what technology capabilities or AI-driven tools would you like to have? Should AI replace humans in certain tasks, augment decisions or both? Please elaborate.',
+      text: "If you could automate or fix one thing about your tools tomorrow, what would make the biggest difference? A few questions about regulation and compliance — if they don't apply to your role, you can reply 'skip'.",
       tag: 'future',
     },
   ],
   regulation: [
     {
-      text: 'Do current regulations or compliance requirements materially constrain your ability to operate or scale? If yes, please explain how.',
+      text: 'Rate how well the organisation handles regulatory and compliance requirements. Provide three scores: Current (today), Target (in 18 months), and Projected (in 18 months if nothing changes).',
+      tag: 'triple_rating',
+    },
+    {
+      text: 'Do compliance or regulatory requirements make your job harder? How?',
       tag: 'constraint',
     },
     {
-      text: 'On a scale of 1–10, how would you rate your awareness of upcoming regulations that could materially affect our business?',
-      tag: 'awareness_current',
-    },
-    {
-      text: 'Where should that awareness level be in 1.5 years?',
-      tag: 'awareness_future',
-    },
-    {
-      text: "How confident are you that our processes for regulatory monitoring and compliance will support the business's future ambitions?",
-      tag: 'confidence_score',
-    },
-    {
-      text: 'Do regulatory requirements create significant cost, delay or operational workarounds? Please describe.',
-      tag: 'barrier',
-    },
-    {
-      text: 'Are regulatory impacts assessed early enough to influence strategy, product or delivery decisions? Provide an example.',
+      text: 'Have you experienced a situation where a regulatory change caught the organisation off-guard? What happened?',
       tag: 'friction',
     },
     {
-      text: 'Could a regulatory change cause material financial, operational or reputational risk if not anticipated? What improvements would help mitigate this risk?',
+      text: "Is there a rule or compliance requirement that doesn't make sense to you? What is it and why? Nearly there. Just a few final questions to wrap up.",
       tag: 'future',
     },
   ],
   prioritization: [
     {
-      text: 'Among People, Corporate/Organisational, Customer, Technology and Regulation, which one area constrains your day-to-day work the most?',
+      text: 'Of the five areas (People, Processes, Customer, Technology, Regulation), which one gets in the way of your work the most?',
       tag: 'biggest_constraint',
     },
     {
-      text: 'Which area, if improved significantly, would have the biggest positive impact on your ability to deliver value?',
+      text: 'Which area, if fixed, would make the biggest positive difference to your ability to do your job?',
       tag: 'high_impact',
     },
     {
-      text: "Overall, are you optimistic, neutral or skeptical about the organisation's ability to change? What would increase your optimism?",
+      text: 'Overall, do you believe this organisation can genuinely change for the better? What makes you think that?',
       tag: 'optimism',
     },
     {
-      text: 'What other insights, stories or context would you like to share that you think would help shape our vision and the upcoming Dream session?',
+      text: "Has the organisation tried to improve things before that didn't work? What happened and what should we learn from it?",
+      tag: 'lessons_learned',
+    },
+    {
+      text: "What else should we know? What question should we have asked but didn't?",
       tag: 'final_thoughts',
     },
   ],
@@ -235,6 +199,28 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
     },
   ],
 };
+
+export function getTotalQuestionCount(includeRegulation: boolean): number {
+  const phases = getPhaseOrder(includeRegulation).filter((p) => p !== 'summary');
+  return phases.reduce((sum, phase) => sum + (FIXED_QUESTIONS[phase]?.length || 0), 0);
+}
+
+export function getOverallQuestionNumber(
+  phase: ConversationPhase,
+  index: number,
+  includeRegulation: boolean
+): number | null {
+  if (phase === 'summary') return null;
+
+  const phases = getPhaseOrder(includeRegulation).filter((p) => p !== 'summary');
+  let offset = 0;
+  for (const p of phases) {
+    if (p === phase) return offset + index + 1;
+    offset += FIXED_QUESTIONS[p]?.length || 0;
+  }
+
+  return null;
+}
 
 export function getNextPhase(current: ConversationPhase, includeRegulation: boolean = true): ConversationPhase {
   const order = getPhaseOrder(includeRegulation);
@@ -253,14 +239,8 @@ export function getFixedQuestion(
   index: number,
   includeRegulation: boolean
 ): string {
-  if (phase === 'intro') return getIntroMessage(includeRegulation);
-
   const q = FIXED_QUESTIONS[phase]?.[index];
   if (!q) return '';
-
-  if (phase === 'prioritization' && index === 0) {
-    return `Among ${getPrioritizationAreaList(includeRegulation)}, which one area constrains your day-to-day work the most?`;
-  }
 
   return q.text;
 }
@@ -270,19 +250,5 @@ export function getFixedQuestionObject(
   index: number,
   includeRegulation: boolean
 ): FixedQuestion | null {
-  if (phase === 'intro') {
-    return {
-      text: getIntroMessage(includeRegulation),
-      tag: 'context',
-    };
-  }
-
-  if (phase === 'prioritization' && index === 0) {
-    return {
-      text: `Among ${getPrioritizationAreaList(includeRegulation)}, which one area constrains your day-to-day work the most?`,
-      tag: 'biggest_constraint',
-    };
-  }
-
   return FIXED_QUESTIONS[phase]?.[index] ?? null;
 }

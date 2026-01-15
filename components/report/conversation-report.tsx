@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button';
 export interface PhaseInsight {
   phase: string;
   currentScore: number | null;
-  futureScore: number | null;
-  confidenceScore: number | null;
+  targetScore: number | null;
+  projectedScore: number | null;
   strengths: string[];
   working: string[];
   gaps: string[];
@@ -65,18 +65,18 @@ export function ConversationReport({
   };
 
   const futureSeries = {
-    name: 'Desired future ambition',
+    name: 'Target ambition',
     data: axes.map((a) => ({
       label: a.label,
-      value: phaseInsights.find((p) => p.phase === a.phase)?.futureScore ?? 0,
+      value: phaseInsights.find((p) => p.phase === a.phase)?.targetScore ?? 0,
     })),
   };
 
   const confidenceSeries = {
-    name: 'Confidence to achieve',
+    name: 'Projected if unchanged',
     data: axes.map((a) => ({
       label: a.label,
-      value: phaseInsights.find((p) => p.phase === a.phase)?.confidenceScore ?? 0,
+      value: phaseInsights.find((p) => p.phase === a.phase)?.projectedScore ?? 0,
     })),
   };
 
@@ -119,7 +119,7 @@ export function ConversationReport({
         <Card>
           <CardHeader>
             <CardTitle>Spider Diagram (Three Scores)</CardTitle>
-            <CardDescription>Current capability, desired ambition, and confidence (1–10)</CardDescription>
+            <CardDescription>Current, target, and projected (1–10)</CardDescription>
           </CardHeader>
           <CardContent>
             {phaseInsights.length ? (
@@ -149,7 +149,7 @@ export function ConversationReport({
             <CardHeader>
               <CardTitle>{phaseLabel(p.phase)}</CardTitle>
               <CardDescription>
-                Current: {scoreText(p.currentScore)} | Ambition: {scoreText(p.futureScore)} | Confidence: {scoreText(p.confidenceScore)}
+                Current: {scoreText(p.currentScore)} | Target: {scoreText(p.targetScore)} | Projected: {scoreText(p.projectedScore)}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">

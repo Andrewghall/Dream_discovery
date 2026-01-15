@@ -17,6 +17,24 @@ function extractRatingFromAnswer(answer: string): number | null {
   return n;
 }
 
+function extractLabeledRating(answer: string, label: 'current' | 'target' | 'projected'): number | null {
+  const re = new RegExp(`\\b${label}\\b\\s*[:=-]?\\s*(10|[1-9])\\b`, 'i');
+  const m = answer.match(re);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return null;
+  if (n < 1 || n > 10) return null;
+  return n;
+}
+
+function extractTripleRatings(answer: string): { current: number | null; target: number | null; projected: number | null } {
+  return {
+    current: extractLabeledRating(answer, 'current'),
+    target: extractLabeledRating(answer, 'target'),
+    projected: extractLabeledRating(answer, 'projected'),
+  };
+}
+
 type QuestionMeta =
   | {
       kind: 'question';
@@ -109,8 +127,8 @@ async function generateReportText(params: {
   phaseInsights: Array<{
     phase: string;
     currentScore: number | null;
-    futureScore: number | null;
-    confidenceScore: number | null;
+    targetScore: number | null;
+    projectedScore: number | null;
     strengths: string[];
     working: string[];
     barriers: string[];
@@ -139,8 +157,8 @@ async function generateReportText(params: {
   for (const p of params.phaseInsights) {
     lines.push(`\n${p.phase.toUpperCase()}`);
     if (p.currentScore !== null) lines.push(`- Current score: ${p.currentScore}/10`);
-    if (p.futureScore !== null) lines.push(`- Desired future score: ${p.futureScore}/10`);
-    if (p.confidenceScore !== null) lines.push(`- Confidence score: ${p.confidenceScore}/10`);
+    if (p.targetScore !== null) lines.push(`- Target score: ${p.targetScore}/10`);
+    if (p.projectedScore !== null) lines.push(`- Projected score: ${p.projectedScore}/10`);
     if (p.strengths.length) lines.push(`- Strengths: ${p.strengths.join(' | ')}`);
     if (p.working.length) lines.push(`- What's working: ${p.working.join(' | ')}`);
     if (p.gaps.length) lines.push(`- Gaps: ${p.gaps.join(' | ')}`);
@@ -220,8 +238,8 @@ function buildSyntheticResponse(includeRegulation: boolean) {
     return {
       phase,
       currentScore: base,
-      futureScore: 8,
-      confidenceScore: 5,
+      targetScore: 8,
+      projectedScore: 5,
       strengths: phase === 'people' ? ['Strong peer collaboration and resilience.'] : [],
       working: phase === 'customer' ? ['Frontline teams are responsive when issues are escalated.'] : [],
       gaps: phase === 'technology' ? ['Fragmented systems and inconsistent data quality.'] : [],
@@ -312,8 +330,8 @@ export async function GET(request: NextRequest) {
     const qaPairs: Array<{ phase: string | null; question: string; answer: string; createdAt: Date; tag: string | null }> = [];
 
     const currentByPhase: Record<string, number> = {};
-    const futureByPhase: Record<string, number> = {};
-    const confidenceByPhase: Record<string, number> = {};
+    const targetByPhase: Record<string, number> = {};
+    const projectedByPhase: Record<string, number> = {};
 
     const strengthsByPhase: Record<string, string[]> = {};
     const workingByPhase: Record<string, string[]> = {};
@@ -361,19 +379,28 @@ export async function GET(request: NextRequest) {
       }
 
       if (phase && tag) {
+        if (tag === 'triple_rating') {
+          const t = extractTripleRatings(m.content);
+          if (t.current !== null) currentByPhase[phase] = t.current;
+          if (t.target !== null) targetByPhase[phase] = t.target;
+          if (t.projected !== null) projectedByPhase[phase] = t.projected;
+          continue;
+        }
+
+        // Backward compatibility for older sessions
         if (tag === 'current_score' || tag === 'awareness_current') {
           const n = extractRatingFromAnswer(m.content);
           if (n !== null) currentByPhase[phase] = n;
           continue;
         }
-        if (tag === 'future_score' || tag === 'awareness_future') {
+        if (tag === 'future_score' || tag === 'awareness_future' || tag === 'target_score') {
           const n = extractRatingFromAnswer(m.content);
-          if (n !== null) futureByPhase[phase] = n;
+          if (n !== null) targetByPhase[phase] = n;
           continue;
         }
-        if (tag === 'confidence_score') {
+        if (tag === 'confidence_score' || tag === 'projected_score') {
           const n = extractRatingFromAnswer(m.content);
-          if (n !== null) confidenceByPhase[phase] = n;
+          if (n !== null) projectedByPhase[phase] = n;
           continue;
         }
 
@@ -406,8 +433,8 @@ export async function GET(request: NextRequest) {
     const phaseInsights = phases.map((phase) => ({
       phase,
       currentScore: currentByPhase[phase] ?? null,
-      futureScore: futureByPhase[phase] ?? null,
-      confidenceScore: confidenceByPhase[phase] ?? null,
+      targetScore: targetByPhase[phase] ?? null,
+      projectedScore: projectedByPhase[phase] ?? null,
       strengths: strengthsByPhase[phase] || [],
       working: workingByPhase[phase] || [],
       gaps: gapsByPhase[phase] || [],

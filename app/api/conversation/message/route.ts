@@ -89,6 +89,8 @@ export async function POST(request: NextRequest) {
     // If user sent a message, save it and analyze
     if (userMessage) {
       const clarification = isClarificationQuestion(userMessage);
+      const normalized = userMessage.trim().toLowerCase();
+      const isSkipRegulation = normalized === 'skip' && currentPhase === 'regulation';
 
       // Save user message
       await prisma.conversationMessage.create({
@@ -97,9 +99,64 @@ export async function POST(request: NextRequest) {
           role: 'PARTICIPANT',
           content: userMessage,
           phase: session.currentPhase,
-          metadata: clarification ? { kind: 'clarification' } : undefined,
+          metadata: isSkipRegulation ? { kind: 'skip' } : clarification ? { kind: 'clarification' } : undefined,
         },
       });
+
+      if (isSkipRegulation) {
+        const nextIncludeRegulation = false;
+        const nextPhase = getNextPhase('regulation', nextIncludeRegulation);
+        const nextQuestionIndex = 0;
+
+        const aiResponse = `No problem — skipping regulation.\n\n${getFixedQuestion(
+          nextPhase,
+          nextQuestionIndex,
+          nextIncludeRegulation
+        )}`;
+        const qObj = getFixedQuestionObject(nextPhase, nextQuestionIndex, nextIncludeRegulation);
+
+        const aiMessage = await prisma.conversationMessage.create({
+          data: {
+            sessionId: session.id,
+            role: 'AI',
+            content: aiResponse,
+            phase: nextPhase,
+            metadata: qObj
+              ? {
+                  kind: 'question',
+                  tag: qObj.tag,
+                  index: nextQuestionIndex,
+                  phase: nextPhase,
+                }
+              : undefined,
+          },
+        });
+
+        await prisma.conversationSession.update({
+          where: { id: session.id },
+          data: {
+            includeRegulation: nextIncludeRegulation,
+            currentPhase: nextPhase,
+            phaseProgress: 0,
+            updatedAt: new Date(),
+          } as any,
+        });
+
+        return NextResponse.json({
+          message: {
+            id: aiMessage.id,
+            role: aiMessage.role,
+            content: aiMessage.content,
+            phase: aiMessage.phase,
+            metadata: aiMessage.metadata,
+            createdAt: aiMessage.createdAt,
+          },
+          currentPhase: nextPhase,
+          phaseProgress: 0,
+          includeRegulation: nextIncludeRegulation,
+          status: session.status,
+        });
+      }
 
       if (clarification) {
         const clarificationText = await generateClarificationAnswer({
@@ -136,10 +193,12 @@ export async function POST(request: NextRequest) {
             role: aiMessage.role,
             content: aiMessage.content,
             phase: aiMessage.phase,
+            metadata: aiMessage.metadata,
             createdAt: aiMessage.createdAt,
           },
           currentPhase,
           phaseProgress: session.phaseProgress,
+          includeRegulation,
         });
       }
     }
@@ -233,10 +292,12 @@ export async function POST(request: NextRequest) {
         role: aiMessage.role,
         content: aiMessage.content,
         phase: aiMessage.phase,
+        metadata: aiMessage.metadata,
         createdAt: aiMessage.createdAt,
       },
       currentPhase: newPhase,
       phaseProgress: newProgress,
+      includeRegulation,
       status: isFinalClosingLine ? 'COMPLETED' : session.status,
     });
   } catch (error) {

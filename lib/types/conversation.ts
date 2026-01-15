@@ -26,6 +26,7 @@ export interface Message {
   role: 'AI' | 'PARTICIPANT';
   content: string;
   phase?: string;
+  metadata?: any;
   createdAt: Date;
 }
 

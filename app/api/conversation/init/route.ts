@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getFixedQuestionObject, getIntroMessage } from '@/lib/conversation/fixed-questions';
+import { getFixedQuestion, getFixedQuestionObject } from '@/lib/conversation/fixed-questions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         data: { responseStartedAt: new Date() },
       });
 
-      const firstMessage = getIntroMessage(includeRegulation);
+      const firstMessage = getFixedQuestion('intro', 0, includeRegulation);
       const qObj = getFixedQuestionObject('intro', 0, includeRegulation);
 
       await prisma.conversationMessage.create({
@@ -127,6 +127,7 @@ export async function POST(request: NextRequest) {
         role: msg.role,
         content: msg.content,
         phase: msg.phase,
+        metadata: msg.metadata,
         createdAt: msg.createdAt,
       })),
     });
