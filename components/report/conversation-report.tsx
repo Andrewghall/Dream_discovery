@@ -235,7 +235,7 @@ export function ConversationReport({
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="report-charts-grid grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
             <CardTitle>Spider Diagram (Three Scores)</CardTitle>

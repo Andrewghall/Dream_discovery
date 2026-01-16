@@ -255,6 +255,13 @@
     page-break-inside: avoid;
   }
 
+  /* Keep the spider diagram + themes/word cloud together on the same printed page. */
+  #discovery-report .report-charts-grid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    grid-template-columns: 1fr 1fr !important;
+  }
+
   #discovery-report .report-domain-grid > [data-slot='card'],
   #discovery-report .report-themes-card {
     break-inside: avoid;

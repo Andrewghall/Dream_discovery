@@ -109,7 +109,7 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-transparent">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="no-print flex items-center justify-between mb-8">
           <div>
             <div className="flex items-center gap-3">
               <Image src="/ethenta-logo.png" alt="Ethenta" width={128} height={37} priority />
@@ -128,7 +128,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="no-print grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Total Workshops</CardTitle>
@@ -179,7 +179,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Workshops List */}
-        <Card>
+        <Card className="no-print">
           <CardHeader>
             <CardTitle>Workshops</CardTitle>
             <CardDescription>View and manage your discovery workshops</CardDescription>
