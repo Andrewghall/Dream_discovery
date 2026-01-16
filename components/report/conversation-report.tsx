@@ -55,6 +55,22 @@ function maturityScaleForPhase(phase: string): string[] | null {
   return Array.isArray(scale) && scale.length === 5 ? scale : null;
 }
 
+function questionTextForPhase(phase: string): string | null {
+  const questions = FIXED_QUESTIONS[phase as keyof typeof FIXED_QUESTIONS];
+  const triple = Array.isArray(questions) ? questions.find((q) => q.tag === 'triple_rating') : null;
+  const text = triple && typeof triple.text === 'string' ? triple.text.trim() : '';
+  return text ? text : null;
+}
+
+function bandForScore(score: number | null): { band: string; colorClass: string } {
+  if (!score) return { band: '—', colorClass: 'bg-muted' };
+  if (score <= 2) return { band: 'Reactive', colorClass: 'bg-red-100' };
+  if (score <= 4) return { band: 'Emerging', colorClass: 'bg-orange-100' };
+  if (score <= 6) return { band: 'Defined', colorClass: 'bg-yellow-100' };
+  if (score <= 8) return { band: 'Optimised', colorClass: 'bg-green-100' };
+  return { band: 'Intelligent', colorClass: 'bg-blue-100' };
+}
+
 function scoreText(n: number | null) {
   return typeof n === 'number' ? `${n}/10` : '—';
 }
@@ -252,19 +268,14 @@ export function ConversationReport({
           <Card key={p.phase}>
             <CardHeader>
               <CardTitle>{phaseLabel(p.phase)}</CardTitle>
-              <CardDescription>
-                <div>
-                  Current: {scoreText(p.currentScore)} | Target: {scoreText(p.targetScore)} | Projected: {scoreText(p.projectedScore)}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1 whitespace-normal">
-                  Current = where the company is today. Target = where it should be. Projected = where it will be if nothing changes (1–10).
-                </div>
-                <div className="text-xs text-muted-foreground mt-1 whitespace-normal">
-                  {phaseRatingPrompt(p.phase)}
-                </div>
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
+              {questionTextForPhase(p.phase) && (
+                <div className="text-sm font-medium whitespace-pre-wrap leading-snug">
+                  {questionTextForPhase(p.phase)}
+                </div>
+              )}
+
               {(() => {
                 const scale = maturityScaleForPhase(p.phase);
                 if (!scale) return null;
@@ -287,6 +298,36 @@ export function ConversationReport({
                   </div>
                 );
               })()}
+
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground whitespace-normal">
+                  {phaseRatingPrompt(p.phase)}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {(
+                    [
+                      { key: 'current', label: 'Current', helper: 'How things are today', value: p.currentScore },
+                      { key: 'target', label: 'Target', helper: 'Where it needs to be in 18 months', value: p.targetScore },
+                      { key: 'projected', label: 'Projected', helper: 'Where it will be if nothing changes', value: p.projectedScore },
+                    ] as const
+                  ).map((row) => {
+                    const band = bandForScore(row.value);
+                    return (
+                      <div key={row.key} className="rounded-md border p-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold leading-tight">{row.label}</div>
+                            <div className="text-[11px] text-muted-foreground leading-snug">{row.helper}</div>
+                          </div>
+                          <div className={`text-xs px-2 py-1 rounded-md border ${band.colorClass}`}>
+                            {row.value ?? '—'} {row.value ? `/10 · ${band.band}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               {nonEmpty(p.strengths) && (
                 <div>
