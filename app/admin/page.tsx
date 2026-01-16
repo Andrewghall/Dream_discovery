@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Users, MessageSquare, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
 
 interface Workshop {
   id: string;
@@ -21,6 +22,26 @@ interface Workshop {
 export default function AdminDashboard() {
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [loading, setLoading] = useState(true);
+  const [demoReport, setDemoReport] = useState<null | {
+    executiveSummary: string;
+    tone: string | null;
+    feedback: string;
+    inputQuality?: {
+      score: number;
+      label: 'high' | 'medium' | 'low';
+      rationale: string;
+      missingInfoSuggestions: string[];
+    };
+    keyInsights?: Array<{
+      title: string;
+      insight: string;
+      confidence: 'high' | 'medium' | 'low';
+      evidence: string[];
+    }>;
+    phaseInsights: PhaseInsight[];
+    wordCloudThemes: Array<{ text: string; value: number }>;
+  }>(null);
+  const [demoReportLoading, setDemoReportLoading] = useState(false);
 
   useEffect(() => {
     fetchWorkshops();
@@ -37,6 +58,28 @@ export default function AdminDashboard() {
       console.error('Failed to fetch workshops:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDemoReport = async () => {
+    setDemoReportLoading(true);
+    try {
+      const r = await fetch('/api/conversation/report?demo=1&includeRegulation=1', { cache: 'no-store' });
+      if (!r.ok) return;
+      const reportData = await r.json();
+      setDemoReport({
+        executiveSummary: reportData.executiveSummary,
+        tone: reportData.tone,
+        feedback: reportData.feedback,
+        inputQuality: reportData.inputQuality,
+        keyInsights: reportData.keyInsights,
+        phaseInsights: reportData.phaseInsights,
+        wordCloudThemes: reportData.wordCloudThemes,
+      });
+    } catch {
+      // ignore
+    } finally {
+      setDemoReportLoading(false);
     }
   };
 
@@ -210,6 +253,49 @@ export default function AdminDashboard() {
                   </Link>
                 ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="mt-8">
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>Example Report</CardTitle>
+                <CardDescription>Preview a sample report (demo data) from the report generator</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {!demoReport && (
+                  <Button variant="outline" onClick={fetchDemoReport} disabled={demoReportLoading}>
+                    {demoReportLoading ? 'Loading…' : 'Preview Example Report'}
+                  </Button>
+                )}
+                {demoReport && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setDemoReport(null);
+                    }}
+                  >
+                    Hide Example Report
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {demoReport ? (
+              <ConversationReport
+                executiveSummary={demoReport.executiveSummary}
+                tone={demoReport.tone}
+                feedback={demoReport.feedback}
+                inputQuality={demoReport.inputQuality}
+                keyInsights={demoReport.keyInsights}
+                phaseInsights={demoReport.phaseInsights}
+                wordCloudThemes={demoReport.wordCloudThemes}
+              />
+            ) : (
+              <div className="text-sm text-muted-foreground">Click “Preview Example Report” to load a demo report.</div>
             )}
           </CardContent>
         </Card>

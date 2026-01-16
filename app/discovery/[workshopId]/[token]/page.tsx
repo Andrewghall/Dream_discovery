@@ -67,13 +67,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<'IN_PROGRESS' | 'COMPLETED'>('IN_PROGRESS');
   const [isPreparingReport, setIsPreparingReport] = useState(false);
-  const [deployInfo, setDeployInfo] = useState<null | {
-    sha: string | null;
-    ref: string | null;
-    env: string | null;
-    deploymentUrl: string | null;
-    serverTime: string;
-  }>(null);
   const [pendingVoiceTranscript, setPendingVoiceTranscript] = useState<string | null>(null);
   const [language, setLanguage] = useState('en');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -98,7 +91,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     phaseInsights: PhaseInsight[];
     wordCloudThemes: Array<{ text: string; value: number }>;
   }>(null);
-  const [previewingDemoReport, setPreviewingDemoReport] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastSpokenMessageIdRef = useRef<string | null>(null);
@@ -133,26 +125,12 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setPhaseProgress(0);
     setSessionStatus('IN_PROGRESS');
     setIsPreparingReport(false);
-    setDeployInfo(null);
     setPendingVoiceTranscript(null);
     setLanguage('en');
     setVoiceEnabled(true);
     setIncludeRegulation(true);
     setIsLoading(false);
     setReport(null);
-  }, [workshopId, token]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const r = await fetch(`/api/version?bust=${Date.now()}`, { cache: 'no-store' });
-        if (!r.ok) return;
-        const data = await r.json();
-        setDeployInfo(data);
-      } catch {
-        setDeployInfo(null);
-      }
-    })();
   }, [workshopId, token]);
 
   useEffect(() => {
@@ -256,7 +234,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setSessionStatus('IN_PROGRESS');
     setIsPreparingReport(false);
     setReport(null);
-    setPreviewingDemoReport(false);
     setPendingVoiceTranscript(null);
     setDraftMessage('');
     setIsLoading(false);
@@ -313,28 +290,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     } catch (e) {
       console.error('Failed to restart session:', e);
       alert('Failed to restart discovery');
-    }
-  };
-
-  const handlePreviewDemoReport = async () => {
-    try {
-      const r = await fetch(
-        `/api/conversation/report?demo=1&includeRegulation=${includeRegulation ? '1' : '0'}`
-      );
-      if (!r.ok) return;
-      const reportData = await r.json();
-      setReport({
-        executiveSummary: reportData.executiveSummary,
-        tone: reportData.tone,
-        feedback: reportData.feedback,
-        inputQuality: reportData.inputQuality,
-        keyInsights: reportData.keyInsights,
-        phaseInsights: reportData.phaseInsights,
-        wordCloudThemes: reportData.wordCloudThemes,
-      });
-      setPreviewingDemoReport(true);
-    } catch {
-      // ignore
     }
   };
 
@@ -538,23 +493,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                   <span className="font-medium text-foreground">{totalQuestions}</span>
                 </div>
               )}
-              {!previewingDemoReport && (
-                <Button variant="outline" size="sm" onClick={handlePreviewDemoReport}>
-                  Preview Demo Report
-                </Button>
-              )}
-              {previewingDemoReport && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setPreviewingDemoReport(false);
-                    setReport(null);
-                  }}
-                >
-                  Back to Interview
-                </Button>
-              )}
               <Button variant="outline" size="sm" onClick={restartDiscovery}>
                 Start Over
               </Button>
@@ -570,24 +508,15 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             sizes="100vw"
           />
         </div>
-        <div className="bg-muted/50 border-b px-4 py-1 text-xs text-muted-foreground flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1 truncate">
-            Build: Whisper+OpenAI-TTS | Voice: Nova (Female) | Speed: 1.15x
-            {deployInfo?.sha
-              ? ` | Deploy: ${deployInfo.env || 'unknown'} ${deployInfo.ref || ''} ${deployInfo.sha.slice(0, 7)}`
-              : ''}
-          </div>
-          <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap" />
-        </div>
         <ScrollArea className="flex-1 pb-32 sm:pb-40" ref={scrollRef}>
           <>
-            {(sessionStatus === 'COMPLETED' && !previewingDemoReport && (isPreparingReport || !report)) ? (
+            {(sessionStatus === 'COMPLETED' && (isPreparingReport || !report)) ? (
               <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-10">
                 <div className="text-center text-lg font-semibold animate-pulse">
                   Preparing your summary report from the dialogue session.
                 </div>
               </div>
-            ) : ((sessionStatus === 'COMPLETED' && report) || (previewingDemoReport && report)) ? (
+            ) : (sessionStatus === 'COMPLETED' && report) ? (
               <ConversationReport
                 executiveSummary={report.executiveSummary}
                 tone={report.tone}
@@ -615,7 +544,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
           </>
         </ScrollArea>
 
-        {sessionStatus !== 'COMPLETED' && !previewingDemoReport && (
+        {sessionStatus !== 'COMPLETED' && (
           <div className="fixed bottom-0 left-0 right-0 lg:right-80 border-t bg-background/95 backdrop-blur safe-area-bottom">
             <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
               <div className="mb-3 pb-3 border-b">
