@@ -30,6 +30,15 @@ function phaseLabel(phase: string): string {
   return phase;
 }
 
+function phaseRatingPrompt(phase: string): string {
+  if (phase === 'people') return 'Rate how well-equipped you and your colleagues are to do your jobs effectively.';
+  if (phase === 'corporate') return "Rate how well the organisation's processes and decision-making help you do your job.";
+  if (phase === 'customer') return 'Rate how well the organisation meets customer needs and expectations.';
+  if (phase === 'technology') return 'Rate the technology, systems, and tools you use in terms of reliability and ease of use.';
+  if (phase === 'regulation') return 'Rate how well the organisation handles regulatory and compliance requirements.';
+  return 'Rate this area on a 1–10 scale.';
+}
+
 function scoreText(n: number | null) {
   return typeof n === 'number' ? `${n}/10` : '—';
 }
@@ -228,7 +237,15 @@ export function ConversationReport({
             <CardHeader>
               <CardTitle>{phaseLabel(p.phase)}</CardTitle>
               <CardDescription>
-                Current: {scoreText(p.currentScore)} | Target: {scoreText(p.targetScore)} | Projected: {scoreText(p.projectedScore)}
+                <div>
+                  Current: {scoreText(p.currentScore)} | Target: {scoreText(p.targetScore)} | Projected: {scoreText(p.projectedScore)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 whitespace-normal">
+                  Current = where the company is today. Target = where it should be. Projected = where it will be if nothing changes (1–10).
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 whitespace-normal">
+                  {phaseRatingPrompt(p.phase)}
+                </div>
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">

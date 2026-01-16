@@ -254,7 +254,7 @@ export async function sendDiscoveryReportEmail(params: {
   }
 
   const scoresTableNeeded =
-    sectionTitleSize + 12 + cardPad * 2 + 18 + 16 + phaseInsights.length * tableLine + 10;
+    sectionTitleSize + 12 + cardPad * 2 + 18 + 16 + phaseInsights.length * tableLine + 34;
   ensureSpace(scoresTableNeeded);
 
   y = drawCard('Scores by Domain (1–10)', (x, yTop, w) => {
@@ -262,6 +262,15 @@ export async function sendDiscoveryReportEmail(params: {
     const col1 = x;
     const col2 = x + w * 0.42;
     const col3 = x + w * 0.67;
+
+    drawWrapped(
+      'Current = where the company is today. Target = where it should be. Projected = where it will be if nothing changes.',
+      x,
+      w,
+      8.5,
+      2,
+      colors.muted
+    );
 
     page.drawText('Domain', { x: col1, y: y - 10, size: tableFontSize, font: bold, color: colors.ink });
     page.drawText('Current', { x: col2, y: y - 10, size: tableFontSize, font: bold, color: colors.ink });
