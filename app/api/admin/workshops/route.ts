@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     // TODO: Add authentication and get orgId from session
@@ -26,17 +28,23 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const workshopsWithStats = workshops.map((workshop: any) => ({
+    type WorkshopRow = (typeof workshops)[number];
+    type WorkshopParticipantRow = WorkshopRow['participants'][number];
+
+    const workshopsWithStats = workshops.map((workshop: WorkshopRow) => ({
       id: workshop.id,
       name: workshop.name,
       workshopType: workshop.workshopType,
       status: workshop.status,
       scheduledDate: workshop.scheduledDate,
       participantCount: workshop._count.participants,
-      completedResponses: workshop.participants.filter((p: any) => p.responseCompletedAt).length,
+      completedResponses: workshop.participants.filter((p: WorkshopParticipantRow) => p.responseCompletedAt).length,
     }));
 
-    return NextResponse.json({ workshops: workshopsWithStats });
+    return NextResponse.json(
+      { workshops: workshopsWithStats },
+      { headers: { 'Cache-Control': 'no-store' } }
+    );
   } catch (error) {
     console.error('Error fetching workshops:', error);
     return NextResponse.json(
@@ -82,11 +90,11 @@ export async function POST(request: NextRequest) {
         businessContext,
         workshopType: workshopType || 'CUSTOM',
         includeRegulation: includeRegulation ?? true,
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
-        responseDeadline: responseDeadline ? new Date(responseDeadline) : null,
+        scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+        responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,
         organizationId: 'demo-org', // Using demo org from seed data
         createdById: 'demo-user', // Using demo user from seed data
-      } as any,
+      },
     });
 
     return NextResponse.json({ workshop });

@@ -69,19 +69,22 @@ Text:\n${JSON.stringify(cleaned)}`;
   });
 
   const raw = completion.choices?.[0]?.message?.content || '{}';
-  let obj: any = {};
+  let obj: unknown = {};
   try {
-    obj = JSON.parse(raw);
+    obj = JSON.parse(raw) as unknown;
   } catch {
     obj = {};
   }
 
-  const primaryType = safePrimaryType(obj.primaryType);
-  const confidence = typeof obj.confidence === 'number' ? Math.max(0, Math.min(1, obj.confidence)) : null;
-  const keywords = Array.isArray(obj.keywords)
-    ? obj.keywords.map((k: any) => String(k).trim()).filter(Boolean).slice(0, 8)
+  const rec: Record<string, unknown> =
+    obj && typeof obj === 'object' && !Array.isArray(obj) ? (obj as Record<string, unknown>) : {};
+
+  const primaryType = safePrimaryType(typeof rec.primaryType === 'string' ? rec.primaryType : '');
+  const confidence = typeof rec.confidence === 'number' ? Math.max(0, Math.min(1, rec.confidence)) : null;
+  const keywords = Array.isArray(rec.keywords)
+    ? rec.keywords.map((k) => String(k).trim()).filter(Boolean).slice(0, 8)
     : [];
-  const suggestedArea = obj.suggestedArea ? String(obj.suggestedArea).trim() : null;
+  const suggestedArea = rec.suggestedArea ? String(rec.suggestedArea).trim() : null;
 
   return { primaryType, confidence, keywords, suggestedArea };
 }

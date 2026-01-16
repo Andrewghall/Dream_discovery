@@ -4,6 +4,34 @@ import { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+type SpeechRecognitionAlternative = { transcript: string };
+type SpeechRecognitionResult = { 0: SpeechRecognitionAlternative; isFinal: boolean };
+type SpeechRecognitionResultList = ArrayLike<SpeechRecognitionResult> & { length: number };
+type SpeechRecognitionResultEvent = { results: SpeechRecognitionResultList };
+type SpeechRecognitionErrorEvent = { error: string };
+
+type SpeechRecognitionInstance = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onstart: null | (() => void);
+  onresult: null | ((event: SpeechRecognitionResultEvent) => void);
+  onerror: null | ((event: SpeechRecognitionErrorEvent) => void);
+  onend: null | (() => void);
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as Record<string, unknown>;
+  const ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  return typeof ctor === 'function' ? (ctor as SpeechRecognitionConstructor) : null;
+}
+
 interface VoiceInputProps {
   onTranscript: (text: string) => void;
   onInterimTranscript?: (text: string) => void;
@@ -14,98 +42,94 @@ interface VoiceInputProps {
 
 export function VoiceInput({ onTranscript, onInterimTranscript, language, voiceEnabled, onVoiceToggle }: VoiceInputProps) {
   const [isListening, setIsListening] = useState(false);
-  const [isSupported, setIsSupported] = useState(false);
+  const [isSupported] = useState(() => getSpeechRecognitionConstructor() !== null);
   const [error, setError] = useState<string | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
   useEffect(() => {
     // Check if browser supports speech recognition
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const supported = !!SpeechRecognition;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (SpeechRecognition) {
+      const supported = true;
       console.log('🎤 VoiceInput component mounted');
       console.log('🎤 Speech recognition supported:', supported);
       console.log('🎤 Voice enabled:', voiceEnabled);
-      setIsSupported(supported);
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true; // Keep listening
+      recognition.interimResults = true; // Show interim results
+      recognition.lang = language === 'en' ? 'en-GB' : language; // UK English
+      recognition.maxAlternatives = 1;
 
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true; // Keep listening
-        recognition.interimResults = true; // Show interim results
-        recognition.lang = language === 'en' ? 'en-GB' : language; // UK English
-        recognition.maxAlternatives = 1;
+      recognition.onstart = () => {
+        console.log('🎤 Speech recognition started');
+        setError(null);
+      };
 
-        recognition.onstart = () => {
-          console.log('🎤 Speech recognition started');
+      recognition.onresult = (event) => {
+        console.log('🎤 Speech detected:', event.results);
+
+        // Get both interim and final transcripts
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = 0; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        // Show interim results in real-time
+        if (interimTranscript && onInterimTranscript) {
+          onInterimTranscript(interimTranscript);
+        }
+
+        // Send final transcript
+        if (finalTranscript) {
+          console.log('🎤 Final transcript:', finalTranscript);
+          if (onInterimTranscript) {
+            onInterimTranscript(''); // Clear interim
+          }
+          onTranscript(finalTranscript);
+          recognition.stop();
+          setIsListening(false);
           setError(null);
-        };
+        }
+      };
 
-        recognition.onresult = (event: any) => {
-          console.log('🎤 Speech detected:', event.results);
-          
-          // Get both interim and final transcripts
-          let interimTranscript = '';
-          let finalTranscript = '';
-          
-          for (let i = 0; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalTranscript += transcript;
-            } else {
-              interimTranscript += transcript;
-            }
-          }
-          
-          // Show interim results in real-time
-          if (interimTranscript && onInterimTranscript) {
-            onInterimTranscript(interimTranscript);
-          }
-          
-          // Send final transcript
-          if (finalTranscript) {
-            console.log('🎤 Final transcript:', finalTranscript);
-            if (onInterimTranscript) {
-              onInterimTranscript(''); // Clear interim
-            }
-            onTranscript(finalTranscript);
-            recognition.stop();
-            setIsListening(false);
-            setError(null);
-          }
-        };
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
 
-        recognition.onerror = (event: any) => {
-          console.error('Speech recognition error:', event.error);
-          setIsListening(false);
-          
-          // Handle specific errors with user-friendly messages
-          switch (event.error) {
-            case 'no-speech':
-              setError('No speech detected. Please try again.');
-              break;
-            case 'audio-capture':
-              setError('Microphone not found. Please check your device.');
-              break;
-            case 'not-allowed':
-              setError('Microphone access denied. Please allow microphone access.');
-              break;
-            case 'network':
-              setError('Network error. Please check your connection.');
-              break;
-            default:
-              setError(`Error: ${event.error}`);
-          }
-          
-          // Clear error after 3 seconds
-          setTimeout(() => setError(null), 3000);
-        };
+        // Handle specific errors with user-friendly messages
+        switch (event.error) {
+          case 'no-speech':
+            setError('No speech detected. Please try again.');
+            break;
+          case 'audio-capture':
+            setError('Microphone not found. Please check your device.');
+            break;
+          case 'not-allowed':
+            setError('Microphone access denied. Please allow microphone access.');
+            break;
+          case 'network':
+            setError('Network error. Please check your connection.');
+            break;
+          default:
+            setError(`Error: ${event.error}`);
+        }
 
-        recognition.onend = () => {
-          setIsListening(false);
-        };
+        // Clear error after 3 seconds
+        setTimeout(() => setError(null), 3000);
+      };
 
-        recognitionRef.current = recognition;
-      }
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
     }
 
     return () => {
@@ -128,11 +152,13 @@ export function VoiceInput({ onTranscript, onInterimTranscript, language, voiceE
         recognitionRef.current.start();
         setIsListening(true);
         setError(null);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Microphone access error:', err);
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        const name =
+          typeof err === 'object' && err && 'name' in err ? String((err as { name?: unknown }).name) : '';
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
           setError('Microphone access denied. Please allow microphone access in your browser settings.');
-        } else if (err.name === 'NotFoundError') {
+        } else if (name === 'NotFoundError') {
           setError('No microphone found. Please connect a microphone.');
         } else {
           setError('Could not access microphone. Please check your settings.');

@@ -129,6 +129,10 @@
 }
 
 @media print {
+  @page {
+    margin: 16mm;
+  }
+
   .no-print {
     display: none !important;
   }
@@ -136,12 +140,32 @@
   body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    background: white !important;
+  }
+
+  html,
+  body {
+    height: auto !important;
+  }
+
+  /* Print only the report content */
+  body * {
+    visibility: hidden !important;
+  }
+
+  #discovery-report,
+  #discovery-report * {
+    visibility: visible !important;
   }
 
   #discovery-report {
     max-width: none !important;
     padding-left: 0 !important;
     padding-right: 0 !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
   }
 
   /* Radix ScrollArea can clip print output to the visible viewport. */
@@ -159,8 +183,13 @@
 
   /* Don't split key report sections across pages */
   #discovery-report [data-slot='card'],
-  #discovery-report svg,
-  #discovery-report .flex {
+  #discovery-report svg {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #discovery-report .report-domain-grid > [data-slot='card'],
+  #discovery-report .report-themes-card {
     break-inside: avoid;
     page-break-inside: avoid;
   }

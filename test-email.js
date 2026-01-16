@@ -1,6 +1,6 @@
 // Quick test script to verify Resend email sending
-require('dotenv').config();
-const { Resend } = require('resend');
+import 'dotenv/config';
+import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 

@@ -36,21 +36,23 @@ function extractTripleRatings(answer: string): { current: number | null; target:
   };
 }
 
-type QuestionMeta =
-  | {
-      kind: 'question';
-      tag: string;
-      index: number;
-      phase: string;
-    }
-  | { kind: string; [k: string]: any };
+type QuestionMeta = {
+  kind: 'question';
+  tag: string;
+  index: number;
+  phase: string;
+};
 
-function getQuestionMeta(m: any): QuestionMeta | null {
-  const meta = (m?.metadata as any) || null;
-  if (!meta) return null;
-  if (meta.kind !== 'question') return null;
-  if (!meta.tag || !meta.phase) return null;
-  return meta as QuestionMeta;
+function getQuestionMeta(m: unknown): QuestionMeta | null {
+  const meta =
+    m && typeof m === 'object' && 'metadata' in m
+      ? (m as { metadata?: unknown }).metadata
+      : null;
+  const rec = meta && typeof meta === 'object' ? (meta as Record<string, unknown>) : null;
+  if (!rec) return null;
+  if (rec.kind !== 'question') return null;
+  if (typeof rec.tag !== 'string' || typeof rec.phase !== 'string' || typeof rec.index !== 'number') return null;
+  return { kind: 'question', tag: rec.tag, index: rec.index, phase: rec.phase };
 }
 
 function inferTagFromQuestionText(question: string, phase: string | null): string | null {
@@ -545,14 +547,22 @@ export async function GET(request: NextRequest) {
       const m = messages[i];
       if (m.role !== 'PARTICIPANT') continue;
 
-      const kind = (m.metadata as any)?.kind;
+      const metaRec =
+        m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)
+          ? (m.metadata as Record<string, unknown>)
+          : null;
+      const kind = metaRec && typeof metaRec.kind === 'string' ? metaRec.kind : null;
       if (kind === 'clarification') continue;
 
       let questionMsg: (typeof messages)[number] | null = null;
       for (let j = i - 1; j >= 0; j--) {
         const prev = messages[j];
         if (prev.role !== 'AI') continue;
-        const prevKind = (prev.metadata as any)?.kind;
+        const prevMetaRec =
+          prev.metadata && typeof prev.metadata === 'object' && !Array.isArray(prev.metadata)
+            ? (prev.metadata as Record<string, unknown>)
+            : null;
+        const prevKind = prevMetaRec && typeof prevMetaRec.kind === 'string' ? prevMetaRec.kind : null;
         if (prevKind === 'clarification_response') continue;
         questionMsg = prev;
         break;
@@ -563,7 +573,11 @@ export async function GET(request: NextRequest) {
       const meta = getQuestionMeta(questionMsg);
       const tag = meta?.tag || inferTagFromQuestionText(question, phase) || null;
 
-      const translatedEn = (m.metadata as any)?.translation?.en;
+      const translation =
+        metaRec && metaRec.translation && typeof metaRec.translation === 'object' && !Array.isArray(metaRec.translation)
+          ? (metaRec.translation as Record<string, unknown>)
+          : null;
+      const translatedEn = translation && typeof translation.en === 'string' ? translation.en : null;
       const answerText = typeof translatedEn === 'string' && translatedEn.trim() ? translatedEn : m.content;
 
       qaPairs.push({ phase, question, answer: answerText, createdAt: m.createdAt, tag });
@@ -620,8 +634,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const includeRegulation =
-      (session as any).includeRegulation ?? (session.workshop as any)?.includeRegulation ?? true;
+    const includeRegulation = session.includeRegulation ?? session.workshop?.includeRegulation ?? true;
     const phases = includeRegulation
       ? ['people', 'corporate', 'customer', 'technology', 'regulation']
       : ['people', 'corporate', 'customer', 'technology'];
@@ -668,14 +681,22 @@ export async function GET(request: NextRequest) {
     try {
       const participantEmail = session.participant?.email || null;
       const participantName = session.participant?.name || 'Participant';
-      const participantToken = (session.participant as any)?.discoveryToken as string | undefined;
+      const participantToken = session.participant?.discoveryToken;
       const hasEmailConfig = !!process.env.RESEND_API_KEY && !!process.env.FROM_EMAIL;
 
-      const alreadyEmailed = (session.messages || []).some((m: any) => {
-        const meta = (m?.metadata as any) || null;
+      const alreadyEmailed = (session.messages || []).some((m) => {
+        const meta =
+          m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)
+            ? (m.metadata as Record<string, unknown>)
+            : null;
         if (!meta) return false;
-        if (meta?.reportEmail?.sentAt) return true;
-        if (meta?.kind === 'report_email' && meta?.sentAt) return true;
+
+        const reportEmail =
+          meta.reportEmail && typeof meta.reportEmail === 'object' && !Array.isArray(meta.reportEmail)
+            ? (meta.reportEmail as Record<string, unknown>)
+            : null;
+        if (reportEmail && reportEmail.sentAt) return true;
+        if (meta.kind === 'report_email' && meta.sentAt) return true;
         return false;
       });
 
@@ -709,17 +730,21 @@ export async function GET(request: NextRequest) {
           })),
         });
 
-        const maybe = emailResult as any;
+        const maybe: unknown = emailResult;
+        const obj =
+          maybe && typeof maybe === 'object' && !Array.isArray(maybe)
+            ? (maybe as Record<string, unknown>)
+            : null;
+        const data = obj && obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data) ? (obj.data as Record<string, unknown>) : null;
         const resendId =
-          maybe?.data?.id ??
-          maybe?.id ??
-          maybe?.data?.messageId ??
-          maybe?.messageId ??
-          null;
+          (data && typeof data.id === 'string' ? data.id : null) ??
+          (obj && typeof obj.id === 'string' ? obj.id : null) ??
+          (data && typeof data.messageId === 'string' ? data.messageId : null) ??
+          (obj && typeof obj.messageId === 'string' ? obj.messageId : null);
 
         const latestAi = [...(session.messages || [])]
           .reverse()
-          .find((m: any) => m?.role === 'AI');
+          .find((m) => m?.role === 'AI');
 
         const marker = {
           kind: 'report_email',
@@ -728,7 +753,10 @@ export async function GET(request: NextRequest) {
         };
 
         if (latestAi?.id) {
-          const prevMeta = (latestAi.metadata as any) || {};
+          const prevMeta =
+            latestAi.metadata && typeof latestAi.metadata === 'object' && !Array.isArray(latestAi.metadata)
+              ? (latestAi.metadata as Record<string, unknown>)
+              : {};
           await prisma.conversationMessage.update({
             where: { id: latestAi.id },
             data: {

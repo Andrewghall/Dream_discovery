@@ -245,9 +245,11 @@ export async function speakWithOpenAI(text: string): Promise<void> {
     try {
       await audio.play();
       console.log('✅ Playing OpenAI TTS audio');
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Most common in Chrome/Safari: autoplay policy blocks play() before user interaction.
-      if (e?.name === 'NotAllowedError') {
+      const name =
+        typeof e === 'object' && e && 'name' in e ? String((e as { name?: unknown }).name) : '';
+      if (name === 'NotAllowedError') {
         console.warn('🔇 Autoplay blocked; will retry after user interaction');
         pendingText = text;
         hasUserInteracted = false;

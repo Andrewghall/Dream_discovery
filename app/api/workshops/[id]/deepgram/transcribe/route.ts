@@ -84,12 +84,15 @@ export async function POST(
     });
 
     const upstreamText = await dgRes.text();
-    let payload: any = {};
+    let payload: unknown = {};
     try {
-      payload = upstreamText ? JSON.parse(upstreamText) : {};
+      payload = upstreamText ? (JSON.parse(upstreamText) as unknown) : {};
     } catch {
       payload = { raw: upstreamText };
     }
+
+    const payloadRec: Record<string, unknown> =
+      payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
 
     if (!dgRes.ok) {
       console.error('Deepgram transcription failed', {
@@ -116,17 +119,29 @@ export async function POST(
       );
     }
 
-    const alt =
-      payload?.results?.channels?.[0]?.alternatives?.[0] ||
-      payload?.channels?.[0]?.alternatives?.[0];
+    const results =
+      payloadRec.results && typeof payloadRec.results === 'object'
+        ? (payloadRec.results as Record<string, unknown>)
+        : null;
+    const channels =
+      results && Array.isArray((results as { channels?: unknown }).channels)
+        ? (((results as { channels?: unknown }).channels as unknown[]) || [])
+        : Array.isArray(payloadRec.channels)
+          ? (payloadRec.channels as unknown[])
+          : [];
+    const channel0 = channels[0] && typeof channels[0] === 'object' ? (channels[0] as Record<string, unknown>) : null;
+    const alternatives =
+      channel0 && Array.isArray(channel0.alternatives) ? (channel0.alternatives as unknown[]) : [];
+    const alt0 = alternatives[0] && typeof alternatives[0] === 'object' ? (alternatives[0] as Record<string, unknown>) : null;
 
-    const text = String(alt?.transcript || '').trim();
+    const transcript = alt0 && typeof alt0.transcript === 'string' ? alt0.transcript : '';
+    const text = String(transcript || '').trim();
 
     console.log('✅ Deepgram transcript extracted', {
       length: text.length,
       preview: text.slice(0, 140),
     });
-    const confidence = typeof alt?.confidence === 'number' ? alt.confidence : null;
+    const confidence = alt0 && typeof alt0.confidence === 'number' ? alt0.confidence : null;
 
     return NextResponse.json({ text, confidence });
   } catch (error) {

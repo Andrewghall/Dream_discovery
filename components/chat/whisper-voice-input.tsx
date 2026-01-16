@@ -229,19 +229,29 @@ export function WhisperVoiceInput({ onTranscript, language, voiceEnabled, onVoic
         body: formData,
       });
 
-      const payload = await response.json().catch(() => ({}));
+      const payload: unknown = await response.json().catch(() => ({} as unknown));
       if (!response.ok) {
-        const message = (payload as any)?.error || 'Transcription failed';
+        const message =
+          payload && typeof payload === 'object' && 'error' in payload
+            ? String((payload as { error?: unknown }).error || 'Transcription failed')
+            : 'Transcription failed';
         throw new Error(message);
       }
 
-      const text = (payload as any)?.text;
+      const text =
+        payload && typeof payload === 'object' && 'text' in payload
+          ? (payload as { text?: unknown }).text
+          : null;
       console.log('✅ Transcription received:', text);
-      if (text) onTranscript(text);
+      if (typeof text === 'string' && text) onTranscript(text);
       setError(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ Transcription error:', err);
-      setError(err?.message || 'Failed to transcribe audio. Please try again.');
+      const message =
+        typeof err === 'object' && err && 'message' in err
+          ? String((err as { message?: unknown }).message)
+          : 'Failed to transcribe audio. Please try again.';
+      setError(message);
       setTimeout(() => setError(null), 4000);
     } finally {
       setIsProcessing(false);
@@ -391,11 +401,13 @@ export function WhisperVoiceInput({ onTranscript, language, voiceEnabled, onVoic
       setInputLevel(0);
       console.log('🎤 Recording started (WAV/PCM)');
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ Microphone access error:', err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      const name =
+        typeof err === 'object' && err && 'name' in err ? String((err as { name?: unknown }).name) : '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         setError('Microphone access denied. Please allow microphone access (tap Start once).');
-      } else if (err.name === 'NotFoundError') {
+      } else if (name === 'NotFoundError') {
         setError('No microphone found. Please connect a microphone.');
       } else {
         setError('Could not access microphone. Please check your settings.');

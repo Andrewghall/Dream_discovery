@@ -110,15 +110,14 @@ export async function POST(request: NextRequest) {
     const currentPhase = session.currentPhase as ConversationPhase;
     let newPhase: ConversationPhase = currentPhase;
     let newProgress = session.phaseProgress;
-    const includeRegulation =
-      (session as any).includeRegulation ?? (session.workshop as any)?.includeRegulation ?? true;
+    const includeRegulation = session.includeRegulation ?? session.workshop.includeRegulation ?? true;
 
     const lastAiMessage = [...session.messages].reverse().find((m) => m.role === 'AI');
     const questionAsked = lastAiMessage?.content || '';
 
     // If user sent a message, save it and analyze
     if (userMessage) {
-      const sessionLanguage = ((session as any)?.language || 'en') as string;
+      const sessionLanguage = session.language || 'en';
       const translatedToEnglish = await translateToEnglish({ text: userMessage, sourceLanguage: sessionLanguage }).catch(
         () => userMessage
       );
@@ -187,7 +186,7 @@ export async function POST(request: NextRequest) {
             currentPhase: nextPhase,
             phaseProgress: 0,
             updatedAt: new Date(),
-          } as any,
+          },
         });
 
         return NextResponse.json({

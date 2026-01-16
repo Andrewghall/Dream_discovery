@@ -71,7 +71,7 @@ export default function WorkshopDetailPage({ params }: PageProps) {
 
   const fetchWorkshop = async () => {
     try {
-      const response = await fetch(`/api/admin/workshops/${id}`);
+      const response = await fetch(`/api/admin/workshops/${id}?bust=${Date.now()}`, { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         setWorkshop(data.workshop);
@@ -177,8 +177,15 @@ export default function WorkshopDetailPage({ params }: PageProps) {
         console.log('📊 Response data:', data);
 
         if (data.errors?.length) {
-          const errorText = data.errors
-            .map((e: any) => `${e.email}: ${e.error}`)
+          const errors: unknown = data.errors;
+          const list = Array.isArray(errors) ? errors : [];
+          const errorText = list
+            .map((e) => {
+              const rec = e && typeof e === 'object' ? (e as Record<string, unknown>) : {};
+              const email = typeof rec.email === 'string' ? rec.email : 'unknown';
+              const err = typeof rec.error === 'string' ? rec.error : '';
+              return `${email}: ${err}`;
+            })
             .join('\n');
           alert(`Some emails failed to send:\n\n${errorText}`);
         }

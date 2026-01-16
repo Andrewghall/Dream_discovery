@@ -69,23 +69,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       text: transcription,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Transcription error:', error);
-    console.error('Error details:', error.message);
+    const message =
+      typeof error === 'object' && error && 'message' in error
+        ? String((error as { message?: unknown }).message)
+        : 'Unknown error';
+    console.error('Error details:', message);
 
-    const status = typeof error?.status === 'number' ? error.status : 500;
+    const status =
+      typeof error === 'object' && error && 'status' in error && typeof (error as { status?: unknown }).status === 'number'
+        ? (error as { status: number }).status
+        : 500;
     if (status === 401) {
       return NextResponse.json(
         {
           error: 'OpenAI authentication failed (invalid OPENAI_API_KEY)',
-          detail: error?.message || 'Unauthorized',
+          detail: message || 'Unauthorized',
         },
         { status: 401 }
       );
     }
 
     return NextResponse.json(
-      { error: 'Failed to transcribe audio: ' + error.message },
+      { error: 'Failed to transcribe audio: ' + message },
       { status }
     );
   }

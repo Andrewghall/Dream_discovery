@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session ID required' }, { status: 400 });
     }
 
-    const updateData: any = {};
-    if (language !== undefined) updateData.language = language;
-    if (voiceEnabled !== undefined) updateData.voiceEnabled = voiceEnabled;
+    const updateData: { language?: string; voiceEnabled?: boolean } = {};
+    if (typeof language === 'string') updateData.language = language;
+    if (typeof voiceEnabled === 'boolean') updateData.voiceEnabled = voiceEnabled;
 
     await prisma.conversationSession.update({
       where: { id: sessionId },

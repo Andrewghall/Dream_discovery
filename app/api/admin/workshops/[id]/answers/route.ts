@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { ConversationStatus, Prisma } from '@prisma/client';
 
 const STOPWORDS = new Set([
   'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
@@ -12,6 +13,16 @@ function extractRatingFromAnswer(answer: string): number | null {
   if (!Number.isFinite(n)) return null;
   if (n < 1 || n > 10) return null;
   return n;
+}
+
+function metaKind(meta: unknown): string | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const rec = meta as Record<string, unknown>;
+  return typeof rec.kind === 'string' ? rec.kind : null;
+}
+
+function isConversationStatus(value: string): value is ConversationStatus {
+  return (Object.values(ConversationStatus) as string[]).includes(value);
 }
 
 function isRatingQuestion(question: string): boolean {
@@ -54,10 +65,10 @@ export async function GET(
     const participantId = request.nextUrl.searchParams.get('participantId');
     const status = request.nextUrl.searchParams.get('status');
 
-    const where: any = { workshopId };
+    const where: Prisma.ConversationSessionWhereInput = { workshopId };
     if (sessionId) where.id = sessionId;
     if (participantId) where.participantId = participantId;
-    if (status) where.status = status;
+    if (status && isConversationStatus(status)) where.status = status;
 
     const sessions = await prisma.conversationSession.findMany({
       where,
@@ -87,7 +98,7 @@ export async function GET(
         const m = messages[i];
         if (m.role !== 'PARTICIPANT') continue;
 
-        const kind = (m.metadata as any)?.kind;
+        const kind = metaKind(m.metadata);
         if (kind === 'clarification') continue;
 
         // Find the most recent AI question before this answer.
@@ -95,7 +106,7 @@ export async function GET(
         for (let j = i - 1; j >= 0; j--) {
           const prev = messages[j];
           if (prev.role !== 'AI') continue;
-          const prevKind = (prev.metadata as any)?.kind;
+          const prevKind = metaKind(prev.metadata);
           if (prevKind === 'clarification_response') continue;
           questionMsg = prev;
           break;

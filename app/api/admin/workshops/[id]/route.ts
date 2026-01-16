@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,7 +23,10 @@ export async function GET(
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ workshop });
+    return NextResponse.json(
+      { workshop },
+      { headers: { 'Cache-Control': 'no-store' } }
+    );
   } catch (error) {
     console.error('Error fetching workshop:', error);
     return NextResponse.json(

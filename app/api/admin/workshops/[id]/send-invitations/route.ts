@@ -89,13 +89,17 @@ export async function POST(
 
         console.log(`   - ✅ Email sent! Result:`, emailResult);
 
-        const maybeResult = emailResult as any;
+        const maybeResult: unknown = emailResult;
+        const obj =
+          maybeResult && typeof maybeResult === 'object' && !Array.isArray(maybeResult)
+            ? (maybeResult as Record<string, unknown>)
+            : null;
+        const data = obj && obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data) ? (obj.data as Record<string, unknown>) : null;
         const resendId =
-          maybeResult?.data?.id ??
-          maybeResult?.id ??
-          maybeResult?.data?.messageId ??
-          maybeResult?.messageId ??
-          null;
+          (data && typeof data.id === 'string' ? data.id : null) ??
+          (obj && typeof obj.id === 'string' ? obj.id : null) ??
+          (data && typeof data.messageId === 'string' ? data.messageId : null) ??
+          (obj && typeof obj.messageId === 'string' ? obj.messageId : null);
 
         // Mark email as sent
         await prisma.workshopParticipant.update({

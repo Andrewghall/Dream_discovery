@@ -39,9 +39,9 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const includeRegulation = (participant.workshop as any).includeRegulation ?? true;
+      const includeRegulation = participant.workshop.includeRegulation ?? true;
 
-      let session: any = await prisma.conversationSession.create({
+      const createdSession = await prisma.conversationSession.create({
         data: {
           workshopId,
           participantId: participant.id,
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
           phaseProgress: 0,
           voiceEnabled: true,
           includeRegulation,
-        } as any,
+        },
         include: {
           messages: true,
         },
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
       await prisma.conversationMessage.create({
         data: {
-          sessionId: session.id,
+          sessionId: createdSession.id,
           role: 'AI',
           content: firstMessage,
           phase: 'intro',
@@ -76,8 +76,8 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      session = await prisma.conversationSession.findUnique({
-        where: { id: session.id },
+      const refetchedSession = await prisma.conversationSession.findUnique({
+        where: { id: createdSession.id },
         include: {
           messages: {
             orderBy: { createdAt: 'asc' },
@@ -85,16 +85,22 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const safeSession = session as any;
+      if (!refetchedSession) {
+        return NextResponse.json(
+          { error: 'Failed to initialize session' },
+          { status: 500 }
+        );
+      }
+
       return NextResponse.json({
-        sessionId: safeSession.id,
-        status: safeSession.status,
-        currentPhase: safeSession.currentPhase,
-        phaseProgress: safeSession.phaseProgress,
-        language: safeSession.language,
-        voiceEnabled: safeSession.voiceEnabled,
-        includeRegulation: safeSession.includeRegulation,
-        messages: (safeSession.messages || []).map((msg: any) => ({
+        sessionId: refetchedSession.id,
+        status: refetchedSession.status,
+        currentPhase: refetchedSession.currentPhase,
+        phaseProgress: refetchedSession.phaseProgress,
+        language: refetchedSession.language,
+        voiceEnabled: refetchedSession.voiceEnabled,
+        includeRegulation: refetchedSession.includeRegulation,
+        messages: (refetchedSession.messages || []).map((msg) => ({
           id: msg.id,
           role: msg.role,
           content: msg.content,
@@ -106,7 +112,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if an active (incomplete) session already exists
-    let session: any = await prisma.conversationSession.findFirst({
+    let session = await prisma.conversationSession.findFirst({
       where: {
         workshopId,
         participantId: participant.id,
@@ -137,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     // Create new session if doesn't exist or previous was completed
     if (!session) {
-      const includeRegulation = (participant.workshop as any).includeRegulation ?? true;
+      const includeRegulation = participant.workshop.includeRegulation ?? true;
       session = await prisma.conversationSession.create({
         data: {
           workshopId,
@@ -146,7 +152,7 @@ export async function POST(request: NextRequest) {
           phaseProgress: 0,
           voiceEnabled: true,
           includeRegulation,
-        } as any,
+        },
         include: {
           messages: true,
         },
@@ -190,6 +196,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Safety backfill: if we have a completed session but the participant timestamp is missing,
+    // set responseCompletedAt so admin screens reflect completion.
+    if (session?.status === 'COMPLETED' && !participant.responseCompletedAt) {
+      await prisma.workshopParticipant.update({
+        where: { id: participant.id },
+        data: { responseCompletedAt: session.completedAt || new Date() },
+      });
+    }
+
     if (!session) {
       return NextResponse.json(
         { error: 'Failed to initialize session' },
@@ -197,17 +212,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const safeSession = session as any;
-
     return NextResponse.json({
-      sessionId: safeSession.id,
-      status: safeSession.status,
-      currentPhase: safeSession.currentPhase,
-      phaseProgress: safeSession.phaseProgress,
-      language: safeSession.language,
-      voiceEnabled: safeSession.voiceEnabled,
-      includeRegulation: safeSession.includeRegulation,
-      messages: (safeSession.messages || []).map((msg: any) => ({
+      sessionId: session.id,
+      status: session.status,
+      currentPhase: session.currentPhase,
+      phaseProgress: session.phaseProgress,
+      language: session.language,
+      voiceEnabled: session.voiceEnabled,
+      includeRegulation: session.includeRegulation,
+      messages: (session.messages || []).map((msg) => ({
         id: msg.id,
         role: msg.role,
         content: msg.content,

@@ -87,13 +87,18 @@ export async function sendDiscoveryInvitation(params: SendInvitationParams) {
     html,
   });
 
-  const maybeResult = result as any;
-  if (maybeResult?.error) {
-    const message =
-      typeof maybeResult.error === 'string'
-        ? maybeResult.error
-        : maybeResult.error?.message || JSON.stringify(maybeResult.error);
-    throw new Error(message);
+  const maybeResult: unknown = result;
+  if (maybeResult && typeof maybeResult === 'object' && 'error' in maybeResult) {
+    const error = (maybeResult as { error?: unknown }).error;
+    if (error) {
+      const message =
+        typeof error === 'string'
+          ? error
+          : typeof error === 'object' && error && 'message' in error
+            ? String((error as { message?: unknown }).message)
+            : JSON.stringify(error);
+      throw new Error(message);
+    }
   }
 
   console.log('✅ Email sent successfully:', result);

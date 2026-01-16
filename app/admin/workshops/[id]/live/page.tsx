@@ -99,7 +99,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const watchdogIntervalRef = useRef<number | null>(null);
   const lastChunkAtRef = useRef<number>(0);
   const lastHealthyAtRef = useRef<number>(0);
-  const wakeLockRef = useRef<any>(null);
+  const wakeLockRef = useRef<null | { release?: () => Promise<void> }>(null);
 
   const esRef = useRef<EventSource | null>(null);
 
@@ -271,7 +271,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
       } catch {
         // ignore
       }
-      wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+      const nav = navigator as unknown as {
+        wakeLock?: {
+          request: (type: 'screen') => Promise<{ release?: () => Promise<void> }>;
+        };
+      };
+      if (!nav.wakeLock) return;
+      wakeLockRef.current = await nav.wakeLock.request('screen');
     } catch {
       // ignore
     }

@@ -16,6 +16,40 @@ import { setTtsEnabled, speakWithOpenAI } from '@/lib/utils/openai-tts';
 import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
 import { Button } from '@/components/ui/button';
 
+type QuestionMeta = {
+  kind: 'question';
+  phase: ConversationPhase;
+  index: number;
+  tag?: string;
+  maturityScale?: string[];
+};
+
+const ALL_PHASES: readonly ConversationPhase[] = [
+  'intro',
+  'people',
+  'corporate',
+  'customer',
+  'technology',
+  'regulation',
+  'prioritization',
+  'summary',
+];
+
+function isConversationPhase(phase: unknown): phase is ConversationPhase {
+  return typeof phase === 'string' && (ALL_PHASES as readonly string[]).includes(phase);
+}
+
+function isQuestionMeta(meta: unknown): meta is QuestionMeta {
+  if (!meta || typeof meta !== 'object') return false;
+  const rec = meta as Record<string, unknown>;
+  if (rec.kind !== 'question') return false;
+  if (!isConversationPhase(rec.phase)) return false;
+  if (typeof rec.index !== 'number') return false;
+  if (rec.tag !== undefined && typeof rec.tag !== 'string') return false;
+  if (rec.maturityScale !== undefined && !Array.isArray(rec.maturityScale)) return false;
+  return true;
+}
+
 interface PageProps {
   params: Promise<{
     workshopId: string;
@@ -71,18 +105,18 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
   const lastAiQuestionMessage = [...messages]
     .reverse()
-    .find((m) => m.role === 'AI' && (m as any)?.metadata?.kind === 'question');
-  const lastQuestionMeta = (lastAiQuestionMessage as any)?.metadata;
+    .find((m) => m.role === 'AI' && isQuestionMeta(m.metadata));
+  const lastQuestionMeta = isQuestionMeta(lastAiQuestionMessage?.metadata) ? lastAiQuestionMessage?.metadata : null;
   const questionNumber =
-    lastQuestionMeta?.kind === 'question'
+    lastQuestionMeta
       ? getOverallQuestionNumber(lastQuestionMeta.phase, lastQuestionMeta.index, includeRegulation)
       : null;
   const totalQuestions = getTotalQuestionCount(includeRegulation);
-  const isTripleRatingQuestion = lastQuestionMeta?.kind === 'question' && lastQuestionMeta?.tag === 'triple_rating';
+  const isTripleRatingQuestion = !!lastQuestionMeta && lastQuestionMeta.tag === 'triple_rating';
   const ratingQuestionText = isTripleRatingQuestion ? (lastAiQuestionMessage?.content || '') : '';
   const maturityScale =
-    lastQuestionMeta?.kind === 'question' && Array.isArray(lastQuestionMeta?.maturityScale)
-      ? (lastQuestionMeta.maturityScale as string[])
+    lastQuestionMeta && Array.isArray(lastQuestionMeta.maturityScale)
+      ? lastQuestionMeta.maturityScale
       : undefined;
 
   const displayMessages =
@@ -153,9 +187,9 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       const shouldPrependIntroHeader =
         incomingMessages.length > 0 &&
         incomingMessages[0]?.role === 'AI' &&
-        (incomingMessages[0] as any)?.metadata?.kind === 'question' &&
-        (incomingMessages[0] as any)?.metadata?.phase === 'intro' &&
-        (incomingMessages[0] as any)?.metadata?.index === 0;
+        isQuestionMeta(incomingMessages[0]?.metadata) &&
+        incomingMessages[0].metadata.phase === 'intro' &&
+        incomingMessages[0].metadata.index === 0;
 
       const hasIntroHeaderAlready =
         incomingMessages.length > 0 && incomingMessages[0]?.role === 'AI' && incomingMessages[0]?.content === 'About You';
@@ -167,10 +201,11 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 id: `section-intro-${Date.now()}`,
                 role: 'AI',
                 content: 'About You',
+                phase: 'intro',
                 createdAt: new Date(),
-              } as any,
+              } as Message,
               ...incomingMessages,
-            ] as any)
+            ] as Message[])
           : incomingMessages
       );
       setCurrentPhase(data.currentPhase || 'intro');
@@ -241,9 +276,9 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       const shouldPrependIntroHeader =
         incomingMessages.length > 0 &&
         incomingMessages[0]?.role === 'AI' &&
-        (incomingMessages[0] as any)?.metadata?.kind === 'question' &&
-        (incomingMessages[0] as any)?.metadata?.phase === 'intro' &&
-        (incomingMessages[0] as any)?.metadata?.index === 0;
+        isQuestionMeta(incomingMessages[0]?.metadata) &&
+        incomingMessages[0].metadata.phase === 'intro' &&
+        incomingMessages[0].metadata.index === 0;
 
       const hasIntroHeaderAlready =
         incomingMessages.length > 0 && incomingMessages[0]?.role === 'AI' && incomingMessages[0]?.content === 'About You';
@@ -255,10 +290,11 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 id: `section-intro-${Date.now()}`,
                 role: 'AI',
                 content: 'About You',
+                phase: 'intro',
                 createdAt: new Date(),
-              } as any,
+              } as Message,
               ...incomingMessages,
-            ] as any)
+            ] as Message[])
           : incomingMessages
       );
 
@@ -371,16 +407,18 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             id: `transition-${now}`,
             role: 'AI',
             content: transitionText,
+            phase: phaseBefore,
             createdAt: new Date(),
-          } as any);
+          } as Message);
         }
         if (sectionHeader) {
           preMessages.push({
             id: `section-${now}`,
             role: 'AI',
             content: sectionHeader,
+            phase: phaseAfter,
             createdAt: new Date(),
-          } as any);
+          } as Message);
         }
 
         window.setTimeout(() => {

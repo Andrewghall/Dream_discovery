@@ -28,7 +28,7 @@ export default function AdminDashboard() {
 
   const fetchWorkshops = async () => {
     try {
-      const response = await fetch('/api/admin/workshops');
+      const response = await fetch(`/api/admin/workshops?bust=${Date.now()}`, { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         setWorkshops(data.workshops || []);
