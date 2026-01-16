@@ -167,6 +167,10 @@
     background: white !important;
   }
 
+  body {
+    counter-reset: page;
+  }
+
   html,
   body {
     height: auto !important;
@@ -213,6 +217,7 @@
     padding: 6px 16mm 8px 16mm !important;
     background: white !important;
     border-top: 1px solid hsl(var(--border)) !important;
+    counter-increment: page;
   }
   #discovery-report .print-header-row,
   #discovery-report .print-footer-row {
