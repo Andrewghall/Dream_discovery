@@ -259,7 +259,7 @@
   #discovery-report .report-charts-grid {
     break-inside: avoid;
     page-break-inside: avoid;
-    grid-template-columns: 1fr 1fr !important;
+    grid-template-columns: 1fr !important;
   }
 
   #discovery-report .report-domain-grid > [data-slot='card'],
