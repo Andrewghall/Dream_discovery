@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { RadarChart } from '@/components/report/radar-chart';
 import { WordCloud, WordCloudItem } from '@/components/report/word-cloud';
 import { Button } from '@/components/ui/button';
+import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
 
 export interface PhaseInsight {
   phase: string;
@@ -37,6 +38,21 @@ function phaseRatingPrompt(phase: string): string {
   if (phase === 'technology') return 'Rate the technology, systems, and tools you use in terms of reliability and ease of use.';
   if (phase === 'regulation') return 'Rate how well the organisation handles regulatory and compliance requirements.';
   return 'Rate this area on a 1–10 scale.';
+}
+
+const MATURITY_BANDS: Array<{ label: string; bg: string }> = [
+  { label: 'Reactive', bg: '#ffcccc' },
+  { label: 'Emerging', bg: '#ffe6cc' },
+  { label: 'Defined', bg: '#fff2cc' },
+  { label: 'Optimised', bg: '#ccffcc' },
+  { label: 'Intelligent', bg: '#cce6ff' },
+];
+
+function maturityScaleForPhase(phase: string): string[] | null {
+  const questions = FIXED_QUESTIONS[phase as keyof typeof FIXED_QUESTIONS];
+  const triple = Array.isArray(questions) ? questions.find((q) => q.tag === 'triple_rating') : null;
+  const scale = triple && Array.isArray(triple.maturityScale) ? triple.maturityScale : null;
+  return Array.isArray(scale) && scale.length === 5 ? scale : null;
 }
 
 function scoreText(n: number | null) {
@@ -249,6 +265,29 @@ export function ConversationReport({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
+              {(() => {
+                const scale = maturityScaleForPhase(p.phase);
+                if (!scale) return null;
+                return (
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground">
+                      Maturity bands: 1–2 Reactive, 3–4 Emerging, 5–6 Defined, 7–8 Optimised, 9–10 Intelligent
+                    </div>
+                    <div className="space-y-1">
+                      {scale.map((t, idx) => (
+                        <div
+                          key={`${p.phase}-band-${idx}`}
+                          className="rounded-md border px-3 py-2 text-xs leading-snug"
+                          style={{ backgroundColor: MATURITY_BANDS[idx]?.bg || undefined }}
+                        >
+                          <span className="font-medium">{MATURITY_BANDS[idx]?.label}:</span> {t}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {nonEmpty(p.strengths) && (
                 <div>
                   <div className="text-xs font-semibold text-muted-foreground mb-1">Strengths / enablers</div>
