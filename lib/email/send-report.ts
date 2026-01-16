@@ -166,7 +166,6 @@ export async function sendDiscoveryReportEmail(params: {
       y: cardTopY - cardH,
       width: cardW,
       height: cardH,
-      color: colors.card,
       borderColor: colors.border,
       borderWidth: 1,
     });
