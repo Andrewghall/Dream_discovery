@@ -49,6 +49,20 @@ function isClarificationQuestion(text: string): boolean {
   return true;
 }
 
+type QuestionMeta = { kind: 'question'; tag: string; index: number; phase: string };
+
+function questionMetaFromMessage(meta: unknown): QuestionMeta | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const rec = meta as Record<string, unknown>;
+  if (rec.kind !== 'question') return null;
+  if (typeof rec.tag !== 'string' || typeof rec.phase !== 'string' || typeof rec.index !== 'number') return null;
+  return { kind: 'question', tag: rec.tag, phase: rec.phase, index: rec.index };
+}
+
+function questionKeyFromMeta(q: QuestionMeta): string {
+  return `${q.phase}:${q.tag}:${q.index}`;
+}
+
 async function generateClarificationAnswer(params: {
   questionAsked: string;
   userQuestion: string;
@@ -148,6 +162,39 @@ export async function POST(request: NextRequest) {
           },
         },
       });
+
+      // Persist canonical answer snapshot for this question (session-scoped + stable key)
+      if (!isSkipRegulation && !clarification) {
+        const questionMessage = [...session.messages]
+          .reverse()
+          .find((m) => m.role === 'AI' && questionMetaFromMessage(m.metadata));
+        const qMeta = questionMessage ? questionMetaFromMessage(questionMessage.metadata) : null;
+        if (qMeta) {
+          const questionKey = questionKeyFromMeta(qMeta);
+          await prisma.dataPoint.upsert({
+            where: {
+              sessionId_questionKey: {
+                sessionId: session.id,
+                questionKey,
+              },
+            },
+            create: {
+              workshopId: session.workshopId,
+              sessionId: session.id,
+              participantId: session.participantId,
+              questionKey,
+              rawText: translatedToEnglish,
+              source: 'MANUAL',
+              speakerId: null,
+            },
+            update: {
+              rawText: translatedToEnglish,
+              participantId: session.participantId,
+              workshopId: session.workshopId,
+            },
+          });
+        }
+      }
 
       if (isSkipRegulation) {
         const nextIncludeRegulation = false;

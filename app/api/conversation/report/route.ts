@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { sendDiscoveryReportEmail } from '@/lib/email/send-report';
+import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -122,6 +123,27 @@ function buildWordFrequencies(texts: string[], maxWords: number = 60) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, maxWords)
     .map(([text, value]) => ({ text, value }));
+}
+
+function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number } | null {
+  const parts = (questionKey || '').split(':');
+  if (parts.length !== 3) return null;
+  const [phase, tag, idxStr] = parts;
+  const index = Number(idxStr);
+  if (!phase || !tag || !Number.isFinite(index)) return null;
+  return { phase, tag, index };
+}
+
+function questionTextFromKey(questionKey: string): { phase: string | null; question: string; tag: string | null } {
+  const parsed = parseQuestionKey(questionKey);
+  if (!parsed) return { phase: null, question: '', tag: null };
+  const phaseKey = parsed.phase as keyof typeof FIXED_QUESTIONS;
+  const q = FIXED_QUESTIONS[phaseKey]?.[parsed.index];
+  return {
+    phase: parsed.phase,
+    question: q?.text || '',
+    tag: parsed.tag,
+  };
 }
 
 type InputQualityLabel = 'high' | 'medium' | 'low';
@@ -515,6 +537,12 @@ export async function GET(request: NextRequest) {
         workshop: true,
         participant: true,
         messages: { orderBy: { createdAt: 'asc' } },
+        dataPoints: {
+          where: {
+            questionKey: { not: null },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
 
@@ -541,96 +569,160 @@ export async function GET(request: NextRequest) {
     const narrativeTexts: string[] = [];
     let introContext: string | null = null;
 
-    const messages = session.messages;
+    if (session.dataPoints.length > 0) {
+      for (const dp of session.dataPoints) {
+        const key = dp.questionKey || '';
+        if (!key) continue;
+        const meta = questionTextFromKey(key);
+        const question = meta.question;
+        const phase = meta.phase;
+        const tag = meta.tag;
 
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i];
-      if (m.role !== 'PARTICIPANT') continue;
+        const answerText = dp.rawText;
+        qaPairs.push({ phase, question, answer: answerText, createdAt: dp.createdAt, tag });
 
-      const metaRec =
-        m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)
-          ? (m.metadata as Record<string, unknown>)
-          : null;
-      const kind = metaRec && typeof metaRec.kind === 'string' ? metaRec.kind : null;
-      if (kind === 'clarification') continue;
+        if (phase === 'intro' && tag === 'context') {
+          introContext = answerText;
+          narrativeTexts.push(answerText);
+          continue;
+        }
 
-      let questionMsg: (typeof messages)[number] | null = null;
-      for (let j = i - 1; j >= 0; j--) {
-        const prev = messages[j];
-        if (prev.role !== 'AI') continue;
-        const prevMetaRec =
-          prev.metadata && typeof prev.metadata === 'object' && !Array.isArray(prev.metadata)
-            ? (prev.metadata as Record<string, unknown>)
+        if (phase && tag) {
+          if (tag === 'triple_rating') {
+            const t = extractTripleRatings(answerText);
+            if (t.current !== null) currentByPhase[phase] = t.current;
+            if (t.target !== null) targetByPhase[phase] = t.target;
+            if (t.projected !== null) projectedByPhase[phase] = t.projected;
+            continue;
+          }
+
+          // Backward compatibility for older tag schemes
+          if (tag === 'current_score' || tag === 'awareness_current') {
+            const n = extractRatingFromAnswer(answerText);
+            if (n !== null) currentByPhase[phase] = n;
+            continue;
+          }
+          if (tag === 'future_score' || tag === 'awareness_future' || tag === 'target_score') {
+            const n = extractRatingFromAnswer(answerText);
+            if (n !== null) targetByPhase[phase] = n;
+            continue;
+          }
+          if (tag === 'confidence_score' || tag === 'projected_score') {
+            const n = extractRatingFromAnswer(answerText);
+            if (n !== null) projectedByPhase[phase] = n;
+            continue;
+          }
+
+          narrativeTexts.push(answerText);
+
+          if (tag === 'strengths') strengthsByPhase[phase] = [...(strengthsByPhase[phase] || []), answerText];
+          else if (tag === 'working') workingByPhase[phase] = [...(workingByPhase[phase] || []), answerText];
+          else if (tag === 'helpful') workingByPhase[phase] = [...(workingByPhase[phase] || []), answerText];
+          else if (tag === 'gaps') gapsByPhase[phase] = [...(gapsByPhase[phase] || []), answerText];
+          else if (tag === 'pain_points') painPointsByPhase[phase] = [...(painPointsByPhase[phase] || []), answerText];
+          else if (tag === 'friction') frictionsByPhase[phase] = [...(frictionsByPhase[phase] || []), answerText];
+          else if (tag === 'barrier') barriersByPhase[phase] = [...(barriersByPhase[phase] || []), answerText];
+          else if (tag === 'constraint') constraintByPhase[phase] = [...(constraintByPhase[phase] || []), answerText];
+          else if (tag === 'future') futureTextByPhase[phase] = [...(futureTextByPhase[phase] || []), answerText];
+          else if (tag === 'support') supportByPhase[phase] = [...(supportByPhase[phase] || []), answerText];
+        }
+
+        if (!tag) {
+          narrativeTexts.push(answerText);
+        }
+      }
+    } else {
+      const messages = session.messages;
+
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
+        if (m.role !== 'PARTICIPANT') continue;
+
+        const metaRec =
+          m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)
+            ? (m.metadata as Record<string, unknown>)
             : null;
-        const prevKind = prevMetaRec && typeof prevMetaRec.kind === 'string' ? prevMetaRec.kind : null;
-        if (prevKind === 'clarification_response') continue;
-        questionMsg = prev;
-        break;
-      }
+        const kind = metaRec && typeof metaRec.kind === 'string' ? metaRec.kind : null;
+        if (kind === 'clarification') continue;
 
-      const question = questionMsg?.content || '';
-      const phase = (m.phase || questionMsg?.phase || null) as string | null;
-      const meta = getQuestionMeta(questionMsg);
-      const tag = meta?.tag || inferTagFromQuestionText(question, phase) || null;
+        let questionMsg: (typeof messages)[number] | null = null;
+        for (let j = i - 1; j >= 0; j--) {
+          const prev = messages[j];
+          if (prev.role !== 'AI') continue;
+          const prevMetaRec =
+            prev.metadata && typeof prev.metadata === 'object' && !Array.isArray(prev.metadata)
+              ? (prev.metadata as Record<string, unknown>)
+              : null;
+          const prevKind = prevMetaRec && typeof prevMetaRec.kind === 'string' ? prevMetaRec.kind : null;
+          if (prevKind === 'clarification_response') continue;
+          questionMsg = prev;
+          break;
+        }
 
-      const translation =
-        metaRec && metaRec.translation && typeof metaRec.translation === 'object' && !Array.isArray(metaRec.translation)
-          ? (metaRec.translation as Record<string, unknown>)
-          : null;
-      const translatedEn = translation && typeof translation.en === 'string' ? translation.en : null;
-      const answerText = typeof translatedEn === 'string' && translatedEn.trim() ? translatedEn : m.content;
+        const question = questionMsg?.content || '';
+        const phase = (m.phase || questionMsg?.phase || null) as string | null;
+        const meta = getQuestionMeta(questionMsg);
+        const tag = meta?.tag || inferTagFromQuestionText(question, phase) || null;
 
-      qaPairs.push({ phase, question, answer: answerText, createdAt: m.createdAt, tag });
+        const translation =
+          metaRec && metaRec.translation && typeof metaRec.translation === 'object' && !Array.isArray(metaRec.translation)
+            ? (metaRec.translation as Record<string, unknown>)
+            : null;
+        const translatedEn = translation && typeof translation.en === 'string' ? translation.en : null;
+        const answerText = typeof translatedEn === 'string' && translatedEn.trim() ? translatedEn : m.content;
 
-      if (phase === 'intro' && tag === 'context') {
-        introContext = answerText;
-        narrativeTexts.push(answerText);
-        continue;
-      }
+        qaPairs.push({ phase, question, answer: answerText, createdAt: m.createdAt, tag });
 
-      if (phase && tag) {
-        if (tag === 'triple_rating') {
-          const t = extractTripleRatings(answerText);
-          if (t.current !== null) currentByPhase[phase] = t.current;
-          if (t.target !== null) targetByPhase[phase] = t.target;
-          if (t.projected !== null) projectedByPhase[phase] = t.projected;
+        if (phase === 'intro' && tag === 'context') {
+          introContext = answerText;
+          narrativeTexts.push(answerText);
           continue;
         }
 
-        // Backward compatibility for older sessions
-        if (tag === 'current_score' || tag === 'awareness_current') {
-          const n = extractRatingFromAnswer(answerText);
-          if (n !== null) currentByPhase[phase] = n;
-          continue;
-        }
-        if (tag === 'future_score' || tag === 'awareness_future' || tag === 'target_score') {
-          const n = extractRatingFromAnswer(answerText);
-          if (n !== null) targetByPhase[phase] = n;
-          continue;
-        }
-        if (tag === 'confidence_score' || tag === 'projected_score') {
-          const n = extractRatingFromAnswer(answerText);
-          if (n !== null) projectedByPhase[phase] = n;
-          continue;
+        if (phase && tag) {
+          if (tag === 'triple_rating') {
+            const t = extractTripleRatings(answerText);
+            if (t.current !== null) currentByPhase[phase] = t.current;
+            if (t.target !== null) targetByPhase[phase] = t.target;
+            if (t.projected !== null) projectedByPhase[phase] = t.projected;
+            continue;
+          }
+
+          // Backward compatibility for older sessions
+          if (tag === 'current_score' || tag === 'awareness_current') {
+            const n = extractRatingFromAnswer(answerText);
+            if (n !== null) currentByPhase[phase] = n;
+            continue;
+          }
+          if (tag === 'future_score' || tag === 'awareness_future' || tag === 'target_score') {
+            const n = extractRatingFromAnswer(answerText);
+            if (n !== null) targetByPhase[phase] = n;
+            continue;
+          }
+          if (tag === 'confidence_score' || tag === 'projected_score') {
+            const n = extractRatingFromAnswer(answerText);
+            if (n !== null) projectedByPhase[phase] = n;
+            continue;
+          }
+
+          narrativeTexts.push(answerText);
+
+          if (tag === 'strengths') strengthsByPhase[phase] = [...(strengthsByPhase[phase] || []), answerText];
+          else if (tag === 'working') workingByPhase[phase] = [...(workingByPhase[phase] || []), answerText];
+          else if (tag === 'helpful') workingByPhase[phase] = [...(workingByPhase[phase] || []), answerText];
+          else if (tag === 'gaps') gapsByPhase[phase] = [...(gapsByPhase[phase] || []), answerText];
+          else if (tag === 'pain_points') painPointsByPhase[phase] = [...(painPointsByPhase[phase] || []), answerText];
+          else if (tag === 'friction') frictionsByPhase[phase] = [...(frictionsByPhase[phase] || []), answerText];
+          else if (tag === 'barrier') barriersByPhase[phase] = [...(barriersByPhase[phase] || []), answerText];
+          else if (tag === 'constraint') constraintByPhase[phase] = [...(constraintByPhase[phase] || []), answerText];
+          else if (tag === 'future') futureTextByPhase[phase] = [...(futureTextByPhase[phase] || []), answerText];
+          else if (tag === 'support') supportByPhase[phase] = [...(supportByPhase[phase] || []), answerText];
         }
 
-        narrativeTexts.push(answerText);
-
-        if (tag === 'strengths') strengthsByPhase[phase] = [...(strengthsByPhase[phase] || []), answerText];
-        else if (tag === 'working') workingByPhase[phase] = [...(workingByPhase[phase] || []), answerText];
-        else if (tag === 'helpful') workingByPhase[phase] = [...(workingByPhase[phase] || []), answerText];
-        else if (tag === 'gaps') gapsByPhase[phase] = [...(gapsByPhase[phase] || []), answerText];
-        else if (tag === 'pain_points') painPointsByPhase[phase] = [...(painPointsByPhase[phase] || []), answerText];
-        else if (tag === 'friction') frictionsByPhase[phase] = [...(frictionsByPhase[phase] || []), answerText];
-        else if (tag === 'barrier') barriersByPhase[phase] = [...(barriersByPhase[phase] || []), answerText];
-        else if (tag === 'constraint') constraintByPhase[phase] = [...(constraintByPhase[phase] || []), answerText];
-        else if (tag === 'future') futureTextByPhase[phase] = [...(futureTextByPhase[phase] || []), answerText];
-        else if (tag === 'support') supportByPhase[phase] = [...(supportByPhase[phase] || []), answerText];
-      }
-
-      // Backwards-compatible fallback: if we couldn't infer a tag, still include text in the themes cloud.
-      if (!tag) {
-        narrativeTexts.push(answerText);
+        // Backwards-compatible fallback: if we couldn't infer a tag, still include text in the themes cloud.
+        if (!tag) {
+          narrativeTexts.push(answerText);
+        }
       }
     }
 

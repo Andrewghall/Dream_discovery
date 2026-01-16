@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ConversationStatus, Prisma } from '@prisma/client';
+import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
 
 const STOPWORDS = new Set([
   'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
@@ -28,6 +29,27 @@ function isConversationStatus(value: string): value is ConversationStatus {
 function isRatingQuestion(question: string): boolean {
   const q = question.toLowerCase();
   return q.includes('scale of 1-10') || q.includes('rate 1-10') || q.includes('rate 1 to 10');
+}
+
+function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number } | null {
+  const parts = (questionKey || '').split(':');
+  if (parts.length !== 3) return null;
+  const [phase, tag, idxStr] = parts;
+  const index = Number(idxStr);
+  if (!phase || !tag || !Number.isFinite(index)) return null;
+  return { phase, tag, index };
+}
+
+function questionTextFromKey(questionKey: string): { phase: string | null; question: string } {
+  const parsed = parseQuestionKey(questionKey);
+  if (!parsed) return { phase: null, question: '' };
+
+  const phase = parsed.phase as keyof typeof FIXED_QUESTIONS;
+  const q = FIXED_QUESTIONS[phase]?.[parsed.index];
+  return {
+    phase: parsed.phase,
+    question: q?.text || '',
+  };
 }
 
 function buildWordFrequencies(texts: string[], maxWords: number = 60) {
@@ -70,12 +92,20 @@ export async function GET(
     if (participantId) where.participantId = participantId;
     if (status && isConversationStatus(status)) where.status = status;
 
+    // Completion-safe aggregation: only include completed discovery responses.
+    where.OR = [{ completedAt: { not: null } }, { participant: { responseCompletedAt: { not: null } } }];
+
     const sessions = await prisma.conversationSession.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
         participant: true,
-        messages: {
+        dataPoints: {
+          where: {
+            questionKey: {
+              not: null,
+            },
+          },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -85,6 +115,7 @@ export async function GET(
       const qaPairs: Array<{
         phase: string | null;
         question: string;
+        questionKey: string;
         answer: string;
         createdAt: Date;
       }> = [];
@@ -92,41 +123,26 @@ export async function GET(
       const ratingByPhase: Record<string, number> = {};
       const freeTextAnswers: string[] = [];
 
-      const messages = session.messages;
-
-      for (let i = 0; i < messages.length; i++) {
-        const m = messages[i];
-        if (m.role !== 'PARTICIPANT') continue;
-
-        const kind = metaKind(m.metadata);
-        if (kind === 'clarification') continue;
-
-        // Find the most recent AI question before this answer.
-        let questionMsg: (typeof messages)[number] | null = null;
-        for (let j = i - 1; j >= 0; j--) {
-          const prev = messages[j];
-          if (prev.role !== 'AI') continue;
-          const prevKind = metaKind(prev.metadata);
-          if (prevKind === 'clarification_response') continue;
-          questionMsg = prev;
-          break;
-        }
-
-        const question = questionMsg?.content || '';
-        const phase = (m.phase || questionMsg?.phase || null) as string | null;
+      for (const dp of session.dataPoints) {
+        const key = dp.questionKey || '';
+        if (!key) continue;
+        const meta = questionTextFromKey(key);
+        const question = meta.question;
+        const phase = meta.phase;
 
         qaPairs.push({
           phase,
           question,
-          answer: m.content,
-          createdAt: m.createdAt,
+          questionKey: key,
+          answer: dp.rawText,
+          createdAt: dp.createdAt,
         });
 
         if (question && isRatingQuestion(question)) {
-          const rating = extractRatingFromAnswer(m.content);
+          const rating = extractRatingFromAnswer(dp.rawText);
           if (rating !== null && phase) ratingByPhase[phase] = rating;
         } else {
-          freeTextAnswers.push(m.content);
+          freeTextAnswers.push(dp.rawText);
         }
       }
 

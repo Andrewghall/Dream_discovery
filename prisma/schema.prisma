@@ -164,6 +164,9 @@ model TranscriptChunk {
 model DataPoint {
   id               String         @id @default(cuid())
   workshopId       String
+  sessionId        String?
+  participantId    String?
+  questionKey      String?
   transcriptChunkId String?       @unique
   rawText          String
   source           DataPointSource
@@ -171,9 +174,12 @@ model DataPoint {
   createdAt        DateTime       @default(now())
 
   workshop        Workshop        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  session         ConversationSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant     WorkshopParticipant? @relation(fields: [participantId], references: [id], onDelete: Cascade)
   transcriptChunk TranscriptChunk? @relation(fields: [transcriptChunkId], references: [id], onDelete: SetNull)
   classification  DataPointClassification?
 
+  @@unique([sessionId, questionKey])
   @@map("data_points")
 }
 
@@ -209,6 +215,7 @@ model WorkshopParticipant {
 
   workshop Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   sessions ConversationSession[]
+  dataPoints DataPoint[]
   insights ConversationInsight[]
 
   @@map("workshop_participants")
@@ -233,6 +240,7 @@ model ConversationSession {
   workshop    Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   participant WorkshopParticipant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
   messages    ConversationMessage[]
+  dataPoints  DataPoint[]
   insights    ConversationInsight[]
 
   @@map("conversation_sessions")
