@@ -42,14 +42,14 @@ export async function generateDiscoveryReportPdf(params: {
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath());
   const browser = await puppeteer.launch({
     args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
     executablePath,
-    headless: chromium.headless,
+    headless: true,
+    defaultViewport: { width: 1280, height: 720 },
   });
 
   try {
     const page = await browser.newPage();
-    await page.emulateMedia({ media: 'screen' });
+    await page.emulateMediaType('screen');
     await page.goto(url.toString(), { waitUntil: 'networkidle0', timeout: 120000 });
     await page.waitForSelector('#discovery-report', { timeout: 120000 });
 
