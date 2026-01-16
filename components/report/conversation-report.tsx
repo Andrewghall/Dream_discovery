@@ -142,7 +142,7 @@ export function ConversationReport({
       <div className="print-only print-header">
         <div className="print-header-row">
           <div className="print-header-date">{reportDate}</div>
-          <div className="print-header-title">Discovery Workshop</div>
+          <div className="print-header-title">DREAM DISCOVERY</div>
           <div className="print-header-spacer" />
         </div>
       </div>
@@ -410,7 +410,7 @@ export function ConversationReport({
 
       <div className="print-only print-footer">
         <div className="print-footer-row">
-          <div className="print-footer-left">© Ethenta</div>
+          <div className="print-footer-left">Copyright 2026 Ethenta</div>
           <div className="print-footer-right">
             <span className="print-page-number" />
           </div>

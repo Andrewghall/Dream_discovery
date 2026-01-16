@@ -231,7 +231,7 @@
     color: hsl(var(--muted-foreground)) !important;
   }
   #discovery-report .print-page-number::after {
-    content: "Page " counter(page) " of " counter(pages);
+    content: "Page " counter(page);
   }
 
   /* Hide the discovery page chrome so the report starts at the top of page 1. */

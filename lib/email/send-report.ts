@@ -117,7 +117,7 @@ export async function sendDiscoveryReportEmail(params: {
     day: '2-digit',
   });
 
-  const headerTitle = 'Discovery Workshop';
+  const headerTitle = 'DREAM DISCOVERY';
 
   const newPage = () => {
     page = pdfDoc.addPage([a4.width, a4.height]);
@@ -126,10 +126,29 @@ export async function sendDiscoveryReportEmail(params: {
     return size;
   };
 
-  const drawFooter = (p: PDFPage, pageIndex: number, totalPages: number) => {
-    const { width: pw } = p.getSize();
+  const drawHeaderFooter = (p: PDFPage, pageIndex: number) => {
+    const { width: pw, height: ph } = p.getSize();
+
+    const headerY = ph - 26;
+    p.drawText(reportDate, {
+      x: margin,
+      y: headerY,
+      size: 9,
+      font,
+      color: colors.muted,
+    });
+
+    const titleW = bold.widthOfTextAtSize(headerTitle, 9);
+    p.drawText(headerTitle, {
+      x: Math.max(margin, (pw - titleW) / 2),
+      y: headerY,
+      size: 9,
+      font: bold,
+      color: colors.ink,
+    });
+
     const footerY = margin - 26;
-    p.drawText('© Ethenta', {
+    p.drawText('Copyright 2026 Ethenta', {
       x: margin,
       y: footerY,
       size: 9,
@@ -137,7 +156,7 @@ export async function sendDiscoveryReportEmail(params: {
       color: colors.muted,
     });
 
-    const pageLabel = `Page ${pageIndex + 1} of ${totalPages}`;
+    const pageLabel = `Page ${pageIndex + 1}`;
     const pageW = font.widthOfTextAtSize(pageLabel, 9);
     p.drawText(pageLabel, {
       x: pw - margin - pageW,
@@ -332,7 +351,7 @@ export async function sendDiscoveryReportEmail(params: {
 
   const pages = pdfDoc.getPages();
   for (let i = 0; i < pages.length; i++) {
-    drawFooter(pages[i], i, pages.length);
+    drawHeaderFooter(pages[i], i);
   }
 
   const pdfBytes = await pdfDoc.save();
