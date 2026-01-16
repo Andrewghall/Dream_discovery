@@ -72,6 +72,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
   const [draftMessage, setDraftMessage] = useState('');
+  const [isPdfMode, setIsPdfMode] = useState(false);
   const [report, setReport] = useState<null | {
     executiveSummary: string;
     tone: string | null;
@@ -133,7 +134,19 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setIncludeRegulation(true);
     setIsLoading(false);
     setReport(null);
+    setIsPdfMode(false);
   }, [workshopId, token]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setIsPdfMode(params.get('pdf') === '1');
+  }, []);
+
+  useEffect(() => {
+    if (!isPdfMode || hasStarted) return;
+    setHasStarted(true);
+    void initializeSession();
+  }, [isPdfMode, hasStarted]);
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
@@ -438,6 +451,17 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   };
 
   if (!hasStarted) {
+    if (isPdfMode) {
+      return (
+        <div className="min-h-screen bg-white">
+          <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-10">
+            <div className="text-center text-lg font-semibold animate-pulse">
+              Preparing your summary report from the dialogue session.
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-white">
         <div className="border-b bg-background">
@@ -480,6 +504,30 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
           <div className="mt-10 text-xs text-muted-foreground">© Ethenta Ltd</div>
         </div>
+      </div>
+    );
+  }
+
+  if (isPdfMode) {
+    return (
+      <div className="min-h-screen bg-white">
+        {(sessionStatus === 'COMPLETED' && (isPreparingReport || !report)) ? (
+          <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-10">
+            <div className="text-center text-lg font-semibold animate-pulse">
+              Preparing your summary report from the dialogue session.
+            </div>
+          </div>
+        ) : (sessionStatus === 'COMPLETED' && report) ? (
+          <ConversationReport
+            executiveSummary={report.executiveSummary}
+            tone={report.tone}
+            feedback={report.feedback}
+            inputQuality={report.inputQuality}
+            keyInsights={report.keyInsights}
+            phaseInsights={report.phaseInsights}
+            wordCloudThemes={report.wordCloudThemes}
+          />
+        ) : null}
       </div>
     );
   }
