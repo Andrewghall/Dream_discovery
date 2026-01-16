@@ -189,6 +189,34 @@
     position: static !important;
     width: auto !important;
     margin: 0 auto !important;
+    font-size: 9.5pt !important;
+    line-height: 1.25 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  #discovery-report > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.65rem !important;
+  }
+
+  #discovery-report [data-slot='card'] {
+    padding-top: 0.9rem !important;
+    padding-bottom: 0.9rem !important;
+  }
+
+  #discovery-report [data-slot='card-header'],
+  #discovery-report [data-slot='card-content'],
+  #discovery-report [data-slot='card-footer'] {
+    padding-left: 0.9rem !important;
+    padding-right: 0.9rem !important;
+  }
+
+  #discovery-report [data-slot='card-header'] {
+    padding-bottom: 0.75rem !important;
+  }
+
+  #discovery-report [data-slot='card-content'] {
+    padding-top: 0 !important;
   }
 
   /* Radix ScrollArea can clip print output to the visible viewport. */
@@ -219,9 +247,13 @@
 
   /* Word cloud can be tall; scale for print to keep it on one page */
   #discovery-report .word-cloud {
-    transform: scale(0.78);
+    transform: scale(0.72);
     transform-origin: top left;
     gap: 0.4rem 0.6rem;
+  }
+
+  #discovery-report svg {
+    max-height: 240px;
   }
 
   /* Print the domain cards two-up (D1/D2, D3/D4). */

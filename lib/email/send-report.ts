@@ -71,11 +71,14 @@ export async function sendDiscoveryReportEmail(params: {
 
   const a4 = { width: 595.28, height: 841.89 };
 
-  const margin = 48;
-  const fontSize = 11;
-  const titleSize = 18;
-  const sectionTitleSize = 13;
-  const cardPad = 14;
+  const margin = 40;
+  const fontSize = 9.5;
+  const titleSize = 16;
+  const sectionTitleSize = 12;
+  const cardPad = 11;
+
+  const tableFontSize = 9;
+  const tableLine = 14;
 
   const colors = {
     ink: rgb(0.10, 0.10, 0.18),
@@ -122,30 +125,30 @@ export async function sendDiscoveryReportEmail(params: {
   };
 
   const drawHeader = () => {
-    const logoTargetH = 22;
+    const logoTargetH = 18;
     const logoScale = logoTargetH / ethentaLogo.height;
     const logoW = ethentaLogo.width * logoScale;
-    ensureSpace(logoTargetH + 10);
+    ensureSpace(logoTargetH + 8);
     page.drawImage(ethentaLogo, {
       x: margin,
       y: y - logoTargetH,
       width: logoW,
       height: logoTargetH,
     });
-    y -= logoTargetH + 10;
+    y -= logoTargetH + 8;
 
-    const bannerMaxH = 70;
+    const bannerMaxH = 56;
     const bannerScale = Math.min(contentWidth / dreamBanner.width, bannerMaxH / dreamBanner.height);
     const bannerW = dreamBanner.width * bannerScale;
     const bannerH = dreamBanner.height * bannerScale;
-    ensureSpace(bannerH + 14);
+    ensureSpace(bannerH + 10);
     page.drawImage(dreamBanner, {
       x: margin + (contentWidth - bannerW) / 2,
       y: y - bannerH,
       width: bannerW,
       height: bannerH,
     });
-    y -= bannerH + 14;
+    y -= bannerH + 10;
   };
 
   const drawCard = (title: string, drawBody: (x: number, yTop: number, w: number) => number) => {
@@ -191,11 +194,11 @@ export async function sendDiscoveryReportEmail(params: {
     for (const p of paragraphs) {
       const lines = wrapLines(p, maxW, font, size);
       for (const line of lines) {
-        ensureSpace(size + lineGap + 6);
+        ensureSpace(size + lineGap + 2);
         page.drawText(line, { x, y: y - size, size, font, color });
         y -= size + lineGap;
       }
-      y -= 6;
+      y -= 4;
     }
   };
 
@@ -211,14 +214,14 @@ export async function sendDiscoveryReportEmail(params: {
     font,
     color: colors.muted,
   });
-  y -= fontSize + 14;
+  y -= fontSize + 10;
 
   const metaLine = `Workshop: ${safeWorkshopName}  |  Participant: ${participantName}${tone ? `  |  Tone: ${tone}` : ''}`;
-  drawWrapped(metaLine, margin, contentWidth, 10, 3, colors.body);
+  drawWrapped(metaLine, margin, contentWidth, 9, 2, colors.body);
 
   y = drawCard('Executive Summary', (x, yTop, w) => {
     y = yTop - sectionTitleSize - 10;
-    drawWrapped(executiveSummary || '', x, w, fontSize, 4, colors.body);
+    drawWrapped(executiveSummary || '', x, w, fontSize, 3, colors.body);
     return y;
   });
 
@@ -226,8 +229,8 @@ export async function sendDiscoveryReportEmail(params: {
     y = drawCard('Input Quality (Evidence Check)', (x, yTop, w) => {
       y = yTop - sectionTitleSize - 10;
       const scoreLine = `Score: ${Math.round(inputQuality.score)}/100 (${inputQuality.label})`;
-      drawWrapped(scoreLine, x, w, fontSize, 4, colors.body);
-      if (inputQuality.rationale) drawWrapped(inputQuality.rationale, x, w, fontSize, 4, colors.body);
+      drawWrapped(scoreLine, x, w, fontSize, 3, colors.body);
+      if (inputQuality.rationale) drawWrapped(inputQuality.rationale, x, w, fontSize, 3, colors.body);
       return y;
     });
   }
@@ -238,17 +241,21 @@ export async function sendDiscoveryReportEmail(params: {
 
       for (const [idx, k] of keyInsights.slice(0, 6).entries()) {
         const heading = `${idx + 1}. ${k.title} (confidence: ${k.confidence})`;
-        drawWrapped(heading, x, w, fontSize, 4, colors.ink);
-        drawWrapped(k.insight, x, w, fontSize, 4, colors.body);
+        drawWrapped(heading, x, w, fontSize, 3, colors.ink);
+        drawWrapped(k.insight, x, w, fontSize, 3, colors.body);
         if (Array.isArray(k.evidence) && k.evidence.length > 0) {
           const ev = k.evidence.slice(0, 3).map((q) => `“${q}”`).join('  ');
-          drawWrapped(ev, x, w, 10, 3, colors.muted);
+          drawWrapped(ev, x, w, 9, 2, colors.muted);
         }
-        y -= 6;
+        y -= 4;
       }
       return y;
     });
   }
+
+  const scoresTableNeeded =
+    sectionTitleSize + 12 + cardPad * 2 + 18 + 16 + phaseInsights.length * tableLine + 10;
+  ensureSpace(scoresTableNeeded);
 
   y = drawCard('Scores by Domain (1–10)', (x, yTop, w) => {
     y = yTop - sectionTitleSize - 12;
@@ -256,19 +263,18 @@ export async function sendDiscoveryReportEmail(params: {
     const col2 = x + w * 0.42;
     const col3 = x + w * 0.67;
 
-    page.drawText('Domain', { x: col1, y: y - 10, size: 10, font: bold, color: colors.ink });
-    page.drawText('Current', { x: col2, y: y - 10, size: 10, font: bold, color: colors.ink });
-    page.drawText('Target', { x: col3, y: y - 10, size: 10, font: bold, color: colors.ink });
-    page.drawText('Projected', { x: x + w - 56, y: y - 10, size: 10, font: bold, color: colors.ink });
-    y -= 16;
+    page.drawText('Domain', { x: col1, y: y - 10, size: tableFontSize, font: bold, color: colors.ink });
+    page.drawText('Current', { x: col2, y: y - 10, size: tableFontSize, font: bold, color: colors.ink });
+    page.drawText('Target', { x: col3, y: y - 10, size: tableFontSize, font: bold, color: colors.ink });
+    page.drawText('Projected', { x: x + w - 52, y: y - 10, size: tableFontSize, font: bold, color: colors.ink });
+    y -= tableLine;
 
     for (const p of phaseInsights) {
-      ensureSpace(18 + cardPad);
-      page.drawText(toTitleCase(p.phase), { x: col1, y: y - 10, size: 10, font, color: colors.body });
-      page.drawText(scoreText(p.currentScore), { x: col2, y: y - 10, size: 10, font, color: colors.body });
-      page.drawText(scoreText(p.targetScore), { x: col3, y: y - 10, size: 10, font, color: colors.body });
-      page.drawText(scoreText(p.projectedScore), { x: x + w - 56, y: y - 10, size: 10, font, color: colors.body });
-      y -= 16;
+      page.drawText(toTitleCase(p.phase), { x: col1, y: y - 10, size: tableFontSize, font, color: colors.body });
+      page.drawText(scoreText(p.currentScore), { x: col2, y: y - 10, size: tableFontSize, font, color: colors.body });
+      page.drawText(scoreText(p.targetScore), { x: col3, y: y - 10, size: tableFontSize, font, color: colors.body });
+      page.drawText(scoreText(p.projectedScore), { x: x + w - 52, y: y - 10, size: tableFontSize, font, color: colors.body });
+      y -= tableLine;
     }
 
     return y;
@@ -276,9 +282,9 @@ export async function sendDiscoveryReportEmail(params: {
 
   y = drawCard('Feedback to the Interviewee', (x, yTop, w) => {
     y = yTop - sectionTitleSize - 10;
-    drawWrapped(feedback || '', x, w, fontSize, 4, colors.body);
-    y -= 8;
-    drawWrapped(`Report link: ${discoveryUrl}`, x, w, 10, 3, colors.muted);
+    drawWrapped(feedback || '', x, w, fontSize, 3, colors.body);
+    y -= 6;
+    drawWrapped(`Report link: ${discoveryUrl}`, x, w, 9, 2, colors.muted);
     return y;
   });
 
