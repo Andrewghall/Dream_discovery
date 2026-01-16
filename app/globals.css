@@ -191,8 +191,47 @@
     margin: 0 auto !important;
     font-size: 9.5pt !important;
     line-height: 1.25 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
+    padding-top: 28px !important;
+    padding-bottom: 28px !important;
+  }
+
+  /* Print header/footer (repeat on every page) */
+  #discovery-report .print-header {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    padding: 8px 16mm 6px 16mm !important;
+    background: white !important;
+    border-bottom: 1px solid hsl(var(--border)) !important;
+  }
+  #discovery-report .print-footer {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    padding: 6px 16mm 8px 16mm !important;
+    background: white !important;
+    border-top: 1px solid hsl(var(--border)) !important;
+  }
+  #discovery-report .print-header-row,
+  #discovery-report .print-footer-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    font-size: 9pt !important;
+    line-height: 1.1 !important;
+  }
+  #discovery-report .print-header-title {
+    font-weight: 600 !important;
+  }
+  #discovery-report .print-header-date,
+  #discovery-report .print-footer-left,
+  #discovery-report .print-footer-right {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+  #discovery-report .print-page-number::after {
+    content: "Page " counter(page) " of " counter(pages);
   }
 
   /* Hide the discovery page chrome so the report starts at the top of page 1. */

@@ -95,7 +95,6 @@ export function ConversationReport({
     score: number;
     label: 'high' | 'medium' | 'low';
     rationale: string;
-    missingInfoSuggestions: string[];
   };
   keyInsights?: Array<{
     title: string;
@@ -106,10 +105,13 @@ export function ConversationReport({
   phaseInsights: PhaseInsight[];
   wordCloudThemes: WordCloudItem[];
 }) {
-  const axes = phaseInsights.map((p) => ({
-    label: p.phase.charAt(0).toUpperCase() + p.phase.slice(1),
-    phase: p.phase,
-  }));
+  const reportDate = new Date().toLocaleDateString('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  });
+
+  const axes = phaseInsights.map((p) => ({ phase: p.phase, label: phaseLabel(p.phase) }));
 
   const currentSeries = {
     name: 'Current capability',
@@ -137,6 +139,14 @@ export function ConversationReport({
 
   return (
     <div id="discovery-report" className="container max-w-4xl mx-auto px-3 sm:px-4 py-6 space-y-4">
+      <div className="print-only print-header">
+        <div className="print-header-row">
+          <div className="print-header-date">{reportDate}</div>
+          <div className="print-header-title">Discovery Workshop</div>
+          <div className="print-header-spacer" />
+        </div>
+      </div>
+
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <img src="/ethenta-logo.png" alt="Ethenta" className="h-8 w-auto" />
@@ -193,14 +203,6 @@ export function ConversationReport({
                   <span className="font-semibold">{inputQuality.label}</span>)
                 </div>
                 {inputQuality.rationale && <div className="whitespace-pre-wrap">{inputQuality.rationale}</div>}
-                {Array.isArray(inputQuality.missingInfoSuggestions) && inputQuality.missingInfoSuggestions.length > 0 && (
-                  <div>
-                    <div className="text-xs font-semibold text-muted-foreground mb-1">To improve this report next time</div>
-                    <div className="whitespace-pre-wrap">
-                      {inputQuality.missingInfoSuggestions.map((s, idx) => `- ${s}`).join('\n')}
-                    </div>
-                  </div>
-                )}
               </CardContent>
             </Card>
           )}
@@ -398,28 +400,22 @@ export function ConversationReport({
 
       <Card>
         <CardHeader>
-          <CardTitle>Feedback to the interviewee</CardTitle>
-          <CardDescription>Constructive, appreciative, and action-oriented</CardDescription>
+          <CardTitle>Feedback to the Interviewee</CardTitle>
+          <CardDescription>What to share back with the participant</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="whitespace-pre-wrap text-sm leading-relaxed">{feedback}</div>
         </CardContent>
       </Card>
 
-      <Card className="print-only">
-        <CardHeader>
-          <CardTitle>Full Session Summary</CardTitle>
-          <CardDescription>Dialogue session summary (as shown on screen)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {tone && (
-            <div className="text-xs text-muted-foreground mb-2">
-              Tone: <span className="font-medium text-foreground">{tone}</span>
-            </div>
-          )}
-          <div className="whitespace-pre-wrap text-sm leading-relaxed">{executiveSummary}</div>
-        </CardContent>
-      </Card>
+      <div className="print-only print-footer">
+        <div className="print-footer-row">
+          <div className="print-footer-left">© Ethenta</div>
+          <div className="print-footer-right">
+            <span className="print-page-number" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
