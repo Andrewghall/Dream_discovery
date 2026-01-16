@@ -308,6 +308,21 @@ export function ConversationReport({
           <div className="whitespace-pre-wrap text-sm leading-relaxed">{feedback}</div>
         </CardContent>
       </Card>
+
+      <Card className="print-only">
+        <CardHeader>
+          <CardTitle>Full Session Summary</CardTitle>
+          <CardDescription>Dialogue session summary (as shown on screen)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {tone && (
+            <div className="text-xs text-muted-foreground mb-2">
+              Tone: <span className="font-medium text-foreground">{tone}</span>
+            </div>
+          )}
+          <div className="whitespace-pre-wrap text-sm leading-relaxed">{executiveSummary}</div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
