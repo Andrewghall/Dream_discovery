@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -111,11 +111,41 @@ export async function sendDiscoveryReportEmail(params: {
   const contentWidth = width - margin * 2;
   let y = height - margin;
 
+  const reportDate = new Date().toLocaleDateString('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  });
+
+  const headerTitle = 'Discovery Workshop';
+
   const newPage = () => {
     page = pdfDoc.addPage([a4.width, a4.height]);
     const size = page.getSize();
     y = size.height - margin;
     return size;
+  };
+
+  const drawFooter = (p: PDFPage, pageIndex: number, totalPages: number) => {
+    const { width: pw } = p.getSize();
+    const footerY = margin - 26;
+    p.drawText('© Ethenta', {
+      x: margin,
+      y: footerY,
+      size: 9,
+      font,
+      color: colors.muted,
+    });
+
+    const pageLabel = `Page ${pageIndex + 1} of ${totalPages}`;
+    const pageW = font.widthOfTextAtSize(pageLabel, 9);
+    p.drawText(pageLabel, {
+      x: pw - margin - pageW,
+      y: footerY,
+      size: 9,
+      font,
+      color: colors.muted,
+    });
   };
 
   const ensureSpace = (needed: number) => {
@@ -203,9 +233,13 @@ export async function sendDiscoveryReportEmail(params: {
 
   drawHeader();
 
-  ensureSpace(titleSize + 8);
-  page.drawText('Discovery Report', { x: margin, y: y - titleSize, size: titleSize, font: bold, color: colors.ink });
+  ensureSpace(titleSize + 14);
+  page.drawText(reportDate, { x: margin, y: y - 9, size: 9, font, color: colors.muted });
+  y -= 12;
+
+  page.drawText(headerTitle, { x: margin, y: y - titleSize, size: titleSize, font: bold, color: colors.ink });
   y -= titleSize + 4;
+
   page.drawText('Interviewee view of the organisation and operating environment', {
     x: margin,
     y: y - fontSize,
@@ -295,6 +329,11 @@ export async function sendDiscoveryReportEmail(params: {
     drawWrapped(`Report link: ${discoveryUrl}`, x, w, 9, 2, colors.muted);
     return y;
   });
+
+  const pages = pdfDoc.getPages();
+  for (let i = 0; i < pages.length; i++) {
+    drawFooter(pages[i], i, pages.length);
+  }
 
   const pdfBytes = await pdfDoc.save();
   const attachmentContent = Buffer.from(pdfBytes);
