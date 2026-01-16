@@ -90,6 +90,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     }>;
     phaseInsights: PhaseInsight[];
     wordCloudThemes: Array<{ text: string; value: number }>;
+    workshopName?: string | null;
+    participantName?: string | null;
   }>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -212,6 +214,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             keyInsights: reportData.keyInsights,
             phaseInsights: reportData.phaseInsights,
             wordCloudThemes: reportData.wordCloudThemes,
+            workshopName: reportData.workshopName,
+            participantName: reportData.participantName,
           });
         }
         setIsPreparingReport(false);
@@ -418,6 +422,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             keyInsights: reportData.keyInsights,
             phaseInsights: reportData.phaseInsights,
             wordCloudThemes: reportData.wordCloudThemes,
+            workshopName: reportData.workshopName,
+            participantName: reportData.participantName,
           });
         }
         setIsPreparingReport(false);
@@ -525,6 +531,42 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 keyInsights={report.keyInsights}
                 phaseInsights={report.phaseInsights}
                 wordCloudThemes={report.wordCloudThemes}
+                onDownloadPdf={async () => {
+                  try {
+                    const response = await fetch('/api/conversation/report/pdf', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        participantName: report.participantName || 'Participant',
+                        workshopName: report.workshopName,
+                        discoveryUrl: window.location.href,
+                        executiveSummary: report.executiveSummary,
+                        tone: report.tone,
+                        feedback: report.feedback,
+                        inputQuality: report.inputQuality,
+                        keyInsights: report.keyInsights,
+                        phaseInsights: report.phaseInsights.map((p) => ({
+                          phase: p.phase,
+                          currentScore: p.currentScore,
+                          targetScore: p.targetScore,
+                          projectedScore: p.projectedScore,
+                        })),
+                      }),
+                    });
+
+                    if (!response.ok) throw new Error('Failed to generate PDF');
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = 'DREAM-Discovery-Summary-Report.pdf';
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  } catch (error) {
+                    console.error(error);
+                    alert('Failed to generate PDF. Please try again.');
+                  }
+                }}
               />
             ) : (
               <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6">

@@ -1,0 +1,84 @@
+Brief for Revising Discovery Interview Questions and Report
+Purpose of this brief
+This brief outlines a new approach for your discovery interviews and the report that follows. The current end‑of‑interview report reads like an assessment of the interviewee’s capability; instead it should surface their view of the organisation—what helps them perform well, what holds them back and what they believe the organisation should become. The goal is to gather richer, future‑oriented insights that will inform the upcoming Dream session and provide meaningful feedback to the interviewee.
+Issues with the current report
+•	The report contains a list of “key points” that feel like judgements about the individual (e.g., “Andrew Hall demonstrates a strong understanding of… but faces significant challenges”). It should instead describe how the environment—people, processes, systems and regulations—enables or constrains their role.
+•	There is no executive summary setting the tone of the response; readers must parse through bullet lists to understand whether the interviewee is frustrated, hopeful, neutral or optimistic.
+•	Each of the five domains (D1–D5) is lumped together. A clearer summary per domain would allow patterns to emerge across participants.
+•	The spider diagram currently shows only a single rating for each domain; it does not capture the interviewee’s current capability, desired future ambition and confidence in achieving that future.
+•	The word cloud combines positive and negative words without context and therefore conveys very little insight. Word clouds can be visually attractive but often hide more than they show—big words pop out while context disappears【105198590860073†L157-L165】. Word clouds should be treated as first‑impression summaries and paired with deeper analysis【105198590860073†L224-L233】.
+Proposed report structure
+1.	Executive summary (tone and themes). Begin with a paragraph summarising the interviewee’s overall mood and the key themes. For example: “The respondent is optimistic about technology improving customer experience but frustrated by slow decision‑making and outdated systems.” The executive summary should synthesise the interviewee’s underlying tone—hopeful, skeptical, resigned, etc.—and highlight the most significant opportunities and constraints.
+2.	Domain summaries (D1–D5). For each competency area, provide:
+–	Current state: Summarise how the interviewee rates the current capability (1–10), what works well and what is holding them back.
+–	Ambition: Describe their desired future state and how far they would like the organisation to go (1–10). For technology, clarify whether they envision AI replacing humans, augmenting them or working alongside them.
+–	Barriers and enablers: Summarise the specific barriers to improvement and the enablers already in place.
+–	Confidence: Note how confident they are that this domain will enable the desired future (1–10). This format captures the gap between reality and ambition and the respondent’s belief in the organisation’s ability to close it.
+3.	Spider diagram (three ratings per domain). The diagram should show three concentric lines for each domain:
+–	Current capability (1–10): how the respondent rates the organisation’s current performance.
+–	Future vision (1–10): how far they would like the organisation to go; e.g., from incremental automation to fully AI‑assisted operations.
+–	Confidence (1–10): how confident they are that the domain will enable this future. The rating scale should be clearly labelled. When using a 1–10 scale, remember that 1 indicates the most negative opinion and 10 the highest positive opinion【232636627374673†L360-L386】.
+4.	Word cloud (keywords and intentions). Use a word cloud to highlight the most frequently used words, but only after cleaning the text and removing common stop words. A word cloud is useful to quickly identify recurring themes【768617853831338†L117-L135】, but it should not be the sole analysis tool. Include a brief commentary explaining what the prominent words mean in context and watch out for misleading visuals【105198590860073†L157-L165】.
+5.	Value feedback to the interviewee. Close the report with a short paragraph acknowledging the participant’s contribution, summarising the actionable insights and noting areas where the organisation can support them. For example: “Thank you for candidly sharing your experiences. Your emphasis on real‑time data access and collaboration has highlighted a key opportunity for us to integrate our systems. We will explore ways to simplify decision‑making and empower your team to focus on customer needs.” This feedback loop shows respect for the participant and demonstrates that their input will drive change.
+Revised interview question set
+The following questions are grouped by domain (D1–D5) with three rating questions for each domain—current capability, desired future level and confidence—and open questions that prompt participants to share specific examples, ambitions, barriers and enablers. They are designed to elicit rich narratives while still providing quantitative data.
+Top / Intro
+1.	Context: “Please briefly describe your role, how long you’ve been in the organisation and your core responsibilities. What drives your work?”
+D1 – People (capacity, skills, roles and culture)
+1.	Current capability (1–10): “On a scale of 1–10, how would you rate your team’s current capacity and capability to meet your objectives? (1 = severely lacking, 10 = excellent)”【232636627374673†L360-L386】.
+2.	Desired future level (1–10): “Where should your team’s capacity and skills be in 1.5 years on that same 1–10 scale?”
+3.	Confidence (1–10): “How confident are you that the organisation will enable that future level of capacity and capability? (1 = not confident, 10 = very confident)”
+4.	Strengths: “What specific strengths or behaviours within your team help you succeed today (e.g., collaboration, resilience, expertise)?”
+5.	Gaps and challenges: “What specific gaps or cultural challenges hold your team back (e.g., misaligned incentives, skill gaps, siloed knowledge)?”
+6.	Future culture: “How would you like the culture and roles to evolve over the next 1.5 years? To what extent should AI augment or automate roles versus empower people?”
+7.	Support needed: “What support (training, resources, new roles) would accelerate progress toward that vision?”
+D2 – Corporate / Organisational (policies, governance and decision‑making)
+1.	Current capability (1–10): “On a scale of 1–10, how effective are our current governance, policies and decision‑making processes in enabling you to perform your role?”
+2.	Desired future level (1–10): “Where would you like our organisational effectiveness to be in 1.5 years?”
+3.	Confidence (1–10): “How confident are you that changes in corporate policies and structures will enable that level?”
+4.	Helpful structures: “Which processes or structures genuinely help you do your job (e.g., clear accountability, rapid decision‑making, cross‑functional alignment)?”
+5.	Friction points: “Where do policies or governance structures slow you down or create friction? Please provide examples.”
+6.	Barrier to improvement: “What is the main barrier preventing better organisational effectiveness (e.g., risk aversion, bureaucracy, unclear ownership)?”
+7.	Future governance: “Looking ahead 1.5 years, how should governance and decision‑making adapt to support innovation, collaboration and compliance (e.g., decentralised decision authority, integrated oversight)?”
+D3 – Customer (expectations, needs and experience)
+1.	Current capability (1–10): “On a scale of 1–10, how would you rate our current ability to meet and exceed customer needs and expectations?”
+2.	Desired future level (1–10): “Where should our ability to deliver customer experience be in 1.5 years?”
+3.	Confidence (1–10): “How confident are you that our organisation will achieve that customer experience vision?”
+4.	What’s working: “What do customers currently appreciate about our services or interactions?”
+5.	Customer pain points: “Where do customers struggle or get frustrated with our service or communications? Please provide examples.”
+6.	Barrier to excellence: “What is preventing the organisation from delivering a consistently excellent customer experience (e.g., processes, technology, policies, mindset)?”
+7.	Future customer experience: “In 1.5 years, how would you like customers to describe their experience with us (e.g., seamless, personalised, proactive)? What innovations or approaches will get us there?”
+D4 – Technology (systems, data and tools)
+1.	Current capability (1–10): “On a scale of 1–10, how would you rate our current technology, data systems and tools in terms of reliability, integration and usability?”
+2.	Desired future level (1–10): “Where should our technology capability be in 1.5 years on the same 1–10 scale (think of ideal integration, automation and AI augmentation)?”
+3.	Confidence (1–10): “How confident are you that our technology strategy and investments will enable that future state?”
+4.	Helpful systems: “Which systems or tools genuinely empower you to do your job effectively today?”
+5.	Technology frustrations: “What are the most significant technology frustrations or gaps you face (e.g., manual processes, lack of integration, poor data quality)?”
+6.	Barrier to improvement: “What’s the main barrier preventing technology improvements (e.g., budget, legacy systems, governance)?”
+7.	Future technology: “Looking 1.5 years ahead, what technology capabilities or AI‑driven tools would you like to have? Should AI replace humans in certain tasks, augment decisions or both? Please elaborate.”
+D5 – Regulation (compliance and risk)
+1.	Constraint: “Do current regulations or compliance requirements materially constrain your ability to operate or scale? If yes, please explain how.”
+2.	Current awareness (1–10): “On a scale of 1–10, how would you rate your awareness of upcoming regulations that could materially affect our business?”
+3.	Desired awareness (1–10): “Where should that awareness level be in 1.5 years?”
+4.	Confidence (1–10): “How confident are you that our processes for regulatory monitoring and compliance will support the business’s future ambitions?”
+5.	Regulatory burden: “Do regulatory requirements create significant cost, delay or operational workarounds? Please describe.”
+6.	Early assessment: “Are regulatory impacts assessed early enough to influence strategy, product or delivery decisions? Provide an example.”
+7.	Risk of unanticipated change: “Could a regulatory change cause material financial, operational or reputational risk if not anticipated? What improvements would help mitigate this risk?”
+Tail – Prioritisation and closing
+1.	Biggest constraint: “Among People, Corporate/Organisational, Customer, Technology and Regulation, which one area constrains your day‑to‑day work the most?”
+2.	High‑impact improvement: “Which area, if improved significantly, would have the biggest positive impact on your ability to deliver value?”
+3.	Optimism about change: “Overall, are you optimistic, neutral or skeptical about the organisation’s ability to change? What would increase your optimism?”
+4.	Final thoughts: “What other insights, stories or context would you like to share that you think would help shape our vision and the upcoming Dream session?”
+Guidelines for implementing the new report
+•	Data capture: During interviews, record both the numerical ratings and the qualitative narratives. Note the interviewee’s tone and emotions so they can be reflected in the executive summary.
+•	Analysis: Summarise the narratives using a standard template for each domain (current state, ambition, barriers, enablers and confidence). Avoid evaluative language; focus on describing the environment.
+•	Spider diagram: Use the three rating values per domain (current, future and confidence) to build a radar/spider chart. Label each axis clearly to help readers interpret the gap between reality and ambition.
+•	Word cloud: Clean the text (remove stop words, duplicates and irrelevant words) before generating the cloud. Use it as a high‑level visual cue and accompany it with a short explanation of the key themes. Remember that word clouds can be visually appealing but may hide context and lead to misinterpretation【105198590860073†L157-L165】【105198590860073†L224-L233】.
+•	Feedback to interviewee: Include a short personalised note thanking participants for their input and summarising the actions the organisation intends to take. This closes the loop and builds trust.
+Deliverables to WindSurf
+When briefing WindSurf to implement these changes, provide:
+1.	Rewritten question set (see above) to replace the questions in lib/conversation/fixed-questions.ts. Each domain now includes three rating questions plus specific open‑ended questions that probe strengths, challenges, ambitions and barriers.
+2.	Template for the revised report with the new structure (executive summary, domain summaries, spider diagram with three ratings, cleaned word cloud with commentary and value feedback). Ensure the report emphasises the interviewee’s perception of the organisation rather than evaluating the interviewee.
+3.	Instructions for generating the spider diagram and word cloud as described above, including data cleaning steps, labelling and caveats.
+4.	Guidance on feedback tone: Feedback should be constructive and appreciative, acknowledging both the realities and the ambitions shared by the interviewee.
+By adopting these changes, your discovery process will generate richer, future‑oriented insights and set the stage for a more effective Dream session.

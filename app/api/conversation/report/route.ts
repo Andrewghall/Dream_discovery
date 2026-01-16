@@ -878,6 +878,8 @@ export async function GET(request: NextRequest) {
       sessionId: session.id,
       status: session.status,
       includeRegulation,
+      workshopName: session.workshop?.name || null,
+      participantName: session.participant?.name || null,
       participant: {
         name: session.participant?.name || null,
         role: session.participant?.role || null,

@@ -87,6 +87,7 @@ export function ConversationReport({
   keyInsights,
   phaseInsights,
   wordCloudThemes,
+  onDownloadPdf,
 }: {
   executiveSummary: string;
   tone: string | null;
@@ -104,6 +105,7 @@ export function ConversationReport({
   }>;
   phaseInsights: PhaseInsight[];
   wordCloudThemes: WordCloudItem[];
+  onDownloadPdf?: () => void;
 }) {
   const reportDate = new Date().toLocaleDateString('en-GB', {
     year: 'numeric',
@@ -164,16 +166,7 @@ export function ConversationReport({
               <CardDescription>Interviewee view of the organisation and operating environment</CardDescription>
             </div>
             <div className="no-print">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  try {
-                    window.print();
-                  } catch {
-                    // ignore
-                  }
-                }}
-              >
+              <Button variant="outline" onClick={onDownloadPdf}>
                 Download PDF
               </Button>
             </div>
