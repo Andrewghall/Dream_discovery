@@ -62,6 +62,8 @@ export async function generateDiscoveryReportPdf(params: {
         .report-charts-grid { grid-template-columns: 1fr !important; justify-items: center !important; }
         .report-charts-grid > * { width: 100% !important; max-width: 520px !important; }
         .report-charts-grid svg { margin: 0 auto !important; }
+        .report-radar-content { align-items: center !important; text-align: center !important; }
+        .report-radar-content svg { display: block !important; margin: 0 auto !important; }
         .word-cloud { justify-content: center !important; }
         .report-domain-grid { gap: 24px !important; }
         .report-phase-card { break-before: page !important; page-break-before: always !important; }
@@ -70,6 +72,10 @@ export async function generateDiscoveryReportPdf(params: {
         .print-header, .print-footer { position: fixed !important; left: 0; right: 0; background: #fff; z-index: 10; }
         .print-header { top: 0; padding: 6px 24px; border-bottom: 1px solid rgba(0,0,0,0.08); }
         .print-footer { bottom: 0; padding: 6px 24px; border-top: 1px solid rgba(0,0,0,0.08); }
+        .print-header-row, .print-footer-row { display: grid !important; grid-template-columns: 1fr auto 1fr !important; font-size: 7pt !important; }
+        .print-header-title { text-align: center !important; }
+        .print-header-spacer, .print-footer-right { justify-self: end !important; }
+        .print-page-number::after { content: "Page " counter(page); }
         #discovery-report { padding-top: 40px !important; padding-bottom: 32px !important; }
       `,
     });

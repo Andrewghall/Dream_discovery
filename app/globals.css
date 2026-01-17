@@ -221,14 +221,19 @@
   }
   #discovery-report .print-header-row,
   #discovery-report .print-footer-row {
-    display: flex !important;
+    display: grid !important;
+    grid-template-columns: 1fr auto 1fr !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    font-size: 9pt !important;
+    font-size: 7pt !important;
     line-height: 1.1 !important;
   }
   #discovery-report .print-header-title {
     font-weight: 600 !important;
+    text-align: center !important;
+  }
+  #discovery-report .print-header-spacer,
+  #discovery-report .print-footer-right {
+    justify-self: end !important;
   }
   #discovery-report .print-header-date,
   #discovery-report .print-footer-left,

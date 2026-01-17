@@ -236,7 +236,7 @@ export function ConversationReport({
             <CardTitle>Spider Diagram (Three Scores)</CardTitle>
             <CardDescription>Current, target, and projected (1–10)</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="report-radar-content flex flex-col items-center">
             {phaseInsights.length ? (
               <div className="flex justify-center">
                 <RadarChart data={currentSeries.data} series={[currentSeries, futureSeries, confidenceSeries]} />
