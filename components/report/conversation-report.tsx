@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadarChart } from '@/components/report/radar-chart';
 import { WordCloud, WordCloudItem } from '@/components/report/word-cloud';
@@ -88,6 +89,7 @@ export function ConversationReport({
   phaseInsights,
   wordCloudThemes,
   onDownloadPdf,
+  pdfMode,
 }: {
   executiveSummary: string;
   tone: string | null;
@@ -105,13 +107,28 @@ export function ConversationReport({
   }>;
   phaseInsights: PhaseInsight[];
   wordCloudThemes: WordCloudItem[];
-  onDownloadPdf?: () => void;
+  onDownloadPdf?: () => void | Promise<void>;
+  pdfMode?: boolean;
 }) {
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
   const reportDate = new Date().toLocaleDateString('en-GB', {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
   });
+
+  const handleDownloadPdf = async () => {
+    if (!onDownloadPdf) return;
+    if (isDownloadingPdf) return;
+
+    try {
+      setIsDownloadingPdf(true);
+      await onDownloadPdf();
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   const axes = phaseInsights.map((p) => ({ phase: p.phase, label: phaseLabel(p.phase) }));
 
@@ -141,13 +158,15 @@ export function ConversationReport({
 
   return (
     <div id="discovery-report" className="container max-w-4xl mx-auto px-3 sm:px-4 py-6 space-y-4">
-      <div className="print-only print-header">
-        <div className="print-header-row">
-          <div className="print-header-date">{reportDate}</div>
-          <div className="print-header-title">DREAM DISCOVERY</div>
-          <div className="print-header-spacer" />
+      {!pdfMode && (
+        <div className="print-only print-header">
+          <div className="print-header-row">
+            <div className="print-header-date">{reportDate}</div>
+            <div className="print-header-title">DREAM DISCOVERY</div>
+            <div className="print-header-spacer" />
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -166,9 +185,14 @@ export function ConversationReport({
               <CardDescription>Interviewee view of the organisation and operating environment</CardDescription>
             </div>
             <div className="no-print">
-              <Button variant="outline" onClick={onDownloadPdf}>
-                Download PDF
+              <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloadingPdf}>
+                {isDownloadingPdf ? 'Downloading PDF…' : 'Download PDF'}
               </Button>
+              {isDownloadingPdf && (
+                <div className="mt-2 text-xs font-medium text-muted-foreground animate-pulse">
+                  Completing and downloading your PDF…
+                </div>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -401,14 +425,16 @@ export function ConversationReport({
         </CardContent>
       </Card>
 
-      <div className="print-only print-footer">
-        <div className="print-footer-row">
-          <div className="print-footer-left">Copyright 2026 Ethenta</div>
-          <div className="print-footer-right">
-            <span className="print-page-number" />
+      {!pdfMode && (
+        <div className="print-only print-footer">
+          <div className="print-footer-row">
+            <div className="print-footer-left">Copyright 2026 Ethenta</div>
+            <div className="print-footer-right">
+              <span className="print-page-number" />
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

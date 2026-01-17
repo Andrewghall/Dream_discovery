@@ -72,7 +72,11 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
   const [draftMessage, setDraftMessage] = useState('');
-  const [isPdfMode, setIsPdfMode] = useState(false);
+  const [isPdfMode, setIsPdfMode] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('pdf') === '1';
+  });
   const [report, setReport] = useState<null | {
     executiveSummary: string;
     tone: string | null;
@@ -579,9 +583,10 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 keyInsights={report.keyInsights}
                 phaseInsights={report.phaseInsights}
                 wordCloudThemes={report.wordCloudThemes}
+                pdfMode={isPdfMode}
                 onDownloadPdf={async () => {
                   try {
-                    const response = await fetch('/api/conversation/report/pdf', {
+                    const response = await fetch(`/api/conversation/report/pdf?ts=${Date.now()}` , {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({

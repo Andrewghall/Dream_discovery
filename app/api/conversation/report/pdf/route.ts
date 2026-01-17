@@ -50,6 +50,8 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'attachment; filename="DREAM-Discovery-Summary-Report.pdf"',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        Pragma: 'no-cache',
       },
     });
   } catch (error) {

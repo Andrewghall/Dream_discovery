@@ -35,9 +35,8 @@ export async function generateDiscoveryReportPdf(params: {
   const { discoveryUrl } = params;
 
   const url = new URL(discoveryUrl);
-  if (!url.searchParams.has('pdf')) {
-    url.searchParams.set('pdf', '1');
-  }
+  url.searchParams.set('pdf', '1');
+  url.searchParams.set('pdf_ts', Date.now().toString());
 
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath());
   const browser = await puppeteer.launch({
@@ -53,6 +52,21 @@ export async function generateDiscoveryReportPdf(params: {
     await page.goto(url.toString(), { waitUntil: 'networkidle0', timeout: 120000 });
     await page.waitForSelector('#discovery-report', { timeout: 120000 });
 
+    await page.waitForFunction(
+      () => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('pdf') !== '1') return false;
+        return !document.querySelector('#discovery-report .print-header') && !document.querySelector('#discovery-report .print-footer');
+      },
+      { timeout: 120000 }
+    );
+
+    await page.evaluate(() => {
+      document
+        .querySelectorAll('#discovery-report .print-header, #discovery-report .print-footer')
+        .forEach((el) => el.remove());
+    });
+
     await page.addStyleTag({
       content: `
         .no-print { display: none !important; }
@@ -60,18 +74,17 @@ export async function generateDiscoveryReportPdf(params: {
         body { background: #fff !important; }
         #discovery-report { max-width: none !important; margin: 0 auto !important; }
         .report-charts-grid { grid-template-columns: 1fr !important; justify-items: center !important; }
-        .report-charts-grid > * { width: 100% !important; max-width: 520px !important; }
+        .report-charts-grid > * { width: 100% !important; max-width: 560px !important; }
         .report-charts-grid svg { margin: 0 auto !important; }
         .report-radar-content { align-items: center !important; text-align: center !important; }
-        .report-radar-content svg { display: block !important; margin: 0 auto !important; }
+        .report-radar-content svg { display: block !important; margin: 0 auto !important; width: 360px !important; height: 360px !important; }
+        .report-radar-content .mt-2 { justify-content: center !important; }
         .word-cloud { justify-content: center !important; }
         .report-domain-grid { gap: 24px !important; }
         .report-phase-card { break-before: page !important; page-break-before: always !important; }
         .report-phase-card:first-of-type { break-before: auto !important; page-break-before: auto !important; }
         .report-phase-card, .report-charts-grid > *, .report-themes-card { break-inside: avoid !important; page-break-inside: avoid !important; }
-        .print-header, .print-footer { position: fixed !important; left: 0; right: 0; background: #fff; z-index: 10; }
-        .print-header { top: 0; padding: 6px 24px; border-bottom: 1px solid rgba(0,0,0,0.08); }
-        .print-footer { bottom: 0; padding: 6px 24px; border-top: 0 !important; }
+        .print-header, .print-footer { display: none !important; }
         .print-header-row, .print-footer-row { display: grid !important; grid-template-columns: 1fr auto 1fr !important; font-size: 7pt !important; }
         .print-header-title { text-align: center !important; }
         .print-header-spacer, .print-footer-right { justify-self: end !important; }
