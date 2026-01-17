@@ -2,7 +2,15 @@
 
 import { memo, useMemo, useRef, useState } from 'react';
 
-export type HemispherePrimaryType = 'QUESTION' | 'INSIGHT' | 'ACTION' | 'DECISION' | 'OTHER';
+export type HemispherePrimaryType =
+  | 'VISIONARY'
+  | 'OPPORTUNITY'
+  | 'CONSTRAINT'
+  | 'RISK'
+  | 'ENABLER'
+  | 'ACTION'
+  | 'QUESTION'
+  | 'INSIGHT';
 
 export type HemisphereDialoguePhase = 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
 
@@ -57,16 +65,22 @@ function lerp(a: number, b: number, t: number) {
 
 function primaryColor(type: HemispherePrimaryType | null) {
   switch (type) {
-    case 'QUESTION':
+    case 'VISIONARY':
+      return '#8b5cf6';
+    case 'OPPORTUNITY':
       return '#3b82f6';
+    case 'CONSTRAINT':
+      return '#f97316';
+    case 'RISK':
+      return '#ef4444';
+    case 'ENABLER':
+      return '#14b8a6';
     case 'INSIGHT':
       return '#10b981';
     case 'ACTION':
       return '#f59e0b';
-    case 'DECISION':
-      return '#ef4444';
-    case 'OTHER':
-      return '#a855f7';
+    case 'QUESTION':
+      return '#0ea5e9';
     default:
       return '#94a3b8';
   }
