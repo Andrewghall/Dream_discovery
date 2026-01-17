@@ -118,12 +118,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const recorderMimeTypeRef = useRef<string>('');
   const recorderGenerationRef = useRef(0);
   const captureT0Ref = useRef<number>(0);
-  const queueRef = useRef<Array<{ blob: Blob; t: number }>>([]);
+  const queueRef = useRef<Array<{ blob: Blob; startTime: number; endTime: number }>>([]);
   const processingRef = useRef(false);
   const stopProcessingRef = useRef(false);
   const lastTranscriptionErrorRef = useRef<string>('');
   const lastEmptyDeepgramRef = useRef<string>('');
   const chunkIntervalRef = useRef<number | null>(null);
+  const lastChunkEndRef = useRef<number>(0);
   const whisperDisabledRef = useRef(false);
   const watchdogIntervalRef = useRef<number | null>(null);
   const lastChunkAtRef = useRef<number>(0);
@@ -332,14 +333,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
       while (!stopProcessingRef.current) {
         const item = queueRef.current.shift();
         if (!item) break;
-        await transcribeAndForward(item.blob, item.t);
+        await transcribeAndForward(item.blob, item.startTime, item.endTime);
       }
     } finally {
       processingRef.current = false;
     }
   };
 
-  const transcribeAndForward = async (blob: Blob, t: number) => {
+  const CHUNK_MS = 10_000;
+
+  const transcribeAndForward = async (blob: Blob, startTime: number, endTime: number) => {
     const asFile = new File([blob], 'chunk', { type: blob.type || 'application/octet-stream' });
 
     let text = '';
@@ -421,8 +424,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
     const chunk: NormalizedTranscriptChunk = {
       speakerId: null,
-      startTime: t,
-      endTime: t,
+      startTime,
+      endTime,
       text,
       confidence,
       source,
@@ -476,8 +479,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
       lastChunkAtRef.current = Date.now();
 
       const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      const t = Math.max(0, Math.round(now - captureT0Ref.current));
-      queueRef.current.push({ blob, t });
+      const endTime = Math.max(0, Math.round(now - captureT0Ref.current));
+      const startTime = Math.max(lastChunkEndRef.current, Math.max(0, endTime - CHUNK_MS));
+      lastChunkEndRef.current = endTime;
+      queueRef.current.push({ blob, startTime, endTime });
       void processQueue();
     };
 
@@ -508,7 +513,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
     attachAndStartRecorder(recorder);
 
-    const chunkMs = 10_000;
     chunkIntervalRef.current = window.setInterval(() => {
       try {
         const r = recorderRef.current;
@@ -516,7 +520,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       } catch {
         // ignore
       }
-    }, chunkMs);
+    }, CHUNK_MS);
   };
 
   const forceRestartRecorder = () => {
@@ -724,6 +728,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     setStatus('capturing');
     stopProcessingRef.current = false;
     queueRef.current = [];
+    lastChunkEndRef.current = 0;
     whisperDisabledRef.current = false;
     lastChunkAtRef.current = Date.now();
     lastHealthyAtRef.current = Date.now();
