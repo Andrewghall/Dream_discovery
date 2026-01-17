@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { NormalizedTranscriptChunk } from '@/lib/transcription/types';
+import { HemisphereNodes, type HemisphereNodeDatum, type HemispherePrimaryType } from '@/components/live/hemisphere-nodes';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -33,6 +34,32 @@ type RealtimeEvent = {
   type: string;
   createdAt: number;
   payload: unknown;
+};
+
+type DataPointCreatedPayload = {
+  dataPoint: {
+    id: string;
+    rawText: string;
+    source: string;
+    createdAt: string | Date;
+  };
+  transcriptChunk?: {
+    startTimeMs: number;
+    endTimeMs: number;
+    confidence: number | null;
+    source: string;
+  };
+};
+
+type ClassificationUpdatedPayload = {
+  dataPointId: string;
+  classification: {
+    primaryType: HemispherePrimaryType;
+    confidence: number;
+    keywords: string[];
+    suggestedArea: string | null;
+    updatedAt: string;
+  };
 };
 
 function errorMessage(value: unknown): string {
@@ -65,10 +92,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const [status, setStatus] = useState<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [events, setEvents] = useState<RealtimeEvent[]>([]);
   const [forwardedCount, setForwardedCount] = useState(0);
   const [debugTrace, setDebugTrace] = useState<string[]>([]);
   const [tabHiddenWarning, setTabHiddenWarning] = useState(false);
+
+  const [nodesById, setNodesById] = useState<Record<string, HemisphereNodeDatum>>({});
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const statusRef = useRef<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
 
@@ -102,6 +131,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const wakeLockRef = useRef<null | { release?: () => Promise<void> }>(null);
 
   const esRef = useRef<EventSource | null>(null);
+
+  const nodes = useMemo(() => {
+    const arr = Object.values(nodesById);
+    arr.sort((a, b) => a.createdAtMs - b.createdAtMs);
+    return arr;
+  }, [nodesById]);
+
+  const originTimeMs = useMemo(() => (nodes.length ? nodes[0].createdAtMs : null), [nodes]);
+
+  const selectedNode = useMemo(
+    () => (selectedNodeId ? nodesById[selectedNodeId] ?? null : null),
+    [nodesById, selectedNodeId]
+  );
 
   const eventUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/events`, [workshopId]);
   const ingestUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/transcript`, [workshopId]);
@@ -578,13 +620,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
   };
 
-  const appendEvent = (evt: RealtimeEvent) => {
-    setEvents((prev) => {
-      const next = [...prev, evt];
-      return next.slice(-200);
-    });
-  };
-
   const startSse = () => {
     try {
       esRef.current?.close();
@@ -598,7 +633,35 @@ export default function WorkshopLivePage({ params }: PageProps) {
     es.addEventListener('datapoint.created', (e) => {
       try {
         const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        appendEvent(evt);
+        const p = evt.payload as DataPointCreatedPayload;
+        const dataPointId = p?.dataPoint?.id;
+        if (!dataPointId) return;
+        const createdAtMs =
+          typeof p.dataPoint.createdAt === 'string'
+            ? Date.parse(p.dataPoint.createdAt)
+            : p.dataPoint.createdAt instanceof Date
+              ? p.dataPoint.createdAt.getTime()
+              : Date.now();
+        const node: HemisphereNodeDatum = {
+          dataPointId,
+          createdAtMs,
+          rawText: String(p.dataPoint.rawText ?? ''),
+          dataPointSource: String(p.dataPoint.source ?? ''),
+          transcriptChunk: p.transcriptChunk
+            ? {
+                startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+                endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+                confidence:
+                  typeof p.transcriptChunk.confidence === 'number' ? p.transcriptChunk.confidence : null,
+                source: String(p.transcriptChunk.source ?? ''),
+              }
+            : null,
+          classification: null,
+        };
+        setNodesById((prev) => {
+          if (prev[dataPointId]) return prev;
+          return { ...prev, [dataPointId]: node };
+        });
       } catch {
         // ignore
       }
@@ -607,7 +670,28 @@ export default function WorkshopLivePage({ params }: PageProps) {
     es.addEventListener('classification.updated', (e) => {
       try {
         const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        appendEvent(evt);
+        const p = evt.payload as ClassificationUpdatedPayload;
+        const dataPointId = p?.dataPointId;
+        if (!dataPointId) return;
+
+        const cls = p.classification;
+        setNodesById((prev) => {
+          const existing = prev[dataPointId];
+          if (!existing) return prev;
+          return {
+            ...prev,
+            [dataPointId]: {
+              ...existing,
+              classification: {
+                primaryType: cls.primaryType,
+                confidence: cls.confidence,
+                keywords: Array.isArray(cls.keywords) ? cls.keywords : [],
+                suggestedArea: cls.suggestedArea ?? null,
+                updatedAt: cls.updatedAt,
+              },
+            },
+          };
+        });
       } catch {
         // ignore
       }
@@ -952,31 +1036,94 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
           <Card className="md:col-span-2">
             <CardHeader>
-              <CardTitle>Realtime events</CardTitle>
+              <CardTitle>Realtime view</CardTitle>
               <CardDescription>
                 Listening to {eventUrl} (SSE). Expect nodes within seconds as people speak.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[420px] overflow-auto border rounded-md p-3 bg-muted/20">
-                {events.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No events yet.</div>
+              <div className="h-[420px] border rounded-md p-3 bg-muted/20">
+                {nodes.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No datapoints yet.</div>
                 ) : (
-                  <div className="space-y-2 text-xs">
-                    {events
-                      .slice()
-                      .reverse()
-                      .map((evt) => (
-                        <div key={evt.id} className="border-b pb-2">
-                          <div className="font-medium">{evt.type}</div>
-                          <pre className="whitespace-pre-wrap break-words">{JSON.stringify(evt.payload, null, 2)}</pre>
-                        </div>
-                      ))}
-                  </div>
+                  <HemisphereNodes
+                    nodes={nodes}
+                    originTimeMs={originTimeMs}
+                    onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
+                    className="h-full w-full"
+                  />
                 )}
               </div>
             </CardContent>
           </Card>
+
+          <Dialog open={!!selectedNode} onOpenChange={(open) => {
+            if (!open) setSelectedNodeId(null);
+          }}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Datapoint</DialogTitle>
+                <DialogDescription>
+                  {selectedNode?.classification?.primaryType ?? 'UNCLASSIFIED'}
+                  {selectedNode?.classification?.confidence != null
+                    ? ` • ${(selectedNode.classification.confidence * 100).toFixed(0)}%`
+                    : ''}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="rounded-md border p-3 text-sm whitespace-pre-wrap break-words">
+                  {selectedNode?.rawText || ''}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-md border p-3">
+                    <div className="font-medium mb-1">Transcript</div>
+                    <div className="text-muted-foreground">
+                      Start: {selectedNode?.transcriptChunk?.startTimeMs ?? '—'}ms
+                    </div>
+                    <div className="text-muted-foreground">
+                      End: {selectedNode?.transcriptChunk?.endTimeMs ?? '—'}ms
+                    </div>
+                    <div className="text-muted-foreground">
+                      Deepgram conf:{' '}
+                      {selectedNode?.transcriptChunk?.confidence == null
+                        ? '—'
+                        : `${(selectedNode.transcriptChunk.confidence * 100).toFixed(0)}%`}
+                    </div>
+                    <div className="text-muted-foreground">
+                      Source: {selectedNode?.transcriptChunk?.source ?? '—'}
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border p-3">
+                    <div className="font-medium mb-1">Classification</div>
+                    <div className="text-muted-foreground">
+                      Type: {selectedNode?.classification?.primaryType ?? '—'}
+                    </div>
+                    <div className="text-muted-foreground">
+                      Conf:{' '}
+                      {selectedNode?.classification?.confidence == null
+                        ? '—'
+                        : `${(selectedNode.classification.confidence * 100).toFixed(0)}%`}
+                    </div>
+                    <div className="text-muted-foreground">
+                      Suggested area: {selectedNode?.classification?.suggestedArea ?? '—'}
+                    </div>
+                    <div className="text-muted-foreground">
+                      Keywords: {selectedNode?.classification?.keywords?.length ? selectedNode.classification.keywords.join(', ') : '—'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setSelectedNodeId(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </div>
