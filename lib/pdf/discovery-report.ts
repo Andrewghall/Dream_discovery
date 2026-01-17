@@ -71,7 +71,7 @@ export async function generateDiscoveryReportPdf(params: {
         .report-phase-card, .report-charts-grid > *, .report-themes-card { break-inside: avoid !important; page-break-inside: avoid !important; }
         .print-header, .print-footer { position: fixed !important; left: 0; right: 0; background: #fff; z-index: 10; }
         .print-header { top: 0; padding: 6px 24px; border-bottom: 1px solid rgba(0,0,0,0.08); }
-        .print-footer { bottom: 0; padding: 6px 24px; border-top: 1px solid rgba(0,0,0,0.08); }
+        .print-footer { bottom: 0; padding: 6px 24px; border-top: 0 !important; }
         .print-header-row, .print-footer-row { display: grid !important; grid-template-columns: 1fr auto 1fr !important; font-size: 7pt !important; }
         .print-header-title { text-align: center !important; }
         .print-header-spacer, .print-footer-right { justify-self: end !important; }
@@ -83,8 +83,26 @@ export async function generateDiscoveryReportPdf(params: {
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
-      displayHeaderFooter: false,
-      margin: { top: '12mm', bottom: '12mm', left: '10mm', right: '10mm' },
+      displayHeaderFooter: true,
+      margin: { top: '14mm', bottom: '14mm', left: '10mm', right: '10mm' },
+      headerTemplate: `
+        <div style="width:100%; font-size:7pt; font-family:Arial, sans-serif; color:#555; padding:0 24px;">
+          <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center;">
+            <div style="text-align:left;">${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+            <div style="text-align:center; font-weight:600; color:#111;">DREAM DISCOVERY</div>
+            <div></div>
+          </div>
+        </div>
+      `,
+      footerTemplate: `
+        <div style="width:100%; font-size:7pt; font-family:Arial, sans-serif; color:#555; padding:0 24px;">
+          <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center;">
+            <div style="text-align:left;">Copyright 2026 Ethenta</div>
+            <div></div>
+            <div style="text-align:right;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
+          </div>
+        </div>
+      `,
     });
 
     return Buffer.from(pdf);
