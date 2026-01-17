@@ -260,7 +260,7 @@ export function ConversationReport({
 
       <div className="report-domain-grid grid grid-cols-1 gap-4">
         {phaseInsights.map((p) => (
-          <Card key={p.phase}>
+          <Card key={p.phase} className="report-phase-card">
             <CardHeader>
               <CardTitle>{phaseLabel(p.phase)}</CardTitle>
             </CardHeader>
