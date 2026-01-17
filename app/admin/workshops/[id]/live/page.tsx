@@ -47,6 +47,7 @@ type DataPointCreatedPayload = {
     rawText: string;
     source: string;
     createdAt: string | Date;
+    dialoguePhase?: HemisphereDialoguePhase | null;
   };
   transcriptChunk?: {
     startTimeMs: number;
@@ -141,6 +142,15 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const esRef = useRef<EventSource | null>(null);
 
   const pendingPhaseByKeyRef = useRef<Map<string, HemisphereDialoguePhase>>(new Map());
+
+  const safePhase = (v: unknown): HemisphereDialoguePhase | null => {
+    if (v == null) return null;
+    const s = String(v).trim().toUpperCase();
+    if (s === 'REIMAGINE') return 'REIMAGINE';
+    if (s === 'CONSTRAINTS') return 'CONSTRAINTS';
+    if (s === 'DEFINE_APPROACH') return 'DEFINE_APPROACH';
+    return null;
+  };
 
   const phaseKey = (p: {
     startTimeMs: number;
@@ -503,7 +513,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const r = await fetch(ingestUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk),
+        body: JSON.stringify({ ...chunk, dialoguePhase }),
       });
       if (r.ok) {
         setForwardedCount((n) => n + 1);
@@ -713,16 +723,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
               ? p.dataPoint.createdAt.getTime()
               : Date.now();
 
-        const dpPhase = p.transcriptChunk
-          ? (pendingPhaseByKeyRef.current.get(
-              phaseKey({
-                startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
-                endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
-                text: String(p.dataPoint.rawText ?? ''),
-                source: String(p.transcriptChunk.source ?? ''),
-              })
-            ) ?? null)
-          : null;
+        const phaseFromServer = safePhase((p.dataPoint as { dialoguePhase?: unknown } | undefined)?.dialoguePhase);
+        const dpPhase =
+          phaseFromServer ??
+          (p.transcriptChunk
+            ? (pendingPhaseByKeyRef.current.get(
+                phaseKey({
+                  startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+                  endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+                  text: String(p.dataPoint.rawText ?? ''),
+                  source: String(p.transcriptChunk.source ?? ''),
+                })
+              ) ?? null)
+            : null);
 
         const node: HemisphereNodeDatum = {
           dataPointId,

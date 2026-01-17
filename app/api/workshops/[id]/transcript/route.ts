@@ -12,7 +12,19 @@ type IngestTranscriptChunkBody = {
   text: string;
   confidence: number | null;
   source: 'zoom' | 'deepgram' | 'whisper';
+  dialoguePhase?: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null;
 };
+
+function safeDialoguePhase(
+  v: unknown
+): 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null {
+  if (v == null) return null;
+  const s = String(v).trim().toUpperCase();
+  if (s === 'REIMAGINE') return 'REIMAGINE';
+  if (s === 'CONSTRAINTS') return 'CONSTRAINTS';
+  if (s === 'DEFINE_APPROACH') return 'DEFINE_APPROACH';
+  return null;
+}
 
 export async function POST(
   request: NextRequest,
@@ -46,12 +58,26 @@ export async function POST(
         dataPoint: {
           include: {
             classification: true,
+            annotation: true,
           },
         },
       },
     });
 
     if (existing?.dataPoint) {
+      const requestedPhase = safeDialoguePhase(body.dialoguePhase);
+      if (requestedPhase && !existing.dataPoint.annotation) {
+        try {
+          await prisma.dataPointAnnotation.create({
+            data: {
+              dataPointId: existing.dataPoint.id,
+              dialoguePhase: requestedPhase,
+            },
+          });
+        } catch {
+          // ignore (race / already created)
+        }
+      }
       return NextResponse.json({
         ok: true,
         deduped: true,
@@ -87,6 +113,16 @@ export async function POST(
       },
     });
 
+    const dialoguePhase = safeDialoguePhase(body.dialoguePhase);
+    if (dialoguePhase) {
+      await prisma.dataPointAnnotation.create({
+        data: {
+          dataPointId: dataPoint.id,
+          dialoguePhase,
+        },
+      });
+    }
+
     emitWorkshopEvent(workshopId, {
       id: nanoid(),
       type: 'datapoint.created',
@@ -98,6 +134,7 @@ export async function POST(
           source: dataPoint.source,
           speakerId: dataPoint.speakerId,
           createdAt: dataPoint.createdAt,
+          dialoguePhase,
         },
         transcriptChunk: {
           id: transcriptChunk.id,
