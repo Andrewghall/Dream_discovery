@@ -112,12 +112,25 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, className } = props;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [tooltip, setTooltip] = useState<{
-    x: number;
-    y: number;
-    label: string;
-    conf: number | null;
-  } | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const tooltipPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const tooltipRafRef = useRef<number | null>(null);
+  const [tooltip, setTooltip] = useState<{ label: string; conf: number | null } | null>(null);
+
+  const scheduleTooltipPositionUpdate = (attempt = 0) => {
+    if (tooltipRafRef.current != null) return;
+    tooltipRafRef.current = requestAnimationFrame(() => {
+      tooltipRafRef.current = null;
+      const el = tooltipRef.current;
+      if (!el) {
+        if (attempt < 2) scheduleTooltipPositionUpdate(attempt + 1);
+        return;
+      }
+      const pos = tooltipPosRef.current;
+      el.style.left = `${pos.x + 10}px`;
+      el.style.top = `${pos.y + 10}px`;
+    });
+  };
 
   const positioned = useMemo<PositionedNode[]>(() => {
     const W = 1000;
@@ -222,25 +235,15 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
             onMouseEnter={(e) => {
               const rect = containerRef.current?.getBoundingClientRect();
               if (!rect) return;
-              setTooltip({
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top,
-                label: n.label,
-                conf: n.conf,
-              });
+              tooltipPosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+              scheduleTooltipPositionUpdate();
+              setTooltip({ label: n.label, conf: n.conf });
             }}
             onMouseMove={(e) => {
               const rect = containerRef.current?.getBoundingClientRect();
               if (!rect) return;
-              setTooltip((t) =>
-                t
-                  ? {
-                      ...t,
-                      x: e.clientX - rect.left,
-                      y: e.clientY - rect.top,
-                    }
-                  : t
-              );
+              tooltipPosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+              scheduleTooltipPositionUpdate();
             }}
             onMouseLeave={() => setTooltip(null)}
             onClick={() => onNodeClick?.(n)}
@@ -251,10 +254,11 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
 
       {tooltip ? (
         <div
+          ref={tooltipRef}
           style={{
             position: 'absolute',
-            left: tooltip.x + 10,
-            top: tooltip.y + 10,
+            left: 0,
+            top: 0,
             pointerEvents: 'none',
           }}
           className="rounded-md border bg-background px-2 py-1 text-xs shadow-md"
