@@ -288,6 +288,11 @@ export default function WorkshopDetailPage({ params }: PageProps) {
               </div>
             </div>
             <div className="flex gap-2">
+              <Link href={`/admin/workshops/${id}/live`}>
+                <Button variant="outline" size="lg">
+                  Live
+                </Button>
+              </Link>
               <Button onClick={handleClearEmailStatus} variant="outline" size="lg">
                 Clear Email Status
               </Button>
