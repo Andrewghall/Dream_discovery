@@ -598,12 +598,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                         feedback: report.feedback,
                         inputQuality: report.inputQuality,
                         keyInsights: report.keyInsights,
-                        phaseInsights: report.phaseInsights.map((p) => ({
-                          phase: p.phase,
-                          currentScore: p.currentScore,
-                          targetScore: p.targetScore,
-                          projectedScore: p.projectedScore,
-                        })),
+                        wordCloudThemes: report.wordCloudThemes,
+                        phaseInsights: report.phaseInsights,
                       }),
                     });
 

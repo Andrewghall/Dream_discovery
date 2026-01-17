@@ -4,6 +4,22 @@ import { generateDiscoveryReportPdf } from '@/lib/pdf/discovery-report';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
+type PhaseInsightPayload = {
+  phase: string;
+  currentScore: number | null;
+  targetScore: number | null;
+  projectedScore: number | null;
+  strengths?: string[];
+  working?: string[];
+  gaps?: string[];
+  painPoints?: string[];
+  frictions?: string[];
+  barriers?: string[];
+  constraint?: string[];
+  future?: string[];
+  support?: string[];
+};
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
@@ -24,12 +40,8 @@ export async function POST(request: NextRequest) {
         confidence: 'high' | 'medium' | 'low';
         evidence: string[];
       }>;
-      phaseInsights: Array<{
-        phase: string;
-        currentScore: number | null;
-        targetScore: number | null;
-        projectedScore: number | null;
-      }>;
+      wordCloudThemes?: Array<{ text: string; value: number }>;
+      phaseInsights: PhaseInsightPayload[];
     };
 
     if (!body?.participantName || !body?.discoveryUrl || !body?.executiveSummary || !body?.feedback) {
@@ -46,6 +58,7 @@ export async function POST(request: NextRequest) {
       inputQuality: body.inputQuality,
       keyInsights: body.keyInsights,
       phaseInsights: body.phaseInsights,
+      wordCloudThemes: body.wordCloudThemes,
     });
 
     return new NextResponse(new Uint8Array(pdf), {
