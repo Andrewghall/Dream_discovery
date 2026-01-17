@@ -20,6 +20,7 @@ export type HemisphereNodeDatum = {
   rawText: string;
   dataPointSource: string;
   dialoguePhase: HemisphereDialoguePhase | null;
+  intent?: string | null;
   transcriptChunk: {
     startTimeMs: number;
     endTimeMs: number;
@@ -86,6 +87,21 @@ function primaryColor(type: HemispherePrimaryType | null) {
   }
 }
 
+function intentColor(intent: string) {
+  const palette = [
+    '#a855f7',
+    '#3b82f6',
+    '#14b8a6',
+    '#22c55e',
+    '#f59e0b',
+    '#f97316',
+    '#ef4444',
+    '#06b6d4',
+  ];
+  const i = Math.floor(hash01(intent) * palette.length);
+  return palette[Math.max(0, Math.min(palette.length - 1, i))];
+}
+
 export const HemisphereNodes = memo(function HemisphereNodes(props: {
   nodes: HemisphereNodeDatum[];
   originTimeMs: number | null;
@@ -143,7 +159,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       const x = cx + radial * Math.cos(theta);
       const y = cy - radial * Math.sin(theta);
 
-      const fill = primaryColor(clsType);
+      const fill = n.intent ? intentColor(n.intent) : primaryColor(clsType);
       const stroke = 'rgba(15,23,42,0.22)';
 
       return {
@@ -153,7 +169,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         r: 6,
         fill,
         stroke,
-        label: clsType ?? 'UNCLASSIFIED',
+        label: n.intent ? n.intent.toUpperCase() : (clsType ?? 'UNCLASSIFIED'),
         conf: clsConf,
       };
     });

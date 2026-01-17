@@ -68,6 +68,15 @@ type ClassificationUpdatedPayload = {
   };
 };
 
+type AnnotationUpdatedPayload = {
+  dataPointId: string;
+  annotation: {
+    dialoguePhase?: HemisphereDialoguePhase | null;
+    intent?: string | null;
+    updatedAt: string | Date;
+  };
+};
+
 function errorMessage(value: unknown): string {
   if (value instanceof Error) return value.message;
   if (typeof value === 'string') return value;
@@ -795,6 +804,38 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 suggestedArea: cls.suggestedArea ?? null,
                 updatedAt: cls.updatedAt,
               },
+            },
+          };
+        });
+      } catch {
+        // ignore
+      }
+    });
+
+    es.addEventListener('annotation.updated', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
+        const p = evt.payload as AnnotationUpdatedPayload;
+        const dataPointId = p?.dataPointId;
+        if (!dataPointId) return;
+        const intent = typeof p.annotation?.intent === 'string' ? p.annotation.intent.trim() : '';
+        const phaseFromServer = safePhase((p.annotation as { dialoguePhase?: unknown } | undefined)?.dialoguePhase);
+
+        setNodesById((prev) => {
+          const existing = prev[dataPointId];
+          if (!existing) return prev;
+
+          const nextIntent = intent || null;
+          const nextPhase = existing.dialoguePhase ?? phaseFromServer;
+
+          if (existing.intent === nextIntent && existing.dialoguePhase === nextPhase) return prev;
+
+          return {
+            ...prev,
+            [dataPointId]: {
+              ...existing,
+              intent: nextIntent,
+              dialoguePhase: nextPhase,
             },
           };
         });
