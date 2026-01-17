@@ -23,7 +23,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { NormalizedTranscriptChunk } from '@/lib/transcription/types';
-import { HemisphereNodes, type HemisphereNodeDatum, type HemispherePrimaryType } from '@/components/live/hemisphere-nodes';
+import {
+  HemisphereNodes,
+  type HemisphereDialoguePhase,
+  type HemisphereNodeDatum,
+  type HemispherePrimaryType,
+} from '@/components/live/hemisphere-nodes';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -98,6 +103,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const [nodesById, setNodesById] = useState<Record<string, HemisphereNodeDatum>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'room' | 'facilitator' | 'split'>('split');
+  const [dialoguePhase, setDialoguePhase] = useState<HemisphereDialoguePhase>('REIMAGINE');
 
   const statusRef = useRef<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
 
@@ -133,6 +140,15 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const esRef = useRef<EventSource | null>(null);
 
+  const pendingPhaseByKeyRef = useRef<Map<string, HemisphereDialoguePhase>>(new Map());
+
+  const phaseKey = (p: {
+    startTimeMs: number;
+    endTimeMs: number;
+    text: string;
+    source: string;
+  }) => `${p.startTimeMs}:${p.endTimeMs}:${p.source}:${p.text}`;
+
   const nodes = useMemo(() => {
     const arr = Object.values(nodesById);
     arr.sort((a, b) => a.createdAtMs - b.createdAtMs);
@@ -145,6 +161,44 @@ export default function WorkshopLivePage({ params }: PageProps) {
     () => (selectedNodeId ? nodesById[selectedNodeId] ?? null : null),
     [nodesById, selectedNodeId]
   );
+
+  const workboard = useMemo(() => {
+    const byType: Record<string, number> = {};
+    let unclassified = 0;
+
+    for (const n of nodes) {
+      const t = n.classification?.primaryType;
+      if (!t) {
+        unclassified += 1;
+      } else {
+        byType[t] = (byType[t] || 0) + 1;
+      }
+    }
+
+    const recent = nodes.slice(-6).reverse();
+    const last = nodes.length ? nodes[nodes.length - 1] : null;
+
+    return {
+      total: nodes.length,
+      unclassified,
+      byType,
+      recent,
+      lastAtMs: last?.createdAtMs ?? null,
+    };
+  }, [nodes]);
+
+  const phaseLabel = useMemo(() => {
+    switch (dialoguePhase) {
+      case 'REIMAGINE':
+        return 'Reimagine';
+      case 'CONSTRAINTS':
+        return 'Constraints';
+      case 'DEFINE_APPROACH':
+        return 'Define approach';
+      default:
+        return 'Reimagine';
+    }
+  }, [dialoguePhase]);
 
   const eventUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/events`, [workshopId]);
   const ingestUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/transcript`, [workshopId]);
@@ -422,6 +476,18 @@ export default function WorkshopLivePage({ params }: PageProps) {
       setError(null);
     }
 
+    const startTimeMs = startTime;
+    const endTimeMs = endTime;
+
+    pendingPhaseByKeyRef.current.set(
+      phaseKey({ startTimeMs, endTimeMs, text, source }),
+      dialoguePhase
+    );
+    if (pendingPhaseByKeyRef.current.size > 500) {
+      const first = pendingPhaseByKeyRef.current.keys().next().value as string | undefined;
+      if (first) pendingPhaseByKeyRef.current.delete(first);
+    }
+
     const chunk: NormalizedTranscriptChunk = {
       speakerId: null,
       startTime,
@@ -646,11 +712,24 @@ export default function WorkshopLivePage({ params }: PageProps) {
             : p.dataPoint.createdAt instanceof Date
               ? p.dataPoint.createdAt.getTime()
               : Date.now();
+
+        const dpPhase = p.transcriptChunk
+          ? (pendingPhaseByKeyRef.current.get(
+              phaseKey({
+                startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+                endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+                text: String(p.dataPoint.rawText ?? ''),
+                source: String(p.transcriptChunk.source ?? ''),
+              })
+            ) ?? null)
+          : null;
+
         const node: HemisphereNodeDatum = {
           dataPointId,
           createdAtMs,
           rawText: String(p.dataPoint.rawText ?? ''),
           dataPointSource: String(p.dataPoint.source ?? ''),
+          dialoguePhase: dpPhase,
           transcriptChunk: p.transcriptChunk
             ? {
                 startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
@@ -662,6 +741,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
             : null,
           classification: null,
         };
+        if (p.transcriptChunk) {
+          pendingPhaseByKeyRef.current.delete(
+            phaseKey({
+              startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+              endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+              text: String(p.dataPoint.rawText ?? ''),
+              source: String(p.transcriptChunk.source ?? ''),
+            })
+          );
+        }
         setNodesById((prev) => {
           if (prev[dataPointId]) return prev;
           return { ...prev, [dataPointId]: node };
@@ -865,7 +954,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-transparent">
-      <div className="container max-w-5xl mx-auto px-4 py-8 space-y-6">
+      <div className="container max-w-7xl mx-auto px-4 py-8 space-y-6">
         {status === 'capturing' && tabHiddenWarning && (
           <Card className="border-destructive">
             <CardHeader>
@@ -883,188 +972,361 @@ export default function WorkshopLivePage({ params }: PageProps) {
               Captures room audio and transcribes live → DataPoints
             </p>
           </div>
-          <Link href={`/admin/workshops/${workshopId}`}>
-            <Button variant="outline">Back to Workshop</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-1 rounded-md border bg-muted/20 p-1">
+              <Button
+                type="button"
+                variant={dialoguePhase === 'REIMAGINE' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDialoguePhase('REIMAGINE')}
+              >
+                Reimagine
+              </Button>
+              <Button
+                type="button"
+                variant={dialoguePhase === 'CONSTRAINTS' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDialoguePhase('CONSTRAINTS')}
+              >
+                Constraints
+              </Button>
+              <Button
+                type="button"
+                variant={dialoguePhase === 'DEFINE_APPROACH' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDialoguePhase('DEFINE_APPROACH')}
+              >
+                Define approach
+              </Button>
+            </div>
+            <div className="flex items-center gap-1 rounded-md border bg-muted/20 p-1">
+              <Button
+                type="button"
+                variant={viewMode === 'room' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('room')}
+              >
+                Room
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === 'facilitator' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('facilitator')}
+              >
+                Facilitator
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === 'split' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('split')}
+              >
+                Split
+              </Button>
+            </div>
+            <Link href={`/admin/workshops/${workshopId}`}>
+              <Button variant="outline">Back to Workshop</Button>
+            </Link>
+          </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Consent</CardTitle>
-            <CardDescription>
-              This workshop is transcribed and analysed live to generate insights and reports.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-              I consent to transcription and analysis
-            </label>
-          </CardContent>
-        </Card>
+        <div className="sm:hidden">
+          <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
+            Phase: <span className="font-medium">{phaseLabel}</span>
+          </div>
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="md:col-span-1">
+        {viewMode === 'room' ? null : (
+          <Card>
             <CardHeader>
-              <CardTitle>Capture</CardTitle>
-              <CardDescription>Start capture to transcribe room audio in real time</CardDescription>
+              <CardTitle>Consent</CardTitle>
+              <CardDescription>
+                This workshop is transcribed and analysed live to generate insights and reports.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <Dialog open={micDialogOpen} onOpenChange={(open) => {
-                setMicDialogOpen(open);
-                if (!open) {
-                  void stopMicTest();
-                }
-              }}>
-                <DialogTrigger asChild>
-                  <Button type="button" variant={micPermission === 'granted' ? 'outline' : 'default'}>
-                    {micPermission === 'granted' ? 'Microphone checked' : 'Microphone check'}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Microphone check</DialogTitle>
-                    <DialogDescription>
-                      Grant microphone permission and confirm audio input is working before going live.
-                    </DialogDescription>
-                  </DialogHeader>
+            <CardContent className="space-y-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                I consent to transcription and analysis
+              </label>
+            </CardContent>
+          </Card>
+        )}
 
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Input device</Label>
-                      <Select
-                        value={selectedMicId}
-                        onValueChange={(v) => {
-                          setSelectedMicId(v);
-                          void stopMicTest();
-                        }}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select microphone" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {micDevices.length === 0 ? (
-                            <SelectItem value="__none" disabled>
-                              No devices found
-                            </SelectItem>
-                          ) : (
-                            micDevices.map((d) => (
-                              <SelectItem key={d.deviceId} value={d.deviceId}>
-                                {d.label}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                      <div className="text-xs text-muted-foreground">
-                        Permission: {micPermission}
+        <div
+          className={
+            viewMode === 'split'
+              ? 'grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-4'
+              : viewMode === 'facilitator'
+                ? 'space-y-4'
+                : 'space-y-4'
+          }
+        >
+          {viewMode !== 'facilitator' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Hemisphere</CardTitle>
+                {viewMode === 'room' ? null : (
+                  <CardDescription>
+                    Listening to {eventUrl} (SSE). New utterances appear immediately.
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={
+                    viewMode === 'room'
+                      ? 'h-[70vh] border rounded-md p-3 bg-muted/20'
+                      : 'h-[520px] border rounded-md p-3 bg-muted/20'
+                  }
+                >
+                  {nodes.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No datapoints yet.</div>
+                  ) : (
+                    <HemisphereNodes
+                      nodes={nodes}
+                      originTimeMs={originTimeMs}
+                      onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
+                      className="h-full w-full"
+                    />
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {viewMode !== 'room' ? (
+            <div className={viewMode === 'split' ? 'space-y-4' : 'space-y-4'}>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Capture</CardTitle>
+                  <CardDescription>Start capture to transcribe room audio in real time</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Dialog
+                    open={micDialogOpen}
+                    onOpenChange={(open) => {
+                      setMicDialogOpen(open);
+                      if (!open) {
+                        void stopMicTest();
+                      }
+                    }}
+                  >
+                    <DialogTrigger asChild>
+                      <Button type="button" variant={micPermission === 'granted' ? 'outline' : 'default'}>
+                        {micPermission === 'granted' ? 'Microphone checked' : 'Microphone check'}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Microphone check</DialogTitle>
+                        <DialogDescription>
+                          Grant microphone permission and confirm audio input is working before going live.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>Input device</Label>
+                          <Select
+                            value={selectedMicId}
+                            onValueChange={(v) => {
+                              setSelectedMicId(v);
+                              void stopMicTest();
+                            }}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select microphone" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {micDevices.length === 0 ? (
+                                <SelectItem value="__none" disabled>
+                                  No devices found
+                                </SelectItem>
+                              ) : (
+                                micDevices.map((d) => (
+                                  <SelectItem key={d.deviceId} value={d.deviceId}>
+                                    {d.label}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <div className="text-xs text-muted-foreground">Permission: {micPermission}</div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Level</Label>
+                          <div className="h-3 w-full rounded bg-muted overflow-hidden">
+                            <div
+                              className="h-full bg-green-600 transition-[width]"
+                              style={{ width: `${Math.round(micLevel * 100)}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-muted-foreground">Speak and watch the bar move.</div>
+                        </div>
                       </div>
+
+                      <DialogFooter>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            void refreshMicDevices();
+                          }}
+                        >
+                          Refresh devices
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            void stopMicTest();
+                          }}
+                          disabled={!micTesting}
+                        >
+                          Stop
+                        </Button>
+                        <Button type="button" onClick={() => void startMicTest()}>
+                          {micTesting ? 'Testing…' : 'Start test'}
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setMicDialogOpen(false);
+                          }}
+                          disabled={micPermission !== 'granted'}
+                        >
+                          Done
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <div className="flex gap-2">
+                    <Button onClick={startCapture} disabled={status === 'capturing'}>
+                      {status === 'capturing' ? 'Capturing…' : 'Start Capture'}
+                    </Button>
+                    <Button variant="outline" onClick={stopCapture} disabled={status !== 'capturing'}>
+                      Stop
+                    </Button>
+                  </div>
+
+                  {status === 'capturing' ? (
+                    <div className="text-sm font-medium">Live session is capturing room audio</div>
+                  ) : null}
+
+                  <div className="text-xs text-muted-foreground">
+                    <div>Status: {status}</div>
+                    <div>Forwarded transcript chunks: {forwardedCount}</div>
+                  </div>
+
+                  {error && <div className="text-sm text-red-600">{error}</div>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Workboard</CardTitle>
+                  <CardDescription>{phaseLabel} • What’s happening in the room</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-md border p-3">
+                      <div className="text-xs text-muted-foreground">Utterances</div>
+                      <div className="text-2xl font-bold">{workboard.total}</div>
                     </div>
-
-                    <div className="space-y-2">
-                      <Label>Level</Label>
-                      <div className="h-3 w-full rounded bg-muted overflow-hidden">
-                        <div
-                          className="h-full bg-green-600 transition-[width]"
-                          style={{ width: `${Math.round(micLevel * 100)}%` }}
-                        />
-                      </div>
-                      <div className="text-xs text-muted-foreground">Speak and watch the bar move.</div>
+                    <div className="rounded-md border p-3">
+                      <div className="text-xs text-muted-foreground">Unclassified</div>
+                      <div className="text-2xl font-bold">{workboard.unclassified}</div>
                     </div>
                   </div>
 
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        void refreshMicDevices();
-                      }}
-                    >
-                      Refresh devices
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        void stopMicTest();
-                      }}
-                      disabled={!micTesting}
-                    >
-                      Stop
-                    </Button>
-                    <Button type="button" onClick={() => void startMicTest()}>
-                      {micTesting ? 'Testing…' : 'Start test'}
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        setMicDialogOpen(false);
-                      }}
-                      disabled={micPermission !== 'granted'}
-                    >
-                      Done
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground mb-2">Types</div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {Object.keys(workboard.byType).length === 0 ? (
+                        <div className="text-muted-foreground">No classifications yet.</div>
+                      ) : (
+                        Object.entries(workboard.byType)
+                          .sort((a, b) => b[1] - a[1])
+                          .slice(0, 6)
+                          .map(([k, v]) => (
+                            <div key={k} className="flex items-center justify-between">
+                              <div className="font-medium">{k}</div>
+                              <div className="tabular-nums">{v}</div>
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  </div>
 
-              <div className="flex gap-2">
-                <Button onClick={startCapture} disabled={status === 'capturing'}>
-                  {status === 'capturing' ? 'Capturing…' : 'Start Capture'}
-                </Button>
-                <Button variant="outline" onClick={stopCapture} disabled={status !== 'capturing'}>
-                  Stop Capture
-                </Button>
-              </div>
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground mb-2">Selected</div>
+                    {selectedNode ? (
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">
+                          {selectedNode.classification?.primaryType ?? 'UNCLASSIFIED'}
+                          {selectedNode.classification?.confidence != null
+                            ? ` • ${(selectedNode.classification.confidence * 100).toFixed(0)}%`
+                            : ''}
+                        </div>
+                        <div className="text-sm whitespace-pre-wrap break-words">{selectedNode.rawText}</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">Click a node to select it.</div>
+                    )}
+                  </div>
 
-              {status === 'capturing' ? (
-                <div className="text-sm font-medium">Live session is capturing room audio</div>
-              ) : null}
-
-              <div className="text-xs text-muted-foreground">
-                <div>Status: {status}</div>
-                <div>Forwarded transcript chunks: {forwardedCount}</div>
-              </div>
-
-              {error && <div className="text-sm text-red-600">{error}</div>}
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground mb-2">Recent</div>
+                    <div className="space-y-2">
+                      {workboard.recent.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">No utterances yet.</div>
+                      ) : (
+                        workboard.recent.map((n) => (
+                          <button
+                            key={n.dataPointId}
+                            type="button"
+                            className="w-full text-left rounded-md border bg-background px-2 py-2 hover:bg-muted/40"
+                            onClick={() => setSelectedNodeId(n.dataPointId)}
+                          >
+                            <div className="text-xs text-muted-foreground">
+                              {n.classification?.primaryType ?? 'UNCLASSIFIED'}
+                            </div>
+                            <div className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">
+                              {n.rawText}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               {debugTrace.length > 0 ? (
-                <div className="rounded-md border bg-muted/10 p-3">
-                  <div className="text-xs font-medium mb-2">Debug trace</div>
-                  <pre className="text-xs whitespace-pre-wrap break-words">{debugTrace.join('\n')}</pre>
-                </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Debug</CardTitle>
+                    <CardDescription>Only visible in Facilitator/Split modes</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className="text-xs whitespace-pre-wrap break-words">{debugTrace.join('\n')}</pre>
+                  </CardContent>
+                </Card>
               ) : null}
+            </div>
+          ) : null}
+        </div>
 
-            </CardContent>
-          </Card>
-
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>Realtime view</CardTitle>
-              <CardDescription>
-                Listening to {eventUrl} (SSE). Expect nodes within seconds as people speak.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[420px] border rounded-md p-3 bg-muted/20">
-                {nodes.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No datapoints yet.</div>
-                ) : (
-                  <HemisphereNodes
-                    nodes={nodes}
-                    originTimeMs={originTimeMs}
-                    onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
-                    className="h-full w-full"
-                  />
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Dialog open={!!selectedNode} onOpenChange={(open) => {
+        <Dialog
+          open={viewMode !== 'room' && !!selectedNode}
+          onOpenChange={(open) => {
             if (!open) setSelectedNodeId(null);
-          }}>
+          }}
+        >
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Datapoint</DialogTitle>
@@ -1128,8 +1390,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 </Button>
               </DialogFooter>
             </DialogContent>
-          </Dialog>
-        </div>
+        </Dialog>
       </div>
     </div>
   );

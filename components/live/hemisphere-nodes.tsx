@@ -4,11 +4,14 @@ import { memo, useMemo, useRef, useState } from 'react';
 
 export type HemispherePrimaryType = 'QUESTION' | 'INSIGHT' | 'ACTION' | 'DECISION' | 'OTHER';
 
+export type HemisphereDialoguePhase = 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
+
 export type HemisphereNodeDatum = {
   dataPointId: string;
   createdAtMs: number;
   rawText: string;
   dataPointSource: string;
+  dialoguePhase: HemisphereDialoguePhase | null;
   transcriptChunk: {
     startTimeMs: number;
     endTimeMs: number;
@@ -46,6 +49,10 @@ function hash01(s: string): number {
     h = Math.imul(h, 16777619);
   }
   return ((h >>> 0) % 10_000) / 10_000;
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
 }
 
 function primaryColor(type: HemispherePrimaryType | null) {
@@ -96,7 +103,21 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
     return nodes.map((n) => {
       const dt = Math.max(0, n.createdAtMs - t0);
       const u = 1 - Math.exp(-dt / Math.max(1, timeScaleMs));
-      const theta = Math.PI - clamp01(u) * Math.PI;
+      const baseTheta = Math.PI - clamp01(u) * Math.PI;
+
+      // Dialogue phase bias (future utterances only). If phase is null, keep base layout unchanged.
+      // Right = REIMAGINE, Left = CONSTRAINTS, Center = DEFINE_APPROACH.
+      const phaseStrength = n.dialoguePhase ? 0.22 : 0;
+      const targetTheta =
+        n.dialoguePhase === 'CONSTRAINTS'
+          ? (5 * Math.PI) / 6
+          : n.dialoguePhase === 'DEFINE_APPROACH'
+            ? Math.PI / 2
+            : n.dialoguePhase === 'REIMAGINE'
+              ? Math.PI / 6
+              : baseTheta;
+
+      const theta = lerp(baseTheta, targetTheta, phaseStrength);
 
       const clsType = n.classification?.primaryType ?? null;
       const clsConf = typeof n.classification?.confidence === 'number' ? n.classification.confidence : null;
