@@ -1,5 +1,6 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
+import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
 
 type InputQuality = {
   score: number;
@@ -31,6 +32,32 @@ type PhaseInsight = {
 };
 
 type WordCloudTheme = { text: string; value: number };
+
+const MATURITY_BANDS: Array<{ label: string; bg: string }> = [
+  { label: 'Reactive', bg: '#ffcccc' },
+  { label: 'Emerging', bg: '#ffe6cc' },
+  { label: 'Defined', bg: '#fff2cc' },
+  { label: 'Optimised', bg: '#ccffcc' },
+  { label: 'Intelligent', bg: '#cce6ff' },
+];
+
+function phaseLabel(phase: string): string {
+  if (phase === 'people') return 'D1 — People';
+  if (phase === 'corporate') return 'D2 — Corporate / Organisational';
+  if (phase === 'customer') return 'D3 — Customer';
+  if (phase === 'technology') return 'D4 — Technology';
+  if (phase === 'regulation') return 'D5 — Regulation';
+  return phase;
+}
+
+function tripleRatingQuestionForPhase(phase: string): { text: string; maturityScale?: string[] } | null {
+  const rec = FIXED_QUESTIONS as unknown as Record<string, Array<{ text: string; tag: string; maturityScale?: string[] }>>;
+  const list = rec[phase];
+  if (!Array.isArray(list)) return null;
+  const triple = list.find((q) => q.tag === 'triple_rating');
+  if (!triple) return null;
+  return { text: triple.text, maturityScale: triple.maturityScale };
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -143,11 +170,11 @@ function radarSvg(params: {
 
 function listBlock(title: string, items?: string[]) {
   if (!items || !items.length) return '';
-  const lines = items.map((t) => `<div class="line">${escapeHtml(t)}</div>`).join('');
+  const lis = items.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
   return `
     <div class="block">
       <div class="block-title">${escapeHtml(title)}</div>
-      ${lines}
+      <ul class="list">${lis}</ul>
     </div>
   `;
 }
@@ -218,24 +245,58 @@ export async function generateDiscoveryReportPdf(params: {
     : '';
 
   const themeList = Array.isArray(params.wordCloudThemes) && params.wordCloudThemes.length
-    ? params.wordCloudThemes
-        .slice(0, 30)
-        .map((t) => `<span class="pill">${escapeHtml(t.text)}</span>`)
-        .join('')
+    ? (() => {
+        const themes = params.wordCloudThemes.slice(0, 40);
+        const values = themes.map((t) => t.value);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const span = Math.max(1, max - min);
+        return themes
+          .map((t) => {
+            const w = (t.value - min) / span;
+            const font = 11 + w * 11;
+            const opacity = 0.55 + w * 0.35;
+            return `<span class="cloud-word" style="font-size:${font.toFixed(1)}px; opacity:${opacity.toFixed(2)}">${escapeHtml(
+              t.text
+            )}</span>`;
+          })
+          .join('');
+      })()
     : '';
 
   const phaseBlocks = params.phaseInsights
     .map((p) => {
-      const title = p.phase === 'corporate' ? 'D2 — Corporate / Organisational' : p.phase;
-      const header = `<div class="phase-title">${escapeHtml(title)}</div>`;
+      const header = `<div class="phase-title">${escapeHtml(phaseLabel(p.phase))}</div>`;
       const scores = `<div class="scores">
         <div><span class="muted">Current:</span> <span class="strong">${p.currentScore ?? '—'}</span></div>
         <div><span class="muted">Target:</span> <span class="strong">${p.targetScore ?? '—'}</span></div>
         <div><span class="muted">Projected:</span> <span class="strong">${p.projectedScore ?? '—'}</span></div>
       </div>`;
+
+      const triple = tripleRatingQuestionForPhase(p.phase);
+      const questionText = triple?.text ? `<div class="pre question">${escapeHtml(triple.text)}</div>` : '';
+
+      const maturityScale = Array.isArray(triple?.maturityScale) && triple!.maturityScale!.length === 5
+        ? `
+          <div class="maturity">
+            <div class="maturity-caption muted">Maturity bands: 1–2 Reactive, 3–4 Emerging, 5–6 Defined, 7–8 Optimised, 9–10 Intelligent</div>
+            ${triple!.maturityScale!
+              .map((t, idx) => {
+                const band = MATURITY_BANDS[idx];
+                const bg = band?.bg || '#fff';
+                const label = band?.label || String(idx + 1);
+                return `<div class="band" style="background:${bg}"><span class="band-label">${escapeHtml(label)}:</span> ${escapeHtml(t)}</div>`;
+              })
+              .join('')}
+          </div>
+        `
+        : '';
+
       return `
         <div class="card page-break">
           ${header}
+          ${questionText}
+          ${maturityScale}
           ${scores}
           ${listBlock('Strengths / enablers', p.strengths)}
           ${listBlock("What’s working", p.working)}
@@ -275,12 +336,19 @@ export async function generateDiscoveryReportPdf(params: {
           .legend { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; font-size: 11px; color: #6b7280; }
           .legend-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
           .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
-          .pill { display: inline-block; border: 1px solid #e5e7eb; border-radius: 999px; padding: 4px 8px; margin: 4px 6px 0 0; font-size: 11px; color: #374151; }
+          .cloud { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding-top: 2px; }
+          .cloud-word { display: inline-block; color: #374151; line-height: 1.15; }
           .phase-title { font-size: 13px; font-weight: 700; margin: 0 0 6px; }
           .scores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 12px; margin-bottom: 10px; }
           .block { margin-top: 8px; }
           .block-title { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 4px; }
-          .line { font-size: 12px; white-space: pre-wrap; line-height: 1.35; }
+          .list { margin: 0; padding-left: 16px; }
+          .list li { font-size: 12px; white-space: pre-wrap; line-height: 1.35; margin: 0 0 2px; }
+          .question { margin-bottom: 8px; }
+          .maturity { margin: 6px 0 10px; }
+          .maturity-caption { font-size: 11px; margin-bottom: 6px; }
+          .band { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; font-size: 11px; margin-bottom: 6px; line-height: 1.25; }
+          .band-label { font-weight: 700; }
           .page-break { break-inside: avoid; page-break-inside: avoid; }
           .page-break + .page-break { break-before: page; page-break-before: always; }
         </style>
@@ -318,12 +386,17 @@ export async function generateDiscoveryReportPdf(params: {
             ${legend}
           </div>
 
-          ${themeList ? `
+          ${(Array.isArray(params.wordCloudThemes) && params.wordCloudThemes.length) ? `
             <div class="card">
               <div class="section-title">Themes & Intent</div>
-              ${themeList}
+              <div class="cloud">${themeList}</div>
             </div>
-          ` : ''}
+          ` : `
+            <div class="card">
+              <div class="section-title">Themes & Intent</div>
+              <div class="muted" style="font-size:12px;">No themes captured.</div>
+            </div>
+          `}
 
           ${phaseBlocks}
 
