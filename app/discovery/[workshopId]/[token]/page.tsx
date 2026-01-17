@@ -608,10 +608,23 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                     });
 
                     if (!response.ok) {
-                      let message = 'Failed to generate PDF.';
+                      let message = `Failed to generate PDF (HTTP ${response.status}).`;
                       try {
-                        const data = (await response.json()) as { error?: unknown };
-                        if (data?.error) message = String(data.error);
+                        const contentType = response.headers.get('content-type') || '';
+                        const vercelId = response.headers.get('x-vercel-id');
+                        const raw = await response.text();
+
+                        if (contentType.includes('application/json')) {
+                          const data = JSON.parse(raw) as { error?: unknown };
+                          if (data?.error) message = String(data.error);
+                        } else if (raw) {
+                          const snippet = raw.length > 400 ? `${raw.slice(0, 400)}…` : raw;
+                          message = `${message}\n\n${snippet}`;
+                        }
+
+                        if (vercelId) {
+                          message = `${message}\n\nVercel: ${vercelId}`;
+                        }
                       } catch {
                         // ignore
                       }
