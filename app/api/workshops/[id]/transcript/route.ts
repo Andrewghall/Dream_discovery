@@ -66,12 +66,13 @@ export async function POST(
     });
 
     if (existing?.dataPoint) {
+      const dataPointId = existing.dataPoint.id;
       const requestedPhase = safeDialoguePhase(body.dialoguePhase);
       if (requestedPhase && !existing.dataPoint.annotation) {
         try {
           await prisma.dataPointAnnotation.create({
             data: {
-              dataPointId: existing.dataPoint.id,
+              dataPointId,
               dialoguePhase: requestedPhase,
             },
           });
@@ -87,9 +88,9 @@ export async function POST(
             if (!intent) return;
 
             const annotation = await prisma.dataPointAnnotation.upsert({
-              where: { dataPointId: existing.dataPoint.id },
+              where: { dataPointId },
               create: {
-                dataPointId: existing.dataPoint.id,
+                dataPointId,
                 dialoguePhase: requestedPhase,
                 intent,
               },
@@ -101,7 +102,7 @@ export async function POST(
               type: 'annotation.updated',
               createdAt: Date.now(),
               payload: {
-                dataPointId: existing.dataPoint.id,
+                dataPointId,
                 annotation: {
                   dialoguePhase: annotation.dialoguePhase,
                   intent: annotation.intent,
@@ -119,7 +120,7 @@ export async function POST(
         ok: true,
         deduped: true,
         transcriptChunkId: existing.id,
-        dataPointId: existing.dataPoint.id,
+        dataPointId,
         classificationId: existing.dataPoint.classification?.id || null,
       });
     }
