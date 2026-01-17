@@ -607,7 +607,16 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                       }),
                     });
 
-                    if (!response.ok) throw new Error('Failed to generate PDF');
+                    if (!response.ok) {
+                      let message = 'Failed to generate PDF.';
+                      try {
+                        const data = (await response.json()) as { error?: unknown };
+                        if (data?.error) message = String(data.error);
+                      } catch {
+                        // ignore
+                      }
+                      throw new Error(message);
+                    }
                     const blob = await response.blob();
                     const url = URL.createObjectURL(blob);
                     const link = document.createElement('a');
@@ -617,7 +626,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                     URL.revokeObjectURL(url);
                   } catch (error) {
                     console.error(error);
-                    alert('Failed to generate PDF. Please try again.');
+                    alert(error instanceof Error ? error.message : 'Failed to generate PDF. Please try again.');
                   }
                 }}
               />

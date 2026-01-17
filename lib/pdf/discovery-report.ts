@@ -49,7 +49,7 @@ export async function generateDiscoveryReportPdf(params: {
   try {
     const page = await browser.newPage();
     await page.emulateMediaType('screen');
-    await page.goto(url.toString(), { waitUntil: 'networkidle0', timeout: 120000 });
+    await page.goto(url.toString(), { waitUntil: 'domcontentloaded', timeout: 120000 });
     await page.waitForSelector('#discovery-report', { timeout: 120000 });
 
     await page.waitForFunction(

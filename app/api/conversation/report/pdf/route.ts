@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateDiscoveryReportPdf } from '@/lib/pdf/discovery-report';
 
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
@@ -55,7 +58,17 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to generate report PDF';
     console.error('Failed to build report PDF:', error);
-    return NextResponse.json({ error: 'Failed to generate report PDF' }, { status: 500 });
+    return NextResponse.json(
+      { error: message },
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          Pragma: 'no-cache',
+        },
+      }
+    );
   }
 }
