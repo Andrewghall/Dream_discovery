@@ -22,6 +22,7 @@ interface Workshop {
 export default function AdminDashboard() {
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [loading, setLoading] = useState(true);
+  const [workshopsError, setWorkshopsError] = useState<string | null>(null);
   const [demoReport, setDemoReport] = useState<null | {
     executiveSummary: string;
     tone: string | null;
@@ -50,12 +51,26 @@ export default function AdminDashboard() {
   const fetchWorkshops = async () => {
     try {
       const response = await fetch(`/api/admin/workshops?bust=${Date.now()}`, { cache: 'no-store' });
-      if (response.ok) {
-        const data = await response.json();
-        setWorkshops(data.workshops || []);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        const details = data && typeof data === 'object' ? (data as Record<string, unknown>).details : null;
+        const detailsMessage =
+          details && typeof details === 'object' && typeof (details as Record<string, unknown>).message === 'string'
+            ? String((details as Record<string, unknown>).message)
+            : null;
+        const fallback = data && typeof data === 'object' && typeof (data as Record<string, unknown>).error === 'string'
+          ? String((data as Record<string, unknown>).error)
+          : 'Failed to fetch workshops';
+        setWorkshopsError(detailsMessage || fallback);
+        setWorkshops([]);
+        return;
       }
+
+      setWorkshopsError(null);
+      setWorkshops((data && typeof data === 'object' ? (data as Record<string, unknown>).workshops : null) as Workshop[] || []);
     } catch (error) {
       console.error('Failed to fetch workshops:', error);
+      setWorkshopsError(error instanceof Error ? error.message : 'Failed to fetch workshops');
     } finally {
       setLoading(false);
     }
@@ -185,6 +200,11 @@ export default function AdminDashboard() {
             <CardDescription>View and manage your discovery workshops</CardDescription>
           </CardHeader>
           <CardContent>
+            {workshopsError ? (
+              <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {workshopsError}
+              </div>
+            ) : null}
             {loading ? (
               <div className="text-center py-8 text-muted-foreground">Loading workshops...</div>
             ) : workshops.length === 0 ? (
