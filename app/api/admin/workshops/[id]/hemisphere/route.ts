@@ -5,22 +5,56 @@ export const dynamic = 'force-dynamic';
 
 type RunType = 'BASELINE' | 'FOLLOWUP';
 
+type NodeType = 'VISION' | 'BELIEF' | 'CHALLENGE' | 'FRICTION' | 'CONSTRAINT' | 'ENABLER' | 'EVIDENCE';
+
+type HemisphereLayer = 'H1' | 'H2' | 'H3' | 'H4';
+
 type HemisphereNode = {
   id: string;
+  type: NodeType;
   label: string;
-  kind: 'insight_type' | 'key_insight' | 'theme';
-  category: 'BUSINESS' | 'TECHNOLOGY' | 'PEOPLE' | 'CUSTOMER' | 'REGULATION' | null;
+  summary?: string;
+  phaseTags: string[];
+  layer: HemisphereLayer;
   weight: number;
-  severity: number | null;
-  participants: string[];
-  exampleQuotes: string[];
+  severity?: number;
+  confidence?: number;
+  sources: { sessionId: string; participantName: string }[];
+  evidence?: { quote?: string; qaTag?: string; createdAt?: string; chunkId?: string }[];
 };
 
-function safeCategory(value: unknown): HemisphereNode['category'] {
+type HemisphereEdge = {
+  id: string;
+  source: string;
+  target: string;
+  strength: number;
+  kind: 'SIMILAR' | 'COOCCUR' | 'CAUSE_HINT';
+};
+
+type HemisphereGraph = {
+  nodes: HemisphereNode[];
+  edges: HemisphereEdge[];
+  coreTruthNodeId: string;
+};
+
+type InsightCategory = 'BUSINESS' | 'TECHNOLOGY' | 'PEOPLE' | 'CUSTOMER' | 'REGULATION';
+
+const STOPWORDS = new Set([
+  'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
+]);
+
+function safeCategory(value: unknown): InsightCategory | null {
   const s = typeof value === 'string' ? value.trim().toUpperCase() : '';
   if (!s) return null;
   if (s === 'BUSINESS' || s === 'TECHNOLOGY' || s === 'PEOPLE' || s === 'CUSTOMER' || s === 'REGULATION') return s;
   return null;
+}
+
+function phaseTagFromCategory(value: unknown): string[] {
+  const cat = safeCategory(value);
+  if (!cat) return [];
+  if (cat === 'BUSINESS') return ['corporate'];
+  return [cat.toLowerCase()];
 }
 
 function safeRunType(value: string | null | undefined): RunType {
@@ -33,8 +67,127 @@ function safeArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function safeStringArray(value: unknown): string[] {
+  return safeArray(value).filter((v) => typeof v === 'string' && v.trim()).map((v) => String(v).trim());
+}
+
 function uniq(list: string[]): string[] {
   return [...new Set(list.filter(Boolean))];
+}
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function clampInt(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function words(text: string): string[] {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((w) => w.length >= 3)
+    .filter((w) => !STOPWORDS.has(w));
+}
+
+function tokenSet(text: string): Set<string> {
+  return new Set(words(text));
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const x of a) {
+    if (b.has(x)) inter++;
+  }
+  const uni = a.size + b.size - inter;
+  return uni <= 0 ? 0 : inter / uni;
+}
+
+function shortLabel(text: string, maxWords: number = 8): string {
+  const w = (text || '').trim().split(/\s+/).filter(Boolean);
+  return w.length <= maxWords ? w.join(' ') : w.slice(0, maxWords).join(' ');
+}
+
+function layerForType(type: NodeType): HemisphereLayer {
+  if (type === 'VISION' || type === 'BELIEF') return 'H1';
+  if (type === 'CHALLENGE' || type === 'FRICTION') return 'H2';
+  if (type === 'CONSTRAINT' || type === 'ENABLER') return 'H3';
+  return 'H4';
+}
+
+function defaultSeverity(type: NodeType): number | undefined {
+  if (type === 'CONSTRAINT') return 5;
+  if (type === 'CHALLENGE' || type === 'FRICTION') return 4;
+  if (type === 'ENABLER') return 2;
+  if (type === 'VISION' || type === 'BELIEF') return 1;
+  return undefined;
+}
+
+function inferNodeTypeFromText(text: string): Exclude<NodeType, 'EVIDENCE'> {
+  const t = (text || '').toLowerCase();
+  if (/(\bvision\b|\bfuture\b|\blooking ahead\b|\bambition\b|\bwe want\b)/.test(t)) return 'VISION';
+  if (/(\bbelief\b|\bwe believe\b|\bassume\b)/.test(t)) return 'BELIEF';
+  if (/(\bconstraint\b|\bblocked\b|\bdependent\b|\bdependency\b|\bgovernance\b|\bcompliance\b)/.test(t)) return 'CONSTRAINT';
+  if (/(\bfriction\b|\bslow\b|\bslows\b|\bhand[- ]offs\b|\bapproval\b|\bbureaucracy\b)/.test(t)) return 'FRICTION';
+  if (/(\benable\b|\benabler\b|\bworking\b|\bstrength\b)/.test(t)) return 'ENABLER';
+  return 'CHALLENGE';
+}
+
+function nodeTypeFromInsightType(value: unknown): Exclude<NodeType, 'EVIDENCE'> | null {
+  const s = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (!s) return null;
+  if (s === 'VISION') return 'VISION';
+  if (s === 'BELIEF') return 'BELIEF';
+  if (s === 'CHALLENGE') return 'CHALLENGE';
+  if (s === 'CONSTRAINT') return 'CONSTRAINT';
+  if (s === 'WHAT_WORKS') return 'ENABLER';
+  return null;
+}
+
+function parseQuestionKey(questionKey: string): { phase: string | null; tag: string | null } {
+  const parts = (questionKey || '').split(':');
+  if (parts.length === 3) return { phase: parts[0] || null, tag: parts[1] || null };
+  if (parts.length === 4) return { phase: parts[1] || null, tag: parts[2] || null };
+  return { phase: null, tag: null };
+}
+
+function mergeScore(prev: number | undefined, next: number | null | undefined, weightPrev: number, weightNext: number): number | undefined {
+  if (next == null || !Number.isFinite(next)) return prev;
+  const n = Number(next);
+  if (prev == null || !Number.isFinite(prev)) return n;
+  const total = Math.max(1, weightPrev + weightNext);
+  return (prev * weightPrev + n * weightNext) / total;
+}
+
+function mergeNode(target: HemisphereNode, incoming: Omit<HemisphereNode, 'weight'> & { weight?: number }) {
+  const incWeight = typeof incoming.weight === 'number' && Number.isFinite(incoming.weight) ? incoming.weight : 1;
+
+  const prevWeight = target.weight;
+  target.weight += incWeight;
+
+  target.phaseTags = uniq([...target.phaseTags, ...(incoming.phaseTags || [])]);
+  target.sources = [...target.sources, ...(incoming.sources || [])];
+  target.sources = uniq(target.sources.map((s) => `${s.sessionId}:${s.participantName}`)).map((k) => {
+    const [sessionId, participantName] = k.split(':');
+    return { sessionId, participantName };
+  });
+
+  target.severity = mergeScore(target.severity, incoming.severity, prevWeight, incWeight);
+  target.confidence = mergeScore(target.confidence, incoming.confidence, prevWeight, incWeight);
+
+  const mergedEvidence = [...(target.evidence || []), ...((incoming.evidence || []) as any[])];
+  if (mergedEvidence.length) {
+    target.evidence = mergedEvidence
+      .filter((e) => e && typeof e === 'object')
+      .slice(0, 12) as any;
+  }
 }
 
 export async function GET(
@@ -86,9 +239,10 @@ export async function GET(
           select: {
             sessionId: true,
             keyInsights: true,
+            phaseInsights: true,
             wordCloudThemes: true,
           },
-        })) as Array<{ sessionId: string; keyInsights: unknown; wordCloudThemes: unknown }>)
+        })) as Array<{ sessionId: string; keyInsights: unknown; phaseInsights: unknown; wordCloudThemes: unknown }>)
       : [];
 
     const insights = sessionIds.length
@@ -110,118 +264,384 @@ export async function GET(
       : [];
 
     const reportBySession = new Map(reports.map((r) => [r.sessionId, r]));
+    const sessionById = new Map(sessions.map((s) => [s.id, s]));
 
-    const nodeMap = new Map<string, HemisphereNode>();
+    const nodesById = new Map<string, HemisphereNode>();
+
+    const upsertNode = (incoming: HemisphereNode) => {
+      const existing = nodesById.get(incoming.id);
+      if (!existing) {
+        nodesById.set(incoming.id, incoming);
+        return;
+      }
+      mergeNode(existing, incoming);
+    };
 
     for (const ins of insights) {
-      const cat = safeCategory(ins.category);
-      const it = String(ins.insightType || '').trim();
-      if (!it) continue;
-      const nodeId = `insight_type:${cat || 'none'}:${it}`;
-      const prev = nodeMap.get(nodeId);
-
-      const participantId = String(ins.participantId || '');
+      const type = nodeTypeFromInsightType(ins.insightType);
+      if (!type) continue;
       const text = String(ins.text || '').trim();
-      const severity = typeof ins.severity === 'number' ? ins.severity : null;
+      if (!text) continue;
 
-      if (!prev) {
-        nodeMap.set(nodeId, {
-          id: nodeId,
-          label: it,
-          kind: 'insight_type',
-          category: cat,
-          weight: 1,
-          severity,
-          participants: participantId ? [participantId] : [],
-          exampleQuotes: text ? [text] : [],
-        });
-      } else {
-        prev.weight += 1;
-        prev.participants = uniq([...prev.participants, ...(participantId ? [participantId] : [])]);
-        if (text && prev.exampleQuotes.length < 3) prev.exampleQuotes.push(text);
-        if (severity !== null) {
-          const cur = typeof prev.severity === 'number' ? prev.severity : severity;
-          prev.severity = Math.round((cur + severity) / 2);
-        }
-      }
+      const session = sessionById.get(String(ins.sessionId || ''));
+      const participantName = session?.participant?.name || 'Participant';
+
+      const norm = text.toLowerCase();
+      const nodeId = `${type}:${norm}`;
+      const sev = typeof ins.severity === 'number' ? clampInt(ins.severity, 1, 5) : defaultSeverity(type);
+      const conf = typeof ins.confidence === 'number' ? clamp01(ins.confidence) : undefined;
+
+      upsertNode({
+        id: nodeId,
+        type,
+        label: shortLabel(text, 8),
+        summary: text,
+        phaseTags: phaseTagFromCategory(ins.category),
+        layer: layerForType(type),
+        weight: 1,
+        severity: sev,
+        confidence: conf,
+        sources: [{ sessionId: String(ins.sessionId), participantName }],
+        evidence: [],
+      });
     }
 
     for (const s of sessions) {
       const report = reportBySession.get(s.id);
       if (!report) continue;
 
-      const participantId = s.participantId;
+      const participantName = s.participant?.name || 'Participant';
 
       for (const ki of safeArray(report.keyInsights)) {
         const rec = ki && typeof ki === 'object' && !Array.isArray(ki) ? (ki as Record<string, unknown>) : null;
         const title = rec && typeof rec.title === 'string' ? rec.title.trim() : '';
-        if (!title) continue;
+        const insight = rec && typeof rec.insight === 'string' ? rec.insight.trim() : '';
+        const combined = `${title}\n${insight}`.trim();
+        if (!combined) continue;
 
-        const nodeId = `key_insight:${title.toLowerCase()}`;
-        const prev = nodeMap.get(nodeId);
-        const evidence = rec ? safeArray(rec.evidence).filter((e) => typeof e === 'string').map((e) => String(e).trim()) : [];
+        const type = inferNodeTypeFromText(combined);
+        const confidenceLabel = rec && typeof rec.confidence === 'string' ? rec.confidence.trim().toLowerCase() : '';
+        const conf = confidenceLabel === 'high' ? 0.85 : confidenceLabel === 'medium' ? 0.65 : confidenceLabel === 'low' ? 0.45 : undefined;
+        const evidenceQuotes = rec ? safeStringArray(rec.evidence).slice(0, 3) : [];
 
-        if (!prev) {
-          nodeMap.set(nodeId, {
-            id: nodeId,
-            label: title,
-            kind: 'key_insight',
-            category: null,
-            weight: 1,
-            severity: null,
-            participants: participantId ? [participantId] : [],
-            exampleQuotes: evidence.slice(0, 2),
-          });
-        } else {
-          prev.weight += 1;
-          prev.participants = uniq([...prev.participants, ...(participantId ? [participantId] : [])]);
-          for (const q of evidence) {
-            if (q && prev.exampleQuotes.length < 3 && !prev.exampleQuotes.includes(q)) prev.exampleQuotes.push(q);
-          }
-        }
+        const nodeId = `${type}:key:${title.toLowerCase() || shortLabel(insight, 8).toLowerCase()}`;
+
+        upsertNode({
+          id: nodeId,
+          type,
+          label: shortLabel(title || insight, 8),
+          summary: insight || title,
+          phaseTags: [],
+          layer: layerForType(type),
+          weight: 1,
+          severity: defaultSeverity(type),
+          confidence: conf,
+          sources: [{ sessionId: s.id, participantName }],
+          evidence: evidenceQuotes.map((q) => ({ quote: q })),
+        });
       }
 
-      for (const t of safeArray(report.wordCloudThemes)) {
-        const rec = t && typeof t === 'object' && !Array.isArray(t) ? (t as Record<string, unknown>) : null;
-        const text = rec && typeof rec.text === 'string' ? rec.text.trim() : '';
-        const value = rec && typeof rec.value === 'number' ? rec.value : null;
-        if (!text || value === null) continue;
-        if (value < 2) continue;
+      const phaseInsights = safeArray(report.phaseInsights)
+        .filter((p) => p && typeof p === 'object' && !Array.isArray(p)) as Array<Record<string, unknown>>;
+      for (const p of phaseInsights) {
+        const phase = typeof p.phase === 'string' ? p.phase.trim().toLowerCase() : '';
+        const phaseTags = phase ? [phase] : [];
 
-        const nodeId = `theme:${text.toLowerCase()}`;
-        const prev = nodeMap.get(nodeId);
-        if (!prev) {
-          nodeMap.set(nodeId, {
+        const future = safeStringArray(p.future);
+        const frictions = safeStringArray(p.frictions);
+        const constraint = safeStringArray(p.constraint);
+        const strengths = safeStringArray(p.strengths);
+        const working = safeStringArray(p.working);
+        const gaps = safeStringArray(p.gaps);
+        const painPoints = safeStringArray(p.painPoints);
+        const barriers = safeStringArray(p.barriers);
+        const support = safeStringArray(p.support);
+
+        for (const text of future) {
+          const type: NodeType = 'VISION';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
             id: nodeId,
-            label: text,
-            kind: 'theme',
-            category: null,
-            weight: value,
-            severity: null,
-            participants: participantId ? [participantId] : [],
-            exampleQuotes: [],
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
           });
-        } else {
-          prev.weight += value;
-          prev.participants = uniq([...prev.participants, ...(participantId ? [participantId] : [])]);
+        }
+
+        for (const text of frictions) {
+          const type: NodeType = 'FRICTION';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+
+        for (const text of barriers) {
+          const type: NodeType = 'FRICTION';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+
+        for (const text of constraint) {
+          const type: NodeType = 'CONSTRAINT';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+
+        for (const text of [...strengths, ...working]) {
+          const type: NodeType = 'ENABLER';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+
+        for (const text of [...gaps, ...painPoints, ...support]) {
+          const type: NodeType = 'CHALLENGE';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
         }
       }
     }
 
-    const nodes = [...nodeMap.values()].sort((a, b) => {
-      if (b.weight !== a.weight) return b.weight - a.weight;
-      const as = typeof a.severity === 'number' ? a.severity : -1;
-      const bs = typeof b.severity === 'number' ? b.severity : -1;
-      return bs - as;
+    const dataPoints = sessionIds.length
+      ? await prisma.dataPoint.findMany({
+          where: {
+            sessionId: { in: sessionIds },
+            questionKey: { not: null },
+          },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, sessionId: true, participantId: true, questionKey: true, rawText: true, createdAt: true, transcriptChunkId: true },
+        })
+      : [];
+
+    const evidenceCandidates = dataPoints
+      .map((dp) => {
+        const qk = String(dp.questionKey || '');
+        const meta = parseQuestionKey(qk);
+        const tag = (meta.tag || '').toLowerCase();
+        if (tag === 'triple_rating' || tag.endsWith('_score') || tag.includes('rating')) return null;
+        const answer = String(dp.rawText || '').trim();
+        if (!answer) return null;
+        const wordCount = answer.split(/\s+/).filter(Boolean).length;
+        if (wordCount < 18) return null;
+        const session = sessionById.get(String(dp.sessionId || ''));
+        const participantName = session?.participant?.name || 'Participant';
+        return {
+          dp,
+          answer,
+          wordCount,
+          phase: meta.phase ? meta.phase.toLowerCase() : null,
+          tag: meta.tag,
+          participantName,
+        };
+      })
+      .filter(Boolean) as Array<{ dp: any; answer: string; wordCount: number; phase: string | null; tag: string | null; participantName: string }>;
+
+    evidenceCandidates.sort((a, b) => b.wordCount - a.wordCount);
+    const evidenceTop = evidenceCandidates.slice(0, 45);
+
+    for (const item of evidenceTop) {
+      const phaseTags = item.phase ? [item.phase] : [];
+      const type: NodeType = 'EVIDENCE';
+      const nodeId = `EVIDENCE:${String(item.dp.id)}`;
+      upsertNode({
+        id: nodeId,
+        type,
+        label: shortLabel(item.answer, 8),
+        summary: item.answer,
+        phaseTags,
+        layer: layerForType(type),
+        weight: Math.max(1, Math.round(item.wordCount / 10)),
+        severity: undefined,
+        confidence: undefined,
+        sources: [{ sessionId: String(item.dp.sessionId), participantName: item.participantName }],
+        evidence: [
+          {
+            quote: item.answer,
+            qaTag: item.tag || undefined,
+            createdAt: item.dp.createdAt ? new Date(item.dp.createdAt).toISOString() : undefined,
+            chunkId: item.dp.transcriptChunkId ? String(item.dp.transcriptChunkId) : undefined,
+          },
+        ],
+      });
+    }
+
+    const allNodes = [...nodesById.values()]
+      .map((n) => ({
+        ...n,
+        severity: typeof n.severity === 'number' ? clampInt(n.severity, 1, 5) : n.severity,
+        confidence: typeof n.confidence === 'number' ? clamp01(n.confidence) : n.confidence,
+      }))
+      .sort((a, b) => b.weight - a.weight);
+
+    const nodesForSimilarity = allNodes
+      .filter((n) => n.type !== 'EVIDENCE')
+      .slice(0, 140);
+
+    const tokenById = new Map(nodesForSimilarity.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
+
+    const edgesById = new Map<string, HemisphereEdge>();
+    const addEdge = (edge: HemisphereEdge) => {
+      const prev = edgesById.get(edge.id);
+      if (!prev || edge.strength > prev.strength) edgesById.set(edge.id, edge);
+    };
+
+    for (let i = 0; i < nodesForSimilarity.length; i++) {
+      for (let j = i + 1; j < nodesForSimilarity.length; j++) {
+        const a = nodesForSimilarity[i];
+        const b = nodesForSimilarity[j];
+        if (a.layer !== b.layer && !(a.layer === 'H2' && b.layer === 'H3') && !(a.layer === 'H3' && b.layer === 'H2')) {
+          continue;
+        }
+        const ta = tokenById.get(a.id) || new Set<string>();
+        const tb = tokenById.get(b.id) || new Set<string>();
+        const sim = jaccard(ta, tb);
+        if (sim < 0.22) continue;
+        const source = a.id;
+        const target = b.id;
+        const id = `SIMILAR:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+        addEdge({ id, source, target, strength: clamp01(sim), kind: 'SIMILAR' });
+      }
+    }
+
+    const nodesBySession = new Map<string, string[]>();
+    for (const n of allNodes) {
+      if (n.type === 'EVIDENCE') continue;
+      for (const s of n.sources) {
+        const list = nodesBySession.get(s.sessionId) || [];
+        list.push(n.id);
+        nodesBySession.set(s.sessionId, list);
+      }
+    }
+
+    const weightById = new Map(allNodes.map((n) => [n.id, n.weight]));
+    for (const [sessionId, ids] of nodesBySession.entries()) {
+      const unique = uniq(ids);
+      unique.sort((a, b) => (weightById.get(b) || 0) - (weightById.get(a) || 0));
+      const limited = unique.slice(0, 18);
+      for (let i = 0; i < limited.length; i++) {
+        for (let j = i + 1; j < limited.length; j++) {
+          const a = limited[i];
+          const b = limited[j];
+          const id = `COOCCUR:${a < b ? `${a}|${b}` : `${b}|${a}`}`;
+          addEdge({ id, source: a, target: b, strength: 0.25, kind: 'COOCCUR' });
+        }
+      }
+      void sessionId;
+    }
+
+    const edges = [...edgesById.values()];
+    const degree = new Map<string, number>();
+    for (const e of edges) {
+      degree.set(e.source, (degree.get(e.source) || 0) + e.strength);
+      degree.set(e.target, (degree.get(e.target) || 0) + e.strength);
+    }
+
+    const centralNodes = allNodes
+      .filter((n) => n.type !== 'EVIDENCE')
+      .map((n) => ({ n, c: degree.get(n.id) || 0 }))
+      .sort((a, b) => b.c - a.c || b.n.weight - a.n.weight)
+      .slice(0, 3)
+      .map((r) => r.n);
+
+    const coreTruthNodeId = 'CORE_TRUTH';
+    const coreType: Exclude<NodeType, 'EVIDENCE'> =
+      centralNodes.some((n) => n.type === 'CONSTRAINT') ? 'CONSTRAINT' : 'CHALLENGE';
+    const coreSummary =
+      centralNodes.length > 0
+        ? centralNodes.map((n) => n.label).join(' · ')
+        : allNodes.slice(0, 3).map((n) => n.label).join(' · ');
+
+    allNodes.push({
+      id: coreTruthNodeId,
+      type: coreType,
+      label: 'Core Truth',
+      summary: coreSummary,
+      phaseTags: uniq(centralNodes.flatMap((n) => n.phaseTags)),
+      layer: layerForType(coreType),
+      weight: 10,
+      severity: defaultSeverity(coreType),
+      confidence: undefined,
+      sources: [],
+      evidence: [],
     });
 
-    const participants = sessions.map((s) => ({
-      participantId: s.participant.id,
-      name: s.participant.name,
-      baselineSessionId: runType === 'BASELINE' ? s.id : null,
-      followupSessionIds: runType === 'FOLLOWUP' ? [s.id] : [],
-      questionSetVersion: s.questionSetVersion || null,
-    }));
+    for (const n of centralNodes) {
+      const source = coreTruthNodeId;
+      const target = n.id;
+      const id = `CAUSE_HINT:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+      edges.push({ id, source, target, strength: 0.9, kind: 'CAUSE_HINT' });
+    }
+
+    const hemisphereGraph: HemisphereGraph = {
+      nodes: allNodes,
+      edges,
+      coreTruthNodeId,
+    };
 
     return NextResponse.json({
       ok: true,
@@ -230,9 +650,7 @@ export async function GET(
       generatedAt: new Date().toISOString(),
       sessionCount: sessions.length,
       participantCount: uniq(sessions.map((s) => s.participantId)).length,
-      nodes,
-      edges: [],
-      participants,
+      hemisphereGraph,
     });
   } catch (error) {
     console.error('Error building hemisphere snapshot:', error);
