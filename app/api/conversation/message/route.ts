@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ConversationPhase } from '@/lib/types/conversation';
 import OpenAI from 'openai';
-import { FIXED_QUESTIONS, getFixedQuestion, getFixedQuestionObject, getNextPhase, getPhaseProgressPercent } from '@/lib/conversation/fixed-questions';
+import {
+  FIXED_QUESTIONS,
+  fixedQuestionsForVersion,
+  getFixedQuestion,
+  getFixedQuestionObject,
+  getNextPhase,
+  getPhaseProgressPercent,
+} from '@/lib/conversation/fixed-questions';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -207,9 +214,10 @@ export async function POST(request: NextRequest) {
         const aiResponse = `No problem — skipping regulation.\n\n${getFixedQuestion(
           nextPhase,
           nextQuestionIndex,
-          nextIncludeRegulation
+          nextIncludeRegulation,
+          questionSetVersion
         )}`;
-        const qObj = getFixedQuestionObject(nextPhase, nextQuestionIndex, nextIncludeRegulation);
+        const qObj = getFixedQuestionObject(nextPhase, nextQuestionIndex, nextIncludeRegulation, questionSetVersion);
 
         const aiMessage = await prisma.conversationMessage.create({
           data: {
@@ -324,7 +332,8 @@ export async function POST(request: NextRequest) {
       totalParticipantCountCurrentPhase - clarificationCountCurrentPhase
     );
 
-    const totalQuestionsInPhase = FIXED_QUESTIONS[currentPhase].length;
+    const qs = fixedQuestionsForVersion(questionSetVersion);
+    const totalQuestionsInPhase = qs[currentPhase].length;
     let nextQuestionIndex = answeredCountCurrentPhase;
 
     if (answeredCountCurrentPhase >= totalQuestionsInPhase) {
@@ -333,13 +342,13 @@ export async function POST(request: NextRequest) {
       newProgress = 0;
     } else {
       newPhase = currentPhase;
-      newProgress = getPhaseProgressPercent(currentPhase, answeredCountCurrentPhase);
+      const progressPercent = getPhaseProgressPercent(newPhase, answeredCountCurrentPhase, questionSetVersion);
+      newProgress = progressPercent;
     }
 
-    const aiResponse = getFixedQuestion(newPhase, nextQuestionIndex, includeRegulation);
-    const qObj = getFixedQuestionObject(newPhase, nextQuestionIndex, includeRegulation);
-    const isFinalClosingLine =
-      newPhase === 'summary' && nextQuestionIndex === FIXED_QUESTIONS.summary.length - 1;
+    const aiResponse = getFixedQuestion(newPhase, nextQuestionIndex, includeRegulation, questionSetVersion);
+    const qObj = getFixedQuestionObject(newPhase, nextQuestionIndex, includeRegulation, questionSetVersion);
+    const isFinalClosingLine = newPhase === 'summary' && nextQuestionIndex === qs.summary.length - 1;
 
     if (isFinalClosingLine) {
       newProgress = 100;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ConversationStatus, Prisma } from '@prisma/client';
-import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
+import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -104,8 +104,9 @@ function questionTextFromKey(questionKey: string): { phase: string | null; quest
   const parsed = parseQuestionKey(questionKey);
   if (!parsed) return { phase: null, question: '' };
 
-  const phase = parsed.phase as keyof typeof FIXED_QUESTIONS;
-  const q = FIXED_QUESTIONS[phase]?.[parsed.index];
+  const qs = fixedQuestionsForVersion(parsed.version);
+  const phase = parsed.phase as keyof typeof qs;
+  const q = qs[phase]?.[parsed.index];
   return {
     phase: parsed.phase,
     question: q?.text || '',
@@ -269,6 +270,7 @@ export async function GET(
           email: session.participant.email,
           role: session.participant.role,
           department: session.participant.department,
+          discoveryToken: session.participant.discoveryToken,
         },
         qaPairs,
         ratingByPhase,

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { RadarChart } from '@/components/report/radar-chart';
 import { WordCloud, WordCloudItem } from '@/components/report/word-cloud';
 import { Button } from '@/components/ui/button';
-import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
+import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
 
 export interface PhaseInsight {
   phase: string;
@@ -49,15 +49,17 @@ const MATURITY_BANDS: Array<{ label: string; bg: string }> = [
   { label: 'Intelligent', bg: '#cce6ff' },
 ];
 
-function maturityScaleForPhase(phase: string): string[] | null {
-  const questions = FIXED_QUESTIONS[phase as keyof typeof FIXED_QUESTIONS];
+function maturityScaleForPhase(phase: string, questionSetVersion: string | null | undefined): string[] | null {
+  const qs = fixedQuestionsForVersion(questionSetVersion);
+  const questions = qs[phase as keyof typeof qs];
   const triple = Array.isArray(questions) ? questions.find((q) => q.tag === 'triple_rating') : null;
   const scale = triple && Array.isArray(triple.maturityScale) ? triple.maturityScale : null;
   return Array.isArray(scale) && scale.length === 5 ? scale : null;
 }
 
-function questionTextForPhase(phase: string): string | null {
-  const questions = FIXED_QUESTIONS[phase as keyof typeof FIXED_QUESTIONS];
+function questionTextForPhase(phase: string, questionSetVersion: string | null | undefined): string | null {
+  const qs = fixedQuestionsForVersion(questionSetVersion);
+  const questions = qs[phase as keyof typeof qs];
   const triple = Array.isArray(questions) ? questions.find((q) => q.tag === 'triple_rating') : null;
   const text = triple && typeof triple.text === 'string' ? triple.text.trim() : '';
   return text ? text : null;
@@ -90,6 +92,7 @@ export function ConversationReport({
   wordCloudThemes,
   onDownloadPdf,
   pdfMode,
+  questionSetVersion,
 }: {
   executiveSummary: string;
   tone: string | null;
@@ -109,6 +112,7 @@ export function ConversationReport({
   wordCloudThemes: WordCloudItem[];
   onDownloadPdf?: () => void | Promise<void>;
   pdfMode?: boolean;
+  questionSetVersion?: string | null;
 }) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
@@ -289,14 +293,14 @@ export function ConversationReport({
               <CardTitle>{phaseLabel(p.phase)}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              {questionTextForPhase(p.phase) && (
+              {questionTextForPhase(p.phase, questionSetVersion) && (
                 <div className="text-sm font-medium whitespace-pre-wrap leading-snug">
-                  {questionTextForPhase(p.phase)}
+                  {questionTextForPhase(p.phase, questionSetVersion)}
                 </div>
               )}
 
               {(() => {
-                const scale = maturityScaleForPhase(p.phase);
+                const scale = maturityScaleForPhase(p.phase, questionSetVersion);
                 if (!scale) return null;
                 return (
                   <div className="space-y-2">

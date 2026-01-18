@@ -32,6 +32,7 @@ type AnswersSession = {
     email: string;
     role: string | null;
     department: string | null;
+    discoveryToken?: string;
   };
   qaPairs: Array<{
     phase: string | null;
@@ -109,6 +110,8 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
 
   const [insights, setInsights] = useState<StoredInsight[]>([]);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+
+  const [copiedLink, setCopiedLink] = useState<'baseline' | 'followup' | null>(null);
 
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [backfillError, setBackfillError] = useState<string | null>(null);
@@ -254,6 +257,16 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
   );
 
   const participant = selectedSession?.participant ?? sessions[0]?.participant ?? null;
+
+  const handleCopyDiscoveryLink = async (kind: 'baseline' | 'followup') => {
+    const token = participant?.discoveryToken;
+    if (!token) return;
+    const qs = kind === 'followup' ? '?runType=FOLLOWUP&questionSetVersion=v2' : '';
+    const link = `${window.location.origin}/discovery/${encodeURIComponent(workshopId)}/${encodeURIComponent(token)}${qs}`;
+    await navigator.clipboard.writeText(link);
+    setCopiedLink(kind);
+    window.setTimeout(() => setCopiedLink((prev) => (prev === kind ? null : prev)), 1500);
+  };
 
   const phaseInsights = useMemo(() => {
     const raw = report?.phaseInsights;
@@ -456,6 +469,17 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {participant?.discoveryToken ? (
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => void handleCopyDiscoveryLink('baseline')}>
+                  {copiedLink === 'baseline' ? 'Copied baseline link' : 'Copy baseline link'}
+                </Button>
+                <Button variant="outline" onClick={() => void handleCopyDiscoveryLink('followup')}>
+                  {copiedLink === 'followup' ? 'Copied follow-up link' : 'Copy follow-up link (v2)'}
+                </Button>
+              </div>
+            ) : null}
+
             {error ? (
               <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {error}

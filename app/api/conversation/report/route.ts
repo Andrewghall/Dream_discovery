@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { sendDiscoveryReportEmail } from '@/lib/email/send-report';
-import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
+import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -139,8 +139,10 @@ function parseQuestionKey(questionKey: string): { phase: string; tag: string; in
 function questionTextFromKey(questionKey: string): { phase: string | null; question: string; tag: string | null } {
   const parsed = parseQuestionKey(questionKey);
   if (!parsed) return { phase: null, question: '', tag: null };
-  const phaseKey = parsed.phase as keyof typeof FIXED_QUESTIONS;
-  const q = FIXED_QUESTIONS[phaseKey]?.[parsed.index];
+
+  const qs = fixedQuestionsForVersion(parsed.version);
+  const phaseKey = parsed.phase as keyof typeof qs;
+  const q = qs[phaseKey]?.[parsed.index];
   return {
     phase: parsed.phase,
     question: q?.text || '',
