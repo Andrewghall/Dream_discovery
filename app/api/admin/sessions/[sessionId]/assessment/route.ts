@@ -97,11 +97,17 @@ async function generateReportPayload(request: NextRequest, sessionId: string): P
   url.searchParams.set('skipEmail', '1');
 
   const r = await fetch(url.toString(), { cache: 'no-store' });
-  const data = (await r.json().catch(() => null)) as ReportApiResponse | null;
-  if (!r.ok || !data || !data.executiveSummary) {
-    throw new Error('Failed to generate report');
+  const raw = (await r.json().catch(() => null)) as (ReportApiResponse & { error?: unknown; details?: unknown }) | null;
+  if (!r.ok || !raw || !raw.executiveSummary) {
+    const errorMsg =
+      raw && typeof raw.details === 'string' && raw.details.trim()
+        ? raw.details
+        : raw && typeof raw.error === 'string' && raw.error.trim()
+          ? raw.error
+          : 'Failed to generate report';
+    throw new Error(errorMsg);
   }
-  return data;
+  return raw;
 }
 
 export async function GET(
@@ -111,7 +117,7 @@ export async function GET(
   try {
     const { sessionId } = await params;
 
-    const report = await prisma.conversationReport.findUnique({ where: { sessionId } });
+    const report = await (prisma as any).conversationReport.findUnique({ where: { sessionId } });
     const insights = await prisma.conversationInsight.findMany({
       where: { sessionId },
       orderBy: { createdAt: 'asc' },
@@ -133,7 +139,7 @@ export async function POST(
     const force = request.nextUrl.searchParams.get('force') === '1';
 
     if (!force) {
-      const existing = await prisma.conversationReport.findUnique({ where: { sessionId } });
+      const existing = await (prisma as any).conversationReport.findUnique({ where: { sessionId } });
       if (existing) {
         const insights = await prisma.conversationInsight.findMany({ where: { sessionId }, orderBy: { createdAt: 'asc' } });
         return NextResponse.json({ ok: true, report: existing, insights, reused: true }, { headers: { 'Cache-Control': 'no-store' } });
@@ -204,7 +210,7 @@ export async function POST(
       }>;
 
     const saved = await prisma.$transaction(async (tx) => {
-      const report = await tx.conversationReport.upsert({
+      const report = await (tx as any).conversationReport.upsert({
         where: { sessionId: session.id },
         create: {
           sessionId: session.id,

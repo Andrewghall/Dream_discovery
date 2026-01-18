@@ -903,6 +903,17 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error generating conversation report:', error);
-    return NextResponse.json({ error: 'Failed to generate report' }, { status: 500 });
+    const details =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Unknown error';
+
+    const skipEmail = request.nextUrl.searchParams.get('skipEmail') === '1';
+    return NextResponse.json(
+      skipEmail ? { error: 'Failed to generate report', details } : { error: 'Failed to generate report' },
+      { status: 500 }
+    );
   }
 }
