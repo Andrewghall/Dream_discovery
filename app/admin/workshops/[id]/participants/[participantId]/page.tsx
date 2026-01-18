@@ -96,6 +96,20 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
   const [report, setReport] = useState<StoredReport | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [backfillError, setBackfillError] = useState<string | null>(null);
+  const [backfillInfo, setBackfillInfo] = useState<null | {
+    counts?: {
+      expectedKeys?: number;
+      existingQuestionKeys?: number;
+      missingQuestionKeys?: number;
+      assignable?: number;
+    };
+    preview?: Array<{ dataPointId: string; createdAt: string; questionKey: string | null; rawText: string }>;
+    updated?: number;
+    skipped?: number;
+  }>(null);
+
   useEffect(() => {
     const fetchSessions = async () => {
       try {
@@ -131,6 +145,38 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
 
     void fetchSessions();
   }, [workshopId, participantId]);
+
+  const refreshSessions = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const r = await fetch(
+        `/api/admin/workshops/${encodeURIComponent(workshopId)}/answers?participantId=${encodeURIComponent(
+          participantId
+        )}&includeIncomplete=1&bust=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+
+      const data = (await r.json().catch(() => null)) as AnswersResponse | null;
+      if (!r.ok || !data) {
+        setSessions([]);
+        setSelectedSessionId('');
+        setError('Failed to load participant responses');
+        return;
+      }
+
+      const nextSessions = Array.isArray(data.sessions) ? data.sessions : [];
+      setSessions(nextSessions);
+      setSelectedSessionId((prev) => prev || (nextSessions[0]?.sessionId ?? ''));
+    } catch (e) {
+      setSessions([]);
+      setSelectedSessionId('');
+      setError(e instanceof Error ? e.message : 'Failed to load participant responses');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -225,6 +271,86 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
     }
   };
 
+  const handlePreviewBackfill = async () => {
+    if (!selectedSessionId) return;
+    if (backfillLoading) return;
+
+    try {
+      setBackfillLoading(true);
+      setBackfillError(null);
+      setBackfillInfo(null);
+
+      const r = await fetch(
+        `/api/admin/sessions/${encodeURIComponent(selectedSessionId)}/backfill-question-keys?bust=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+
+      const data = (await r.json().catch(() => null)) as unknown as {
+        ok?: boolean;
+        error?: string;
+        counts?: {
+          expectedKeys?: number;
+          existingQuestionKeys?: number;
+          missingQuestionKeys?: number;
+          assignable?: number;
+        };
+        preview?: Array<{ dataPointId: string; createdAt: string; questionKey: string | null; rawText: string }>;
+      } | null;
+
+      if (!r.ok || !data || !data.ok) {
+        const msg = data && typeof data.error === 'string' ? data.error : 'Failed to preview backfill';
+        setBackfillError(msg);
+        return;
+      }
+
+      setBackfillInfo({ counts: data.counts, preview: data.preview });
+    } catch (e) {
+      setBackfillError(e instanceof Error ? e.message : 'Failed to preview backfill');
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
+
+  const handleApplyBackfill = async () => {
+    if (!selectedSessionId) return;
+    if (backfillLoading) return;
+
+    try {
+      setBackfillLoading(true);
+      setBackfillError(null);
+
+      const r = await fetch(
+        `/api/admin/sessions/${encodeURIComponent(selectedSessionId)}/backfill-question-keys`,
+        { method: 'POST' }
+      );
+
+      const data = (await r.json().catch(() => null)) as unknown as {
+        ok?: boolean;
+        error?: string;
+        updated?: number;
+        skipped?: number;
+      } | null;
+
+      if (!r.ok || !data || !data.ok) {
+        const msg = data && typeof data.error === 'string' ? data.error : 'Failed to apply backfill';
+        setBackfillError(msg);
+        return;
+      }
+
+      setBackfillInfo((prev: typeof backfillInfo) => ({
+        ...(prev || {}),
+        updated: typeof data.updated === 'number' ? data.updated : undefined,
+        skipped: typeof data.skipped === 'number' ? data.skipped : undefined,
+      }));
+
+      await refreshSessions();
+    } catch (e) {
+      setBackfillError(e instanceof Error ? e.message : 'Failed to apply backfill');
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-transparent">
       <div className="container mx-auto px-4 py-8">
@@ -282,6 +408,12 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
                   {selectedSession?.status ? <Badge>{selectedSession.status}</Badge> : null}
                 </div>
 
+                {selectedSessionId ? (
+                  <div className="text-xs text-muted-foreground">
+                    SessionId: <span className="font-mono text-foreground">{selectedSessionId}</span>
+                  </div>
+                ) : null}
+
                 {selectedSession ? (
                   <div className="grid grid-cols-1 gap-4">
                     <Card>
@@ -293,6 +425,49 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-sm text-muted-foreground">
+                            If synthetic answers are present but not recognized, run the backfill to attach question keys.
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => void handlePreviewBackfill()}
+                              disabled={!selectedSessionId || backfillLoading}
+                            >
+                              {backfillLoading ? 'Working…' : 'Preview backfill'}
+                            </Button>
+                            <Button
+                              onClick={() => void handleApplyBackfill()}
+                              disabled={!selectedSessionId || backfillLoading}
+                            >
+                              {backfillLoading ? 'Applying…' : 'Apply backfill'}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {backfillError ? (
+                          <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                            {backfillError}
+                          </div>
+                        ) : null}
+
+                        {backfillInfo?.counts ? (
+                          <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                            <div>Expected keys: {backfillInfo.counts.expectedKeys ?? '—'}</div>
+                            <div>Existing keys: {backfillInfo.counts.existingQuestionKeys ?? '—'}</div>
+                            <div>Missing keys: {backfillInfo.counts.missingQuestionKeys ?? '—'}</div>
+                            <div>Assignable: {backfillInfo.counts.assignable ?? '—'}</div>
+                          </div>
+                        ) : null}
+
+                        {typeof backfillInfo?.updated === 'number' ? (
+                          <div className="mb-3 text-xs text-muted-foreground">
+                            Backfill applied: updated {backfillInfo.updated}
+                            {typeof backfillInfo.skipped === 'number' ? `, skipped ${backfillInfo.skipped}` : ''}
+                          </div>
+                        ) : null}
+
                         {selectedSession.qaPairs.length === 0 ? (
                           <div className="text-sm text-muted-foreground">No answers recorded.</div>
                         ) : (
