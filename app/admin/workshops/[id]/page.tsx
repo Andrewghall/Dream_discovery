@@ -440,6 +440,11 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                   Live
                 </Button>
               </Link>
+              <Link href={`/admin/workshops/${id}/hemisphere`}>
+                <Button variant="outline" size="lg">
+                  Hemisphere
+                </Button>
+              </Link>
               <Button onClick={handleClearEmailStatus} variant="outline" size="lg">
                 Clear Email Status
               </Button>
