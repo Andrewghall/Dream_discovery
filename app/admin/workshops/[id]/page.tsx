@@ -55,6 +55,17 @@ export default function WorkshopDetailPage({ params }: PageProps) {
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [loading, setLoading] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [backfillForce, setBackfillForce] = useState(false);
+  const [backfillIncludeInsights, setBackfillIncludeInsights] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<null | {
+    total: number;
+    done: number;
+    ok: number;
+    failed: number;
+    currentSessionId: string | null;
+  }>(null);
+  const [backfillErrors, setBackfillErrors] = useState<Array<{ sessionId: string; error: string }>>([]);
   const [newParticipant, setNewParticipant] = useState({
     name: '',
     email: '',
@@ -240,6 +251,142 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     setTimeout(() => setCopiedToken(null), 2000);
   };
 
+  const handleBackfillReports = async () => {
+    if (backfillRunning) return;
+
+    if (
+      !confirm(
+        `Generate stored reports for all completed sessions in this workshop?\n\nThis will run sequentially and may take a minute.\n\nForce overwrite: ${backfillForce ? 'YES' : 'NO'}\nInclude insights: ${backfillIncludeInsights ? 'YES (slower)' : 'NO (faster)'}`
+      )
+    ) {
+      return;
+    }
+
+    type WorkshopSessionRow = {
+      sessionId: string;
+      status: string;
+      createdAt: string;
+      completedAt: string | null;
+      participant: { id: string; name: string; email: string };
+      hasReport: boolean;
+    };
+
+    type SessionsResponse = {
+      ok: boolean;
+      workshopId: string;
+      sessions: WorkshopSessionRow[];
+      error?: string;
+    };
+
+    setBackfillRunning(true);
+    setBackfillErrors([]);
+
+    try {
+      const listUrl = `/api/admin/workshops/${encodeURIComponent(id)}/sessions?status=COMPLETED&bust=${Date.now()}`;
+      const listRes = await fetch(listUrl, { cache: 'no-store' });
+      const listData = (await listRes.json().catch(() => null)) as SessionsResponse | null;
+
+      if (!listRes.ok || !listData || !listData.ok || !Array.isArray(listData.sessions)) {
+        const msg = listData && typeof listData.error === 'string' ? listData.error : 'Failed to list sessions';
+        alert(msg);
+        return;
+      }
+
+      const candidates = listData.sessions.filter((s) => backfillForce || !s.hasReport);
+      setBackfillProgress({
+        total: candidates.length,
+        done: 0,
+        ok: 0,
+        failed: 0,
+        currentSessionId: null,
+      });
+
+      let okCount = 0;
+      let failCount = 0;
+      const errors: Array<{ sessionId: string; error: string }> = [];
+
+      for (const s of candidates) {
+        setBackfillProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentSessionId: s.sessionId,
+              }
+            : prev
+        );
+
+        try {
+          const reportUrl = `/api/conversation/report?sessionId=${encodeURIComponent(s.sessionId)}&skipEmail=1&bust=${Date.now()}`;
+          const reportRes = await fetch(reportUrl, { cache: 'no-store' });
+          const reportPayload = (await reportRes.json().catch(() => null)) as unknown;
+          if (!reportRes.ok || !reportPayload || typeof reportPayload !== 'object') {
+            throw new Error('Failed to generate report payload');
+          }
+
+          const assessmentUrl = `/api/admin/sessions/${encodeURIComponent(s.sessionId)}/assessment?force=1${
+            backfillIncludeInsights ? '&insights=1' : ''
+          }&bust=${Date.now()}`;
+          const persistRes = await fetch(assessmentUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reportPayload }),
+          });
+          const persistData = (await persistRes.json().catch(() => null)) as unknown;
+          const ok =
+            persistRes.ok &&
+            persistData &&
+            typeof persistData === 'object' &&
+            'ok' in persistData &&
+            (persistData as { ok?: unknown }).ok === true;
+          if (!ok) {
+            const errMsg =
+              persistData &&
+              typeof persistData === 'object' &&
+              'error' in persistData &&
+              typeof (persistData as { error?: unknown }).error === 'string'
+                ? String((persistData as { error?: unknown }).error)
+                : `Failed to persist report (HTTP ${persistRes.status})`;
+            throw new Error(errMsg);
+          }
+
+          okCount += 1;
+        } catch (e) {
+          failCount += 1;
+          const message = e instanceof Error ? e.message : 'Unknown error';
+          errors.push({ sessionId: s.sessionId, error: message });
+          setBackfillErrors([...errors]);
+        } finally {
+          setBackfillProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  done: prev.done + 1,
+                  ok: okCount,
+                  failed: failCount,
+                }
+              : prev
+          );
+        }
+      }
+
+      setBackfillProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentSessionId: null,
+            }
+          : prev
+      );
+
+      await fetchWorkshop();
+      alert(
+        `Backfill complete.\n\nProcessed: ${candidates.length}\nSucceeded: ${okCount}\nFailed: ${failCount}${failCount ? '\n\nSee errors list below.' : ''}`
+      );
+    } finally {
+      setBackfillRunning(false);
+    }
+  };
+
   const getCompletionRate = () => {
     if (!workshop || workshop.participants.length === 0) return 0;
     const completed = workshop.participants.filter((p) => p.responseCompletedAt).length;
@@ -376,6 +523,73 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                     />
                     Include Regulation / Risk questions
                   </label>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Workshop Tools</CardTitle>
+                <CardDescription>Admin-only maintenance actions</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={backfillForce}
+                        onChange={(e) => setBackfillForce(e.target.checked)}
+                        disabled={backfillRunning}
+                      />
+                      Force overwrite existing stored reports
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={backfillIncludeInsights}
+                        onChange={(e) => setBackfillIncludeInsights(e.target.checked)}
+                        disabled={backfillRunning}
+                      />
+                      Also generate insights (slower)
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => void handleBackfillReports()}
+                      disabled={backfillRunning}
+                    >
+                      {backfillRunning ? 'Backfilling…' : 'Backfill Reports for Completed Sessions'}
+                    </Button>
+                  </div>
+
+                  {backfillProgress ? (
+                    <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                      <div>
+                        Progress: {backfillProgress.done}/{backfillProgress.total} | ok: {backfillProgress.ok} | failed:{' '}
+                        {backfillProgress.failed}
+                      </div>
+                      {backfillProgress.currentSessionId ? (
+                        <div className="text-muted-foreground">Current session: {backfillProgress.currentSessionId}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {backfillErrors.length ? (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      <div className="font-medium">Errors ({backfillErrors.length})</div>
+                      <div className="mt-2 space-y-1">
+                        {backfillErrors.slice(0, 10).map((e) => (
+                          <div key={`${e.sessionId}:${e.error}`}>
+                            {e.sessionId}: {e.error}
+                          </div>
+                        ))}
+                        {backfillErrors.length > 10 ? <div>…and {backfillErrors.length - 10} more</div> : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </CardContent>
             </Card>
