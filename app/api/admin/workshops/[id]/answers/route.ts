@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { ConversationStatus, Prisma } from '@prisma/client';
 import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const STOPWORDS = new Set([
   'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
 ]);

@@ -23,4 +23,15 @@ const envSchema = z.object({
   ZOOM_VIDEO_SDK_SECRET: z.string().optional(),
 });
 
-export const env = envSchema.parse(process.env);
+type Env = z.infer<typeof envSchema>;
+
+const parsed = envSchema.safeParse(process.env);
+
+export const env: Env = parsed.success
+  ? parsed.data
+  : ({
+      ...process.env,
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    } as unknown as Env);
+
+export const envParseError = parsed.success ? null : parsed.error;
