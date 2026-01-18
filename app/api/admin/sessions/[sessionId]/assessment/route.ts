@@ -97,9 +97,16 @@ async function generateReportPayload(request: NextRequest, sessionId: string): P
   url.searchParams.set('skipEmail', '1');
 
   const auth = request.headers.get('authorization');
+  const cookie = request.headers.get('cookie');
   const r = await fetch(url.toString(), {
     cache: 'no-store',
-    headers: auth ? { authorization: auth } : undefined,
+    headers:
+      auth || cookie
+        ? {
+            ...(auth ? { authorization: auth } : {}),
+            ...(cookie ? { cookie } : {}),
+          }
+        : undefined,
   });
   const raw = (await r.json().catch(() => null)) as (ReportApiResponse & { error?: unknown; details?: unknown }) | null;
   if (!r.ok || !raw || !raw.executiveSummary) {
