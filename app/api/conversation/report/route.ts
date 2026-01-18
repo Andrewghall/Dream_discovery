@@ -125,13 +125,15 @@ function buildWordFrequencies(texts: string[], maxWords: number = 60) {
     .map(([text, value]) => ({ text, value }));
 }
 
-function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number } | null {
+function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number; version: string | null } | null {
   const parts = (questionKey || '').split(':');
-  if (parts.length !== 3) return null;
-  const [phase, tag, idxStr] = parts;
+  if (parts.length !== 3 && parts.length !== 4) return null;
+
+  const hasVersion = parts.length === 4;
+  const [maybeVersion, phase, tag, idxStr] = hasVersion ? parts : [null, parts[0], parts[1], parts[2]];
   const index = Number(idxStr);
   if (!phase || !tag || !Number.isFinite(index)) return null;
-  return { phase, tag, index };
+  return { phase, tag, index, version: typeof maybeVersion === 'string' && maybeVersion ? maybeVersion : null };
 }
 
 function questionTextFromKey(questionKey: string): { phase: string | null; question: string; tag: string | null } {
@@ -498,6 +500,7 @@ export async function GET(request: NextRequest) {
   try {
     const sessionId = request.nextUrl.searchParams.get('sessionId');
     const demo = request.nextUrl.searchParams.get('demo');
+    const skipEmail = request.nextUrl.searchParams.get('skipEmail') === '1';
 
     if (demo === '1') {
       const includeRegulation = request.nextUrl.searchParams.get('includeRegulation') !== '0';
@@ -770,108 +773,111 @@ export async function GET(request: NextRequest) {
 
     const wordCloudThemes = buildWordFrequencies(narrativeTexts);
 
-    try {
-      const participantEmail = session.participant?.email || null;
-      const participantName = session.participant?.name || 'Participant';
-      const participantToken = session.participant?.discoveryToken;
-      const hasEmailConfig = !!process.env.RESEND_API_KEY && !!process.env.FROM_EMAIL;
+    if (!skipEmail) {
+      try {
+        const participantEmail = session.participant?.email || null;
+        const participantName = session.participant?.name || 'Participant';
+        const participantToken = session.participant?.discoveryToken;
+        const hasEmailConfig = !!process.env.RESEND_API_KEY && !!process.env.FROM_EMAIL;
 
-      const alreadyEmailed = (session.messages || []).some((m) => {
-        const meta =
-          m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)
-            ? (m.metadata as Record<string, unknown>)
-            : null;
-        if (!meta) return false;
+        const alreadyEmailed = (session.messages || []).some((m) => {
+          const meta =
+            m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)
+              ? (m.metadata as Record<string, unknown>)
+              : null;
+          if (!meta) return false;
 
-        const reportEmail =
-          meta.reportEmail && typeof meta.reportEmail === 'object' && !Array.isArray(meta.reportEmail)
-            ? (meta.reportEmail as Record<string, unknown>)
-            : null;
-        if (reportEmail && reportEmail.sentAt) return true;
-        if (meta.kind === 'report_email' && meta.sentAt) return true;
-        return false;
-      });
-
-      if (
-        session.status === 'COMPLETED' &&
-        hasEmailConfig &&
-        participantEmail &&
-        participantToken &&
-        !alreadyEmailed
-      ) {
-        const appUrl =
-          process.env.NEXT_PUBLIC_APP_URL ||
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-        const discoveryUrl = `${appUrl}/discovery/${session.workshopId}/${participantToken}`;
-
-        const emailResult = await sendDiscoveryReportEmail({
-          to: participantEmail,
-          participantName,
-          workshopName: session.workshop?.name,
-          discoveryUrl,
-          executiveSummary: reviewed.executiveSummary,
-          tone: reviewed.tone,
-          feedback: reviewed.feedback,
-          inputQuality: reviewed.inputQuality,
-          keyInsights: reviewed.keyInsights,
-          phaseInsights: phaseInsights.map((p) => ({
-            phase: p.phase,
-            currentScore: p.currentScore,
-            targetScore: p.targetScore,
-            projectedScore: p.projectedScore,
-          })),
+          const reportEmail =
+            meta.reportEmail && typeof meta.reportEmail === 'object' && !Array.isArray(meta.reportEmail)
+              ? (meta.reportEmail as Record<string, unknown>)
+              : null;
+          if (reportEmail && reportEmail.sentAt) return true;
+          if (meta.kind === 'report_email' && meta.sentAt) return true;
+          return false;
         });
 
-        const maybe: unknown = emailResult;
-        const obj =
-          maybe && typeof maybe === 'object' && !Array.isArray(maybe)
-            ? (maybe as Record<string, unknown>)
-            : null;
-        const data = obj && obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data) ? (obj.data as Record<string, unknown>) : null;
-        const resendId =
-          (data && typeof data.id === 'string' ? data.id : null) ??
-          (obj && typeof obj.id === 'string' ? obj.id : null) ??
-          (data && typeof data.messageId === 'string' ? data.messageId : null) ??
-          (obj && typeof obj.messageId === 'string' ? obj.messageId : null);
+        if (
+          session.status === 'COMPLETED' &&
+          hasEmailConfig &&
+          participantEmail &&
+          participantToken &&
+          !alreadyEmailed
+        ) {
+          const appUrl =
+            process.env.NEXT_PUBLIC_APP_URL ||
+            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+          const discoveryUrl = `${appUrl}/discovery/${session.workshopId}/${participantToken}`;
 
-        const latestAi = [...(session.messages || [])]
-          .reverse()
-          .find((m) => m?.role === 'AI');
+          const emailResult = await sendDiscoveryReportEmail({
+            to: participantEmail,
+            participantName,
+            workshopName: session.workshop?.name,
+            discoveryUrl,
+            executiveSummary: reviewed.executiveSummary,
+            tone: reviewed.tone,
+            feedback: reviewed.feedback,
+            inputQuality: reviewed.inputQuality,
+            keyInsights: reviewed.keyInsights,
+            phaseInsights: phaseInsights.map((p) => ({
+              phase: p.phase,
+              currentScore: p.currentScore,
+              targetScore: p.targetScore,
+              projectedScore: p.projectedScore,
+            })),
+          });
 
-        const marker = {
-          kind: 'report_email',
-          sentAt: new Date().toISOString(),
-          resendId,
-        };
+          const maybe: unknown = emailResult;
+          const obj =
+            maybe && typeof maybe === 'object' && !Array.isArray(maybe)
+              ? (maybe as Record<string, unknown>)
+              : null;
+          const data =
+            obj && obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)
+              ? (obj.data as Record<string, unknown>)
+              : null;
+          const resendId =
+            (data && typeof data.id === 'string' ? data.id : null) ??
+            (obj && typeof obj.id === 'string' ? obj.id : null) ??
+            (data && typeof data.messageId === 'string' ? data.messageId : null) ??
+            (obj && typeof obj.messageId === 'string' ? obj.messageId : null);
 
-        if (latestAi?.id) {
-          const prevMeta =
-            latestAi.metadata && typeof latestAi.metadata === 'object' && !Array.isArray(latestAi.metadata)
-              ? (latestAi.metadata as Record<string, unknown>)
-              : {};
-          await prisma.conversationMessage.update({
-            where: { id: latestAi.id },
-            data: {
-              metadata: {
-                ...prevMeta,
-                reportEmail: marker,
+          const latestAi = [...(session.messages || [])].reverse().find((m) => m?.role === 'AI');
+
+          const marker = {
+            kind: 'report_email',
+            sentAt: new Date().toISOString(),
+            resendId,
+          };
+
+          if (latestAi?.id) {
+            const prevMeta =
+              latestAi.metadata && typeof latestAi.metadata === 'object' && !Array.isArray(latestAi.metadata)
+                ? (latestAi.metadata as Record<string, unknown>)
+                : {};
+            await prisma.conversationMessage.update({
+              where: { id: latestAi.id },
+              data: {
+                metadata: {
+                  ...prevMeta,
+                  reportEmail: marker,
+                },
               },
-            },
-          });
-        } else {
-          await prisma.conversationMessage.create({
-            data: {
-              sessionId: session.id,
-              role: 'AI',
-              content: '',
-              phase: 'summary',
-              metadata: marker,
-            },
-          });
+            });
+          } else {
+            await prisma.conversationMessage.create({
+              data: {
+                sessionId: session.id,
+                role: 'AI',
+                content: '',
+                phase: 'summary',
+                metadata: marker,
+              },
+            });
+          }
         }
+      } catch (e) {
+        console.error('Failed to email discovery report:', e);
       }
-    } catch (e) {
-      console.error('Failed to email discovery report:', e);
     }
 
     return NextResponse.json({
