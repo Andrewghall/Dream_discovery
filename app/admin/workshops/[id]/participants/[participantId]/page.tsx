@@ -105,7 +105,7 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
         const r = await fetch(
           `/api/admin/workshops/${encodeURIComponent(workshopId)}/answers?participantId=${encodeURIComponent(
             participantId
-          )}&bust=${Date.now()}`,
+          )}&includeIncomplete=1&bust=${Date.now()}`,
           { cache: 'no-store' }
         );
 

@@ -90,14 +90,17 @@ export async function GET(
     const sessionId = request.nextUrl.searchParams.get('sessionId');
     const participantId = request.nextUrl.searchParams.get('participantId');
     const status = request.nextUrl.searchParams.get('status');
+    const includeIncomplete = request.nextUrl.searchParams.get('includeIncomplete') === '1';
 
     const where: Prisma.ConversationSessionWhereInput = { workshopId };
     if (sessionId) where.id = sessionId;
     if (participantId) where.participantId = participantId;
     if (status && isConversationStatus(status)) where.status = status;
 
-    // Completion-safe aggregation: only include completed discovery responses.
-    where.OR = [{ completedAt: { not: null } }, { participant: { responseCompletedAt: { not: null } } }];
+    // Completion-safe aggregation: only include completed discovery responses unless explicitly overridden.
+    if (!includeIncomplete) {
+      where.OR = [{ completedAt: { not: null } }, { participant: { responseCompletedAt: { not: null } } }];
+    }
 
     const sessions = await prisma.conversationSession.findMany({
       where,
