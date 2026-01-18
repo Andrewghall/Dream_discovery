@@ -185,14 +185,18 @@ export async function POST(
       );
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const a of assignments) {
-        await tx.dataPoint.update({
-          where: { id: a.id },
-          data: { questionKey: a.questionKey },
-        });
-      }
-    });
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < assignments.length; i += CHUNK_SIZE) {
+      const chunk = assignments.slice(i, i + CHUNK_SIZE);
+      await prisma.$transaction(
+        chunk.map((a) =>
+          prisma.dataPoint.update({
+            where: { id: a.id },
+            data: { questionKey: a.questionKey },
+          })
+        )
+      );
+    }
 
     return NextResponse.json(
       {
