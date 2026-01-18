@@ -155,6 +155,7 @@ export async function POST(
   try {
     const { sessionId } = await params;
     const force = request.nextUrl.searchParams.get('force') === '1';
+    const includeInsights = request.nextUrl.searchParams.get('insights') === '1';
 
     const body = (await request.json().catch(() => null)) as IncomingAssessmentBody | null;
 
@@ -179,11 +180,12 @@ export async function POST(
       ? body.reportPayload
       : await generateReportPayload(request, sessionId);
 
-    const qaPairsForInsights = Array.isArray(payload.qaPairs)
-      ? payload.qaPairs.map((q) => ({ phase: q.phase ?? null, question: q.question, answer: q.answer }))
-      : [];
+    const qaPairsForInsights =
+      includeInsights && Array.isArray(payload.qaPairs)
+        ? payload.qaPairs.map((q) => ({ phase: q.phase ?? null, question: q.question, answer: q.answer }))
+        : [];
 
-    const extracted = await extractConversationInsights({ qaPairs: qaPairsForInsights });
+    const extracted = includeInsights ? await extractConversationInsights({ qaPairs: qaPairsForInsights }) : [];
 
     const insightRows = extracted
       .map((ins) => {
