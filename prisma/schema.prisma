@@ -52,6 +52,7 @@ model Workshop {
   insights          ConversationInsight[]
   sessions          ConversationSession[]
   dataPoints        DataPoint[]
+  reports           ConversationReport[]
   themes            DiscoveryTheme[]
   transcriptChunks  TranscriptChunk[]
   participants      WorkshopParticipant[]
@@ -148,6 +149,7 @@ model WorkshopParticipant {
   createdAt             DateTime              @default(now())
   insights              ConversationInsight[]
   sessions              ConversationSession[]
+  reports               ConversationReport[]
   dataPoints            DataPoint[]
   workshop              Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 
@@ -159,6 +161,8 @@ model ConversationSession {
   workshopId        String
   participantId     String
   status            ConversationStatus    @default(IN_PROGRESS)
+  runType           ConversationRunType   @default(BASELINE)
+  questionSetVersion String               @default("v1")
   currentPhase      String                @default("intro")
   phaseProgress     Int                   @default(0)
   startedAt         DateTime              @default(now())
@@ -170,6 +174,7 @@ model ConversationSession {
   voiceEnabled      Boolean               @default(false)
   includeRegulation Boolean               @default(true)
   insights          ConversationInsight[]
+  report            ConversationReport?
   messages          ConversationMessage[]
   participant       WorkshopParticipant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
   workshop          Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
@@ -210,6 +215,28 @@ model ConversationInsight {
   workshop         Workshop               @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 
   @@map("conversation_insights")
+}
+
+model ConversationReport {
+  id               String              @id @default(cuid())
+  sessionId        String              @unique
+  workshopId       String
+  participantId    String
+  executiveSummary String
+  tone             String?
+  feedback         String
+  inputQuality     Json?
+  keyInsights      Json?
+  phaseInsights    Json?
+  wordCloudThemes  Json?
+  modelVersion     String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  participant      WorkshopParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  session          ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  workshop         Workshop            @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@map("conversation_reports")
 }
 
 model DiscoveryTheme {
@@ -259,6 +286,11 @@ enum ConversationStatus {
 enum MessageRole {
   AI
   PARTICIPANT
+}
+
+enum ConversationRunType {
+  BASELINE
+  FOLLOWUP
 }
 
 enum InsightType {

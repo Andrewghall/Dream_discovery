@@ -5,8 +5,18 @@ import { getFixedQuestion, getFixedQuestionObject } from '@/lib/conversation/fix
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { workshopId, token } = body as { workshopId: string; token: string; restart?: boolean };
+    const { workshopId, token } = body as {
+      workshopId: string;
+      token: string;
+      restart?: boolean;
+      runType?: 'BASELINE' | 'FOLLOWUP';
+      questionSetVersion?: string;
+    };
     const restart = body?.restart === true;
+    const runType = body?.runType === 'FOLLOWUP' ? 'FOLLOWUP' : 'BASELINE';
+    const questionSetVersion = typeof body?.questionSetVersion === 'string' && body.questionSetVersion.trim()
+      ? body.questionSetVersion.trim()
+      : 'v1';
 
     // Validate token and get participant
     const participant = await prisma.workshopParticipant.findUnique({
@@ -28,6 +38,7 @@ export async function POST(request: NextRequest) {
         where: {
           workshopId,
           participantId: participant.id,
+          runType,
         },
       });
 
@@ -45,6 +56,8 @@ export async function POST(request: NextRequest) {
         data: {
           workshopId,
           participantId: participant.id,
+          runType,
+          questionSetVersion,
           currentPhase: 'intro',
           phaseProgress: 0,
           voiceEnabled: true,
@@ -116,6 +129,7 @@ export async function POST(request: NextRequest) {
       where: {
         workshopId,
         participantId: participant.id,
+        runType,
         status: 'IN_PROGRESS', // Only resume if not completed
       },
       include: {
@@ -130,6 +144,7 @@ export async function POST(request: NextRequest) {
         where: {
           workshopId,
           participantId: participant.id,
+          runType,
           status: 'COMPLETED',
         },
         orderBy: { createdAt: 'desc' },
@@ -141,13 +156,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create new session if doesn't exist or previous was completed
+    // Create new session if no session exists for this run type.
     if (!session) {
       const includeRegulation = participant.workshop.includeRegulation ?? true;
       session = await prisma.conversationSession.create({
         data: {
           workshopId,
           participantId: participant.id,
+          runType,
+          questionSetVersion,
           currentPhase: 'intro',
           phaseProgress: 0,
           voiceEnabled: true,

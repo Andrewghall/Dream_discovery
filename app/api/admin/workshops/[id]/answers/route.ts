@@ -34,13 +34,14 @@ function isRatingQuestion(question: string): boolean {
   return q.includes('scale of 1-10') || q.includes('rate 1-10') || q.includes('rate 1 to 10');
 }
 
-function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number } | null {
+function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number; version: string | null } | null {
   const parts = (questionKey || '').split(':');
-  if (parts.length !== 3) return null;
-  const [phase, tag, idxStr] = parts;
+  if (parts.length !== 3 && parts.length !== 4) return null;
+  const hasVersion = parts.length === 4;
+  const [maybeVersion, phase, tag, idxStr] = hasVersion ? parts : [null, parts[0], parts[1], parts[2]];
   const index = Number(idxStr);
   if (!phase || !tag || !Number.isFinite(index)) return null;
-  return { phase, tag, index };
+  return { phase, tag, index, version: typeof maybeVersion === 'string' && maybeVersion ? maybeVersion : null };
 }
 
 function questionTextFromKey(questionKey: string): { phase: string | null; question: string } {

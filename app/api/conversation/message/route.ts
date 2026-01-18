@@ -59,8 +59,10 @@ function questionMetaFromMessage(meta: unknown): QuestionMeta | null {
   return { kind: 'question', tag: rec.tag, phase: rec.phase, index: rec.index };
 }
 
-function questionKeyFromMeta(q: QuestionMeta): string {
-  return `${q.phase}:${q.tag}:${q.index}`;
+function questionKeyFromMeta(q: QuestionMeta, questionSetVersion: string | null | undefined): string {
+  const v = (questionSetVersion || '').trim();
+  if (!v) return `${q.phase}:${q.tag}:${q.index}`;
+  return `${v}:${q.phase}:${q.tag}:${q.index}`;
 }
 
 async function generateClarificationAnswer(params: {
@@ -125,6 +127,7 @@ export async function POST(request: NextRequest) {
     let newPhase: ConversationPhase = currentPhase;
     let newProgress = session.phaseProgress;
     const includeRegulation = session.includeRegulation ?? session.workshop.includeRegulation ?? true;
+    const questionSetVersion = (session as unknown as { questionSetVersion?: string | null }).questionSetVersion || 'v1';
 
     const lastAiMessage = [...session.messages].reverse().find((m) => m.role === 'AI');
     const questionAsked = lastAiMessage?.content || '';
@@ -170,7 +173,7 @@ export async function POST(request: NextRequest) {
           .find((m) => m.role === 'AI' && questionMetaFromMessage(m.metadata));
         const qMeta = questionMessage ? questionMetaFromMessage(questionMessage.metadata) : null;
         if (qMeta) {
-          const questionKey = questionKeyFromMeta(qMeta);
+          const questionKey = questionKeyFromMeta(qMeta, questionSetVersion);
           await prisma.dataPoint.upsert({
             where: {
               sessionId_questionKey: {

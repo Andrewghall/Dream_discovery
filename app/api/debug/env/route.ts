@@ -16,6 +16,7 @@ function parseDbUrl(value: string | undefined) {
   if (!value) {
     return {
       protocol: null,
+      user: null,
       host: null,
       port: null,
       database: null,
@@ -29,6 +30,7 @@ function parseDbUrl(value: string | undefined) {
     const schema = u.searchParams.get('schema');
     return {
       protocol: u.protocol || null,
+      user: u.username || null,
       host: u.hostname || null,
       port: u.port || null,
       database: pathname || null,
@@ -37,6 +39,7 @@ function parseDbUrl(value: string | undefined) {
   } catch {
     return {
       protocol: null,
+      user: null,
       host: null,
       port: null,
       database: null,

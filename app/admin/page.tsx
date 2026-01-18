@@ -21,6 +21,7 @@ interface Workshop {
 
 interface DbUrlInfo {
   protocol: string | null;
+  user: string | null;
   host: string | null;
   port: string | null;
   database: string | null;
@@ -190,6 +191,7 @@ export default function AdminDashboard() {
             <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
               <div className="font-medium">Database Connection</div>
               <div className="text-muted-foreground">
+                {dbDebug.databaseUrlInfo?.user ? `${dbDebug.databaseUrlInfo.user}@` : ''}
                 {dbDebug.databaseUrlInfo?.host || 'unknown'}
                 {dbDebug.databaseUrlInfo?.port ? `:${dbDebug.databaseUrlInfo.port}` : ''}
                 {dbDebug.databaseUrlInfo?.database ? `/${dbDebug.databaseUrlInfo.database}` : ''}
