@@ -693,26 +693,17 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
       const sent = parsed && typeof parsed.sentence === 'string' ? parsed.sentence.trim() : '';
       coreSummary = sent;
     } catch (e) {
-      // Deterministic fallback (should be rare if OPENAI_API_KEY is configured).
-      const a = driverNodes[0]?.label || centralNodes[0]?.label || 'Decision friction';
-      const b = driverNodes[1]?.label || centralNodes[1]?.label || 'customer friction';
-      const c = driverNodes[2]?.label || centralNodes[2]?.label || 'technology inefficiency';
-      coreSummary = `${shortLabel(a, 7)} is driving ${shortLabel(b, 7)}, amplifying ${shortLabel(c, 7)}.`;
+      // Agentic-only policy: never fabricate fallback insight text.
+      // Soft degrade by leaving summary undefined (UI can show an "agentic unavailable" status message).
+      coreSummary = '';
       console.warn('Core Truth agentic synthesis failed:', e);
-    }
-
-    if (!coreSummary.trim()) {
-      const a = driverNodes[0]?.label || centralNodes[0]?.label || 'Decision friction';
-      const b = driverNodes[1]?.label || centralNodes[1]?.label || 'customer friction';
-      const c = driverNodes[2]?.label || centralNodes[2]?.label || 'technology inefficiency';
-      coreSummary = `${shortLabel(a, 7)} is driving ${shortLabel(b, 7)}, amplifying ${shortLabel(c, 7)}.`;
     }
 
     allNodes.push({
       id: coreTruthNodeId,
       type: coreType,
       label: 'Core Truth',
-      summary: coreSummary,
+      summary: coreSummary.trim() ? coreSummary : undefined,
       phaseTags: uniq(centralNodes.flatMap((n) => n.phaseTags)),
       layer: layerForType(coreType),
       weight: 10,

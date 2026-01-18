@@ -933,6 +933,10 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
             {selectedNode.summary ? (
               <div className="mt-3 text-sm text-slate-200 whitespace-pre-wrap">{selectedNode.summary}</div>
+            ) : selectedNodeId === (graph?.coreTruthNodeId || 'CORE_TRUTH') ? (
+              <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                Agentic synthesis unavailable. Ensure <code className="text-amber-100">OPENAI_API_KEY</code> is configured for this environment.
+              </div>
             ) : null}
 
             <div className="mt-4 flex flex-wrap gap-2">
