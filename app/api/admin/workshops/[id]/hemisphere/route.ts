@@ -206,9 +206,20 @@ function mergeNode(target: HemisphereNode, incoming: Omit<HemisphereNode, 'weigh
 
   const mergedEvidence = [...(target.evidence || []), ...((incoming.evidence || []) as any[])];
   if (mergedEvidence.length) {
-    target.evidence = mergedEvidence
-      .filter((e) => e && typeof e === 'object')
-      .slice(0, 12) as any;
+    const out: any[] = [];
+    const seen = new Set<string>();
+    for (const e of mergedEvidence) {
+      if (!e || typeof e !== 'object') continue;
+      const quote = typeof (e as any).quote === 'string' ? String((e as any).quote).trim() : '';
+      const qaTag = typeof (e as any).qaTag === 'string' ? String((e as any).qaTag).trim() : '';
+      const key = `${quote.toLowerCase()}|${qaTag.toLowerCase()}`;
+      if (!quote) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(e);
+      if (out.length >= 12) break;
+    }
+    if (out.length) target.evidence = out as any;
   }
 }
 
@@ -606,6 +617,12 @@ export async function GET(
       }
       node.type = bestType;
       node.layer = layerForType(bestType);
+    }
+
+    for (const n of mergedNodes) {
+      if (n.type === 'EVIDENCE') continue;
+      const uniqueSessions = uniq((n.sources || []).map((s) => String(s.sessionId || '')).filter(Boolean));
+      n.weight = Math.max(1, uniqueSessions.length);
     }
     allNodes = mergedNodes.sort((a, b) => b.weight - a.weight);
 
