@@ -68,6 +68,17 @@ type AssessmentResponse = {
   error?: string;
 };
 
+type StoredInsight = {
+  id?: string;
+  insightType?: string;
+  category?: string | null;
+  text?: string;
+  severity?: number | null;
+  impact?: string | null;
+  confidence?: number | null;
+  createdAt?: string;
+};
+
 function formatRunLabel(runType: string | null): string {
   if (!runType) return 'Run';
   const v = runType.toUpperCase();
@@ -95,6 +106,9 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
   const [reportError, setReportError] = useState<string | null>(null);
   const [report, setReport] = useState<StoredReport | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+  const [insights, setInsights] = useState<StoredInsight[]>([]);
+  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
 
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [backfillError, setBackfillError] = useState<string | null>(null);
@@ -215,13 +229,16 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
         if (!r.ok || !data || !data.ok) {
           const msg = data && typeof data.error === 'string' ? data.error : 'Failed to load report';
           setReport(null);
+          setInsights([]);
           setReportError(msg);
           return;
         }
 
         setReport(data.report);
+        setInsights(Array.isArray(data.insights) ? (data.insights as StoredInsight[]) : []);
       } catch (e) {
         setReport(null);
+        setInsights([]);
         setReportError(e instanceof Error ? e.message : 'Failed to load report');
       } finally {
         setReportLoading(false);
@@ -297,6 +314,46 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
       setReportError(e instanceof Error ? e.message : 'Failed to generate report');
     } finally {
       setIsGeneratingReport(false);
+    }
+  };
+
+  const handleGenerateInsights = async () => {
+    if (!selectedSessionId) return;
+    if (isGeneratingInsights) return;
+
+    try {
+      setIsGeneratingInsights(true);
+      setReportError(null);
+
+      const reportUrl = `/api/conversation/report?sessionId=${encodeURIComponent(selectedSessionId)}&skipEmail=1&bust=${Date.now()}`;
+      const reportRes = await fetch(reportUrl, { cache: 'no-store' });
+      const reportPayload = (await reportRes.json().catch(() => null)) as unknown;
+
+      if (!reportRes.ok || !reportPayload || typeof reportPayload !== 'object') {
+        setReportError('Failed to generate report');
+        return;
+      }
+
+      const url = `/api/admin/sessions/${encodeURIComponent(selectedSessionId)}/assessment?force=1&insights=1&bust=${Date.now()}`;
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportPayload }),
+      });
+      const data = (await r.json().catch(() => null)) as AssessmentResponse | null;
+
+      if (!r.ok || !data || !data.ok) {
+        const msg = data && typeof data.error === 'string' ? data.error : 'Failed to generate insights';
+        setReportError(msg);
+        return;
+      }
+
+      setReport(data.report);
+      setInsights(Array.isArray(data.insights) ? (data.insights as StoredInsight[]) : []);
+    } catch (e) {
+      setReportError(e instanceof Error ? e.message : 'Failed to generate insights');
+    } finally {
+      setIsGeneratingInsights(false);
     }
   };
 
@@ -542,6 +599,13 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
                             >
                               {isGeneratingReport ? 'Refreshing…' : 'Refresh'}
                             </Button>
+                            <Button
+                              variant="secondary"
+                              onClick={() => void handleGenerateInsights()}
+                              disabled={!selectedSessionId || isGeneratingInsights}
+                            >
+                              {isGeneratingInsights ? 'Insights…' : 'Generate Insights'}
+                            </Button>
                           </div>
                         </div>
 
@@ -568,6 +632,35 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
                             Report stored, but missing required chart data.
                           </div>
                         ) : null}
+
+                        <div className="mt-4">
+                          <div className="text-sm font-medium">Insights</div>
+                          {insights.length === 0 ? (
+                            <div className="mt-2 text-sm text-muted-foreground">No insights saved yet.</div>
+                          ) : (
+                            <div className="mt-2 space-y-2">
+                              {insights.map((ins, idx) => {
+                                const key = ins.id || `${ins.insightType || 'ins'}:${idx}`;
+                                return (
+                                  <div key={key} className="rounded-md border p-3">
+                                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                                      {ins.insightType ? <Badge variant="outline">{ins.insightType}</Badge> : null}
+                                      {ins.category ? <Badge variant="outline">{ins.category}</Badge> : null}
+                                      {typeof ins.severity === 'number' ? (
+                                        <Badge variant="secondary">Severity {ins.severity}</Badge>
+                                      ) : null}
+                                      {typeof ins.confidence === 'number' ? (
+                                        <span className="text-xs text-muted-foreground">conf: {ins.confidence.toFixed(2)}</span>
+                                      ) : null}
+                                    </div>
+                                    <div className="text-sm">{ins.text || ''}</div>
+                                    {ins.impact ? <div className="mt-2 text-xs text-muted-foreground">Impact: {ins.impact}</div> : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
                   </div>

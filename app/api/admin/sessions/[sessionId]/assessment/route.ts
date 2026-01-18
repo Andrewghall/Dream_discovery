@@ -263,20 +263,24 @@ export async function POST(
       })
     );
 
-    txOps.push(prisma.conversationInsight.deleteMany({ where: { sessionId: session.id } }));
-    if (insightRows.length > 0) {
-      txOps.push(prisma.conversationInsight.createMany({ data: insightRows }));
+    if (includeInsights) {
+      txOps.push(prisma.conversationInsight.deleteMany({ where: { sessionId: session.id } }));
+      if (insightRows.length > 0) {
+        txOps.push(prisma.conversationInsight.createMany({ data: insightRows }));
+      }
+      txOps.push(
+        prisma.conversationInsight.findMany({
+          where: { sessionId: session.id },
+          orderBy: { createdAt: 'asc' },
+        })
+      );
     }
-    txOps.push(
-      prisma.conversationInsight.findMany({
-        where: { sessionId: session.id },
-        orderBy: { createdAt: 'asc' },
-      })
-    );
 
     const txResults = await prisma.$transaction(txOps);
     const report = txResults[0];
-    const insights = txResults[txResults.length - 1] as unknown[];
+    const insights = includeInsights
+      ? (txResults[txResults.length - 1] as unknown[])
+      : await prisma.conversationInsight.findMany({ where: { sessionId: session.id }, orderBy: { createdAt: 'asc' } });
 
     return NextResponse.json(
       { ok: true, report, insights, reused: false },
