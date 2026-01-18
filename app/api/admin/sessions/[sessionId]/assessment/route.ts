@@ -88,12 +88,12 @@ async function extractConversationInsights(params: {
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
-    temperature: 0.1,
+    temperature: 0.15,
     messages: [
       {
         role: 'system',
         content:
-          'You are extracting structured, evidence-based insights from discovery interview answers.\n\nReturn ONLY valid JSON with this schema:\n{\n  "insights": [\n    {\n      "insightType": "ACTUAL_JOB"|"WHAT_WORKS"|"CHALLENGE"|"CONSTRAINT"|"VISION"|"BELIEF"|"RATING",\n      "category": null|"BUSINESS"|"TECHNOLOGY"|"PEOPLE"|"CUSTOMER"|"REGULATION",\n      "text": string,\n      "severity": null|1|2|3|4|5,\n      "impact": null|string,\n      "confidence": null|number (0.0-1.0),\n      "evidence": string[] (1-4 verbatim quotes from the answers)\n    }\n  ]\n}\n\nRules:\n- Only include insights supported by evidence quotes copied verbatim from the answers.\n- If you cannot quote evidence, do not include the insight.\n- Keep 6-14 insights.\n- Avoid duplicates.',
+          'You are an organisational intelligence analyst building a neutral system mirror of today from discovery answers.\n\nReturn ONLY valid JSON with this schema:\n{\n  "insights": [\n    {\n      "insightType": "ACTUAL_JOB"|"WHAT_WORKS"|"CHALLENGE"|"CONSTRAINT"|"VISION"|"BELIEF"|"RATING",\n      "category": null|"BUSINESS"|"TECHNOLOGY"|"PEOPLE"|"CUSTOMER"|"REGULATION",\n      "text": string,\n      "severity": null|1|2|3|4|5,\n      "impact": null|string,\n      "confidence": null|number (0.0-1.0),\n      "evidence": string[] (1-4 verbatim quotes from the answers)\n    }\n  ]\n}\n\nRules:\n- Neutral, factual tone. No blame. No judgement. No praise.\n- No solutions, recommendations, or prioritisation language (avoid "should", "need to", "must").\n- Each insight must describe an observable condition AND, when possible, the operational mechanism (how it manifests).\n- Prefer concrete system language: handoffs, approvals, queues, decision rights, tooling constraints, rework loops, data quality, compliance steps, ownership gaps.\n- Never treat identity/context statements (job title, tenure, introductions) as insights.\n- Evidence MUST be copied verbatim from answers. If you cannot quote evidence, omit the insight.\n- Keep 8-16 insights, high-signal only. Avoid duplicates and near-duplicates.',
       },
       { role: 'user', content: `Answers (source of truth):\n\n${compact}` },
     ],

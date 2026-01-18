@@ -738,9 +738,11 @@ Requirements:
 - Exactly ONE sentence.
 - 16-28 words.
 - Must express causality (e.g., "because", "drives", "causes", "amplifies", "leads to").
-- Prefer concrete operational mechanism over abstract phrasing.
+- Prefer concrete operational mechanism over abstract phrasing (approvals, handoffs, queues, rework, unclear ownership, tooling constraints).
 - Do NOT use bullet points.
 - Do NOT mention "drivers" or "nodes".
+- Neutral mirror of today: no blame, no judgement, no recommendations (avoid "should", "need to", "must").
+- Do NOT reference participant identity, roles, or introductions.
 
 Top drivers:
 ${driverLines}
@@ -751,12 +753,12 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
 
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
-        temperature: 0.2,
+        temperature: 0.25,
         messages: [
           {
             role: 'system',
             content:
-              'You are an organisational intelligence analyst. Produce a single, high-signal causal sentence. Ground claims in the provided drivers and avoid generic consultant language.',
+              'You are an organisational intelligence analyst. Produce a single, high-signal causal sentence executives can recognise immediately. Ground claims in provided drivers/quotes and avoid generic consultant language.',
           },
           { role: 'user', content: prompt },
         ],
