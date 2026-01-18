@@ -44,6 +44,8 @@ type InsightCategory = 'BUSINESS' | 'TECHNOLOGY' | 'PEOPLE' | 'CUSTOMER' | 'REGU
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
+const NODE_TYPE_ORDER: NodeType[] = ['CONSTRAINT', 'FRICTION', 'CHALLENGE', 'ENABLER', 'BELIEF', 'VISION', 'EVIDENCE'];
+
 const STOPWORDS = new Set([
   'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
 ]);
@@ -111,6 +113,13 @@ function words(text: string): string[] {
 
 function tokenSet(text: string): Set<string> {
   return new Set(words(text));
+}
+
+function canonicalInsightKey(text: string): string {
+  const cleaned = (text || '').trim().toLowerCase();
+  const w = words(cleaned);
+  if (w.length) return w.join(' ');
+  return cleaned.replace(/\s+/g, ' ').trim();
 }
 
 function jaccard(a: Set<string>, b: Set<string>): number {
@@ -543,13 +552,60 @@ export async function GET(
       });
     }
 
-    const allNodes = [...nodesById.values()]
-      .map((n) => ({
+    let allNodes: HemisphereNode[] = [...nodesById.values()]
+      .map((n): HemisphereNode => ({
         ...n,
         severity: typeof n.severity === 'number' ? clampInt(n.severity, 1, 5) : n.severity,
         confidence: typeof n.confidence === 'number' ? clamp01(n.confidence) : n.confidence,
       }))
       .sort((a, b) => b.weight - a.weight);
+
+    // De-duplicate nodes that represent the same construct (same underlying insight text).
+    // This is NOT semantic clustering; it's a strict canonical-text merge to remove duplicates
+    // caused by multiple pipelines (insights vs report phaseInsights vs keyInsights).
+    const mergedByKey = new Map<
+      string,
+      {
+        node: HemisphereNode;
+        typeWeights: Map<NodeType, number>;
+      }
+    >();
+    const mergedNodes: HemisphereNode[] = [];
+    for (const n of allNodes) {
+      if (n.type === 'EVIDENCE') {
+        mergedNodes.push(n);
+        continue;
+      }
+      const basis = (n.summary || n.label || '').trim();
+      const key = canonicalInsightKey(basis);
+      const existing = mergedByKey.get(key);
+      if (!existing) {
+        const tw = new Map<NodeType, number>();
+        tw.set(n.type, (tw.get(n.type) || 0) + Math.max(1, n.weight || 1));
+        mergedByKey.set(key, { node: n, typeWeights: tw });
+        mergedNodes.push(n);
+        continue;
+      }
+      existing.typeWeights.set(n.type, (existing.typeWeights.get(n.type) || 0) + Math.max(1, n.weight || 1));
+      mergeNode(existing.node, n);
+    }
+
+    for (const { node, typeWeights } of mergedByKey.values()) {
+      // Select dominant type by accumulated weight. Tie-breaker is NODE_TYPE_ORDER.
+      let bestType: NodeType = node.type;
+      let bestWeight = -1;
+      for (const t of NODE_TYPE_ORDER) {
+        if (t === 'EVIDENCE') continue;
+        const w = typeWeights.get(t) || 0;
+        if (w > bestWeight) {
+          bestWeight = w;
+          bestType = t;
+        }
+      }
+      node.type = bestType;
+      node.layer = layerForType(bestType);
+    }
+    allNodes = mergedNodes.sort((a, b) => b.weight - a.weight);
 
     const nodesForSimilarity = allNodes
       .filter((n) => n.type !== 'EVIDENCE')
