@@ -124,6 +124,13 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [zoomClusterId, setZoomClusterId] = useState<string | null>(null);
 
+  const [highlightDominantDrivers, setHighlightDominantDrivers] = useState(false);
+  const [showCausalChains, setShowCausalChains] = useState(false);
+
+  const prevRunTypeRef = useRef<'BASELINE' | 'FOLLOWUP'>('BASELINE');
+  const transitionRef = useRef<{ startMs: number; from: Map<string, NodePose> } | null>(null);
+  const prevPositionsRef = useRef<Map<string, NodePose>>(new Map());
+
   const [phaseFilter, setPhaseFilter] = useState<Record<(typeof ALL_PHASES)[number], boolean>>({
     people: true,
     corporate: true,
@@ -178,6 +185,14 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     setZoomClusterId(null);
   }, [runType, workshopId]);
 
+  useEffect(() => {
+    if (prevRunTypeRef.current !== runType) {
+      // Start a transition between the prior layout and the new layout.
+      prevRunTypeRef.current = runType;
+      transitionRef.current = { startMs: performance.now(), from: new Map(prevPositionsRef.current) };
+    }
+  }, [runType]);
+
   const graph = data?.hemisphereGraph || null;
   const nodes = graph?.nodes || [];
   const edges = graph?.edges || [];
@@ -217,6 +232,16 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     return out;
   }, [nodes, edges]);
 
+  const degreeById = useMemo(() => {
+    const deg = new Map<string, number>();
+    for (const e of edges) {
+      const w = Number.isFinite(e.strength) ? e.strength : 0;
+      deg.set(e.source, (deg.get(e.source) || 0) + w);
+      deg.set(e.target, (deg.get(e.target) || 0) + w);
+    }
+    return deg;
+  }, [edges]);
+
   const baseVisibleNodes = useMemo(() => {
     const phaseOk = (n: HemisphereNode) => {
       const tags = Array.isArray(n.phaseTags) ? n.phaseTags : [];
@@ -235,10 +260,24 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     };
 
     // Option A: keep evidence nodes out of the base view; they appear only when you select a node.
-    const base = nodes.filter((n) => n.type !== 'EVIDENCE' && phaseOk(n) && typeOk(n) && weightOk(n) && crossDomainOk(n));
+    let base = nodes.filter((n) => n.type !== 'EVIDENCE' && phaseOk(n) && typeOk(n) && weightOk(n) && crossDomainOk(n));
+
+    if (highlightDominantDrivers && base.length) {
+      const influence = (n: HemisphereNode) => {
+        const sev = typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.5;
+        const cross = uniq((n.phaseTags || []).map((t) => String(t).toLowerCase())).length;
+        const crossMult = 1 + 0.35 * Math.min(3, Math.max(0, cross - 1));
+        const deg = degreeById.get(n.id) || 0;
+        return (Math.max(1, n.weight || 1) * (1 + sev * 1.6) * crossMult) + deg * 2.2;
+      };
+      const scores = base.map(influence).sort((a, b) => b - a);
+      const threshold = scores[Math.max(0, Math.floor(scores.length * 0.18))] || scores[0] || 0;
+      base = base.filter((n) => influence(n) >= threshold);
+    }
+
     base.sort((a, b) => (b.weight || 0) - (a.weight || 0));
     return base.slice(0, 220);
-  }, [nodes, phaseFilter, typeFilter, minWeight, onlyCrossDomain]);
+  }, [nodes, phaseFilter, typeFilter, minWeight, onlyCrossDomain, highlightDominantDrivers, degreeById]);
 
   const selectedEvidenceNodes = useMemo(() => {
     if (!selectedNodeId) return [] as HemisphereNode[];
@@ -284,16 +323,18 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   }, [selectedEvidenceNodes, selectedNodeId]);
 
   const visibleEdges = useMemo(() => {
-    const base = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
-    return [...base, ...evidenceEdges];
-  }, [edges, visibleNodeIds, evidenceEdges]);
+    let base = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
+    if (showCausalChains) base = base.filter((e) => e.kind === 'CAUSE_HINT');
+    return showCausalChains ? base : [...base, ...evidenceEdges];
+  }, [edges, visibleNodeIds, evidenceEdges, showCausalChains]);
 
   const selectedNode = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
 
   const positions = useMemo(() => {
     const out = new Map<string, NodePose>();
     const bandForLayer = (layer: HemisphereLayer): { a: number; b: number } => {
-      if (layer === 'H1') return { a: 0.10, b: 0.34 };
+      // H1 (intent) lives closer to the apex.
+      if (layer === 'H1') return { a: 0.02, b: 0.18 };
       if (layer === 'H2') return { a: 0.34, b: 0.56 };
       if (layer === 'H3') return { a: 0.56, b: 0.78 };
       return { a: 0.78, b: 0.98 };
@@ -320,11 +361,21 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       const x = Math.cos(theta) * radial;
       const z = Math.sin(theta) * radial;
 
-      out.set(n.id, { id: n.id, clusterId: cid, layer: n.layer, type: n.type, p: { x, y, z } });
+      const coreId = graph?.coreTruthNodeId;
+      if (coreId && n.id === coreId) {
+        // Core Truth is the gravity well at the dome's center.
+        out.set(n.id, { id: n.id, clusterId: 'CORE', layer: n.layer, type: n.type, p: { x: 0, y: 0.55, z: 0 } });
+      } else {
+        out.set(n.id, { id: n.id, clusterId: cid, layer: n.layer, type: n.type, p: { x, y, z } });
+      }
     }
 
     return out;
-  }, [visibleNodes, clusterByNodeId]);
+  }, [visibleNodes, clusterByNodeId, graph?.coreTruthNodeId]);
+
+  useEffect(() => {
+    prevPositionsRef.current = positions;
+  }, [positions]);
 
   const clusterCenters = useMemo(() => {
     const acc = new Map<string, { x: number; y: number; z: number; n: number }>();
@@ -458,13 +509,29 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       const cam = zoomClusterId ? clusterCenters.get(zoomClusterId) : null;
       const zoom = zoomClusterId ? 1.7 : 1;
 
+      const hoverActive = !!hoveredNodeId;
+
       const proj = new Map<string, { x: number; y: number; z: number; s: number }>();
       const hit = new Map<string, { x: number; y: number; r: number }>();
 
+      const trans = transitionRef.current;
+      const transT = trans ? clamp01((tMs - trans.startMs) / 900) : 1;
+      const transEase = easeInOutCubic(transT);
+      if (trans && transT >= 1) transitionRef.current = null;
+
+      const lerpVec = (a: Vec3, b: Vec3, t: number): Vec3 => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), z: lerp(a.z, b.z, t) });
+      const poseFor = (id: string): { p: Vec3; enter: number } | null => {
+        const toPose = positions.get(id);
+        if (!toPose) return null;
+        const fromPose = trans?.from.get(id);
+        if (!trans || !fromPose) return { p: toPose.p, enter: trans ? transEase : 1 };
+        return { p: lerpVec(fromPose.p, toPose.p, transEase), enter: 1 };
+      };
+
       for (const n of visibleNodes) {
-        const pose = positions.get(n.id);
-        if (!pose) continue;
-        const base = pose.p;
+        const posed = poseFor(n.id);
+        if (!posed) continue;
+        const base = posed.p;
         const p = cam ? { x: base.x - cam.x, y: base.y - cam.y, z: base.z - cam.z } : base;
         const q = project(p, w, h, tMs);
         const x = (q.x - cx) * zoom + cx;
@@ -477,27 +544,63 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const b = proj.get(e.target);
         if (!a || !b) continue;
         const active = activeEdgeSet.has(e.id);
-        const baseAlpha = e.kind === 'CAUSE_HINT' ? 0.35 : e.kind === 'COOCCUR' ? 0.14 : 0.20;
-        const alpha = active ? 0.85 : baseAlpha;
-        ctx.strokeStyle = `rgba(96,165,250,${clamp01(alpha)})`;
-        ctx.lineWidth = Math.max(1, (active ? 2.2 : 0.9) * dpr);
+        const baseAlpha = e.kind === 'CAUSE_HINT' ? 0.62 : e.kind === 'COOCCUR' ? 0.16 : 0.26;
+        const alpha = active ? 0.95 : baseAlpha;
+        const width = (0.6 + 2.4 * clamp01(e.strength)) * (e.kind === 'CAUSE_HINT' ? 1.35 : 1);
+        const unrelatedFade = hoverActive && hoveredNodeId && !(activeNodeSet.has(e.source) && activeNodeSet.has(e.target)) ? 0.30 : 1;
+
+        if (showCausalChains && e.kind === 'CAUSE_HINT') {
+          ctx.setLineDash([8 * dpr, 10 * dpr]);
+          ctx.lineDashOffset = -tMs * 0.02;
+        } else {
+          ctx.setLineDash([]);
+        }
+
+        ctx.strokeStyle = `rgba(96,165,250,${clamp01(alpha) * unrelatedFade})`;
+        ctx.lineWidth = Math.max(1, width * dpr * (active ? 1.25 : 1));
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
       }
 
+      ctx.setLineDash([]);
+
       const ordered = [...visibleNodes]
         .map((n) => ({ n, q: proj.get(n.id) }))
         .filter((x): x is { n: HemisphereNode; q: { x: number; y: number; z: number; s: number } } => !!x.q)
         .sort((a, b) => a.q.z - b.q.z);
 
+      const influenceRadius = (n: HemisphereNode, q: { z: number; s: number }) => {
+        const sev = typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.5;
+        const conf = typeof n.confidence === 'number' ? clamp01(n.confidence) : 0.7;
+        const cross = uniq((n.phaseTags || []).map((t) => String(t).toLowerCase())).length;
+        const crossMult = 1 + 0.35 * Math.min(3, Math.max(0, cross - 1));
+        const freq = Math.sqrt(Math.max(1, n.weight || 1));
+        const depth = clamp01((q.z + 1) / 2);
+        const depthMult = 0.85 + depth * 0.75;
+        const sharpMult = 0.90 + conf * 0.20;
+        return (2.2 + freq * 2.05) * (1 + sev * 1.35) * crossMult * depthMult * sharpMult;
+      };
+
+      let maxNormal = 1;
+      for (const { n, q } of ordered) {
+        const coreId = graph?.coreTruthNodeId;
+        if (coreId && n.id === coreId) continue;
+        maxNormal = Math.max(maxNormal, influenceRadius(n, q));
+      }
+
       for (const { n, q } of ordered) {
         const palette = colorForType(n.type);
         const active = activeNodeSet.has(n.id);
         const core = graph?.coreTruthNodeId && n.id === graph.coreTruthNodeId;
-        const wgt = Math.max(1, n.weight || 1);
-        const size = core ? 12 : 4 + Math.sqrt(wgt) * 2.2;
+        const sev = typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.5;
+        const conf = typeof n.confidence === 'number' ? clamp01(n.confidence) : 0.7;
+
+        const baseSize = influenceRadius(n, q);
+        const heartbeat = core && !reduceMotion ? 1 + 0.06 * Math.sin((tMs / 3600) * Math.PI * 2) : 1;
+        const hoverScale = hoveredNodeId && n.id === hoveredNodeId ? 1.15 : 1;
+        const size = (core ? maxNormal * 2.8 * heartbeat : baseSize) * hoverScale;
         const r = size * q.s;
         hit.set(n.id, { x: q.x, y: q.y, r: r + 8 * q.s });
 
@@ -505,24 +608,31 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const zoomClusterMatch = zoomClusterId ? (clusterByNodeId.get(n.id) || null) === zoomClusterId : true;
         const dimmed = zoomedOut && !zoomClusterMatch && !active;
 
-        const sev = typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.35;
-        const conf = typeof n.confidence === 'number' ? clamp01(n.confidence) : 0.65;
-        const glowAlpha = core ? 0.95 : 0.18 + sev * 0.55 + (active ? 0.25 : 0);
-        const blur = (1 - conf) * 6;
+        const unrelated = hoverActive && hoveredNodeId && !activeNodeSet.has(n.id);
+        const unrelatedAlpha = unrelated ? 0.30 : 1;
+
+        const baseGlow = 0.14 + sev * 0.62;
+        const glowAlpha = core ? 0.98 : baseGlow + (active ? 0.28 : 0);
+        const blur = (1 - conf) * 10 + (1 - clamp01((q.z + 1) / 2)) * 6;
 
         ctx.save();
-        ctx.globalAlpha = clamp01(dimmed ? glowAlpha * 0.25 : glowAlpha);
-        ctx.fillStyle = palette.glow;
-        ctx.shadowColor = palette.glow;
-        ctx.shadowBlur = (reduceMotion ? 6 : 10) * q.s + blur;
+        ctx.globalAlpha = clamp01((dimmed ? glowAlpha * 0.25 : glowAlpha) * unrelatedAlpha);
+        ctx.fillStyle = core ? 'rgba(248,250,252,0.95)' : palette.glow;
+        ctx.shadowColor = core ? 'rgba(191,219,254,0.95)' : palette.glow;
+        ctx.shadowBlur = (reduceMotion ? 8 : 12) * q.s + blur;
         ctx.beginPath();
         ctx.arc(q.x, q.y, r * (core ? 1.35 : 1.1), 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
         ctx.save();
-        ctx.globalAlpha = dimmed ? 0.20 : active ? 1 : 0.92;
-        ctx.fillStyle = palette.fill;
+        const depth = clamp01((q.z + 1) / 2);
+        const depthAlpha = 0.40 + depth * 0.60;
+        ctx.globalAlpha = (dimmed ? 0.20 : active ? 1 : 0.92) * depthAlpha * unrelatedAlpha;
+
+        // Brightness communicates severity.
+        const fill = core ? '#f8fafc' : palette.fill;
+        ctx.fillStyle = fill;
         ctx.beginPath();
         ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
         ctx.fill();
@@ -740,6 +850,38 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                 onClick={() => setOnlyCrossDomain((v) => !v)}
               >
                 {onlyCrossDomain ? 'On' : 'Off'}
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] font-medium text-slate-300">Highlight dominant drivers</div>
+              <Button
+                size="sm"
+                variant={highlightDominantDrivers ? 'default' : 'outline'}
+                className={
+                  highlightDominantDrivers
+                    ? 'h-7 px-2 text-xs'
+                    : 'h-7 px-2 text-xs bg-black/20 text-slate-200 border-white/15 hover:bg-white/10'
+                }
+                onClick={() => setHighlightDominantDrivers((v) => !v)}
+              >
+                {highlightDominantDrivers ? 'On' : 'Off'}
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] font-medium text-slate-300">Show causal chains</div>
+              <Button
+                size="sm"
+                variant={showCausalChains ? 'default' : 'outline'}
+                className={
+                  showCausalChains
+                    ? 'h-7 px-2 text-xs'
+                    : 'h-7 px-2 text-xs bg-black/20 text-slate-200 border-white/15 hover:bg-white/10'
+                }
+                onClick={() => setShowCausalChains((v) => !v)}
+              >
+                {showCausalChains ? 'On' : 'Off'}
               </Button>
             </div>
           </div>
