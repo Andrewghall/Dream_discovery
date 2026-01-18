@@ -188,16 +188,31 @@ export default function AdminDashboard() {
               {dbDebugError}
             </div>
           ) : dbDebug ? (
-            <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
-              <div className="font-medium">Database Connection</div>
-              <div className="text-muted-foreground">
-                {dbDebug.databaseUrlInfo?.user ? `${dbDebug.databaseUrlInfo.user}@` : ''}
-                {dbDebug.databaseUrlInfo?.host || 'unknown'}
-                {dbDebug.databaseUrlInfo?.port ? `:${dbDebug.databaseUrlInfo.port}` : ''}
-                {dbDebug.databaseUrlInfo?.database ? `/${dbDebug.databaseUrlInfo.database}` : ''}
-                {dbDebug.databaseUrlInfo?.schema ? ` (schema param: ${dbDebug.databaseUrlInfo.schema})` : ''}
-                {typeof dbDebug.db?.currentSchema === 'string' ? ` | current_schema(): ${dbDebug.db.currentSchema}` : ''}
-                {typeof dbDebug.nodeEnv === 'string' ? ` | NODE_ENV: ${dbDebug.nodeEnv}` : ''}
+            <div className="space-y-2">
+              {(() => {
+                const schemaParam = dbDebug.databaseUrlInfo?.schema || null;
+                const expected = (schemaParam || 'public').trim();
+                const current = (dbDebug.db?.currentSchema || '').trim();
+                const mismatch = Boolean(expected && current && expected !== current);
+                return mismatch ? (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    Schema mismatch: DATABASE_URL expects <span className="font-mono">{expected}</span> but the DB connection is using{' '}
+                    <span className="font-mono">{current}</span>. Admin data may appear missing.
+                  </div>
+                ) : null;
+              })()}
+
+              <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                <div className="font-medium">Database Connection</div>
+                <div className="text-muted-foreground">
+                  {dbDebug.databaseUrlInfo?.user ? `${dbDebug.databaseUrlInfo.user}@` : ''}
+                  {dbDebug.databaseUrlInfo?.host || 'unknown'}
+                  {dbDebug.databaseUrlInfo?.port ? `:${dbDebug.databaseUrlInfo.port}` : ''}
+                  {dbDebug.databaseUrlInfo?.database ? `/${dbDebug.databaseUrlInfo.database}` : ''}
+                  {dbDebug.databaseUrlInfo?.schema ? ` (schema param: ${dbDebug.databaseUrlInfo.schema})` : ''}
+                  {typeof dbDebug.db?.currentSchema === 'string' ? ` | current_schema(): ${dbDebug.db.currentSchema}` : ''}
+                  {typeof dbDebug.nodeEnv === 'string' ? ` | NODE_ENV: ${dbDebug.nodeEnv}` : ''}
+                </div>
               </div>
             </div>
           ) : null}
