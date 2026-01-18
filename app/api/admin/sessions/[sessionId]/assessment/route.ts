@@ -157,6 +157,8 @@ export async function POST(
     const force = request.nextUrl.searchParams.get('force') === '1';
     const includeInsights = request.nextUrl.searchParams.get('insights') === '1';
 
+    const agenticConfigured = !!process.env.OPENAI_API_KEY;
+
     const body = (await request.json().catch(() => null)) as IncomingAssessmentBody | null;
 
     if (!force) {
@@ -233,6 +235,8 @@ export async function POST(
         confidence: number;
       }>;
 
+    const shouldOverwriteInsights = includeInsights && agenticConfigured && extracted.length > 0;
+
     const txOps: any[] = [];
     txOps.push(
       (prisma as any).conversationReport.upsert({
@@ -263,27 +267,28 @@ export async function POST(
       })
     );
 
-    if (includeInsights) {
+    if (shouldOverwriteInsights) {
       txOps.push(prisma.conversationInsight.deleteMany({ where: { sessionId: session.id } }));
-      if (insightRows.length > 0) {
-        txOps.push(prisma.conversationInsight.createMany({ data: insightRows }));
-      }
-      txOps.push(
-        prisma.conversationInsight.findMany({
-          where: { sessionId: session.id },
-          orderBy: { createdAt: 'asc' },
-        })
-      );
+      txOps.push(prisma.conversationInsight.createMany({ data: insightRows }));
+      txOps.push(prisma.conversationInsight.findMany({ where: { sessionId: session.id }, orderBy: { createdAt: 'asc' } }));
     }
 
     const txResults = await prisma.$transaction(txOps);
     const report = txResults[0];
-    const insights = includeInsights
-      ? (txResults[txResults.length - 1] as unknown[])
-      : await prisma.conversationInsight.findMany({ where: { sessionId: session.id }, orderBy: { createdAt: 'asc' } });
+    const insights = await prisma.conversationInsight.findMany({ where: { sessionId: session.id }, orderBy: { createdAt: 'asc' } });
 
     return NextResponse.json(
-      { ok: true, report, insights, reused: false },
+      {
+        ok: true,
+        report,
+        insights,
+        reused: false,
+        agentic: {
+          configured: agenticConfigured,
+          insightsGenerated: shouldOverwriteInsights,
+          degraded: includeInsights && !shouldOverwriteInsights,
+        },
+      },
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (e) {

@@ -334,14 +334,9 @@ async function generateReviewedReportText(params: {
   const review = await reviewDiscoveryNotes({ notes });
 
   if (!process.env.OPENAI_API_KEY) {
-    const lowData = review.label === 'low';
     return {
-      executiveSummary: lowData
-        ? 'Insufficient usable detail was captured to produce meaningful insights. The notes appear too thin or too vague to support confident conclusions.'
-        : notes,
-      feedback: lowData
-        ? 'Thank you for participating. To produce a more meaningful report, please include concrete examples (what happened, where, how often) and specific constraints.'
-        : 'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+      executiveSummary: 'Agentic synthesis unavailable. Enable OPENAI_API_KEY to generate a report summary.',
+      feedback: 'Agentic synthesis unavailable. Enable OPENAI_API_KEY to generate report feedback.',
       tone: null,
       inputQuality: {
         score: review.score,
@@ -349,7 +344,7 @@ async function generateReviewedReportText(params: {
         rationale: review.rationale,
         missingInfoSuggestions: review.missingInfoSuggestions,
       },
-      keyInsights: review.keyInsights,
+      keyInsights: [],
     };
   }
 
@@ -379,14 +374,9 @@ async function generateReviewedReportText(params: {
   const parsed = safeParseJson<{ executiveSummary: string; tone: string | null; feedback: string }>(raw);
 
   if (!parsed) {
-    const lowData = review.label === 'low';
     return {
-      executiveSummary: lowData
-        ? 'Insufficient usable detail was captured to produce meaningful insights. The notes appear too thin or too vague to support confident conclusions.'
-        : notes,
-      feedback: lowData
-        ? 'Thank you for participating. To produce a more meaningful report, please include concrete examples (what happened, where, how often) and specific constraints.'
-        : 'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+      executiveSummary: 'Agentic synthesis unavailable. The model returned an invalid response.',
+      feedback: 'Agentic synthesis unavailable. The model returned an invalid response.',
       tone: null,
       inputQuality: {
         score: review.score,
@@ -399,11 +389,11 @@ async function generateReviewedReportText(params: {
   }
 
   return {
-    executiveSummary: (parsed.executiveSummary || '').trim() || notes,
+    executiveSummary:
+      (parsed.executiveSummary || '').trim() || 'Agentic synthesis unavailable. The model returned an empty summary.',
     tone: (parsed.tone || '').trim() || null,
     feedback:
-      (parsed.feedback || '').trim() ||
-      'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+      (parsed.feedback || '').trim() || 'Agentic synthesis unavailable. The model returned an empty feedback message.',
     inputQuality: {
       score: review.score,
       label: review.label,
