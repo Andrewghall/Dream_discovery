@@ -12,6 +12,39 @@ function mask(value: string | undefined) {
   return `${trimmed.slice(0, 4)}…${trimmed.slice(-4)}`;
 }
 
+function parseDbUrl(value: string | undefined) {
+  if (!value) {
+    return {
+      protocol: null,
+      host: null,
+      port: null,
+      database: null,
+      schema: null,
+    };
+  }
+
+  try {
+    const u = new URL(value.trim());
+    const pathname = (u.pathname || '').replace(/^\//, '');
+    const schema = u.searchParams.get('schema');
+    return {
+      protocol: u.protocol || null,
+      host: u.hostname || null,
+      port: u.port || null,
+      database: pathname || null,
+      schema: schema || null,
+    };
+  } catch {
+    return {
+      protocol: null,
+      host: null,
+      port: null,
+      database: null,
+      schema: null,
+    };
+  }
+}
+
 export async function GET() {
   const deepgram = process.env.DEEPGRAM_API_KEY;
   const openai = process.env.OPENAI_API_KEY;
@@ -46,6 +79,8 @@ export async function GET() {
     openaiKeyMask: mask(openai),
     databaseUrlMask: mask(databaseUrl),
     directDatabaseUrlMask: mask(directDatabaseUrl),
+    databaseUrlInfo: parseDbUrl(databaseUrl),
+    directDatabaseUrlInfo: parseDbUrl(directDatabaseUrl),
     db,
     nodeEnv: process.env.NODE_ENV || null,
   });

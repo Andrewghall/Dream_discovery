@@ -19,10 +19,31 @@ interface Workshop {
   completedResponses: number;
 }
 
+interface DbUrlInfo {
+  protocol: string | null;
+  host: string | null;
+  port: string | null;
+  database: string | null;
+  schema: string | null;
+}
+
+interface DebugEnvResponse {
+  databaseUrlInfo?: DbUrlInfo;
+  db?: {
+    ok: boolean;
+    currentSchema: string | null;
+    workshopCount: number | null;
+    error: string | null;
+  };
+  nodeEnv?: string | null;
+}
+
 export default function AdminDashboard() {
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [loading, setLoading] = useState(true);
   const [workshopsError, setWorkshopsError] = useState<string | null>(null);
+  const [dbDebug, setDbDebug] = useState<DebugEnvResponse | null>(null);
+  const [dbDebugError, setDbDebugError] = useState<string | null>(null);
   const [demoReport, setDemoReport] = useState<null | {
     executiveSummary: string;
     tone: string | null;
@@ -46,6 +67,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchWorkshops();
+    fetchDbDebug();
   }, []);
 
   const fetchWorkshops = async () => {
@@ -73,6 +95,23 @@ export default function AdminDashboard() {
       setWorkshopsError(error instanceof Error ? error.message : 'Failed to fetch workshops');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDbDebug = async () => {
+    try {
+      const response = await fetch(`/api/debug/env?bust=${Date.now()}`, { cache: 'no-store' });
+      const data = (await response.json().catch(() => null)) as DebugEnvResponse | null;
+      if (!response.ok) {
+        setDbDebug(null);
+        setDbDebugError('Failed to fetch db debug');
+        return;
+      }
+      setDbDebug(data);
+      setDbDebugError(null);
+    } catch (error) {
+      setDbDebug(null);
+      setDbDebugError(error instanceof Error ? error.message : 'Failed to fetch db debug');
     }
   };
 
@@ -140,6 +179,26 @@ export default function AdminDashboard() {
               New Workshop
             </Button>
           </Link>
+        </div>
+
+        <div className="no-print mb-6">
+          {dbDebugError ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {dbDebugError}
+            </div>
+          ) : dbDebug ? (
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
+              <div className="font-medium">Database Connection</div>
+              <div className="text-muted-foreground">
+                {dbDebug.databaseUrlInfo?.host || 'unknown'}
+                {dbDebug.databaseUrlInfo?.port ? `:${dbDebug.databaseUrlInfo.port}` : ''}
+                {dbDebug.databaseUrlInfo?.database ? `/${dbDebug.databaseUrlInfo.database}` : ''}
+                {dbDebug.databaseUrlInfo?.schema ? ` (schema param: ${dbDebug.databaseUrlInfo.schema})` : ''}
+                {typeof dbDebug.db?.currentSchema === 'string' ? ` | current_schema(): ${dbDebug.db.currentSchema}` : ''}
+                {typeof dbDebug.nodeEnv === 'string' ? ` | NODE_ENV: ${dbDebug.nodeEnv}` : ''}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Stats Cards */}
