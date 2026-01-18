@@ -49,6 +49,10 @@ type ReportApiResponse = {
   qaPairs?: Array<{ phase: string | null; question: string; answer: string; createdAt: string; tag: string | null }>;
 };
 
+type IncomingAssessmentBody = {
+  reportPayload?: ReportApiResponse;
+};
+
 type ExtractedConversationInsight = {
   insightType: string;
   category: string | null;
@@ -152,6 +156,8 @@ export async function POST(
     const { sessionId } = await params;
     const force = request.nextUrl.searchParams.get('force') === '1';
 
+    const body = (await request.json().catch(() => null)) as IncomingAssessmentBody | null;
+
     if (!force) {
       const existing = await (prisma as any).conversationReport.findUnique({ where: { sessionId } });
       if (existing) {
@@ -169,7 +175,9 @@ export async function POST(
       return NextResponse.json({ ok: false, error: 'Session not found' }, { status: 404 });
     }
 
-    const payload = await generateReportPayload(request, sessionId);
+    const payload = body?.reportPayload?.executiveSummary
+      ? body.reportPayload
+      : await generateReportPayload(request, sessionId);
 
     const qaPairsForInsights = Array.isArray(payload.qaPairs)
       ? payload.qaPairs.map((q) => ({ phase: q.phase ?? null, question: q.question, answer: q.answer }))

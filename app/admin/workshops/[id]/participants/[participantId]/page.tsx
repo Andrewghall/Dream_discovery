@@ -269,8 +269,21 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
       setIsGeneratingReport(true);
       setReportError(null);
 
+      const reportUrl = `/api/conversation/report?sessionId=${encodeURIComponent(selectedSessionId)}&skipEmail=1&bust=${Date.now()}`;
+      const reportRes = await fetch(reportUrl, { cache: 'no-store' });
+      const reportPayload = (await reportRes.json().catch(() => null)) as unknown;
+
+      if (!reportRes.ok || !reportPayload || typeof reportPayload !== 'object') {
+        setReportError('Failed to generate report');
+        return;
+      }
+
       const url = `/api/admin/sessions/${encodeURIComponent(selectedSessionId)}/assessment${force ? '?force=1' : ''}`;
-      const r = await fetch(url, { method: 'POST' });
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportPayload }),
+      });
       const data = (await r.json().catch(() => null)) as AssessmentResponse | null;
 
       if (!r.ok || !data || !data.ok) {
