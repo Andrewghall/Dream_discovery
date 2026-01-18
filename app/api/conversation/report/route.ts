@@ -3,8 +3,18 @@ import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { sendDiscoveryReportEmail } from '@/lib/email/send-report';
 import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
+import { createHash } from 'crypto';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+function stableFingerprint(value: unknown): string {
+  const json = JSON.stringify(value);
+  return createHash('sha256').update(json).digest('hex');
+}
+
+function isAgenticUnavailableText(text: unknown): boolean {
+  return typeof text === 'string' && text.trim().toLowerCase().startsWith('agentic synthesis unavailable');
+}
 
 const STOPWORDS = new Set([
   'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
@@ -158,6 +168,39 @@ type KeyInsight = {
   confidence: 'high' | 'medium' | 'low';
   evidence: string[];
 };
+
+function safeInputQuality(value: unknown): ReportInputQuality | null {
+  const rec = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  if (!rec) return null;
+  const score = typeof rec.score === 'number' && Number.isFinite(rec.score) ? clampScore(rec.score) : null;
+  const label = rec.label === 'high' || rec.label === 'medium' || rec.label === 'low' ? (rec.label as InputQualityLabel) : null;
+  const rationale = typeof rec.rationale === 'string' ? rec.rationale.trim() : '';
+  const missingInfoSuggestions = Array.isArray(rec.missingInfoSuggestions)
+    ? rec.missingInfoSuggestions.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim())
+    : [];
+  if (score === null || !label || !rationale) return null;
+  return { score, label, rationale, missingInfoSuggestions };
+}
+
+function safeKeyInsights(value: unknown): KeyInsight[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null))
+    .filter(Boolean)
+    .map((rec) => {
+      const title = typeof rec!.title === 'string' ? rec!.title.trim() : '';
+      const insight = typeof rec!.insight === 'string' ? rec!.insight.trim() : '';
+      const confidence = rec!.confidence === 'high' || rec!.confidence === 'medium' || rec!.confidence === 'low'
+        ? (rec!.confidence as 'high' | 'medium' | 'low')
+        : null;
+      const evidence = Array.isArray(rec!.evidence)
+        ? rec!.evidence.filter((e) => typeof e === 'string' && e.trim()).map((e) => e.trim())
+        : [];
+      if (!title || !insight || !confidence) return null;
+      return { title, insight, confidence, evidence };
+    })
+    .filter(Boolean) as KeyInsight[];
+}
 
 type ReportInputQuality = {
   score: number;
@@ -493,6 +536,7 @@ export async function GET(request: NextRequest) {
     const sessionId = request.nextUrl.searchParams.get('sessionId');
     const demo = request.nextUrl.searchParams.get('demo');
     const skipEmail = request.nextUrl.searchParams.get('skipEmail') === '1';
+    const force = request.nextUrl.searchParams.get('force') === '1';
 
     if (demo === '1') {
       const includeRegulation = request.nextUrl.searchParams.get('includeRegulation') !== '0';
@@ -531,6 +575,7 @@ export async function GET(request: NextRequest) {
       include: {
         workshop: true,
         participant: true,
+        report: true,
         messages: { orderBy: { createdAt: 'asc' } },
         dataPoints: {
           where: {
@@ -756,14 +801,51 @@ export async function GET(request: NextRequest) {
       else if (qa.tag === 'final_thoughts') prioritization.finalThoughts = qa.answer;
     }
 
-    const reviewed = await generateReviewedReportText({
-      workshopName: session.workshop?.name,
-      participantName: session.participant?.name,
-      phaseInsights,
-      prioritization,
+    const inputFingerprint = stableFingerprint({
+      sessionId: session.id,
+      includeRegulation,
+      qaPairs: qaPairs.map((q) => ({
+        phase: q.phase ?? null,
+        question: q.question,
+        answer: q.answer,
+        tag: q.tag ?? null,
+      })),
     });
 
-    const wordCloudThemes = buildWordFrequencies(narrativeTexts);
+    const storedInputQuality = safeInputQuality(session.report?.inputQuality);
+    const storedKeyInsights = safeKeyInsights(session.report?.keyInsights);
+    const storedFingerprint =
+      storedInputQuality && typeof (storedInputQuality as any).agenticFingerprint === 'string'
+        ? String((storedInputQuality as any).agenticFingerprint)
+        : null;
+
+    const agenticConfigured = !!process.env.OPENAI_API_KEY;
+    const existingUnavailable =
+      isAgenticUnavailableText(session.report?.executiveSummary) || isAgenticUnavailableText(session.report?.feedback);
+
+    const canReuse =
+      !force &&
+      !!session.report &&
+      storedFingerprint === inputFingerprint &&
+      (!agenticConfigured || !existingUnavailable) &&
+      !!storedInputQuality;
+
+    const reviewed = canReuse
+      ? {
+          executiveSummary: session.report!.executiveSummary,
+          tone: session.report!.tone ?? null,
+          feedback: session.report!.feedback,
+          inputQuality: storedInputQuality!,
+          keyInsights: storedKeyInsights,
+        }
+      : await generateReviewedReportText({
+          workshopName: session.workshop?.name,
+          participantName: session.participant?.name,
+          phaseInsights,
+          prioritization,
+        });
+
+    const wordCloudThemes = canReuse && session.report?.wordCloudThemes ? session.report.wordCloudThemes : buildWordFrequencies(narrativeTexts);
 
     if (!skipEmail) {
       try {
@@ -887,9 +969,9 @@ export async function GET(request: NextRequest) {
       tone: reviewed.tone,
       feedback: reviewed.feedback,
       inputQuality: reviewed.inputQuality,
-      keyInsights: reviewed.keyInsights,
+      keyInsights: canReuse && session.report?.keyInsights ? session.report.keyInsights : reviewed.keyInsights,
       introContext,
-      phaseInsights,
+      phaseInsights: canReuse && session.report?.phaseInsights ? session.report.phaseInsights : phaseInsights,
       wordCloudThemes,
       qaPairs,
     });

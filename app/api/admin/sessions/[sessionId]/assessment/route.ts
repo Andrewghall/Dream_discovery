@@ -2,11 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { InsightCategory, InsightType } from '@prisma/client';
+import { createHash } from 'crypto';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+function stableFingerprint(value: unknown): string {
+  const json = JSON.stringify(value);
+  return createHash('sha256').update(json).digest('hex');
+}
+
+function isAgenticUnavailableText(text: unknown): boolean {
+  return typeof text === 'string' && text.trim().toLowerCase().startsWith('agentic synthesis unavailable');
+}
 
 function safeParseJson<T>(text: string): T | null {
   try {
@@ -161,11 +171,80 @@ export async function POST(
 
     const body = (await request.json().catch(() => null)) as IncomingAssessmentBody | null;
 
+    const dataPoints = await prisma.dataPoint.findMany({
+      where: { sessionId, questionKey: { not: null } },
+      orderBy: [{ questionKey: 'asc' }, { createdAt: 'asc' }],
+      select: { questionKey: true, rawText: true, createdAt: true },
+    });
+
+    const participantMessages = await prisma.conversationMessage.findMany({
+      where: { sessionId, role: 'PARTICIPANT' },
+      orderBy: { createdAt: 'asc' },
+      select: { content: true, createdAt: true, phase: true, metadata: true },
+    });
+
+    const fingerprintSource = dataPoints.length
+      ? {
+          kind: 'dataPoints',
+          items: dataPoints.map((d) => ({
+            questionKey: d.questionKey,
+            rawText: d.rawText,
+            createdAt: d.createdAt.toISOString(),
+          })),
+        }
+      : {
+          kind: 'messages',
+          items: participantMessages.map((m) => {
+            const meta = m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata) ? (m.metadata as Record<string, unknown>) : null;
+            const translation =
+              meta && meta.translation && typeof meta.translation === 'object' && !Array.isArray(meta.translation)
+                ? (meta.translation as Record<string, unknown>)
+                : null;
+            const translatedEn = translation && typeof translation.en === 'string' ? translation.en : null;
+            const text = typeof translatedEn === 'string' && translatedEn.trim() ? translatedEn : m.content;
+            return {
+              phase: m.phase || null,
+              text,
+              createdAt: m.createdAt.toISOString(),
+            };
+          }),
+        };
+
+    const inputFingerprint = stableFingerprint({ sessionId, ...fingerprintSource });
+
     if (!force) {
       const existing = await (prisma as any).conversationReport.findUnique({ where: { sessionId } });
       if (existing) {
-        const insights = await prisma.conversationInsight.findMany({ where: { sessionId }, orderBy: { createdAt: 'asc' } });
-        return NextResponse.json({ ok: true, report: existing, insights, reused: true }, { headers: { 'Cache-Control': 'no-store' } });
+        const existingInputQuality =
+          existing.inputQuality && typeof existing.inputQuality === 'object' && !Array.isArray(existing.inputQuality)
+            ? (existing.inputQuality as Record<string, unknown>)
+            : null;
+        const storedFingerprint = existingInputQuality && typeof existingInputQuality.agenticFingerprint === 'string'
+          ? String(existingInputQuality.agenticFingerprint)
+          : null;
+
+        const existingInsights = await prisma.conversationInsight.findMany({ where: { sessionId }, orderBy: { createdAt: 'asc' } });
+        const wantsInsightsSatisfied = !includeInsights || existingInsights.length > 0;
+
+        const existingUnavailable = isAgenticUnavailableText(existing.executiveSummary) || isAgenticUnavailableText(existing.feedback);
+        const canReuse = storedFingerprint === inputFingerprint && wantsInsightsSatisfied && (!agenticConfigured || !existingUnavailable);
+
+        if (canReuse) {
+          return NextResponse.json(
+            {
+              ok: true,
+              report: existing,
+              insights: existingInsights,
+              reused: true,
+              agentic: {
+                configured: agenticConfigured,
+                insightsGenerated: false,
+                degraded: includeInsights && !wantsInsightsSatisfied,
+              },
+            },
+            { headers: { 'Cache-Control': 'no-store' } }
+          );
+        }
       }
     }
 
@@ -237,6 +316,18 @@ export async function POST(
 
     const shouldOverwriteInsights = includeInsights && agenticConfigured && extracted.length > 0;
 
+    const payloadInputQuality =
+      payload.inputQuality && typeof payload.inputQuality === 'object' && !Array.isArray(payload.inputQuality)
+        ? (payload.inputQuality as Record<string, unknown>)
+        : {};
+    const mergedInputQuality = {
+      ...payloadInputQuality,
+      agenticFingerprint: inputFingerprint,
+      agenticConfigured,
+      agenticGeneratedAt: new Date().toISOString(),
+      agenticModelVersion: 'assessment-v1',
+    };
+
     const txOps: any[] = [];
     txOps.push(
       (prisma as any).conversationReport.upsert({
@@ -248,7 +339,7 @@ export async function POST(
           executiveSummary: payload.executiveSummary,
           tone: payload.tone,
           feedback: payload.feedback,
-          inputQuality: payload.inputQuality ?? undefined,
+          inputQuality: mergedInputQuality,
           keyInsights: payload.keyInsights ?? undefined,
           phaseInsights: payload.phaseInsights ?? undefined,
           wordCloudThemes: payload.wordCloudThemes ?? undefined,
@@ -258,7 +349,7 @@ export async function POST(
           executiveSummary: payload.executiveSummary,
           tone: payload.tone,
           feedback: payload.feedback,
-          inputQuality: payload.inputQuality ?? undefined,
+          inputQuality: mergedInputQuality,
           keyInsights: payload.keyInsights ?? undefined,
           phaseInsights: payload.phaseInsights ?? undefined,
           wordCloudThemes: payload.wordCloudThemes ?? undefined,
