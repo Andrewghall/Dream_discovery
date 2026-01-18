@@ -505,7 +505,9 @@ export async function GET(
         const qk = String(dp.questionKey || '');
         const meta = parseQuestionKey(qk);
         const tag = (meta.tag || '').toLowerCase();
+        const phase = (meta.phase || '').toLowerCase();
         if (tag === 'triple_rating' || tag.endsWith('_score') || tag.includes('rating')) return null;
+        if (phase === 'intro' || tag === 'context') return null;
         const answer = String(dp.rawText || '').trim();
         if (!answer) return null;
         const wordCount = answer.split(/\s+/).filter(Boolean).length;

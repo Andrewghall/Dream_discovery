@@ -56,6 +56,10 @@ type PageProps = {
 const ALL_PHASES = ['people', 'corporate', 'customer', 'technology', 'regulation'] as const;
 const ALL_TYPES: NodeType[] = ['VISION', 'BELIEF', 'CHALLENGE', 'FRICTION', 'CONSTRAINT', 'ENABLER'];
 
+const STOPWORDS = new Set([
+  'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
+]);
+
 function clamp01(n: number) {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(1, n));
@@ -104,6 +108,29 @@ function labelForType(type: NodeType) {
 
 function uniq<T>(arr: T[]) {
   return [...new Set(arr)];
+}
+
+function words(text: string): string[] {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((w) => w.length >= 3)
+    .filter((w) => !STOPWORDS.has(w));
+}
+
+function tokenSet(text: string): Set<string> {
+  return new Set(words(text));
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  const uni = a.size + b.size - inter;
+  return uni <= 0 ? 0 : inter / uni;
 }
 
 type Vec3 = { x: number; y: number; z: number };
@@ -283,15 +310,24 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     if (!selectedNodeId) return [] as HemisphereNode[];
     const selected = nodeById.get(selectedNodeId);
     if (!selected) return [] as HemisphereNode[];
+    if (selected.type === 'EVIDENCE') return [] as HemisphereNode[];
 
     const sessionIds = new Set((selected.sources || []).map((s) => s.sessionId).filter(Boolean));
     if (sessionIds.size === 0) return [] as HemisphereNode[];
 
+    const selectedTokens = tokenSet(`${selected.label} ${selected.summary || ''}`);
+
     const evid = nodes
       .filter((n) => n.type === 'EVIDENCE')
       .filter((n) => (n.sources || []).some((s) => sessionIds.has(s.sessionId)))
-      .sort((a, b) => (b.weight || 0) - (a.weight || 0))
-      .slice(0, 14);
+      .map((n) => {
+        const sim = jaccard(selectedTokens, tokenSet(`${n.label} ${n.summary || ''}`));
+        return { n, sim };
+      })
+      .filter((r) => r.sim >= 0.08)
+      .sort((a, b) => b.sim - a.sim || (b.n.weight || 0) - (a.n.weight || 0))
+      .slice(0, 12)
+      .map((r) => r.n);
 
     return evid;
   }, [selectedNodeId, nodeById, nodes]);
