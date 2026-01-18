@@ -51,26 +51,29 @@ export async function GET() {
   const databaseUrl = process.env.DATABASE_URL;
   const directDatabaseUrl = process.env.DIRECT_DATABASE_URL;
 
-  let db: { ok: boolean; currentSchema: string | null; workshopCount: number | null; error: string | null } = {
-    ok: false,
-    currentSchema: null,
-    workshopCount: null,
-    error: null,
-  };
+  let currentSchema: string | null = null;
+  let workshopCount: number | null = null;
+  let error: string | null = null;
 
   try {
     const schemaRows = await prisma.$queryRaw<Array<{ s: string }>>`select current_schema() as s`;
-    const currentSchema = schemaRows?.[0]?.s ?? null;
-    const workshopCount = await prisma.workshop.count();
-    db = { ok: true, currentSchema, workshopCount, error: null };
+    currentSchema = schemaRows?.[0]?.s ?? null;
   } catch (e) {
-    db = {
-      ok: false,
-      currentSchema: null,
-      workshopCount: null,
-      error: e instanceof Error ? e.message : 'Unknown error',
-    };
+    error = e instanceof Error ? e.message : 'Unknown error';
   }
+
+  try {
+    workshopCount = await prisma.workshop.count();
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Unknown error';
+  }
+
+  const db: { ok: boolean; currentSchema: string | null; workshopCount: number | null; error: string | null } = {
+    ok: error === null,
+    currentSchema,
+    workshopCount,
+    error,
+  };
 
   return NextResponse.json({
     hasDeepgramKey: Boolean(deepgram && deepgram.trim()),
