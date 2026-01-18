@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import OpenAI from 'openai';
+import { env } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 type RunType = 'BASELINE' | 'FOLLOWUP';
 
@@ -39,6 +42,8 @@ type HemisphereGraph = {
 
 type InsightCategory = 'BUSINESS' | 'TECHNOLOGY' | 'PEOPLE' | 'CUSTOMER' | 'REGULATION';
 
+const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
 const STOPWORDS = new Set([
   'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
 ]);
@@ -48,6 +53,14 @@ function safeCategory(value: unknown): InsightCategory | null {
   if (!s) return null;
   if (s === 'BUSINESS' || s === 'TECHNOLOGY' || s === 'PEOPLE' || s === 'CUSTOMER' || s === 'REGULATION') return s;
   return null;
+}
+
+function safeParseJson<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
 }
 
 function phaseTagFromCategory(value: unknown): string[] {
@@ -601,20 +614,99 @@ export async function GET(
       degree.set(e.target, (degree.get(e.target) || 0) + e.strength);
     }
 
-    const centralNodes = allNodes
-      .filter((n) => n.type !== 'EVIDENCE')
-      .map((n) => ({ n, c: degree.get(n.id) || 0 }))
-      .sort((a, b) => b.c - a.c || b.n.weight - a.n.weight)
-      .slice(0, 3)
-      .map((r) => r.n);
+    const candidateNodes = allNodes.filter((n) => n.type !== 'EVIDENCE');
+    const crossDomainCount = (n: HemisphereNode) => uniq((n.phaseTags || []).map((t) => String(t).toLowerCase())).length;
+    const severity01 = (n: HemisphereNode) => (typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.5);
+
+    const scored = candidateNodes
+      .map((n) => {
+        const cross = crossDomainCount(n);
+        const crossMult = 1 + 0.45 * Math.min(3, Math.max(0, cross - 1));
+        const sev = severity01(n);
+        const deg = degree.get(n.id) || 0;
+        const score = Math.max(1, n.weight) * (1 + sev * 1.6) * crossMult + deg * 2.5;
+        return { n, score, deg, cross, sev };
+      })
+      .sort((a, b) => b.score - a.score || b.deg - a.deg || b.n.weight - a.n.weight);
+
+    const driverNodes = scored.slice(0, 6).map((r) => r.n);
+    const centralNodes = scored.slice(0, 10).map((r) => r.n);
 
     const coreTruthNodeId = 'CORE_TRUTH';
     const coreType: Exclude<NodeType, 'EVIDENCE'> =
       centralNodes.some((n) => n.type === 'CONSTRAINT') ? 'CONSTRAINT' : 'CHALLENGE';
-    const coreSummary =
-      centralNodes.length > 0
-        ? centralNodes.map((n) => n.label).join(' · ')
-        : allNodes.slice(0, 3).map((n) => n.label).join(' · ');
+
+    // Agentic synthesis (mandatory): produce one causal sentence from the most central drivers.
+    let coreSummary = '';
+    try {
+      if (!env.OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY');
+
+      const evidenceQuotes = driverNodes
+        .flatMap((n) => (Array.isArray(n.evidence) ? n.evidence : []))
+        .map((e) => (e && typeof e === 'object' && typeof e.quote === 'string' ? e.quote.trim() : ''))
+        .filter(Boolean)
+        .slice(0, 10);
+
+      const driverLines = driverNodes
+        .map((n, idx) => {
+          const cross = crossDomainCount(n);
+          const sev = typeof n.severity === 'number' ? n.severity : null;
+          const deg = degree.get(n.id) || 0;
+          return `${idx + 1}. [${n.type}] ${n.label}${n.summary ? ` — ${n.summary}` : ''} (weight=${n.weight}, severity=${sev ?? 'null'}, crossDomain=${cross}, centrality=${deg.toFixed(2)})`;
+        })
+        .join('\n');
+
+      const prompt = `Synthesize a single causal Core Truth statement describing the organisation's gravity well.
+
+Requirements:
+- Output strict JSON with schema: {"sentence": string}
+- Exactly ONE sentence.
+- 16-28 words.
+- Must express causality (e.g., "because", "drives", "causes", "amplifies", "leads to").
+- Prefer concrete operational mechanism over abstract phrasing.
+- Do NOT use bullet points.
+- Do NOT mention "drivers" or "nodes".
+
+Top drivers:
+${driverLines}
+
+Evidence quotes (if helpful):
+${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (none)'}
+`;
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an organisational intelligence analyst. Produce a single, high-signal causal sentence. Ground claims in the provided drivers and avoid generic consultant language.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const raw = completion.choices?.[0]?.message?.content?.trim() || '{}';
+      const parsed = safeParseJson<{ sentence?: unknown }>(raw);
+      const sent = parsed && typeof parsed.sentence === 'string' ? parsed.sentence.trim() : '';
+      coreSummary = sent;
+    } catch (e) {
+      // Deterministic fallback (should be rare if OPENAI_API_KEY is configured).
+      const a = driverNodes[0]?.label || centralNodes[0]?.label || 'Decision friction';
+      const b = driverNodes[1]?.label || centralNodes[1]?.label || 'customer friction';
+      const c = driverNodes[2]?.label || centralNodes[2]?.label || 'technology inefficiency';
+      coreSummary = `${shortLabel(a, 7)} is driving ${shortLabel(b, 7)}, amplifying ${shortLabel(c, 7)}.`;
+      console.warn('Core Truth agentic synthesis failed:', e);
+    }
+
+    if (!coreSummary.trim()) {
+      const a = driverNodes[0]?.label || centralNodes[0]?.label || 'Decision friction';
+      const b = driverNodes[1]?.label || centralNodes[1]?.label || 'customer friction';
+      const c = driverNodes[2]?.label || centralNodes[2]?.label || 'technology inefficiency';
+      coreSummary = `${shortLabel(a, 7)} is driving ${shortLabel(b, 7)}, amplifying ${shortLabel(c, 7)}.`;
+    }
 
     allNodes.push({
       id: coreTruthNodeId,
@@ -630,11 +722,13 @@ export async function GET(
       evidence: [],
     });
 
-    for (const n of centralNodes) {
+    for (let i = 0; i < centralNodes.length; i++) {
+      const n = centralNodes[i];
       const source = coreTruthNodeId;
       const target = n.id;
       const id = `CAUSE_HINT:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
-      edges.push({ id, source, target, strength: 0.9, kind: 'CAUSE_HINT' });
+      const strength = clamp01(0.95 - i * 0.04);
+      edges.push({ id, source, target, strength, kind: 'CAUSE_HINT' });
     }
 
     const hemisphereGraph: HemisphereGraph = {

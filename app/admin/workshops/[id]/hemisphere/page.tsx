@@ -584,11 +584,20 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       };
 
       let maxNormal = 1;
+      const normalRadii: number[] = [];
       for (const { n, q } of ordered) {
         const coreId = graph?.coreTruthNodeId;
         if (coreId && n.id === coreId) continue;
-        maxNormal = Math.max(maxNormal, influenceRadius(n, q));
+        const rr = influenceRadius(n, q);
+        maxNormal = Math.max(maxNormal, rr);
+        normalRadii.push(rr);
       }
+
+      normalRadii.sort((a, b) => a - b);
+      const p90 = normalRadii.length
+        ? normalRadii[Math.max(0, Math.min(normalRadii.length - 1, Math.floor(normalRadii.length * 0.9)))]
+        : maxNormal;
+      const normalRef = Math.max(1, p90 || maxNormal);
 
       for (const { n, q } of ordered) {
         const palette = colorForType(n.type);
@@ -598,9 +607,9 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const conf = typeof n.confidence === 'number' ? clamp01(n.confidence) : 0.7;
 
         const baseSize = influenceRadius(n, q);
-        const heartbeat = core && !reduceMotion ? 1 + 0.06 * Math.sin((tMs / 3600) * Math.PI * 2) : 1;
+        const heartbeat = core && !reduceMotion ? 1 + 0.035 * Math.sin((tMs / 3800) * Math.PI * 2) : 1;
         const hoverScale = hoveredNodeId && n.id === hoveredNodeId ? 1.15 : 1;
-        const size = (core ? maxNormal * 2.8 * heartbeat : baseSize) * hoverScale;
+        const size = (core ? normalRef * 2.35 * heartbeat : baseSize) * hoverScale;
         const r = size * q.s;
         hit.set(n.id, { x: q.x, y: q.y, r: r + 8 * q.s });
 
@@ -621,7 +630,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         ctx.shadowColor = core ? 'rgba(191,219,254,0.95)' : palette.glow;
         ctx.shadowBlur = (reduceMotion ? 8 : 12) * q.s + blur;
         ctx.beginPath();
-        ctx.arc(q.x, q.y, r * (core ? 1.35 : 1.1), 0, Math.PI * 2);
+        ctx.arc(q.x, q.y, r * (core ? 1.22 : 1.1), 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
