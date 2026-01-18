@@ -209,8 +209,9 @@ export async function POST(
         confidence: number;
       }>;
 
-    const saved = await prisma.$transaction(async (tx) => {
-      const report = await (tx as any).conversationReport.upsert({
+    const txOps: any[] = [];
+    txOps.push(
+      (prisma as any).conversationReport.upsert({
         where: { sessionId: session.id },
         create: {
           sessionId: session.id,
@@ -235,28 +236,30 @@ export async function POST(
           wordCloudThemes: payload.wordCloudThemes ?? undefined,
           modelVersion: 'assessment-v1',
         },
-      });
+      })
+    );
 
-      await tx.conversationInsight.deleteMany({ where: { sessionId: session.id } });
-
-      if (insightRows.length > 0) {
-        await tx.conversationInsight.createMany({ data: insightRows });
-      }
-
-      const insights = await tx.conversationInsight.findMany({
+    txOps.push(prisma.conversationInsight.deleteMany({ where: { sessionId: session.id } }));
+    if (insightRows.length > 0) {
+      txOps.push(prisma.conversationInsight.createMany({ data: insightRows }));
+    }
+    txOps.push(
+      prisma.conversationInsight.findMany({
         where: { sessionId: session.id },
         orderBy: { createdAt: 'asc' },
-      });
+      })
+    );
 
-      return { report, insights };
-    });
+    const txResults = await prisma.$transaction(txOps);
+    const report = txResults[0];
+    const insights = txResults[txResults.length - 1] as unknown[];
 
     return NextResponse.json(
-      { ok: true, report: saved.report, insights: saved.insights, reused: false },
+      { ok: true, report, insights, reused: false },
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Failed to run assessment';
+    const message = e instanceof Error ? e.message : 'Failed to generate assessment';
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
