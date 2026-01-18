@@ -429,6 +429,15 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                             )}
                           </div>
                           <div className="flex items-center gap-1">
+                            <Link
+                              href={`/admin/workshops/${encodeURIComponent(id)}/participants/${encodeURIComponent(
+                                participant.id
+                              )}`}
+                            >
+                              <Button variant="ghost" size="sm">
+                                Review
+                              </Button>
+                            </Link>
                             <Button
                               variant="ghost"
                               size="sm"

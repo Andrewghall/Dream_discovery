@@ -155,6 +155,10 @@ export async function GET(
       return {
         sessionId: session.id,
         status: session.status,
+        runType: (session as unknown as { runType?: string | null }).runType ?? null,
+        questionSetVersion: (session as unknown as { questionSetVersion?: string | null }).questionSetVersion ?? null,
+        createdAt: session.createdAt,
+        completedAt: session.completedAt,
         participant: {
           id: session.participantId,
           name: session.participant.name,
