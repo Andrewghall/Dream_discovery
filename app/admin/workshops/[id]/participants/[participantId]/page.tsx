@@ -133,7 +133,15 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
 
         const nextSessions = Array.isArray(data.sessions) ? data.sessions : [];
         setSessions(nextSessions);
-        setSelectedSessionId((prev) => prev || (nextSessions[0]?.sessionId ?? ''));
+        setSelectedSessionId((prev) => {
+          const prevStillExists = prev && nextSessions.some((s) => s.sessionId === prev);
+          if (prevStillExists) return prev;
+          const withAnswers = nextSessions.find((s) => (s.qaPairs || []).length > 0);
+          if (withAnswers) return withAnswers.sessionId;
+          const completed = nextSessions.find((s) => !!s.completedAt);
+          if (completed) return completed.sessionId;
+          return nextSessions[0]?.sessionId ?? '';
+        });
       } catch (e) {
         setSessions([]);
         setSelectedSessionId('');
@@ -168,7 +176,15 @@ export default function ParticipantResponsesPage({ params }: PageProps) {
 
       const nextSessions = Array.isArray(data.sessions) ? data.sessions : [];
       setSessions(nextSessions);
-      setSelectedSessionId((prev) => prev || (nextSessions[0]?.sessionId ?? ''));
+      setSelectedSessionId((prev) => {
+        const prevStillExists = prev && nextSessions.some((s) => s.sessionId === prev);
+        if (prevStillExists) return prev;
+        const withAnswers = nextSessions.find((s) => (s.qaPairs || []).length > 0);
+        if (withAnswers) return withAnswers.sessionId;
+        const completed = nextSessions.find((s) => !!s.completedAt);
+        if (completed) return completed.sessionId;
+        return nextSessions[0]?.sessionId ?? '';
+      });
     } catch (e) {
       setSessions([]);
       setSelectedSessionId('');
