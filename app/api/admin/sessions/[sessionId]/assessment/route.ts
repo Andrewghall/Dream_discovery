@@ -96,16 +96,23 @@ async function generateReportPayload(request: NextRequest, sessionId: string): P
   url.searchParams.set('sessionId', sessionId);
   url.searchParams.set('skipEmail', '1');
 
-  const r = await fetch(url.toString(), { cache: 'no-store' });
+  const auth = request.headers.get('authorization');
+  const r = await fetch(url.toString(), {
+    cache: 'no-store',
+    headers: auth ? { authorization: auth } : undefined,
+  });
   const raw = (await r.json().catch(() => null)) as (ReportApiResponse & { error?: unknown; details?: unknown }) | null;
   if (!r.ok || !raw || !raw.executiveSummary) {
-    const errorMsg =
+    const details =
       raw && typeof raw.details === 'string' && raw.details.trim()
         ? raw.details
         : raw && typeof raw.error === 'string' && raw.error.trim()
           ? raw.error
-          : 'Failed to generate report';
-    throw new Error(errorMsg);
+          : raw
+            ? JSON.stringify(raw)
+            : 'No response body';
+
+    throw new Error(`Report API failed (${r.status}): ${details}`);
   }
   return raw;
 }
