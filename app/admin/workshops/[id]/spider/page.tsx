@@ -183,16 +183,30 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
       return 'rgb(100 116 139)';
     };
 
-    return xs.map((t) => ({ ...t, size: fontSize(t.count), color: color(t.count) }));
+    const weight = (count: number) => {
+      const t = max === min ? 0.5 : (count - min) / (max - min);
+      if (t > 0.8) return 650;
+      if (t > 0.55) return 600;
+      return 500;
+    };
+
+    return xs.map((t) => ({ ...t, size: fontSize(t.count), color: color(t.count), weight: weight(t.count) }));
   }, [terms]);
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
-      <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="text-center text-xs font-semibold tracking-widest text-slate-500">DREAM DISCOVERY</div>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 text-slate-900">
+      <div className="mx-auto max-w-5xl px-6 py-12">
+        <div className="text-center">
+          <div className="text-xs font-semibold tracking-widest text-slate-500">DREAM DISCOVERY</div>
+          <div className="mt-2 text-[22px] font-semibold tracking-tight text-slate-900">Capability &amp; Themes</div>
+          <div className="mt-1 text-sm text-slate-600">A collective view across all discovery responses</div>
+        </div>
 
-        <div className="mt-10 rounded-2xl border border-slate-200 bg-white px-8 py-8">
-          <div className="text-center text-sm font-medium text-slate-600">Master capability spider</div>
+        <div className="mt-10 rounded-2xl border border-slate-200/80 bg-white/85 px-8 py-8 shadow-sm ring-1 ring-slate-900/5 backdrop-blur">
+          <div className="flex flex-col items-center gap-1">
+            <div className="text-sm font-semibold text-slate-900">Master capability spider</div>
+            <div className="text-xs text-slate-600">Median ratings (1–10) across all participants</div>
+          </div>
 
           <div className="mt-6 flex justify-center">
             <svg
@@ -203,6 +217,19 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
               className="block"
               style={{ overflow: 'visible' }}
             >
+              <defs>
+                <radialGradient id="spiderGlow" cx="50%" cy="45%" r="70%">
+                  <stop offset="0%" stopColor="rgb(14 165 233)" stopOpacity="0.10" />
+                  <stop offset="55%" stopColor="rgb(34 197 94)" stopOpacity="0.06" />
+                  <stop offset="100%" stopColor="rgb(255 255 255)" stopOpacity="0" />
+                </radialGradient>
+                <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="1.25" stdDeviation="2" floodColor="rgb(15 23 42)" floodOpacity="0.14" />
+                </filter>
+              </defs>
+
+              <circle cx={cx} cy={cy} r={radius * 1.08} fill="url(#spiderGlow)" />
+
               {[0.25, 0.5, 0.75, 1].map((t, idx) => (
                 <circle
                   key={idx}
@@ -236,9 +263,11 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
                 </g>
               ))}
 
-              <path d={targetPath} fill="rgba(34,197,94,0.12)" stroke="rgb(34 197 94)" strokeWidth={2.2} />
-              <path d={currentPath} fill="rgba(249,115,22,0.14)" stroke="rgb(249 115 22)" strokeWidth={2.2} />
-              <path d={projectedPath} fill="rgba(15,23,42,0.06)" stroke="rgb(15 23 42)" strokeWidth={2.2} />
+              <path d={targetPath} fill="rgba(34,197,94,0.14)" stroke="rgb(34 197 94)" strokeWidth={2.4} filter="url(#softShadow)" />
+              <path d={currentPath} fill="rgba(249,115,22,0.16)" stroke="rgb(249 115 22)" strokeWidth={2.4} filter="url(#softShadow)" />
+              <path d={projectedPath} fill="rgba(15,23,42,0.07)" stroke="rgb(15 23 42)" strokeWidth={2.4} filter="url(#softShadow)" />
+
+              <circle cx={cx} cy={cy} r={2.5} fill="rgb(100 116 139)" opacity={0.85} />
 
               {AXES.map((ax, i) => {
                 const angle = -Math.PI / 2 + (i * 2 * Math.PI) / AXES.length;
@@ -256,18 +285,18 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
             </svg>
           </div>
 
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-8 text-sm text-slate-600">
-            <div className="flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: 'rgb(249 115 22)' }} />
-              <span>Current capability</span>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4 text-sm text-slate-700">
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(249 115 22)' }} />
+              <span className="font-medium">Current capability</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: 'rgb(34 197 94)' }} />
-              <span>Target ambition</span>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(34 197 94)' }} />
+              <span className="font-medium">Target ambition</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: 'rgb(15 23 42)' }} />
-              <span>Projected if unchanged</span>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(15 23 42)' }} />
+              <span className="font-medium">Projected if unchanged</span>
             </div>
           </div>
 
@@ -275,8 +304,11 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
           {error ? <div className="mt-6 text-center text-sm text-rose-700">{error}</div> : null}
         </div>
 
-        <div className="mt-10 rounded-2xl border border-slate-200 bg-white px-8 py-8">
-          <div className="text-center text-sm font-medium text-slate-600">Themes &amp; Intent</div>
+        <div className="mt-10 rounded-2xl border border-slate-200/80 bg-white/85 px-8 py-8 shadow-sm ring-1 ring-slate-900/5 backdrop-blur">
+          <div className="flex flex-col items-center gap-1">
+            <div className="text-sm font-semibold text-slate-900">Themes &amp; Intent</div>
+            <div className="text-xs text-slate-600">Keyword frequency from all free-text answers</div>
+          </div>
 
           <div className="mt-6">
             {wordCloud.length ? (
@@ -284,8 +316,8 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
                 {wordCloud.map((t) => (
                   <span
                     key={t.text}
-                    className="leading-none"
-                    style={{ fontSize: `${t.size}px`, color: t.color }}
+                    className="leading-none tracking-tight"
+                    style={{ fontSize: `${t.size}px`, color: t.color, fontWeight: t.weight as number }}
                     title={`${t.text} (${t.count})`}
                   >
                     {t.text}
