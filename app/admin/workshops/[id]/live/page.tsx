@@ -626,10 +626,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
       return;
     }
 
+    setError(null);
+
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const mics = devices
-        .filter((d) => d.kind === 'audioinput')
+        .filter((d) => d.kind === 'audioinput' && typeof d.deviceId === 'string' && d.deviceId.trim())
         .map((d) => ({ deviceId: d.deviceId, label: d.label || 'Microphone' }));
       setMicDevices(mics);
 
