@@ -582,28 +582,28 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const active = activeEdgeSet.has(e.id);
         const baseAlpha =
           e.kind === 'DERIVATIVE'
-            ? 0.66
+            ? 0.44
             : e.kind === 'REINFORCING'
-              ? 0.24
+              ? 0.30
               : e.kind === 'EQUIVALENT'
-                ? 0.18
-                : 0.16;
+                ? 0.24
+                : 0.18;
 
-        const pulse = e.kind === 'REINFORCING' ? 0.78 + 0.22 * Math.sin(tMs * 0.004) : 1;
-        const alpha = (active ? 0.95 : baseAlpha) * pulse;
+        const pulse = e.kind === 'REINFORCING' ? 0.86 + 0.14 * Math.sin(tMs * 0.004) : 1;
+        const alpha = (active ? 0.92 : baseAlpha) * pulse;
 
-        const width =
-          (0.6 + 2.4 * clamp01(e.strength)) *
-          (e.kind === 'DERIVATIVE' ? 1.35 : e.kind === 'EQUIVALENT' ? 0.9 : 1);
+        const baseWidth = 0.75 + 1.55 * clamp01(e.strength);
+        const widthMult = e.kind === 'DERIVATIVE' ? 1.15 : e.kind === 'EVIDENCE_LINK' ? 0.85 : 1;
+        const width = Math.min(2.8, baseWidth * widthMult);
         const unrelatedFade = hoverActive && hoveredNodeId && !(activeNodeSet.has(e.source) && activeNodeSet.has(e.target)) ? 0.30 : 1;
 
         if (e.kind === 'DERIVATIVE') {
-          ctx.setLineDash([8 * dpr, 10 * dpr]);
-          ctx.lineDashOffset = -(showCausalChains ? tMs * 0.02 : tMs * 0.008);
+          ctx.setLineDash([6 * dpr, 10 * dpr]);
+          ctx.lineDashOffset = -(showCausalChains ? tMs * 0.018 : tMs * 0.006);
         } else if (e.kind === 'REINFORCING') {
-          ctx.setLineDash([2 * dpr, 7 * dpr]);
+          ctx.setLineDash([1.5 * dpr, 6 * dpr]);
         } else if (e.kind === 'EVIDENCE_LINK') {
-          ctx.setLineDash([2 * dpr, 6 * dpr]);
+          ctx.setLineDash([1.5 * dpr, 6.5 * dpr]);
         } else {
           ctx.setLineDash([]);
         }
@@ -633,7 +633,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
             const uy = dy / len;
             const px = -uy;
             const py = ux;
-            const size = (6 + 6 * clamp01(e.strength)) * (active ? 1.1 : 1) * dpr;
+            const size = (4 + 4 * clamp01(e.strength)) * dpr;
             const back = size * 1.35;
             const baseX = b.x - ux * back;
             const baseY = b.y - uy * back;
