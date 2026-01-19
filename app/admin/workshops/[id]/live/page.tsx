@@ -675,10 +675,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const startMicTest = async () => {
     setError(null);
-    setMicTesting(true);
 
     try {
       await stopMicTest();
+
+      setMicTesting(true);
 
       const constraints: MediaStreamConstraints = {
         audio: selectedMicId ? { deviceId: { exact: selectedMicId } } : true,
@@ -693,6 +694,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
+      try {
+        await ctx.resume();
+      } catch {
+        // ignore
+      }
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
