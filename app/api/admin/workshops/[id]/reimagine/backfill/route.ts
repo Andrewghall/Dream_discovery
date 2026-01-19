@@ -16,6 +16,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const p = prisma as any;
 
+    const startedAt = Date.now();
+    const deadlineMs = 8000;
+
     const workshop = await prisma.workshop.findUnique({ where: { id: workshopId }, select: { id: true } });
     if (!workshop) return NextResponse.json({ ok: false, error: 'Workshop not found' }, { status: 404 });
 
@@ -40,32 +43,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let errors = 0;
 
     for (const dp of dataPoints) {
+      if (Date.now() - startedAt > deadlineMs) break;
       const rawText = (dp.rawText || '').trim();
       if (!rawText) continue;
       attempted += 1;
       try {
-        await ensureReimagineSignal({
+        void ensureReimagineSignal({
           workshopId,
           dataPointId: dp.id,
           rawText,
           dialoguePhase: (dp.annotation?.dialoguePhase as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null) || null,
-        });
+        }).catch(() => {});
       } catch {
         errors += 1;
       }
     }
-
-    const created = await p.reimagineSignal.count({
-      where: { dataPointId: { in: dataPoints.map((d) => d.id) } },
-    });
 
     return NextResponse.json({
       ok: true,
       workshopId,
       scanned: dataPoints.length,
       attempted,
-      created,
       errors,
+      timedOut: Date.now() - startedAt > deadlineMs,
     });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'Backfill failed' }, { status: 500 });

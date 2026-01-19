@@ -1130,12 +1130,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
     setReimagineError(null);
     setReimagineLoading(true);
     try {
+      const backfillController = new AbortController();
+      const backfillTimeout = window.setTimeout(() => backfillController.abort(), 15000);
+
       const backfillRes = await fetch(reimagineBackfillUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 80 }),
+        body: JSON.stringify({ limit: 12 }),
         cache: 'no-store',
-      });
+        signal: backfillController.signal,
+      }).finally(() => window.clearTimeout(backfillTimeout));
       const backfillJson = (await backfillRes.json().catch(() => ({}))) as { ok?: boolean; error?: unknown };
       if (!backfillRes.ok || !backfillJson.ok) {
         setReimagineSummary(null);
@@ -1145,12 +1149,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
         return;
       }
 
+      const summaryController = new AbortController();
+      const summaryTimeout = window.setTimeout(() => summaryController.abort(), 20000);
+
       const res = await fetch(reimagineSummaryUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
         cache: 'no-store',
-      });
+        signal: summaryController.signal,
+      }).finally(() => window.clearTimeout(summaryTimeout));
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: unknown; content?: unknown };
       if (!res.ok || !json.ok) {
         setReimagineSummary(null);
@@ -1166,7 +1174,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
       setReimagineSummary(content);
     } catch (e) {
       setReimagineSummary(null);
-      setReimagineError(e instanceof Error ? e.message : 'Summary unavailable');
+      if (e && typeof e === 'object' && 'name' in e && (e as { name?: unknown }).name === 'AbortError') {
+        setReimagineError('Request timed out. Try again, or capture a few more utterances first.');
+      } else {
+        setReimagineError(e instanceof Error ? e.message : 'Summary unavailable');
+      }
     } finally {
       setReimagineLoading(false);
     }
