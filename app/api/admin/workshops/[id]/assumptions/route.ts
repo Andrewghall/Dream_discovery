@@ -2,24 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
 import { prisma } from '@/lib/prisma';
-import { computeInsightFeatures, buildRuleBackedBullets, type DimensionMedians } from '@/lib/insight-engine';
+import { buildDependencySynthesis, type DependencySynthesis, type DimensionMedians, type Focus } from '@/lib/insight-engine';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
-
-type AgentBullet = {
-  text: string;
-  drivers: string[];
-};
-
 type AssumptionsResponse = {
   ok: boolean;
   source: 'openai' | 'rules';
-  bullets: AgentBullet[];
+  synthesis: DependencySynthesis;
   error?: string;
 };
 
@@ -41,8 +34,33 @@ function hasDataReference(text: string): boolean {
   return /\d/.test(text);
 }
 
-function normaliseBullet(text: string): string {
+function normalise(text: string): string {
   return (text || '').replace(/\s+/g, ' ').trim();
+}
+
+function deDup(xs: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of xs) {
+    const t = normalise(x);
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+function pickFromProvided(params: {
+  provided: DependencySynthesis;
+  proposed: DependencySynthesis;
+}): DependencySynthesis {
+  const allowed = new Set<string>([...params.provided.primary, ...params.provided.supporting, ...params.provided.evidence].map((s) => normalise(s)));
+  const clean = (xs: string[]) => deDup(xs).map((x) => normalise(x)).filter((x) => allowed.has(x));
+  return {
+    primary: clean(params.proposed.primary).slice(0, 2),
+    supporting: clean(params.proposed.supporting).slice(0, 3),
+    evidence: clean(params.proposed.evidence).slice(0, 5),
+  };
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -51,10 +69,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const workshop = await prisma.workshop.findUnique({ where: { id: workshopId } });
     if (!workshop) return NextResponse.json({ ok: false, error: 'Workshop not found' }, { status: 404 });
 
-    const body = (await request.json().catch(() => null)) as {
-      focus?: Focus;
-      dimensions?: DimensionMedians[];
-    } | null;
+    const body = (await request.json().catch(() => null)) as { focus?: Focus; dimensions?: DimensionMedians[] } | null;
 
     const focus = (body?.focus || 'MASTER') as Focus;
     const dimensions = Array.isArray(body?.dimensions) ? body!.dimensions! : [];
@@ -63,36 +78,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ ok: false, error: 'Missing dimensions' }, { status: 400 });
     }
 
-    const features = computeInsightFeatures(dimensions);
-    const rule = buildRuleBackedBullets({ focus, dimensions, features });
-
-    const ruleBullets: AgentBullet[] = rule
-      .slice(0, 6)
-      .map((b) => ({ text: normaliseBullet(b.text), drivers: b.drivers }));
+    const deterministic = buildDependencySynthesis({ focus, dimensions });
 
     if (!process.env.OPENAI_API_KEY) {
-      const resp: AssumptionsResponse = { ok: true, source: 'rules', bullets: ruleBullets, error: 'OpenAI not configured' };
+      const resp: AssumptionsResponse = {
+        ok: true,
+        source: 'rules',
+        synthesis: deterministic,
+        error: 'Summary assumptions unavailable',
+      };
       return NextResponse.json(resp);
     }
 
     const system =
-      'You generate board-ready summary assumptions from numeric capability spider data.\n\n' +
+      'You are a discovery synthesis assistant.\n\n' +
+      'Task: select and order pre-written insight statements for an executive audience.\n\n' +
       'Non-negotiable rules:\n' +
-      '- Do not invent facts or numbers. Use only the supplied medians and features.\n' +
-      '- Every bullet must reference the specific data pattern driving it (gap, imbalance, bottleneck, stagnation, dependency).\n' +
-      '- No psychological interpretation (avoid "feel", "motivation", "culture").\n' +
-      '- 4 to 6 bullets only. Each bullet must include at least one number from the medians/features.\n' +
-      '- Keep each bullet concise (<= 180 characters).\n\n' +
+      '- You MUST NOT invent or rewrite content. You may ONLY select from the provided statements.\n' +
+      '- You MUST NOT add new numbers, claims, or recommendations.\n' +
+      '- Use plain business English. Avoid AI terminology. Avoid psychological language.\n\n' +
       'Return ONLY valid JSON with schema:\n' +
-      '{ "bullets": [ { "text": string, "drivers": string[] } ] }\n\n' +
-      'Drivers must be plain identifiers referencing the provided features (e.g. "gap_to_target:Customer", "stagnation:Organisation", "dependency:customer_requires_tech_enablement").';
+      '{ "primary": string[] (max 2), "supporting": string[] (max 3), "evidence": string[] (max 5) }';
 
     const user = {
       focus,
       dimensions,
-      features,
-      ruleCandidates: rule,
-      requiredDimensions: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'],
+      provided: deterministic,
     };
 
     const completion = await openai.chat.completions.create({
@@ -103,42 +114,58 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         {
           role: 'user',
           content:
-            'Use the input JSON as the sole source of truth. Produce bullets ordered from highest-signal to lowest-signal. Return JSON only.\n\nINPUT:\n' +
+            'Select and order the best statements from provided.primary/provided.supporting/provided.evidence. Return JSON only.\n\nINPUT:\n' +
             JSON.stringify(user),
         },
       ],
     });
 
     const raw = completion.choices?.[0]?.message?.content?.trim() || '';
-    const parsed = safeParseJson<{ bullets: AgentBullet[] }>(raw);
-    const bullets = parsed && Array.isArray(parsed.bullets) ? parsed.bullets : null;
+    const parsed = safeParseJson<DependencySynthesis>(raw);
+    const proposed: DependencySynthesis | null =
+      parsed &&
+      Array.isArray((parsed as any).primary) &&
+      Array.isArray((parsed as any).supporting) &&
+      Array.isArray((parsed as any).evidence)
+        ? {
+            primary: (parsed as any).primary,
+            supporting: (parsed as any).supporting,
+            evidence: (parsed as any).evidence,
+          }
+        : null;
 
-    if (!bullets || bullets.length < 4 || bullets.length > 6) {
-      const resp: AssumptionsResponse = { ok: true, source: 'rules', bullets: ruleBullets, error: 'OpenAI output invalid' };
+    if (!proposed) {
+      const resp: AssumptionsResponse = { ok: true, source: 'rules', synthesis: deterministic, error: 'Summary assumptions unavailable' };
       return NextResponse.json(resp);
     }
 
-    const cleaned: AgentBullet[] = bullets
-      .map((b) => ({
-        text: normaliseBullet(String(b.text || '')),
-        drivers: Array.isArray(b.drivers) ? b.drivers.map((x) => String(x || '').trim()).filter(Boolean) : [],
-      }))
-      .filter((b) => b.text && b.drivers.length > 0)
-      .slice(0, 6);
-
+    const picked = pickFromProvided({ provided: deterministic, proposed });
+    const validateNarrative = (t: string) => isBoardSafe(t);
+    const validateEvidence = (t: string) => isBoardSafe(t) && hasDataReference(t);
     const valid =
-      cleaned.length >= 4 &&
-      cleaned.every((b) => isBoardSafe(b.text) && hasDataReference(b.text) && b.text.length <= 180);
+      picked.primary.length >= 1 &&
+      picked.primary.length <= 2 &&
+      picked.supporting.length >= 1 &&
+      picked.supporting.length <= 3 &&
+      picked.evidence.length <= 5 &&
+      picked.primary.every(validateNarrative) &&
+      picked.supporting.every(validateNarrative) &&
+      picked.evidence.every(validateEvidence);
 
     if (!valid) {
-      const resp: AssumptionsResponse = { ok: true, source: 'rules', bullets: ruleBullets, error: 'OpenAI bullets failed validation' };
+      const resp: AssumptionsResponse = { ok: true, source: 'rules', synthesis: deterministic, error: 'Summary assumptions unavailable' };
       return NextResponse.json(resp);
     }
 
-    const resp: AssumptionsResponse = { ok: true, source: 'openai', bullets: cleaned };
+    const resp: AssumptionsResponse = { ok: true, source: 'openai', synthesis: picked };
     return NextResponse.json(resp);
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to generate assumptions';
-    return NextResponse.json({ ok: true, source: 'rules', bullets: [], error: message } satisfies AssumptionsResponse);
+    const fallback: DependencySynthesis = {
+      primary: ['Summary assumptions unavailable.'],
+      supporting: [],
+      evidence: [],
+    };
+    return NextResponse.json({ ok: true, source: 'rules', synthesis: fallback, error: message } satisfies AssumptionsResponse);
   }
 }

@@ -1,5 +1,7 @@
 export type DimensionKey = 'People' | 'Organisation' | 'Customer' | 'Technology' | 'Regulation';
 
+export type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
+
 export type DimensionMedians = {
   key: DimensionKey;
   current_median: number;
@@ -14,8 +16,9 @@ export type InsightFeatures = {
     target: number;
     projected: number;
     gap_to_target: number;
-    stagnation: number;
-    optimism_gap: number;
+    projected_delta: number;
+    stagnation: boolean;
+    target_vs_projected_gap: number;
   }>;
   current_range: number;
   target_range: number;
@@ -23,18 +26,24 @@ export type InsightFeatures = {
   lowest_current: { key: DimensionKey; value: number };
   highest_gap: { key: DimensionKey; value: number };
   strongest_current: { key: DimensionKey; value: number };
-  dependency_flags: {
-    customer_requires_org_enablement: boolean;
-    customer_requires_tech_enablement: boolean;
-    org_requires_tech_enablement: boolean;
+  chain: {
+    weakest_enabler_for_customer: { key: Exclude<DimensionKey, 'Customer'>; value: number };
+    weakest_enabler_for_technology: { key: 'People' | 'Organisation'; value: number };
+    weakest_enabler_for_organisation: { key: 'People'; value: number };
   };
-  bottlenecks: Array<{ key: DimensionKey; reason: string }>
+  dependency_gaps: Array<{ from: DimensionKey; to: DimensionKey; delta: number }>;
 };
 
 export type RuleBullet = {
   id: string;
   text: string;
   drivers: string[];
+};
+
+export type DependencySynthesis = {
+  primary: string[];
+  supporting: string[];
+  evidence: string[];
 };
 
 function clampScore(n: number): number {
@@ -44,20 +53,6 @@ function clampScore(n: number): number {
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
-}
-
-function sortedKeysBy<T extends DimensionKey>(
-  by: Record<DimensionKey, T>,
-  score: (k: DimensionKey) => number,
-  dir: 'asc' | 'desc'
-): DimensionKey[] {
-  const keys = Object.keys(by) as DimensionKey[];
-  return keys.sort((a, b) => {
-    const da = score(a);
-    const db = score(b);
-    if (da === db) return a.localeCompare(b);
-    return dir === 'asc' ? da - db : db - da;
-  });
 }
 
 function range(vals: number[]): number {
@@ -79,8 +74,9 @@ export function computeInsightFeatures(input: DimensionMedians[]): InsightFeatur
       target,
       projected,
       gap_to_target: round1(target - current),
-      stagnation: round1(projected - current),
-      optimism_gap: round1(target - projected),
+      projected_delta: round1(projected - current),
+      stagnation: round1(projected - current) <= 0.3,
+      target_vs_projected_gap: round1(target - projected),
     };
   }
 
@@ -96,25 +92,39 @@ export function computeInsightFeatures(input: DimensionMedians[]): InsightFeatur
   const strongestKey = dims.reduce((acc, d) => (byDimension[d].current > byDimension[acc].current ? d : acc), dims[0]);
   const highestGapKey = dims.reduce((acc, d) => (byDimension[d].gap_to_target > byDimension[acc].gap_to_target ? d : acc), dims[0]);
 
-  const customerTarget = byDimension.Customer.target;
-  const orgCurrent = byDimension.Organisation.current;
-  const techCurrent = byDimension.Technology.current;
-  const orgTarget = byDimension.Organisation.target;
+  const weakest_enabler_for_customer = (() => {
+    const xs: Array<{ key: Exclude<DimensionKey, 'Customer'>; value: number }> = [
+      { key: 'People', value: byDimension.People.current },
+      { key: 'Organisation', value: byDimension.Organisation.current },
+      { key: 'Technology', value: byDimension.Technology.current },
+      { key: 'Regulation', value: byDimension.Regulation.current },
+    ];
+    return xs.reduce((acc, x) => (x.value < acc.value ? x : acc), xs[0]);
+  })();
 
-  const dependency_flags = {
-    customer_requires_org_enablement: round1(customerTarget - orgCurrent) >= 1.5 && customerTarget >= 7.5,
-    customer_requires_tech_enablement: round1(customerTarget - techCurrent) >= 1.5 && customerTarget >= 7.5,
-    org_requires_tech_enablement: round1(orgTarget - techCurrent) >= 1.5 && orgTarget >= 7.5,
+  const weakest_enabler_for_technology = (() => {
+    const xs: Array<{ key: 'People' | 'Organisation'; value: number }> = [
+      { key: 'People', value: byDimension.People.current },
+      { key: 'Organisation', value: byDimension.Organisation.current },
+    ];
+    return xs.reduce((acc, x) => (x.value < acc.value ? x : acc), xs[0]);
+  })();
+
+  const weakest_enabler_for_organisation = { key: 'People' as const, value: byDimension.People.current };
+
+  const dependency_gaps: InsightFeatures['dependency_gaps'] = [];
+  const depThreshold = 1.5;
+  const addGap = (from: DimensionKey, to: DimensionKey, delta: number) => {
+    if (round1(delta) >= depThreshold) dependency_gaps.push({ from, to, delta: round1(delta) });
   };
 
-  const bottlenecks: InsightFeatures['bottlenecks'] = [];
-  const avgCurrent = currentVals.reduce((a, b) => a + b, 0) / Math.max(1, currentVals.length);
-  for (const d of dims) {
-    const c = byDimension[d].current;
-    if (c <= avgCurrent - 1.2) {
-      bottlenecks.push({ key: d, reason: `Current median is materially below the overall average (avg ${round1(avgCurrent)}).` });
-    }
-  }
+  // People → Organisation → Technology → Customer
+  addGap('Organisation', 'People', byDimension.Organisation.target - byDimension.People.current);
+  addGap('Technology', 'Organisation', byDimension.Technology.target - byDimension.Organisation.current);
+  addGap('Technology', 'People', byDimension.Technology.target - byDimension.People.current);
+  addGap('Customer', 'Technology', byDimension.Customer.target - byDimension.Technology.current);
+  addGap('Customer', 'Organisation', byDimension.Customer.target - byDimension.Organisation.current);
+  addGap('Customer', 'People', byDimension.Customer.target - byDimension.People.current);
 
   return {
     byDimension,
@@ -124,8 +134,12 @@ export function computeInsightFeatures(input: DimensionMedians[]): InsightFeatur
     lowest_current: { key: lowestKey, value: byDimension[lowestKey].current },
     strongest_current: { key: strongestKey, value: byDimension[strongestKey].current },
     highest_gap: { key: highestGapKey, value: byDimension[highestGapKey].gap_to_target },
-    dependency_flags,
-    bottlenecks,
+    chain: {
+      weakest_enabler_for_customer,
+      weakest_enabler_for_technology,
+      weakest_enabler_for_organisation,
+    },
+    dependency_gaps,
   };
 }
 
@@ -146,21 +160,12 @@ export function buildRuleBackedBullets(params: {
     text: `Largest ambition gap is ${hi}: target ${d[hi].target} vs current ${d[hi].current} (gap ${d[hi].gap_to_target}).`,
   });
 
-  if (f.dependency_flags.customer_requires_org_enablement || f.dependency_flags.customer_requires_tech_enablement) {
-    const parts: string[] = [];
-    const drivers: string[] = [];
-    if (f.dependency_flags.customer_requires_org_enablement) {
-      parts.push(`Organisation current ${d.Organisation.current} is ${round1(d.Customer.target - d.Organisation.current)} behind Customer target ${d.Customer.target}`);
-      drivers.push('dependency:customer_requires_org_enablement');
-    }
-    if (f.dependency_flags.customer_requires_tech_enablement) {
-      parts.push(`Technology current ${d.Technology.current} is ${round1(d.Customer.target - d.Technology.current)} behind Customer target ${d.Customer.target}`);
-      drivers.push('dependency:customer_requires_tech_enablement');
-    }
+  const topDep = [...f.dependency_gaps].sort((a, b) => (b.delta === a.delta ? `${a.from}:${a.to}`.localeCompare(`${b.from}:${b.to}`) : b.delta - a.delta))[0];
+  if (topDep) {
     bullets.push({
-      id: 'customer_dependency',
-      drivers,
-      text: `Customer ambition (${d.Customer.target}) implies enablement needs elsewhere: ${parts.join('; ')}.`,
+      id: 'dependency_gap',
+      drivers: [`dependency_gap:${topDep.from}->${topDep.to}`],
+      text: `To achieve ${topDep.from} ambition (${d[topDep.from].target}), ${topDep.to} enablement must rise from current ${d[topDep.to].current} (gap ${topDep.delta}).`,
     });
   }
 
@@ -174,25 +179,25 @@ export function buildRuleBackedBullets(params: {
   }
 
   const stagnators = (Object.keys(d) as DimensionKey[])
-    .map((k) => ({ k, v: d[k].stagnation }))
+    .map((k) => ({ k, v: d[k].projected_delta }))
     .sort((a, b) => (a.v === b.v ? a.k.localeCompare(b.k) : a.v - b.v));
   const worst = stagnators[0];
   if (worst && worst.v <= 0.3) {
     bullets.push({
       id: 'stagnation',
       drivers: [`stagnation:${worst.k}`],
-      text: `Projected trajectory indicates limited improvement without intervention in ${worst.k}: projected ${d[worst.k].projected} vs current ${d[worst.k].current} (Δ ${d[worst.k].stagnation}).`,
+      text: `Projected trajectory indicates limited improvement without intervention in ${worst.k}: projected ${d[worst.k].projected} vs current ${d[worst.k].current} (Δ ${d[worst.k].projected_delta}).`,
     });
   }
 
   const planToExecuteGap = (Object.keys(d) as DimensionKey[])
-    .map((k) => ({ k, v: d[k].optimism_gap }))
+    .map((k) => ({ k, v: d[k].target_vs_projected_gap }))
     .sort((a, b) => (a.v === b.v ? a.k.localeCompare(b.k) : b.v - a.v))[0];
   if (planToExecuteGap && planToExecuteGap.v >= 1.2) {
     bullets.push({
       id: 'plan_execute_gap',
       drivers: [`optimism_gap:${planToExecuteGap.k}`],
-      text: `For ${planToExecuteGap.k}, target exceeds projected by ${d[planToExecuteGap.k].optimism_gap} (target ${d[planToExecuteGap.k].target} vs projected ${d[planToExecuteGap.k].projected}), suggesting a plan-to-delivery gap if unchanged.`,
+      text: `For ${planToExecuteGap.k}, target exceeds projected by ${d[planToExecuteGap.k].target_vs_projected_gap} (target ${d[planToExecuteGap.k].target} vs projected ${d[planToExecuteGap.k].projected}), suggesting a plan-to-delivery gap if unchanged.`,
     });
   }
 
@@ -218,4 +223,120 @@ export function buildRuleBackedBullets(params: {
   }
 
   return out.slice(0, 6);
+}
+
+function primaryDimensionForFocus(focus: Focus): DimensionKey {
+  if (focus === 'D1') return 'People';
+  if (focus === 'D2') return 'Organisation';
+  if (focus === 'D3') return 'Customer';
+  if (focus === 'D4') return 'Technology';
+  if (focus === 'D5') return 'Regulation';
+  return 'Customer';
+}
+
+export function buildDependencySynthesis(params: { focus: Focus; dimensions: DimensionMedians[] }): DependencySynthesis {
+  const features = computeInsightFeatures(params.dimensions);
+  const d = features.byDimension;
+
+  const primary: string[] = [];
+  const supporting: string[] = [];
+  const evidence: string[] = [];
+
+  const focusDim = primaryDimensionForFocus(params.focus);
+
+  const ENABLERS_FOR_OUTCOME: Record<DimensionKey, DimensionKey[]> = {
+    Customer: ['Organisation', 'Technology', 'People', 'Regulation'],
+    Technology: ['Organisation', 'People', 'Regulation'],
+    Organisation: ['People', 'Technology', 'Regulation'],
+    People: ['Organisation', 'Technology', 'Regulation'],
+    Regulation: ['Organisation', 'Technology', 'People'],
+  };
+
+  const outcomeIsMaster = params.focus === 'MASTER';
+  const outcome: DimensionKey = outcomeIsMaster ? 'Customer' : focusDim;
+  const outcomeTarget = d[outcome].target;
+
+  if (outcomeIsMaster) {
+    primary.push('To achieve the stated ambition, delivery requires balanced enablement across People, Organisation and Technology to realise Customer outcomes.');
+    primary.push(`${features.chain.weakest_enabler_for_customer.key} is likely to constrain downstream ambition unless enablement improves.`);
+  } else {
+    const enablers = ENABLERS_FOR_OUTCOME[outcome] || (Object.keys(d) as DimensionKey[]).filter((k) => k !== outcome);
+    const gaps = enablers
+      .map((k) => ({ k, gap: round1(outcomeTarget - d[k].current) }))
+      .sort((a, b) => (b.gap === a.gap ? a.k.localeCompare(b.k) : b.gap - a.gap));
+
+    const material = gaps.filter((x) => x.gap >= 1.5);
+    const top = material.slice(0, 2).map((x) => x.k);
+
+    if (top.length >= 2) {
+      primary.push(`To achieve the stated ${outcome} ambition, it requires enablement in ${top[0]} and ${top[1]}.`);
+    } else if (top.length === 1) {
+      primary.push(`To achieve the stated ${outcome} ambition, ${top[0]} enablement is likely to constrain delivery without intervention.`);
+    } else {
+      primary.push(`To achieve the stated ${outcome} ambition, the enabling capabilities must strengthen in step across the delivery chain.`);
+    }
+  }
+
+  const stagnators = (Object.keys(d) as DimensionKey[])
+    .filter((k) => d[k].stagnation)
+    .sort((a, b) => (d[a].projected_delta === d[b].projected_delta ? a.localeCompare(b) : d[a].projected_delta - d[b].projected_delta));
+  if (stagnators.length) {
+    supporting.push('Projected improvement indicates limited natural uplift without intervention.');
+  }
+
+  if (features.current_range >= 1.4) {
+    supporting.push('Uneven capability increases execution risk across the dependency chain.');
+  }
+
+  const planGap = (Object.keys(d) as DimensionKey[])
+    .map((k) => ({ k, v: d[k].target_vs_projected_gap }))
+    .sort((a, b) => (b.v === a.v ? a.k.localeCompare(b.k) : b.v - a.v))[0];
+  if (planGap && planGap.v >= 1.2) {
+    supporting.push('Target ambition exceeds the projected trajectory without intervention, increasing delivery risk.');
+  }
+
+  const focusEvidencePairs: Array<{ a: DimensionKey; aLabel: 'target' | 'projected' | 'current'; b: DimensionKey; bLabel: 'current' | 'target' | 'projected' }> = [];
+  if (outcomeIsMaster) {
+    focusEvidencePairs.push({ a: 'Customer', aLabel: 'target', b: 'Organisation', bLabel: 'current' });
+    focusEvidencePairs.push({ a: 'Customer', aLabel: 'target', b: 'Technology', bLabel: 'current' });
+  } else {
+    const enablers = ENABLERS_FOR_OUTCOME[outcome] || (Object.keys(d) as DimensionKey[]).filter((k) => k !== outcome);
+    for (const en of enablers.slice(0, 3)) {
+      focusEvidencePairs.push({ a: outcome, aLabel: 'target', b: en, bLabel: 'current' });
+    }
+  }
+
+  for (const p of focusEvidencePairs) {
+    const av = d[p.a][p.aLabel];
+    const bv = d[p.b][p.bLabel];
+    evidence.push(`${p.a} ${p.aLabel} ${av} vs ${p.b} ${p.bLabel} ${bv}`);
+  }
+
+  const worstDelta = (Object.keys(d) as DimensionKey[])
+    .map((k) => ({ k, v: d[k].projected_delta }))
+    .sort((a, b) => (a.v === b.v ? a.k.localeCompare(b.k) : a.v - b.v))[0];
+  if (worstDelta) evidence.push(`Projected improvement delta ${worstDelta.v} in ${worstDelta.k}`);
+  evidence.push(`Current range ${features.current_range}`);
+
+  const deDup = (xs: string[]) => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const x of xs) {
+      const t = (x || '').trim();
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      out.push(t);
+    }
+    return out;
+  };
+
+  const p = deDup(primary).slice(0, 2);
+  const s = deDup(supporting).slice(0, 3);
+  const e = deDup(evidence).slice(0, 5);
+
+  return {
+    primary: p.length ? p : [`To achieve the stated ambition, the enabling capabilities in the delivery chain must strengthen from current levels.`],
+    supporting: s.length ? s : [`Projected improvement indicates limited natural uplift without intervention.`],
+    evidence: e,
+  };
 }

@@ -7,6 +7,8 @@ export const runtime = 'nodejs';
 
 type RunType = 'BASELINE' | 'FOLLOWUP';
 
+type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
+
 type SpiderAxis = {
   axisId: string;
   questionSetVersion: string;
@@ -46,6 +48,29 @@ function safeRunType(value: string | null | undefined): RunType {
   const v = (value || '').trim().toUpperCase();
   if (v === 'FOLLOWUP') return 'FOLLOWUP';
   return 'BASELINE';
+}
+
+function safeFocus(value: string | null | undefined): Focus {
+  const v = (value || '').trim().toUpperCase();
+  if (v === 'D1' || v === 'D2' || v === 'D3' || v === 'D4' || v === 'D5') return v;
+  return 'MASTER';
+}
+
+function focusKeywords(focus: Focus): string[] {
+  if (focus === 'D1') return ['people'];
+  if (focus === 'D2') return ['organisation', 'organization', 'corporate', 'process', 'processes'];
+  if (focus === 'D3') return ['customer', 'client'];
+  if (focus === 'D4') return ['technology', 'tech', 'system', 'systems', 'tool', 'tools'];
+  if (focus === 'D5') return ['regulation', 'regulatory', 'compliance'];
+  return [];
+}
+
+function matchesFocusFromText(text: string, focus: Focus): boolean {
+  const t = (text || '').toLowerCase();
+  if (!t) return false;
+  const kws = focusKeywords(focus);
+  if (!kws.length) return true;
+  return kws.some((k) => t.includes(k));
 }
 
 function clamp10(n: number): number {
@@ -167,6 +192,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { id: workshopId } = await params;
 
     const runType = safeRunType(request.nextUrl.searchParams.get('runType'));
+    const focus = safeFocus(request.nextUrl.searchParams.get('focus'));
     const includeIncomplete = request.nextUrl.searchParams.get('includeIncomplete') === '1';
     const includeIndividuals = request.nextUrl.searchParams.get('individuals') === '1';
 
@@ -176,7 +202,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const includeRegulation = workshop.includeRegulation ?? true;
     const phases = getPhaseOrder(includeRegulation).filter((p) => p !== 'summary');
 
-    const sessions = await prisma.conversationSession.findMany({
+    const sessionsAll = await prisma.conversationSession.findMany({
       where: {
         workshopId,
         runType,
@@ -202,6 +228,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    const sessions =
+      focus === 'MASTER'
+        ? sessionsAll
+        : sessionsAll.filter((s) => {
+            const dps = (s.dataPoints || []) as Array<{ questionKey: string | null; rawText: string }>;
+            for (const dp of dps) {
+              const parsed = dp.questionKey ? parseQuestionKey(dp.questionKey) : null;
+              if (!parsed) continue;
+              if (parsed.phase !== 'prioritization') continue;
+              if (matchesFocusFromText(dp.rawText || '', focus)) return true;
+            }
+            return false;
+          });
 
     const axisById = new Map<string, SpiderAxis>();
     const byAxisToday = new Map<string, Array<number | null>>();
@@ -391,6 +431,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ok: true,
       workshopId,
       runType,
+      focus,
       includeRegulation,
       generatedAt: new Date().toISOString(),
       participantCount: sessions.length,

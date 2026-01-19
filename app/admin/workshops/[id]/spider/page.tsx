@@ -28,11 +28,11 @@ function polar(cx: number, cy: number, r: number, angleRad: number) {
 type AxisKey = 'people' | 'corporate' | 'customer' | 'technology' | 'regulation';
 
 const AXES: Array<{ key: AxisKey; labelLines: string[] }> = [
-  { key: 'people', labelLines: ['D1 — People'] },
-  { key: 'corporate', labelLines: ['D2 — Corporate', 'Organisational'] },
-  { key: 'customer', labelLines: ['D3 — Customer'] },
-  { key: 'technology', labelLines: ['D4 — Technology'] },
-  { key: 'regulation', labelLines: ['D5 — Regulation'] },
+  { key: 'people', labelLines: ['People'] },
+  { key: 'corporate', labelLines: ['Organisation'] },
+  { key: 'customer', labelLines: ['Customer'] },
+  { key: 'technology', labelLines: ['Technology'] },
+  { key: 'regulation', labelLines: ['Regulation'] },
 ];
 
 type SpiderAxisStat = {
@@ -64,7 +64,11 @@ const FOCUS_OPTIONS: Array<{ value: Focus; label: string }> = [
 type AssumptionsApiResponse = {
   ok: boolean;
   source: 'openai' | 'rules';
-  bullets: Array<{ text: string; drivers: string[] }>;
+  synthesis: {
+    primary: string[];
+    supporting: string[];
+    evidence: string[];
+  };
   error?: string;
 };
 
@@ -167,8 +171,7 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
 
   const [assumptionsLoading, setAssumptionsLoading] = useState(false);
   const [assumptionsError, setAssumptionsError] = useState<string | null>(null);
-  const [assumptionsSource, setAssumptionsSource] = useState<'openai' | 'rules' | null>(null);
-  const [assumptionsBullets, setAssumptionsBullets] = useState<Array<{ text: string; drivers: string[] }>>([]);
+  const [assumptions, setAssumptions] = useState<{ primary: string[]; supporting: string[]; evidence: string[] } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -177,9 +180,11 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
       setError(null);
 
       try {
-        const spiderRes = await fetch(`/api/admin/workshops/${workshopId}/spider?runType=BASELINE&includeIncomplete=1`, {
+        const spiderRes = await fetch(`/api/admin/workshops/${workshopId}/spider?runType=BASELINE&includeIncomplete=1&focus=${focus}`,
+          {
           cache: 'no-store',
-        });
+          }
+        );
 
         const spiderJson = (await spiderRes.json().catch(() => null)) as SpiderApiResponse | null;
 
@@ -206,7 +211,7 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
     return () => {
       alive = false;
     };
-  }, [workshopId]);
+  }, [workshopId, focus]);
 
   const chartSize = 430;
   const maxScore = 10;
@@ -264,8 +269,7 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
 
       setAssumptionsLoading(true);
       setAssumptionsError(null);
-      setAssumptionsBullets([]);
-      setAssumptionsSource(null);
+      setAssumptions(null);
 
       try {
         const res = await fetch(`/api/admin/workshops/${workshopId}/assumptions`, {
@@ -280,24 +284,22 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
 
         if (!res.ok || !json || !json.ok) {
           setAssumptionsError((json && json.error) || `Failed to load assumptions (${res.status})`);
-          setAssumptionsBullets([]);
-          setAssumptionsSource(null);
+          setAssumptions(null);
           return;
         }
 
-        const bullets = Array.isArray(json.bullets) ? json.bullets : [];
-        setAssumptionsSource(json.source || null);
-        setAssumptionsBullets(bullets.slice(0, 6));
+        const s = json.synthesis;
+        const primary = Array.isArray(s?.primary) ? s.primary : [];
+        const supporting = Array.isArray(s?.supporting) ? s.supporting : [];
+        const evidence = Array.isArray(s?.evidence) ? s.evidence : [];
 
-        if (!bullets.length) {
-          setAssumptionsError(json.error || 'Summary assumptions unavailable');
-        }
+        setAssumptions({ primary: primary.slice(0, 2), supporting: supporting.slice(0, 3), evidence: evidence.slice(0, 5) });
+        if (!primary.length && !supporting.length && !evidence.length) setAssumptionsError(json.error || 'Summary assumptions unavailable');
       } catch (e) {
         if (!alive) return;
         const msg = e instanceof Error ? e.message : 'Summary assumptions unavailable';
         setAssumptionsError(msg);
-        setAssumptionsBullets([]);
-        setAssumptionsSource(null);
+        setAssumptions(null);
       } finally {
         if (!alive) return;
         setAssumptionsLoading(false);
@@ -329,199 +331,210 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
   return (
     <div className="h-screen overflow-hidden bg-[#05070f] text-slate-100">
       <div className="mx-auto h-full max-w-7xl px-6 py-6">
-        <div className="grid h-full grid-cols-[1fr_420px] gap-6">
+        <div className="grid h-full grid-cols-[420px_1fr] gap-6">
           <div className="min-h-0 rounded-2xl border border-white/10 bg-black/20 p-5 shadow-sm flex flex-col">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-semibold tracking-widest text-slate-400">DREAM DISCOVERY</div>
-                <div className="mt-2 text-xl font-semibold tracking-tight text-slate-100">Master Capability Spider</div>
-                <div className="mt-1 text-sm text-slate-300">Aggregated medians across all responses</div>
-              </div>
-
-              <div className="w-[240px]">
-                <div className="text-[11px] text-slate-400">Discovery focus</div>
-                <Select value={focus} onValueChange={(v) => setFocus(v as Focus)}>
-                  <SelectTrigger className="mt-1 h-9 w-full border-white/10 bg-black/20 text-slate-200">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FOCUS_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div>
+              <div className="text-xs font-semibold tracking-widest text-slate-400">DREAM DISCOVERY</div>
+              <div className="mt-2 text-xl font-semibold tracking-tight text-slate-100">Master Capability Spider</div>
+              <div className="mt-1 text-sm text-slate-300">Discovery synthesis + dependency insight</div>
             </div>
 
-            <div className="mt-4 grid min-h-0 grid-cols-[1fr_460px] gap-5">
-              <div className="min-h-0 rounded-xl border border-white/10 bg-black/10 p-4 overflow-hidden flex flex-col">
-                <div className="text-sm font-semibold text-slate-200">Discovery question</div>
-                <div className="mt-2 text-xs text-slate-400">
-                  {focus === 'MASTER' ? 'Select a dimension to view its wording.' : 'Question wording for the selected dimension.'}
-                </div>
-                <div className="mt-3 min-h-0 flex-1 overflow-auto pr-1">
-                  {focus !== 'MASTER' && questionTextForFocus ? (
-                    <EmphasisedQuestionText text={questionTextForFocus} />
-                  ) : (
-                    <div className="text-[12px] leading-snug text-slate-300">No dimension selected.</div>
-                  )}
-                </div>
+            <div className="mt-4">
+              <div className="text-[11px] text-slate-400">Discovery focus</div>
+              <Select value={focus} onValueChange={(v) => setFocus(v as Focus)}>
+                <SelectTrigger className="mt-1 h-9 w-full border-white/10 bg-black/20 text-slate-200">
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent>
+                  {FOCUS_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="mt-5 min-h-0 flex-1 rounded-xl border border-white/10 bg-black/10 p-4 overflow-hidden flex flex-col">
+              <div className="text-sm font-semibold text-slate-200">Discovery question</div>
+              <div className="mt-2 text-xs text-slate-400">This anchors the interpretation back to what was asked.</div>
+              <div className="mt-3 min-h-0 flex-1 overflow-auto pr-1">
+                {focus !== 'MASTER' && questionTextForFocus ? (
+                  <EmphasisedQuestionText text={questionTextForFocus} />
+                ) : (
+                  <div className="text-[12px] leading-snug text-slate-300">
+                    Select a specific capability to view its full question wording.
+                  </div>
+                )}
+
+                <div className="mt-4 text-[11px] leading-snug text-slate-400">Rating scale: 1–10.</div>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/10 p-4 overflow-hidden">
-                <div className="text-sm font-semibold text-slate-200">Spider chart</div>
-                <div className="mt-1 text-xs text-slate-400">Median ratings (1–10): current, target ambition, projected</div>
-
-                <div className="mt-3 flex justify-center">
-                  <svg width={chartSize} height={chartSize} viewBox={`0 0 ${chartSize} ${chartSize}`} role="img" className="block">
-                    <defs>
-                      <radialGradient id="spiderGlow" cx="50%" cy="45%" r="70%">
-                        <stop offset="0%" stopColor="rgb(56 189 248)" stopOpacity="0.16" />
-                        <stop offset="55%" stopColor="rgb(34 197 94)" stopOpacity="0.10" />
-                        <stop offset="100%" stopColor="rgb(2 6 23)" stopOpacity="0" />
-                      </radialGradient>
-                      <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-                        <feDropShadow dx="0" dy="1.2" stdDeviation="2" floodColor="rgb(0 0 0)" floodOpacity="0.35" />
-                      </filter>
-                    </defs>
-
-                    <circle cx={cx} cy={cy} r={radius * 1.08} fill="url(#spiderGlow)" />
-
-                    {[0.25, 0.5, 0.75, 1].map((t, idx) => (
-                      <circle
-                        key={idx}
-                        cx={cx}
-                        cy={cy}
-                        r={t * radius}
-                        fill="none"
-                        stroke="rgba(148,163,184,0.22)"
-                        strokeWidth={1.2}
-                      />
-                    ))}
-
-                    {axisGeometry.map((a) => (
-                      <g key={a.key}>
-                        <line
-                          x1={cx}
-                          y1={cy}
-                          x2={a.end.x}
-                          y2={a.end.y}
-                          stroke={highlightAxis === a.key ? 'rgba(226,232,240,0.55)' : 'rgba(148,163,184,0.18)'}
-                          strokeWidth={highlightAxis === a.key ? 1.8 : 1.2}
-                        />
-                        <text
-                          x={clamp(a.labelPos.x, 10, chartSize - 10)}
-                          y={clamp(a.labelPos.y, 10, chartSize - 10)}
-                          textAnchor={a.anchor}
-                          dominantBaseline="middle"
-                          fontSize={12}
-                          fontWeight={highlightAxis === a.key ? 700 : 500}
-                          fill={highlightAxis === a.key ? 'rgba(226,232,240,0.95)' : 'rgba(148,163,184,0.85)'}
-                        >
-                          {a.labelLines.map((line, idx) => (
-                            <tspan key={idx} x={clamp(a.labelPos.x, 10, chartSize - 10)} dy={idx === 0 ? 0 : 14}>
-                              {line}
-                            </tspan>
-                          ))}
-                        </text>
-                      </g>
-                    ))}
-
-                    <path
-                      d={targetPath}
-                      fill="rgba(34,197,94,0.16)"
-                      stroke="rgb(34 197 94)"
-                      strokeWidth={2.4}
-                      filter="url(#softShadow)"
-                    />
-                    <path
-                      d={currentPath}
-                      fill="rgba(249,115,22,0.18)"
-                      stroke="rgb(249 115 22)"
-                      strokeWidth={2.4}
-                      filter="url(#softShadow)"
-                    />
-                    <path
-                      d={projectedPath}
-                      fill="rgba(226,232,240,0.06)"
-                      stroke="rgb(226 232 240)"
-                      strokeOpacity={0.55}
-                      strokeWidth={2.2}
-                      filter="url(#softShadow)"
-                    />
-
-                    <circle cx={cx} cy={cy} r={2.5} fill="rgb(148 163 184)" opacity={0.7} />
-
-                    {AXES.map((ax, i) => {
-                      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / AXES.length;
-                      const pt = polar(cx, cy, (clamp(currentValues[i] || 0, 0, maxScore) / maxScore) * radius, angle);
-                      const ptT = polar(cx, cy, (clamp(targetValues[i] || 0, 0, maxScore) / maxScore) * radius, angle);
-                      const ptP = polar(cx, cy, (clamp(projectedValues[i] || 0, 0, maxScore) / maxScore) * radius, angle);
-                      return (
-                        <g key={ax.key}>
-                          <circle cx={pt.x} cy={pt.y} r={3.8} fill="rgb(249 115 22)" />
-                          <circle cx={ptT.x} cy={ptT.y} r={3.8} fill="rgb(34 197 94)" />
-                          <circle cx={ptP.x} cy={ptP.y} r={3.8} fill="rgb(226 232 240)" opacity={0.8} />
-                        </g>
-                      );
-                    })}
-                  </svg>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-200">
-                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/10 px-3 py-1">
-                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(249 115 22)' }} />
-                    <span className="font-medium">Current</span>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/10 px-3 py-1">
-                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(34 197 94)' }} />
-                    <span className="font-medium">Target</span>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/10 px-3 py-1">
-                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(226 232 240)' }} />
-                    <span className="font-medium">Projected</span>
-                  </div>
-                </div>
-
-                {loading ? <div className="mt-3 text-center text-xs text-slate-400">Loading…</div> : null}
-                {error ? <div className="mt-3 text-center text-xs text-rose-300">{error}</div> : null}
+              <div className="mt-4 text-[11px] leading-snug text-slate-400">
+                Changing focus recalculates the outcome being analysed. All other capabilities are treated as enabling dependencies.
               </div>
             </div>
           </div>
 
-          <div className="min-h-0 rounded-2xl border border-white/10 bg-black/20 p-5 shadow-sm flex flex-col">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-slate-100">Summary assumptions</div>
-                <div className="mt-1 text-xs text-slate-400">Rule-backed synthesis from the aggregated medians</div>
+          <div className="min-h-0 flex flex-col gap-6">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-5 shadow-sm">
+              <div className="text-sm font-semibold text-slate-100">Spider chart</div>
+              <div className="mt-1 text-xs text-slate-400">Current capability, target ambition, projected if unchanged (median)</div>
+
+              <div className="mt-3 flex justify-center">
+                <svg width={chartSize} height={chartSize} viewBox={`0 0 ${chartSize} ${chartSize}`} role="img" className="block">
+                  <defs>
+                    <radialGradient id="spiderGlow" cx="50%" cy="45%" r="70%">
+                      <stop offset="0%" stopColor="rgb(56 189 248)" stopOpacity="0.16" />
+                      <stop offset="55%" stopColor="rgb(34 197 94)" stopOpacity="0.10" />
+                      <stop offset="100%" stopColor="rgb(2 6 23)" stopOpacity="0" />
+                    </radialGradient>
+                    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feDropShadow dx="0" dy="1.2" stdDeviation="2" floodColor="rgb(0 0 0)" floodOpacity="0.35" />
+                    </filter>
+                  </defs>
+
+                  <circle cx={cx} cy={cy} r={radius * 1.08} fill="url(#spiderGlow)" />
+
+                  {[0.25, 0.5, 0.75, 1].map((t, idx) => (
+                    <circle
+                      key={idx}
+                      cx={cx}
+                      cy={cy}
+                      r={t * radius}
+                      fill="none"
+                      stroke="rgba(148,163,184,0.22)"
+                      strokeWidth={1.2}
+                    />
+                  ))}
+
+                  {axisGeometry.map((a) => (
+                    <g key={a.key}>
+                      <line
+                        x1={cx}
+                        y1={cy}
+                        x2={a.end.x}
+                        y2={a.end.y}
+                        stroke={highlightAxis === a.key ? 'rgba(226,232,240,0.55)' : 'rgba(148,163,184,0.18)'}
+                        strokeWidth={highlightAxis === a.key ? 1.8 : 1.2}
+                      />
+                      <text
+                        x={clamp(a.labelPos.x, 10, chartSize - 10)}
+                        y={clamp(a.labelPos.y, 10, chartSize - 10)}
+                        textAnchor={a.anchor}
+                        dominantBaseline="middle"
+                        fontSize={12}
+                        fontWeight={highlightAxis === a.key ? 700 : 500}
+                        fill={highlightAxis === a.key ? 'rgba(226,232,240,0.95)' : 'rgba(148,163,184,0.85)'}
+                      >
+                        {a.labelLines.map((line, idx2) => (
+                          <tspan key={idx2} x={clamp(a.labelPos.x, 10, chartSize - 10)} dy={idx2 === 0 ? 0 : 14}>
+                            {line}
+                          </tspan>
+                        ))}
+                      </text>
+                    </g>
+                  ))}
+
+                  <path d={targetPath} fill="rgba(34,197,94,0.16)" stroke="rgb(34 197 94)" strokeWidth={2.4} filter="url(#softShadow)" />
+                  <path d={currentPath} fill="rgba(249,115,22,0.18)" stroke="rgb(249 115 22)" strokeWidth={2.4} filter="url(#softShadow)" />
+                  <path
+                    d={projectedPath}
+                    fill="rgba(226,232,240,0.06)"
+                    stroke="rgb(226 232 240)"
+                    strokeOpacity={0.55}
+                    strokeWidth={2.2}
+                    filter="url(#softShadow)"
+                  />
+
+                  <circle cx={cx} cy={cy} r={2.5} fill="rgb(148 163 184)" opacity={0.7} />
+
+                  {AXES.map((ax, i) => {
+                    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / AXES.length;
+                    const pt = polar(cx, cy, (clamp(currentValues[i] || 0, 0, maxScore) / maxScore) * radius, angle);
+                    const ptT = polar(cx, cy, (clamp(targetValues[i] || 0, 0, maxScore) / maxScore) * radius, angle);
+                    const ptP = polar(cx, cy, (clamp(projectedValues[i] || 0, 0, maxScore) / maxScore) * radius, angle);
+                    return (
+                      <g key={ax.key}>
+                        <circle cx={pt.x} cy={pt.y} r={3.8} fill="rgb(249 115 22)" />
+                        <circle cx={ptT.x} cy={ptT.y} r={3.8} fill="rgb(34 197 94)" />
+                        <circle cx={ptP.x} cy={ptP.y} r={3.8} fill="rgb(226 232 240)" opacity={0.8} />
+                      </g>
+                    );
+                  })}
+                </svg>
               </div>
-              <div className="text-[11px] text-slate-400">
-                {assumptionsSource ? `Source: ${assumptionsSource}` : 'Source: —'}
+
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-200">
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/10 px-3 py-1">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(249 115 22)' }} />
+                  <span className="font-medium">Current capability</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/10 px-3 py-1">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(34 197 94)' }} />
+                  <span className="font-medium">Target ambition</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/10 px-3 py-1">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(226 232 240)' }} />
+                  <span className="font-medium">Projected if unchanged</span>
+                </div>
               </div>
+
+              {loading ? <div className="mt-3 text-center text-xs text-slate-400">Loading…</div> : null}
+              {error ? <div className="mt-3 text-center text-xs text-rose-300">{error}</div> : null}
             </div>
 
-            <div className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
-              {assumptionsLoading ? <div className="text-xs text-slate-400">Generating…</div> : null}
-              {!assumptionsLoading && assumptionsError ? <div className="text-xs text-rose-300">{assumptionsError}</div> : null}
+            <div className="min-h-0 flex-1 rounded-2xl border border-white/10 bg-black/20 p-5 shadow-sm flex flex-col">
+              <div>
+                <div className="text-sm font-semibold text-slate-100">Summary assumptions</div>
+                <div className="mt-1 text-xs text-slate-400">Rule-backed synthesis from aggregated medians</div>
+              </div>
 
-              {!assumptionsLoading && assumptionsBullets.length ? (
-                <div className="space-y-3">
-                  {assumptionsBullets.map((b, idx) => (
-                    <div key={idx} className="rounded-xl border border-white/10 bg-black/10 px-3 py-2">
-                      <div className="text-[12px] leading-snug text-slate-200">{b.text}</div>
-                      {b.drivers?.length ? (
-                        <div className="mt-1 text-[10px] text-slate-500">{b.drivers.join(' · ')}</div>
-                      ) : null}
+              <div className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
+                {assumptionsLoading ? <div className="text-xs text-slate-400">Generating…</div> : null}
+                {!assumptionsLoading && assumptionsError ? <div className="text-xs text-rose-300">{assumptionsError}</div> : null}
+
+                {!assumptionsLoading && assumptions ? (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-[11px] font-semibold tracking-wide text-slate-300">PRIMARY DEPENDENCY INSIGHTS</div>
+                      <div className="mt-2 space-y-2">
+                        {assumptions.primary.map((t, idx) => (
+                          <div key={idx} className="rounded-xl border border-white/10 bg-black/10 px-3 py-2">
+                            <div className="text-[12px] leading-snug text-slate-200">{t}</div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              ) : null}
 
-              {!assumptionsLoading && !assumptionsBullets.length && !assumptionsError ? (
-                <div className="text-xs text-slate-400">No assumptions available yet.</div>
-              ) : null}
+                    <div>
+                      <div className="text-[11px] font-semibold tracking-wide text-slate-300">SUPPORTING IMPLICATIONS</div>
+                      <div className="mt-2 space-y-2">
+                        {assumptions.supporting.map((t, idx) => (
+                          <div key={idx} className="rounded-xl border border-white/10 bg-black/10 px-3 py-2">
+                            <div className="text-[12px] leading-snug text-slate-200">{t}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] font-semibold tracking-wide text-slate-500">EVIDENCE SIGNALS</div>
+                      <div className="mt-2 space-y-1">
+                        {assumptions.evidence.map((t, idx) => (
+                          <div key={idx} className="text-[11px] text-slate-500">
+                            {t}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {!assumptionsLoading && !assumptions && !assumptionsError ? (
+                  <div className="text-xs text-slate-400">No summary assumptions available yet.</div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
