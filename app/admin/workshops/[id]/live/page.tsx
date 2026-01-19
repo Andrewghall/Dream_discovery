@@ -108,6 +108,46 @@ function extensionForContentType(contentType: string): string {
   return 'webm';
 }
 
+async function sniffAudioContainer(blob: Blob): Promise<{
+  headerHex: string;
+  detectedType: string | null;
+  detectedExt: string | null;
+}> {
+  try {
+    const buf = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+    const headerHex = Array.from(buf)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    const ascii4 = (i: number) =>
+      String.fromCharCode(buf[i] || 0, buf[i + 1] || 0, buf[i + 2] || 0, buf[i + 3] || 0);
+
+    // WAV: "RIFF....WAVE"
+    if (ascii4(0) === 'RIFF' && ascii4(8) === 'WAVE') {
+      return { headerHex, detectedType: 'audio/wav', detectedExt: 'wav' };
+    }
+
+    // OGG: "OggS"
+    if (ascii4(0) === 'OggS') {
+      return { headerHex, detectedType: 'audio/ogg', detectedExt: 'ogg' };
+    }
+
+    // MP4/M4A: box header then "ftyp" at offset 4
+    if (ascii4(4) === 'ftyp') {
+      return { headerHex, detectedType: 'audio/mp4', detectedExt: 'm4a' };
+    }
+
+    // WebM/Matroska: EBML header 1A45DFA3
+    if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
+      return { headerHex, detectedType: 'audio/webm', detectedExt: 'webm' };
+    }
+
+    return { headerHex, detectedType: null, detectedExt: null };
+  } catch {
+    return { headerHex: '', detectedType: null, detectedExt: null };
+  }
+}
+
 function errorMessage(value: unknown): string {
   if (value instanceof Error) return value.message;
   if (typeof value === 'string') return value;
@@ -455,11 +495,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const CHUNK_MS = 15_000;
 
   const transcribeAndForward = async (blob: Blob, startTime: number, endTime: number) => {
+    const sniffed = await sniffAudioContainer(blob);
     const normalizedType =
+      normalizeContentType(sniffed.detectedType) ||
       normalizeContentType(blob.type) ||
       normalizeContentType(recorderMimeTypeRef.current) ||
       'audio/webm';
-    const ext = extensionForContentType(normalizedType);
+    const ext = sniffed.detectedExt || extensionForContentType(normalizedType);
     const filename = `chunk_${startTime}_${endTime}.${ext}`;
     const asFile = new File([blob], filename, { type: normalizedType });
 
@@ -533,7 +575,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
       if (msg !== lastTranscriptionErrorRef.current) {
         lastTranscriptionErrorRef.current = msg;
         setError(msg);
-        setDebugTrace((t) => [...t, msg]);
+        setDebugTrace((t) => [
+          ...t,
+          msg,
+          `Chunk debug: blobType=${blob.type || 'n/a'} recorderType=${recorderMimeTypeRef.current || 'n/a'} chosenType=${normalizedType} filename=${filename} size=${asFile.size} headerHex=${sniffed.headerHex || 'n/a'}`,
+        ]);
       }
       return;
     }
