@@ -670,13 +670,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
       setError('Audio recorder error');
     };
 
-    try {
-      recorder.onstop = null;
-      recorder.start(CHUNK_MS);
-      return;
-    } catch {
-    }
-
     const attachAndStartRecorder = (r: MediaRecorder) => {
       r.ondataavailable = recorder.ondataavailable;
       r.onerror = recorder.onerror;
