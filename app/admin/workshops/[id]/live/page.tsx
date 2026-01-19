@@ -90,6 +90,24 @@ type ReimagineSummaryContent = {
   dependencyMap: string[];
 };
 
+function normalizeContentType(value: string | null | undefined): string {
+  const raw = (value || '').trim();
+  if (!raw) return '';
+  const semi = raw.indexOf(';');
+  if (semi >= 0) return raw.slice(0, semi).trim();
+  return raw;
+}
+
+function extensionForContentType(contentType: string): string {
+  const t = normalizeContentType(contentType);
+  if (t === 'audio/webm') return 'webm';
+  if (t === 'audio/wav') return 'wav';
+  if (t === 'audio/ogg' || t === 'audio/oga') return 'ogg';
+  if (t === 'audio/mpeg') return 'mp3';
+  if (t === 'audio/mp4') return 'm4a';
+  return 'webm';
+}
+
 function errorMessage(value: unknown): string {
   if (value instanceof Error) return value.message;
   if (typeof value === 'string') return value;
@@ -437,7 +455,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const CHUNK_MS = 15_000;
 
   const transcribeAndForward = async (blob: Blob, startTime: number, endTime: number) => {
-    const asFile = new File([blob], 'chunk', { type: blob.type || 'application/octet-stream' });
+    const normalizedType =
+      normalizeContentType(blob.type) ||
+      normalizeContentType(recorderMimeTypeRef.current) ||
+      'audio/webm';
+    const ext = extensionForContentType(normalizedType);
+    const filename = `chunk_${startTime}_${endTime}.${ext}`;
+    const asFile = new File([blob], filename, { type: normalizedType });
 
     let text = '';
     let confidence: number | null = null;
