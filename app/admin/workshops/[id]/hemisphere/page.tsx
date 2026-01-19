@@ -303,22 +303,8 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     }
 
     base.sort((a, b) => (b.weight || 0) - (a.weight || 0));
-    base = base.slice(0, 220);
-
-    const coreId = graph?.coreTruthNodeId || null;
-    const baseIds = new Set(base.map((n) => n.id));
-    const deg = new Map<string, number>();
-    for (const e of edges) {
-      if (e.kind === 'EVIDENCE_LINK') continue;
-      if (!baseIds.has(e.source) || !baseIds.has(e.target)) continue;
-      const w = Number.isFinite(e.strength) ? e.strength : 0;
-      deg.set(e.source, (deg.get(e.source) || 0) + w);
-      deg.set(e.target, (deg.get(e.target) || 0) + w);
-    }
-
-    base = base.filter((n) => n.id === coreId || (deg.get(n.id) || 0) > 0);
     return base;
-  }, [nodes, edges, graph?.coreTruthNodeId, phaseFilter, typeFilter, minWeight, onlyCrossDomain, highlightDominantDrivers, degreeById]);
+  }, [nodes, phaseFilter, typeFilter, minWeight, onlyCrossDomain, highlightDominantDrivers, degreeById]);
 
   const selectedEvidenceNodes = useMemo(() => {
     if (!selectedNodeId) return [] as HemisphereNode[];
