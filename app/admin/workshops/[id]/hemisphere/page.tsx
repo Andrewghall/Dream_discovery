@@ -303,8 +303,22 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     }
 
     base.sort((a, b) => (b.weight || 0) - (a.weight || 0));
-    return base.slice(0, 220);
-  }, [nodes, phaseFilter, typeFilter, minWeight, onlyCrossDomain, highlightDominantDrivers, degreeById]);
+    base = base.slice(0, 220);
+
+    const coreId = graph?.coreTruthNodeId || null;
+    const baseIds = new Set(base.map((n) => n.id));
+    const deg = new Map<string, number>();
+    for (const e of edges) {
+      if (e.kind === 'EVIDENCE_LINK') continue;
+      if (!baseIds.has(e.source) || !baseIds.has(e.target)) continue;
+      const w = Number.isFinite(e.strength) ? e.strength : 0;
+      deg.set(e.source, (deg.get(e.source) || 0) + w);
+      deg.set(e.target, (deg.get(e.target) || 0) + w);
+    }
+
+    base = base.filter((n) => n.id === coreId || (deg.get(n.id) || 0) > 0);
+    return base;
+  }, [nodes, edges, graph?.coreTruthNodeId, phaseFilter, typeFilter, minWeight, onlyCrossDomain, highlightDominantDrivers, degreeById]);
 
   const selectedEvidenceNodes = useMemo(() => {
     if (!selectedNodeId) return [] as HemisphereNode[];
@@ -360,8 +374,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
   const visibleEdges = useMemo(() => {
     let base = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
-    if (showCausalChains) base = base.filter((e) => e.kind === 'DERIVATIVE');
-    return showCausalChains ? base : [...base, ...evidenceEdges];
+    return [...base, ...evidenceEdges];
   }, [edges, visibleNodeIds, evidenceEdges, showCausalChains]);
 
   const selectedNode = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
@@ -580,42 +593,16 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const b = proj.get(e.target);
         if (!a || !b) continue;
         const active = activeEdgeSet.has(e.id);
-        const baseAlpha =
-          e.kind === 'DERIVATIVE'
-            ? 0.44
-            : e.kind === 'REINFORCING'
-              ? 0.30
-              : e.kind === 'EQUIVALENT'
-                ? 0.24
-                : 0.18;
-
-        const pulse = e.kind === 'REINFORCING' ? 0.86 + 0.14 * Math.sin(tMs * 0.004) : 1;
-        const alpha = (active ? 0.92 : baseAlpha) * pulse;
+        const baseAlpha = 0.26;
+        const alpha = active ? 0.82 : baseAlpha;
 
         const baseWidth = 0.75 + 1.55 * clamp01(e.strength);
-        const widthMult = e.kind === 'DERIVATIVE' ? 1.15 : e.kind === 'EVIDENCE_LINK' ? 0.85 : 1;
-        const width = Math.min(2.8, baseWidth * widthMult);
+        const width = Math.min(2.8, baseWidth);
         const unrelatedFade = hoverActive && hoveredNodeId && !(activeNodeSet.has(e.source) && activeNodeSet.has(e.target)) ? 0.30 : 1;
 
-        if (e.kind === 'DERIVATIVE') {
-          ctx.setLineDash([6 * dpr, 10 * dpr]);
-          ctx.lineDashOffset = -(showCausalChains ? tMs * 0.018 : tMs * 0.006);
-        } else if (e.kind === 'REINFORCING') {
-          ctx.setLineDash([1.5 * dpr, 6 * dpr]);
-        } else if (e.kind === 'EVIDENCE_LINK') {
-          ctx.setLineDash([1.5 * dpr, 6.5 * dpr]);
-        } else {
-          ctx.setLineDash([]);
-        }
+        ctx.setLineDash([]);
 
-        const stroke =
-          e.kind === 'DERIVATIVE'
-            ? `rgba(56,189,248,${clamp01(alpha) * unrelatedFade})`
-            : e.kind === 'REINFORCING'
-              ? `rgba(167,139,250,${clamp01(alpha) * unrelatedFade})`
-              : e.kind === 'EQUIVALENT'
-                ? `rgba(148,163,184,${clamp01(alpha) * unrelatedFade})`
-                : `rgba(148,163,184,${clamp01(alpha) * unrelatedFade})`;
+        const stroke = `rgba(148,163,184,${clamp01(alpha) * unrelatedFade})`;
 
         ctx.strokeStyle = stroke;
         ctx.lineWidth = Math.max(1, width * dpr * (active ? 1.25 : 1));
@@ -623,37 +610,6 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
-
-        if (e.kind === 'DERIVATIVE' && !(showCausalChains && !active)) {
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const len = Math.hypot(dx, dy);
-          if (len > 18) {
-            const ux = dx / len;
-            const uy = dy / len;
-            const px = -uy;
-            const py = ux;
-            const size = (4 + 4 * clamp01(e.strength)) * dpr;
-            const back = size * 1.35;
-            const baseX = b.x - ux * back;
-            const baseY = b.y - uy * back;
-            const leftX = baseX + px * (size * 0.65);
-            const leftY = baseY + py * (size * 0.65);
-            const rightX = baseX - px * (size * 0.65);
-            const rightY = baseY - py * (size * 0.65);
-
-            ctx.save();
-            ctx.setLineDash([]);
-            ctx.fillStyle = stroke;
-            ctx.beginPath();
-            ctx.moveTo(b.x, b.y);
-            ctx.lineTo(leftX, leftY);
-            ctx.lineTo(rightX, rightY);
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-          }
-        }
       }
 
       ctx.setLineDash([]);
@@ -838,6 +794,11 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
           <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}`}>
             <Button variant="ghost" className="text-slate-200 hover:text-white hover:bg-white/10">
               Back
+            </Button>
+          </Link>
+          <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/spider`}>
+            <Button variant="outline" className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10">
+              Spider
             </Button>
           </Link>
           <Badge variant="outline" className="border-white/20 text-slate-200">

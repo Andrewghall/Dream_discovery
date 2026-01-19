@@ -132,6 +132,15 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   return uni <= 0 ? 0 : inter / uni;
 }
 
+function degreeByNode(edges: HemisphereEdge[]): Map<string, number> {
+  const degree = new Map<string, number>();
+  for (const e of edges) {
+    degree.set(e.source, (degree.get(e.source) || 0) + e.strength);
+    degree.set(e.target, (degree.get(e.target) || 0) + e.strength);
+  }
+  return degree;
+}
+
 function shortLabel(text: string, maxWords: number = 8): string {
   const w = (text || '').trim().split(/\s+/).filter(Boolean);
   return w.length <= maxWords ? w.join(' ') : w.slice(0, maxWords).join(' ');
@@ -688,11 +697,7 @@ export async function GET(
     }
 
     const edges = [...edgesById.values()];
-    const degree = new Map<string, number>();
-    for (const e of edges) {
-      degree.set(e.source, (degree.get(e.source) || 0) + e.strength);
-      degree.set(e.target, (degree.get(e.target) || 0) + e.strength);
-    }
+    const degree = degreeByNode(edges);
 
     const candidateNodes = allNodes.filter((n) => n.type !== 'EVIDENCE');
     const crossDomainCount = (n: HemisphereNode) => uniq((n.phaseTags || []).map((t) => String(t).toLowerCase())).length;
@@ -804,9 +809,120 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
       edges.push({ id, source, target, strength, kind: 'DERIVATIVE' });
     }
 
+    // Hemisphere hard constraint: no orphan nodes.
+    // A node is render-eligible only if it has degree > 0 considering ONLY valid semantic links
+    // (EQUIVALENT/DERIVATIVE/REINFORCING). Co-mention links are not used.
+    const nonEvidence = allNodes.filter((n) => n.type !== 'EVIDENCE');
+    const tokenAll = new Map(nonEvidence.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
+
+    const layerDepth2 = (layer: HemisphereLayer): number => {
+      if (layer === 'H1') return 1;
+      if (layer === 'H2') return 2;
+      if (layer === 'H3') return 3;
+      return 4;
+    };
+
+    const canCompareRecovery = (a: HemisphereNode, b: HemisphereNode): boolean => {
+      const da = layerDepth2(a.layer);
+      const db = layerDepth2(b.layer);
+      if (da === 4 || db === 4) return false;
+      return Math.abs(da - db) <= 1;
+    };
+
+    // One recovery pass: attempt to attach isolated nodes by relaxing similarity thresholds
+    // and connecting to the nearest neighbour (semantic overlap).
+    let degree2 = degreeByNode(edges);
+    const orphanIds = nonEvidence
+      .map((n) => n.id)
+      .filter((id) => id !== coreTruthNodeId && (degree2.get(id) || 0) <= 0);
+
+    if (orphanIds.length) {
+      for (const orphanId of orphanIds) {
+        const orphanNode = nonEvidence.find((n) => n.id === orphanId);
+        if (!orphanNode) continue;
+        const ta = tokenAll.get(orphanId) || new Set<string>();
+
+        let best: { other: HemisphereNode; sim: number } | null = null;
+        for (const other of nonEvidence) {
+          if (other.id === orphanId) continue;
+          if (other.id === coreTruthNodeId) continue;
+          if (!canCompareRecovery(orphanNode, other)) continue;
+          const tb = tokenAll.get(other.id) || new Set<string>();
+          const sim = jaccard(ta, tb);
+          if (!best || sim > best.sim) best = { other, sim };
+        }
+
+        if (!best) continue;
+        const sim = best.sim;
+        const other = best.other;
+
+        const eqRelax = 0.24;
+        const derivRelax = 0.18;
+        const reinfRelax = 0.14;
+        if (sim < reinfRelax) continue;
+
+        const da = layerDepth2(orphanNode.layer);
+        const db = layerDepth2(other.layer);
+        if (sim >= eqRelax) {
+          const source = orphanId;
+          const target = other.id;
+          const id = `EQUIVALENT:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+          edges.push({ id, source, target, strength: clamp01(sim), kind: 'EQUIVALENT' });
+        } else if (sim >= derivRelax && da !== db) {
+          const source = da > db ? orphanId : other.id;
+          const target = da > db ? other.id : orphanId;
+          const id = `DERIVATIVE:${source}|${target}`;
+          edges.push({ id, source, target, strength: clamp01(sim), kind: 'DERIVATIVE' });
+        } else {
+          const source = orphanId;
+          const target = other.id;
+          const id = `REINFORCING:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+          edges.push({ id, source, target, strength: clamp01(sim), kind: 'REINFORCING' });
+        }
+      }
+    }
+
+    // Final enforcement (keep-all rollback): do NOT drop any nodes.
+    // Instead, ensure every non-evidence node has degree > 0 by attaching any remaining isolates.
+    degree2 = degreeByNode(edges);
+    const remainingOrphans = nonEvidence
+      .map((n) => n.id)
+      .filter((id) => id !== coreTruthNodeId && (degree2.get(id) || 0) <= 0);
+
+    if (remainingOrphans.length) {
+      for (const orphanId of remainingOrphans) {
+        const orphanNode = nonEvidence.find((n) => n.id === orphanId);
+        if (!orphanNode) continue;
+        const ta = tokenAll.get(orphanId) || new Set<string>();
+
+        let best: { other: HemisphereNode; sim: number } | null = null;
+        for (const other of nonEvidence) {
+          if (other.id === orphanId) continue;
+          const tb = tokenAll.get(other.id) || new Set<string>();
+          const sim = jaccard(ta, tb);
+          if (!best || sim > best.sim) best = { other, sim };
+        }
+
+        const other = best?.other || nonEvidence.find((n) => n.id === coreTruthNodeId) || null;
+        if (!other) continue;
+
+        const sim = best ? best.sim : 0;
+        const source = orphanId;
+        const target = other.id;
+        const id = `REINFORCING:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+        const strength = clamp01(0.12 + 0.38 * clamp01(sim));
+        edges.push({ id, source, target, strength, kind: 'REINFORCING' });
+      }
+      degree2 = degreeByNode(edges);
+    }
+
+    const filteredNodes = allNodes;
+    const allNodesById = new Set(allNodes.map((n) => n.id));
+    const filteredEdges = edges.filter((e) => allNodesById.has(e.source) && allNodesById.has(e.target));
+
     const hemisphereGraph: HemisphereGraph = {
-      nodes: allNodes,
-      edges,
+      nodes: filteredNodes,
+      edges: filteredEdges,
       coreTruthNodeId,
     };
 
