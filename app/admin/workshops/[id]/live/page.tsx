@@ -301,6 +301,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
     [workshopId]
   );
   const whisperUrl = useMemo(() => `/api/transcribe`, []);
+  const reimagineBackfillUrl = useMemo(
+    () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/reimagine/backfill`,
+    [workshopId]
+  );
   const reimagineSummaryUrl = useMemo(
     () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/reimagine/summary`,
     [workshopId]
@@ -1126,6 +1130,21 @@ export default function WorkshopLivePage({ params }: PageProps) {
     setReimagineError(null);
     setReimagineLoading(true);
     try {
+      const backfillRes = await fetch(reimagineBackfillUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 80 }),
+        cache: 'no-store',
+      });
+      const backfillJson = (await backfillRes.json().catch(() => ({}))) as { ok?: boolean; error?: unknown };
+      if (!backfillRes.ok || !backfillJson.ok) {
+        setReimagineSummary(null);
+        setReimagineError(
+          typeof backfillJson.error === 'string' ? backfillJson.error : `Failed to backfill signals (${backfillRes.status})`
+        );
+        return;
+      }
+
       const res = await fetch(reimagineSummaryUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -141,6 +141,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const topEdges = edges.filter((e: { supportCount: number }) => (e.supportCount || 0) >= 2).slice(0, 8);
 
+    const minSignals = 6;
+    if (useOpenAI && signals.length < minSignals) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Not enough Reimagine signals yet (${signals.length}/${minSignals}). Capture more utterances, then retry.`,
+          counts: { signals: signals.length, edges: edges.length },
+        },
+        { status: 400 }
+      );
+    }
+
     const base: SummaryContent = {
       generatedAt: new Date().toISOString(),
       organisationTheyDescribed: {
