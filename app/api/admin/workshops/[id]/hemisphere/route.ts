@@ -635,6 +635,119 @@ export async function GET(
     }
     allNodes = mergedNodes.sort((a, b) => b.weight - a.weight);
 
+    {
+      const semanticCandidates = allNodes.filter((n) => n.type !== 'EVIDENCE');
+      const candidates = semanticCandidates.slice(0, 180);
+      const tokenById2 = new Map(candidates.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
+      const evidenceKeySet = (n: HemisphereNode): Set<string> => {
+        const out = new Set<string>();
+        const ev = Array.isArray(n.evidence) ? n.evidence : [];
+        for (const e of ev) {
+          if (!e || typeof e !== 'object') continue;
+          const quote = typeof (e as any).quote === 'string' ? String((e as any).quote).trim() : '';
+          const qaTag = typeof (e as any).qaTag === 'string' ? String((e as any).qaTag).trim() : '';
+          if (!quote) continue;
+          out.add(`${quote.toLowerCase()}|${qaTag.toLowerCase()}`);
+        }
+        return out;
+      };
+      const evidenceById = new Map(candidates.map((n) => [n.id, evidenceKeySet(n)]));
+      const evidenceOverlap = (a: HemisphereNode, b: HemisphereNode): { inter: number; denom: number; score: number } => {
+        const sa = evidenceById.get(a.id) || new Set<string>();
+        const sb = evidenceById.get(b.id) || new Set<string>();
+        const denom = Math.min(sa.size, sb.size);
+        if (denom <= 0) return { inter: 0, denom: 0, score: 0 };
+        let inter = 0;
+        const small = sa.size <= sb.size ? sa : sb;
+        const big = sa.size <= sb.size ? sb : sa;
+        for (const k of small) {
+          if (big.has(k)) inter++;
+        }
+        return { inter, denom, score: inter / denom };
+      };
+
+      const parent = new Map<string, string>();
+      const find = (x: string): string => {
+        const p = parent.get(x);
+        if (!p || p === x) {
+          parent.set(x, x);
+          return x;
+        }
+        const r = find(p);
+        parent.set(x, r);
+        return r;
+      };
+      const union = (a: string, b: string) => {
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb) parent.set(rb, ra);
+      };
+      for (const n of candidates) parent.set(n.id, n.id);
+
+      const layerDepth3 = (layer: HemisphereLayer): number => {
+        if (layer === 'H1') return 1;
+        if (layer === 'H2') return 2;
+        if (layer === 'H3') return 3;
+        return 4;
+      };
+
+      for (let i = 0; i < candidates.length; i++) {
+        for (let j = i + 1; j < candidates.length; j++) {
+          const a = candidates[i];
+          const b = candidates[j];
+          const da = layerDepth3(a.layer);
+          const db = layerDepth3(b.layer);
+          if (da === 4 || db === 4) continue;
+          if (Math.abs(da - db) > 1) continue;
+
+          const ta = tokenById2.get(a.id) || new Set<string>();
+          const tb = tokenById2.get(b.id) || new Set<string>();
+          const sim = jaccard(ta, tb);
+          if (sim < 0.30) continue;
+
+          const ov = evidenceOverlap(a, b);
+          const okEvidence = ov.inter >= 2 || (ov.inter >= 1 && ov.score >= 0.65);
+          const okSim = sim >= 0.36 || (sim >= 0.32 && okEvidence);
+          if (!okSim) continue;
+
+          union(a.id, b.id);
+        }
+      }
+
+      const groups = new Map<string, string[]>();
+      for (const n of semanticCandidates) {
+        const root = parent.has(n.id) ? find(n.id) : n.id;
+        const arr = groups.get(root) || [];
+        arr.push(n.id);
+        groups.set(root, arr);
+      }
+
+      if ([...groups.values()].some((g) => g.length > 1)) {
+        const nodeByIdLocal = new Map(semanticCandidates.map((n) => [n.id, n] as const));
+        const mergedAway = new Set<string>();
+        for (const ids of groups.values()) {
+          if (ids.length <= 1) continue;
+          const nodes = ids.map((id) => nodeByIdLocal.get(id)).filter(Boolean) as HemisphereNode[];
+          nodes.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+          const rep = nodes[0];
+          for (let k = 1; k < nodes.length; k++) {
+            const other = nodes[k];
+            mergeNode(rep, other);
+            mergedAway.add(other.id);
+          }
+        }
+        if (mergedAway.size) {
+          allNodes = allNodes.filter((n) => !mergedAway.has(n.id));
+          for (const n of allNodes) {
+            if (n.type === 'EVIDENCE') continue;
+            const uniqueSessions = uniq((n.sources || []).map((s) => String(s.sessionId || '')).filter(Boolean));
+            n.weight = Math.max(1, uniqueSessions.length);
+          }
+          allNodes.sort((a, b) => b.weight - a.weight);
+        }
+      }
+    }
+
     const nodesForSimilarity = allNodes
       .filter((n) => n.type !== 'EVIDENCE')
       .slice(0, 140);
@@ -658,16 +771,18 @@ export async function GET(
       for (let j = i + 1; j < nodesForSimilarity.length; j++) {
         const a = nodesForSimilarity[i];
         const b = nodesForSimilarity[j];
-        if (a.layer !== b.layer && !(a.layer === 'H2' && b.layer === 'H3') && !(a.layer === 'H3' && b.layer === 'H2')) {
-          continue;
-        }
+        const da = layerDepth(a.layer);
+        const db = layerDepth(b.layer);
+        if (da === 4 || db === 4) continue;
+        if (Math.abs(da - db) > 2) continue;
         const ta = tokenById.get(a.id) || new Set<string>();
         const tb = tokenById.get(b.id) || new Set<string>();
         const sim = jaccard(ta, tb);
 
-        const eqThresh = 0.28;
-        const derivThresh = 0.20;
-        const reinfThresh = 0.16;
+        const involvesH1 = a.layer === 'H1' || b.layer === 'H1';
+        const eqThresh = involvesH1 ? 0.22 : 0.28;
+        const derivThresh = involvesH1 ? 0.17 : 0.20;
+        const reinfThresh = involvesH1 ? 0.13 : 0.16;
 
         if (sim >= eqThresh) {
           const source = a.id;
@@ -677,11 +792,11 @@ export async function GET(
           continue;
         }
 
-        const da = layerDepth(a.layer);
-        const db = layerDepth(b.layer);
         if (sim >= derivThresh && da !== db && da !== 4 && db !== 4) {
-          const source = da > db ? a.id : b.id;
-          const target = da > db ? b.id : a.id;
+          const h1Source = da < db ? a.id : b.id;
+          const h1Target = da < db ? b.id : a.id;
+          const source = involvesH1 ? h1Source : da > db ? a.id : b.id;
+          const target = involvesH1 ? h1Target : da > db ? b.id : a.id;
           const id = `DERIVATIVE:${source}|${target}`;
           addEdge({ id, source, target, strength: clamp01(sim), kind: 'DERIVATIVE' });
           continue;
@@ -826,7 +941,7 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
       const da = layerDepth2(a.layer);
       const db = layerDepth2(b.layer);
       if (da === 4 || db === 4) return false;
-      return Math.abs(da - db) <= 1;
+      return Math.abs(da - db) <= 2;
     };
 
     // One recovery pass: attempt to attach isolated nodes by relaxing similarity thresholds
@@ -856,9 +971,11 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
         const sim = best.sim;
         const other = best.other;
 
-        const eqRelax = 0.24;
-        const derivRelax = 0.18;
-        const reinfRelax = 0.14;
+        const involvesH1 = orphanNode.layer === 'H1' || other.layer === 'H1';
+
+        const eqRelax = involvesH1 ? 0.20 : 0.24;
+        const derivRelax = involvesH1 ? 0.15 : 0.18;
+        const reinfRelax = involvesH1 ? 0.12 : 0.14;
         if (sim < reinfRelax) continue;
 
         const da = layerDepth2(orphanNode.layer);
@@ -869,8 +986,10 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
           const id = `EQUIVALENT:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
           edges.push({ id, source, target, strength: clamp01(sim), kind: 'EQUIVALENT' });
         } else if (sim >= derivRelax && da !== db) {
-          const source = da > db ? orphanId : other.id;
-          const target = da > db ? other.id : orphanId;
+          const h1Source = da < db ? orphanId : other.id;
+          const h1Target = da < db ? other.id : orphanId;
+          const source = involvesH1 ? h1Source : da > db ? orphanId : other.id;
+          const target = involvesH1 ? h1Target : da > db ? other.id : orphanId;
           const id = `DERIVATIVE:${source}|${target}`;
           edges.push({ id, source, target, strength: clamp01(sim), kind: 'DERIVATIVE' });
         } else {
