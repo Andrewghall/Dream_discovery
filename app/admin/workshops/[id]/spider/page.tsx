@@ -213,18 +213,18 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
     };
   }, [workshopId, focus]);
 
-  const chartSize = 430;
+  const chartSize = 300;
   const maxScore = 10;
   const cx = chartSize / 2;
   const cy = chartSize / 2;
-  const radius = 128;
+  const radius = 88;
 
   const axisGeometry = useMemo(() => {
     return AXES.map((a, i) => {
       const angle = -Math.PI / 2 + (i * 2 * Math.PI) / AXES.length;
       const end = polar(cx, cy, radius, angle);
-      const labelPos = polar(cx, cy, radius + 76, angle);
-      const anchor: 'start' | 'middle' | 'end' = Math.abs(Math.cos(angle)) < 0.2 ? 'middle' : Math.cos(angle) > 0 ? 'start' : 'end';
+      const labelPos = polar(cx, cy, radius + 38, angle);
+      const anchor: 'start' | 'middle' | 'end' = 'middle';
       return { ...a, angle, end, labelPos, anchor };
     });
   }, [cx, cy, radius]);
@@ -330,7 +330,7 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
 
   return (
     <div className="h-screen overflow-hidden bg-[#05070f] text-slate-100">
-      <div className="mx-auto h-full max-w-7xl px-6 py-6">
+      <div className="mx-auto h-full max-w-7xl px-6 py-4">
         <div className="grid h-full grid-cols-[420px_1fr] gap-6">
           <div className="min-h-0 rounded-2xl border border-white/10 bg-black/20 p-5 shadow-sm flex flex-col">
             <div>
@@ -376,12 +376,12 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
             </div>
           </div>
 
-          <div className="min-h-0 flex flex-col gap-6">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-5 shadow-sm">
+          <div className="min-h-0 grid grid-rows-[380px_minmax(0,1fr)] gap-4">
+            <div className="h-[380px] rounded-2xl border border-white/10 bg-black/20 p-5 shadow-sm flex flex-col overflow-hidden">
               <div className="text-sm font-semibold text-slate-100">Spider chart</div>
               <div className="mt-1 text-xs text-slate-400">Current capability, target ambition, projected if unchanged (median)</div>
 
-              <div className="mt-3 flex justify-center">
+              <div className="mt-2 flex flex-1 items-center justify-center">
                 <svg width={chartSize} height={chartSize} viewBox={`0 0 ${chartSize} ${chartSize}`} role="img" className="block">
                   <defs>
                     <radialGradient id="spiderGlow" cx="50%" cy="45%" r="70%">
@@ -408,33 +408,39 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
                     />
                   ))}
 
-                  {axisGeometry.map((a) => (
-                    <g key={a.key}>
-                      <line
-                        x1={cx}
-                        y1={cy}
-                        x2={a.end.x}
-                        y2={a.end.y}
-                        stroke={highlightAxis === a.key ? 'rgba(226,232,240,0.55)' : 'rgba(148,163,184,0.18)'}
-                        strokeWidth={highlightAxis === a.key ? 1.8 : 1.2}
-                      />
-                      <text
-                        x={clamp(a.labelPos.x, 10, chartSize - 10)}
-                        y={clamp(a.labelPos.y, 10, chartSize - 10)}
-                        textAnchor={a.anchor}
-                        dominantBaseline="middle"
-                        fontSize={12}
-                        fontWeight={highlightAxis === a.key ? 700 : 500}
-                        fill={highlightAxis === a.key ? 'rgba(226,232,240,0.95)' : 'rgba(148,163,184,0.85)'}
-                      >
-                        {a.labelLines.map((line, idx2) => (
-                          <tspan key={idx2} x={clamp(a.labelPos.x, 10, chartSize - 10)} dy={idx2 === 0 ? 0 : 14}>
-                            {line}
-                          </tspan>
-                        ))}
-                      </text>
-                    </g>
-                  ))}
+                  {axisGeometry.map((a) => {
+                    const padX = 56;
+                    const padY = 18;
+                    const x = clamp(a.labelPos.x, padX, chartSize - padX);
+                    const y = clamp(a.labelPos.y, padY, chartSize - padY);
+                    return (
+                      <g key={a.key}>
+                        <line
+                          x1={cx}
+                          y1={cy}
+                          x2={a.end.x}
+                          y2={a.end.y}
+                          stroke={highlightAxis === a.key ? 'rgba(226,232,240,0.55)' : 'rgba(148,163,184,0.18)'}
+                          strokeWidth={highlightAxis === a.key ? 1.8 : 1.2}
+                        />
+                        <text
+                          x={x}
+                          y={y}
+                          textAnchor={a.anchor}
+                          dominantBaseline="middle"
+                          fontSize={11.5}
+                          fontWeight={highlightAxis === a.key ? 700 : 500}
+                          fill={highlightAxis === a.key ? 'rgba(226,232,240,0.95)' : 'rgba(148,163,184,0.85)'}
+                        >
+                          {a.labelLines.map((line, idx2) => (
+                            <tspan key={idx2} x={x} dy={idx2 === 0 ? 0 : 14}>
+                              {line}
+                            </tspan>
+                          ))}
+                        </text>
+                      </g>
+                    );
+                  })}
 
                   <path d={targetPath} fill="rgba(34,197,94,0.16)" stroke="rgb(34 197 94)" strokeWidth={2.4} filter="url(#softShadow)" />
                   <path d={currentPath} fill="rgba(249,115,22,0.18)" stroke="rgb(249 115 22)" strokeWidth={2.4} filter="url(#softShadow)" />
@@ -465,7 +471,7 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
                 </svg>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-200">
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-200">
                 <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/10 px-3 py-1">
                   <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: 'rgb(249 115 22)' }} />
                   <span className="font-medium">Current capability</span>
@@ -480,8 +486,8 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
                 </div>
               </div>
 
-              {loading ? <div className="mt-3 text-center text-xs text-slate-400">Loading…</div> : null}
-              {error ? <div className="mt-3 text-center text-xs text-rose-300">{error}</div> : null}
+              {loading ? <div className="mt-2 text-center text-xs text-slate-400">Loading…</div> : null}
+              {error ? <div className="mt-2 text-center text-xs text-rose-300">{error}</div> : null}
             </div>
 
             <div className="min-h-0 flex-1 rounded-2xl border border-white/10 bg-black/20 p-5 shadow-sm flex flex-col">
