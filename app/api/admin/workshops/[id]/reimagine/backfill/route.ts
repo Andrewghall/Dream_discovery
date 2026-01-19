@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!workshop) return NextResponse.json({ ok: false, error: 'Workshop not found' }, { status: 404 });
 
     const body = (await request.json().catch(() => ({}))) as BackfillBody;
-    const take = Number.isFinite(body?.limit) ? Math.max(1, Math.min(250, Math.floor(body.limit as number))) : 60;
+    const take = Number.isFinite(body?.limit) ? Math.max(1, Math.min(60, Math.floor(body.limit as number))) : 20;
 
     const dataPoints = (await p.dataPoint.findMany({
       where: {
