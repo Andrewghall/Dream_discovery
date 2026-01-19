@@ -413,7 +413,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
   };
 
-  const CHUNK_MS = 10_000;
+  const CHUNK_MS = 15_000;
 
   const transcribeAndForward = async (blob: Blob, startTime: number, endTime: number) => {
     const asFile = new File([blob], 'chunk', { type: blob.type || 'application/octet-stream' });
@@ -447,17 +447,20 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
     if (!text && !dgErr) {
       const msg = 'Deepgram returned empty transcript (likely silence / low audio)';
+      dgErr = msg;
       if (msg !== lastEmptyDeepgramRef.current) {
         lastEmptyDeepgramRef.current = msg;
         setDebugTrace((t) => [...t, msg]);
       }
-      return;
     }
 
     if (!text && dgErr) {
       if (whisperDisabledRef.current) {
         wErr = 'Whisper disabled (previous OpenAI 401)';
       } else {
+        if (asFile.size < 3000) {
+          return;
+        }
         try {
           const fd = new FormData();
           fd.append('audio', asFile);
@@ -575,6 +578,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
       setStatus('error');
       setError('Audio recorder error');
     };
+
+    try {
+      recorder.onstop = null;
+      recorder.start(CHUNK_MS);
+      return;
+    } catch {
+    }
 
     const attachAndStartRecorder = (r: MediaRecorder) => {
       r.ondataavailable = recorder.ondataavailable;
@@ -696,9 +706,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       audioContextRef.current = ctx;
       try {
         await ctx.resume();
-      } catch {
-        // ignore
-      }
+      } catch {}
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
@@ -925,8 +933,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
       setDebugTrace((t) => [...t, 'Requesting microphone for capture…']);
       const audioConstraints: MediaTrackConstraints = {
         channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: true,
       };
       if (selectedMicId) {
         audioConstraints.deviceId = { exact: selectedMicId };
@@ -961,8 +970,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
         try {
           if (statusRef.current !== 'capturing') return;
           const now = Date.now();
-          const stalledChunks = lastChunkAtRef.current && now - lastChunkAtRef.current > 25_000;
-          const stalledHealth = lastHealthyAtRef.current && now - lastHealthyAtRef.current > 70_000;
+          const stalledChunks = lastChunkAtRef.current && now - lastChunkAtRef.current > 40_000;
+          const stalledHealth = lastHealthyAtRef.current && now - lastHealthyAtRef.current > 90_000;
           if (stalledChunks || stalledHealth) {
             forceRestartRecorder();
             lastChunkAtRef.current = now;
