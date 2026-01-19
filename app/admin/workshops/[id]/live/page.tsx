@@ -620,13 +620,28 @@ export default function WorkshopLivePage({ params }: PageProps) {
   };
 
   const refreshMicDevices = async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) return;
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const mics = devices
-      .filter((d) => d.kind === 'audioinput')
-      .map((d) => ({ deviceId: d.deviceId, label: d.label || 'Microphone' }));
-    setMicDevices(mics);
-    if (!selectedMicId && mics.length > 0) setSelectedMicId(mics[0].deviceId);
+    if (typeof navigator === 'undefined') return;
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setError('Microphone devices are not supported in this browser.');
+      return;
+    }
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices
+        .filter((d) => d.kind === 'audioinput')
+        .map((d) => ({ deviceId: d.deviceId, label: d.label || 'Microphone' }));
+      setMicDevices(mics);
+
+      const stillValid = selectedMicId && mics.some((m) => m.deviceId === selectedMicId);
+      if (!stillValid) {
+        setSelectedMicId(mics.length > 0 ? mics[0].deviceId : '');
+      }
+    } catch (e) {
+      setMicDevices([]);
+      setSelectedMicId('');
+      setError(`Microphone device refresh failed: ${errorMessage(e)}`);
+    }
   };
 
   const stopMicTest = async () => {
