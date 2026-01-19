@@ -29,7 +29,7 @@ type HemisphereEdge = {
   source: string;
   target: string;
   strength: number;
-  kind: 'SIMILAR' | 'COOCCUR' | 'CAUSE_HINT';
+  kind: 'EQUIVALENT' | 'REINFORCING' | 'DERIVATIVE' | 'EVIDENCE_LINK';
 };
 
 type HemisphereGraph = {
@@ -249,7 +249,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
     for (const n of nodes) parent.set(n.id, n.id);
     for (const e of edges) {
-      if (e.kind !== 'SIMILAR') continue;
+      if (e.kind !== 'EQUIVALENT') continue;
       if (e.strength < 0.28) continue;
       union(e.source, e.target);
     }
@@ -354,13 +354,13 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       source: selectedNodeId,
       target: n.id,
       strength: 0.9,
-      kind: 'COOCCUR' as const,
+      kind: 'EVIDENCE_LINK' as const,
     }));
   }, [selectedEvidenceNodes, selectedNodeId]);
 
   const visibleEdges = useMemo(() => {
     let base = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
-    if (showCausalChains) base = base.filter((e) => e.kind === 'CAUSE_HINT');
+    if (showCausalChains) base = base.filter((e) => e.kind === 'DERIVATIVE');
     return showCausalChains ? base : [...base, ...evidenceEdges];
   }, [edges, visibleNodeIds, evidenceEdges, showCausalChains]);
 
@@ -580,12 +580,12 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const b = proj.get(e.target);
         if (!a || !b) continue;
         const active = activeEdgeSet.has(e.id);
-        const baseAlpha = e.kind === 'CAUSE_HINT' ? 0.62 : e.kind === 'COOCCUR' ? 0.16 : 0.26;
+        const baseAlpha = e.kind === 'DERIVATIVE' ? 0.62 : e.kind === 'EVIDENCE_LINK' ? 0.18 : e.kind === 'REINFORCING' ? 0.22 : 0.26;
         const alpha = active ? 0.95 : baseAlpha;
-        const width = (0.6 + 2.4 * clamp01(e.strength)) * (e.kind === 'CAUSE_HINT' ? 1.35 : 1);
+        const width = (0.6 + 2.4 * clamp01(e.strength)) * (e.kind === 'DERIVATIVE' ? 1.35 : 1);
         const unrelatedFade = hoverActive && hoveredNodeId && !(activeNodeSet.has(e.source) && activeNodeSet.has(e.target)) ? 0.30 : 1;
 
-        if (showCausalChains && e.kind === 'CAUSE_HINT') {
+        if (showCausalChains && e.kind === 'DERIVATIVE') {
           ctx.setLineDash([8 * dpr, 10 * dpr]);
           ctx.lineDashOffset = -tMs * 0.02;
         } else {

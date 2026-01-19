@@ -31,7 +31,7 @@ type HemisphereEdge = {
   source: string;
   target: string;
   strength: number;
-  kind: 'SIMILAR' | 'COOCCUR' | 'CAUSE_HINT';
+  kind: 'EQUIVALENT' | 'REINFORCING' | 'DERIVATIVE';
 };
 
 type HemisphereGraph = {
@@ -638,6 +638,13 @@ export async function GET(
       if (!prev || edge.strength > prev.strength) edgesById.set(edge.id, edge);
     };
 
+    const layerDepth = (layer: HemisphereLayer): number => {
+      if (layer === 'H1') return 1;
+      if (layer === 'H2') return 2;
+      if (layer === 'H3') return 3;
+      return 4;
+    };
+
     for (let i = 0; i < nodesForSimilarity.length; i++) {
       for (let j = i + 1; j < nodesForSimilarity.length; j++) {
         const a = nodesForSimilarity[i];
@@ -648,38 +655,36 @@ export async function GET(
         const ta = tokenById.get(a.id) || new Set<string>();
         const tb = tokenById.get(b.id) || new Set<string>();
         const sim = jaccard(ta, tb);
-        if (sim < 0.22) continue;
-        const source = a.id;
-        const target = b.id;
-        const id = `SIMILAR:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
-        addEdge({ id, source, target, strength: clamp01(sim), kind: 'SIMILAR' });
-      }
-    }
 
-    const nodesBySession = new Map<string, string[]>();
-    for (const n of allNodes) {
-      if (n.type === 'EVIDENCE') continue;
-      for (const s of n.sources) {
-        const list = nodesBySession.get(s.sessionId) || [];
-        list.push(n.id);
-        nodesBySession.set(s.sessionId, list);
-      }
-    }
+        const eqThresh = 0.28;
+        const derivThresh = 0.20;
+        const reinfThresh = 0.16;
 
-    const weightById = new Map(allNodes.map((n) => [n.id, n.weight]));
-    for (const [sessionId, ids] of nodesBySession.entries()) {
-      const unique = uniq(ids);
-      unique.sort((a, b) => (weightById.get(b) || 0) - (weightById.get(a) || 0));
-      const limited = unique.slice(0, 18);
-      for (let i = 0; i < limited.length; i++) {
-        for (let j = i + 1; j < limited.length; j++) {
-          const a = limited[i];
-          const b = limited[j];
-          const id = `COOCCUR:${a < b ? `${a}|${b}` : `${b}|${a}`}`;
-          addEdge({ id, source: a, target: b, strength: 0.25, kind: 'COOCCUR' });
+        if (sim >= eqThresh) {
+          const source = a.id;
+          const target = b.id;
+          const id = `EQUIVALENT:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+          addEdge({ id, source, target, strength: clamp01(sim), kind: 'EQUIVALENT' });
+          continue;
+        }
+
+        const da = layerDepth(a.layer);
+        const db = layerDepth(b.layer);
+        if (sim >= derivThresh && da !== db && da !== 4 && db !== 4) {
+          const source = da > db ? a.id : b.id;
+          const target = da > db ? b.id : a.id;
+          const id = `DERIVATIVE:${source}|${target}`;
+          addEdge({ id, source, target, strength: clamp01(sim), kind: 'DERIVATIVE' });
+          continue;
+        }
+
+        if (sim >= reinfThresh) {
+          const source = a.id;
+          const target = b.id;
+          const id = `REINFORCING:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+          addEdge({ id, source, target, strength: clamp01(sim), kind: 'REINFORCING' });
         }
       }
-      void sessionId;
     }
 
     const edges = [...edgesById.values()];
@@ -794,9 +799,9 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
       const n = centralNodes[i];
       const source = coreTruthNodeId;
       const target = n.id;
-      const id = `CAUSE_HINT:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+      const id = `DERIVATIVE:${source}|${target}`;
       const strength = clamp01(0.95 - i * 0.04);
-      edges.push({ id, source, target, strength, kind: 'CAUSE_HINT' });
+      edges.push({ id, source, target, strength, kind: 'DERIVATIVE' });
     }
 
     const hemisphereGraph: HemisphereGraph = {
