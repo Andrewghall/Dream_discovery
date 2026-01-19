@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   Select,
@@ -77,6 +77,12 @@ type DimensionMedians = {
   current_median: number;
   target_median: number;
   projected_median: number;
+};
+
+type AssumptionsSynthesis = {
+  primary: string[];
+  supporting: string[];
+  evidence: string[];
 };
 
 function buildPolygonPath(params: { values: number[]; cx: number; cy: number; radius: number; max: number }) {
@@ -171,7 +177,9 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
 
   const [assumptionsLoading, setAssumptionsLoading] = useState(false);
   const [assumptionsError, setAssumptionsError] = useState<string | null>(null);
-  const [assumptions, setAssumptions] = useState<{ primary: string[]; supporting: string[]; evidence: string[] } | null>(null);
+  const [assumptions, setAssumptions] = useState<AssumptionsSynthesis | null>(null);
+
+  const assumptionsCacheRef = useRef<Record<string, AssumptionsSynthesis>>({});
 
   useEffect(() => {
     let alive = true;
@@ -254,6 +262,16 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
     });
   }, [phaseMedian]);
 
+  const assumptionsCacheKey = useMemo(() => {
+    const parts = dimensionsForAgent.map((d) => {
+      const c = Math.round((d.current_median || 0) * 10) / 10;
+      const t = Math.round((d.target_median || 0) * 10) / 10;
+      const p = Math.round((d.projected_median || 0) * 10) / 10;
+      return `${d.key}:${c}:${t}:${p}`;
+    });
+    return `${workshopId}|${focus}|${parts.join('|')}`;
+  }, [dimensionsForAgent, focus, workshopId]);
+
   const questionTextForFocus = useMemo(() => {
     const k = axisKeyForFocus(focus);
     if (!k) return '';
@@ -266,6 +284,14 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
     let alive = true;
     (async () => {
       if (!dimensionsForAgent.length) return;
+
+      const cached = assumptionsCacheRef.current[assumptionsCacheKey];
+      if (cached) {
+        setAssumptionsLoading(false);
+        setAssumptionsError(null);
+        setAssumptions(cached);
+        return;
+      }
 
       setAssumptionsLoading(true);
       setAssumptionsError(null);
@@ -293,7 +319,13 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
         const supporting = Array.isArray(s?.supporting) ? s.supporting : [];
         const evidence = Array.isArray(s?.evidence) ? s.evidence : [];
 
-        setAssumptions({ primary: primary.slice(0, 2), supporting: supporting.slice(0, 3), evidence: evidence.slice(0, 5) });
+        const syn: AssumptionsSynthesis = {
+          primary: primary.slice(0, 2),
+          supporting: supporting.slice(0, 3),
+          evidence: evidence.slice(0, 5),
+        };
+        assumptionsCacheRef.current[assumptionsCacheKey] = syn;
+        setAssumptions(syn);
         if (!primary.length && !supporting.length && !evidence.length) setAssumptionsError(json.error || 'Summary assumptions unavailable');
       } catch (e) {
         if (!alive) return;
@@ -309,7 +341,7 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
     return () => {
       alive = false;
     };
-  }, [workshopId, focus, dimensionsForAgent]);
+  }, [workshopId, focus, dimensionsForAgent, assumptionsCacheKey]);
 
   const currentValues = useMemo(() => phaseMedian.map((x) => x.today), [phaseMedian]);
   const targetValues = useMemo(() => phaseMedian.map((x) => x.target), [phaseMedian]);

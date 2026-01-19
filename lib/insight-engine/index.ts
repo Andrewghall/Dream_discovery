@@ -234,6 +234,13 @@ function primaryDimensionForFocus(focus: Focus): DimensionKey {
   return 'Customer';
 }
 
+function joinList(xs: string[]): string {
+  const ys = xs.filter(Boolean);
+  if (ys.length <= 1) return ys[0] || '';
+  if (ys.length === 2) return `${ys[0]} and ${ys[1]}`;
+  return `${ys.slice(0, ys.length - 1).join(', ')}, and ${ys[ys.length - 1]}`;
+}
+
 export function buildDependencySynthesis(params: { focus: Focus; dimensions: DimensionMedians[] }): DependencySynthesis {
   const features = computeInsightFeatures(params.dimensions);
   const d = features.byDimension;
@@ -256,24 +263,41 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
   const outcome: DimensionKey = outcomeIsMaster ? 'Customer' : focusDim;
   const outcomeTarget = d[outcome].target;
 
+  const enablers = outcomeIsMaster
+    ? (['People', 'Organisation', 'Technology', 'Regulation'] as DimensionKey[])
+    : (ENABLERS_FOR_OUTCOME[outcome] || (Object.keys(d) as DimensionKey[]).filter((k) => k !== outcome));
+
+  const gaps = enablers
+    .map((k) => ({ k, gap: round1(outcomeTarget - d[k].current) }))
+    .sort((a, b) => (b.gap === a.gap ? a.k.localeCompare(b.k) : b.gap - a.gap));
+
+  const materialThreshold = 1.5;
+  const chosenEnablers = (gaps.filter((x) => x.gap >= materialThreshold).length ? gaps.filter((x) => x.gap >= materialThreshold) : gaps)
+    .slice(0, 2)
+    .map((x) => x.k);
+
+  const weakestEnabler = gaps.length ? gaps[gaps.length - 1] : null;
+
   if (outcomeIsMaster) {
-    primary.push('To achieve the stated ambition, delivery requires balanced enablement across People, Organisation and Technology to realise Customer outcomes.');
-    primary.push(`${features.chain.weakest_enabler_for_customer.key} is likely to constrain downstream ambition unless enablement improves.`);
+    primary.push(`To achieve the stated ambition, delivery requires balanced enablement across People, Organisation and Technology to realise Customer outcomes.`);
+    primary.push(`The current delivery chain is only as strong as its weakest enabler; ${features.chain.weakest_enabler_for_customer.key} is most likely to constrain execution.`);
   } else {
-    const enablers = ENABLERS_FOR_OUTCOME[outcome] || (Object.keys(d) as DimensionKey[]).filter((k) => k !== outcome);
-    const gaps = enablers
-      .map((k) => ({ k, gap: round1(outcomeTarget - d[k].current) }))
-      .sort((a, b) => (b.gap === a.gap ? a.k.localeCompare(b.k) : b.gap - a.gap));
+    const topText = joinList(chosenEnablers);
 
-    const material = gaps.filter((x) => x.gap >= 1.5);
-    const top = material.slice(0, 2).map((x) => x.k);
-
-    if (top.length >= 2) {
-      primary.push(`To achieve the stated ${outcome} ambition, it requires enablement in ${top[0]} and ${top[1]}.`);
-    } else if (top.length === 1) {
-      primary.push(`To achieve the stated ${outcome} ambition, ${top[0]} enablement is likely to constrain delivery without intervention.`);
+    if (outcome === 'Customer') {
+      primary.push(`To achieve the stated Customer ambition, it requires enablement in ${topText} because Customer outcomes are delivered through upstream capabilities.`);
+    } else if (outcome === 'Technology') {
+      primary.push(`To achieve the stated Technology ambition, it requires enablement in ${topText} so the organisation can adopt, govern and sustain change.`);
+    } else if (outcome === 'Organisation') {
+      primary.push(`To achieve the stated Organisation ambition, it requires enablement in ${topText} so decision-making and delivery can operate at the intended level.`);
+    } else if (outcome === 'People') {
+      primary.push(`To achieve the stated People ambition, it requires enablement in ${topText} because People capability depends on organisational design and tools.`);
     } else {
-      primary.push(`To achieve the stated ${outcome} ambition, the enabling capabilities must strengthen in step across the delivery chain.`);
+      primary.push(`To achieve the stated Regulation ambition, it requires enablement in ${topText} because compliance is embedded through operating model and systems.`);
+    }
+
+    if (chosenEnablers.length) {
+      primary.push(`Without commensurate enablement in ${chosenEnablers[0]}, the ${outcome} ambition is likely to remain constrained.`);
     }
   }
 
@@ -295,13 +319,16 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
     supporting.push('Target ambition exceeds the projected trajectory without intervention, increasing delivery risk.');
   }
 
+  if (!outcomeIsMaster && weakestEnabler && chosenEnablers.length) {
+    supporting.push(`${chosenEnablers[0]} is materially behind the level implied by the selected outcome ambition.`);
+  }
+
   const focusEvidencePairs: Array<{ a: DimensionKey; aLabel: 'target' | 'projected' | 'current'; b: DimensionKey; bLabel: 'current' | 'target' | 'projected' }> = [];
   if (outcomeIsMaster) {
     focusEvidencePairs.push({ a: 'Customer', aLabel: 'target', b: 'Organisation', bLabel: 'current' });
     focusEvidencePairs.push({ a: 'Customer', aLabel: 'target', b: 'Technology', bLabel: 'current' });
   } else {
-    const enablers = ENABLERS_FOR_OUTCOME[outcome] || (Object.keys(d) as DimensionKey[]).filter((k) => k !== outcome);
-    for (const en of enablers.slice(0, 3)) {
+    for (const en of chosenEnablers.slice(0, 3)) {
       focusEvidencePairs.push({ a: outcome, aLabel: 'target', b: en, bLabel: 'current' });
     }
   }
@@ -316,6 +343,7 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
     .map((k) => ({ k, v: d[k].projected_delta }))
     .sort((a, b) => (a.v === b.v ? a.k.localeCompare(b.k) : a.v - b.v))[0];
   if (worstDelta) evidence.push(`Projected improvement delta ${worstDelta.v} in ${worstDelta.k}`);
+  evidence.push(`${outcome} target ${d[outcome].target} vs ${outcome} current ${d[outcome].current}`);
   evidence.push(`Current range ${features.current_range}`);
 
   const deDup = (xs: string[]) => {

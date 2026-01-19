@@ -69,6 +69,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const workshop = await prisma.workshop.findUnique({ where: { id: workshopId } });
     if (!workshop) return NextResponse.json({ ok: false, error: 'Workshop not found' }, { status: 404 });
 
+    const useOpenAI = request.nextUrl.searchParams.get('useOpenAI') === '1';
+
     const body = (await request.json().catch(() => null)) as { focus?: Focus; dimensions?: DimensionMedians[] } | null;
 
     const focus = (body?.focus || 'MASTER') as Focus;
@@ -79,6 +81,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const deterministic = buildDependencySynthesis({ focus, dimensions });
+
+    if (!useOpenAI) {
+      const resp: AssumptionsResponse = { ok: true, source: 'rules', synthesis: deterministic };
+      return NextResponse.json(resp);
+    }
 
     if (!process.env.OPENAI_API_KEY) {
       const resp: AssumptionsResponse = {
