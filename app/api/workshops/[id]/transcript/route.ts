@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 
 import { prisma } from '@/lib/prisma';
 import { emitWorkshopEvent } from '@/lib/realtime/workshop-events';
+import { ensureReimagineSignal } from '@/lib/reimagine';
 import { classifyDataPoint } from '@/lib/workshop/classify-datapoint';
 import { deriveIntent } from '@/lib/workshop/derive-intent';
 
@@ -68,6 +69,18 @@ export async function POST(
     if (existing?.dataPoint) {
       const dataPointId = existing.dataPoint.id;
       const requestedPhase = safeDialoguePhase(body.dialoguePhase);
+
+      void (async () => {
+        try {
+          await ensureReimagineSignal({
+            workshopId,
+            dataPointId,
+            rawText: text,
+            dialoguePhase: requestedPhase,
+          });
+        } catch {}
+      })();
+
       if (requestedPhase && !existing.dataPoint.annotation) {
         try {
           await prisma.dataPointAnnotation.create({
@@ -110,9 +123,7 @@ export async function POST(
                 },
               },
             });
-          } catch {
-            // ignore
-          }
+          } catch {}
         })();
       }
 
@@ -160,6 +171,17 @@ export async function POST(
         },
       });
     }
+
+    void (async () => {
+      try {
+        await ensureReimagineSignal({
+          workshopId,
+          dataPointId: dataPoint.id,
+          rawText: text,
+          dialoguePhase,
+        });
+      } catch {}
+    })();
 
     emitWorkshopEvent(workshopId, {
       id: nanoid(),

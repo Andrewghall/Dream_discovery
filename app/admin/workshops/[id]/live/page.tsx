@@ -77,6 +77,19 @@ type AnnotationUpdatedPayload = {
   };
 };
 
+type ReimagineSummaryContent = {
+  generatedAt: string;
+  organisationTheyDescribed: {
+    People: { futureState: string; wantsToBeAbleToDo: string[]; believesMustChange: string[] };
+    Organisation: { futureState: string; wantsToBeAbleToDo: string[]; believesMustChange: string[] };
+    Technology: { futureState: string; wantsToBeAbleToDo: string[]; believesMustChange: string[] };
+    Customer: { futureState: string; wantsToBeAbleToDo: string[]; believesMustChange: string[] };
+    Regulation: { futureState: string; wantsToBeAbleToDo: string[]; believesMustChange: string[] };
+  };
+  keyPressurePoints: string[];
+  dependencyMap: string[];
+};
+
 function errorMessage(value: unknown): string {
   if (value instanceof Error) return value.message;
   if (typeof value === 'string') return value;
@@ -110,6 +123,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [forwardedCount, setForwardedCount] = useState(0);
   const [debugTrace, setDebugTrace] = useState<string[]>([]);
   const [tabHiddenWarning, setTabHiddenWarning] = useState(false);
+
+  const [reimagineLoading, setReimagineLoading] = useState(false);
+  const [reimagineError, setReimagineError] = useState<string | null>(null);
+  const [reimagineSummary, setReimagineSummary] = useState<ReimagineSummaryContent | null>(null);
 
   const [nodesById, setNodesById] = useState<Record<string, HemisphereNodeDatum>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -226,6 +243,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
     [workshopId]
   );
   const whisperUrl = useMemo(() => `/api/transcribe`, []);
+  const reimagineSummaryUrl = useMemo(
+    () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/reimagine/summary`,
+    [workshopId]
+  );
 
   useEffect(() => {
     statusRef.current = status;
@@ -1038,6 +1059,37 @@ export default function WorkshopLivePage({ params }: PageProps) {
     setStatus('stopped');
   };
 
+  const generateReimagineSummary = async () => {
+    setReimagineError(null);
+    setReimagineLoading(true);
+    try {
+      const res = await fetch(reimagineSummaryUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        cache: 'no-store',
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: unknown; content?: unknown };
+      if (!res.ok || !json.ok) {
+        setReimagineSummary(null);
+        setReimagineError(typeof json.error === 'string' ? json.error : `Failed to generate summary (${res.status})`);
+        return;
+      }
+      const content = json.content as ReimagineSummaryContent | null;
+      if (!content || typeof content !== 'object') {
+        setReimagineSummary(null);
+        setReimagineError('Summary unavailable');
+        return;
+      }
+      setReimagineSummary(content);
+    } catch (e) {
+      setReimagineSummary(null);
+      setReimagineError(e instanceof Error ? e.message : 'Summary unavailable');
+    } finally {
+      setReimagineLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-transparent">
       <div className="container max-w-7xl mx-auto px-4 py-8 space-y-6">
@@ -1389,6 +1441,90 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       )}
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Reimagine summary</CardTitle>
+                  <CardDescription>Generate a future-state narrative from live session signals</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-2">
+                    <Button type="button" onClick={() => void generateReimagineSummary()} disabled={reimagineLoading}>
+                      {reimagineLoading ? 'Generating…' : 'Generate summary'}
+                    </Button>
+                    {reimagineSummary ? (
+                      <Button type="button" variant="outline" onClick={() => setReimagineSummary(null)} disabled={reimagineLoading}>
+                        Clear
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  {reimagineError ? <div className="text-sm text-red-600">{reimagineError}</div> : null}
+
+                  {reimagineSummary ? (
+                    <div className="space-y-4">
+                      <div className="text-xs text-muted-foreground">Generated: {reimagineSummary.generatedAt}</div>
+
+                      {(
+                        [
+                          ['People', reimagineSummary.organisationTheyDescribed.People],
+                          ['Organisation', reimagineSummary.organisationTheyDescribed.Organisation],
+                          ['Technology', reimagineSummary.organisationTheyDescribed.Technology],
+                          ['Customer', reimagineSummary.organisationTheyDescribed.Customer],
+                          ['Regulation', reimagineSummary.organisationTheyDescribed.Regulation],
+                        ] as const
+                      ).map(([k, v]) => (
+                        <div key={k} className="rounded-md border p-3 space-y-2">
+                          <div className="text-sm font-medium">{k}</div>
+                          {v.futureState ? <div className="text-sm whitespace-pre-wrap break-words">{v.futureState}</div> : null}
+                          {v.wantsToBeAbleToDo?.length ? (
+                            <div className="text-sm">
+                              <div className="text-xs text-muted-foreground mb-1">What they want to be able to do</div>
+                              <div className="space-y-1">
+                                {v.wantsToBeAbleToDo.map((x, i) => (
+                                  <div key={i}>{x}</div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                          {v.believesMustChange?.length ? (
+                            <div className="text-sm">
+                              <div className="text-xs text-muted-foreground mb-1">What they believe must change</div>
+                              <div className="space-y-1">
+                                {v.believesMustChange.map((x, i) => (
+                                  <div key={i}>{x}</div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+
+                      {reimagineSummary.keyPressurePoints?.length ? (
+                        <div className="rounded-md border p-3 space-y-2">
+                          <div className="text-sm font-medium">Key pressure points</div>
+                          <div className="space-y-1 text-sm">
+                            {reimagineSummary.keyPressurePoints.map((x, i) => (
+                              <div key={i}>{x}</div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {reimagineSummary.dependencyMap?.length ? (
+                        <div className="rounded-md border p-3 space-y-2">
+                          <div className="text-sm font-medium">Dependency map</div>
+                          <div className="space-y-1 text-sm">
+                            {reimagineSummary.dependencyMap.map((x, i) => (
+                              <div key={i}>{x}</div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
 

@@ -35,29 +35,33 @@ model User {
 }
 
 model Workshop {
-  id                String                @id @default(cuid())
-  organizationId    String
-  name              String
-  description       String?
-  businessContext   String?
-  workshopType      WorkshopType          @default(CUSTOM)
-  status            WorkshopStatus        @default(DRAFT)
-  zoomMeetingId     String?
-  createdById       String
-  scheduledDate     DateTime?
-  responseDeadline  DateTime?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  includeRegulation Boolean               @default(true)
-  insights          ConversationInsight[]
-  sessions          ConversationSession[]
-  dataPoints        DataPoint[]
-  reports           ConversationReport[]
-  themes            DiscoveryTheme[]
-  transcriptChunks  TranscriptChunk[]
-  participants      WorkshopParticipant[]
-  createdBy         User                  @relation(fields: [createdById], references: [id])
-  organization      Organization          @relation(fields: [organizationId], references: [id])
+  id                 String                  @id @default(cuid())
+  organizationId     String
+  name               String
+  description        String?
+  businessContext    String?
+  workshopType       WorkshopType            @default(CUSTOM)
+  status             WorkshopStatus          @default(DRAFT)
+  zoomMeetingId      String?
+  createdById        String
+  scheduledDate      DateTime?
+  responseDeadline   DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  includeRegulation  Boolean                 @default(true)
+  insights           ConversationInsight[]
+  sessions           ConversationSession[]
+  dataPoints         DataPoint[]
+  reports            ConversationReport[]
+  themes             DiscoveryTheme[]
+  transcriptChunks   TranscriptChunk[]
+  participants       WorkshopParticipant[]
+  reimagineSignals   ReimagineSignal[]
+  reimagineThemes    ReimagineTheme[]
+  reimaginePressures ReimaginePressureEdge[]
+  reimagineSummaries ReimagineSummary[]
+  createdBy          User                    @relation(fields: [createdById], references: [id])
+  organization       Organization            @relation(fields: [organizationId], references: [id])
 
   @@map("workshops")
 }
@@ -91,6 +95,7 @@ model DataPoint {
   questionKey       String?
   classification    DataPointClassification?
   annotation        DataPointAnnotation?
+  reimagineSignal   ReimagineSignal?
   participant       WorkshopParticipant?     @relation(fields: [participantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_participantid_fkey")
   session           ConversationSession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_sessionid_fkey")
   transcriptChunk   TranscriptChunk?         @relation(fields: [transcriptChunkId], references: [id])
@@ -121,12 +126,12 @@ enum DialoguePhase {
 }
 
 model DataPointAnnotation {
-  id            String        @id @default(cuid())
-  dataPointId   String        @unique
+  id            String         @id @default(cuid())
+  dataPointId   String         @unique
   dialoguePhase DialoguePhase?
   intent        String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   dataPoint DataPoint @relation(fields: [dataPointId], references: [id], onDelete: Cascade)
 
@@ -157,28 +162,28 @@ model WorkshopParticipant {
 }
 
 model ConversationSession {
-  id                String                @id @default(cuid())
-  workshopId        String
-  participantId     String
-  status            ConversationStatus    @default(IN_PROGRESS)
-  runType           ConversationRunType   @default(BASELINE)
-  questionSetVersion String               @default("v1")
-  currentPhase      String                @default("intro")
-  phaseProgress     Int                   @default(0)
-  startedAt         DateTime              @default(now())
-  completedAt       DateTime?
-  totalDurationMs   Int?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  language          String                @default("en")
-  voiceEnabled      Boolean               @default(false)
-  includeRegulation Boolean               @default(true)
-  insights          ConversationInsight[]
-  report            ConversationReport?
-  messages          ConversationMessage[]
-  participant       WorkshopParticipant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  workshop          Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  dataPoints        DataPoint[]
+  id                 String                @id @default(cuid())
+  workshopId         String
+  participantId      String
+  status             ConversationStatus    @default(IN_PROGRESS)
+  runType            ConversationRunType   @default(BASELINE)
+  questionSetVersion String                @default("v1")
+  currentPhase       String                @default("intro")
+  phaseProgress      Int                   @default(0)
+  startedAt          DateTime              @default(now())
+  completedAt        DateTime?
+  totalDurationMs    Int?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  language           String                @default("en")
+  voiceEnabled       Boolean               @default(false)
+  includeRegulation  Boolean               @default(true)
+  insights           ConversationInsight[]
+  report             ConversationReport?
+  messages           ConversationMessage[]
+  participant        WorkshopParticipant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  workshop           Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  dataPoints         DataPoint[]
 
   @@map("conversation_sessions")
 }
@@ -331,4 +336,116 @@ enum DataPointPrimaryType {
   ACTION
   QUESTION
   INSIGHT
+}
+
+enum ReimagineDomain {
+  PEOPLE
+  ORGANISATION
+  CUSTOMER
+  TECHNOLOGY
+  REGULATION
+}
+
+enum ReimagineLabel {
+  ASPIRATION
+  DREAM
+  CONSTRAINT
+  FRICTION
+  IDEA
+  ASSUMPTION
+}
+
+enum ReimagineOrientation {
+  CURRENT
+  FUTURE
+  TRANSITION
+  ENABLING_REQUIREMENT
+}
+
+enum ReimaginePressureType {
+  DEPENDS_ON
+  CONSTRAINS
+  BLOCKS
+}
+
+enum ReimagineThemeKind {
+  ASPIRATION
+  DREAM
+  CONSTRAINT
+  FRICTION
+  IDEA
+  ASSUMPTION
+}
+
+model ReimagineSignal {
+  id                    String                @id @default(cuid())
+  workshopId            String
+  dataPointId           String                @unique
+  intentSentence        String?
+  labels                ReimagineLabel[]
+  labelConfidences      Json?
+  domains               ReimagineDomain[]
+  domainConfidences     Json?
+  orientation           ReimagineOrientation?
+  orientationConfidence Float?
+  pressureEdges         Json?
+  modelVersion          String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  dataPoint DataPoint @relation(fields: [dataPointId], references: [id], onDelete: Cascade)
+  workshop  Workshop  @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId, createdAt])
+  @@map("reimagine_signals")
+}
+
+model ReimaginePressureEdge {
+  id                String                @id @default(cuid())
+  workshopId        String
+  fromDomain        ReimagineDomain
+  toDomain          ReimagineDomain
+  pressureType      ReimaginePressureType
+  supportCount      Int                   @default(0)
+  evidenceSignalIds String[]
+  firstSeenAt       DateTime              @default(now())
+  lastSeenAt        DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@unique([workshopId, fromDomain, toDomain, pressureType])
+  @@index([workshopId, supportCount])
+  @@map("reimagine_pressure_edges")
+}
+
+model ReimagineTheme {
+  id                     String             @id @default(cuid())
+  workshopId             String
+  domain                 ReimagineDomain
+  kind                   ReimagineThemeKind
+  summary                String
+  supportCount           Int                @default(0)
+  exampleIntentSentences String[]
+  firstSeenAt            DateTime           @default(now())
+  lastSeenAt             DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId, domain, kind])
+  @@map("reimagine_themes")
+}
+
+model ReimagineSummary {
+  id           String   @id @default(cuid())
+  workshopId   String
+  content      Json
+  modelVersion String?
+  createdAt    DateTime @default(now())
+
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId, createdAt])
+  @@map("reimagine_summaries")
 }
