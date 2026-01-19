@@ -57,11 +57,11 @@ function safeFocus(value: string | null | undefined): Focus {
 }
 
 function focusKeywords(focus: Focus): string[] {
-  if (focus === 'D1') return ['people'];
-  if (focus === 'D2') return ['organisation', 'organization', 'corporate', 'process', 'processes'];
-  if (focus === 'D3') return ['customer', 'client'];
-  if (focus === 'D4') return ['technology', 'tech', 'system', 'systems', 'tool', 'tools'];
-  if (focus === 'D5') return ['regulation', 'regulatory', 'compliance'];
+  if (focus === 'D1') return ['people', 'team', 'teams', 'colleagues', 'skills', 'capability'];
+  if (focus === 'D2') return ['organisation', 'organization', 'corporate', 'process', 'processes', 'governance', 'decision', 'decisions'];
+  if (focus === 'D3') return ['customer', 'customers', 'client', 'clients', 'service'];
+  if (focus === 'D4') return ['technology', 'tech', 'system', 'systems', 'tool', 'tools', 'data', 'platform'];
+  if (focus === 'D5') return ['regulation', 'regulatory', 'compliance', 'risk'];
   return [];
 }
 
@@ -70,7 +70,10 @@ function matchesFocusFromText(text: string, focus: Focus): boolean {
   if (!t) return false;
   const kws = focusKeywords(focus);
   if (!kws.length) return true;
-  return kws.some((k) => t.includes(k));
+  return kws.some((k) => {
+    const re = new RegExp(`\\b${k.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\b`, 'i');
+    return re.test(t);
+  });
 }
 
 function clamp10(n: number): number {
@@ -229,7 +232,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       orderBy: { createdAt: 'desc' },
     });
 
-    const sessions =
+    const filteredSessions =
       focus === 'MASTER'
         ? sessionsAll
         : sessionsAll.filter((s) => {
@@ -242,6 +245,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
             return false;
           });
+
+    const sessions = focus !== 'MASTER' && filteredSessions.length === 0 ? sessionsAll : filteredSessions;
 
     const axisById = new Map<string, SpiderAxis>();
     const byAxisToday = new Map<string, Array<number | null>>();
