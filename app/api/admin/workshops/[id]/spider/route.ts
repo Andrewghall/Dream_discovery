@@ -1,19 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { fixedQuestionsForVersion, getPhaseOrder } from '@/lib/conversation/fixed-questions';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 type RunType = 'BASELINE' | 'FOLLOWUP';
 
-type AxisKey = 'people' | 'corporate' | 'customer' | 'technology' | 'regulation';
+type SpiderAxis = {
+  axisId: string;
+  questionSetVersion: string;
+  phase: string;
+  tag: string;
+  questionIndex: number;
+  questionText: string;
+};
+
+type StatPack = { median: number | null; min: number | null; max: number | null; n: number };
 
 type AxisStats = {
-  axis: AxisKey;
+  axisId: string;
   label: string;
-  today: { mean: number | null; min: number | null; max: number | null; stdev: number | null; n: number };
-  target: { mean: number | null; min: number | null; max: number | null; stdev: number | null; n: number };
-  projected: { mean: number | null; min: number | null; max: number | null; stdev: number | null; n: number };
+  questionText: string;
+  phase: string;
+  tag: string;
+  questionIndex: number;
+  today: StatPack;
+  target: StatPack;
+  projected: StatPack;
 };
 
 type IndividualSeries = {
@@ -21,19 +35,12 @@ type IndividualSeries = {
   participantName: string;
   role: string | null;
   department: string | null;
-  today: Record<AxisKey, number | null>;
-  target: Record<AxisKey, number | null>;
-  projected: Record<AxisKey, number | null>;
+  today: Record<string, number | null>;
+  target: Record<string, number | null>;
+  projected: Record<string, number | null>;
 };
 
-type PhaseInsight = {
-  phase: string;
-  currentScore: number | null;
-  targetScore: number | null;
-  projectedScore: number | null;
-};
-
-const AXIS_ORDER: AxisKey[] = ['people', 'corporate', 'customer', 'technology', 'regulation'];
+type QuestionMeta = { kind: 'question'; phase: string; tag: string; index: number };
 
 function safeRunType(value: string | null | undefined): RunType {
   const v = (value || '').trim().toUpperCase();
@@ -44,6 +51,52 @@ function safeRunType(value: string | null | undefined): RunType {
 function clamp10(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.max(1, Math.min(10, Math.round(n)));
+}
+
+function shortLabel(text: string, maxWords: number = 6): string {
+  const w = (text || '').trim().split(/\s+/).filter(Boolean);
+  if (w.length <= maxWords) return w.join(' ');
+  return `${w.slice(0, maxWords).join(' ')}…`;
+}
+
+function axisLabelFromQuestionText(questionText: string): string {
+  const raw = (questionText || '').replace(/\s+$/g, '');
+  const blocks = raw.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
+  const candidate = (blocks[blocks.length - 1] || raw).trim();
+  const cleaned = candidate
+    .replace(/^rate\s+/i, '')
+    .replace(/^how\s+well\s+/i, '')
+    .replace(/^the\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return shortLabel(cleaned, 6);
+}
+
+function questionMetaFromMessage(meta: unknown): QuestionMeta | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const rec = meta as Record<string, unknown>;
+  if (rec.kind !== 'question') return null;
+  if (typeof rec.phase !== 'string' || typeof rec.index !== 'number' || typeof rec.tag !== 'string') return null;
+  return { kind: 'question', phase: rec.phase, tag: rec.tag, index: rec.index };
+}
+
+function isScoredTag(tag: string): boolean {
+  const t = (tag || '').trim().toLowerCase();
+  if (!t) return false;
+  if (t === 'triple_rating') return true;
+  if (t.endsWith('_score')) return true;
+  if (t === 'awareness_current' || t === 'awareness_future') return true;
+  if (t === 'current_score' || t === 'future_score' || t === 'confidence_score') return true;
+  return false;
+}
+
+function scoreLayerFromTag(tag: string): 'today' | 'target' | 'projected' | null {
+  const t = (tag || '').trim().toLowerCase();
+  if (!t) return null;
+  if (t === 'current_score' || t === 'awareness_current') return 'today';
+  if (t === 'future_score' || t === 'awareness_future' || t === 'target_score') return 'target';
+  if (t === 'confidence_score' || t === 'projected_score') return 'projected';
+  return null;
 }
 
 function extractRatingFromAnswer(answer: string): number | null {
@@ -71,54 +124,42 @@ function extractTripleRatings(answer: string): { current: number | null; target:
   };
 }
 
-function parseQuestionKey(questionKey: string): { phase: string; tag: string } | null {
+function parseQuestionKey(questionKey: string): { version: string | null; phase: string; tag: string; index: number } | null {
   const parts = (questionKey || '').split(':');
   if (parts.length !== 3 && parts.length !== 4) return null;
   const hasVersion = parts.length === 4;
-  const [, phase, tag] = hasVersion ? parts : [null, parts[0], parts[1]];
-  if (!phase || !tag) return null;
-  return { phase, tag };
+  const [maybeVersion, phase, tag, idxStr] = hasVersion ? parts : [null, parts[0], parts[1], parts[2]];
+  const index = Number(idxStr);
+  if (!phase || !tag || !Number.isFinite(index)) return null;
+  return { version: typeof maybeVersion === 'string' && maybeVersion ? maybeVersion : null, phase, tag, index };
 }
 
-function safePhaseInsights(value: unknown): PhaseInsight[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((v) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null))
-    .filter((v): v is Record<string, unknown> => !!v)
-    .map((v) => {
-      const phase = typeof v.phase === 'string' ? v.phase : '';
-      const currentScore = typeof v.currentScore === 'number' ? v.currentScore : null;
-      const targetScore = typeof v.targetScore === 'number' ? v.targetScore : null;
-      const projectedScore = typeof v.projectedScore === 'number' ? v.projectedScore : null;
-      return { phase, currentScore, targetScore, projectedScore };
-    })
-    .filter((p) => !!p.phase);
-}
-
-function stats(values: Array<number | null>): { mean: number | null; min: number | null; max: number | null; stdev: number | null; n: number } {
-  const xs = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+function medianSorted(xs: number[]): number {
   const n = xs.length;
-  if (!n) return { mean: null, min: null, max: null, stdev: null, n: 0 };
-  const min = Math.min(...xs);
-  const max = Math.max(...xs);
-  const mean = xs.reduce((a, b) => a + b, 0) / n;
-  const variance = xs.reduce((acc, x) => acc + Math.pow(x - mean, 2), 0) / n;
-  const stdev = n >= 2 ? Math.sqrt(variance) : 0;
+  if (!n) return 0;
+  const mid = Math.floor(n / 2);
+  if (n % 2 === 1) return xs[mid];
+  return (xs[mid - 1] + xs[mid]) / 2;
+}
+
+function stats(values: Array<number | null>): StatPack {
+  const xs = values
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+    .map((v) => clamp10(v));
+  const n = xs.length;
+  if (!n) return { median: null, min: null, max: null, n: 0 };
+  xs.sort((a, b) => a - b);
   return {
-    mean,
-    min,
-    max,
-    stdev,
+    median: medianSorted(xs),
+    min: xs[0],
+    max: xs[n - 1],
     n,
   };
 }
 
-function axisLabel(axis: AxisKey): string {
-  if (axis === 'people') return 'People';
-  if (axis === 'corporate') return 'Corporate / Process';
-  if (axis === 'customer') return 'Customer';
-  if (axis === 'technology') return 'Technology';
-  return 'Regulation';
+function axisIdFor(params: { questionSetVersion: string; phase: string; tag: string; index: number }): string {
+  const v = (params.questionSetVersion || '').trim() || 'v1';
+  return `${v}:${params.phase}:${params.tag}:${params.index}`;
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -133,7 +174,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!workshop) return NextResponse.json({ ok: false, error: 'Workshop not found' }, { status: 404 });
 
     const includeRegulation = workshop.includeRegulation ?? true;
-    const axes = includeRegulation ? AXIS_ORDER : AXIS_ORDER.filter((a) => a !== 'regulation');
+    const phases = getPhaseOrder(includeRegulation).filter((p) => p !== 'summary');
 
     const sessions = await prisma.conversationSession.findMany({
       where: {
@@ -148,6 +189,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       include: {
         participant: true,
         report: true,
+        messages: {
+          where: { role: 'AI' },
+          orderBy: { createdAt: 'asc' },
+          select: { content: true, phase: true, metadata: true },
+        },
         dataPoints: {
           where: { questionKey: { not: null } },
           orderBy: { createdAt: 'asc' },
@@ -157,99 +203,154 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       orderBy: { createdAt: 'desc' },
     });
 
-    const individuals: IndividualSeries[] = [];
+    const axisById = new Map<string, SpiderAxis>();
+    const byAxisToday = new Map<string, Array<number | null>>();
+    const byAxisTarget = new Map<string, Array<number | null>>();
+    const byAxisProjected = new Map<string, Array<number | null>>();
 
-    const byAxisToday = new Map<AxisKey, Array<number | null>>();
-    const byAxisTarget = new Map<AxisKey, Array<number | null>>();
-    const byAxisProjected = new Map<AxisKey, Array<number | null>>();
+    const ensureAxis = (axis: SpiderAxis) => {
+      if (axisById.has(axis.axisId)) return;
+      axisById.set(axis.axisId, axis);
+      byAxisToday.set(axis.axisId, []);
+      byAxisTarget.set(axis.axisId, []);
+      byAxisProjected.set(axis.axisId, []);
+    };
 
-    for (const axis of axes) {
-      byAxisToday.set(axis, []);
-      byAxisTarget.set(axis, []);
-      byAxisProjected.set(axis, []);
+    const questionTextFromFixed = (questionSetVersion: string, phase: string, index: number): string | null => {
+      const qs = fixedQuestionsForVersion(questionSetVersion);
+      const list = (qs as any)?.[phase] as Array<{ text?: unknown }> | undefined;
+      const q = list && list[index] ? list[index] : null;
+      const t = q && typeof q.text === 'string' ? q.text : null;
+      return t && t.trim() ? t.trim() : null;
+    };
+
+    const questionTextFromMessages = (session: (typeof sessions)[number], phase: string, index: number, tag: string): string | null => {
+      const msgs = (session as any).messages as Array<{ content: string; metadata: unknown; phase: string | null }>;
+      for (const m of msgs || []) {
+        const meta = questionMetaFromMessage(m.metadata);
+        if (!meta) continue;
+        if (meta.phase === phase && meta.index === index && meta.tag === tag) {
+          const t = typeof m.content === 'string' ? m.content.trim() : '';
+          if (t) return t;
+        }
+      }
+      for (const m of msgs || []) {
+        const meta = questionMetaFromMessage(m.metadata);
+        if (!meta) continue;
+        if (meta.phase === phase && meta.index === index) {
+          const t = typeof m.content === 'string' ? m.content.trim() : '';
+          if (t) return t;
+        }
+      }
+      return null;
+    };
+
+    const allQuestionSetVersions = new Set(
+      sessions
+        .map((s) => ((s as unknown as { questionSetVersion?: string | null }).questionSetVersion || 'v1').trim() || 'v1')
+        .filter(Boolean)
+    );
+
+    for (const questionSetVersion of allQuestionSetVersions) {
+      const qs = fixedQuestionsForVersion(questionSetVersion);
+      for (const phase of phases) {
+        const list = qs[phase] || [];
+        for (let index = 0; index < list.length; index++) {
+          const q = list[index];
+          const tag = String((q as any).tag || '');
+          const hasScale = Array.isArray((q as any).maturityScale) && (q as any).maturityScale.length > 0;
+          if (!hasScale && !isScoredTag(tag)) continue;
+          const axisId = axisIdFor({ questionSetVersion, phase, tag: tag || 'score', index });
+          ensureAxis({
+            axisId,
+            questionSetVersion,
+            phase,
+            tag: tag || 'score',
+            questionIndex: index,
+            questionText: q.text,
+          });
+        }
+      }
     }
 
     for (const s of sessions) {
-      const phaseInsights = safePhaseInsights(s.report?.phaseInsights);
+      const questionSetVersion = ((s as unknown as { questionSetVersion?: string | null }).questionSetVersion || 'v1').trim() || 'v1';
+      for (const dp of s.dataPoints) {
+        const parsed = dp.questionKey ? parseQuestionKey(dp.questionKey) : null;
+        if (!parsed) continue;
+        const tag = String(parsed.tag || '');
+        if (!isScoredTag(tag)) continue;
+        if (!includeRegulation && parsed.phase === 'regulation') continue;
+        const v = parsed.version ? String(parsed.version).trim() : questionSetVersion;
+        const questionText =
+          questionTextFromFixed(v, parsed.phase, parsed.index) ||
+          questionTextFromMessages(s as any, parsed.phase, parsed.index, parsed.tag) ||
+          '';
+        const axisId = axisIdFor({ questionSetVersion: v, phase: parsed.phase, tag: parsed.tag, index: parsed.index });
+        ensureAxis({
+          axisId,
+          questionSetVersion: v,
+          phase: parsed.phase,
+          tag: parsed.tag,
+          questionIndex: parsed.index,
+          questionText: questionText || `${parsed.phase} ${parsed.tag} ${parsed.index + 1}`,
+        });
+      }
+    }
 
-      const today: Record<AxisKey, number | null> = {
-        people: null,
-        corporate: null,
-        customer: null,
-        technology: null,
-        regulation: null,
-      };
-      const target: Record<AxisKey, number | null> = {
-        people: null,
-        corporate: null,
-        customer: null,
-        technology: null,
-        regulation: null,
-      };
-      const projected: Record<AxisKey, number | null> = {
-        people: null,
-        corporate: null,
-        customer: null,
-        technology: null,
-        regulation: null,
-      };
+    const individuals: IndividualSeries[] = [];
 
-      for (const p of phaseInsights) {
-        const axis = p.phase as AxisKey;
-        if (!axes.includes(axis)) continue;
-        if (typeof p.currentScore === 'number') today[axis] = clamp10(p.currentScore);
-        if (typeof p.targetScore === 'number') target[axis] = clamp10(p.targetScore);
-        if (typeof p.projectedScore === 'number') projected[axis] = clamp10(p.projectedScore);
+    for (const s of sessions) {
+      const today: Record<string, number | null> = {};
+      const target: Record<string, number | null> = {};
+      const projected: Record<string, number | null> = {};
+      for (const axisId of axisById.keys()) {
+        today[axisId] = null;
+        target[axisId] = null;
+        projected[axisId] = null;
       }
 
-      const missingAny = axes.some((a) => today[a] === null && target[a] === null && projected[a] === null);
-      if (missingAny && s.dataPoints.length) {
-        const currentByPhase: Partial<Record<AxisKey, number>> = {};
-        const targetByPhase: Partial<Record<AxisKey, number>> = {};
-        const projectedByPhase: Partial<Record<AxisKey, number>> = {};
+      const questionSetVersion = ((s as unknown as { questionSetVersion?: string | null }).questionSetVersion || 'v1').trim() || 'v1';
 
-        for (const dp of s.dataPoints) {
-          const parsed = dp.questionKey ? parseQuestionKey(dp.questionKey) : null;
-          if (!parsed) continue;
-          const axis = parsed.phase as AxisKey;
-          if (!axes.includes(axis)) continue;
+      for (const dp of s.dataPoints) {
+        const parsed = dp.questionKey ? parseQuestionKey(dp.questionKey) : null;
+        if (!parsed) continue;
+        if (!includeRegulation && parsed.phase === 'regulation') continue;
 
-          if (parsed.tag === 'triple_rating') {
-            const t = extractTripleRatings(dp.rawText);
-            if (t.current !== null) currentByPhase[axis] = t.current;
-            if (t.target !== null) targetByPhase[axis] = t.target;
-            if (t.projected !== null) projectedByPhase[axis] = t.projected;
-            continue;
-          }
+        const v = parsed.version ? String(parsed.version).trim() : questionSetVersion;
+        const axisId = axisIdFor({ questionSetVersion: v, phase: parsed.phase, tag: parsed.tag, index: parsed.index });
+        if (!axisById.has(axisId)) continue;
 
-          if (parsed.tag === 'current_score' || parsed.tag === 'awareness_current') {
-            const n = extractRatingFromAnswer(dp.rawText);
-            if (n !== null) currentByPhase[axis] = n;
-            continue;
-          }
-          if (parsed.tag === 'future_score' || parsed.tag === 'awareness_future' || parsed.tag === 'target_score') {
-            const n = extractRatingFromAnswer(dp.rawText);
-            if (n !== null) targetByPhase[axis] = n;
-            continue;
-          }
-          if (parsed.tag === 'confidence_score' || parsed.tag === 'projected_score') {
-            const n = extractRatingFromAnswer(dp.rawText);
-            if (n !== null) projectedByPhase[axis] = n;
-            continue;
-          }
+        if (parsed.tag === 'triple_rating') {
+          const t = extractTripleRatings(dp.rawText);
+          if (t.current !== null) today[axisId] = clamp10(t.current);
+          if (t.target !== null) target[axisId] = clamp10(t.target);
+          if (t.projected !== null) projected[axisId] = clamp10(t.projected);
+          continue;
         }
 
-        for (const axis of axes) {
-          if (today[axis] === null && typeof currentByPhase[axis] === 'number') today[axis] = clamp10(currentByPhase[axis]!);
-          if (target[axis] === null && typeof targetByPhase[axis] === 'number') target[axis] = clamp10(targetByPhase[axis]!);
-          if (projected[axis] === null && typeof projectedByPhase[axis] === 'number') projected[axis] = clamp10(projectedByPhase[axis]!);
+        const triple = extractTripleRatings(dp.rawText);
+        if (triple.current !== null || triple.target !== null || triple.projected !== null) {
+          if (triple.current !== null) today[axisId] = clamp10(triple.current);
+          if (triple.target !== null) target[axisId] = clamp10(triple.target);
+          if (triple.projected !== null) projected[axisId] = clamp10(triple.projected);
+          continue;
+        }
+
+        if (!isScoredTag(parsed.tag)) continue;
+        const layer = scoreLayerFromTag(parsed.tag);
+        const n = extractRatingFromAnswer(dp.rawText);
+        if (layer && n !== null) {
+          if (layer === 'today') today[axisId] = clamp10(n);
+          if (layer === 'target') target[axisId] = clamp10(n);
+          if (layer === 'projected') projected[axisId] = clamp10(n);
         }
       }
 
-      for (const axis of axes) {
-        byAxisToday.get(axis)!.push(today[axis]);
-        byAxisTarget.get(axis)!.push(target[axis]);
-        byAxisProjected.get(axis)!.push(projected[axis]);
+      for (const axisId of axisById.keys()) {
+        byAxisToday.get(axisId)!.push(today[axisId]);
+        byAxisTarget.get(axisId)!.push(target[axisId]);
+        byAxisProjected.get(axisId)!.push(projected[axisId]);
       }
 
       if (includeIndividuals) {
@@ -265,15 +366,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    const axisStats: AxisStats[] = axes.map((axis) => {
-      return {
-        axis,
-        label: axisLabel(axis),
-        today: stats(byAxisToday.get(axis) || []),
-        target: stats(byAxisTarget.get(axis) || []),
-        projected: stats(byAxisProjected.get(axis) || []),
-      };
-    });
+    const axisStats: AxisStats[] = [...axisById.values()]
+      .sort((a, b) => {
+        const pa = phases.indexOf(a.phase as any);
+        const pb = phases.indexOf(b.phase as any);
+        if (pa !== pb) return pa - pb;
+        return a.questionIndex - b.questionIndex;
+      })
+      .map((axis) => {
+        return {
+          axisId: axis.axisId,
+          label: axisLabelFromQuestionText(axis.questionText),
+          questionText: axis.questionText,
+          phase: axis.phase,
+          tag: axis.tag,
+          questionIndex: axis.questionIndex,
+          today: stats(byAxisToday.get(axis.axisId) || []),
+          target: stats(byAxisTarget.get(axis.axisId) || []),
+          projected: stats(byAxisProjected.get(axis.axisId) || []),
+        };
+      });
 
     return NextResponse.json({
       ok: true,
@@ -284,6 +396,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       participantCount: sessions.length,
       axisStats,
       individuals: includeIndividuals ? individuals : [],
+      aggregation: {
+        method: 'median',
+      },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to build spider';

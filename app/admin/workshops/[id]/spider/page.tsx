@@ -7,13 +7,15 @@ import { Button } from '@/components/ui/button';
 
 type RunType = 'BASELINE' | 'FOLLOWUP';
 
-type AxisKey = 'people' | 'corporate' | 'customer' | 'technology' | 'regulation';
-
-type StatPack = { mean: number | null; min: number | null; max: number | null; stdev: number | null; n: number };
+type StatPack = { median: number | null; min: number | null; max: number | null; n: number };
 
 type AxisStats = {
-  axis: AxisKey;
+  axisId: string;
   label: string;
+  questionText: string;
+  phase: string;
+  tag: string;
+  questionIndex: number;
   today: StatPack;
   target: StatPack;
   projected: StatPack;
@@ -24,9 +26,9 @@ type IndividualSeries = {
   participantName: string;
   role: string | null;
   department: string | null;
-  today: Record<AxisKey, number | null>;
-  target: Record<AxisKey, number | null>;
-  projected: Record<AxisKey, number | null>;
+  today: Record<string, number | null>;
+  target: Record<string, number | null>;
+  projected: Record<string, number | null>;
 };
 
 type SpiderResponse = {
@@ -38,6 +40,7 @@ type SpiderResponse = {
   participantCount: number;
   axisStats: AxisStats[];
   individuals: IndividualSeries[];
+  aggregation?: { method?: string };
   error?: string;
 };
 
@@ -46,12 +49,14 @@ type PageProps = {
 };
 
 type HoverAxis = {
-  axis: AxisKey;
+  axisId: string;
   label: string;
+  questionText: string;
   today: StatPack;
   target: StatPack;
   projected: StatPack;
   participantCount: number;
+  aggregationMethod: string;
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -87,8 +92,11 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
   const [data, setData] = useState<SpiderResponse | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const [hoverAxis, setHoverAxis] = useState<HoverAxis | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [svgCursor, setSvgCursor] = useState<{ x: number; y: number } | null>(null);
+  const [hoverParticipant, setHoverParticipant] = useState<IndividualSeries | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -123,7 +131,7 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
     };
   }, [workshopId, runType, showIndividuals]);
 
-  const axes = useMemo(() => (data?.axisStats || []).map((a) => ({ axis: a.axis, label: a.label })), [data]);
+  const axes = useMemo(() => (data?.axisStats || []).map((a) => ({ axisId: a.axisId, label: a.label })), [data]);
 
   const maxScore = 10;
   const size = 560;
@@ -133,84 +141,128 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
   const radius = (size - padding * 2) / 2;
   const n = axes.length || 1;
 
-  const meanSeries = useMemo(() => {
-    const byAxis = new Map((data?.axisStats || []).map((a) => [a.axis, a]));
+  const medianSeries = useMemo(() => {
+    const byAxis = new Map((data?.axisStats || []).map((a) => [a.axisId, a]));
     const today = axes.map((a) => ({
-      axis: a.axis,
+      axisId: a.axisId,
       label: a.label,
-      value: clamp(typeof byAxis.get(a.axis)?.today.mean === 'number' ? byAxis.get(a.axis)!.today.mean! : 0, 0, maxScore),
+      value: clamp(typeof byAxis.get(a.axisId)?.today.median === 'number' ? byAxis.get(a.axisId)!.today.median! : 0, 0, maxScore),
     }));
     const target = axes.map((a) => ({
-      axis: a.axis,
+      axisId: a.axisId,
       label: a.label,
-      value: clamp(typeof byAxis.get(a.axis)?.target.mean === 'number' ? byAxis.get(a.axis)!.target.mean! : 0, 0, maxScore),
+      value: clamp(typeof byAxis.get(a.axisId)?.target.median === 'number' ? byAxis.get(a.axisId)!.target.median! : 0, 0, maxScore),
     }));
     const projected = axes.map((a) => ({
-      axis: a.axis,
+      axisId: a.axisId,
       label: a.label,
-      value: clamp(typeof byAxis.get(a.axis)?.projected.mean === 'number' ? byAxis.get(a.axis)!.projected.mean! : 0, 0, maxScore),
+      value: clamp(typeof byAxis.get(a.axisId)?.projected.median === 'number' ? byAxis.get(a.axisId)!.projected.median! : 0, 0, maxScore),
     }));
     return { today, target, projected };
   }, [axes, data]);
 
-  const varianceSegments = useMemo(() => {
-    const byAxis = new Map((data?.axisStats || []).map((a) => [a.axis, a]));
-    return axes
-      .map((a, idx) => {
-        const s = byAxis.get(a.axis);
-        const min = s?.today.min ?? null;
-        const max = s?.today.max ?? null;
-        if (typeof min !== 'number' || typeof max !== 'number') return null;
-        const angle = -Math.PI / 2 + (idx * 2 * Math.PI) / n;
-        const r0 = (clamp(min, 0, maxScore) / maxScore) * radius;
-        const r1 = (clamp(max, 0, maxScore) / maxScore) * radius;
-        const p0 = polar(cx, cy, r0, angle);
-        const p1 = polar(cx, cy, r1, angle);
-        return { axis: a.axis, label: a.label, p0, p1 };
-      })
-      .filter((x): x is NonNullable<typeof x> => !!x);
-  }, [axes, data, n, radius, cx, cy]);
-
-  const polygons = useMemo(() => {
+  const linePaths = useMemo(() => {
     const build = (values: Array<{ value: number }>) => {
       const pts = values.map((d, i) => {
         const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
         const r = (clamp(d.value, 0, maxScore) / maxScore) * radius;
         return polar(cx, cy, r, angle);
       });
-      return pts.map((p) => `${p.x},${p.y}`).join(' ');
+      if (!pts.length) return '';
+      const first = pts[0];
+      const rest = pts.slice(1);
+      return `M ${first.x} ${first.y} ${rest.map((p) => `L ${p.x} ${p.y}`).join(' ')} Z`;
     };
     return {
-      today: build(meanSeries.today),
-      target: build(meanSeries.target),
-      projected: build(meanSeries.projected),
+      today: build(medianSeries.today),
+      target: build(medianSeries.target),
+      projected: build(medianSeries.projected),
     };
-  }, [meanSeries, n, radius, cx, cy]);
+  }, [medianSeries, n, radius, cx, cy]);
 
-  const individualPolygons = useMemo(() => {
-    if (!showIndividuals || !data?.individuals?.length) return [] as Array<{ id: string; label: string; polygon: string }>;
-
-    const axesOrder = axes.map((a) => a.axis);
-    return data.individuals.map((ind) => {
-      const pts = axesOrder.map((axis, i) => {
+  const envelopePaths = useMemo(() => {
+    const byAxis = new Map((data?.axisStats || []).map((a) => [a.axisId, a]));
+    const build = (layer: 'today' | 'target' | 'projected') => {
+      const mins = axes.map((a) => {
+        const s = byAxis.get(a.axisId);
+        const v = s?.[layer]?.min ?? null;
+        return clamp(typeof v === 'number' ? v : 0, 0, maxScore);
+      });
+      const maxs = axes.map((a) => {
+        const s = byAxis.get(a.axisId);
+        const v = s?.[layer]?.max ?? null;
+        return clamp(typeof v === 'number' ? v : 0, 0, maxScore);
+      });
+      const ptsOuter = maxs.map((v, i) => {
         const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-        const v = ind.today?.[axis];
-        const r = (clamp(typeof v === 'number' ? v : 0, 0, maxScore) / maxScore) * radius;
+        const r = (v / maxScore) * radius;
         return polar(cx, cy, r, angle);
       });
+      const ptsInner = mins.map((v, i) => {
+          const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+          const r = (v / maxScore) * radius;
+          return polar(cx, cy, r, angle);
+        });
+      if (!ptsOuter.length) return { max: '', min: '' };
+      const o0 = ptsOuter[0];
+      const oRest = ptsOuter.slice(1);
+      const i0 = ptsInner[0];
+      const iRest = ptsInner.slice(1);
       return {
-        id: ind.participantId,
-        label: ind.participantName,
-        polygon: pts.map((p) => `${p.x},${p.y}`).join(' '),
+        max: `M ${o0.x} ${o0.y} ${oRest.map((p) => `L ${p.x} ${p.y}`).join(' ')} Z`,
+        min: `M ${i0.x} ${i0.y} ${iRest.map((p) => `L ${p.x} ${p.y}`).join(' ')} Z`,
       };
-    });
+    };
+    return {
+      today: build('today'),
+      target: build('target'),
+      projected: build('projected'),
+    };
+  }, [axes, data, n, radius, cx, cy]);
+
+  const individualPaths = useMemo(() => {
+    if (!showIndividuals || !data?.individuals?.length) return [] as Array<{ id: string; label: string; d: string; series: IndividualSeries }>;
+
+    const axesOrder = axes.map((a) => a.axisId);
+    const build = (values: Array<number>) => {
+      const pts = values.map((v, i) => {
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        const r = (clamp(v, 0, maxScore) / maxScore) * radius;
+        return polar(cx, cy, r, angle);
+      });
+      if (!pts.length) return '';
+      const first = pts[0];
+      const rest = pts.slice(1);
+      return `M ${first.x} ${first.y} ${rest.map((p) => `L ${p.x} ${p.y}`).join(' ')} Z`;
+    };
+
+    return data.individuals
+      .map((ind) => {
+        const values = axesOrder.map((axis) => {
+          const v = ind.today?.[axis];
+          return clamp(typeof v === 'number' ? v : 0, 0, maxScore);
+        });
+        return {
+          id: ind.participantId,
+          label: ind.participantName,
+          d: build(values),
+          series: ind,
+        };
+      })
+      .filter((p) => Boolean(p.d));
   }, [showIndividuals, data, axes, n, radius, cx, cy]);
 
-  const activeOpacity = (layer: 'today' | 'target' | 'projected') => {
-    if (!hoverLayer) return layer === 'today' ? 0.18 : layer === 'target' ? 0.14 : 0.10;
-    if (hoverLayer === layer) return 0.22;
-    return 0.05;
-  };
+  const nearestAxis = useMemo(() => {
+    if (!svgCursor || !axes.length) return null;
+    const dx = svgCursor.x - cx;
+    const dy = svgCursor.y - cy;
+    const ang = Math.atan2(dy, dx);
+    const normalized = ((ang + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI));
+    const idx = Math.round((normalized / (2 * Math.PI)) * n) % n;
+    const axis = axes[idx];
+    if (!axis) return null;
+    return { index: idx, axisId: axis.axisId, label: axis.label };
+  }, [svgCursor, axes, cx, cy, n]);
 
   const activeStrokeWidth = (layer: 'today' | 'target' | 'projected') => {
     if (!hoverLayer) return layer === 'today' ? 2.4 : 2.0;
@@ -222,14 +274,23 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
     if (!el) return;
     const rect = el.getBoundingClientRect();
     setCursor({ x: evt.clientX - rect.left, y: evt.clientY - rect.top });
+
+    const svg = svgRef.current;
+    if (!svg) return;
+    const srect = svg.getBoundingClientRect();
+    const sx = ((evt.clientX - srect.left) / Math.max(1, srect.width)) * size;
+    const sy = ((evt.clientY - srect.top) / Math.max(1, srect.height)) * size;
+    setSvgCursor({ x: sx, y: sy });
   };
 
   const clearHover = () => {
     setHoverAxis(null);
     setCursor(null);
+    setSvgCursor(null);
+    setHoverParticipant(null);
   };
 
-  const byAxisStats = useMemo(() => new Map((data?.axisStats || []).map((a) => [a.axis, a])), [data]);
+  const byAxisStats = useMemo(() => new Map((data?.axisStats || []).map((a) => [a.axisId, a])), [data]);
 
   return (
     <div className="min-h-screen bg-[#05070f] text-slate-100">
@@ -291,14 +352,14 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
           >
             <div className="p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-sm text-slate-200">How strong do we believe we are today — and where should we be?</div>
+                <div className="text-sm text-slate-200">How strong do we believe our capabilities are today — and where do we believe they need to be?</div>
                 <div className="text-xs text-slate-400">
                   {loading ? 'Loading…' : error ? error : data ? `Participants: ${data.participantCount}` : ''}
                 </div>
               </div>
 
               <div className="mt-4">
-                <svg width="100%" viewBox={`0 0 ${size} ${size}`} role="img">
+                <svg ref={svgRef} width="100%" viewBox={`0 0 ${size} ${size}`} role="img">
                   {[0.2, 0.4, 0.6, 0.8, 1].map((t, idx) => (
                     <circle
                       key={idx}
@@ -321,7 +382,7 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
                     const y = clamp(labelPos.y, 16, size - 16);
 
                     return (
-                      <g key={a.axis}>
+                      <g key={a.axisId}>
                         <line x1={cx} y1={cy} x2={end.x} y2={end.y} stroke="rgba(148,163,184,0.22)" strokeWidth={1} />
                         <line
                           x1={cx}
@@ -331,15 +392,22 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
                           stroke="transparent"
                           strokeWidth={18}
                           onMouseEnter={() => {
-                            const s = byAxisStats.get(a.axis);
+                            const s = byAxisStats.get(a.axisId);
                             if (!s || !data) return;
+                            const method =
+                              typeof data.aggregation?.method === 'string' && data.aggregation.method
+                                ? data.aggregation.method
+                                : 'median';
+                            const answered = Math.max(s.today.n, s.target.n, s.projected.n);
                             setHoverAxis({
-                              axis: a.axis,
+                              axisId: a.axisId,
                               label: a.label,
+                              questionText: s.questionText,
                               today: s.today,
                               target: s.target,
                               projected: s.projected,
-                              participantCount: data.participantCount,
+                              participantCount: answered,
+                              aggregationMethod: method,
                             });
                           }}
                         />
@@ -357,56 +425,65 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
                     );
                   })}
 
-                  {varianceSegments.map((seg) => (
-                    <line
-                      key={seg.axis}
-                      x1={seg.p0.x}
-                      y1={seg.p0.y}
-                      x2={seg.p1.x}
-                      y2={seg.p1.y}
-                      stroke="rgba(59,130,246,0.14)"
-                      strokeWidth={10}
-                      strokeLinecap="round"
-                    />
-                  ))}
+                  <path d={envelopePaths.target.max} fill="none" stroke="rgba(34,197,94,0.22)" strokeWidth={1.1} />
+                  <path d={envelopePaths.target.min} fill="none" stroke="rgba(34,197,94,0.22)" strokeWidth={1.1} />
+
+                  <path
+                    d={envelopePaths.projected.max}
+                    fill="none"
+                    stroke="rgba(226,232,240,0.18)"
+                    strokeWidth={1.1}
+                    strokeDasharray="4 6"
+                  />
+                  <path
+                    d={envelopePaths.projected.min}
+                    fill="none"
+                    stroke="rgba(226,232,240,0.18)"
+                    strokeWidth={1.1}
+                    strokeDasharray="4 6"
+                  />
 
                   {showIndividuals
-                    ? individualPolygons.map((p) => (
-                        <polygon
-                          key={p.id}
-                          points={p.polygon}
-                          fill="none"
-                          stroke="rgba(148,163,184,0.14)"
-                          strokeWidth={1}
-                          opacity={0.55}
-                        />
+                    ? individualPaths.map((p) => (
+                        <g key={p.id}>
+                          <path d={p.d} fill="none" stroke="rgba(148,163,184,0.20)" strokeWidth={1} opacity={0.55} />
+                          <path
+                            d={p.d}
+                            fill="none"
+                            stroke="transparent"
+                            strokeWidth={14}
+                            onMouseEnter={() => setHoverParticipant(p.series)}
+                            onMouseLeave={() => setHoverParticipant(null)}
+                          />
+                        </g>
                       ))
                     : null}
 
-                  <polygon
-                    points={polygons.projected}
-                    fill="rgba(226,232,240,1)"
-                    opacity={activeOpacity('projected')}
-                    stroke="rgba(226,232,240,0.72)"
+                  <path
+                    d={linePaths.projected}
+                    fill="none"
+                    opacity={hoverLayer && hoverLayer !== 'projected' ? 0.25 : 1}
+                    stroke="rgba(226,232,240,0.70)"
                     strokeWidth={activeStrokeWidth('projected')}
+                    strokeDasharray="4 6"
                     onMouseEnter={() => setHoverLayer('projected')}
                     onMouseLeave={() => setHoverLayer(null)}
                   />
-                  <polygon
-                    points={polygons.target}
-                    fill="rgba(34,197,94,1)"
-                    opacity={activeOpacity('target')}
+                  <path
+                    d={linePaths.target}
+                    fill="none"
+                    opacity={hoverLayer && hoverLayer !== 'target' ? 0.25 : 1}
                     stroke="rgba(34,197,94,0.85)"
                     strokeWidth={activeStrokeWidth('target')}
                     onMouseEnter={() => setHoverLayer('target')}
                     onMouseLeave={() => setHoverLayer(null)}
                   />
-                  <polygon
-                    points={polygons.today}
-                    fill="rgba(59,130,246,1)"
-                    opacity={activeOpacity('today')}
-                    stroke="rgba(59,130,246,0.9)"
-                    strokeWidth={activeStrokeWidth('today')}
+                  <path
+                    d={linePaths.today}
+                    fill="none"
+                    opacity={hoverLayer && hoverLayer !== 'today' ? 0.25 : 1}
+                    stroke="rgba(59,130,246,0.92)"
+                    strokeWidth={activeStrokeWidth('today') + 0.6}
                     onMouseEnter={() => setHoverLayer('today')}
                     onMouseLeave={() => setHoverLayer(null)}
                   />
@@ -420,16 +497,39 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
                 style={{ left: clamp(cursor.x + 14, 12, 560 - 12), top: clamp(cursor.y + 14, 12, 560 - 12) }}
               >
                 <div className="font-semibold">{hoverAxis.label}</div>
-                <div className="mt-1 text-slate-300">Participants: {hoverAxis.participantCount}</div>
+                <div className="mt-1 text-slate-300">Answered: {hoverAxis.participantCount}</div>
+                <div className="mt-1 text-slate-400">Aggregation: {hoverAxis.aggregationMethod}</div>
+                <div className="mt-2 text-slate-200">{hoverAxis.questionText}</div>
                 <div className="mt-2 grid grid-cols-1 gap-1">
                   <div>
-                    <span className="text-slate-400">Today:</span> {round1(hoverAxis.today.mean)} ({formatRange(hoverAxis.today.min, hoverAxis.today.max)})
+                    <span className="text-slate-400">Today:</span> {round1(hoverAxis.today.median)} ({formatRange(hoverAxis.today.min, hoverAxis.today.max)}) n={hoverAxis.today.n}
                   </div>
                   <div>
-                    <span className="text-slate-400">Target:</span> {round1(hoverAxis.target.mean)} ({formatRange(hoverAxis.target.min, hoverAxis.target.max)})
+                    <span className="text-slate-400">Target:</span> {round1(hoverAxis.target.median)} ({formatRange(hoverAxis.target.min, hoverAxis.target.max)}) n={hoverAxis.target.n}
                   </div>
                   <div>
-                    <span className="text-slate-400">Projected:</span> {round1(hoverAxis.projected.mean)} ({formatRange(hoverAxis.projected.min, hoverAxis.projected.max)})
+                    <span className="text-slate-400">Projected:</span> {round1(hoverAxis.projected.median)} ({formatRange(hoverAxis.projected.min, hoverAxis.projected.max)}) n={hoverAxis.projected.n}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {hoverParticipant && cursor && nearestAxis ? (
+              <div
+                className="pointer-events-none absolute z-20 rounded-md border border-white/10 bg-black/70 px-3 py-2 text-xs text-slate-200"
+                style={{ left: clamp(cursor.x + 14, 12, 560 - 12), top: clamp(cursor.y + 14, 12, 560 - 12) }}
+              >
+                <div className="font-semibold">{hoverParticipant.participantName}</div>
+                <div className="mt-1 text-slate-400">{nearestAxis.label}</div>
+                <div className="mt-2 grid grid-cols-1 gap-1">
+                  <div>
+                    <span className="text-slate-400">Today:</span> {round1(hoverParticipant.today[nearestAxis.axisId] ?? null)}
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Target:</span> {round1(hoverParticipant.target[nearestAxis.axisId] ?? null)}
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Projected:</span> {round1(hoverParticipant.projected[nearestAxis.axisId] ?? null)}
                   </div>
                 </div>
               </div>
@@ -440,39 +540,39 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
             <div className="text-sm font-semibold text-slate-200">Legend</div>
             <div className="mt-3 space-y-2 text-xs text-slate-200">
               <div className="flex items-center gap-2">
-                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'rgba(59,130,246,0.9)' }} />
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'rgba(148,163,184,0.30)' }} />
                 <div className="min-w-0">
-                  <div className="font-medium">Today</div>
-                  <div className="text-slate-400">Current average perception.</div>
+                  <div className="font-medium">Individuals</div>
+                  <div className="text-slate-400">Each thin line is one participant’s view (today).</div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'rgba(34,197,94,0.9)' }} />
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'rgba(59,130,246,0.92)' }} />
                 <div className="min-w-0">
-                  <div className="font-medium">Target</div>
-                  <div className="text-slate-400">Target average perception.</div>
+                  <div className="font-medium">Collective (median)</div>
+                  <div className="text-slate-400">Bold line is the group’s median today.</div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'rgba(226,232,240,0.9)' }} />
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'rgba(34,197,94,0.85)' }} />
                 <div className="min-w-0">
-                  <div className="font-medium">Projected</div>
-                  <div className="text-slate-400">If nothing changes.</div>
+                  <div className="font-medium">Target ambition</div>
+                  <div className="text-slate-400">Outer envelope shows the range of target answers; the line is the target median.</div>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-4 border-t border-white/10 pt-4">
-              <div className="text-sm font-semibold text-slate-200">Variance</div>
-              <div className="mt-2 text-xs text-slate-400">
-                Each axis shows the range of opinions for Today (min–max) as a subtle blue band.
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'rgba(226,232,240,0.70)' }} />
+                <div className="min-w-0">
+                  <div className="font-medium">Projected (if nothing changes)</div>
+                  <div className="text-slate-400">Dashed envelope shows the range of projected answers; dashed line is the projected median.</div>
+                </div>
               </div>
             </div>
 
             <div className="mt-4 border-t border-white/10 pt-4">
               <div className="text-sm font-semibold text-slate-200">Controls</div>
               <div className="mt-2 text-xs text-slate-400">
-                Toggle individuals to reveal faint per-participant outlines (default off).
+                Toggle individuals to reveal faint per-participant lines (default off). Hover an axis to see the question and how many answered.
               </div>
             </div>
           </div>
