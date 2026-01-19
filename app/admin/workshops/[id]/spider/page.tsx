@@ -118,17 +118,17 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
     };
   }, [workshopId]);
 
-  const chartSize = 520;
+  const chartSize = 640;
   const maxScore = 10;
   const cx = chartSize / 2;
   const cy = chartSize / 2;
-  const radius = 150;
+  const radius = 170;
 
   const axisGeometry = useMemo(() => {
     return AXES.map((a, i) => {
       const angle = -Math.PI / 2 + (i * 2 * Math.PI) / AXES.length;
       const end = polar(cx, cy, radius, angle);
-      const labelPos = polar(cx, cy, radius + 72, angle);
+      const labelPos = polar(cx, cy, radius + 104, angle);
       const anchor: 'start' | 'middle' | 'end' = Math.abs(Math.cos(angle)) < 0.2 ? 'middle' : Math.cos(angle) > 0 ? 'start' : 'end';
       return { ...a, angle, end, labelPos, anchor };
     });
@@ -195,24 +195,40 @@ export default function WorkshopSpiderPage({ params }: PageProps) {
           <div className="text-center text-sm font-medium text-slate-600">Master capability spider</div>
 
           <div className="mt-6 flex justify-center">
-            <svg width={chartSize} height={chartSize} viewBox={`0 0 ${chartSize} ${chartSize}`} role="img" className="block">
+            <svg
+              width={chartSize}
+              height={chartSize}
+              viewBox={`0 0 ${chartSize} ${chartSize}`}
+              role="img"
+              className="block"
+              style={{ overflow: 'visible' }}
+            >
               {[0.25, 0.5, 0.75, 1].map((t, idx) => (
-                <circle key={idx} cx={cx} cy={cy} r={t * radius} fill="none" stroke="rgb(226 232 240)" strokeWidth={1} />
+                <circle
+                  key={idx}
+                  cx={cx}
+                  cy={cy}
+                  r={t * radius}
+                  fill="none"
+                  stroke="rgb(203 213 225)"
+                  strokeWidth={1.4}
+                />
               ))}
 
               {axisGeometry.map((a) => (
                 <g key={a.key}>
-                  <line x1={cx} y1={cy} x2={a.end.x} y2={a.end.y} stroke="rgb(226 232 240)" strokeWidth={1} />
+                  <line x1={cx} y1={cy} x2={a.end.x} y2={a.end.y} stroke="rgb(203 213 225)" strokeWidth={1.6} />
                   <text
-                    x={clamp(a.labelPos.x, 12, chartSize - 12)}
-                    y={clamp(a.labelPos.y, 12, chartSize - 12)}
+                    x={clamp(a.labelPos.x, 32, chartSize - 32)}
+                    y={clamp(a.labelPos.y, 32, chartSize - 32)}
                     textAnchor={a.anchor}
                     dominantBaseline="middle"
-                    fontSize={13}
-                    fill="rgb(100 116 139)"
+                    fontSize={15}
+                    fontWeight={500}
+                    fill="rgb(51 65 85)"
                   >
                     {a.labelLines.map((line, idx) => (
-                      <tspan key={idx} x={clamp(a.labelPos.x, 12, chartSize - 12)} dy={idx === 0 ? 0 : 16}>
+                      <tspan key={idx} x={clamp(a.labelPos.x, 32, chartSize - 32)} dy={idx === 0 ? 0 : 18}>
                         {line}
                       </tspan>
                     ))}
