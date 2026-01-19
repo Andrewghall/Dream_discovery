@@ -580,24 +580,80 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const b = proj.get(e.target);
         if (!a || !b) continue;
         const active = activeEdgeSet.has(e.id);
-        const baseAlpha = e.kind === 'DERIVATIVE' ? 0.62 : e.kind === 'EVIDENCE_LINK' ? 0.18 : e.kind === 'REINFORCING' ? 0.22 : 0.26;
-        const alpha = active ? 0.95 : baseAlpha;
-        const width = (0.6 + 2.4 * clamp01(e.strength)) * (e.kind === 'DERIVATIVE' ? 1.35 : 1);
+        const baseAlpha =
+          e.kind === 'DERIVATIVE'
+            ? 0.66
+            : e.kind === 'REINFORCING'
+              ? 0.24
+              : e.kind === 'EQUIVALENT'
+                ? 0.18
+                : 0.16;
+
+        const pulse = e.kind === 'REINFORCING' ? 0.78 + 0.22 * Math.sin(tMs * 0.004) : 1;
+        const alpha = (active ? 0.95 : baseAlpha) * pulse;
+
+        const width =
+          (0.6 + 2.4 * clamp01(e.strength)) *
+          (e.kind === 'DERIVATIVE' ? 1.35 : e.kind === 'EQUIVALENT' ? 0.9 : 1);
         const unrelatedFade = hoverActive && hoveredNodeId && !(activeNodeSet.has(e.source) && activeNodeSet.has(e.target)) ? 0.30 : 1;
 
-        if (showCausalChains && e.kind === 'DERIVATIVE') {
+        if (e.kind === 'DERIVATIVE') {
           ctx.setLineDash([8 * dpr, 10 * dpr]);
-          ctx.lineDashOffset = -tMs * 0.02;
+          ctx.lineDashOffset = -(showCausalChains ? tMs * 0.02 : tMs * 0.008);
+        } else if (e.kind === 'REINFORCING') {
+          ctx.setLineDash([2 * dpr, 7 * dpr]);
+        } else if (e.kind === 'EVIDENCE_LINK') {
+          ctx.setLineDash([2 * dpr, 6 * dpr]);
         } else {
           ctx.setLineDash([]);
         }
 
-        ctx.strokeStyle = `rgba(96,165,250,${clamp01(alpha) * unrelatedFade})`;
+        const stroke =
+          e.kind === 'DERIVATIVE'
+            ? `rgba(56,189,248,${clamp01(alpha) * unrelatedFade})`
+            : e.kind === 'REINFORCING'
+              ? `rgba(167,139,250,${clamp01(alpha) * unrelatedFade})`
+              : e.kind === 'EQUIVALENT'
+                ? `rgba(148,163,184,${clamp01(alpha) * unrelatedFade})`
+                : `rgba(148,163,184,${clamp01(alpha) * unrelatedFade})`;
+
+        ctx.strokeStyle = stroke;
         ctx.lineWidth = Math.max(1, width * dpr * (active ? 1.25 : 1));
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
+
+        if (e.kind === 'DERIVATIVE' && !(showCausalChains && !active)) {
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const len = Math.hypot(dx, dy);
+          if (len > 18) {
+            const ux = dx / len;
+            const uy = dy / len;
+            const px = -uy;
+            const py = ux;
+            const size = (6 + 6 * clamp01(e.strength)) * (active ? 1.1 : 1) * dpr;
+            const back = size * 1.35;
+            const baseX = b.x - ux * back;
+            const baseY = b.y - uy * back;
+            const leftX = baseX + px * (size * 0.65);
+            const leftY = baseY + py * (size * 0.65);
+            const rightX = baseX - px * (size * 0.65);
+            const rightY = baseY - py * (size * 0.65);
+
+            ctx.save();
+            ctx.setLineDash([]);
+            ctx.fillStyle = stroke;
+            ctx.beginPath();
+            ctx.moveTo(b.x, b.y);
+            ctx.lineTo(leftX, leftY);
+            ctx.lineTo(rightX, rightY);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+        }
       }
 
       ctx.setLineDash([]);
@@ -948,6 +1004,44 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                 </div>
               );
             })}
+          </div>
+
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <div className="mb-2 text-xs font-semibold text-slate-200">Edges</div>
+            <div className="space-y-2 text-[11px] text-slate-200">
+              <div className="flex items-start gap-2">
+                <span className="mt-[6px] inline-block h-px w-7" style={{ backgroundColor: 'rgba(148,163,184,0.9)' }} />
+                <div className="min-w-0">
+                  <div className="font-medium">Equivalent</div>
+                  <div className="text-slate-400">Same construct / meaning.</div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <span
+                  className="mt-[6px] inline-block h-px w-7"
+                  style={{ backgroundImage: 'linear-gradient(to right, rgba(167,139,250,0.95) 40%, rgba(0,0,0,0) 0%)', backgroundSize: '6px 1px', backgroundRepeat: 'repeat-x' }}
+                />
+                <div className="min-w-0">
+                  <div className="font-medium">Reinforcing</div>
+                  <div className="text-slate-400">Conceptual overlap that tends to compound.</div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <div className="mt-[3px] flex items-center gap-1">
+                  <span
+                    className="inline-block h-px w-6"
+                    style={{ backgroundImage: 'linear-gradient(to right, rgba(56,189,248,0.95) 45%, rgba(0,0,0,0) 0%)', backgroundSize: '8px 1px', backgroundRepeat: 'repeat-x' }}
+                  />
+                  <span className="text-sky-300">&gt;</span>
+                </div>
+                <div className="min-w-0">
+                  <div className="font-medium">Derivative</div>
+                  <div className="text-slate-400">Upstream condition tends to drive downstream effect.</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
