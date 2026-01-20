@@ -169,6 +169,20 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
   const lastDefaultSnapshotNameRef = useRef<string>('');
 
+  const downloadJson = (filename: string, payload: unknown) => {
+    try {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
+    } catch {
+      // ignore
+    }
+  };
+
   const statusRef = useRef<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
 
   const [micDialogOpen, setMicDialogOpen] = useState(false);
@@ -798,6 +812,74 @@ export default function WorkshopLivePage({ params }: PageProps) {
       setDependencyProcessedCount(dependencyProcessedRef.current.size);
     }
   }, [utteranceNodes]);
+
+  const exportLiveJson = () => {
+    const now = new Date();
+    const ts = now.toISOString().replace(/[:.]/g, '-');
+    const filename = `live-${workshopId}-${ts}.json`;
+
+    const payload = {
+      v: 1,
+      workshopId,
+      exportedAt: now.toISOString(),
+      dialoguePhase,
+      counts: {
+        chunks: nodes.length,
+        utterances: utteranceNodes.length,
+      },
+      utterances: utteranceNodes.map((n) => ({
+        dataPointId: n.dataPointId,
+        createdAtMs: n.createdAtMs,
+        rawText: n.rawText,
+        dataPointSource: n.dataPointSource,
+        dialoguePhase: n.dialoguePhase,
+        transcriptChunk: n.transcriptChunk,
+      })),
+      interpreted: interpretedNodes.map((n) => ({
+        dataPointId: n.dataPointId,
+        createdAtMs: n.createdAtMs,
+        rawText: n.rawText,
+        dialoguePhase: n.dialoguePhase,
+        intent: n.intent ?? null,
+        classification: n.classification,
+        themeId: n.themeId ?? null,
+        themeLabel: n.themeLabel ?? null,
+      })),
+      synthesisByDomain,
+      pressurePoints,
+      dependencyEdgesById,
+    };
+
+    downloadJson(filename, payload);
+  };
+
+  const clearLiveState = () => {
+    try {
+      esRef.current?.close();
+    } catch {
+      // ignore
+    }
+    esRef.current = null;
+
+    setNodesById({});
+    setSelectedNodeId(null);
+    setThemesById({});
+    themesRef.current = {};
+    setNodeThemeById({});
+    nodeThemeRef.current = {};
+    embeddingCacheRef.current = new Map();
+    embeddingInFlightRef.current = new Set();
+
+    setDependencyEdgesById({});
+    dependencyEdgesRef.current = {};
+    dependencyProcessedRef.current = new Set();
+    setDependencyProcessedCount(0);
+
+    setLensDomain(null);
+    setRevealOpen(false);
+    setForwardedCount(0);
+    setDebugTrace((t) => [...t, 'Cleared Live state (fresh session).']);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -2448,33 +2530,76 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 )}
               </CardHeader>
               <CardContent>
-                <div
-                  className={
-                    viewMode === 'room'
-                      ? 'h-[70vh] border rounded-md p-3 bg-muted/20'
-                      : 'h-[520px] border rounded-md p-3 bg-muted/20'
-                  }
-                >
-                  {utteranceNodes.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">No datapoints yet.</div>
-                  ) : (
-                    <HemisphereNodes
-                      nodes={interpretedNodes}
-                      originTimeMs={originTimeMs}
-                      timeScaleMs={hemisphereTimeScaleMs}
-                      onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
-                      themeAttractors={themeAttractors}
-                      links={dependencyLinks}
-                      className="h-full w-full"
-                    />
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="mb-3 rounded-md border bg-background px-3 py-2">
+                    <div className="text-xs text-muted-foreground mb-2">Legend (node color = type)</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#8b5cf6' }} /> VISIONARY
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#3b82f6' }} /> OPPORTUNITY
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#f97316' }} /> CONSTRAINT
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#ef4444' }} /> RISK
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#14b8a6' }} /> ENABLER
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#10b981' }} /> INSIGHT
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#f59e0b' }} /> ACTION
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#0ea5e9' }} /> QUESTION
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#94a3b8' }} /> UNCLASSIFIED
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    className={
+                      viewMode === 'room'
+                        ? 'h-[70vh] border rounded-md p-3 bg-muted/20'
+                        : 'h-[520px] border rounded-md p-3 bg-muted/20'
+                    }
+                  >
+                    {utteranceNodes.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">No datapoints yet.</div>
+                    ) : (
+                      <HemisphereNodes
+                        nodes={interpretedNodes}
+                        originTimeMs={originTimeMs}
+                        timeScaleMs={hemisphereTimeScaleMs}
+                        onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
+                        themeAttractors={themeAttractors}
+                        links={dependencyLinks}
+                        className="h-full w-full"
+                      />
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={exportLiveJson}>
+                      Export JSON
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={clearLiveState}
+                      disabled={status === 'capturing'}
+                    >
+                      Start fresh
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
           ) : null}
 
-          {viewMode !== 'room' ? (
-            <div className={(viewMode === 'split' ? 'space-y-4 min-w-0' : 'space-y-4') + ' min-w-0'}>
               <Card>
                 <CardHeader>
                   <CardTitle>Capture</CardTitle>
@@ -2587,6 +2712,17 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     </Button>
                     <Button variant="outline" onClick={stopCapture} disabled={status !== 'capturing'}>
                       Stop
+                    </Button>
+                    <Button type="button" variant="outline" onClick={exportLiveJson} disabled={utteranceNodes.length === 0}>
+                      Export JSON
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={clearLiveState}
+                      disabled={status === 'capturing'}
+                    >
+                      Start fresh
                     </Button>
                   </div>
 
@@ -3167,8 +3303,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 </Card>
               ) : null}
             </div>
-          ) : null}
-        </div>
 
         <Dialog
           open={viewMode !== 'room' && !!selectedNode}
@@ -3176,16 +3310,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
             if (!open) setSelectedNodeId(null);
           }}
         >
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Datapoint</DialogTitle>
-                <DialogDescription>
-                  {selectedNode?.classification?.primaryType ?? 'UNCLASSIFIED'}
-                  {selectedNode?.classification?.confidence != null
-                    ? ` • ${(selectedNode.classification.confidence * 100).toFixed(0)}%`
-                    : ''}
-                </DialogDescription>
-              </DialogHeader>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Datapoint</DialogTitle>
+              <DialogDescription>
+                {selectedNode?.classification?.primaryType ?? 'UNCLASSIFIED'}
+                {selectedNode?.classification?.confidence != null
+                  ? ` • ${(selectedNode.classification.confidence * 100).toFixed(0)}%`
+                  : ''}
+              </DialogDescription>
+            </DialogHeader>
 
               <div className="space-y-4">
                 <div className="rounded-md border p-3 text-sm whitespace-pre-wrap break-words">
@@ -3233,12 +3367,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 </div>
               </div>
 
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setSelectedNodeId(null)}>
-                  Close
-                </Button>
-              </DialogFooter>
-            </DialogContent>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setSelectedNodeId(null)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
         </Dialog>
       </div>
     </div>

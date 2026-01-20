@@ -191,7 +191,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       const x = attractor ? lerp(baseX, attractor.x, pull) + microJitter : baseX;
       const y = attractor ? lerp(baseY, attractor.y, pull) + microJitter : baseY;
 
-      const fill = n.intent ? intentColor(n.intent) : primaryColor(clsType);
+      const fill = clsType ? primaryColor(clsType) : n.intent ? intentColor(n.intent) : primaryColor(null);
       const stroke = 'rgba(15,23,42,0.22)';
 
       return {
