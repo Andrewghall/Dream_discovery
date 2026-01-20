@@ -143,6 +143,7 @@ model WorkshopParticipant {
   discoveryToken        String                @unique @default(cuid())
   attributionPreference AttributionPreference @default(NAMED)
   emailSentAt           DateTime?
+  doNotSendAgain        Boolean               @default(false)
   responseStartedAt     DateTime?
   responseCompletedAt   DateTime?
   reminderSentAt        DateTime?

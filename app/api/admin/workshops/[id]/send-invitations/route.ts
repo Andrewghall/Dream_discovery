@@ -39,9 +39,13 @@ export async function POST(
       });
     }
 
+    const eligibleParticipants = workshop.participants.filter(
+      (p) => !(p as { doNotSendAgain?: boolean | null }).doNotSendAgain
+    );
+
     const participantsToSend = resend
-      ? workshop.participants
-      : workshop.participants.filter((p: { emailSentAt: Date | null }) => !p.emailSentAt);
+      ? eligibleParticipants
+      : eligibleParticipants.filter((p: { emailSentAt: Date | null }) => !p.emailSentAt);
 
     if (participantsToSend.length === 0) {
       return NextResponse.json({
@@ -51,6 +55,7 @@ export async function POST(
         diagnostics: {
           ...diagnostics,
           participantsConsidered: workshop.participants.length,
+          participantsEligible: eligibleParticipants.length,
           participantsToSend: 0,
           resend,
         },
@@ -141,6 +146,7 @@ export async function POST(
         ...diagnostics,
         appUrl,
         participantsConsidered: workshop.participants.length,
+        participantsEligible: eligibleParticipants.length,
         participantsToSend: participantsToSend.length,
         resend,
       },

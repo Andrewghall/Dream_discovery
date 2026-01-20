@@ -32,6 +32,7 @@ interface Participant {
   department: string | null;
   discoveryToken: string;
   emailSentAt: Date | null;
+  doNotSendAgain: boolean;
   responseStartedAt: Date | null;
   responseCompletedAt: Date | null;
 }
@@ -92,6 +93,48 @@ export default function WorkshopDetailPage({ params }: PageProps) {
       console.error('Failed to fetch workshop:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleDoNotSendAgain = async (participantId: string, nextValue: boolean) => {
+    const prevValue = workshop?.participants.find((p) => p.id === participantId)?.doNotSendAgain ?? false;
+
+    setWorkshop((w) =>
+      w
+        ? {
+            ...w,
+            participants: w.participants.map((p) =>
+              p.id === participantId ? { ...p, doNotSendAgain: nextValue } : p
+            ),
+          }
+        : w
+    );
+
+    try {
+      const response = await fetch(`/api/admin/workshops/${id}/participants`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId, doNotSendAgain: nextValue }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const message = data?.error || 'Failed to update participant';
+        throw new Error(message);
+      }
+    } catch (error) {
+      console.error('Failed to update doNotSendAgain:', error);
+      setWorkshop((w) =>
+        w
+          ? {
+              ...w,
+              participants: w.participants.map((p) =>
+                p.id === participantId ? { ...p, doNotSendAgain: prevValue } : p
+              ),
+            }
+          : w
+      );
+      alert('Failed to update participant. Please try again.');
     }
   };
 
@@ -621,7 +664,9 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                     workshop.participants.map((participant) => (
                       <div
                         key={participant.id}
-                        className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                        className={`border rounded-lg p-4 hover:bg-muted/50 transition-colors ${
+                          participant.doNotSendAgain ? 'opacity-60' : ''
+                        }`}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -652,7 +697,23 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                               </p>
                             )}
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-3">
+                            <label
+                              htmlFor={`dns-${participant.id}`}
+                              className="flex items-center gap-2 text-xs text-muted-foreground"
+                            >
+                              <input
+                                id={`dns-${participant.id}`}
+                                type="checkbox"
+                                className="h-4 w-4"
+                                checked={!!participant.doNotSendAgain}
+                                onChange={(e) =>
+                                  void handleToggleDoNotSendAgain(participant.id, e.target.checked)
+                                }
+                              />
+                              Don&apos;t send again
+                            </label>
+                            <div className="flex items-center gap-1">
                             <Link
                               href={`/admin/workshops/${encodeURIComponent(id)}/participants/${encodeURIComponent(
                                 participant.id
@@ -680,6 +741,7 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
+                            </div>
                           </div>
                         </div>
                       </div>
