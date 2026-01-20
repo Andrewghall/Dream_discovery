@@ -163,6 +163,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [micLevel, setMicLevel] = useState(0);
   const [micTesting, setMicTesting] = useState(false);
 
+  const [revealOpen, setRevealOpen] = useState(false);
+
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -835,6 +837,45 @@ export default function WorkshopLivePage({ params }: PageProps) {
       },
     };
   }, [dependencyLinks.length, dependencyProcessedCount, nodes, pressurePoints.length, synthesisByDomain, visionNarrative]);
+
+  const domainNarratives = useMemo(() => {
+    const domains = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[];
+
+    const joinLabels = (items: Array<{ label: string }>) =>
+      items
+        .map((x) => x.label)
+        .filter(Boolean)
+        .slice(0, 2)
+        .join('; ');
+
+    return domains.map((d) => {
+      const s = synthesisByDomain[d];
+      const aspirations = joinLabels(s?.aspirations || []);
+      const opportunities = joinLabels(s?.opportunities || []);
+      const constraints = joinLabels(s?.constraints || []);
+      const enablers = joinLabels(s?.enablers || []);
+
+      const lines: string[] = [];
+      if (aspirations) lines.push(`Aspirations: ${aspirations}.`);
+      if (opportunities) lines.push(`Opportunities: ${opportunities}.`);
+      if (constraints) lines.push(`Constraints: ${constraints}.`);
+      if (enablers) lines.push(`Enablers: ${enablers}.`);
+
+      return {
+        domain: d,
+        narrative: lines.join(' '),
+        hasAny: Boolean(lines.length),
+      };
+    });
+  }, [synthesisByDomain]);
+
+  const keyDependencies = useMemo(() => {
+    return Object.values(dependencyEdgesById)
+      .filter((e) => e.count >= 3)
+      .slice()
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+  }, [dependencyEdgesById]);
 
   const domainCounts = useMemo(() => {
     const counts: Record<LiveDomain, number> = {
@@ -2000,7 +2041,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     </div>
                   </div>
 
-                  <Button type="button" disabled={!revealReadiness.revealReady}>
+                  <Button
+                    type="button"
+                    disabled={!revealReadiness.revealReady}
+                    onClick={() => {
+                      if (!revealReadiness.revealReady) return;
+                      setRevealOpen(true);
+                    }}
+                  >
                     Open Reveal
                   </Button>
 
@@ -2009,6 +2057,91 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       {visionNarrative}
                     </div>
                   ) : null}
+
+                  <Dialog
+                    open={revealOpen}
+                    onOpenChange={(open) => {
+                      setRevealOpen(open);
+                    }}
+                  >
+                    <DialogContent className="max-w-4xl">
+                      <DialogHeader>
+                        <DialogTitle>Reveal</DialogTitle>
+                        <DialogDescription>
+                          This view unlocks once synthesis and relationships are present.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-6">
+                        <div className="rounded-md border p-4">
+                          <div className="text-sm font-medium mb-2">Future state narrative</div>
+                          <div className="text-sm whitespace-pre-wrap break-words">
+                            {visionNarrative || '—'}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {domainNarratives.map((d) => (
+                            <div key={d.domain} className="rounded-md border p-4">
+                              <div className="text-sm font-medium mb-2">{d.domain}</div>
+                              <div className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+                                {d.hasAny ? d.narrative : 'No synthesis yet.'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="rounded-md border p-4">
+                            <div className="text-sm font-medium mb-2">Systemic pressure points</div>
+                            {pressurePoints.length === 0 ? (
+                              <div className="text-sm text-muted-foreground">None detected yet.</div>
+                            ) : (
+                              <div className="space-y-2">
+                                {pressurePoints.map((p) => (
+                                  <div key={p.id} className="rounded-md border px-3 py-2">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="text-sm font-medium">
+                                        {p.fromDomain} → {p.toDomain}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground tabular-nums">{p.count}</div>
+                                    </div>
+                                    <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+                                      constraints: {p.constraintCount} • aspirations: {p.aspirationCount}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="rounded-md border p-4">
+                            <div className="text-sm font-medium mb-2">Key dependencies</div>
+                            {keyDependencies.length === 0 ? (
+                              <div className="text-sm text-muted-foreground">None detected yet.</div>
+                            ) : (
+                              <div className="space-y-2">
+                                {keyDependencies.map((e) => (
+                                  <div key={e.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                                    <div className="text-sm font-medium">
+                                      {e.fromDomain} → {e.toDomain}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground tabular-nums">{e.count}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <DialogFooter>
+                          <Button type="button" variant="outline" onClick={() => setRevealOpen(false)}>
+                            Close
+                          </Button>
+                        </DialogFooter>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </CardContent>
               </Card>
 
