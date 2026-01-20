@@ -218,16 +218,17 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
     }>;
 
     const now = Date.now();
-    const recent = positioned.slice(Math.max(0, positioned.length - 48));
+    const recent = positioned.slice(Math.max(0, positioned.length - 96));
 
     const out: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; opacity: number }> = [];
     for (const n of recent) {
       if (!n.themeId) continue;
       const t = themeAttractors[n.themeId];
       if (!t) continue;
+      if (t.strength < 2) continue;
 
       const ageMs = Math.max(0, now - n.createdAtMs);
-      const age01 = clamp01(ageMs / (90 * 1000));
+      const age01 = clamp01(ageMs / (3 * 60 * 1000));
       const opacity = clamp01(0.22 * (1 - age01));
       if (opacity <= 0.02) continue;
 
@@ -240,6 +241,47 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         opacity,
       });
     }
+    return out;
+  }, [positioned, themeAttractors]);
+
+  const intraThemeLinks = useMemo(() => {
+    if (!themeAttractors) {
+      return [] as Array<{ id: string; x1: number; y1: number; x2: number; y2: number; opacity: number }>;
+    }
+
+    const now = Date.now();
+    const recent = positioned.slice(Math.max(0, positioned.length - 140));
+
+    const byTheme: Record<string, PositionedNode[]> = {};
+    for (const n of recent) {
+      if (!n.themeId) continue;
+      const t = themeAttractors[n.themeId];
+      if (!t || t.strength < 2) continue;
+      (byTheme[n.themeId] ||= []).push(n);
+    }
+
+    const out: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; opacity: number }> = [];
+    for (const [themeId, group] of Object.entries(byTheme)) {
+      group.sort((a, b) => a.createdAtMs - b.createdAtMs);
+      const tail = group.slice(Math.max(0, group.length - 10));
+      for (let i = 1; i < tail.length; i++) {
+        const a = tail[i - 1];
+        const b = tail[i];
+        const ageMs = Math.max(0, now - Math.max(a.createdAtMs, b.createdAtMs));
+        const age01 = clamp01(ageMs / (3 * 60 * 1000));
+        const opacity = clamp01(0.16 * (1 - age01));
+        if (opacity <= 0.02) continue;
+        out.push({
+          id: `theme-chain:${themeId}:${a.dataPointId}:${b.dataPointId}`,
+          x1: a.x,
+          y1: a.y,
+          x2: b.x,
+          y2: b.y,
+          opacity,
+        });
+      }
+    }
+
     return out;
   }, [positioned, themeAttractors]);
 
@@ -300,6 +342,18 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
             ))
           : null}
 
+        {intraThemeLinks.map((l) => (
+          <line
+            key={l.id}
+            x1={l.x1}
+            y1={l.y1}
+            x2={l.x2}
+            y2={l.y2}
+            stroke={`rgba(148,163,184,${l.opacity})`}
+            strokeWidth={1}
+          />
+        ))}
+
         {convergenceLinks.map((l) => (
           <line
             key={l.id}
@@ -314,15 +368,19 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
 
         {themeAttractors
           ? Object.entries(themeAttractors).map(([id, t]) => (
-              <circle
-                key={id}
-                cx={t.x}
-                cy={t.y}
-                r={Math.max(6, Math.min(18, 6 + 2 * Math.log1p(Math.max(0, t.strength))))}
-                fill="rgba(148,163,184,0.12)"
-                stroke="rgba(148,163,184,0.35)"
-                strokeWidth={1}
-              />
+              t.strength < 2 ? null : (
+                <circle
+                  key={id}
+                  cx={t.x}
+                  cy={t.y}
+                  r={Math.max(6, Math.min(18, 6 + 2 * Math.log1p(Math.max(0, t.strength))))}
+                  fill="rgba(148,163,184,0.12)"
+                  stroke="rgba(148,163,184,0.35)"
+                  strokeWidth={1}
+                >
+                  <title>{`${t.label} (${t.strength})`}</title>
+                </circle>
+              )
             ))
           : null}
 

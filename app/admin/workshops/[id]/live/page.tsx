@@ -453,7 +453,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
           if (!best || sim > best.sim) best = { id: t.id, sim };
         }
 
-        const threshold = 0.82;
+        const threshold = 0.78;
         const pickThemeId = best && best.sim >= threshold ? best.id : null;
 
         const themeId =
