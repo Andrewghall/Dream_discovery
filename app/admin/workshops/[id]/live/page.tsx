@@ -921,7 +921,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
     return covered / total;
   }, [nodeThemeById, utteranceNodes]);
 
-  const usingDerivedThemes = Object.keys(themesById).length === 0 || themeCoverage01 < 0.2;
+  const maxThemeStrength = useMemo(() => {
+    let max = 0;
+    for (const t of Object.values(themesById)) {
+      const s = typeof t?.strength === 'number' ? t.strength : 0;
+      if (s > max) max = s;
+    }
+    return max;
+  }, [themesById]);
+
+  const usingDerivedThemes = Object.keys(themesById).length === 0 || themeCoverage01 < 0.2 || maxThemeStrength < 2;
   const effectiveThemesById = usingDerivedThemes ? derivedThemes.themesById : themesById;
   const effectiveNodeThemeById = usingDerivedThemes ? derivedThemes.nodeThemeById : nodeThemeById;
 
@@ -1114,7 +1123,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
     for (const t of Object.values(effectiveThemesById)) {
       if (!t || !t.id) continue;
-      if (t.strength < (usingDerivedThemes ? 1 : 2)) continue;
+      if (t.strength < 1) continue;
 
       const utterances = (t.supportingUtteranceIds || [])
         .flatMap((id) => {
