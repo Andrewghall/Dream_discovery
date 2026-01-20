@@ -67,6 +67,13 @@ function scoreDomains(t: string): Array<{ d: LiveDomain; score: number }> {
         /\bculture\b/i,
         /\bleadership\b/i,
         /\bcapability\b/i,
+        /\bempower(ed|ment)?\b/i,
+        /\bescalat(e|ion)\b/i,
+        /\bnew\s+starter(s)?\b/i,
+        /\bonboarding\b/i,
+        /\bexpertise\b/i,
+        /\bproductive\b/i,
+        /\bshared\b/i,
       ]),
     },
     {
@@ -76,11 +83,20 @@ function scoreDomains(t: string): Array<{ d: LiveDomain; score: number }> {
         /\boperation(s)?\b/i,
         /\bprocess(es)?\b/i,
         /\bworkflow\b/i,
+        /\bflow(s)?\b/i,
         /\bgovernance\b/i,
         /\bdecision(s)?\b/i,
         /\borganisation\b/i,
         /\borganization\b/i,
         /\bend\s*to\s*end\b/i,
+        /\bhandoff(s)?\b/i,
+        /\bqueue(s)?\b/i,
+        /\bstall(ing)?\b/i,
+        /\bownership\b/i,
+        /\bexception(s)?\b/i,
+        /\bwaste\b/i,
+        /\bsymptom(s)?\b/i,
+        /\bcause(s)?\b/i,
       ]),
     },
     {
@@ -93,6 +109,9 @@ function scoreDomains(t: string): Array<{ d: LiveDomain; score: number }> {
         /\bexperience\b/i,
         /\bchannel(s)?\b/i,
         /\bjourney\b/i,
+        /\brepeat\s+(myself|yourself|themselves|ourselves)\b/i,
+        /\bcommunication\b/i,
+        /\bproactive\b/i,
       ]),
     },
     {
@@ -105,6 +124,10 @@ function scoreDomains(t: string): Array<{ d: LiveDomain; score: number }> {
         /\btool(s)?\b/i,
         /\bsoftware\b/i,
         /\bdata\b/i,
+        /\bdata\s+quality\b/i,
+        /\bversion\s+of\s+the\s+truth\b/i,
+        /\breal[- ]time\b/i,
+        /\binsight\b/i,
         /\bai\b/i,
         /\bintegration\b/i,
         /\bautomation\b/i,
@@ -121,6 +144,8 @@ function scoreDomains(t: string): Array<{ d: LiveDomain; score: number }> {
         /\baudit\b/i,
         /\brisk\b/i,
         /\bcontrol(s)?\b/i,
+        /\bevidence\b/i,
+        /\bpreventative\b/i,
       ]),
     },
   ];
@@ -128,7 +153,7 @@ function scoreDomains(t: string): Array<{ d: LiveDomain; score: number }> {
 
 function pickBestDomain(scores: Array<{ d: LiveDomain; score: number }>): LiveDomain {
   let best: LiveDomain = 'Operations';
-  let bestS = -1;
+  let bestS = scores.find((x) => x.d === 'Operations')?.score ?? -1;
   for (const s of scores) {
     if (s.score > bestS) {
       bestS = s.score;
@@ -139,6 +164,16 @@ function pickBestDomain(scores: Array<{ d: LiveDomain; score: number }>): LiveDo
 }
 
 function classifyTemporalIntent(t: string): TemporalIntent {
+  const strongYetLimit =
+    /\b(not|isn'?t|aren'?t|can'?t|cannot|won'?t)\b[^.?!]{0,40}\byet\b/i.test(t) ||
+    /\byet\b[^.?!]{0,20}\b(not|isn'?t|aren'?t|can'?t|cannot|won'?t)\b/i.test(t);
+  if (strongYetLimit) return 'LIMIT';
+
+  const negatedConstraintPhrase =
+    /\b(no|without|never)\b[^.?!]{0,35}\b(queue|queues|handoff|handoffs|stall|stalls|stalling|manual|firefighting|workaround|duplication)\b/i.test(
+      t
+    );
+
   const limit = countMatches(t, [
     /\bblocked\b/i,
     /\bblocker(s)?\b/i,
@@ -148,13 +183,38 @@ function classifyTemporalIntent(t: string): TemporalIntent {
     /\bcannot\b/i,
     /\bwon'?t\b/i,
     /\blimited\b/i,
+    /\bmanual(ly)?\b/i,
+    /\bworkaround(s)?\b/i,
+    /\bduplication\b/i,
+    /\bfirefight(ing)?\b/i,
+    /\bqueue(s)?\b/i,
+    /\bhandoff(s)?\b/i,
+    /\bstall(ing)?\b/i,
+    /\bcapacity\b/i,
+    /\bnot\b[^.?!]{0,40}\byet\b/i,
+    /\bisn'?t\b[^.?!]{0,40}\byet\b/i,
+    /\baren'?t\b[^.?!]{0,40}\byet\b/i,
+    /\bstill\b[^.?!]{0,40}\bmanual\b/i,
+    /\bstill\b[^.?!]{0,40}\bdependent\b/i,
     /\bdepends?\s+on\b/i,
-    /\brequires?\b/i,
-    /\bneed(s)?\s+to\b/i,
     /\bapproval\b/i,
     /\bsign[- ]off\b/i,
-    /\bcompliance\b/i,
-    /\bgovernance\b/i,
+  ]);
+
+  const explicitProblemContext = countMatches(t, [
+    /\bone\s+challenge\b/i,
+    /\bthe\s+challenge\b/i,
+    /\bthe\s+problem\b/i,
+    /\bthe\s+issue\b/i,
+  ]);
+
+  const explicitLimitSignals = countMatches(t, [
+    /\blimited\b/i,
+    /\bdependent\b/i,
+    /\bmanual(ly)?\b/i,
+    /\binconsistent\b/i,
+    /\bnot\s+consistent\b/i,
+    /\bdata\s+quality\b/i,
   ]);
 
   const method = countMatches(t, [
@@ -180,7 +240,8 @@ function classifyTemporalIntent(t: string): TemporalIntent {
     /\bas\s+is\b/i,
     /\bwe\s+are\b/i,
     /\bwe\s+have\b/i,
-    /\bthere\s+is\b/i,
+    /\bwe're\b/i,
+    /\bwe've\b/i,
   ]);
 
   const future = countMatches(t, [
@@ -194,21 +255,61 @@ function classifyTemporalIntent(t: string): TemporalIntent {
     /\bfuture\b/i,
     /\bnever\b/i,
     /\balways\b/i,
+    /\bno\s+longer\b/i,
+    /\banymore\b/i,
+    /\bwithout\s+stalling\b/i,
+    /\bwithout\s+manual\s+effort\b/i,
     /\bend\s*to\s*end\b/i,
     /\bseamless\b/i,
     /\bautomatically\b/i,
     /\bjoined\s+up\b/i,
+    /\bjoined-?up\b/i,
     /\bsingle\s+(customer\s+)?view\b/i,
     /\bconsistent\b/i,
+    /\bconsisten(cy|t)\b/i,
     /\bintentionally\s+designed\b/i,
+    /\bproactive\b/i,
+    /\bpreventative\b/i,
+    /\bvisible\s+early\b/i,
+    /\bexists\s+without\b/i,
+    /\bstand\s+out\b/i,
+    /\bfix\s+causes\b/i,
+    /\bversion\s+of\s+the\s+truth\b/i,
+    /\bin\s+the\s+future\s+model\b/i,
+    /\bto\s+make\s+this\s+work\b/i,
+    /\bunderpin(s|ning)?\b/i,
+    /\benable(s|d|ing)?\b/i,
+    /\bis\s+critical\b/i,
+    /\bvisibility\b/i,
+    /\bownership\b/i,
+    /\bclarity\b/i,
+    /\bif\s+this\s+is\s+working\b/i,
+    /\bscales?\b/i,
+    /\bwithout\s+linear\b/i,
+    /\bfeel(s)?\s+simple\b/i,
+    /\bjust\s+works\b/i,
+    /\binvisible\b/i,
   ]);
 
-  if (limit >= 2) return 'LIMIT';
-  if (method >= 2 && limit === 0) return 'METHOD';
-  if (future >= 2 && current === 0) return 'FUTURE';
-  if (limit > 0 && limit >= method) return 'LIMIT';
+  const futureAdjusted = future + (negatedConstraintPhrase ? 2 : 0);
+  const limitAdjusted = negatedConstraintPhrase ? 0 : limit;
+
+  if (
+    current > 0 &&
+    (explicitProblemContext > 0 || explicitLimitSignals > 0) &&
+    limitAdjusted > 0 &&
+    futureAdjusted > 0
+  ) {
+    return 'LIMIT';
+  }
+
+  if (limitAdjusted >= 2) return 'LIMIT';
+  if (method >= 2 && limitAdjusted === 0) return 'METHOD';
+  if (futureAdjusted >= 2 && current === 0) return 'FUTURE';
+  if (limitAdjusted > 0 && (explicitProblemContext > 0 || explicitLimitSignals > 0)) return 'LIMIT';
+  if (limitAdjusted > 0 && limitAdjusted >= method && futureAdjusted === 0) return 'LIMIT';
   if (method > 0 && method > future && method > limit) return 'METHOD';
-  if (future > 0 && future >= current) return 'FUTURE';
+  if (futureAdjusted > 0 && futureAdjusted >= current) return 'FUTURE';
   if (current > 0) return 'CURRENT';
   return 'CURRENT';
 }
@@ -226,6 +327,14 @@ function classifyCognitiveTypes(t: string, temporal: TemporalIntent): CognitiveT
   const isQuestion = /\?\s*$/.test(t) || /^\s*(why|what|how|when|where|who)\b/i.test(t);
   if (isQuestion) out.push('QUESTION');
 
+  const negatedConstraintContext =
+    /\b(no\s+longer|without|never|not)\b[^.?!]{0,40}\b(constraint|constraints|risk|manual|queue|queues|handoff|handoffs|stall|stalls|stalling|workaround|duplication|firefight(ing)?)\b/i.test(
+      t
+    ) ||
+    /\b(constraint|constraints|risk|manual|queue|queues|handoff|handoffs|stall|stalls|stalling|workaround|duplication|firefight(ing)?)\b[^.?!]{0,40}\b(no\s+longer|without|never|not)\b/i.test(
+      t
+    );
+
   const blocker = countMatches(t, [
     /\bblocked\b/i,
     /\bblocker(s)?\b/i,
@@ -237,10 +346,10 @@ function classifyCognitiveTypes(t: string, temporal: TemporalIntent): CognitiveT
     /\bdependency\b/i,
     /\bdepends?\s+on\b/i,
   ]);
-  if (temporal === 'LIMIT' || blocker > 0) out.push('BLOCKER');
+  if (temporal === 'LIMIT' || (blocker > 0 && !negatedConstraintContext)) out.push('BLOCKER');
 
   const enabler = countMatches(t, [
-    /\benable\b/i,
+    /\benable(s|d|ing)?\b/i,
     /\benabler\b/i,
     /\bcapabilit(y|ies)\b/i,
     /\brequires?\b/i,
@@ -249,8 +358,17 @@ function classifyCognitiveTypes(t: string, temporal: TemporalIntent): CognitiveT
     /\bintegration\b/i,
     /\bautomation\b/i,
     /\btraining\b/i,
+    /\bvisibility\b/i,
+    /\bownership\b/i,
+    /\baccountability\b/i,
+    /\bunderpin(s|ning)?\b/i,
+    /\bfoundation(s)?\b/i,
+    /\bshared\s+understanding\b/i,
+    /\bknowledge\b/i,
+    /\bcontext\b/i,
+    /\bversion\s+of\s+the\s+truth\b/i,
   ]);
-  if (temporal === 'FUTURE' && enabler > 0) out.push('ENABLER');
+  if (enabler > 0 && temporal !== 'LIMIT') out.push('ENABLER');
 
   const opportunity = countMatches(t, [
     /\bopportunit(y|ies)\b/i,
