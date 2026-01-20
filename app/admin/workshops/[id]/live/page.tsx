@@ -146,6 +146,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const embeddingCacheRef = useRef<Map<string, number[]>>(new Map());
   const embeddingInFlightRef = useRef<Set<string>>(new Set());
 
+  const [lensDomain, setLensDomain] = useState<LiveDomain | null>(null);
+
   const [dependencyEdgesById, setDependencyEdgesById] = useState<Record<string, LiveDependencyEdge>>({});
   const dependencyEdgesRef = useRef<Record<string, LiveDependencyEdge>>({});
 
@@ -700,6 +702,47 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
     return out;
   }, [nodes, themesById]);
+
+  const lensInsights = useMemo(() => {
+    if (!lensDomain) return null;
+
+    const outcomes = [
+      ...(synthesisByDomain[lensDomain]?.aspirations || []),
+      ...(synthesisByDomain[lensDomain]?.opportunities || []),
+    ]
+      .slice()
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 5);
+
+    const deps = Object.values(dependencyEdgesById)
+      .filter((e) => e.fromDomain === lensDomain)
+      .slice()
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+
+    const blockers = deps
+      .filter((e) => e.count >= 3 && e.constraintCount >= 2 && e.constraintCount > e.aspirationCount)
+      .slice(0, 5);
+
+    const enablers = deps
+      .filter((e) => e.count >= 3 && e.aspirationCount >= 2 && e.aspirationCount >= e.constraintCount)
+      .slice(0, 5);
+
+    const inbound = Object.values(dependencyEdgesById)
+      .filter((e) => e.toDomain === lensDomain)
+      .slice()
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    return {
+      lensDomain,
+      outcomes,
+      dependencies: deps,
+      blockers,
+      enablers,
+      inbound,
+    };
+  }, [dependencyEdgesById, lensDomain, synthesisByDomain]);
 
   const domainCounts = useMemo(() => {
     const counts: Record<LiveDomain, number> = {
@@ -1835,6 +1878,141 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   </div>
 
                   {error && <div className="text-sm text-red-600">{error}</div>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lens</CardTitle>
+                  <CardDescription>Pick a domain and interpret outcomes, blockers, enablers, and dependencies</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-1">
+                    <Label>Domain</Label>
+                    <Select
+                      value={lensDomain ?? 'none'}
+                      onValueChange={(v) => {
+                        if (v === 'none') {
+                          setLensDomain(null);
+                          return;
+                        }
+                        setLensDomain(v as LiveDomain);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a domain" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="People">People</SelectItem>
+                        <SelectItem value="Operations">Operations</SelectItem>
+                        <SelectItem value="Customer">Customer</SelectItem>
+                        <SelectItem value="Technology">Technology</SelectItem>
+                        <SelectItem value="Regulation">Regulation</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {!lensInsights ? (
+                    <div className="text-sm text-muted-foreground">Select a domain to view lens-based interpretation.</div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Outcomes (aspirations + opportunities)</div>
+                        {lensInsights.outcomes.length === 0 ? (
+                          <div className="text-sm text-muted-foreground">No outcomes yet.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {lensInsights.outcomes.map((x) => (
+                              <div key={x.themeId} className="rounded-md border bg-background px-2 py-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-sm font-medium">{x.label}</div>
+                                  <div className="text-xs text-muted-foreground tabular-nums">×{x.strength}</div>
+                                </div>
+                                {x.examples?.[0] ? (
+                                  <div className="mt-1 text-xs text-muted-foreground">{x.examples[0]}</div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Blockers (constraints dominating dependencies)</div>
+                        {lensInsights.blockers.length === 0 ? (
+                          <div className="text-sm text-muted-foreground">No blockers detected yet.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {lensInsights.blockers.map((e) => (
+                              <div key={e.id} className="rounded-md border px-2 py-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-sm font-medium">{e.toDomain}</div>
+                                  <div className="text-xs text-muted-foreground tabular-nums">mentions: {e.count}</div>
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+                                  constraints: {e.constraintCount} • aspirations: {e.aspirationCount}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Enablers (aspirations dominating dependencies)</div>
+                        {lensInsights.enablers.length === 0 ? (
+                          <div className="text-sm text-muted-foreground">No enablers detected yet.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {lensInsights.enablers.map((e) => (
+                              <div key={e.id} className="rounded-md border px-2 py-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-sm font-medium">{e.toDomain}</div>
+                                  <div className="text-xs text-muted-foreground tabular-nums">mentions: {e.count}</div>
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+                                  aspirations: {e.aspirationCount} • constraints: {e.constraintCount}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Dependencies mentioned (what this domain references)</div>
+                        {lensInsights.dependencies.length === 0 ? (
+                          <div className="text-sm text-muted-foreground">No dependencies detected yet.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {lensInsights.dependencies.map((e) => (
+                              <div key={e.id} className="flex items-center justify-between rounded-md border px-2 py-2">
+                                <div className="text-sm font-medium">{e.toDomain}</div>
+                                <div className="text-xs text-muted-foreground tabular-nums">{e.count}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Inbound (other domains referencing this one)</div>
+                        {lensInsights.inbound.length === 0 ? (
+                          <div className="text-sm text-muted-foreground">None yet.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {lensInsights.inbound.map((e) => (
+                              <div key={e.id} className="flex items-center justify-between rounded-md border px-2 py-2">
+                                <div className="text-sm font-medium">{e.fromDomain}</div>
+                                <div className="text-xs text-muted-foreground tabular-nums">{e.count}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
