@@ -110,9 +110,19 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   timeScaleMs?: number;
   onNodeClick?: (node: HemisphereNodeDatum) => void;
   themeAttractors?: Record<string, { x: number; y: number; strength: number; label: string }>;
+  links?: Array<{
+    id: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    strength: number;
+    color?: string;
+    width?: number;
+  }>;
   className?: string;
 }) {
-  const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, themeAttractors, className } = props;
+  const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, themeAttractors, links, className } = props;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -197,6 +207,42 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
     });
   }, [nodes, originTimeMs, timeScaleMs, themeAttractors]);
 
+  const convergenceLinks = useMemo(() => {
+    if (!themeAttractors) return [] as Array<{
+      id: string;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      opacity: number;
+    }>;
+
+    const now = Date.now();
+    const recent = positioned.slice(Math.max(0, positioned.length - 48));
+
+    const out: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; opacity: number }> = [];
+    for (const n of recent) {
+      if (!n.themeId) continue;
+      const t = themeAttractors[n.themeId];
+      if (!t) continue;
+
+      const ageMs = Math.max(0, now - n.createdAtMs);
+      const age01 = clamp01(ageMs / (90 * 1000));
+      const opacity = clamp01(0.22 * (1 - age01));
+      if (opacity <= 0.02) continue;
+
+      out.push({
+        id: `theme:${n.dataPointId}`,
+        x1: n.x,
+        y1: n.y,
+        x2: t.x,
+        y2: t.y,
+        opacity,
+      });
+    }
+    return out;
+  }, [positioned, themeAttractors]);
+
   const backdrop = useMemo(() => {
     const W = 1000;
     const H = 520;
@@ -230,6 +276,40 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         ))}
         {backdrop.spokes.map((d) => (
           <path key={d} d={d} fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth={1} />
+        ))}
+
+        {links
+          ? links.map((l) => (
+              <line
+                key={l.id}
+                x1={l.x1}
+                y1={l.y1}
+                x2={l.x2}
+                y2={l.y2}
+                stroke={
+                  l.color
+                    ? l.color
+                    : `rgba(99,102,241,${clamp01(0.10 + 0.18 * clamp01(l.strength))})`
+                }
+                strokeWidth={
+                  typeof l.width === 'number'
+                    ? l.width
+                    : Math.max(1, Math.min(3.5, 1 + 2.5 * clamp01(l.strength)))
+                }
+              />
+            ))
+          : null}
+
+        {convergenceLinks.map((l) => (
+          <line
+            key={l.id}
+            x1={l.x1}
+            y1={l.y1}
+            x2={l.x2}
+            y2={l.y2}
+            stroke={`rgba(148,163,184,${l.opacity})`}
+            strokeWidth={1}
+          />
         ))}
 
         {themeAttractors

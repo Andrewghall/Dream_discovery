@@ -128,12 +128,26 @@ export default function WorkshopLivePage({ params }: PageProps) {
     supportingUtteranceIds: string[];
   };
 
+  type LiveDependencyEdge = {
+    id: string;
+    fromDomain: LiveDomain;
+    toDomain: LiveDomain;
+    count: number;
+    aspirationCount: number;
+    constraintCount: number;
+    firstSeenAtMs: number;
+    lastSeenAtMs: number;
+  };
+
   const [themesById, setThemesById] = useState<Record<string, LiveTheme>>({});
   const themesRef = useRef<Record<string, LiveTheme>>({});
   const [nodeThemeById, setNodeThemeById] = useState<Record<string, string>>({});
   const nodeThemeRef = useRef<Record<string, string>>({});
   const embeddingCacheRef = useRef<Map<string, number[]>>(new Map());
   const embeddingInFlightRef = useRef<Set<string>>(new Set());
+
+  const [dependencyEdgesById, setDependencyEdgesById] = useState<Record<string, LiveDependencyEdge>>({});
+  const dependencyEdgesRef = useRef<Record<string, LiveDependencyEdge>>({});
 
   const statusRef = useRef<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
 
@@ -266,6 +280,83 @@ export default function WorkshopLivePage({ params }: PageProps) {
     };
   };
 
+  const domainCenterPosition = (domain: LiveDomain) => {
+    const W = 1000;
+    const H = 520;
+    const pad = 32;
+    const cx = W / 2;
+    const cy = H - pad;
+    const R = Math.min(cx - pad, cy - pad);
+
+    const domainAngles: Record<LiveDomain, number> = {
+      People: (5 * Math.PI) / 6,
+      Operations: (3 * Math.PI) / 4,
+      Customer: Math.PI / 2,
+      Technology: Math.PI / 3,
+      Regulation: Math.PI / 6,
+    };
+
+    const theta = domainAngles[domain];
+    const radial = R * 0.64;
+    return {
+      x: cx + radial * Math.cos(theta),
+      y: cy - radial * Math.sin(theta),
+    };
+  };
+
+  const normalizeText = (text: string) => String(text || '').trim().toLowerCase();
+
+  const inferMentionedDomains = (text: string): LiveDomain[] => {
+    const t = normalizeText(text);
+    const matches: Array<{ d: LiveDomain; score: number }> = [
+      {
+        d: 'People',
+        score: (t.match(/\b(people|team|staff|skills?|culture|leadership)\b/g) || []).length,
+      },
+      {
+        d: 'Operations',
+        score: (t.match(/\b(ops|operations?|process(es)?|workflow|governance|decision(s)?|organisation|organization)\b/g) || [])
+          .length,
+      },
+      {
+        d: 'Customer',
+        score: (t.match(/\b(customer(s)?|client(s)?|user(s)?|service|experience)\b/g) || []).length,
+      },
+      {
+        d: 'Technology',
+        score: (t.match(/\b(tech|technology|system(s)?|platform|tool(s)?|software|data|ai)\b/g) || []).length,
+      },
+      {
+        d: 'Regulation',
+        score: (t.match(/\b(regulation(s)?|regulatory|compliance|legal|policy|audit|risk)\b/g) || []).length,
+      },
+    ];
+
+    return matches
+      .filter((m) => m.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((m) => m.d);
+  };
+
+  const hasDependencyLanguage = (text: string) => {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return /\b(depends? on|dependent on|blocked by|bottleneck|requires?|need(s)?|must|approval|sign[- ]off|compliance|governance|legal)\b/i.test(
+      t
+    );
+  };
+
+  const dependencySignalKind = (n: HemisphereNodeDatum, interpretedIntentType: string) => {
+    const cls = String(n.classification?.primaryType || '').trim().toUpperCase();
+    if (cls === 'CONSTRAINT' || cls === 'RISK') return 'constraint';
+    if (cls === 'VISIONARY' || cls === 'OPPORTUNITY') return 'aspiration';
+
+    const ii = String(interpretedIntentType || '').trim().toUpperCase();
+    if (ii === 'CONSTRAINT') return 'constraint';
+    if (ii === 'DREAM' || ii === 'IDEA') return 'aspiration';
+    return 'neutral';
+  };
+
   const embeddingUrl = useMemo(
     () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/embedding`,
     [workshopId]
@@ -294,6 +385,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
   }, [nodeThemeById]);
 
   useEffect(() => {
+    dependencyEdgesRef.current = dependencyEdgesById;
+  }, [dependencyEdgesById]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const maybeProcess = async (n: HemisphereNodeDatum) => {
@@ -313,6 +408,40 @@ export default function WorkshopLivePage({ params }: PageProps) {
         const i = interpretLiveUtterance(n.rawText);
         const domain = i.domain;
         const intentType = n.classification?.primaryType ?? i.intentType;
+
+        if (hasDependencyLanguage(n.rawText)) {
+          const mentioned = inferMentionedDomains(n.rawText);
+          const candidates = mentioned.filter((d) => d !== domain);
+          const toDomain = candidates.length ? candidates[0] : null;
+          if (toDomain) {
+            const id = `dep:${domain}->${toDomain}`;
+            const now = Date.now();
+            const kind = dependencySignalKind(n, i.intentType);
+            const prev = dependencyEdgesRef.current[id];
+            const next: LiveDependencyEdge = prev
+              ? {
+                  ...prev,
+                  count: prev.count + 1,
+                  aspirationCount: prev.aspirationCount + (kind === 'aspiration' ? 1 : 0),
+                  constraintCount: prev.constraintCount + (kind === 'constraint' ? 1 : 0),
+                  lastSeenAtMs: now,
+                }
+              : {
+                  id,
+                  fromDomain: domain,
+                  toDomain,
+                  count: 1,
+                  aspirationCount: kind === 'aspiration' ? 1 : 0,
+                  constraintCount: kind === 'constraint' ? 1 : 0,
+                  firstSeenAtMs: now,
+                  lastSeenAtMs: now,
+                };
+
+            if (!cancelled) {
+              setDependencyEdgesById((m) => ({ ...m, [id]: next }));
+            }
+          }
+        }
 
         const existingThemes = Object.values(themesRef.current).filter(
           (t) => t.domain === domain && t.intentType === intentType
@@ -394,6 +523,83 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
     return out;
   }, [themesById]);
+
+  const dependencyLinks = useMemo(() => {
+    const edges = Object.values(dependencyEdgesById);
+    if (!edges.length)
+      return [] as Array<{
+        id: string;
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+        strength: number;
+        color?: string;
+        width?: number;
+      }>;
+
+    const now = Date.now();
+    const threshold = 3;
+    const pressureThreshold = 3;
+
+    return edges
+      .filter((e) => e.count >= threshold)
+      .map((e) => {
+        const a = domainCenterPosition(e.fromDomain);
+        const b = domainCenterPosition(e.toDomain);
+        const ageMs = Math.max(0, now - e.lastSeenAtMs);
+        const decay01 = clamp01(ageMs / (6 * 60 * 1000));
+        const base = clamp01((e.count - threshold) / 6);
+        const strength = clamp01(base * (1 - decay01));
+
+        const isPressure =
+          e.count >= pressureThreshold &&
+          e.constraintCount >= 2 &&
+          e.constraintCount > e.aspirationCount &&
+          strength > 0.08;
+
+        const alpha = clamp01(0.18 + 0.35 * strength);
+
+        return {
+          id: e.id,
+          x1: a.x,
+          y1: a.y,
+          x2: b.x,
+          y2: b.y,
+          strength,
+          ...(isPressure
+            ? {
+                color: `rgba(249,115,22,${alpha})`,
+                width: Math.max(2.5, Math.min(5.5, 2.5 + 3.0 * strength)),
+              }
+            : {}),
+        };
+      })
+      .filter((l) => l.strength > 0.02);
+  }, [dependencyEdgesById]);
+
+  const pressurePoints = useMemo(() => {
+    const edges = Object.values(dependencyEdgesById);
+    if (!edges.length) return [] as Array<{ id: string; fromDomain: LiveDomain; toDomain: LiveDomain; score: number; constraintCount: number; aspirationCount: number; count: number }>;
+
+    return edges
+      .map((e) => {
+        const delta = e.constraintCount - e.aspirationCount;
+        const score = delta * 3 + Math.max(0, e.count - 2);
+        return {
+          id: e.id,
+          fromDomain: e.fromDomain,
+          toDomain: e.toDomain,
+          score,
+          constraintCount: e.constraintCount,
+          aspirationCount: e.aspirationCount,
+          count: e.count,
+        };
+      })
+      .filter((p) => p.count >= 3 && p.constraintCount >= 2 && p.constraintCount > p.aspirationCount)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  }, [dependencyEdgesById]);
 
   const domainCounts = useMemo(() => {
     const counts: Record<LiveDomain, number> = {
@@ -1393,6 +1599,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       originTimeMs={originTimeMs}
                       onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
                       themeAttractors={themeAttractors}
+                      links={dependencyLinks}
                       className="h-full w-full"
                     />
                   )}
@@ -1540,6 +1747,32 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   <div className="min-w-0">
                     <LiveDomainRadar counts={domainCounts} />
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Pressure points</CardTitle>
+                  <CardDescription>Recurring blockers where constraints dominate aspirations</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {pressurePoints.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No pressure points detected yet.</div>
+                  ) : (
+                    pressurePoints.map((p) => (
+                      <div key={p.id} className="rounded-md border p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium">
+                            {p.fromDomain} → {p.toDomain}
+                          </div>
+                          <div className="text-xs text-muted-foreground tabular-nums">mentions: {p.count}</div>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+                          constraints: {p.constraintCount} • aspirations: {p.aspirationCount}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </CardContent>
               </Card>
 
