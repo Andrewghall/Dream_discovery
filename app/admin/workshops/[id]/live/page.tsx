@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -77,6 +78,14 @@ type AnnotationUpdatedPayload = {
     intent?: string | null;
     updatedAt: string | Date;
   };
+};
+
+type LiveSnapshotMeta = {
+  id: string;
+  name: string;
+  dialoguePhase: string;
+  createdAt: string | Date;
+  updatedAt: string | Date;
 };
 
 function errorMessage(value: unknown): string {
@@ -154,6 +163,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const dependencyProcessedRef = useRef<Set<string>>(new Set());
   const [dependencyProcessedCount, setDependencyProcessedCount] = useState(0);
 
+  const [snapshots, setSnapshots] = useState<LiveSnapshotMeta[]>([]);
+  const [snapshotsError, setSnapshotsError] = useState<string | null>(null);
+  const [snapshotName, setSnapshotName] = useState('');
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
+  const lastDefaultSnapshotNameRef = useRef<string>('');
+
   const statusRef = useRef<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
 
   const [micDialogOpen, setMicDialogOpen] = useState(false);
@@ -207,6 +222,149 @@ export default function WorkshopLivePage({ params }: PageProps) {
     text: string;
     source: string;
   }) => `${p.startTimeMs}:${p.endTimeMs}:${p.source}:${p.text}`;
+
+  const snapshotUrl = useMemo(
+    () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/snapshots`,
+    [workshopId]
+  );
+
+  const defaultSnapshotName = useMemo(() => {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yy = String(d.getFullYear() % 100).padStart(2, '0');
+    const phase =
+      dialoguePhase === 'CONSTRAINTS'
+        ? 'constraints'
+        : dialoguePhase === 'DEFINE_APPROACH'
+          ? 'define-approach'
+          : 'reimagine';
+    return `Live-v1-${dd}${mm}${yy}-${phase}-workshop`;
+  }, [dialoguePhase]);
+
+  useEffect(() => {
+    const current = snapshotName.trim();
+    if (!current || current === lastDefaultSnapshotNameRef.current) {
+      setSnapshotName(defaultSnapshotName);
+      lastDefaultSnapshotNameRef.current = defaultSnapshotName;
+    }
+  }, [defaultSnapshotName]);
+
+  const fetchSnapshots = async () => {
+    try {
+      setSnapshotsError(null);
+      const r = await fetch(`${snapshotUrl}?bust=${Date.now()}`, { cache: 'no-store' });
+      const json = (await r.json().catch(() => null)) as
+        | { ok?: boolean; snapshots?: LiveSnapshotMeta[]; error?: string; detail?: string }
+        | null;
+      if (!r.ok || !json || json.ok !== true) {
+        const msg = json?.error || 'Failed to load snapshots';
+        const detail = json?.detail ? `: ${json.detail}` : '';
+        setSnapshots([]);
+        setSnapshotsError(`${msg}${detail}`);
+        return;
+      }
+      const list = Array.isArray(json.snapshots) ? json.snapshots : [];
+      setSnapshots(list);
+      setSelectedSnapshotId((prev) => (prev && list.some((s) => s.id === prev) ? prev : list[0]?.id ?? ''));
+    } catch (e) {
+      setSnapshots([]);
+      setSnapshotsError(e instanceof Error ? e.message : 'Failed to load snapshots');
+    }
+  };
+
+  useEffect(() => {
+    void fetchSnapshots();
+  }, [snapshotUrl]);
+
+  const saveSnapshot = async () => {
+    const name = snapshotName.trim();
+    if (!name) {
+      setSnapshotsError('Snapshot name is required');
+      return;
+    }
+
+    const payload = {
+      v: 1,
+      dialoguePhase,
+      nodesById,
+      selectedNodeId,
+      themesById,
+      nodeThemeById,
+      dependencyEdgesById,
+      dependencyProcessedIds: Array.from(dependencyProcessedRef.current),
+      dependencyProcessedCount,
+    };
+
+    try {
+      setSnapshotsError(null);
+      const r = await fetch(snapshotUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, dialoguePhase, payload }),
+      });
+      const json = (await r.json().catch(() => null)) as
+        | { ok?: boolean; snapshot?: { id: string }; error?: string; detail?: string }
+        | null;
+      if (!r.ok || !json || json.ok !== true || !json.snapshot?.id) {
+        const msg = json?.error || 'Failed to save snapshot';
+        const detail = json?.detail ? `: ${json.detail}` : '';
+        setSnapshotsError(`${msg}${detail}`);
+        return;
+      }
+      await fetchSnapshots();
+      setSelectedSnapshotId(json.snapshot.id);
+    } catch (e) {
+      setSnapshotsError(e instanceof Error ? e.message : 'Failed to save snapshot');
+    }
+  };
+
+  const loadSnapshot = async () => {
+    const id = selectedSnapshotId;
+    if (!id) return;
+    try {
+      setSnapshotsError(null);
+      const r = await fetch(`${snapshotUrl}/${encodeURIComponent(id)}?bust=${Date.now()}`, { cache: 'no-store' });
+      const json = (await r.json().catch(() => null)) as
+        | { ok?: boolean; snapshot?: { payload?: unknown; dialoguePhase?: string }; error?: string; detail?: string }
+        | null;
+      if (!r.ok || !json || json.ok !== true || !json.snapshot) {
+        const msg = json?.error || 'Failed to load snapshot';
+        const detail = json?.detail ? `: ${json.detail}` : '';
+        setSnapshotsError(`${msg}${detail}`);
+        return;
+      }
+
+      const p = (json.snapshot as { payload?: any }).payload;
+      if (!p || typeof p !== 'object') {
+        setSnapshotsError('Snapshot payload is invalid');
+        return;
+      }
+
+      const phaseFromSnap = safePhase((p as any).dialoguePhase) ?? safePhase(json.snapshot.dialoguePhase);
+      if (phaseFromSnap) setDialoguePhase(phaseFromSnap);
+
+      const nextNodesById = (p as any).nodesById;
+      const nextThemesById = (p as any).themesById;
+      const nextNodeThemeById = (p as any).nodeThemeById;
+      const nextDependencyEdgesById = (p as any).dependencyEdgesById;
+
+      if (nextNodesById && typeof nextNodesById === 'object') setNodesById(nextNodesById);
+      if (typeof (p as any).selectedNodeId === 'string' || (p as any).selectedNodeId === null) {
+        setSelectedNodeId((p as any).selectedNodeId);
+      }
+      if (nextThemesById && typeof nextThemesById === 'object') setThemesById(nextThemesById);
+      if (nextNodeThemeById && typeof nextNodeThemeById === 'object') setNodeThemeById(nextNodeThemeById);
+      if (nextDependencyEdgesById && typeof nextDependencyEdgesById === 'object') setDependencyEdgesById(nextDependencyEdgesById);
+
+      const processed = Array.isArray((p as any).dependencyProcessedIds) ? (p as any).dependencyProcessedIds : [];
+      const ids = processed.filter((x: unknown) => typeof x === 'string') as string[];
+      dependencyProcessedRef.current = new Set(ids);
+      setDependencyProcessedCount(typeof (p as any).dependencyProcessedCount === 'number' ? (p as any).dependencyProcessedCount : ids.length);
+    } catch (e) {
+      setSnapshotsError(e instanceof Error ? e.message : 'Failed to load snapshot');
+    }
+  };
 
   const nodes = useMemo(() => {
     const arr = Object.values(nodesById);
@@ -2011,6 +2169,61 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   </div>
 
                   {error && <div className="text-sm text-red-600">{error}</div>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Snapshots</CardTitle>
+                  <CardDescription>Save/load versioned Live states per phase</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-1">
+                    <Label>Name</Label>
+                    <Input value={snapshotName} onChange={(e) => setSnapshotName(e.target.value)} />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={() => setSnapshotName(defaultSnapshotName)}>
+                      Use default
+                    </Button>
+                    <Button type="button" onClick={() => void saveSnapshot()}>
+                      Save snapshot
+                    </Button>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>Load</Label>
+                    <Select value={selectedSnapshotId || '__none'} onValueChange={(v) => setSelectedSnapshotId(v)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a snapshot" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {snapshots.length === 0 ? (
+                          <SelectItem value="__none" disabled>
+                            No snapshots yet
+                          </SelectItem>
+                        ) : (
+                          snapshots.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={() => void fetchSnapshots()}>
+                      Refresh
+                    </Button>
+                    <Button type="button" disabled={!selectedSnapshotId} onClick={() => void loadSnapshot()}>
+                      Load snapshot
+                    </Button>
+                  </div>
+
+                  {snapshotsError ? <div className="text-sm text-red-600">{snapshotsError}</div> : null}
                 </CardContent>
               </Card>
 

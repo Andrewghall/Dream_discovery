@@ -54,6 +54,7 @@ model Workshop {
   dataPoints        DataPoint[]
   reports           ConversationReport[]
   themes            DiscoveryTheme[]
+  liveSnapshots     LiveWorkshopSnapshot[]
   transcriptChunks  TranscriptChunk[]
   participants      WorkshopParticipant[]
   createdBy         User                  @relation(fields: [createdById], references: [id])
@@ -253,6 +254,21 @@ model DiscoveryTheme {
   workshop         Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 
   @@map("discovery_themes")
+}
+
+model LiveWorkshopSnapshot {
+  id           String   @id @default(cuid())
+  workshopId   String
+  name         String
+  dialoguePhase String
+  payload      Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId, createdAt])
+  @@map("live_workshop_snapshots")
 }
 
 enum WorkshopStatus {
