@@ -32,7 +32,7 @@ interface Participant {
   department: string | null;
   discoveryToken: string;
   emailSentAt: Date | null;
-  doNotSendAgain: boolean;
+  doNotSendAgain?: boolean;
   responseStartedAt: Date | null;
   responseCompletedAt: Date | null;
 }

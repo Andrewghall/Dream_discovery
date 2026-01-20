@@ -104,10 +104,19 @@ export async function PATCH(
 
     return NextResponse.json({ participant: updated });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('Unknown argument') && message.includes('doNotSendAgain')) {
+      return NextResponse.json(
+        {
+          error: 'Participant suppression flag is not available in this environment yet',
+          detail:
+            'Database is missing column doNotSendAgain. Apply the migration (ALTER TABLE workshop_participants ADD COLUMN doNotSendAgain BOOLEAN NOT NULL DEFAULT FALSE) and redeploy.',
+        },
+        { status: 409 }
+      );
+    }
+
     console.error('Error updating participant:', error);
-    return NextResponse.json(
-      { error: 'Failed to update participant' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to update participant' }, { status: 500 });
   }
 }

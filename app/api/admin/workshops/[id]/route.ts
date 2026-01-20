@@ -15,6 +15,21 @@ export async function GET(
       include: {
         participants: {
           orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            workshopId: true,
+            email: true,
+            name: true,
+            role: true,
+            department: true,
+            discoveryToken: true,
+            attributionPreference: true,
+            emailSentAt: true,
+            responseStartedAt: true,
+            responseCompletedAt: true,
+            reminderSentAt: true,
+            createdAt: true,
+          },
         },
       },
     });
