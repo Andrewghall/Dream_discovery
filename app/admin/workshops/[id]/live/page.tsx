@@ -29,6 +29,8 @@ import {
   type HemisphereNodeDatum,
   type HemispherePrimaryType,
 } from '@/components/live/hemisphere-nodes';
+import { LiveDomainRadar } from '@/components/live/live-domain-radar';
+import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -173,6 +175,31 @@ export default function WorkshopLivePage({ params }: PageProps) {
     arr.sort((a, b) => a.createdAtMs - b.createdAtMs);
     return arr;
   }, [nodesById]);
+
+  const interpretedNodes = useMemo(() => {
+    return nodes.map((n) => {
+      const i = interpretLiveUtterance(n.rawText);
+      return {
+        ...n,
+        intent: `${i.intentType} / ${i.domain}`,
+      };
+    });
+  }, [nodes]);
+
+  const domainCounts = useMemo(() => {
+    const counts: Record<LiveDomain, number> = {
+      People: 0,
+      Operations: 0,
+      Customer: 0,
+      Technology: 0,
+      Regulation: 0,
+    };
+    for (const n of nodes) {
+      const i = interpretLiveUtterance(n.rawText);
+      counts[i.domain] = (counts[i.domain] || 0) + 1;
+    }
+    return counts;
+  }, [nodes]);
 
   const originTimeMs = useMemo(() => (nodes.length ? nodes[0].createdAtMs : null), [nodes]);
 
@@ -621,12 +648,23 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const refreshMicDevices = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const mics = devices
-      .filter((d) => d.kind === 'audioinput')
-      .map((d) => ({ deviceId: d.deviceId, label: d.label || 'Microphone' }));
-    setMicDevices(mics);
-    if (!selectedMicId && mics.length > 0) setSelectedMicId(mics[0].deviceId);
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices
+        .filter((d) => d.kind === 'audioinput')
+        .map((d) => ({ deviceId: d.deviceId, label: d.label || 'Microphone' }))
+        .filter((d) => d.deviceId && d.deviceId !== '__none');
+
+      setMicDevices(mics);
+
+      const stillValid = selectedMicId && mics.some((m) => m.deviceId === selectedMicId);
+      if (!stillValid) {
+        setSelectedMicId(mics.length > 0 ? mics[0].deviceId : '');
+      }
+    } catch {
+      setMicDevices([]);
+      if (selectedMicId) setSelectedMicId('');
+    }
   };
 
   const stopMicTest = async () => {
@@ -658,10 +696,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const startMicTest = async () => {
     setError(null);
-    setMicTesting(true);
 
     try {
       await stopMicTest();
+      setMicTesting(true);
 
       const constraints: MediaStreamConstraints = {
         audio: selectedMicId ? { deviceId: { exact: selectedMicId } } : true,
@@ -676,6 +714,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
@@ -1111,14 +1152,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
         <div
           className={
             viewMode === 'split'
-              ? 'grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-4'
+              ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] gap-4'
               : viewMode === 'facilitator'
                 ? 'space-y-4'
                 : 'space-y-4'
           }
         >
           {viewMode !== 'facilitator' ? (
-            <Card>
+            <Card className={viewMode === 'split' ? 'min-w-0 lg:sticky lg:top-4 lg:self-start' : undefined}>
               <CardHeader>
                 <CardTitle>Hemisphere</CardTitle>
                 {viewMode === 'room' ? null : (
@@ -1139,7 +1180,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     <div className="text-sm text-muted-foreground">No datapoints yet.</div>
                   ) : (
                     <HemisphereNodes
-                      nodes={nodes}
+                      nodes={interpretedNodes}
                       originTimeMs={originTimeMs}
                       onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
                       className="h-full w-full"
@@ -1151,7 +1192,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
           ) : null}
 
           {viewMode !== 'room' ? (
-            <div className={viewMode === 'split' ? 'space-y-4' : 'space-y-4'}>
+            <div className={(viewMode === 'split' ? 'space-y-4 min-w-0' : 'space-y-4') + ' min-w-0'}>
               <Card>
                 <CardHeader>
                   <CardTitle>Capture</CardTitle>
@@ -1282,6 +1323,18 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
               <Card>
                 <CardHeader>
+                  <CardTitle>Live spider (domains)</CardTitle>
+                  <CardDescription>Distribution across People / Operations / Customer / Technology / Regulation</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="min-w-0">
+                    <LiveDomainRadar counts={domainCounts} />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
                   <CardTitle>Workboard</CardTitle>
                   <CardDescription>{phaseLabel} • What’s happening in the room</CardDescription>
                 </CardHeader>
@@ -1343,13 +1396,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
                           <button
                             key={n.dataPointId}
                             type="button"
-                            className="w-full text-left rounded-md border bg-background px-2 py-2 hover:bg-muted/40"
+                            className="w-full min-w-0 text-left rounded-md border bg-background px-2 py-2 hover:bg-muted/40"
                             onClick={() => setSelectedNodeId(n.dataPointId)}
                           >
                             <div className="text-xs text-muted-foreground">
                               {n.classification?.primaryType ?? 'UNCLASSIFIED'}
                             </div>
-                            <div className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">
+                            <div className="min-w-0 text-sm font-medium whitespace-normal break-words">
                               {n.rawText}
                             </div>
                           </button>
