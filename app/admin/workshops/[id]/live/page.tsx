@@ -601,6 +601,106 @@ export default function WorkshopLivePage({ params }: PageProps) {
       .slice(0, 5);
   }, [dependencyEdgesById]);
 
+  const synthesisByDomain = useMemo(() => {
+    type SynthesisItem = {
+      themeId: string;
+      label: string;
+      intentType: string;
+      strength: number;
+      lastSeenAtMs: number;
+      weight: number;
+      examples: string[];
+    };
+
+    const empty = () => ({
+      aspirations: [] as SynthesisItem[],
+      constraints: [] as SynthesisItem[],
+      enablers: [] as SynthesisItem[],
+      opportunities: [] as SynthesisItem[],
+    });
+
+    const out: Record<LiveDomain, ReturnType<typeof empty>> = {
+      People: empty(),
+      Operations: empty(),
+      Customer: empty(),
+      Technology: empty(),
+      Regulation: empty(),
+    };
+
+    const nodeById: Record<string, HemisphereNodeDatum> = {};
+    for (const n of nodes) nodeById[n.dataPointId] = n;
+
+    const now = Date.now();
+    const tauMs = 12 * 60 * 1000;
+
+    const normalizeIntent = (s: string) => String(s || '').trim().toUpperCase();
+
+    for (const t of Object.values(themesById)) {
+      if (!t || !t.id) continue;
+      if (t.strength < 2) continue;
+
+      const utterances = (t.supportingUtteranceIds || [])
+        .map((id) => nodeById[id])
+        .filter(Boolean);
+
+      if (!utterances.length) continue;
+
+      let lastSeenAtMs = 0;
+      for (const u of utterances) {
+        if (u.createdAtMs > lastSeenAtMs) lastSeenAtMs = u.createdAtMs;
+      }
+
+      const ageMs = Math.max(0, now - lastSeenAtMs);
+      const recency = Math.exp(-ageMs / Math.max(1, tauMs));
+      const weight = t.strength * (0.4 + 0.6 * recency);
+
+      utterances.sort((a, b) => a.createdAtMs - b.createdAtMs);
+      const examples = utterances
+        .slice(Math.max(0, utterances.length - 3))
+        .reverse()
+        .map((u) => shortLabel(u.rawText, 16));
+
+      const intentType = normalizeIntent(t.intentType);
+
+      const item: SynthesisItem = {
+        themeId: t.id,
+        label: t.label,
+        intentType,
+        strength: t.strength,
+        lastSeenAtMs,
+        weight,
+        examples,
+      };
+
+      const isAspiration = intentType === 'VISIONARY' || intentType === 'DREAM' || intentType === 'OPPORTUNITY' || intentType === 'IDEA';
+      const isConstraint = intentType === 'CONSTRAINT' || intentType === 'RISK';
+      const isEnabler = intentType === 'ENABLER' || intentType === 'WHAT_WORKS';
+      const isOpportunity = intentType === 'OPPORTUNITY' || intentType === 'IDEA';
+
+      if (isAspiration) out[t.domain].aspirations.push(item);
+      if (isConstraint) out[t.domain].constraints.push(item);
+      if (isEnabler) out[t.domain].enablers.push(item);
+      if (isOpportunity) out[t.domain].opportunities.push(item);
+    }
+
+    const sortAndSlice = (arr: SynthesisItem[]) =>
+      arr
+        .slice()
+        .sort((a, b) => b.weight - a.weight)
+        .slice(0, 3);
+
+    for (const d of Object.keys(out) as LiveDomain[]) {
+      out[d] = {
+        aspirations: sortAndSlice(out[d].aspirations),
+        constraints: sortAndSlice(out[d].constraints),
+        enablers: sortAndSlice(out[d].enablers),
+        opportunities: sortAndSlice(out[d].opportunities),
+      };
+    }
+
+    return out;
+  }, [nodes, themesById]);
+
   const domainCounts = useMemo(() => {
     const counts: Record<LiveDomain, number> = {
       People: 0,
@@ -1735,6 +1835,119 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   </div>
 
                   {error && <div className="text-sm text-red-600">{error}</div>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Synthesis</CardTitle>
+                  <CardDescription>Dominant themes by domain (weighted by repetition and recency)</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {(['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[]).map((d) => {
+                    const s = synthesisByDomain[d];
+                    const hasAny =
+                      (s?.aspirations?.length || 0) +
+                        (s?.constraints?.length || 0) +
+                        (s?.enablers?.length || 0) +
+                        (s?.opportunities?.length || 0) >
+                      0;
+
+                    return (
+                      <div key={d} className="rounded-md border p-3">
+                        <div className="text-sm font-medium mb-2">{d}</div>
+                        {!hasAny ? (
+                          <div className="text-sm text-muted-foreground">No synthesis yet.</div>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-3">
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-1">Aspirations</div>
+                              <div className="space-y-2">
+                                {(s?.aspirations || []).length === 0 ? (
+                                  <div className="text-sm text-muted-foreground">—</div>
+                                ) : (
+                                  (s?.aspirations || []).map((x) => (
+                                    <div key={x.themeId} className="rounded-md border bg-background px-2 py-2">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-sm font-medium">{x.label}</div>
+                                        <div className="text-xs text-muted-foreground tabular-nums">×{x.strength}</div>
+                                      </div>
+                                      {x.examples?.[0] ? (
+                                        <div className="mt-1 text-xs text-muted-foreground">{x.examples[0]}</div>
+                                      ) : null}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-1">Constraints</div>
+                              <div className="space-y-2">
+                                {(s?.constraints || []).length === 0 ? (
+                                  <div className="text-sm text-muted-foreground">—</div>
+                                ) : (
+                                  (s?.constraints || []).map((x) => (
+                                    <div key={x.themeId} className="rounded-md border bg-background px-2 py-2">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-sm font-medium">{x.label}</div>
+                                        <div className="text-xs text-muted-foreground tabular-nums">×{x.strength}</div>
+                                      </div>
+                                      {x.examples?.[0] ? (
+                                        <div className="mt-1 text-xs text-muted-foreground">{x.examples[0]}</div>
+                                      ) : null}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-1">Enablers</div>
+                              <div className="space-y-2">
+                                {(s?.enablers || []).length === 0 ? (
+                                  <div className="text-sm text-muted-foreground">—</div>
+                                ) : (
+                                  (s?.enablers || []).map((x) => (
+                                    <div key={x.themeId} className="rounded-md border bg-background px-2 py-2">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-sm font-medium">{x.label}</div>
+                                        <div className="text-xs text-muted-foreground tabular-nums">×{x.strength}</div>
+                                      </div>
+                                      {x.examples?.[0] ? (
+                                        <div className="mt-1 text-xs text-muted-foreground">{x.examples[0]}</div>
+                                      ) : null}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-1">Opportunities</div>
+                              <div className="space-y-2">
+                                {(s?.opportunities || []).length === 0 ? (
+                                  <div className="text-sm text-muted-foreground">—</div>
+                                ) : (
+                                  (s?.opportunities || []).map((x) => (
+                                    <div key={x.themeId} className="rounded-md border bg-background px-2 py-2">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-sm font-medium">{x.label}</div>
+                                        <div className="text-xs text-muted-foreground tabular-nums">×{x.strength}</div>
+                                      </div>
+                                      {x.examples?.[0] ? (
+                                        <div className="mt-1 text-xs text-muted-foreground">{x.examples[0]}</div>
+                                      ) : null}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
 
