@@ -2494,7 +2494,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
           }
         >
           {viewMode !== 'facilitator' ? (
-            <Card className={viewMode === 'split' ? 'min-w-0 lg:sticky lg:top-4 lg:self-start' : undefined}>
+            <Card className={viewMode === 'split' ? 'min-w-0' : undefined}>
               <CardHeader>
                 <CardTitle>Hemisphere</CardTitle>
                 {viewMode === 'room' ? null : (
@@ -2539,8 +2539,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   <div
                     className={
                       viewMode === 'room'
-                        ? 'h-[70vh] border rounded-md p-3 bg-muted/20'
-                        : 'h-[520px] border rounded-md p-3 bg-muted/20'
+                        ? 'h-[60vh] border rounded-md p-3 bg-muted/20'
+                        : 'h-[420px] border rounded-md p-3 bg-muted/20'
                     }
                   >
                     {utteranceNodes.length === 0 ? (
@@ -2676,14 +2676,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     </Button>
                     <Button variant="outline" onClick={stopCapture} disabled={status !== 'capturing'}>
                       Stop
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={downloadLiveReport}
-                      disabled={utteranceNodes.length === 0 || liveReportDownloading}
-                    >
-                      {liveReportDownloading ? 'Generating report…' : 'Download Live Report'}
                     </Button>
                     <Button
                       type="button"
