@@ -907,7 +907,21 @@ export default function WorkshopLivePage({ params }: PageProps) {
     return { themesById: themes, nodeThemeById: nodeTheme };
   }, [utteranceNodes]);
 
-  const usingDerivedThemes = Object.keys(themesById).length === 0;
+  const themeCoverage01 = useMemo(() => {
+    const total = utteranceNodes.length;
+    if (!total) return 0;
+
+    let covered = 0;
+    for (const n of utteranceNodes) {
+      const id = String(n.dataPointId || '');
+      const baseId = id.includes('::') ? id.split('::')[0] : id;
+      const mapped = nodeThemeById[id] || nodeThemeById[baseId];
+      if (mapped) covered += 1;
+    }
+    return covered / total;
+  }, [nodeThemeById, utteranceNodes]);
+
+  const usingDerivedThemes = Object.keys(themesById).length === 0 || themeCoverage01 < 0.2;
   const effectiveThemesById = usingDerivedThemes ? derivedThemes.themesById : themesById;
   const effectiveNodeThemeById = usingDerivedThemes ? derivedThemes.nodeThemeById : nodeThemeById;
 
@@ -915,7 +929,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
     return utteranceNodes.map((n) => {
       const i = interpretLiveUtterance(n.rawText);
       const cls = classificationFromInterpretation(n.rawText, new Date().toISOString());
-      const themeId = effectiveNodeThemeById[n.dataPointId] || null;
+      const id = String(n.dataPointId || '');
+      const baseId = id.includes('::') ? id.split('::')[0] : id;
+      const themeId = effectiveNodeThemeById[id] || effectiveNodeThemeById[baseId] || null;
       const theme = themeId ? effectiveThemesById[themeId] : null;
       const labelDomain = (i.domains || []).slice(0, 2).join('+');
       const labelType = (i.cognitiveTypes || [])[0] ?? '—';
@@ -1081,7 +1097,15 @@ export default function WorkshopLivePage({ params }: PageProps) {
     };
 
     const nodeById: Record<string, HemisphereNodeDatum> = {};
-    for (const n of interpretedNodes) nodeById[n.dataPointId] = n;
+    const baseToVirtualIds: Record<string, string[]> = {};
+    for (const n of interpretedNodes) {
+      const id = String(n.dataPointId || '');
+      nodeById[id] = n;
+      const base = id.includes('::') ? id.split('::')[0] : id;
+      if (base && base !== id) {
+        (baseToVirtualIds[base] ||= []).push(id);
+      }
+    }
 
     const now = Date.now();
     const tauMs = 12 * 60 * 1000;
@@ -1093,7 +1117,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
       if (t.strength < (usingDerivedThemes ? 1 : 2)) continue;
 
       const utterances = (t.supportingUtteranceIds || [])
-        .map((id) => nodeById[id])
+        .flatMap((id) => {
+          const hit = nodeById[id];
+          if (hit) return [hit];
+          const virtualIds = baseToVirtualIds[id] || [];
+          return virtualIds.map((vid) => nodeById[vid]).filter(Boolean);
+        })
         .filter(Boolean);
 
       if (!utterances.length) continue;
