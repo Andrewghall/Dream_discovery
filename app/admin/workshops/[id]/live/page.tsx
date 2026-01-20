@@ -118,6 +118,23 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [viewMode, setViewMode] = useState<'room' | 'facilitator' | 'split'>('split');
   const [dialoguePhase, setDialoguePhase] = useState<HemisphereDialoguePhase>('REIMAGINE');
 
+  type LiveTheme = {
+    id: string;
+    label: string;
+    domain: LiveDomain;
+    intentType: string;
+    strength: number;
+    centroidEmbedding: number[];
+    supportingUtteranceIds: string[];
+  };
+
+  const [themesById, setThemesById] = useState<Record<string, LiveTheme>>({});
+  const themesRef = useRef<Record<string, LiveTheme>>({});
+  const [nodeThemeById, setNodeThemeById] = useState<Record<string, string>>({});
+  const nodeThemeRef = useRef<Record<string, string>>({});
+  const embeddingCacheRef = useRef<Map<string, number[]>>(new Map());
+  const embeddingInFlightRef = useRef<Set<string>>(new Set());
+
   const statusRef = useRef<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
 
   const [micDialogOpen, setMicDialogOpen] = useState(false);
@@ -176,15 +193,207 @@ export default function WorkshopLivePage({ params }: PageProps) {
     return arr;
   }, [nodesById]);
 
+  const clamp01 = (n: number) => {
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(1, n));
+  };
+
+  const dot = (a: number[], b: number[]) => {
+    const n = Math.min(a.length, b.length);
+    let s = 0;
+    for (let i = 0; i < n; i++) s += a[i] * b[i];
+    return s;
+  };
+
+  const norm = (a: number[]) => Math.sqrt(dot(a, a));
+
+  const cosine = (a: number[], b: number[]) => {
+    const na = norm(a);
+    const nb = norm(b);
+    if (!Number.isFinite(na) || !Number.isFinite(nb) || na <= 0 || nb <= 0) return 0;
+    return dot(a, b) / (na * nb);
+  };
+
+  const shortLabel = (text: string, maxWords: number) => {
+    const w = String(text || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .split(' ')
+      .filter(Boolean);
+    return w.length <= maxWords ? w.join(' ') : w.slice(0, maxWords).join(' ');
+  };
+
+  const hash01 = (s: string): number => {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return ((h >>> 0) % 10_000) / 10_000;
+  };
+
+  const themeAnchorPosition = (params: { themeId: string; domain: LiveDomain; intentType: string }) => {
+    const W = 1000;
+    const H = 520;
+    const pad = 32;
+    const cx = W / 2;
+    const cy = H - pad;
+    const R = Math.min(cx - pad, cy - pad);
+
+    const domainAngles: Record<LiveDomain, number> = {
+      People: (5 * Math.PI) / 6,
+      Operations: (3 * Math.PI) / 4,
+      Customer: Math.PI / 2,
+      Technology: Math.PI / 3,
+      Regulation: Math.PI / 6,
+    };
+
+    const intentRadius = (intentType: string) => {
+      const s = String(intentType || '').toUpperCase();
+      if (s === 'VISIONARY' || s === 'VISION' || s === 'DREAM') return 0.85;
+      if (s === 'OPPORTUNITY' || s === 'IDEA') return 0.78;
+      if (s === 'ENABLER' || s === 'WHAT_WORKS') return 0.66;
+      if (s === 'INSIGHT' || s === 'ASSUMPTION') return 0.56;
+      if (s === 'CONSTRAINT' || s === 'RISK') return 0.42;
+      return 0.62;
+    };
+
+    const theta = domainAngles[params.domain] + (hash01(params.themeId) - 0.5) * 0.32;
+    const radial = R * intentRadius(params.intentType) + (hash01(`r:${params.themeId}`) - 0.5) * 24;
+    return {
+      x: cx + radial * Math.cos(theta),
+      y: cy - radial * Math.sin(theta),
+    };
+  };
+
+  const embeddingUrl = useMemo(
+    () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/embedding`,
+    [workshopId]
+  );
+
+  const getEmbeddingForText = async (text: string): Promise<number[] | null> => {
+    const resp = await fetch(embeddingUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!resp.ok) return null;
+    const json = (await resp.json().catch(() => null)) as { embedding?: unknown } | null;
+    const emb = json?.embedding;
+    if (!Array.isArray(emb)) return null;
+    if (!emb.every((v) => typeof v === 'number')) return null;
+    return emb as number[];
+  };
+
+  useEffect(() => {
+    themesRef.current = themesById;
+  }, [themesById]);
+
+  useEffect(() => {
+    nodeThemeRef.current = nodeThemeById;
+  }, [nodeThemeById]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const maybeProcess = async (n: HemisphereNodeDatum) => {
+      if (cancelled) return;
+      if (!n?.dataPointId) return;
+
+      if (nodeThemeRef.current[n.dataPointId]) return;
+      if (embeddingCacheRef.current.has(n.dataPointId)) return;
+      if (embeddingInFlightRef.current.has(n.dataPointId)) return;
+      embeddingInFlightRef.current.add(n.dataPointId);
+
+      try {
+        const emb = await getEmbeddingForText(n.rawText);
+        if (!emb || cancelled) return;
+        embeddingCacheRef.current.set(n.dataPointId, emb);
+
+        const i = interpretLiveUtterance(n.rawText);
+        const domain = i.domain;
+        const intentType = n.classification?.primaryType ?? i.intentType;
+
+        const existingThemes = Object.values(themesRef.current).filter(
+          (t) => t.domain === domain && t.intentType === intentType
+        );
+
+        let best: { id: string; sim: number } | null = null;
+        for (const t of existingThemes) {
+          const sim = cosine(emb, t.centroidEmbedding);
+          if (!best || sim > best.sim) best = { id: t.id, sim };
+        }
+
+        const threshold = 0.82;
+        const pickThemeId = best && best.sim >= threshold ? best.id : null;
+
+        const themeId =
+          pickThemeId ??
+          `theme:${domain}:${String(intentType)}:${Date.now()}:${Math.floor(Math.random() * 1_000_000)}`;
+
+        const prevTheme = themesRef.current[themeId] || null;
+        const prevStrength = prevTheme?.strength ?? 0;
+        const nextStrength = prevStrength + 1;
+
+        const prevCentroid = prevTheme?.centroidEmbedding ?? emb;
+        const nextCentroid = prevCentroid.map((v, idx) => {
+          const next = emb[idx] ?? 0;
+          const a = Number.isFinite(v) ? v : 0;
+          return (a * prevStrength + next) / Math.max(1, nextStrength);
+        });
+
+        const nextTheme: LiveTheme = {
+          id: themeId,
+          label: prevTheme?.label ?? shortLabel(n.rawText, 7),
+          domain,
+          intentType: String(intentType),
+          strength: nextStrength,
+          centroidEmbedding: nextCentroid,
+          supportingUtteranceIds: [
+            ...(prevTheme?.supportingUtteranceIds || []),
+            n.dataPointId,
+          ].slice(-50),
+        };
+
+        if (!cancelled) {
+          setThemesById((prev) => ({ ...prev, [themeId]: nextTheme }));
+          setNodeThemeById((prev) => ({ ...prev, [n.dataPointId]: themeId }));
+        }
+      } finally {
+        embeddingInFlightRef.current.delete(n.dataPointId);
+      }
+    };
+
+    const recent = nodes.slice(-12);
+    void Promise.all(recent.map((n) => maybeProcess(n)));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nodes, embeddingUrl]);
+
   const interpretedNodes = useMemo(() => {
     return nodes.map((n) => {
       const i = interpretLiveUtterance(n.rawText);
+      const themeId = nodeThemeById[n.dataPointId] || null;
+      const theme = themeId ? themesById[themeId] : null;
       return {
         ...n,
         intent: `${i.intentType} / ${i.domain}`,
+        themeId,
+        themeLabel: theme?.label ?? null,
       };
     });
-  }, [nodes]);
+  }, [nodes, nodeThemeById, themesById]);
+
+  const themeAttractors = useMemo(() => {
+    const out: Record<string, { x: number; y: number; strength: number; label: string }> = {};
+    for (const t of Object.values(themesById)) {
+      const pos = themeAnchorPosition({ themeId: t.id, domain: t.domain, intentType: t.intentType });
+      out[t.id] = { ...pos, strength: t.strength, label: t.label };
+    }
+    return out;
+  }, [themesById]);
 
   const domainCounts = useMemo(() => {
     const counts: Record<LiveDomain, number> = {
@@ -1183,6 +1392,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       nodes={interpretedNodes}
                       originTimeMs={originTimeMs}
                       onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
+                      themeAttractors={themeAttractors}
                       className="h-full w-full"
                     />
                   )}

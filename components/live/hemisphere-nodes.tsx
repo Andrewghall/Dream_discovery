@@ -21,6 +21,8 @@ export type HemisphereNodeDatum = {
   dataPointSource: string;
   dialoguePhase: HemisphereDialoguePhase | null;
   intent?: string | null;
+  themeId?: string | null;
+  themeLabel?: string | null;
   transcriptChunk: {
     startTimeMs: number;
     endTimeMs: number;
@@ -107,9 +109,10 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   originTimeMs: number | null;
   timeScaleMs?: number;
   onNodeClick?: (node: HemisphereNodeDatum) => void;
+  themeAttractors?: Record<string, { x: number; y: number; strength: number; label: string }>;
   className?: string;
 }) {
-  const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, className } = props;
+  const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, themeAttractors, className } = props;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -169,8 +172,14 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       const jitter = (hash01(n.dataPointId) - 0.5) * 18;
       const radial = rMin + radialConf * (R - rMin) + jitter;
 
-      const x = cx + radial * Math.cos(theta);
-      const y = cy - radial * Math.sin(theta);
+      const baseX = cx + radial * Math.cos(theta);
+      const baseY = cy - radial * Math.sin(theta);
+
+      const attractor = n.themeId && themeAttractors ? themeAttractors[n.themeId] : null;
+      const pull = attractor ? clamp01(0.08 + 0.12 * Math.log1p(Math.max(0, attractor.strength))) : 0;
+      const microJitter = (hash01(`theme:${n.dataPointId}`) - 0.5) * 10;
+      const x = attractor ? lerp(baseX, attractor.x, pull) + microJitter : baseX;
+      const y = attractor ? lerp(baseY, attractor.y, pull) + microJitter : baseY;
 
       const fill = n.intent ? intentColor(n.intent) : primaryColor(clsType);
       const stroke = 'rgba(15,23,42,0.22)';
@@ -182,11 +191,11 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         r: 6,
         fill,
         stroke,
-        label: n.intent ? n.intent.toUpperCase() : (clsType ?? 'UNCLASSIFIED'),
+        label: (n.themeLabel || n.intent)?.toUpperCase() || (clsType ?? 'UNCLASSIFIED'),
         conf: clsConf,
       };
     });
-  }, [nodes, originTimeMs, timeScaleMs]);
+  }, [nodes, originTimeMs, timeScaleMs, themeAttractors]);
 
   const backdrop = useMemo(() => {
     const W = 1000;
@@ -222,6 +231,20 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         {backdrop.spokes.map((d) => (
           <path key={d} d={d} fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth={1} />
         ))}
+
+        {themeAttractors
+          ? Object.entries(themeAttractors).map(([id, t]) => (
+              <circle
+                key={id}
+                cx={t.x}
+                cy={t.y}
+                r={Math.max(6, Math.min(18, 6 + 2 * Math.log1p(Math.max(0, t.strength))))}
+                fill="rgba(148,163,184,0.12)"
+                stroke="rgba(148,163,184,0.35)"
+                strokeWidth={1}
+              />
+            ))
+          : null}
 
         {positioned.map((n) => (
           <circle
