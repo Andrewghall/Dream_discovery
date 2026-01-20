@@ -561,6 +561,93 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const normalizeText = (text: string) => String(text || '').trim().toLowerCase();
 
+  const themeSignature = (text: string) => {
+    const t = normalizeText(text).replace(/[^a-z0-9\s]/g, ' ');
+    const stop = new Set([
+      'the',
+      'a',
+      'an',
+      'and',
+      'or',
+      'but',
+      'so',
+      'because',
+      'to',
+      'of',
+      'in',
+      'on',
+      'for',
+      'with',
+      'as',
+      'at',
+      'by',
+      'is',
+      'are',
+      'was',
+      'were',
+      'be',
+      'been',
+      'being',
+      'we',
+      'our',
+      'us',
+      'you',
+      'your',
+      'they',
+      'their',
+      'it',
+      'this',
+      'that',
+      'these',
+      'those',
+      'will',
+      'would',
+      'should',
+      'could',
+      'can',
+      'cannot',
+      "can't",
+      'not',
+      'no',
+      'yes',
+      'do',
+      'does',
+      'did',
+      'done',
+      'have',
+      'has',
+      'had',
+      'more',
+      'most',
+      'less',
+      'very',
+      'really',
+      'just',
+      'rather',
+      'than',
+      'into',
+      'from',
+      'across',
+    ]);
+
+    const tokens = t
+      .split(/\s+/g)
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .filter((x) => x.length >= 3)
+      .filter((x) => !stop.has(x));
+
+    const uniq: string[] = [];
+    for (const w of tokens) {
+      if (uniq.includes(w)) continue;
+      uniq.push(w);
+      if (uniq.length >= 6) break;
+    }
+
+    const sig = (uniq.length ? uniq : tokens.slice(0, 4)).join('-') || 'misc';
+    return sig.slice(0, 42);
+  };
+
   const inferMentionedDomains = (text: string): LiveDomain[] => {
     const t = normalizeText(text);
     const matches: Array<{ d: LiveDomain; score: number }> = [
@@ -800,13 +887,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const cls = classificationFromInterpretation(n.rawText, new Date().toISOString());
       const domain = i.domain;
       const intentType = cls.primaryType;
-      const themeId = `auto:${domain}:${intentType}`;
+      const sig = themeSignature(n.rawText);
+      const themeId = `auto:${domain}:${intentType}:${sig}`;
 
       const prev = themes[themeId];
       const nextStrength = (prev?.strength ?? 0) + 1;
       themes[themeId] = {
         id: themeId,
-        label: prev?.label ?? shortLabel(n.rawText, 7),
+        label: prev?.label ?? shortLabel(n.rawText, 12),
         domain,
         intentType: String(intentType),
         strength: nextStrength,
@@ -907,9 +995,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const pressurePoints = useMemo(() => {
     const edges = Object.values(dependencyEdgesById);
-    if (!edges.length) return [] as Array<{ id: string; fromDomain: LiveDomain; toDomain: LiveDomain; score: number; constraintCount: number; aspirationCount: number; count: number }>;
-
-    return edges
+    const viaEdges = edges
       .map((e) => {
         const delta = e.constraintCount - e.aspirationCount;
         const score = delta * 3 + Math.max(0, e.count - 2);
@@ -926,7 +1012,47 @@ export default function WorkshopLivePage({ params }: PageProps) {
       .filter((p) => p.count >= 3 && p.constraintCount >= 2 && p.constraintCount > p.aspirationCount)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
-  }, [dependencyEdgesById]);
+
+    if (viaEdges.length) return viaEdges;
+
+    const counts: Record<LiveDomain, { constraintCount: number; aspirationCount: number }> = {
+      People: { constraintCount: 0, aspirationCount: 0 },
+      Operations: { constraintCount: 0, aspirationCount: 0 },
+      Customer: { constraintCount: 0, aspirationCount: 0 },
+      Technology: { constraintCount: 0, aspirationCount: 0 },
+      Regulation: { constraintCount: 0, aspirationCount: 0 },
+    };
+
+    for (const n of utteranceNodes) {
+      const i = interpretLiveUtterance(n.rawText);
+      const d = i.domain;
+      const isConstraint = i.temporalIntent === 'LIMIT' || i.cognitiveTypes.includes('BLOCKER');
+      const isAspiration =
+        i.temporalIntent === 'FUTURE' &&
+        (i.cognitiveTypes.includes('VISION') || i.cognitiveTypes.includes('OUTCOME') || i.cognitiveTypes.includes('OPPORTUNITY'));
+      if (isConstraint) counts[d].constraintCount += 1;
+      if (isAspiration) counts[d].aspirationCount += 1;
+    }
+
+    return (Object.keys(counts) as LiveDomain[])
+      .map((d) => {
+        const c = counts[d];
+        const delta = c.constraintCount - c.aspirationCount;
+        const score = delta * 3 + Math.max(0, c.constraintCount - 1);
+        return {
+          id: `pp:${d}`,
+          fromDomain: d,
+          toDomain: d,
+          score,
+          constraintCount: c.constraintCount,
+          aspirationCount: c.aspirationCount,
+          count: c.constraintCount,
+        };
+      })
+      .filter((p) => p.constraintCount >= 2)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  }, [dependencyEdgesById, utteranceNodes]);
 
   const synthesisByDomain = useMemo(() => {
     type SynthesisItem = {
