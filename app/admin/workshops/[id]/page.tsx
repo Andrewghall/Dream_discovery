@@ -74,6 +74,7 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     department: '',
   });
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [summaryDownloading, setSummaryDownloading] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -292,6 +293,43 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     navigator.clipboard.writeText(link);
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 2000);
+  };
+
+  const downloadJson = (filename: string, payload: unknown) => {
+    try {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDownloadSummary = async () => {
+    if (summaryDownloading) return;
+    try {
+      setSummaryDownloading(true);
+      const response = await fetch(`/api/admin/workshops/${encodeURIComponent(id)}/summary?ts=${Date.now()}`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const message = data?.error || `Failed to generate summary (HTTP ${response.status})`;
+        throw new Error(message);
+      }
+      const payload = (await response.json().catch(() => null)) as { summary?: unknown } | null;
+      if (!payload?.summary) throw new Error('Summary response missing payload');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `workshop-summary-${id}-${ts}.json`;
+      downloadJson(filename, payload.summary);
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : 'Failed to download summary');
+    } finally {
+      setSummaryDownloading(false);
+    }
   };
 
   const handleBackfillReports = async () => {
@@ -560,6 +598,23 @@ export default function WorkshopDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Workshop Summary</CardTitle>
+                <CardDescription>
+                  Agentic vision statement, executive summary, and domain lenses (People, Customer, Technology, Regulation, Organisation).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="text-sm text-muted-foreground">
+                  Generates a corporate future-state narrative from live workshop signals and discovery reports.
+                </div>
+                <Button variant="outline" onClick={() => void handleDownloadSummary()} disabled={summaryDownloading}>
+                  {summaryDownloading ? 'Generating summary…' : 'Download Summary'}
+                </Button>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>Workshop Settings</CardTitle>
