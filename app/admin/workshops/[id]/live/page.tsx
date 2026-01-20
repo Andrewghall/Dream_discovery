@@ -168,20 +168,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [snapshotName, setSnapshotName] = useState('');
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
   const lastDefaultSnapshotNameRef = useRef<string>('');
-
-  const downloadJson = (filename: string, payload: unknown) => {
-    try {
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
-    } catch {
-      // ignore
-    }
-  };
+  const [liveReportDownloading, setLiveReportDownloading] = useState(false);
 
   const statusRef = useRef<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
 
@@ -813,44 +800,31 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
   }, [utteranceNodes]);
 
-  const exportLiveJson = () => {
-    const now = new Date();
-    const ts = now.toISOString().replace(/[:.]/g, '-');
-    const filename = `live-${workshopId}-${ts}.json`;
 
-    const payload = {
-      v: 1,
-      workshopId,
-      exportedAt: now.toISOString(),
-      dialoguePhase,
-      counts: {
-        chunks: nodes.length,
-        utterances: utteranceNodes.length,
-      },
-      utterances: utteranceNodes.map((n) => ({
-        dataPointId: n.dataPointId,
-        createdAtMs: n.createdAtMs,
-        rawText: n.rawText,
-        dataPointSource: n.dataPointSource,
-        dialoguePhase: n.dialoguePhase,
-        transcriptChunk: n.transcriptChunk,
-      })),
-      interpreted: interpretedNodes.map((n) => ({
-        dataPointId: n.dataPointId,
-        createdAtMs: n.createdAtMs,
-        rawText: n.rawText,
-        dialoguePhase: n.dialoguePhase,
-        intent: n.intent ?? null,
-        classification: n.classification,
-        themeId: n.themeId ?? null,
-        themeLabel: n.themeLabel ?? null,
-      })),
-      synthesisByDomain,
-      pressurePoints,
-      dependencyEdgesById,
-    };
-
-    downloadJson(filename, payload);
+  const downloadLiveReport = async () => {
+    if (liveReportDownloading) return;
+    try {
+      setLiveReportDownloading(true);
+      const qs = new URLSearchParams({ phase: dialoguePhase, format: 'pdf', ts: String(Date.now()) });
+      const resp = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/live/report?${qs.toString()}`);
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => null);
+        const message = data?.error || `Failed to generate report (HTTP ${resp.status})`;
+        throw new Error(message);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Live-Workshop-${dialoguePhase}.pdf`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : 'Failed to download live report');
+    } finally {
+      setLiveReportDownloading(false);
+    }
   };
 
   const clearLiveState = () => {
@@ -2583,18 +2557,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       />
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" onClick={exportLiveJson}>
-                      Export JSON
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={clearLiveState}
-                      disabled={status === 'capturing'}
-                    >
-                      Start fresh
-                    </Button>
+                  <div className="text-xs text-muted-foreground">
+                    Use Capture controls to download reports or reset the live session.
                   </div>
                 </CardContent>
               </Card>
@@ -2706,19 +2670,24 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     </DialogContent>
                   </Dialog>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button onClick={startCapture} disabled={status === 'capturing'}>
                       {status === 'capturing' ? 'Capturing…' : 'Start Capture'}
                     </Button>
                     <Button variant="outline" onClick={stopCapture} disabled={status !== 'capturing'}>
                       Stop
                     </Button>
-                    <Button type="button" variant="outline" onClick={exportLiveJson} disabled={utteranceNodes.length === 0}>
-                      Export JSON
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={downloadLiveReport}
+                      disabled={utteranceNodes.length === 0 || liveReportDownloading}
+                    >
+                      {liveReportDownloading ? 'Generating report…' : 'Download Live Report'}
                     </Button>
                     <Button
                       type="button"
-                      variant="destructive"
+                      variant="outline"
                       onClick={clearLiveState}
                       disabled={status === 'capturing'}
                     >
@@ -2831,6 +2800,17 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   >
                     Open Reveal
                   </Button>
+
+                  {dialoguePhase === 'REIMAGINE' ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={downloadLiveReport}
+                      disabled={liveReportDownloading || utteranceNodes.length === 0}
+                    >
+                      {liveReportDownloading ? 'Generating PDF…' : 'Save Reimagine Summary (PDF)'}
+                    </Button>
+                  ) : null}
 
                   {visionNarrative ? (
                     <div className="rounded-md border p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
