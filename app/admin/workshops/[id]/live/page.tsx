@@ -417,6 +417,38 @@ export default function WorkshopLivePage({ params }: PageProps) {
     return arr;
   }, [nodesById]);
 
+  const utteranceNodes = useMemo(() => {
+    const out: HemisphereNodeDatum[] = [];
+
+    for (const n of nodes) {
+      const parts = splitIntoUtterances(n.rawText);
+      if (parts.length <= 1) {
+        out.push(n);
+        continue;
+      }
+
+      const startMs = n.transcriptChunk?.startTimeMs ?? 0;
+      const endMs = n.transcriptChunk?.endTimeMs ?? startMs;
+      const span = Math.max(500, endMs - startMs);
+      const step = span / Math.max(1, parts.length);
+
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        const virtualId = `${n.dataPointId}::u${i}`;
+        const createdAtMs = n.createdAtMs + Math.floor(i * Math.max(250, step));
+        out.push({
+          ...n,
+          dataPointId: virtualId,
+          rawText: p,
+          createdAtMs,
+        });
+      }
+    }
+
+    out.sort((a, b) => a.createdAtMs - b.createdAtMs);
+    return out;
+  }, [nodes]);
+
   const clamp01 = (n: number) => {
     if (!Number.isFinite(n)) return 0;
     return Math.max(0, Math.min(1, n));
@@ -446,6 +478,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
       .filter(Boolean);
     return w.length <= maxWords ? w.join(' ') : w.slice(0, maxWords).join(' ');
   };
+
+  function splitIntoUtterances(text: string): string[] {
+    const t = String(text || '').trim();
+    if (!t) return [];
+
+    const normalized = t.replace(/\s+/g, ' ').trim();
+    const parts = normalized
+      .split(/(?<=[.!?])\s+(?=[A-Z0-9“"'])/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    return parts.length ? parts : [normalized];
+  }
 
   const hash01 = (s: string): number => {
     let h = 2166136261;
@@ -613,7 +658,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   }, [dependencyEdgesById]);
 
   useEffect(() => {
-    const recent = nodes.slice(-96);
+    const recent = utteranceNodes.slice(-220);
     let changed = false;
 
     for (const n of recent) {
@@ -658,13 +703,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
             lastSeenAtMs: now,
           };
 
-      setDependencyEdgesById((m) => ({ ...m, [id]: next }));
+      dependencyEdgesRef.current[id] = next;
     }
 
     if (changed) {
+      setDependencyEdgesById({ ...dependencyEdgesRef.current });
       setDependencyProcessedCount(dependencyProcessedRef.current.size);
     }
-  }, [nodes]);
+  }, [utteranceNodes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -745,12 +791,44 @@ export default function WorkshopLivePage({ params }: PageProps) {
     };
   }, [nodes, embeddingUrl]);
 
-  const interpretedNodes = useMemo(() => {
-    return nodes.map((n) => {
+  const derivedThemes = useMemo(() => {
+    const themes: Record<string, LiveTheme> = {};
+    const nodeTheme: Record<string, string> = {};
+
+    for (const n of utteranceNodes) {
       const i = interpretLiveUtterance(n.rawText);
       const cls = classificationFromInterpretation(n.rawText, new Date().toISOString());
-      const themeId = nodeThemeById[n.dataPointId] || null;
-      const theme = themeId ? themesById[themeId] : null;
+      const domain = i.domain;
+      const intentType = cls.primaryType;
+      const themeId = `auto:${domain}:${intentType}`;
+
+      const prev = themes[themeId];
+      const nextStrength = (prev?.strength ?? 0) + 1;
+      themes[themeId] = {
+        id: themeId,
+        label: prev?.label ?? shortLabel(n.rawText, 7),
+        domain,
+        intentType: String(intentType),
+        strength: nextStrength,
+        centroidEmbedding: prev?.centroidEmbedding ?? [],
+        supportingUtteranceIds: [...(prev?.supportingUtteranceIds || []), n.dataPointId].slice(-50),
+      };
+      nodeTheme[n.dataPointId] = themeId;
+    }
+
+    return { themesById: themes, nodeThemeById: nodeTheme };
+  }, [utteranceNodes]);
+
+  const usingDerivedThemes = Object.keys(themesById).length === 0;
+  const effectiveThemesById = usingDerivedThemes ? derivedThemes.themesById : themesById;
+  const effectiveNodeThemeById = usingDerivedThemes ? derivedThemes.nodeThemeById : nodeThemeById;
+
+  const interpretedNodes = useMemo(() => {
+    return utteranceNodes.map((n) => {
+      const i = interpretLiveUtterance(n.rawText);
+      const cls = classificationFromInterpretation(n.rawText, new Date().toISOString());
+      const themeId = effectiveNodeThemeById[n.dataPointId] || null;
+      const theme = themeId ? effectiveThemesById[themeId] : null;
       const labelDomain = (i.domains || []).slice(0, 2).join('+');
       const labelType = (i.cognitiveTypes || [])[0] ?? '—';
       return {
@@ -762,16 +840,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
         themeLabel: theme?.label ?? null,
       };
     });
-  }, [nodes, nodeThemeById, themesById]);
+  }, [effectiveNodeThemeById, effectiveThemesById, utteranceNodes]);
 
   const themeAttractors = useMemo(() => {
     const out: Record<string, { x: number; y: number; strength: number; label: string }> = {};
-    for (const t of Object.values(themesById)) {
+    for (const t of Object.values(effectiveThemesById)) {
       const pos = themeAnchorPosition({ themeId: t.id, domain: t.domain, intentType: t.intentType });
       out[t.id] = { ...pos, strength: t.strength, label: t.label };
     }
     return out;
-  }, [themesById]);
+  }, [effectiveThemesById]);
 
   const dependencyLinks = useMemo(() => {
     const edges = Object.values(dependencyEdgesById);
@@ -877,16 +955,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
     };
 
     const nodeById: Record<string, HemisphereNodeDatum> = {};
-    for (const n of nodes) nodeById[n.dataPointId] = n;
+    for (const n of interpretedNodes) nodeById[n.dataPointId] = n;
 
     const now = Date.now();
     const tauMs = 12 * 60 * 1000;
 
     const normalizeIntent = (s: string) => String(s || '').trim().toUpperCase();
 
-    for (const t of Object.values(themesById)) {
+    for (const t of Object.values(effectiveThemesById)) {
       if (!t || !t.id) continue;
-      if (t.strength < 2) continue;
+      if (t.strength < (usingDerivedThemes ? 1 : 2)) continue;
 
       const utterances = (t.supportingUtteranceIds || [])
         .map((id) => nodeById[id])
@@ -921,7 +999,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
         examples,
       };
 
-      const isAspiration = intentType === 'VISIONARY' || intentType === 'DREAM' || intentType === 'OPPORTUNITY' || intentType === 'IDEA';
+      const isAspiration =
+        intentType === 'VISIONARY' || intentType === 'DREAM' || intentType === 'OPPORTUNITY' || intentType === 'IDEA';
       const isConstraint = intentType === 'CONSTRAINT' || intentType === 'RISK';
       const isEnabler = intentType === 'ENABLER' || intentType === 'WHAT_WORKS';
       const isOpportunity = intentType === 'OPPORTUNITY' || intentType === 'IDEA';
@@ -948,7 +1027,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
 
     return out;
-  }, [nodes, themesById]);
+  }, [effectiveThemesById, interpretedNodes, usingDerivedThemes]);
 
   const lensInsights = useMemo(() => {
     if (!lensDomain) return null;
@@ -1017,15 +1096,15 @@ export default function WorkshopLivePage({ params }: PageProps) {
   }, [synthesisByDomain]);
 
   const revealReadiness = useMemo(() => {
-    const total = nodes.length;
+    const total = utteranceNodes.length;
 
-    const confidentEnough = nodes.reduce((acc, x) => {
+    const confidentEnough = utteranceNodes.reduce((acc, x) => {
       if (!x.rawText?.trim()) return acc;
       const i = interpretLiveUtterance(x.rawText);
       return acc + (confidenceWeightNumber(i.confidenceWeight) >= 1.0 ? 1 : 0);
     }, 0);
 
-    const intentExtractionReady = total > 0 && confidentEnough >= Math.min(total, 6);
+    const intentExtractionReady = total > 0 && confidentEnough >= Math.min(total, 10);
     const dependencyInferenceReady = total > 0 && dependencyProcessedCount >= Math.min(total, 12);
 
     const synthesisTotal = (['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[]).reduce(
@@ -1047,13 +1126,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     const pressurePointsDetected = pressurePoints.length > 0;
     const visionNarrativeReady = Boolean(visionNarrative && visionNarrative.trim().length >= 40);
 
-    const revealReady =
-      intentExtractionReady &&
-      dependencyInferenceReady &&
-      domainSynthesisReady &&
-      dependencyLinesVisible &&
-      pressurePointsDetected &&
-      visionNarrativeReady;
+    const revealReady = intentExtractionReady && dependencyInferenceReady && domainSynthesisReady && visionNarrativeReady;
 
     return {
       revealReady,
@@ -1066,7 +1139,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
         visionNarrativeReady,
       },
     };
-  }, [dependencyLinks.length, dependencyProcessedCount, nodes, pressurePoints.length, synthesisByDomain, visionNarrative]);
+  }, [dependencyLinks.length, dependencyProcessedCount, pressurePoints.length, synthesisByDomain, utteranceNodes, visionNarrative]);
 
   const domainNarratives = useMemo(() => {
     const domains = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[];
@@ -1119,7 +1192,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     const now = Date.now();
     const tauMs = 10 * 60 * 1000;
 
-    for (const n of nodes) {
+    for (const n of utteranceNodes) {
       const i = interpretLiveUtterance(n.rawText);
       const w = confidenceWeightNumber(i.confidenceWeight);
       const ageMs = Math.max(0, now - (n.createdAtMs || now));
@@ -1130,20 +1203,39 @@ export default function WorkshopLivePage({ params }: PageProps) {
       }
     }
     return counts;
-  }, [nodes]);
+  }, [utteranceNodes]);
 
-  const originTimeMs = useMemo(() => (nodes.length ? nodes[0].createdAtMs : null), [nodes]);
+  const originTimeMs = useMemo(
+    () => (utteranceNodes.length ? utteranceNodes[0].createdAtMs : null),
+    [utteranceNodes]
+  );
+
+  const hemisphereTimeScaleMs = useMemo(() => {
+    if (!utteranceNodes.length) return 10 * 60 * 1000;
+    const t0 = utteranceNodes[0].createdAtMs;
+    const t1 = utteranceNodes[utteranceNodes.length - 1].createdAtMs;
+    const span = Math.max(1, t1 - t0);
+    return Math.max(45_000, Math.min(10 * 60 * 1000, span + 20_000));
+  }, [utteranceNodes]);
 
   const selectedNode = useMemo(
-    () => (selectedNodeId ? nodesById[selectedNodeId] ?? null : null),
-    [nodesById, selectedNodeId]
+    () => {
+      if (!selectedNodeId) return null;
+      const exact = interpretedNodes.find((n) => n.dataPointId === selectedNodeId) ?? null;
+      if (exact) return exact;
+
+      // If a chunk was split into sentence-level virtual utterances, map legacy IDs to the first split.
+      const prefix = `${selectedNodeId}::`;
+      return interpretedNodes.find((n) => String(n.dataPointId).startsWith(prefix)) ?? null;
+    },
+    [interpretedNodes, selectedNodeId]
   );
 
   const workboard = useMemo(() => {
     const byType: Record<string, number> = {};
     let unclassified = 0;
 
-    for (const n of nodes) {
+    for (const n of utteranceNodes) {
       if (!n.rawText?.trim()) {
         unclassified += 1;
       } else {
@@ -1154,17 +1246,17 @@ export default function WorkshopLivePage({ params }: PageProps) {
       }
     }
 
-    const recent = nodes.slice(-6).reverse();
-    const last = nodes.length ? nodes[nodes.length - 1] : null;
+    const recent = utteranceNodes.slice(-6).reverse();
+    const last = utteranceNodes.length ? utteranceNodes[utteranceNodes.length - 1] : null;
 
     return {
-      total: nodes.length,
+      total: utteranceNodes.length,
       unclassified,
       byType,
       recent,
       lastAtMs: last?.createdAtMs ?? null,
     };
-  }, [nodes]);
+  }, [utteranceNodes]);
 
   const phaseLabel = useMemo(() => {
     switch (dialoguePhase) {
@@ -2109,12 +2201,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       : 'h-[520px] border rounded-md p-3 bg-muted/20'
                   }
                 >
-                  {nodes.length === 0 ? (
+                  {utteranceNodes.length === 0 ? (
                     <div className="text-sm text-muted-foreground">No datapoints yet.</div>
                   ) : (
                     <HemisphereNodes
                       nodes={interpretedNodes}
                       originTimeMs={originTimeMs}
+                      timeScaleMs={hemisphereTimeScaleMs}
                       onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
                       themeAttractors={themeAttractors}
                       links={dependencyLinks}
