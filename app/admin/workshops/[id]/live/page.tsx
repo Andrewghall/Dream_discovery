@@ -151,6 +151,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [dependencyEdgesById, setDependencyEdgesById] = useState<Record<string, LiveDependencyEdge>>({});
   const dependencyEdgesRef = useRef<Record<string, LiveDependencyEdge>>({});
 
+  const dependencyProcessedRef = useRef<Set<string>>(new Set());
+  const [dependencyProcessedCount, setDependencyProcessedCount] = useState(0);
+
   const statusRef = useRef<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
 
   const [micDialogOpen, setMicDialogOpen] = useState(false);
@@ -391,6 +394,57 @@ export default function WorkshopLivePage({ params }: PageProps) {
   }, [dependencyEdgesById]);
 
   useEffect(() => {
+    const recent = nodes.slice(-96);
+    let changed = false;
+
+    for (const n of recent) {
+      if (!n?.dataPointId) continue;
+      if (dependencyProcessedRef.current.has(n.dataPointId)) continue;
+      dependencyProcessedRef.current.add(n.dataPointId);
+      changed = true;
+
+      const i = interpretLiveUtterance(n.rawText);
+      const domain = i.domain;
+
+      if (!hasDependencyLanguage(n.rawText)) continue;
+
+      const mentioned = inferMentionedDomains(n.rawText);
+      const candidates = mentioned.filter((d) => d !== domain);
+      const toDomain = candidates.length ? candidates[0] : null;
+      if (!toDomain) continue;
+
+      const id = `dep:${domain}->${toDomain}`;
+      const now = Date.now();
+      const kind = dependencySignalKind(n, i.intentType);
+      const prev = dependencyEdgesRef.current[id];
+      const next: LiveDependencyEdge = prev
+        ? {
+            ...prev,
+            count: prev.count + 1,
+            aspirationCount: prev.aspirationCount + (kind === 'aspiration' ? 1 : 0),
+            constraintCount: prev.constraintCount + (kind === 'constraint' ? 1 : 0),
+            lastSeenAtMs: now,
+          }
+        : {
+            id,
+            fromDomain: domain,
+            toDomain,
+            count: 1,
+            aspirationCount: kind === 'aspiration' ? 1 : 0,
+            constraintCount: kind === 'constraint' ? 1 : 0,
+            firstSeenAtMs: now,
+            lastSeenAtMs: now,
+          };
+
+      setDependencyEdgesById((m) => ({ ...m, [id]: next }));
+    }
+
+    if (changed) {
+      setDependencyProcessedCount(dependencyProcessedRef.current.size);
+    }
+  }, [nodes]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const maybeProcess = async (n: HemisphereNodeDatum) => {
@@ -410,40 +464,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
         const i = interpretLiveUtterance(n.rawText);
         const domain = i.domain;
         const intentType = n.classification?.primaryType ?? i.intentType;
-
-        if (hasDependencyLanguage(n.rawText)) {
-          const mentioned = inferMentionedDomains(n.rawText);
-          const candidates = mentioned.filter((d) => d !== domain);
-          const toDomain = candidates.length ? candidates[0] : null;
-          if (toDomain) {
-            const id = `dep:${domain}->${toDomain}`;
-            const now = Date.now();
-            const kind = dependencySignalKind(n, i.intentType);
-            const prev = dependencyEdgesRef.current[id];
-            const next: LiveDependencyEdge = prev
-              ? {
-                  ...prev,
-                  count: prev.count + 1,
-                  aspirationCount: prev.aspirationCount + (kind === 'aspiration' ? 1 : 0),
-                  constraintCount: prev.constraintCount + (kind === 'constraint' ? 1 : 0),
-                  lastSeenAtMs: now,
-                }
-              : {
-                  id,
-                  fromDomain: domain,
-                  toDomain,
-                  count: 1,
-                  aspirationCount: kind === 'aspiration' ? 1 : 0,
-                  constraintCount: kind === 'constraint' ? 1 : 0,
-                  firstSeenAtMs: now,
-                  lastSeenAtMs: now,
-                };
-
-            if (!cancelled) {
-              setDependencyEdgesById((m) => ({ ...m, [id]: next }));
-            }
-          }
-        }
 
         const existingThemes = Object.values(themesRef.current).filter(
           (t) => t.domain === domain && t.intentType === intentType
@@ -743,6 +763,78 @@ export default function WorkshopLivePage({ params }: PageProps) {
       inbound,
     };
   }, [dependencyEdgesById, lensDomain, synthesisByDomain]);
+
+  const visionNarrative = useMemo(() => {
+    const picks: Array<{ domain: LiveDomain; label: string; example?: string | null }> = [];
+    for (const d of ['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[]) {
+      const top = (synthesisByDomain[d]?.aspirations || [])[0] ?? (synthesisByDomain[d]?.opportunities || [])[0] ?? null;
+      if (!top) continue;
+      picks.push({ domain: d, label: top.label, example: top.examples?.[0] ?? null });
+    }
+
+    if (picks.length < 2) return null;
+
+    const headline = picks
+      .slice(0, 3)
+      .map((p) => p.label)
+      .filter(Boolean)
+      .join('; ');
+
+    const lines = picks
+      .slice(0, 5)
+      .map((p) => `${p.domain}: ${p.example || p.label}`)
+      .filter(Boolean);
+
+    const text = `Future state narrative (draft): The group repeatedly described a future state anchored by ${headline}. Key phrases by domain: ${lines.join(' • ')}.`;
+    return text;
+  }, [synthesisByDomain]);
+
+  const revealReadiness = useMemo(() => {
+    const total = nodes.length;
+    const classified = nodes.reduce((n, x) => (x.classification?.primaryType ? n + 1 : n), 0);
+
+    const intentExtractionReady = total > 0 && classified >= Math.min(total, 6);
+    const dependencyInferenceReady = total > 0 && dependencyProcessedCount >= Math.min(total, 12);
+
+    const synthesisTotal = (['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[]).reduce(
+      (acc, d) => {
+        const s = synthesisByDomain[d];
+        return (
+          acc +
+          (s?.aspirations?.length || 0) +
+          (s?.constraints?.length || 0) +
+          (s?.enablers?.length || 0) +
+          (s?.opportunities?.length || 0)
+        );
+      },
+      0
+    );
+    const domainSynthesisReady = synthesisTotal >= 4;
+
+    const dependencyLinesVisible = dependencyLinks.length > 0;
+    const pressurePointsDetected = pressurePoints.length > 0;
+    const visionNarrativeReady = Boolean(visionNarrative && visionNarrative.trim().length >= 40);
+
+    const revealReady =
+      intentExtractionReady &&
+      dependencyInferenceReady &&
+      domainSynthesisReady &&
+      dependencyLinesVisible &&
+      pressurePointsDetected &&
+      visionNarrativeReady;
+
+    return {
+      revealReady,
+      checks: {
+        intentExtractionReady,
+        dependencyInferenceReady,
+        domainSynthesisReady,
+        dependencyLinesVisible,
+        pressurePointsDetected,
+        visionNarrativeReady,
+      },
+    };
+  }, [dependencyLinks.length, dependencyProcessedCount, nodes, pressurePoints.length, synthesisByDomain, visionNarrative]);
 
   const domainCounts = useMemo(() => {
     const counts: Record<LiveDomain, number> = {
@@ -1878,6 +1970,45 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   </div>
 
                   {error && <div className="text-sm text-red-600">{error}</div>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Reveal readiness</CardTitle>
+                  <CardDescription>Reveal stays locked until synthesis and relationships are populated</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-1 text-sm">
+                    <div className={revealReadiness.checks.intentExtractionReady ? 'text-foreground' : 'text-muted-foreground'}>
+                      Intent extraction
+                    </div>
+                    <div className={revealReadiness.checks.dependencyInferenceReady ? 'text-foreground' : 'text-muted-foreground'}>
+                      Dependency inference
+                    </div>
+                    <div className={revealReadiness.checks.domainSynthesisReady ? 'text-foreground' : 'text-muted-foreground'}>
+                      Domain synthesis cards
+                    </div>
+                    <div className={revealReadiness.checks.dependencyLinesVisible ? 'text-foreground' : 'text-muted-foreground'}>
+                      Dependency lines visible
+                    </div>
+                    <div className={revealReadiness.checks.pressurePointsDetected ? 'text-foreground' : 'text-muted-foreground'}>
+                      Pressure points detected
+                    </div>
+                    <div className={revealReadiness.checks.visionNarrativeReady ? 'text-foreground' : 'text-muted-foreground'}>
+                      Vision narrative generated
+                    </div>
+                  </div>
+
+                  <Button type="button" disabled={!revealReadiness.revealReady}>
+                    Open Reveal
+                  </Button>
+
+                  {visionNarrative ? (
+                    <div className="rounded-md border p-3 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                      {visionNarrative}
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
 

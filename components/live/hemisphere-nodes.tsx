@@ -306,7 +306,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       return `M ${cx} ${cy} L ${x} ${y}`;
     });
 
-    return { W, H, arc, rings, spokes };
+    return { W, H, cx, cy, R, arc, rings, spokes };
   }, []);
 
   return (
@@ -319,6 +319,70 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         {backdrop.spokes.map((d) => (
           <path key={d} d={d} fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth={1} />
         ))}
+
+        <g pointerEvents="none">
+          <text
+            x={backdrop.cx - backdrop.R}
+            y={backdrop.cy + 18}
+            fontSize={11}
+            fill="rgba(15,23,42,0.55)"
+            textAnchor="start"
+          >
+            Earlier
+          </text>
+          <text
+            x={backdrop.cx + backdrop.R}
+            y={backdrop.cy + 18}
+            fontSize={11}
+            fill="rgba(15,23,42,0.55)"
+            textAnchor="end"
+          >
+            Later
+          </text>
+
+          {(
+            [
+              { theta: (5 * Math.PI) / 6, label: 'Constraints' },
+              { theta: Math.PI / 2, label: 'Define approach' },
+              { theta: Math.PI / 6, label: 'Reimagine' },
+            ] as const
+          ).map((p) => {
+            const r = backdrop.R * 0.92;
+            const x = backdrop.cx + r * Math.cos(p.theta);
+            const y = backdrop.cy - r * Math.sin(p.theta);
+            return (
+              <text
+                key={p.label}
+                x={x}
+                y={y}
+                fontSize={12}
+                fill="rgba(15,23,42,0.62)"
+                textAnchor="middle"
+              >
+                {p.label}
+              </text>
+            );
+          })}
+
+          {(
+            [
+              { p: 0.25, label: 'Low confidence' },
+              { p: 0.5, label: 'Mid' },
+              { p: 0.75, label: 'High confidence' },
+            ] as const
+          ).map((r) => (
+            <text
+              key={r.label}
+              x={backdrop.cx + backdrop.R * r.p}
+              y={backdrop.cy - 10}
+              fontSize={10}
+              fill="rgba(15,23,42,0.45)"
+              textAnchor="middle"
+            >
+              {r.label}
+            </text>
+          ))}
+        </g>
 
         {links
           ? links.map((l) => (
