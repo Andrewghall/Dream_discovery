@@ -1074,7 +1074,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
           count: c.constraintCount,
         };
       })
-      .filter((p) => p.constraintCount >= 2)
+      .filter((p) => p.constraintCount >= 1)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
   }, [dependencyEdgesById, utteranceNodes]);
@@ -1190,8 +1190,98 @@ export default function WorkshopLivePage({ params }: PageProps) {
       };
     }
 
+    const synthesisTotal = (Object.keys(out) as LiveDomain[]).reduce(
+      (acc, d) =>
+        acc +
+        (out[d].aspirations.length || 0) +
+        (out[d].constraints.length || 0) +
+        (out[d].enablers.length || 0) +
+        (out[d].opportunities.length || 0),
+      0
+    );
+
+    // Hard fallback: if theme-based synthesis yields nothing in practice (common when embeddings/themes are missing
+    // or theme IDs don't align), derive synthesis directly from utterances deterministically.
+    if (synthesisTotal === 0) {
+      type Bucket = 'aspirations' | 'constraints' | 'enablers' | 'opportunities';
+
+      const now2 = Date.now();
+      const tau2 = 12 * 60 * 1000;
+
+      const groups: Record<string, SynthesisItem> = {};
+
+      const bucketOf = (text: string): Bucket | null => {
+        const i = interpretLiveUtterance(text);
+        const cls = classificationFromInterpretation(text, new Date().toISOString());
+
+        const has = (k: string) => i.cognitiveTypes.some((x) => String(x).toUpperCase() === k);
+        if (cls.primaryType === 'QUESTION' || has('QUESTION')) return null;
+
+        if (cls.primaryType === 'CONSTRAINT' || i.temporalIntent === 'LIMIT' || has('BLOCKER')) return 'constraints';
+        if (cls.primaryType === 'ENABLER' || i.temporalIntent === 'METHOD' || has('ENABLER')) return 'enablers';
+        if (cls.primaryType === 'OPPORTUNITY' || has('OPPORTUNITY')) return 'opportunities';
+        if (cls.primaryType === 'VISIONARY' || i.temporalIntent === 'FUTURE' || has('VISION') || has('OUTCOME')) return 'aspirations';
+        return null;
+      };
+
+      for (const n of utteranceNodes) {
+        if (!n.rawText?.trim()) continue;
+        const i = interpretLiveUtterance(n.rawText);
+        const bucket = bucketOf(n.rawText);
+        if (!bucket) continue;
+
+        const sig = themeSignature(n.rawText);
+        const key = `${i.domain}:${bucket}:${sig}`;
+        const ageMs = Math.max(0, now2 - (n.createdAtMs || now2));
+        const recency = Math.exp(-ageMs / Math.max(1, tau2));
+        const w = confidenceWeightNumber(i.confidenceWeight) * (0.4 + 0.6 * recency);
+
+        const prev = groups[key];
+        const strength = (prev?.strength ?? 0) + 1;
+        const lastSeenAtMs = Math.max(prev?.lastSeenAtMs ?? 0, n.createdAtMs || 0);
+        const examples = [shortLabel(n.rawText, 16), ...(prev?.examples || [])].filter(Boolean).slice(0, 3);
+
+        groups[key] = {
+          themeId: `direct:${key}`,
+          label: prev?.label ?? shortLabel(n.rawText, 12),
+          intentType: bucket.toUpperCase(),
+          strength,
+          lastSeenAtMs,
+          weight: (prev?.weight ?? 0) + w,
+          examples,
+        };
+      }
+
+      const out2: Record<LiveDomain, ReturnType<typeof empty>> = {
+        People: empty(),
+        Operations: empty(),
+        Customer: empty(),
+        Technology: empty(),
+        Regulation: empty(),
+      };
+
+      for (const g of Object.values(groups)) {
+        const parts = g.themeId.split(':');
+        const domain = (parts[1] as LiveDomain) || 'Operations';
+        const bucket = (parts[2] as Bucket) || null;
+        if (!bucket || !out2[domain]) continue;
+        out2[domain][bucket].push(g);
+      }
+
+      for (const d of Object.keys(out2) as LiveDomain[]) {
+        out2[d] = {
+          aspirations: sortAndSlice(out2[d].aspirations),
+          constraints: sortAndSlice(out2[d].constraints),
+          enablers: sortAndSlice(out2[d].enablers),
+          opportunities: sortAndSlice(out2[d].opportunities),
+        };
+      }
+
+      return out2;
+    }
+
     return out;
-  }, [effectiveThemesById, interpretedNodes, usingDerivedThemes]);
+  }, [effectiveThemesById, interpretedNodes, usingDerivedThemes, utteranceNodes]);
 
   const lensInsights = useMemo(() => {
     if (!lensDomain) return null;
