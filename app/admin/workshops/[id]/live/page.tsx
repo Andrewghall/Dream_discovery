@@ -216,6 +216,51 @@ export default function WorkshopLivePage({ params }: PageProps) {
     return null;
   };
 
+  const confidenceWeightNumber = (w: string | null | undefined) => {
+    const s = String(w || '').trim().toLowerCase();
+    if (s === 'high') return 1.4;
+    if (s === 'mid') return 1.0;
+    return 0.6;
+  };
+
+  const classificationFromInterpretation = (text: string, nowIso: string): {
+    primaryType: HemispherePrimaryType;
+    confidence: number;
+    keywords: string[];
+    suggestedArea: string | null;
+    updatedAt: string;
+  } => {
+    const i = interpretLiveUtterance(text);
+
+    const has = (k: string) => i.cognitiveTypes.some((x) => String(x).toUpperCase() === k);
+
+    const primaryType: HemispherePrimaryType = has('QUESTION')
+      ? 'QUESTION'
+      : i.temporalIntent === 'LIMIT' || has('BLOCKER')
+        ? 'CONSTRAINT'
+        : i.temporalIntent === 'METHOD'
+          ? 'ACTION'
+          : has('ENABLER')
+            ? 'ENABLER'
+            : has('OPPORTUNITY')
+              ? 'OPPORTUNITY'
+              : has('VISION') || has('OUTCOME')
+                ? 'VISIONARY'
+                : 'INSIGHT';
+
+    const w = confidenceWeightNumber(i.confidenceWeight);
+    const raw = (typeof i.confidence === 'number' ? i.confidence : 0.55) * (0.85 + 0.25 * w);
+    const scaled = Math.max(0, Math.min(1, raw));
+
+    return {
+      primaryType,
+      confidence: scaled,
+      keywords: [],
+      suggestedArea: null,
+      updatedAt: nowIso,
+    };
+  };
+
   const phaseKey = (p: {
     startTimeMs: number;
     endTimeMs: number;
@@ -522,6 +567,20 @@ export default function WorkshopLivePage({ params }: PageProps) {
     return 'neutral';
   };
 
+  const dependencySignalKindFromInterpretation = (text: string) => {
+    const i = interpretLiveUtterance(text);
+    const isConstraint = i.temporalIntent === 'LIMIT' || i.cognitiveTypes.includes('BLOCKER');
+    const isAspiration =
+      i.temporalIntent === 'FUTURE' &&
+      (i.cognitiveTypes.includes('VISION') ||
+        i.cognitiveTypes.includes('OUTCOME') ||
+        i.cognitiveTypes.includes('OPPORTUNITY') ||
+        i.cognitiveTypes.includes('ENABLER'));
+    if (isConstraint) return 'constraint';
+    if (isAspiration) return 'aspiration';
+    return 'neutral';
+  };
+
   const embeddingUrl = useMemo(
     () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/embedding`,
     [workshopId]
@@ -566,16 +625,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const i = interpretLiveUtterance(n.rawText);
       const domain = i.domain;
 
-      if (!hasDependencyLanguage(n.rawText)) continue;
+      const mentioned = (i.domains || []).filter((d) => d !== domain);
+      const fallbackMentioned = inferMentionedDomains(n.rawText).filter((d) => d !== domain);
+      const candidates = mentioned.length ? mentioned : fallbackMentioned;
 
-      const mentioned = inferMentionedDomains(n.rawText);
-      const candidates = mentioned.filter((d) => d !== domain);
+      const shouldInfer = hasDependencyLanguage(n.rawText) || candidates.length > 0;
+      if (!shouldInfer) continue;
+
       const toDomain = candidates.length ? candidates[0] : null;
       if (!toDomain) continue;
 
       const id = `dep:${domain}->${toDomain}`;
       const now = Date.now();
-      const kind = dependencySignalKind(n, i.intentType);
+      const kind = dependencySignalKindFromInterpretation(n.rawText);
       const prev = dependencyEdgesRef.current[id];
       const next: LiveDependencyEdge = prev
         ? {
@@ -623,7 +685,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
         const i = interpretLiveUtterance(n.rawText);
         const domain = i.domain;
-        const intentType = n.classification?.primaryType ?? i.intentType;
+        const intentType = classificationFromInterpretation(n.rawText, new Date().toISOString()).primaryType;
 
         const existingThemes = Object.values(themesRef.current).filter(
           (t) => t.domain === domain && t.intentType === intentType
@@ -686,11 +748,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const interpretedNodes = useMemo(() => {
     return nodes.map((n) => {
       const i = interpretLiveUtterance(n.rawText);
+      const cls = classificationFromInterpretation(n.rawText, new Date().toISOString());
       const themeId = nodeThemeById[n.dataPointId] || null;
       const theme = themeId ? themesById[themeId] : null;
+      const labelDomain = (i.domains || []).slice(0, 2).join('+');
+      const labelType = (i.cognitiveTypes || [])[0] ?? '—';
       return {
         ...n,
-        intent: `${i.intentType} / ${i.domain}`,
+        dialoguePhase: i.hemispherePhase,
+        classification: cls,
+        intent: `${i.temporalIntent} / ${labelType} / ${labelDomain || i.domain}`,
         themeId,
         themeLabel: theme?.label ?? null,
       };
@@ -951,9 +1018,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const revealReadiness = useMemo(() => {
     const total = nodes.length;
-    const classified = nodes.reduce((n, x) => (x.classification?.primaryType ? n + 1 : n), 0);
 
-    const intentExtractionReady = total > 0 && classified >= Math.min(total, 6);
+    const confidentEnough = nodes.reduce((acc, x) => {
+      if (!x.rawText?.trim()) return acc;
+      const i = interpretLiveUtterance(x.rawText);
+      return acc + (confidenceWeightNumber(i.confidenceWeight) >= 1.0 ? 1 : 0);
+    }, 0);
+
+    const intentExtractionReady = total > 0 && confidentEnough >= Math.min(total, 6);
     const dependencyInferenceReady = total > 0 && dependencyProcessedCount >= Math.min(total, 12);
 
     const synthesisTotal = (['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[]).reduce(
@@ -1043,9 +1115,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
       Technology: 0,
       Regulation: 0,
     };
+
+    const now = Date.now();
+    const tauMs = 10 * 60 * 1000;
+
     for (const n of nodes) {
       const i = interpretLiveUtterance(n.rawText);
-      counts[i.domain] = (counts[i.domain] || 0) + 1;
+      const w = confidenceWeightNumber(i.confidenceWeight);
+      const ageMs = Math.max(0, now - (n.createdAtMs || now));
+      const recency = Math.exp(-ageMs / Math.max(1, tauMs));
+      const ww = w * (0.5 + 0.5 * recency);
+      for (const d of i.domains || []) {
+        counts[d] = (counts[d] || 0) + ww;
+      }
     }
     return counts;
   }, [nodes]);
@@ -1062,11 +1144,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
     let unclassified = 0;
 
     for (const n of nodes) {
-      const t = n.classification?.primaryType;
-      if (!t) {
+      if (!n.rawText?.trim()) {
         unclassified += 1;
       } else {
-        byType[t] = (byType[t] || 0) + 1;
+        const i = interpretLiveUtterance(n.rawText);
+        for (const ct of i.cognitiveTypes || []) {
+          byType[ct] = (byType[ct] || 0) + 1;
+        }
       }
     }
 
