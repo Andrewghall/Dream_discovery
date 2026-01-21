@@ -66,3 +66,57 @@ export async function DELETE(
     );
   }
 }
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: workshopId } = await params;
+    const body = (await request.json().catch(() => null)) as
+      | { participantId?: unknown; doNotSendAgain?: unknown }
+      | null;
+
+    const participantId = typeof body?.participantId === 'string' ? body.participantId : '';
+    const doNotSendAgain = typeof body?.doNotSendAgain === 'boolean' ? body.doNotSendAgain : null;
+
+    if (!participantId) {
+      return NextResponse.json({ error: 'participantId is required' }, { status: 400 });
+    }
+
+    if (doNotSendAgain === null) {
+      return NextResponse.json({ error: 'doNotSendAgain must be a boolean' }, { status: 400 });
+    }
+
+    const participant = await prisma.workshopParticipant.findUnique({
+      where: { id: participantId },
+      select: { id: true, workshopId: true },
+    });
+
+    if (!participant || participant.workshopId !== workshopId) {
+      return NextResponse.json({ error: 'Participant not found' }, { status: 404 });
+    }
+
+    const updated = await prisma.workshopParticipant.update({
+      where: { id: participantId },
+      data: { doNotSendAgain } as unknown as Record<string, unknown>,
+    });
+
+    return NextResponse.json({ participant: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('Unknown argument') && message.includes('doNotSendAgain')) {
+      return NextResponse.json(
+        {
+          error: 'Participant suppression flag is not available in this environment yet',
+          detail:
+            'Database is missing column doNotSendAgain. Apply the migration (ALTER TABLE workshop_participants ADD COLUMN doNotSendAgain BOOLEAN NOT NULL DEFAULT FALSE) and redeploy.',
+        },
+        { status: 409 }
+      );
+    }
+
+    console.error('Error updating participant:', error);
+    return NextResponse.json({ error: 'Failed to update participant' }, { status: 500 });
+  }
+}

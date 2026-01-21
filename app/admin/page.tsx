@@ -19,9 +19,32 @@ interface Workshop {
   completedResponses: number;
 }
 
+interface DbUrlInfo {
+  protocol: string | null;
+  user: string | null;
+  host: string | null;
+  port: string | null;
+  database: string | null;
+  schema: string | null;
+}
+
+interface DebugEnvResponse {
+  databaseUrlInfo?: DbUrlInfo;
+  db?: {
+    ok: boolean;
+    currentSchema: string | null;
+    workshopCount: number | null;
+    error: string | null;
+  };
+  nodeEnv?: string | null;
+}
+
 export default function AdminDashboard() {
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [loading, setLoading] = useState(true);
+  const [workshopsError, setWorkshopsError] = useState<string | null>(null);
+  const [dbDebug, setDbDebug] = useState<DebugEnvResponse | null>(null);
+  const [dbDebugError, setDbDebugError] = useState<string | null>(null);
   const [demoReport, setDemoReport] = useState<null | {
     executiveSummary: string;
     tone: string | null;
@@ -45,19 +68,51 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchWorkshops();
+    fetchDbDebug();
   }, []);
 
   const fetchWorkshops = async () => {
     try {
       const response = await fetch(`/api/admin/workshops?bust=${Date.now()}`, { cache: 'no-store' });
-      if (response.ok) {
-        const data = await response.json();
-        setWorkshops(data.workshops || []);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        const details = data && typeof data === 'object' ? (data as Record<string, unknown>).details : null;
+        const detailsMessage =
+          details && typeof details === 'object' && typeof (details as Record<string, unknown>).message === 'string'
+            ? String((details as Record<string, unknown>).message)
+            : null;
+        const fallback = data && typeof data === 'object' && typeof (data as Record<string, unknown>).error === 'string'
+          ? String((data as Record<string, unknown>).error)
+          : 'Failed to fetch workshops';
+        setWorkshopsError(detailsMessage || fallback);
+        setWorkshops([]);
+        return;
       }
+
+      setWorkshopsError(null);
+      setWorkshops((data && typeof data === 'object' ? (data as Record<string, unknown>).workshops : null) as Workshop[] || []);
     } catch (error) {
       console.error('Failed to fetch workshops:', error);
+      setWorkshopsError(error instanceof Error ? error.message : 'Failed to fetch workshops');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDbDebug = async () => {
+    try {
+      const response = await fetch(`/api/debug/env?bust=${Date.now()}`, { cache: 'no-store' });
+      const data = (await response.json().catch(() => null)) as DebugEnvResponse | null;
+      if (!response.ok) {
+        setDbDebug(null);
+        setDbDebugError('Failed to fetch db debug');
+        return;
+      }
+      setDbDebug(data);
+      setDbDebugError(null);
+    } catch (error) {
+      setDbDebug(null);
+      setDbDebugError(error instanceof Error ? error.message : 'Failed to fetch db debug');
     }
   };
 
@@ -127,6 +182,42 @@ export default function AdminDashboard() {
           </Link>
         </div>
 
+        <div className="no-print mb-6">
+          {dbDebugError ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {dbDebugError}
+            </div>
+          ) : dbDebug ? (
+            <div className="space-y-2">
+              {(() => {
+                const schemaParam = dbDebug.databaseUrlInfo?.schema || null;
+                const expected = (schemaParam || 'public').trim();
+                const current = (dbDebug.db?.currentSchema || '').trim();
+                const mismatch = Boolean(expected && current && expected !== current);
+                return mismatch ? (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    Schema mismatch: DATABASE_URL expects <span className="font-mono">{expected}</span> but the DB connection is using{' '}
+                    <span className="font-mono">{current}</span>. Admin data may appear missing.
+                  </div>
+                ) : null;
+              })()}
+
+              <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                <div className="font-medium">Database Connection</div>
+                <div className="text-muted-foreground">
+                  {dbDebug.databaseUrlInfo?.user ? `${dbDebug.databaseUrlInfo.user}@` : ''}
+                  {dbDebug.databaseUrlInfo?.host || 'unknown'}
+                  {dbDebug.databaseUrlInfo?.port ? `:${dbDebug.databaseUrlInfo.port}` : ''}
+                  {dbDebug.databaseUrlInfo?.database ? `/${dbDebug.databaseUrlInfo.database}` : ''}
+                  {dbDebug.databaseUrlInfo?.schema ? ` (schema param: ${dbDebug.databaseUrlInfo.schema})` : ''}
+                  {typeof dbDebug.db?.currentSchema === 'string' ? ` | current_schema(): ${dbDebug.db.currentSchema}` : ''}
+                  {typeof dbDebug.nodeEnv === 'string' ? ` | NODE_ENV: ${dbDebug.nodeEnv}` : ''}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
         {/* Stats Cards */}
         <div className="no-print grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card>
@@ -185,6 +276,11 @@ export default function AdminDashboard() {
             <CardDescription>View and manage your discovery workshops</CardDescription>
           </CardHeader>
           <CardContent>
+            {workshopsError ? (
+              <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {workshopsError}
+              </div>
+            ) : null}
             {loading ? (
               <div className="text-center py-8 text-muted-foreground">Loading workshops...</div>
             ) : workshops.length === 0 ? (

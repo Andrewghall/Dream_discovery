@@ -2,9 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { sendDiscoveryReportEmail } from '@/lib/email/send-report';
-import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
+import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
+import { createHash } from 'crypto';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+function stableFingerprint(value: unknown): string {
+  const json = JSON.stringify(value);
+  return createHash('sha256').update(json).digest('hex');
+}
+
+function isAgenticUnavailableText(text: unknown): boolean {
+  return typeof text === 'string' && text.trim().toLowerCase().startsWith('agentic synthesis unavailable');
+}
 
 const STOPWORDS = new Set([
   'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
@@ -125,20 +135,24 @@ function buildWordFrequencies(texts: string[], maxWords: number = 60) {
     .map(([text, value]) => ({ text, value }));
 }
 
-function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number } | null {
+function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number; version: string | null } | null {
   const parts = (questionKey || '').split(':');
-  if (parts.length !== 3) return null;
-  const [phase, tag, idxStr] = parts;
+  if (parts.length !== 3 && parts.length !== 4) return null;
+
+  const hasVersion = parts.length === 4;
+  const [maybeVersion, phase, tag, idxStr] = hasVersion ? parts : [null, parts[0], parts[1], parts[2]];
   const index = Number(idxStr);
   if (!phase || !tag || !Number.isFinite(index)) return null;
-  return { phase, tag, index };
+  return { phase, tag, index, version: typeof maybeVersion === 'string' && maybeVersion ? maybeVersion : null };
 }
 
 function questionTextFromKey(questionKey: string): { phase: string | null; question: string; tag: string | null } {
   const parsed = parseQuestionKey(questionKey);
   if (!parsed) return { phase: null, question: '', tag: null };
-  const phaseKey = parsed.phase as keyof typeof FIXED_QUESTIONS;
-  const q = FIXED_QUESTIONS[phaseKey]?.[parsed.index];
+
+  const qs = fixedQuestionsForVersion(parsed.version);
+  const phaseKey = parsed.phase as keyof typeof qs;
+  const q = qs[phaseKey]?.[parsed.index];
   return {
     phase: parsed.phase,
     question: q?.text || '',
@@ -154,6 +168,39 @@ type KeyInsight = {
   confidence: 'high' | 'medium' | 'low';
   evidence: string[];
 };
+
+function safeInputQuality(value: unknown): ReportInputQuality | null {
+  const rec = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  if (!rec) return null;
+  const score = typeof rec.score === 'number' && Number.isFinite(rec.score) ? clampScore(rec.score) : null;
+  const label = rec.label === 'high' || rec.label === 'medium' || rec.label === 'low' ? (rec.label as InputQualityLabel) : null;
+  const rationale = typeof rec.rationale === 'string' ? rec.rationale.trim() : '';
+  const missingInfoSuggestions = Array.isArray(rec.missingInfoSuggestions)
+    ? rec.missingInfoSuggestions.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim())
+    : [];
+  if (score === null || !label || !rationale) return null;
+  return { score, label, rationale, missingInfoSuggestions };
+}
+
+function safeKeyInsights(value: unknown): KeyInsight[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null))
+    .filter(Boolean)
+    .map((rec) => {
+      const title = typeof rec!.title === 'string' ? rec!.title.trim() : '';
+      const insight = typeof rec!.insight === 'string' ? rec!.insight.trim() : '';
+      const confidence = rec!.confidence === 'high' || rec!.confidence === 'medium' || rec!.confidence === 'low'
+        ? (rec!.confidence as 'high' | 'medium' | 'low')
+        : null;
+      const evidence = Array.isArray(rec!.evidence)
+        ? rec!.evidence.filter((e) => typeof e === 'string' && e.trim()).map((e) => e.trim())
+        : [];
+      if (!title || !insight || !confidence) return null;
+      return { title, insight, confidence, evidence };
+    })
+    .filter(Boolean) as KeyInsight[];
+}
 
 type ReportInputQuality = {
   score: number;
@@ -218,7 +265,7 @@ async function reviewDiscoveryNotes(params: {
       {
         role: 'system',
         content:
-          'You are a strict reviewer of discovery interview notes. Your job is to evaluate whether the notes contain meaningful, specific, internally consistent information. Be skeptical and do NOT reward nonsense.\n\nReturn ONLY valid JSON with this schema:\n{\n  "score": number (0-100),\n  "label": "high"|"medium"|"low",\n  "rationale": string,\n  "missingInfoSuggestions": string[] (3-8 items),\n  "keyInsights": [\n    {\n      "title": string,\n      "insight": string,\n      "confidence": "high"|"medium"|"low",\n      "evidence": string[] (1-4 short verbatim quotes from the notes)\n    }\n  ]\n}\n\nRules:\n- If notes are nonsense, repetitive filler, or too vague, score low and provide missingInfoSuggestions.\n- Evidence MUST be copied verbatim from the notes.\n- If you cannot find evidence quotes, set confidence="low" and keep keyInsights minimal.' ,
+          'You are a strict reviewer of discovery interview notes. Your job is to evaluate whether the notes contain meaningful, specific, internally consistent information. Be skeptical and do NOT reward vague filler.\n\nReturn ONLY valid JSON with this schema:\n{\n  "score": number (0-100),\n  "label": "high"|"medium"|"low",\n  "rationale": string,\n  "missingInfoSuggestions": string[] (3-8 items),\n  "keyInsights": [\n    {\n      "title": string,\n      "insight": string,\n      "confidence": "high"|"medium"|"low",\n      "evidence": string[] (1-4 short verbatim quotes from the notes)\n    }\n  ]\n}\n\nRules:\n- Neutral system mirror tone: no blame, no praise, no solutions, no prioritisation.\n- Prefer insights that describe operational mechanisms (handoffs, approvals, queues, rework, unclear ownership, tooling constraints).\n- Evidence MUST be copied verbatim from the notes.\n- If you cannot find evidence quotes, set confidence="low" and keep keyInsights minimal.' ,
       },
       {
         role: 'user',
@@ -330,14 +377,9 @@ async function generateReviewedReportText(params: {
   const review = await reviewDiscoveryNotes({ notes });
 
   if (!process.env.OPENAI_API_KEY) {
-    const lowData = review.label === 'low';
     return {
-      executiveSummary: lowData
-        ? 'Insufficient usable detail was captured to produce meaningful insights. The notes appear too thin or too vague to support confident conclusions.'
-        : notes,
-      feedback: lowData
-        ? 'Thank you for participating. To produce a more meaningful report, please include concrete examples (what happened, where, how often) and specific constraints.'
-        : 'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+      executiveSummary: 'Agentic synthesis unavailable. Enable OPENAI_API_KEY to generate a report summary.',
+      feedback: 'Agentic synthesis unavailable. Enable OPENAI_API_KEY to generate report feedback.',
       tone: null,
       inputQuality: {
         score: review.score,
@@ -345,7 +387,7 @@ async function generateReviewedReportText(params: {
         rationale: review.rationale,
         missingInfoSuggestions: review.missingInfoSuggestions,
       },
-      keyInsights: review.keyInsights,
+      keyInsights: [],
     };
   }
 
@@ -356,7 +398,7 @@ async function generateReviewedReportText(params: {
       {
         role: 'system',
         content:
-          'You are writing a discovery interview report focused on the interviewee\'s view of the organisation and operating environment. Do NOT judge the individual.\n\nYou MUST follow these rules:\n- Be strict and evidence-based. Do not add positivity unless supported by the notes.\n- If input quality is low, explicitly state that insights are limited/insufficient and do not invent conclusions.\n- Do not introduce facts not present in the notes.\n\nReturn ONLY valid JSON with this schema:\n{\n  "executiveSummary": string,\n  "tone": null | "hopeful" | "optimistic" | "neutral" | "skeptical" | "frustrated" | "mixed",\n  "feedback": string\n}\n',
+          'You are writing a discovery interview report that mirrors today\'s operating reality. Do NOT judge the individual or the organisation.\n\nYou MUST follow these rules:\n- Neutral, factual tone; no blame, no praise.\n- No solutions/recommendations/prioritisation language (avoid "should", "need to", "must").\n- Be strict and evidence-based. Do not add positivity unless supported by the notes.\n- If input quality is low, explicitly state that insights are limited/insufficient and do not invent conclusions.\n- Prefer concrete mechanisms (handoffs, approvals, queues, rework, unclear ownership, tooling constraints).\n- Do not introduce facts not present in the notes.\n\nReturn ONLY valid JSON with this schema:\n{\n  "executiveSummary": string,\n  "tone": null | "hopeful" | "optimistic" | "neutral" | "skeptical" | "frustrated" | "mixed",\n  "feedback": string\n}\n',
       },
       {
         role: 'user',
@@ -375,14 +417,9 @@ async function generateReviewedReportText(params: {
   const parsed = safeParseJson<{ executiveSummary: string; tone: string | null; feedback: string }>(raw);
 
   if (!parsed) {
-    const lowData = review.label === 'low';
     return {
-      executiveSummary: lowData
-        ? 'Insufficient usable detail was captured to produce meaningful insights. The notes appear too thin or too vague to support confident conclusions.'
-        : notes,
-      feedback: lowData
-        ? 'Thank you for participating. To produce a more meaningful report, please include concrete examples (what happened, where, how often) and specific constraints.'
-        : 'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+      executiveSummary: 'Agentic synthesis unavailable. The model returned an invalid response.',
+      feedback: 'Agentic synthesis unavailable. The model returned an invalid response.',
       tone: null,
       inputQuality: {
         score: review.score,
@@ -395,11 +432,11 @@ async function generateReviewedReportText(params: {
   }
 
   return {
-    executiveSummary: (parsed.executiveSummary || '').trim() || notes,
+    executiveSummary:
+      (parsed.executiveSummary || '').trim() || 'Agentic synthesis unavailable. The model returned an empty summary.',
     tone: (parsed.tone || '').trim() || null,
     feedback:
-      (parsed.feedback || '').trim() ||
-      'Thank you for candidly sharing your experiences. Your input will help shape the Dream session and ensure we focus on what most helps (and most constrains) your work.',
+      (parsed.feedback || '').trim() || 'Agentic synthesis unavailable. The model returned an empty feedback message.',
     inputQuality: {
       score: review.score,
       label: review.label,
@@ -498,6 +535,8 @@ export async function GET(request: NextRequest) {
   try {
     const sessionId = request.nextUrl.searchParams.get('sessionId');
     const demo = request.nextUrl.searchParams.get('demo');
+    const skipEmail = request.nextUrl.searchParams.get('skipEmail') === '1';
+    const force = request.nextUrl.searchParams.get('force') === '1';
 
     if (demo === '1') {
       const includeRegulation = request.nextUrl.searchParams.get('includeRegulation') !== '0';
@@ -536,6 +575,7 @@ export async function GET(request: NextRequest) {
       include: {
         workshop: true,
         participant: true,
+        report: true,
         messages: { orderBy: { createdAt: 'asc' } },
         dataPoints: {
           where: {
@@ -761,117 +801,157 @@ export async function GET(request: NextRequest) {
       else if (qa.tag === 'final_thoughts') prioritization.finalThoughts = qa.answer;
     }
 
-    const reviewed = await generateReviewedReportText({
-      workshopName: session.workshop?.name,
-      participantName: session.participant?.name,
-      phaseInsights,
-      prioritization,
+    const inputFingerprint = stableFingerprint({
+      sessionId: session.id,
+      includeRegulation,
+      qaPairs: qaPairs.map((q) => ({
+        phase: q.phase ?? null,
+        question: q.question,
+        answer: q.answer,
+        tag: q.tag ?? null,
+      })),
     });
 
-    const wordCloudThemes = buildWordFrequencies(narrativeTexts);
+    const storedInputQuality = safeInputQuality(session.report?.inputQuality);
+    const storedKeyInsights = safeKeyInsights(session.report?.keyInsights);
+    const storedFingerprint =
+      storedInputQuality && typeof (storedInputQuality as any).agenticFingerprint === 'string'
+        ? String((storedInputQuality as any).agenticFingerprint)
+        : null;
 
-    try {
-      const participantEmail = session.participant?.email || null;
-      const participantName = session.participant?.name || 'Participant';
-      const participantToken = session.participant?.discoveryToken;
-      const hasEmailConfig = !!process.env.RESEND_API_KEY && !!process.env.FROM_EMAIL;
+    const agenticConfigured = !!process.env.OPENAI_API_KEY;
+    const existingUnavailable =
+      isAgenticUnavailableText(session.report?.executiveSummary) || isAgenticUnavailableText(session.report?.feedback);
 
-      const alreadyEmailed = (session.messages || []).some((m) => {
-        const meta =
-          m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)
-            ? (m.metadata as Record<string, unknown>)
-            : null;
-        if (!meta) return false;
+    const canReuse =
+      !force &&
+      !!session.report &&
+      storedFingerprint === inputFingerprint &&
+      (!agenticConfigured || !existingUnavailable) &&
+      !!storedInputQuality;
 
-        const reportEmail =
-          meta.reportEmail && typeof meta.reportEmail === 'object' && !Array.isArray(meta.reportEmail)
-            ? (meta.reportEmail as Record<string, unknown>)
-            : null;
-        if (reportEmail && reportEmail.sentAt) return true;
-        if (meta.kind === 'report_email' && meta.sentAt) return true;
-        return false;
-      });
-
-      if (
-        session.status === 'COMPLETED' &&
-        hasEmailConfig &&
-        participantEmail &&
-        participantToken &&
-        !alreadyEmailed
-      ) {
-        const appUrl =
-          process.env.NEXT_PUBLIC_APP_URL ||
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-        const discoveryUrl = `${appUrl}/discovery/${session.workshopId}/${participantToken}`;
-
-        const emailResult = await sendDiscoveryReportEmail({
-          to: participantEmail,
-          participantName,
+    const reviewed = canReuse
+      ? {
+          executiveSummary: session.report!.executiveSummary,
+          tone: session.report!.tone ?? null,
+          feedback: session.report!.feedback,
+          inputQuality: storedInputQuality!,
+          keyInsights: storedKeyInsights,
+        }
+      : await generateReviewedReportText({
           workshopName: session.workshop?.name,
-          discoveryUrl,
-          executiveSummary: reviewed.executiveSummary,
-          tone: reviewed.tone,
-          feedback: reviewed.feedback,
-          inputQuality: reviewed.inputQuality,
-          keyInsights: reviewed.keyInsights,
-          phaseInsights: phaseInsights.map((p) => ({
-            phase: p.phase,
-            currentScore: p.currentScore,
-            targetScore: p.targetScore,
-            projectedScore: p.projectedScore,
-          })),
+          participantName: session.participant?.name,
+          phaseInsights,
+          prioritization,
         });
 
-        const maybe: unknown = emailResult;
-        const obj =
-          maybe && typeof maybe === 'object' && !Array.isArray(maybe)
-            ? (maybe as Record<string, unknown>)
-            : null;
-        const data = obj && obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data) ? (obj.data as Record<string, unknown>) : null;
-        const resendId =
-          (data && typeof data.id === 'string' ? data.id : null) ??
-          (obj && typeof obj.id === 'string' ? obj.id : null) ??
-          (data && typeof data.messageId === 'string' ? data.messageId : null) ??
-          (obj && typeof obj.messageId === 'string' ? obj.messageId : null);
+    const wordCloudThemes = canReuse && session.report?.wordCloudThemes ? session.report.wordCloudThemes : buildWordFrequencies(narrativeTexts);
 
-        const latestAi = [...(session.messages || [])]
-          .reverse()
-          .find((m) => m?.role === 'AI');
+    if (!skipEmail) {
+      try {
+        const participantEmail = session.participant?.email || null;
+        const participantName = session.participant?.name || 'Participant';
+        const participantToken = session.participant?.discoveryToken;
+        const hasEmailConfig = !!process.env.RESEND_API_KEY && !!process.env.FROM_EMAIL;
 
-        const marker = {
-          kind: 'report_email',
-          sentAt: new Date().toISOString(),
-          resendId,
-        };
+        const alreadyEmailed = (session.messages || []).some((m) => {
+          const meta =
+            m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)
+              ? (m.metadata as Record<string, unknown>)
+              : null;
+          if (!meta) return false;
 
-        if (latestAi?.id) {
-          const prevMeta =
-            latestAi.metadata && typeof latestAi.metadata === 'object' && !Array.isArray(latestAi.metadata)
-              ? (latestAi.metadata as Record<string, unknown>)
-              : {};
-          await prisma.conversationMessage.update({
-            where: { id: latestAi.id },
-            data: {
-              metadata: {
-                ...prevMeta,
-                reportEmail: marker,
+          const reportEmail =
+            meta.reportEmail && typeof meta.reportEmail === 'object' && !Array.isArray(meta.reportEmail)
+              ? (meta.reportEmail as Record<string, unknown>)
+              : null;
+          if (reportEmail && reportEmail.sentAt) return true;
+          if (meta.kind === 'report_email' && meta.sentAt) return true;
+          return false;
+        });
+
+        if (
+          session.status === 'COMPLETED' &&
+          hasEmailConfig &&
+          participantEmail &&
+          participantToken &&
+          !alreadyEmailed
+        ) {
+          const appUrl =
+            process.env.NEXT_PUBLIC_APP_URL ||
+            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+          const discoveryUrl = `${appUrl}/discovery/${session.workshopId}/${participantToken}`;
+
+          const emailResult = await sendDiscoveryReportEmail({
+            to: participantEmail,
+            participantName,
+            workshopName: session.workshop?.name,
+            discoveryUrl,
+            executiveSummary: reviewed.executiveSummary,
+            tone: reviewed.tone,
+            feedback: reviewed.feedback,
+            inputQuality: reviewed.inputQuality,
+            keyInsights: reviewed.keyInsights,
+            phaseInsights: phaseInsights.map((p) => ({
+              phase: p.phase,
+              currentScore: p.currentScore,
+              targetScore: p.targetScore,
+              projectedScore: p.projectedScore,
+            })),
+          });
+
+          const maybe: unknown = emailResult;
+          const obj =
+            maybe && typeof maybe === 'object' && !Array.isArray(maybe)
+              ? (maybe as Record<string, unknown>)
+              : null;
+          const data =
+            obj && obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)
+              ? (obj.data as Record<string, unknown>)
+              : null;
+          const resendId =
+            (data && typeof data.id === 'string' ? data.id : null) ??
+            (obj && typeof obj.id === 'string' ? obj.id : null) ??
+            (data && typeof data.messageId === 'string' ? data.messageId : null) ??
+            (obj && typeof obj.messageId === 'string' ? obj.messageId : null);
+
+          const latestAi = [...(session.messages || [])].reverse().find((m) => m?.role === 'AI');
+
+          const marker = {
+            kind: 'report_email',
+            sentAt: new Date().toISOString(),
+            resendId,
+          };
+
+          if (latestAi?.id) {
+            const prevMeta =
+              latestAi.metadata && typeof latestAi.metadata === 'object' && !Array.isArray(latestAi.metadata)
+                ? (latestAi.metadata as Record<string, unknown>)
+                : {};
+            await prisma.conversationMessage.update({
+              where: { id: latestAi.id },
+              data: {
+                metadata: {
+                  ...prevMeta,
+                  reportEmail: marker,
+                },
               },
-            },
-          });
-        } else {
-          await prisma.conversationMessage.create({
-            data: {
-              sessionId: session.id,
-              role: 'AI',
-              content: '',
-              phase: 'summary',
-              metadata: marker,
-            },
-          });
+            });
+          } else {
+            await prisma.conversationMessage.create({
+              data: {
+                sessionId: session.id,
+                role: 'AI',
+                content: '',
+                phase: 'summary',
+                metadata: marker,
+              },
+            });
+          }
         }
+      } catch (e) {
+        console.error('Failed to email discovery report:', e);
       }
-    } catch (e) {
-      console.error('Failed to email discovery report:', e);
     }
 
     return NextResponse.json({
@@ -889,14 +969,25 @@ export async function GET(request: NextRequest) {
       tone: reviewed.tone,
       feedback: reviewed.feedback,
       inputQuality: reviewed.inputQuality,
-      keyInsights: reviewed.keyInsights,
+      keyInsights: canReuse && session.report?.keyInsights ? session.report.keyInsights : reviewed.keyInsights,
       introContext,
-      phaseInsights,
+      phaseInsights: canReuse && session.report?.phaseInsights ? session.report.phaseInsights : phaseInsights,
       wordCloudThemes,
       qaPairs,
     });
   } catch (error) {
     console.error('Error generating conversation report:', error);
-    return NextResponse.json({ error: 'Failed to generate report' }, { status: 500 });
+    const details =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Unknown error';
+
+    const skipEmail = request.nextUrl.searchParams.get('skipEmail') === '1';
+    return NextResponse.json(
+      skipEmail ? { error: 'Failed to generate report', details } : { error: 'Failed to generate report' },
+      { status: 500 }
+    );
   }
 }

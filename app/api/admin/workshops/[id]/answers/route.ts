@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ConversationStatus, Prisma } from '@prisma/client';
-import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
+import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const STOPWORDS = new Set([
   'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
@@ -22,6 +25,62 @@ function metaKind(meta: unknown): string | null {
   return typeof rec.kind === 'string' ? rec.kind : null;
 }
 
+type QuestionMeta = {
+  kind: 'question';
+  tag: string;
+  index: number;
+  phase: string;
+};
+
+function getQuestionMeta(m: unknown): QuestionMeta | null {
+  const meta = m && typeof m === 'object' && 'metadata' in m ? (m as { metadata?: unknown }).metadata : null;
+  const rec = meta && typeof meta === 'object' ? (meta as Record<string, unknown>) : null;
+  if (!rec) return null;
+  if (rec.kind !== 'question') return null;
+  if (typeof rec.tag !== 'string' || typeof rec.phase !== 'string' || typeof rec.index !== 'number') return null;
+  return { kind: 'question', tag: rec.tag, index: rec.index, phase: rec.phase };
+}
+
+function inferTagFromQuestionText(question: string, phase: string | null): string | null {
+  const q = (question || '').toLowerCase();
+  const p = (phase || '').toLowerCase();
+  if (!q) return null;
+
+  const hasScale = q.includes('1-10') || q.includes('1–10') || q.includes('scale') || q.includes('rate');
+  const isConfidence = q.includes('confiden');
+  if (hasScale && isConfidence) return 'confidence_score';
+
+  if (p === 'prioritization') {
+    if (q.includes('constrain') && (q.includes('most') || q.includes('day-to-day'))) return 'biggest_constraint';
+    if (q.includes('biggest') && q.includes('impact')) return 'high_impact';
+    if (q.includes('optimistic') || q.includes('skeptical') || q.includes('sceptical')) return 'optimism';
+    if (q.includes('other insights') || q.includes('anything else') || q.includes('final')) return 'final_thoughts';
+  }
+
+  if (p === 'intro') return 'context';
+
+  if (q.includes('strength') || q.includes('behaviour') || q.includes('enabler')) return 'strengths';
+  if (q.includes("what's working") || q.includes('working well') || q.includes('help') || q.includes('appreciate')) return 'working';
+  if (q.includes('pain') || q.includes('frustrat') || q.includes('struggle')) return 'pain_points';
+  if (q.includes('friction') || q.includes('slow you down') || q.includes('create friction')) return 'friction';
+  if (q.includes('gap') || q.includes('challenge') || q.includes('hold your team back')) return 'gaps';
+  if (q.includes('barrier') || q.includes('prevent') || q.includes('holding back')) return 'barrier';
+  if (q.includes('support') || q.includes('training') || q.includes('resources')) return 'support';
+  if (q.includes('future') || q.includes('looking ahead') || q.includes('in 1.5') || q.includes('in 3')) return 'future';
+
+  return null;
+}
+
+function translatedAnswerText(meta: unknown, fallback: string): string {
+  const rec = meta && typeof meta === 'object' && !Array.isArray(meta) ? (meta as Record<string, unknown>) : null;
+  const translation =
+    rec && rec.translation && typeof rec.translation === 'object' && !Array.isArray(rec.translation)
+      ? (rec.translation as Record<string, unknown>)
+      : null;
+  const en = translation && typeof translation.en === 'string' ? translation.en : null;
+  return typeof en === 'string' && en.trim() ? en : fallback;
+}
+
 function isConversationStatus(value: string): value is ConversationStatus {
   return (Object.values(ConversationStatus) as string[]).includes(value);
 }
@@ -31,21 +90,23 @@ function isRatingQuestion(question: string): boolean {
   return q.includes('scale of 1-10') || q.includes('rate 1-10') || q.includes('rate 1 to 10');
 }
 
-function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number } | null {
+function parseQuestionKey(questionKey: string): { phase: string; tag: string; index: number; version: string | null } | null {
   const parts = (questionKey || '').split(':');
-  if (parts.length !== 3) return null;
-  const [phase, tag, idxStr] = parts;
+  if (parts.length !== 3 && parts.length !== 4) return null;
+  const hasVersion = parts.length === 4;
+  const [maybeVersion, phase, tag, idxStr] = hasVersion ? parts : [null, parts[0], parts[1], parts[2]];
   const index = Number(idxStr);
   if (!phase || !tag || !Number.isFinite(index)) return null;
-  return { phase, tag, index };
+  return { phase, tag, index, version: typeof maybeVersion === 'string' && maybeVersion ? maybeVersion : null };
 }
 
 function questionTextFromKey(questionKey: string): { phase: string | null; question: string } {
   const parsed = parseQuestionKey(questionKey);
   if (!parsed) return { phase: null, question: '' };
 
-  const phase = parsed.phase as keyof typeof FIXED_QUESTIONS;
-  const q = FIXED_QUESTIONS[phase]?.[parsed.index];
+  const qs = fixedQuestionsForVersion(parsed.version);
+  const phase = parsed.phase as keyof typeof qs;
+  const q = qs[phase]?.[parsed.index];
   return {
     phase: parsed.phase,
     question: q?.text || '',
@@ -86,20 +147,24 @@ export async function GET(
     const sessionId = request.nextUrl.searchParams.get('sessionId');
     const participantId = request.nextUrl.searchParams.get('participantId');
     const status = request.nextUrl.searchParams.get('status');
+    const includeIncomplete = request.nextUrl.searchParams.get('includeIncomplete') === '1';
 
     const where: Prisma.ConversationSessionWhereInput = { workshopId };
     if (sessionId) where.id = sessionId;
     if (participantId) where.participantId = participantId;
     if (status && isConversationStatus(status)) where.status = status;
 
-    // Completion-safe aggregation: only include completed discovery responses.
-    where.OR = [{ completedAt: { not: null } }, { participant: { responseCompletedAt: { not: null } } }];
+    // Completion-safe aggregation: only include completed discovery responses unless explicitly overridden.
+    if (!includeIncomplete) {
+      where.OR = [{ completedAt: { not: null } }, { participant: { responseCompletedAt: { not: null } } }];
+    }
 
     const sessions = await prisma.conversationSession.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
         participant: true,
+        messages: { orderBy: { createdAt: 'asc' } },
         dataPoints: {
           where: {
             questionKey: {
@@ -146,17 +211,66 @@ export async function GET(
         }
       }
 
+      if (qaPairs.length === 0 && session.messages.length > 0) {
+        const messages = session.messages;
+
+        for (let i = 0; i < messages.length; i++) {
+          const m = messages[i];
+          if (m.role !== 'PARTICIPANT') continue;
+          if (metaKind(m.metadata) === 'clarification') continue;
+
+          let questionMsg: (typeof messages)[number] | null = null;
+          for (let j = i - 1; j >= 0; j--) {
+            const prev = messages[j];
+            if (prev.role !== 'AI') continue;
+            const prevKind = metaKind(prev.metadata);
+            if (prevKind === 'clarification_response') continue;
+            questionMsg = prev;
+            break;
+          }
+
+          const question = questionMsg?.content || '';
+          const phase = (m.phase || questionMsg?.phase || null) as string | null;
+          const qm = getQuestionMeta(questionMsg);
+          const tag = qm?.tag || inferTagFromQuestionText(question, phase);
+          const answerText = translatedAnswerText(m.metadata, m.content);
+          const questionKey = qm
+            ? `${qm.phase}:${qm.tag}:${qm.index}`
+            : `${phase || 'unknown'}:${tag || 'unknown'}:${i}`;
+
+          qaPairs.push({
+            phase,
+            question,
+            questionKey,
+            answer: answerText,
+            createdAt: m.createdAt,
+          });
+
+          if (question && isRatingQuestion(question)) {
+            const rating = extractRatingFromAnswer(answerText);
+            if (rating !== null && phase) ratingByPhase[phase] = rating;
+          } else {
+            freeTextAnswers.push(answerText);
+          }
+        }
+      }
+
       const wordCloud = buildWordFrequencies(freeTextAnswers);
 
       return {
         sessionId: session.id,
         status: session.status,
+        runType: (session as unknown as { runType?: string | null }).runType ?? null,
+        questionSetVersion: (session as unknown as { questionSetVersion?: string | null }).questionSetVersion ?? null,
+        createdAt: session.createdAt,
+        completedAt: session.completedAt,
         participant: {
           id: session.participantId,
           name: session.participant.name,
           email: session.participant.email,
           role: session.participant.role,
           department: session.participant.department,
+          discoveryToken: session.participant.discoveryToken,
         },
         qaPairs,
         ratingByPhase,

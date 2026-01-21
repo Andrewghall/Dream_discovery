@@ -241,23 +241,44 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   ],
 };
 
-export function getTotalQuestionCount(includeRegulation: boolean): number {
+export function fixedQuestionsForVersion(questionSetVersion: string | null | undefined): typeof FIXED_QUESTIONS {
+  const v = (questionSetVersion || '').trim().toLowerCase();
+  if (v === 'v2') return FIXED_QUESTIONS_V2;
+  return FIXED_QUESTIONS;
+}
+
+export const FIXED_QUESTIONS_V2: typeof FIXED_QUESTIONS = {
+  ...FIXED_QUESTIONS,
+  intro: [
+    {
+      ...FIXED_QUESTIONS.intro[0],
+      text: "Follow-up: since the last session, what has changed in your role, priorities, or the organisation?",
+    },
+    ...FIXED_QUESTIONS.intro.slice(1),
+  ],
+};
+
+export function getTotalQuestionCount(includeRegulation: boolean, questionSetVersion?: string | null): number {
+  const qs = fixedQuestionsForVersion(questionSetVersion);
   const phases = getPhaseOrder(includeRegulation).filter((p) => p !== 'summary');
-  return phases.reduce((sum, phase) => sum + (FIXED_QUESTIONS[phase]?.length || 0), 0);
+  return phases.reduce((sum, phase) => sum + (qs[phase]?.length || 0), 0);
 }
 
 export function getOverallQuestionNumber(
   phase: ConversationPhase,
   index: number,
-  includeRegulation: boolean
+  includeRegulation: boolean,
+  questionSetVersion?: string | null
 ): number | null {
   if (phase === 'summary') return null;
+
+  const qs = fixedQuestionsForVersion(questionSetVersion);
 
   const phases = getPhaseOrder(includeRegulation).filter((p) => p !== 'summary');
   let offset = 0;
   for (const p of phases) {
     if (p === phase) return offset + index + 1;
-    offset += FIXED_QUESTIONS[p]?.length || 0;
+    offset += qs[p]?.length || 0;
   }
 
   return null;
@@ -269,8 +290,13 @@ export function getNextPhase(current: ConversationPhase, includeRegulation: bool
   return order[Math.min(idx + 1, order.length - 1)];
 }
 
-export function getPhaseProgressPercent(phase: ConversationPhase, answeredCount: number): number {
-  const total = FIXED_QUESTIONS[phase].length;
+export function getPhaseProgressPercent(
+  phase: ConversationPhase,
+  answeredCount: number,
+  questionSetVersion?: string | null
+): number {
+  const qs = fixedQuestionsForVersion(questionSetVersion);
+  const total = qs[phase].length;
   if (total <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round((answeredCount / total) * 100)));
 }
@@ -278,9 +304,10 @@ export function getPhaseProgressPercent(phase: ConversationPhase, answeredCount:
 export function getFixedQuestion(
   phase: ConversationPhase,
   index: number,
-  includeRegulation: boolean
+  includeRegulation: boolean,
+  questionSetVersion?: string | null
 ): string {
-  const q = FIXED_QUESTIONS[phase]?.[index];
+  const q = fixedQuestionsForVersion(questionSetVersion)[phase]?.[index];
   if (!q) return '';
 
   return q.text;
@@ -289,7 +316,8 @@ export function getFixedQuestion(
 export function getFixedQuestionObject(
   phase: ConversationPhase,
   index: number,
-  includeRegulation: boolean
+  includeRegulation: boolean,
+  questionSetVersion?: string | null
 ): FixedQuestion | null {
-  return FIXED_QUESTIONS[phase]?.[index] ?? null;
+  return fixedQuestionsForVersion(questionSetVersion)[phase]?.[index] ?? null;
 }

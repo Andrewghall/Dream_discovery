@@ -45,8 +45,35 @@ export async function GET(request: NextRequest) {
       { workshops: workshopsWithStats },
       { headers: { 'Cache-Control': 'no-store' } }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error fetching workshops:', error);
+
+    if (error instanceof PrismaClientKnownRequestError) {
+      return NextResponse.json(
+        {
+          error: 'Failed to fetch workshops',
+          details: {
+            code: error.code,
+            message: error.message,
+            meta: error.meta,
+          },
+        },
+        { status: 500 }
+      );
+    }
+
+    if (error instanceof Error) {
+      return NextResponse.json(
+        {
+          error: 'Failed to fetch workshops',
+          details: {
+            message: error.message,
+          },
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Failed to fetch workshops' },
       { status: 500 }

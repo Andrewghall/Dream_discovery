@@ -102,6 +102,14 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastSpokenMessageIdRef = useRef<string | null>(null);
 
+  const getRunConfig = (): { runType: 'BASELINE' | 'FOLLOWUP'; questionSetVersion: string } => {
+    const sp = new URLSearchParams(window.location.search);
+    const rt = (sp.get('runType') || '').trim().toUpperCase();
+    const runType: 'BASELINE' | 'FOLLOWUP' = rt === 'FOLLOWUP' ? 'FOLLOWUP' : 'BASELINE';
+    const v = (sp.get('questionSetVersion') || '').trim();
+    return { runType, questionSetVersion: v || 'v1' };
+  };
+
   const lastAiQuestionMessage = [...messages]
     .reverse()
     .find((m) => m.role === 'AI' && isQuestionMeta(m.metadata));
@@ -170,10 +178,11 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
   const initializeSession = async () => {
     try {
+      const runConfig = getRunConfig();
       const response = await fetch(`/api/conversation/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workshopId, token }),
+        body: JSON.stringify({ workshopId, token, ...runConfig }),
       });
 
       if (!response.ok) throw new Error('Failed to initialize session');
@@ -260,10 +269,11 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setIsLoading(false);
 
     try {
+      const runConfig = getRunConfig();
       const response = await fetch(`/api/conversation/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workshopId, token, restart: true }),
+        body: JSON.stringify({ workshopId, token, restart: true, ...runConfig }),
       });
 
       if (!response.ok) throw new Error('Failed to restart session');

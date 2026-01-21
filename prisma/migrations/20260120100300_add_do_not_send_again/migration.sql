@@ -1,0 +1,2 @@
+ALTER TABLE "workshop_participants"
+ADD COLUMN IF NOT EXISTS "doNotSendAgain" BOOLEAN NOT NULL DEFAULT FALSE;

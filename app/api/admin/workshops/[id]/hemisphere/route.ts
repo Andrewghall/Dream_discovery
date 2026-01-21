@@ -1,0 +1,1061 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import OpenAI from 'openai';
+import { env } from '@/lib/env';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+type RunType = 'BASELINE' | 'FOLLOWUP';
+
+type NodeType = 'VISION' | 'BELIEF' | 'CHALLENGE' | 'FRICTION' | 'CONSTRAINT' | 'ENABLER' | 'EVIDENCE';
+
+type HemisphereLayer = 'H1' | 'H2' | 'H3' | 'H4';
+
+type HemisphereNode = {
+  id: string;
+  type: NodeType;
+  label: string;
+  summary?: string;
+  phaseTags: string[];
+  layer: HemisphereLayer;
+  weight: number;
+  severity?: number;
+  confidence?: number;
+  sources: { sessionId: string; participantName: string }[];
+  evidence?: { quote?: string; qaTag?: string; createdAt?: string; chunkId?: string }[];
+};
+
+type HemisphereEdge = {
+  id: string;
+  source: string;
+  target: string;
+  strength: number;
+  kind: 'EQUIVALENT' | 'REINFORCING' | 'DERIVATIVE';
+};
+
+type HemisphereGraph = {
+  nodes: HemisphereNode[];
+  edges: HemisphereEdge[];
+  coreTruthNodeId: string;
+};
+
+type InsightCategory = 'BUSINESS' | 'TECHNOLOGY' | 'PEOPLE' | 'CUSTOMER' | 'REGULATION';
+
+const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
+const NODE_TYPE_ORDER: NodeType[] = ['CONSTRAINT', 'FRICTION', 'CHALLENGE', 'ENABLER', 'BELIEF', 'VISION', 'EVIDENCE'];
+
+const STOPWORDS = new Set([
+  'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
+]);
+
+function safeCategory(value: unknown): InsightCategory | null {
+  const s = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (!s) return null;
+  if (s === 'BUSINESS' || s === 'TECHNOLOGY' || s === 'PEOPLE' || s === 'CUSTOMER' || s === 'REGULATION') return s;
+  return null;
+}
+
+function safeParseJson<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
+function phaseTagFromCategory(value: unknown): string[] {
+  const cat = safeCategory(value);
+  if (!cat) return [];
+  if (cat === 'BUSINESS') return ['corporate'];
+  return [cat.toLowerCase()];
+}
+
+function safeRunType(value: string | null | undefined): RunType {
+  const v = (value || '').trim().toUpperCase();
+  if (v === 'FOLLOWUP') return 'FOLLOWUP';
+  return 'BASELINE';
+}
+
+function safeArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function safeStringArray(value: unknown): string[] {
+  return safeArray(value).filter((v) => typeof v === 'string' && v.trim()).map((v) => String(v).trim());
+}
+
+function uniq(list: string[]): string[] {
+  return [...new Set(list.filter(Boolean))];
+}
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function clampInt(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function words(text: string): string[] {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((w) => w.length >= 3)
+    .filter((w) => !STOPWORDS.has(w));
+}
+
+function tokenSet(text: string): Set<string> {
+  return new Set(words(text));
+}
+
+function canonicalInsightKey(text: string): string {
+  const cleaned = (text || '').trim().toLowerCase();
+  const w = words(cleaned);
+  if (w.length) return w.join(' ');
+  return cleaned.replace(/\s+/g, ' ').trim();
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const x of a) {
+    if (b.has(x)) inter++;
+  }
+  const uni = a.size + b.size - inter;
+  return uni <= 0 ? 0 : inter / uni;
+}
+
+function degreeByNode(edges: HemisphereEdge[]): Map<string, number> {
+  const degree = new Map<string, number>();
+  for (const e of edges) {
+    degree.set(e.source, (degree.get(e.source) || 0) + e.strength);
+    degree.set(e.target, (degree.get(e.target) || 0) + e.strength);
+  }
+  return degree;
+}
+
+function shortLabel(text: string, maxWords: number = 8): string {
+  const w = (text || '').trim().split(/\s+/).filter(Boolean);
+  return w.length <= maxWords ? w.join(' ') : w.slice(0, maxWords).join(' ');
+}
+
+function layerForType(type: NodeType): HemisphereLayer {
+  if (type === 'VISION' || type === 'BELIEF') return 'H1';
+  if (type === 'CHALLENGE' || type === 'FRICTION') return 'H2';
+  if (type === 'CONSTRAINT' || type === 'ENABLER') return 'H3';
+  return 'H4';
+}
+
+function defaultSeverity(type: NodeType): number | undefined {
+  if (type === 'CONSTRAINT') return 5;
+  if (type === 'CHALLENGE' || type === 'FRICTION') return 4;
+  if (type === 'ENABLER') return 2;
+  if (type === 'VISION' || type === 'BELIEF') return 1;
+  return undefined;
+}
+
+function inferNodeTypeFromText(text: string): Exclude<NodeType, 'EVIDENCE'> {
+  const t = (text || '').toLowerCase();
+  if (/(\bvision\b|\bfuture\b|\blooking ahead\b|\bambition\b|\bwe want\b)/.test(t)) return 'VISION';
+  if (/(\bbelief\b|\bwe believe\b|\bassume\b)/.test(t)) return 'BELIEF';
+  if (/(\bconstraint\b|\bblocked\b|\bdependent\b|\bdependency\b|\bgovernance\b|\bcompliance\b)/.test(t)) return 'CONSTRAINT';
+  if (/(\bfriction\b|\bslow\b|\bslows\b|\bhand[- ]offs\b|\bapproval\b|\bbureaucracy\b)/.test(t)) return 'FRICTION';
+  if (/(\benable\b|\benabler\b|\bworking\b|\bstrength\b)/.test(t)) return 'ENABLER';
+  return 'CHALLENGE';
+}
+
+function nodeTypeFromInsightType(value: unknown): Exclude<NodeType, 'EVIDENCE'> | null {
+  const s = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (!s) return null;
+  if (s === 'VISION') return 'VISION';
+  if (s === 'BELIEF') return 'BELIEF';
+  if (s === 'CHALLENGE') return 'CHALLENGE';
+  if (s === 'CONSTRAINT') return 'CONSTRAINT';
+  if (s === 'WHAT_WORKS') return 'ENABLER';
+  return null;
+}
+
+function parseQuestionKey(questionKey: string): { phase: string | null; tag: string | null } {
+  const parts = (questionKey || '').split(':');
+  if (parts.length === 3) return { phase: parts[0] || null, tag: parts[1] || null };
+  if (parts.length === 4) return { phase: parts[1] || null, tag: parts[2] || null };
+  return { phase: null, tag: null };
+}
+
+function mergeScore(prev: number | undefined, next: number | null | undefined, weightPrev: number, weightNext: number): number | undefined {
+  if (next == null || !Number.isFinite(next)) return prev;
+  const n = Number(next);
+  if (prev == null || !Number.isFinite(prev)) return n;
+  const total = Math.max(1, weightPrev + weightNext);
+  return (prev * weightPrev + n * weightNext) / total;
+}
+
+function mergeNode(target: HemisphereNode, incoming: Omit<HemisphereNode, 'weight'> & { weight?: number }) {
+  const incWeight = typeof incoming.weight === 'number' && Number.isFinite(incoming.weight) ? incoming.weight : 1;
+
+  const prevWeight = target.weight;
+  target.weight += incWeight;
+
+  target.phaseTags = uniq([...target.phaseTags, ...(incoming.phaseTags || [])]);
+  target.sources = [...target.sources, ...(incoming.sources || [])];
+  target.sources = uniq(target.sources.map((s) => `${s.sessionId}:${s.participantName}`)).map((k) => {
+    const [sessionId, participantName] = k.split(':');
+    return { sessionId, participantName };
+  });
+
+  target.severity = mergeScore(target.severity, incoming.severity, prevWeight, incWeight);
+  target.confidence = mergeScore(target.confidence, incoming.confidence, prevWeight, incWeight);
+
+  const mergedEvidence = [...(target.evidence || []), ...((incoming.evidence || []) as any[])];
+  if (mergedEvidence.length) {
+    const out: any[] = [];
+    const seen = new Set<string>();
+    for (const e of mergedEvidence) {
+      if (!e || typeof e !== 'object') continue;
+      const quote = typeof (e as any).quote === 'string' ? String((e as any).quote).trim() : '';
+      const qaTag = typeof (e as any).qaTag === 'string' ? String((e as any).qaTag).trim() : '';
+      const key = `${quote.toLowerCase()}|${qaTag.toLowerCase()}`;
+      if (!quote) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(e);
+      if (out.length >= 12) break;
+    }
+    if (out.length) target.evidence = out as any;
+  }
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: workshopId } = await params;
+    const runType = safeRunType(request.nextUrl.searchParams.get('runType'));
+
+    const allSessions = (await (prisma as any).conversationSession.findMany({
+      where: {
+        workshopId,
+        status: 'COMPLETED',
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        participantId: true,
+        createdAt: true,
+        completedAt: true,
+        runType: true,
+        questionSetVersion: true,
+        participant: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    })) as Array<{
+      id: string;
+      participantId: string;
+      createdAt: Date;
+      completedAt: Date | null;
+      runType?: string | null;
+      questionSetVersion?: string | null;
+      participant: { id: string; name: string; email: string };
+    }>;
+
+    const sessions = allSessions.filter((s) => safeRunType(s.runType) === runType);
+
+    const sessionIds = sessions.map((s) => s.id);
+
+    const reports = sessionIds.length
+      ? ((await (prisma as any).conversationReport.findMany({
+          where: { sessionId: { in: sessionIds } },
+          select: {
+            sessionId: true,
+            keyInsights: true,
+            phaseInsights: true,
+            wordCloudThemes: true,
+          },
+        })) as Array<{ sessionId: string; keyInsights: unknown; phaseInsights: unknown; wordCloudThemes: unknown }>)
+      : [];
+
+    const insights = sessionIds.length
+      ? await prisma.conversationInsight.findMany({
+          where: { sessionId: { in: sessionIds } },
+          select: {
+            id: true,
+            sessionId: true,
+            participantId: true,
+            insightType: true,
+            category: true,
+            text: true,
+            severity: true,
+            confidence: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
+
+    const reportBySession = new Map(reports.map((r) => [r.sessionId, r]));
+    const sessionById = new Map(sessions.map((s) => [s.id, s]));
+
+    const nodesById = new Map<string, HemisphereNode>();
+
+    const upsertNode = (incoming: HemisphereNode) => {
+      const existing = nodesById.get(incoming.id);
+      if (!existing) {
+        nodesById.set(incoming.id, incoming);
+        return;
+      }
+      mergeNode(existing, incoming);
+    };
+
+    for (const ins of insights) {
+      const type = nodeTypeFromInsightType(ins.insightType);
+      if (!type) continue;
+      const text = String(ins.text || '').trim();
+      if (!text) continue;
+
+      const session = sessionById.get(String(ins.sessionId || ''));
+      const participantName = session?.participant?.name || 'Participant';
+
+      const norm = text.toLowerCase();
+      const nodeId = `${type}:${norm}`;
+      const sev = typeof ins.severity === 'number' ? clampInt(ins.severity, 1, 5) : defaultSeverity(type);
+      const conf = typeof ins.confidence === 'number' ? clamp01(ins.confidence) : undefined;
+
+      upsertNode({
+        id: nodeId,
+        type,
+        label: shortLabel(text, 8),
+        summary: text,
+        phaseTags: phaseTagFromCategory(ins.category),
+        layer: layerForType(type),
+        weight: 1,
+        severity: sev,
+        confidence: conf,
+        sources: [{ sessionId: String(ins.sessionId), participantName }],
+        evidence: [],
+      });
+    }
+
+    for (const s of sessions) {
+      const report = reportBySession.get(s.id);
+      if (!report) continue;
+
+      const participantName = s.participant?.name || 'Participant';
+
+      for (const ki of safeArray(report.keyInsights)) {
+        const rec = ki && typeof ki === 'object' && !Array.isArray(ki) ? (ki as Record<string, unknown>) : null;
+        const title = rec && typeof rec.title === 'string' ? rec.title.trim() : '';
+        const insight = rec && typeof rec.insight === 'string' ? rec.insight.trim() : '';
+        const combined = `${title}\n${insight}`.trim();
+        if (!combined) continue;
+
+        const type = inferNodeTypeFromText(combined);
+        const confidenceLabel = rec && typeof rec.confidence === 'string' ? rec.confidence.trim().toLowerCase() : '';
+        const conf = confidenceLabel === 'high' ? 0.85 : confidenceLabel === 'medium' ? 0.65 : confidenceLabel === 'low' ? 0.45 : undefined;
+        const evidenceQuotes = rec ? safeStringArray(rec.evidence).slice(0, 3) : [];
+
+        const nodeId = `${type}:key:${title.toLowerCase() || shortLabel(insight, 8).toLowerCase()}`;
+
+        upsertNode({
+          id: nodeId,
+          type,
+          label: shortLabel(title || insight, 8),
+          summary: insight || title,
+          phaseTags: [],
+          layer: layerForType(type),
+          weight: 1,
+          severity: defaultSeverity(type),
+          confidence: conf,
+          sources: [{ sessionId: s.id, participantName }],
+          evidence: evidenceQuotes.map((q) => ({ quote: q })),
+        });
+      }
+
+      const phaseInsights = safeArray(report.phaseInsights)
+        .filter((p) => p && typeof p === 'object' && !Array.isArray(p)) as Array<Record<string, unknown>>;
+      for (const p of phaseInsights) {
+        const phase = typeof p.phase === 'string' ? p.phase.trim().toLowerCase() : '';
+        const phaseTags = phase ? [phase] : [];
+
+        const future = safeStringArray(p.future);
+        const frictions = safeStringArray(p.frictions);
+        const constraint = safeStringArray(p.constraint);
+        const strengths = safeStringArray(p.strengths);
+        const working = safeStringArray(p.working);
+        const gaps = safeStringArray(p.gaps);
+        const painPoints = safeStringArray(p.painPoints);
+        const barriers = safeStringArray(p.barriers);
+        const support = safeStringArray(p.support);
+
+        for (const text of future) {
+          const type: NodeType = 'VISION';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+
+        for (const text of frictions) {
+          const type: NodeType = 'FRICTION';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+
+        for (const text of barriers) {
+          const type: NodeType = 'FRICTION';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+
+        for (const text of constraint) {
+          const type: NodeType = 'CONSTRAINT';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+
+        for (const text of [...strengths, ...working]) {
+          const type: NodeType = 'ENABLER';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+
+        for (const text of [...gaps, ...painPoints, ...support]) {
+          const type: NodeType = 'CHALLENGE';
+          const nodeId = `${type}:phase:${phase}:${text.toLowerCase()}`;
+          upsertNode({
+            id: nodeId,
+            type,
+            label: shortLabel(text, 8),
+            summary: text,
+            phaseTags,
+            layer: layerForType(type),
+            weight: 1,
+            severity: defaultSeverity(type),
+            confidence: undefined,
+            sources: [{ sessionId: s.id, participantName }],
+            evidence: [{ quote: text }],
+          });
+        }
+      }
+    }
+
+    const dataPoints = sessionIds.length
+      ? await prisma.dataPoint.findMany({
+          where: {
+            sessionId: { in: sessionIds },
+            questionKey: { not: null },
+          },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, sessionId: true, participantId: true, questionKey: true, rawText: true, createdAt: true, transcriptChunkId: true },
+        })
+      : [];
+
+    const evidenceCandidates = dataPoints
+      .map((dp) => {
+        const qk = String(dp.questionKey || '');
+        const meta = parseQuestionKey(qk);
+        const tag = (meta.tag || '').toLowerCase();
+        const phase = (meta.phase || '').toLowerCase();
+        if (tag === 'triple_rating' || tag.endsWith('_score') || tag.includes('rating')) return null;
+        if (phase === 'intro' || tag === 'context') return null;
+        const answer = String(dp.rawText || '').trim();
+        if (!answer) return null;
+        const wordCount = answer.split(/\s+/).filter(Boolean).length;
+        if (wordCount < 18) return null;
+        const session = sessionById.get(String(dp.sessionId || ''));
+        const participantName = session?.participant?.name || 'Participant';
+        return {
+          dp,
+          answer,
+          wordCount,
+          phase: meta.phase ? meta.phase.toLowerCase() : null,
+          tag: meta.tag,
+          participantName,
+        };
+      })
+      .filter(Boolean) as Array<{ dp: any; answer: string; wordCount: number; phase: string | null; tag: string | null; participantName: string }>;
+
+    evidenceCandidates.sort((a, b) => b.wordCount - a.wordCount);
+    const evidenceTop = evidenceCandidates.slice(0, 45);
+
+    for (const item of evidenceTop) {
+      const phaseTags = item.phase ? [item.phase] : [];
+      const type: NodeType = 'EVIDENCE';
+      const nodeId = `EVIDENCE:${String(item.dp.id)}`;
+      upsertNode({
+        id: nodeId,
+        type,
+        label: shortLabel(item.answer, 8),
+        summary: item.answer,
+        phaseTags,
+        layer: layerForType(type),
+        weight: Math.max(1, Math.round(item.wordCount / 10)),
+        severity: undefined,
+        confidence: undefined,
+        sources: [{ sessionId: String(item.dp.sessionId), participantName: item.participantName }],
+        evidence: [
+          {
+            quote: item.answer,
+            qaTag: item.tag || undefined,
+            createdAt: item.dp.createdAt ? new Date(item.dp.createdAt).toISOString() : undefined,
+            chunkId: item.dp.transcriptChunkId ? String(item.dp.transcriptChunkId) : undefined,
+          },
+        ],
+      });
+    }
+
+    let allNodes: HemisphereNode[] = [...nodesById.values()]
+      .map((n): HemisphereNode => ({
+        ...n,
+        severity: typeof n.severity === 'number' ? clampInt(n.severity, 1, 5) : n.severity,
+        confidence: typeof n.confidence === 'number' ? clamp01(n.confidence) : n.confidence,
+      }))
+      .sort((a, b) => b.weight - a.weight);
+
+    // De-duplicate nodes that represent the same construct (same underlying insight text).
+    // This is NOT semantic clustering; it's a strict canonical-text merge to remove duplicates
+    // caused by multiple pipelines (insights vs report phaseInsights vs keyInsights).
+    const mergedByKey = new Map<
+      string,
+      {
+        node: HemisphereNode;
+        typeWeights: Map<NodeType, number>;
+      }
+    >();
+    const mergedNodes: HemisphereNode[] = [];
+    for (const n of allNodes) {
+      if (n.type === 'EVIDENCE') {
+        mergedNodes.push(n);
+        continue;
+      }
+      const basis = (n.summary || n.label || '').trim();
+      const key = canonicalInsightKey(basis);
+      const existing = mergedByKey.get(key);
+      if (!existing) {
+        const tw = new Map<NodeType, number>();
+        tw.set(n.type, (tw.get(n.type) || 0) + Math.max(1, n.weight || 1));
+        mergedByKey.set(key, { node: n, typeWeights: tw });
+        mergedNodes.push(n);
+        continue;
+      }
+      existing.typeWeights.set(n.type, (existing.typeWeights.get(n.type) || 0) + Math.max(1, n.weight || 1));
+      mergeNode(existing.node, n);
+    }
+
+    for (const { node, typeWeights } of mergedByKey.values()) {
+      // Select dominant type by accumulated weight. Tie-breaker is NODE_TYPE_ORDER.
+      let bestType: NodeType = node.type;
+      let bestWeight = -1;
+      for (const t of NODE_TYPE_ORDER) {
+        if (t === 'EVIDENCE') continue;
+        const w = typeWeights.get(t) || 0;
+        if (w > bestWeight) {
+          bestWeight = w;
+          bestType = t;
+        }
+      }
+      node.type = bestType;
+      node.layer = layerForType(bestType);
+    }
+
+    for (const n of mergedNodes) {
+      if (n.type === 'EVIDENCE') continue;
+      const uniqueSessions = uniq((n.sources || []).map((s) => String(s.sessionId || '')).filter(Boolean));
+      n.weight = Math.max(1, uniqueSessions.length);
+    }
+    allNodes = mergedNodes.sort((a, b) => b.weight - a.weight);
+
+    {
+      const semanticCandidates = allNodes.filter((n) => n.type !== 'EVIDENCE');
+      const candidates = semanticCandidates.slice(0, 180);
+      const tokenById2 = new Map(candidates.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
+      const evidenceKeySet = (n: HemisphereNode): Set<string> => {
+        const out = new Set<string>();
+        const ev = Array.isArray(n.evidence) ? n.evidence : [];
+        for (const e of ev) {
+          if (!e || typeof e !== 'object') continue;
+          const quote = typeof (e as any).quote === 'string' ? String((e as any).quote).trim() : '';
+          const qaTag = typeof (e as any).qaTag === 'string' ? String((e as any).qaTag).trim() : '';
+          if (!quote) continue;
+          out.add(`${quote.toLowerCase()}|${qaTag.toLowerCase()}`);
+        }
+        return out;
+      };
+      const evidenceById = new Map(candidates.map((n) => [n.id, evidenceKeySet(n)]));
+      const evidenceOverlap = (a: HemisphereNode, b: HemisphereNode): { inter: number; denom: number; score: number } => {
+        const sa = evidenceById.get(a.id) || new Set<string>();
+        const sb = evidenceById.get(b.id) || new Set<string>();
+        const denom = Math.min(sa.size, sb.size);
+        if (denom <= 0) return { inter: 0, denom: 0, score: 0 };
+        let inter = 0;
+        const small = sa.size <= sb.size ? sa : sb;
+        const big = sa.size <= sb.size ? sb : sa;
+        for (const k of small) {
+          if (big.has(k)) inter++;
+        }
+        return { inter, denom, score: inter / denom };
+      };
+
+      const parent = new Map<string, string>();
+      const find = (x: string): string => {
+        const p = parent.get(x);
+        if (!p || p === x) {
+          parent.set(x, x);
+          return x;
+        }
+        const r = find(p);
+        parent.set(x, r);
+        return r;
+      };
+      const union = (a: string, b: string) => {
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb) parent.set(rb, ra);
+      };
+      for (const n of candidates) parent.set(n.id, n.id);
+
+      const layerDepth3 = (layer: HemisphereLayer): number => {
+        if (layer === 'H1') return 1;
+        if (layer === 'H2') return 2;
+        if (layer === 'H3') return 3;
+        return 4;
+      };
+
+      for (let i = 0; i < candidates.length; i++) {
+        for (let j = i + 1; j < candidates.length; j++) {
+          const a = candidates[i];
+          const b = candidates[j];
+          const da = layerDepth3(a.layer);
+          const db = layerDepth3(b.layer);
+          if (da === 4 || db === 4) continue;
+          if (Math.abs(da - db) > 1) continue;
+
+          const ta = tokenById2.get(a.id) || new Set<string>();
+          const tb = tokenById2.get(b.id) || new Set<string>();
+          const sim = jaccard(ta, tb);
+          if (sim < 0.30) continue;
+
+          const ov = evidenceOverlap(a, b);
+          const okEvidence = ov.inter >= 2 || (ov.inter >= 1 && ov.score >= 0.65);
+          const okSim = sim >= 0.36 || (sim >= 0.32 && okEvidence);
+          if (!okSim) continue;
+
+          union(a.id, b.id);
+        }
+      }
+
+      const groups = new Map<string, string[]>();
+      for (const n of semanticCandidates) {
+        const root = parent.has(n.id) ? find(n.id) : n.id;
+        const arr = groups.get(root) || [];
+        arr.push(n.id);
+        groups.set(root, arr);
+      }
+
+      if ([...groups.values()].some((g) => g.length > 1)) {
+        const nodeByIdLocal = new Map(semanticCandidates.map((n) => [n.id, n] as const));
+        const mergedAway = new Set<string>();
+        for (const ids of groups.values()) {
+          if (ids.length <= 1) continue;
+          const nodes = ids.map((id) => nodeByIdLocal.get(id)).filter(Boolean) as HemisphereNode[];
+          nodes.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+          const rep = nodes[0];
+          for (let k = 1; k < nodes.length; k++) {
+            const other = nodes[k];
+            mergeNode(rep, other);
+            mergedAway.add(other.id);
+          }
+        }
+        if (mergedAway.size) {
+          allNodes = allNodes.filter((n) => !mergedAway.has(n.id));
+          for (const n of allNodes) {
+            if (n.type === 'EVIDENCE') continue;
+            const uniqueSessions = uniq((n.sources || []).map((s) => String(s.sessionId || '')).filter(Boolean));
+            n.weight = Math.max(1, uniqueSessions.length);
+          }
+          allNodes.sort((a, b) => b.weight - a.weight);
+        }
+      }
+    }
+
+    const nodesForSimilarity = allNodes
+      .filter((n) => n.type !== 'EVIDENCE')
+      .slice(0, 140);
+
+    const tokenById = new Map(nodesForSimilarity.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
+
+    const edgesById = new Map<string, HemisphereEdge>();
+    const addEdge = (edge: HemisphereEdge) => {
+      const prev = edgesById.get(edge.id);
+      if (!prev || edge.strength > prev.strength) edgesById.set(edge.id, edge);
+    };
+
+    const layerDepth = (layer: HemisphereLayer): number => {
+      if (layer === 'H1') return 1;
+      if (layer === 'H2') return 2;
+      if (layer === 'H3') return 3;
+      return 4;
+    };
+
+    for (let i = 0; i < nodesForSimilarity.length; i++) {
+      for (let j = i + 1; j < nodesForSimilarity.length; j++) {
+        const a = nodesForSimilarity[i];
+        const b = nodesForSimilarity[j];
+        const da = layerDepth(a.layer);
+        const db = layerDepth(b.layer);
+        if (da === 4 || db === 4) continue;
+        if (Math.abs(da - db) > 2) continue;
+        const ta = tokenById.get(a.id) || new Set<string>();
+        const tb = tokenById.get(b.id) || new Set<string>();
+        const sim = jaccard(ta, tb);
+
+        const involvesH1 = a.layer === 'H1' || b.layer === 'H1';
+        const eqThresh = involvesH1 ? 0.22 : 0.28;
+        const derivThresh = involvesH1 ? 0.17 : 0.20;
+        const reinfThresh = involvesH1 ? 0.13 : 0.16;
+
+        if (sim >= eqThresh) {
+          const source = a.id;
+          const target = b.id;
+          const id = `EQUIVALENT:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+          addEdge({ id, source, target, strength: clamp01(sim), kind: 'EQUIVALENT' });
+          continue;
+        }
+
+        if (sim >= derivThresh && da !== db && da !== 4 && db !== 4) {
+          const h1Source = da < db ? a.id : b.id;
+          const h1Target = da < db ? b.id : a.id;
+          const source = involvesH1 ? h1Source : da > db ? a.id : b.id;
+          const target = involvesH1 ? h1Target : da > db ? b.id : a.id;
+          const id = `DERIVATIVE:${source}|${target}`;
+          addEdge({ id, source, target, strength: clamp01(sim), kind: 'DERIVATIVE' });
+          continue;
+        }
+
+        if (sim >= reinfThresh) {
+          const source = a.id;
+          const target = b.id;
+          const id = `REINFORCING:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+          addEdge({ id, source, target, strength: clamp01(sim), kind: 'REINFORCING' });
+        }
+      }
+    }
+
+    const edges = [...edgesById.values()];
+    const degree = degreeByNode(edges);
+
+    const candidateNodes = allNodes.filter((n) => n.type !== 'EVIDENCE');
+    const crossDomainCount = (n: HemisphereNode) => uniq((n.phaseTags || []).map((t) => String(t).toLowerCase())).length;
+    const severity01 = (n: HemisphereNode) => (typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.5);
+
+    const scored = candidateNodes
+      .map((n) => {
+        const cross = crossDomainCount(n);
+        const crossMult = 1 + 0.45 * Math.min(3, Math.max(0, cross - 1));
+        const sev = severity01(n);
+        const deg = degree.get(n.id) || 0;
+        const score = Math.max(1, n.weight) * (1 + sev * 1.6) * crossMult + deg * 2.5;
+        return { n, score, deg, cross, sev };
+      })
+      .sort((a, b) => b.score - a.score || b.deg - a.deg || b.n.weight - a.n.weight);
+
+    const driverNodes = scored.slice(0, 6).map((r) => r.n);
+    const centralNodes = scored.slice(0, 10).map((r) => r.n);
+
+    const coreTruthNodeId = 'CORE_TRUTH';
+    const coreType: Exclude<NodeType, 'EVIDENCE'> =
+      centralNodes.some((n) => n.type === 'CONSTRAINT') ? 'CONSTRAINT' : 'CHALLENGE';
+
+    // Agentic synthesis (mandatory): produce one causal sentence from the most central drivers.
+    let coreSummary = '';
+    try {
+      if (!env.OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY');
+
+      const evidenceQuotes = driverNodes
+        .flatMap((n) => (Array.isArray(n.evidence) ? n.evidence : []))
+        .map((e) => (e && typeof e === 'object' && typeof e.quote === 'string' ? e.quote.trim() : ''))
+        .filter(Boolean)
+        .slice(0, 10);
+
+      const driverLines = driverNodes
+        .map((n, idx) => {
+          const cross = crossDomainCount(n);
+          const sev = typeof n.severity === 'number' ? n.severity : null;
+          const deg = degree.get(n.id) || 0;
+          return `${idx + 1}. [${n.type}] ${n.label}${n.summary ? ` — ${n.summary}` : ''} (weight=${n.weight}, severity=${sev ?? 'null'}, crossDomain=${cross}, centrality=${deg.toFixed(2)})`;
+        })
+        .join('\n');
+
+      const prompt = `Synthesize a single causal Core Truth statement describing the organisation's gravity well.
+
+Requirements:
+- Output strict JSON with schema: {"sentence": string}
+- Exactly ONE sentence.
+- 16-28 words.
+- Must express causality (e.g., "because", "drives", "causes", "amplifies", "leads to").
+- Prefer concrete operational mechanism over abstract phrasing (approvals, handoffs, queues, rework, unclear ownership, tooling constraints).
+- Do NOT use bullet points.
+- Do NOT mention "drivers" or "nodes".
+- Neutral mirror of today: no blame, no judgement, no recommendations (avoid "should", "need to", "must").
+- Do NOT reference participant identity, roles, or introductions.
+
+Top drivers:
+${driverLines}
+
+Evidence quotes (if helpful):
+${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (none)'}
+`;
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.25,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an organisational intelligence analyst. Produce a single, high-signal causal sentence executives can recognise immediately. Ground claims in provided drivers/quotes and avoid generic consultant language.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const raw = completion.choices?.[0]?.message?.content?.trim() || '{}';
+      const parsed = safeParseJson<{ sentence?: unknown }>(raw);
+      const sent = parsed && typeof parsed.sentence === 'string' ? parsed.sentence.trim() : '';
+      coreSummary = sent;
+    } catch (e) {
+      // Agentic-only policy: never fabricate fallback insight text.
+      // Soft degrade by leaving summary undefined (UI can show an "agentic unavailable" status message).
+      coreSummary = '';
+      console.warn('Core Truth agentic synthesis failed:', e);
+    }
+
+    allNodes.push({
+      id: coreTruthNodeId,
+      type: coreType,
+      label: 'Core Truth',
+      summary: coreSummary.trim() ? coreSummary : undefined,
+      phaseTags: uniq(centralNodes.flatMap((n) => n.phaseTags)),
+      layer: layerForType(coreType),
+      weight: 10,
+      severity: defaultSeverity(coreType),
+      confidence: undefined,
+      sources: [],
+      evidence: [],
+    });
+
+    for (let i = 0; i < centralNodes.length; i++) {
+      const n = centralNodes[i];
+      const source = coreTruthNodeId;
+      const target = n.id;
+      const id = `DERIVATIVE:${source}|${target}`;
+      const strength = clamp01(0.95 - i * 0.04);
+      edges.push({ id, source, target, strength, kind: 'DERIVATIVE' });
+    }
+
+    // Hemisphere hard constraint: no orphan nodes.
+    // A node is render-eligible only if it has degree > 0 considering ONLY valid semantic links
+    // (EQUIVALENT/DERIVATIVE/REINFORCING). Co-mention links are not used.
+    const nonEvidence = allNodes.filter((n) => n.type !== 'EVIDENCE');
+    const tokenAll = new Map(nonEvidence.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
+
+    const layerDepth2 = (layer: HemisphereLayer): number => {
+      if (layer === 'H1') return 1;
+      if (layer === 'H2') return 2;
+      if (layer === 'H3') return 3;
+      return 4;
+    };
+
+    const canCompareRecovery = (a: HemisphereNode, b: HemisphereNode): boolean => {
+      const da = layerDepth2(a.layer);
+      const db = layerDepth2(b.layer);
+      if (da === 4 || db === 4) return false;
+      return Math.abs(da - db) <= 2;
+    };
+
+    // One recovery pass: attempt to attach isolated nodes by relaxing similarity thresholds
+    // and connecting to the nearest neighbour (semantic overlap).
+    let degree2 = degreeByNode(edges);
+    const orphanIds = nonEvidence
+      .map((n) => n.id)
+      .filter((id) => id !== coreTruthNodeId && (degree2.get(id) || 0) <= 0);
+
+    if (orphanIds.length) {
+      for (const orphanId of orphanIds) {
+        const orphanNode = nonEvidence.find((n) => n.id === orphanId);
+        if (!orphanNode) continue;
+        const ta = tokenAll.get(orphanId) || new Set<string>();
+
+        let best: { other: HemisphereNode; sim: number } | null = null;
+        for (const other of nonEvidence) {
+          if (other.id === orphanId) continue;
+          if (other.id === coreTruthNodeId) continue;
+          if (!canCompareRecovery(orphanNode, other)) continue;
+          const tb = tokenAll.get(other.id) || new Set<string>();
+          const sim = jaccard(ta, tb);
+          if (!best || sim > best.sim) best = { other, sim };
+        }
+
+        if (!best) continue;
+        const sim = best.sim;
+        const other = best.other;
+
+        const involvesH1 = orphanNode.layer === 'H1' || other.layer === 'H1';
+
+        const eqRelax = involvesH1 ? 0.20 : 0.24;
+        const derivRelax = involvesH1 ? 0.15 : 0.18;
+        const reinfRelax = involvesH1 ? 0.12 : 0.14;
+        if (sim < reinfRelax) continue;
+
+        const da = layerDepth2(orphanNode.layer);
+        const db = layerDepth2(other.layer);
+        if (sim >= eqRelax) {
+          const source = orphanId;
+          const target = other.id;
+          const id = `EQUIVALENT:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+          edges.push({ id, source, target, strength: clamp01(sim), kind: 'EQUIVALENT' });
+        } else if (sim >= derivRelax && da !== db) {
+          const h1Source = da < db ? orphanId : other.id;
+          const h1Target = da < db ? other.id : orphanId;
+          const source = involvesH1 ? h1Source : da > db ? orphanId : other.id;
+          const target = involvesH1 ? h1Target : da > db ? other.id : orphanId;
+          const id = `DERIVATIVE:${source}|${target}`;
+          edges.push({ id, source, target, strength: clamp01(sim), kind: 'DERIVATIVE' });
+        } else {
+          const source = orphanId;
+          const target = other.id;
+          const id = `REINFORCING:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+          edges.push({ id, source, target, strength: clamp01(sim), kind: 'REINFORCING' });
+        }
+      }
+    }
+
+    // Final enforcement (keep-all rollback): do NOT drop any nodes.
+    // Instead, ensure every non-evidence node has degree > 0 by attaching any remaining isolates.
+    degree2 = degreeByNode(edges);
+    const remainingOrphans = nonEvidence
+      .map((n) => n.id)
+      .filter((id) => id !== coreTruthNodeId && (degree2.get(id) || 0) <= 0);
+
+    if (remainingOrphans.length) {
+      for (const orphanId of remainingOrphans) {
+        const orphanNode = nonEvidence.find((n) => n.id === orphanId);
+        if (!orphanNode) continue;
+        const ta = tokenAll.get(orphanId) || new Set<string>();
+
+        let best: { other: HemisphereNode; sim: number } | null = null;
+        for (const other of nonEvidence) {
+          if (other.id === orphanId) continue;
+          const tb = tokenAll.get(other.id) || new Set<string>();
+          const sim = jaccard(ta, tb);
+          if (!best || sim > best.sim) best = { other, sim };
+        }
+
+        const other = best?.other || nonEvidence.find((n) => n.id === coreTruthNodeId) || null;
+        if (!other) continue;
+
+        const sim = best ? best.sim : 0;
+        const source = orphanId;
+        const target = other.id;
+        const id = `REINFORCING:${source < target ? `${source}|${target}` : `${target}|${source}`}`;
+        const strength = clamp01(0.12 + 0.38 * clamp01(sim));
+        edges.push({ id, source, target, strength, kind: 'REINFORCING' });
+      }
+      degree2 = degreeByNode(edges);
+    }
+
+    const filteredNodes = allNodes;
+    const allNodesById = new Set(allNodes.map((n) => n.id));
+    const filteredEdges = edges.filter((e) => allNodesById.has(e.source) && allNodesById.has(e.target));
+
+    const hemisphereGraph: HemisphereGraph = {
+      nodes: filteredNodes,
+      edges: filteredEdges,
+      coreTruthNodeId,
+    };
+
+    return NextResponse.json({
+      ok: true,
+      workshopId,
+      runType,
+      generatedAt: new Date().toISOString(),
+      sessionCount: sessions.length,
+      participantCount: uniq(sessions.map((s) => s.participantId)).length,
+      hemisphereGraph,
+    });
+  } catch (error) {
+    console.error('Error building hemisphere snapshot:', error);
+    return NextResponse.json({ ok: false, error: 'Failed to build hemisphere snapshot' }, { status: 500 });
+  }
+}

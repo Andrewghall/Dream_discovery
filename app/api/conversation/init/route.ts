@@ -5,8 +5,18 @@ import { getFixedQuestion, getFixedQuestionObject } from '@/lib/conversation/fix
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { workshopId, token } = body as { workshopId: string; token: string; restart?: boolean };
+    const { workshopId, token } = body as {
+      workshopId: string;
+      token: string;
+      restart?: boolean;
+      runType?: 'BASELINE' | 'FOLLOWUP';
+      questionSetVersion?: string;
+    };
     const restart = body?.restart === true;
+    const runType = body?.runType === 'FOLLOWUP' ? 'FOLLOWUP' : 'BASELINE';
+    const questionSetVersion = typeof body?.questionSetVersion === 'string' && body.questionSetVersion.trim()
+      ? body.questionSetVersion.trim()
+      : 'v1';
 
     // Validate token and get participant
     const participant = await prisma.workshopParticipant.findUnique({
@@ -24,27 +34,33 @@ export async function POST(request: NextRequest) {
     }
 
     if (restart) {
-      await prisma.conversationSession.deleteMany({
+      await (prisma as any).conversationSession.deleteMany({
         where: {
           workshopId,
           participantId: participant.id,
+          runType,
+          questionSetVersion,
         },
       });
 
-      await prisma.workshopParticipant.update({
-        where: { id: participant.id },
-        data: {
-          responseStartedAt: new Date(),
-          responseCompletedAt: null,
-        },
-      });
+      if (runType === 'BASELINE') {
+        await prisma.workshopParticipant.update({
+          where: { id: participant.id },
+          data: {
+            responseStartedAt: new Date(),
+            responseCompletedAt: null,
+          },
+        });
+      }
 
       const includeRegulation = participant.workshop.includeRegulation ?? true;
 
-      const createdSession = await prisma.conversationSession.create({
+      const createdSession = await (prisma as any).conversationSession.create({
         data: {
           workshopId,
           participantId: participant.id,
+          runType,
+          questionSetVersion,
           currentPhase: 'intro',
           phaseProgress: 0,
           voiceEnabled: true,
@@ -55,8 +71,8 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const firstMessage = getFixedQuestion('intro', 0, includeRegulation);
-      const qObj = getFixedQuestionObject('intro', 0, includeRegulation);
+      const firstMessage = getFixedQuestion('intro', 0, includeRegulation, questionSetVersion);
+      const qObj = getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
 
       await prisma.conversationMessage.create({
         data: {
@@ -76,7 +92,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const refetchedSession = await prisma.conversationSession.findUnique({
+      const refetchedSession = await (prisma as any).conversationSession.findUnique({
         where: { id: createdSession.id },
         include: {
           messages: {
@@ -100,7 +116,7 @@ export async function POST(request: NextRequest) {
         language: refetchedSession.language,
         voiceEnabled: refetchedSession.voiceEnabled,
         includeRegulation: refetchedSession.includeRegulation,
-        messages: (refetchedSession.messages || []).map((msg) => ({
+        messages: (refetchedSession.messages || []).map((msg: any) => ({
           id: msg.id,
           role: msg.role,
           content: msg.content,
@@ -112,10 +128,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if an active (incomplete) session already exists
-    let session = await prisma.conversationSession.findFirst({
+    let session = await (prisma as any).conversationSession.findFirst({
       where: {
         workshopId,
         participantId: participant.id,
+        runType,
+        questionSetVersion,
         status: 'IN_PROGRESS', // Only resume if not completed
       },
       include: {
@@ -126,10 +144,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (!session) {
-      session = await prisma.conversationSession.findFirst({
+      session = await (prisma as any).conversationSession.findFirst({
         where: {
           workshopId,
           participantId: participant.id,
+          runType,
+          questionSetVersion,
           status: 'COMPLETED',
         },
         orderBy: { createdAt: 'desc' },
@@ -141,13 +161,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create new session if doesn't exist or previous was completed
+    // Create new session if no session exists for this run type.
     if (!session) {
       const includeRegulation = participant.workshop.includeRegulation ?? true;
-      session = await prisma.conversationSession.create({
+      session = await (prisma as any).conversationSession.create({
         data: {
           workshopId,
           participantId: participant.id,
+          runType,
+          questionSetVersion,
           currentPhase: 'intro',
           phaseProgress: 0,
           voiceEnabled: true,
@@ -158,14 +180,15 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Update participant response started timestamp
-      await prisma.workshopParticipant.update({
-        where: { id: participant.id },
-        data: { responseStartedAt: new Date() },
-      });
+      if (runType === 'BASELINE') {
+        await prisma.workshopParticipant.update({
+          where: { id: participant.id },
+          data: { responseStartedAt: new Date() },
+        });
+      }
 
-      const firstMessage = getFixedQuestion('intro', 0, includeRegulation);
-      const qObj = getFixedQuestionObject('intro', 0, includeRegulation);
+      const firstMessage = getFixedQuestion('intro', 0, includeRegulation, questionSetVersion);
+      const qObj = getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
 
       await prisma.conversationMessage.create({
         data: {
@@ -186,7 +209,7 @@ export async function POST(request: NextRequest) {
       });
 
       // Refetch session with messages
-      session = await prisma.conversationSession.findUnique({
+      session = await (prisma as any).conversationSession.findUnique({
         where: { id: session.id },
         include: {
           messages: {
@@ -198,7 +221,7 @@ export async function POST(request: NextRequest) {
 
     // Safety backfill: if we have a completed session but the participant timestamp is missing,
     // set responseCompletedAt so admin screens reflect completion.
-    if (session?.status === 'COMPLETED' && !participant.responseCompletedAt) {
+    if (runType === 'BASELINE' && session?.status === 'COMPLETED' && !participant.responseCompletedAt) {
       await prisma.workshopParticipant.update({
         where: { id: participant.id },
         data: { responseCompletedAt: session.completedAt || new Date() },
@@ -220,7 +243,7 @@ export async function POST(request: NextRequest) {
       language: session.language,
       voiceEnabled: session.voiceEnabled,
       includeRegulation: session.includeRegulation,
-      messages: (session.messages || []).map((msg) => ({
+      messages: ((session as any).messages || []).map((msg: any) => ({
         id: msg.id,
         role: msg.role,
         content: msg.content,

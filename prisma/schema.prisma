@@ -1,19 +1,274 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider        = "prisma-client-js"
-  binaryTargets   = ["native", "rhel-openssl-3.0.x"]
   previewFeatures = ["postgresqlExtensions"]
+  binaryTargets   = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  extensions = [pgvector(map: "vector")]
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [uuid_ossp(map: "uuid-ossp", schema: "extensions"), vector]
+}
+
+model Organization {
+  id        String     @id @default(cuid())
+  name      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  users     User[]
+  workshops Workshop[]
+
+  @@map("organizations")
+}
+
+model User {
+  id               String       @id @default(cuid())
+  email            String       @unique
+  name             String
+  organizationId   String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  createdWorkshops Workshop[]
+
+  @@map("users")
+}
+
+model Workshop {
+  id                String                @id @default(cuid())
+  organizationId    String
+  name              String
+  description       String?
+  businessContext   String?
+  workshopType      WorkshopType          @default(CUSTOM)
+  status            WorkshopStatus        @default(DRAFT)
+  zoomMeetingId     String?
+  createdById       String
+  scheduledDate     DateTime?
+  responseDeadline  DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  includeRegulation Boolean               @default(true)
+  insights          ConversationInsight[]
+  sessions          ConversationSession[]
+  dataPoints        DataPoint[]
+  reports           ConversationReport[]
+  themes            DiscoveryTheme[]
+  liveSnapshots     LiveWorkshopSnapshot[]
+  transcriptChunks  TranscriptChunk[]
+  participants      WorkshopParticipant[]
+  createdBy         User                  @relation(fields: [createdById], references: [id])
+  organization      Organization          @relation(fields: [organizationId], references: [id])
+
+  @@map("workshops")
+}
+
+model TranscriptChunk {
+  id          String           @id @default(cuid())
+  workshopId  String
+  speakerId   String?
+  startTimeMs Int
+  endTimeMs   Int
+  text        String
+  confidence  Float?
+  source      TranscriptSource
+  createdAt   DateTime         @default(now())
+  dataPoint   DataPoint?
+  workshop    Workshop         @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@map("transcript_chunks")
+}
+
+model DataPoint {
+  id                String                   @id @default(cuid())
+  workshopId        String
+  transcriptChunkId String?                  @unique
+  rawText           String
+  source            DataPointSource
+  speakerId         String?
+  createdAt         DateTime                 @default(now())
+  sessionId         String?
+  participantId     String?
+  questionKey       String?
+  classification    DataPointClassification?
+  annotation        DataPointAnnotation?
+  participant       WorkshopParticipant?     @relation(fields: [participantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_participantid_fkey")
+  session           ConversationSession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_sessionid_fkey")
+  transcriptChunk   TranscriptChunk?         @relation(fields: [transcriptChunkId], references: [id])
+  workshop          Workshop                 @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionKey], map: "data_points_sessionid_questionkey_key")
+  @@map("data_points")
+}
+
+model DataPointClassification {
+  id            String               @id @default(cuid())
+  dataPointId   String               @unique
+  primaryType   DataPointPrimaryType
+  confidence    Float?
+  keywords      String[]
+  suggestedArea String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  dataPoint     DataPoint            @relation(fields: [dataPointId], references: [id], onDelete: Cascade)
+
+  @@map("data_point_classifications")
+}
+
+enum DialoguePhase {
+  REIMAGINE
+  CONSTRAINTS
+  DEFINE_APPROACH
+}
+
+model DataPointAnnotation {
+  id            String        @id @default(cuid())
+  dataPointId   String        @unique
+  dialoguePhase DialoguePhase?
+  intent        String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  dataPoint DataPoint @relation(fields: [dataPointId], references: [id], onDelete: Cascade)
+
+  @@map("data_point_annotations")
+}
+
+model WorkshopParticipant {
+  id                    String                @id @default(cuid())
+  workshopId            String
+  email                 String
+  name                  String
+  role                  String?
+  department            String?
+  discoveryToken        String                @unique @default(cuid())
+  attributionPreference AttributionPreference @default(NAMED)
+  emailSentAt           DateTime?
+  doNotSendAgain        Boolean               @default(false)
+  responseStartedAt     DateTime?
+  responseCompletedAt   DateTime?
+  reminderSentAt        DateTime?
+  createdAt             DateTime              @default(now())
+  insights              ConversationInsight[]
+  sessions              ConversationSession[]
+  reports               ConversationReport[]
+  dataPoints            DataPoint[]
+  workshop              Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@map("workshop_participants")
+}
+
+model ConversationSession {
+  id                String                @id @default(cuid())
+  workshopId        String
+  participantId     String
+  status            ConversationStatus    @default(IN_PROGRESS)
+  runType           ConversationRunType   @default(BASELINE)
+  questionSetVersion String               @default("v1")
+  currentPhase      String                @default("intro")
+  phaseProgress     Int                   @default(0)
+  startedAt         DateTime              @default(now())
+  completedAt       DateTime?
+  totalDurationMs   Int?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  language          String                @default("en")
+  voiceEnabled      Boolean               @default(false)
+  includeRegulation Boolean               @default(true)
+  insights          ConversationInsight[]
+  report            ConversationReport?
+  messages          ConversationMessage[]
+  participant       WorkshopParticipant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  workshop          Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  dataPoints        DataPoint[]
+
+  @@map("conversation_sessions")
+}
+
+model ConversationMessage {
+  id        String              @id @default(cuid())
+  sessionId String
+  role      MessageRole
+  content   String
+  phase     String?
+  metadata  Json?
+  createdAt DateTime            @default(now())
+  session   ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("conversation_messages")
+}
+
+model ConversationInsight {
+  id               String                 @id @default(cuid())
+  sessionId        String
+  workshopId       String
+  participantId    String
+  insightType      InsightType
+  category         InsightCategory?
+  text             String
+  severity         Int?
+  impact           String?
+  sourceMessageIds String[]
+  confidence       Float                  @default(0.8)
+  embedding        Unsupported("vector")?
+  createdAt        DateTime               @default(now())
+  participant      WorkshopParticipant    @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  session          ConversationSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  workshop         Workshop               @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@map("conversation_insights")
+}
+
+model ConversationReport {
+  id               String              @id @default(cuid())
+  sessionId        String              @unique
+  workshopId       String
+  participantId    String
+  executiveSummary String
+  tone             String?
+  feedback         String
+  inputQuality     Json?
+  keyInsights      Json?
+  phaseInsights    Json?
+  wordCloudThemes  Json?
+  modelVersion     String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  participant      WorkshopParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  session          ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  workshop         Workshop            @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@map("conversation_reports")
+}
+
+model DiscoveryTheme {
+  id               String   @id @default(cuid())
+  workshopId       String
+  themeLabel       String
+  themeDescription String?
+  participantCount Int      @default(0)
+  responseIds      String[]
+  confidence       Float    @default(0.8)
+  modelVersion     String?
+  createdAt        DateTime @default(now())
+  workshop         Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@map("discovery_themes")
+}
+
+model LiveWorkshopSnapshot {
+  id           String   @id @default(cuid())
+  workshopId   String
+  name         String
+  dialoguePhase String
+  payload      Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId, createdAt])
+  @@map("live_workshop_snapshots")
 }
 
 enum WorkshopStatus {
@@ -48,6 +303,11 @@ enum ConversationStatus {
 enum MessageRole {
   AI
   PARTICIPANT
+}
+
+enum ConversationRunType {
+  BASELINE
+  FOLLOWUP
 }
 
 enum InsightType {
@@ -88,212 +348,4 @@ enum DataPointPrimaryType {
   ACTION
   QUESTION
   INSIGHT
-}
-
-model Organization {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  workshops Workshop[]
-  users     User[]
-
-  @@map("organizations")
-}
-
-model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  name           String
-  organizationId String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization      Organization @relation(fields: [organizationId], references: [id])
-  createdWorkshops  Workshop[]
-
-  @@map("users")
-}
-
-model Workshop {
-  id               String         @id @default(cuid())
-  organizationId   String
-  name             String
-  description      String?
-  businessContext  String?
-  includeRegulation Boolean       @default(true)
-  workshopType     WorkshopType   @default(CUSTOM)
-  status           WorkshopStatus @default(DRAFT)
-  zoomMeetingId    String?
-  createdById      String
-  scheduledDate    DateTime?
-  responseDeadline DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-
-  organization Organization              @relation(fields: [organizationId], references: [id])
-  createdBy    User                      @relation(fields: [createdById], references: [id])
-  participants WorkshopParticipant[]
-  sessions     ConversationSession[]
-  insights     ConversationInsight[]
-  themes       DiscoveryTheme[]
-  transcriptChunks TranscriptChunk[]
-  dataPoints       DataPoint[]
-
-  @@map("workshops")
-}
-
-model TranscriptChunk {
-  id          String          @id @default(cuid())
-  workshopId  String
-  speakerId   String?
-  startTimeMs Int
-  endTimeMs   Int
-  text        String
-  confidence  Float?
-  source      TranscriptSource
-  createdAt   DateTime        @default(now())
-
-  workshop  Workshop  @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  dataPoint DataPoint?
-
-  @@map("transcript_chunks")
-}
-
-model DataPoint {
-  id               String         @id @default(cuid())
-  workshopId       String
-  sessionId        String?
-  participantId    String?
-  questionKey      String?
-  transcriptChunkId String?       @unique
-  rawText          String
-  source           DataPointSource
-  speakerId        String?
-  createdAt        DateTime       @default(now())
-
-  workshop        Workshop        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  session         ConversationSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  participant     WorkshopParticipant? @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  transcriptChunk TranscriptChunk? @relation(fields: [transcriptChunkId], references: [id], onDelete: SetNull)
-  classification  DataPointClassification?
-
-  @@unique([sessionId, questionKey])
-  @@map("data_points")
-}
-
-model DataPointClassification {
-  id            String              @id @default(cuid())
-  dataPointId   String              @unique
-  primaryType   DataPointPrimaryType
-  confidence    Float?
-  keywords      String[]
-  suggestedArea String?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-
-  dataPoint DataPoint @relation(fields: [dataPointId], references: [id], onDelete: Cascade)
-
-  @@map("data_point_classifications")
-}
-
-model WorkshopParticipant {
-  id                     String                @id @default(cuid())
-  workshopId             String
-  email                  String
-  name                   String
-  role                   String?
-  department             String?
-  discoveryToken         String                @unique @default(cuid())
-  attributionPreference  AttributionPreference @default(NAMED)
-  emailSentAt            DateTime?
-  responseStartedAt      DateTime?
-  responseCompletedAt    DateTime?
-  reminderSentAt         DateTime?
-  createdAt              DateTime              @default(now())
-
-  workshop Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  sessions ConversationSession[]
-  dataPoints DataPoint[]
-  insights ConversationInsight[]
-
-  @@map("workshop_participants")
-}
-
-model ConversationSession {
-  id                String             @id @default(cuid())
-  workshopId        String
-  participantId     String
-  status            ConversationStatus @default(IN_PROGRESS)
-  currentPhase      String             @default("intro")
-  phaseProgress     Int                @default(0)
-  language          String             @default("en")
-  voiceEnabled      Boolean            @default(false)
-  includeRegulation Boolean            @default(true)
-  startedAt         DateTime           @default(now())
-  completedAt       DateTime?
-  totalDurationMs   Int?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-
-  workshop    Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  participant WorkshopParticipant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  messages    ConversationMessage[]
-  dataPoints  DataPoint[]
-  insights    ConversationInsight[]
-
-  @@map("conversation_sessions")
-}
-
-model ConversationMessage {
-  id        String      @id @default(cuid())
-  sessionId String
-  role      MessageRole
-  content   String
-  phase     String?
-  metadata  Json?
-  createdAt DateTime    @default(now())
-
-  session ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@map("conversation_messages")
-}
-
-model ConversationInsight {
-  id                String           @id @default(cuid())
-  sessionId         String
-  workshopId        String
-  participantId     String
-  insightType       InsightType
-  category          InsightCategory?
-  text              String
-  severity          Int?
-  impact            String?
-  sourceMessageIds  String[]
-  confidence        Float            @default(0.8)
-  embedding         Unsupported("vector(1536)")?
-  createdAt         DateTime         @default(now())
-
-  session     ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  workshop    Workshop            @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  participant WorkshopParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
-
-  @@map("conversation_insights")
-}
-
-model DiscoveryTheme {
-  id               String   @id @default(cuid())
-  workshopId       String
-  themeLabel       String
-  themeDescription String?
-  participantCount Int      @default(0)
-  responseIds      String[]
-  confidence       Float    @default(0.8)
-  modelVersion     String?
-  createdAt        DateTime @default(now())
-
-  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-
-  @@map("discovery_themes")
 }

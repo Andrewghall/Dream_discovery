@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
 import { emitWorkshopEvent } from '@/lib/realtime/workshop-events';
 import { classifyDataPoint } from '@/lib/workshop/classify-datapoint';
+import { deriveIntent } from '@/lib/workshop/derive-intent';
 
 type IngestTranscriptChunkBody = {
   speakerId: string | null;
@@ -12,7 +13,19 @@ type IngestTranscriptChunkBody = {
   text: string;
   confidence: number | null;
   source: 'zoom' | 'deepgram' | 'whisper';
+  dialoguePhase?: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null;
 };
+
+function safeDialoguePhase(
+  v: unknown
+): 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null {
+  if (v == null) return null;
+  const s = String(v).trim().toUpperCase();
+  if (s === 'REIMAGINE') return 'REIMAGINE';
+  if (s === 'CONSTRAINTS') return 'CONSTRAINTS';
+  if (s === 'DEFINE_APPROACH') return 'DEFINE_APPROACH';
+  return null;
+}
 
 export async function POST(
   request: NextRequest,
@@ -46,17 +59,68 @@ export async function POST(
         dataPoint: {
           include: {
             classification: true,
+            annotation: true,
           },
         },
       },
     });
 
     if (existing?.dataPoint) {
+      const dataPointId = existing.dataPoint.id;
+      const requestedPhase = safeDialoguePhase(body.dialoguePhase);
+      if (requestedPhase && !existing.dataPoint.annotation) {
+        try {
+          await prisma.dataPointAnnotation.create({
+            data: {
+              dataPointId,
+              dialoguePhase: requestedPhase,
+            },
+          });
+        } catch {
+          // ignore (race / already created)
+        }
+      }
+
+      if (!existing.dataPoint.annotation?.intent) {
+        void (async () => {
+          try {
+            const intent = await deriveIntent({ text });
+            if (!intent) return;
+
+            const annotation = await prisma.dataPointAnnotation.upsert({
+              where: { dataPointId },
+              create: {
+                dataPointId,
+                dialoguePhase: requestedPhase,
+                intent,
+              },
+              update: { intent },
+            });
+
+            emitWorkshopEvent(workshopId, {
+              id: nanoid(),
+              type: 'annotation.updated',
+              createdAt: Date.now(),
+              payload: {
+                dataPointId,
+                annotation: {
+                  dialoguePhase: annotation.dialoguePhase,
+                  intent: annotation.intent,
+                  updatedAt: annotation.updatedAt,
+                },
+              },
+            });
+          } catch {
+            // ignore
+          }
+        })();
+      }
+
       return NextResponse.json({
         ok: true,
         deduped: true,
         transcriptChunkId: existing.id,
-        dataPointId: existing.dataPoint.id,
+        dataPointId,
         classificationId: existing.dataPoint.classification?.id || null,
       });
     }
@@ -87,6 +151,16 @@ export async function POST(
       },
     });
 
+    const dialoguePhase = safeDialoguePhase(body.dialoguePhase);
+    if (dialoguePhase) {
+      await prisma.dataPointAnnotation.create({
+        data: {
+          dataPointId: dataPoint.id,
+          dialoguePhase,
+        },
+      });
+    }
+
     emitWorkshopEvent(workshopId, {
       id: nanoid(),
       type: 'datapoint.created',
@@ -98,6 +172,7 @@ export async function POST(
           source: dataPoint.source,
           speakerId: dataPoint.speakerId,
           createdAt: dataPoint.createdAt,
+          dialoguePhase,
         },
         transcriptChunk: {
           id: transcriptChunk.id,
@@ -111,6 +186,8 @@ export async function POST(
         },
       },
     });
+
+    const intentPromise = deriveIntent({ text }).catch(() => null);
 
     // Classify
     const cls = await classifyDataPoint({ text });
@@ -141,6 +218,33 @@ export async function POST(
         },
       },
     });
+
+    const intent = await intentPromise;
+    if (intent) {
+      const annotation = await prisma.dataPointAnnotation.upsert({
+        where: { dataPointId: dataPoint.id },
+        create: {
+          dataPointId: dataPoint.id,
+          dialoguePhase,
+          intent,
+        },
+        update: { intent },
+      });
+
+      emitWorkshopEvent(workshopId, {
+        id: nanoid(),
+        type: 'annotation.updated',
+        createdAt: Date.now(),
+        payload: {
+          dataPointId: dataPoint.id,
+          annotation: {
+            dialoguePhase: annotation.dialoguePhase,
+            intent: annotation.intent,
+            updatedAt: annotation.updatedAt,
+          },
+        },
+      });
+    }
 
     return NextResponse.json({
       ok: true,

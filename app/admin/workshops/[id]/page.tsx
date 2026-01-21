@@ -32,6 +32,7 @@ interface Participant {
   department: string | null;
   discoveryToken: string;
   emailSentAt: Date | null;
+  doNotSendAgain?: boolean;
   responseStartedAt: Date | null;
   responseCompletedAt: Date | null;
 }
@@ -55,6 +56,17 @@ export default function WorkshopDetailPage({ params }: PageProps) {
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [loading, setLoading] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [backfillForce, setBackfillForce] = useState(false);
+  const [backfillIncludeInsights, setBackfillIncludeInsights] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<null | {
+    total: number;
+    done: number;
+    ok: number;
+    failed: number;
+    currentSessionId: string | null;
+  }>(null);
+  const [backfillErrors, setBackfillErrors] = useState<Array<{ sessionId: string; error: string }>>([]);
   const [newParticipant, setNewParticipant] = useState({
     name: '',
     email: '',
@@ -62,6 +74,7 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     department: '',
   });
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [summaryDownloading, setSummaryDownloading] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -81,6 +94,48 @@ export default function WorkshopDetailPage({ params }: PageProps) {
       console.error('Failed to fetch workshop:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleDoNotSendAgain = async (participantId: string, nextValue: boolean) => {
+    const prevValue = workshop?.participants.find((p) => p.id === participantId)?.doNotSendAgain ?? false;
+
+    setWorkshop((w) =>
+      w
+        ? {
+            ...w,
+            participants: w.participants.map((p) =>
+              p.id === participantId ? { ...p, doNotSendAgain: nextValue } : p
+            ),
+          }
+        : w
+    );
+
+    try {
+      const response = await fetch(`/api/admin/workshops/${id}/participants`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId, doNotSendAgain: nextValue }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const message = data?.error || 'Failed to update participant';
+        throw new Error(message);
+      }
+    } catch (error) {
+      console.error('Failed to update doNotSendAgain:', error);
+      setWorkshop((w) =>
+        w
+          ? {
+              ...w,
+              participants: w.participants.map((p) =>
+                p.id === participantId ? { ...p, doNotSendAgain: prevValue } : p
+              ),
+            }
+          : w
+      );
+      alert('Failed to update participant. Please try again.');
     }
   };
 
@@ -240,6 +295,179 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     setTimeout(() => setCopiedToken(null), 2000);
   };
 
+  const downloadJson = (filename: string, payload: unknown) => {
+    try {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDownloadSummary = async () => {
+    if (summaryDownloading) return;
+    try {
+      setSummaryDownloading(true);
+      const response = await fetch(`/api/admin/workshops/${encodeURIComponent(id)}/summary?ts=${Date.now()}`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const message = data?.error || `Failed to generate summary (HTTP ${response.status})`;
+        throw new Error(message);
+      }
+      const payload = (await response.json().catch(() => null)) as { summary?: unknown } | null;
+      if (!payload?.summary) throw new Error('Summary response missing payload');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `workshop-summary-${id}-${ts}.json`;
+      downloadJson(filename, payload.summary);
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : 'Failed to download summary');
+    } finally {
+      setSummaryDownloading(false);
+    }
+  };
+
+  const handleBackfillReports = async () => {
+    if (backfillRunning) return;
+
+    if (
+      !confirm(
+        `Generate stored reports for all completed sessions in this workshop?\n\nThis will run sequentially and may take a minute.\n\nForce overwrite: ${backfillForce ? 'YES' : 'NO'}\nInclude insights: ${backfillIncludeInsights ? 'YES (slower)' : 'NO (faster)'}`
+      )
+    ) {
+      return;
+    }
+
+    type WorkshopSessionRow = {
+      sessionId: string;
+      status: string;
+      createdAt: string;
+      completedAt: string | null;
+      participant: { id: string; name: string; email: string };
+      hasReport: boolean;
+    };
+
+    type SessionsResponse = {
+      ok: boolean;
+      workshopId: string;
+      sessions: WorkshopSessionRow[];
+      error?: string;
+    };
+
+    setBackfillRunning(true);
+    setBackfillErrors([]);
+
+    try {
+      const listUrl = `/api/admin/workshops/${encodeURIComponent(id)}/sessions?status=COMPLETED&bust=${Date.now()}`;
+      const listRes = await fetch(listUrl, { cache: 'no-store' });
+      const listData = (await listRes.json().catch(() => null)) as SessionsResponse | null;
+
+      if (!listRes.ok || !listData || !listData.ok || !Array.isArray(listData.sessions)) {
+        const msg = listData && typeof listData.error === 'string' ? listData.error : 'Failed to list sessions';
+        alert(msg);
+        return;
+      }
+
+      const candidates = listData.sessions.filter((s) => backfillForce || !s.hasReport);
+      setBackfillProgress({
+        total: candidates.length,
+        done: 0,
+        ok: 0,
+        failed: 0,
+        currentSessionId: null,
+      });
+
+      let okCount = 0;
+      let failCount = 0;
+      const errors: Array<{ sessionId: string; error: string }> = [];
+
+      for (const s of candidates) {
+        setBackfillProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentSessionId: s.sessionId,
+              }
+            : prev
+        );
+
+        try {
+          const reportUrl = `/api/conversation/report?sessionId=${encodeURIComponent(s.sessionId)}&skipEmail=1&bust=${Date.now()}`;
+          const reportRes = await fetch(reportUrl, { cache: 'no-store' });
+          const reportPayload = (await reportRes.json().catch(() => null)) as unknown;
+          if (!reportRes.ok || !reportPayload || typeof reportPayload !== 'object') {
+            throw new Error('Failed to generate report payload');
+          }
+
+          const assessmentUrl = `/api/admin/sessions/${encodeURIComponent(s.sessionId)}/assessment?force=1${
+            backfillIncludeInsights ? '&insights=1' : ''
+          }&bust=${Date.now()}`;
+          const persistRes = await fetch(assessmentUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reportPayload }),
+          });
+          const persistData = (await persistRes.json().catch(() => null)) as unknown;
+          const ok =
+            persistRes.ok &&
+            persistData &&
+            typeof persistData === 'object' &&
+            'ok' in persistData &&
+            (persistData as { ok?: unknown }).ok === true;
+          if (!ok) {
+            const errMsg =
+              persistData &&
+              typeof persistData === 'object' &&
+              'error' in persistData &&
+              typeof (persistData as { error?: unknown }).error === 'string'
+                ? String((persistData as { error?: unknown }).error)
+                : `Failed to persist report (HTTP ${persistRes.status})`;
+            throw new Error(errMsg);
+          }
+
+          okCount += 1;
+        } catch (e) {
+          failCount += 1;
+          const message = e instanceof Error ? e.message : 'Unknown error';
+          errors.push({ sessionId: s.sessionId, error: message });
+          setBackfillErrors([...errors]);
+        } finally {
+          setBackfillProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  done: prev.done + 1,
+                  ok: okCount,
+                  failed: failCount,
+                }
+              : prev
+          );
+        }
+      }
+
+      setBackfillProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentSessionId: null,
+            }
+          : prev
+      );
+
+      await fetchWorkshop();
+      alert(
+        `Backfill complete.\n\nProcessed: ${candidates.length}\nSucceeded: ${okCount}\nFailed: ${failCount}${failCount ? '\n\nSee errors list below.' : ''}`
+      );
+    } finally {
+      setBackfillRunning(false);
+    }
+  };
+
   const getCompletionRate = () => {
     if (!workshop || workshop.participants.length === 0) return 0;
     const completed = workshop.participants.filter((p) => p.responseCompletedAt).length;
@@ -288,6 +516,21 @@ export default function WorkshopDetailPage({ params }: PageProps) {
               </div>
             </div>
             <div className="flex gap-2">
+              <Link href={`/admin/workshops/${id}/live`}>
+                <Button variant="outline" size="lg">
+                  Live
+                </Button>
+              </Link>
+              <Link href={`/admin/workshops/${id}/hemisphere`}>
+                <Button variant="outline" size="lg">
+                  Hemisphere
+                </Button>
+              </Link>
+              <Link href={`/admin/workshops/${id}/spider`}>
+                <Button variant="outline" size="lg">
+                  Spider
+                </Button>
+              </Link>
               <Button onClick={handleClearEmailStatus} variant="outline" size="lg">
                 Clear Email Status
               </Button>
@@ -357,6 +600,23 @@ export default function WorkshopDetailPage({ params }: PageProps) {
           <div className="lg:col-span-2 space-y-6">
             <Card>
               <CardHeader>
+                <CardTitle>Workshop Summary</CardTitle>
+                <CardDescription>
+                  Agentic vision statement, executive summary, and domain lenses (People, Customer, Technology, Regulation, Organisation).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="text-sm text-muted-foreground">
+                  Generates a corporate future-state narrative from live workshop signals and discovery reports.
+                </div>
+                <Button variant="outline" onClick={() => void handleDownloadSummary()} disabled={summaryDownloading}>
+                  {summaryDownloading ? 'Generating summary…' : 'Download Summary'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle>Workshop Settings</CardTitle>
                 <CardDescription>Configure which sections are included in participant discovery</CardDescription>
               </CardHeader>
@@ -371,6 +631,73 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                     />
                     Include Regulation / Risk questions
                   </label>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Workshop Tools</CardTitle>
+                <CardDescription>Admin-only maintenance actions</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={backfillForce}
+                        onChange={(e) => setBackfillForce(e.target.checked)}
+                        disabled={backfillRunning}
+                      />
+                      Force overwrite existing stored reports
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={backfillIncludeInsights}
+                        onChange={(e) => setBackfillIncludeInsights(e.target.checked)}
+                        disabled={backfillRunning}
+                      />
+                      Also generate insights (slower)
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => void handleBackfillReports()}
+                      disabled={backfillRunning}
+                    >
+                      {backfillRunning ? 'Backfilling…' : 'Backfill Reports for Completed Sessions'}
+                    </Button>
+                  </div>
+
+                  {backfillProgress ? (
+                    <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                      <div>
+                        Progress: {backfillProgress.done}/{backfillProgress.total} | ok: {backfillProgress.ok} | failed:{' '}
+                        {backfillProgress.failed}
+                      </div>
+                      {backfillProgress.currentSessionId ? (
+                        <div className="text-muted-foreground">Current session: {backfillProgress.currentSessionId}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {backfillErrors.length ? (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      <div className="font-medium">Errors ({backfillErrors.length})</div>
+                      <div className="mt-2 space-y-1">
+                        {backfillErrors.slice(0, 10).map((e) => (
+                          <div key={`${e.sessionId}:${e.error}`}>
+                            {e.sessionId}: {e.error}
+                          </div>
+                        ))}
+                        {backfillErrors.length > 10 ? <div>…and {backfillErrors.length - 10} more</div> : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </CardContent>
             </Card>
@@ -392,7 +719,9 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                     workshop.participants.map((participant) => (
                       <div
                         key={participant.id}
-                        className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                        className={`border rounded-lg p-4 hover:bg-muted/50 transition-colors ${
+                          participant.doNotSendAgain ? 'opacity-60' : ''
+                        }`}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -423,7 +752,32 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                               </p>
                             )}
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-3">
+                            <label
+                              htmlFor={`dns-${participant.id}`}
+                              className="flex items-center gap-2 text-xs text-muted-foreground"
+                            >
+                              <input
+                                id={`dns-${participant.id}`}
+                                type="checkbox"
+                                className="h-4 w-4"
+                                checked={!!participant.doNotSendAgain}
+                                onChange={(e) =>
+                                  void handleToggleDoNotSendAgain(participant.id, e.target.checked)
+                                }
+                              />
+                              Don&apos;t send again
+                            </label>
+                            <div className="flex items-center gap-1">
+                            <Link
+                              href={`/admin/workshops/${encodeURIComponent(id)}/participants/${encodeURIComponent(
+                                participant.id
+                              )}`}
+                            >
+                              <Button variant="ghost" size="sm">
+                                Review
+                              </Button>
+                            </Link>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -442,6 +796,7 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
+                            </div>
                           </div>
                         </div>
                       </div>
