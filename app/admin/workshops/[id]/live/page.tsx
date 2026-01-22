@@ -490,7 +490,25 @@ export default function WorkshopLivePage({ params }: PageProps) {
       .map((s) => s.trim())
       .filter(Boolean);
 
-    return parts.length ? parts : [normalized];
+    const minWords = 12;
+    const countWords = (s: string) => s.split(/\s+/).filter(Boolean).length;
+
+    if (!parts.length) return [normalized];
+
+    const merged: string[] = [];
+    let buffer = '';
+    for (const part of parts) {
+      const next = buffer ? `${buffer} ${part}` : part;
+      if (countWords(next) < minWords) {
+        buffer = next;
+        continue;
+      }
+      merged.push(next);
+      buffer = '';
+    }
+
+    if (buffer) merged.push(buffer);
+    return merged.length ? merged : [normalized];
   }
 
   const hash01 = (s: string): number => {

@@ -16,6 +16,39 @@ type IngestTranscriptChunkBody = {
   dialoguePhase?: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null;
 };
 
+const LOW_CONTEXT_PHRASES = new Set([
+  'yeah',
+  'yep',
+  'yes',
+  'no',
+  'ok',
+  'okay',
+  'right',
+  'sure',
+  'thanks',
+  'thank you',
+  'cool',
+  'great',
+  'got it',
+  'gotcha',
+  'uh huh',
+  'mm hm',
+]);
+
+function isContextualUtterance(text: string, confidence: number | null): boolean {
+  const cleaned = String(text || '').trim().replace(/\s+/g, ' ');
+  if (!cleaned) return false;
+
+  const lower = cleaned.toLowerCase();
+  const words = lower.split(' ').filter(Boolean);
+  const wordCount = words.length;
+
+  if (confidence != null && Number.isFinite(confidence) && confidence < 0.35) return false;
+  if (wordCount < 10) return false;
+  if (wordCount <= 4 && LOW_CONTEXT_PHRASES.has(lower)) return false;
+  return true;
+}
+
 function safeDialoguePhase(
   v: unknown
 ): 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null {
@@ -38,6 +71,10 @@ export async function POST(
     const text = (body?.text || '').trim();
     if (!text) {
       return NextResponse.json({ error: 'Missing text' }, { status: 400 });
+    }
+
+    if (!isContextualUtterance(text, body?.confidence ?? null)) {
+      return NextResponse.json({ ok: true, skipped: true });
     }
 
     const startTimeMs = Number.isFinite(body.startTime) ? Math.max(0, Math.round(body.startTime)) : 0;
