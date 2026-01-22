@@ -22,9 +22,9 @@ function parseIso(value: string | null): Date | null {
 
 type ChunkSummary = {
   executiveSummary: string;
-  keyThemes: string[];
-  constraints: string[];
-  opportunities: string[];
+  decisions: string[];
+  risks: string[];
+  actions: Array<{ action: string; owner: string | null }>;
   evidenceQuotes: string[];
 };
 
@@ -37,20 +37,21 @@ function chunkText(list: string[], size: number): string[][] {
 }
 
 async function summarizeChunk(texts: string[], index: number): Promise<ChunkSummary> {
-  const prompt = `Summarize this chunk of live workshop utterances with detailed, evidence-based outputs.
+  const prompt = `Summarize this chunk of live workshop utterances with structured, decision-oriented outputs.
 
 Return ONLY valid JSON with schema:
 {
   "executiveSummary": string,
-  "keyThemes": string[],
-  "constraints": string[],
-  "opportunities": string[],
+  "decisions": string[],
+  "risks": string[],
+  "actions": [{"action": string, "owner": string | null}],
   "evidenceQuotes": string[]
 }
 
 Rules:
 - Use only the source text; do not invent facts.
-- Provide concrete themes; avoid vague generalities.
+- Extract explicit decisions, risks, and actions if present.
+- If no clear owner is named, set owner to null.
 - Include short verbatim quotes.
 - Keep arrays to 3-8 items each.
 
@@ -74,39 +75,54 @@ ${texts.map((t) => `- ${t}`).join('\n')}`;
 
   const arr = (value: unknown) => (Array.isArray(value) ? value.map((v) => safeString(v)).filter(Boolean) : []);
 
+  const actionsRaw = Array.isArray(obj.actions) ? obj.actions : [];
+  const actions = actionsRaw
+    .map((a) => {
+      if (!a || typeof a !== 'object') return null;
+      const rec = a as Record<string, unknown>;
+      const action = safeString(rec.action);
+      const ownerRaw = rec.owner;
+      const owner = typeof ownerRaw === 'string' && ownerRaw.trim() ? ownerRaw.trim() : null;
+      return action ? { action, owner } : null;
+    })
+    .filter(Boolean) as Array<{ action: string; owner: string | null }>;
+
   return {
     executiveSummary: safeString(obj.executiveSummary),
-    keyThemes: arr(obj.keyThemes),
-    constraints: arr(obj.constraints),
-    opportunities: arr(obj.opportunities),
+    decisions: arr(obj.decisions),
+    risks: arr(obj.risks),
+    actions,
     evidenceQuotes: arr(obj.evidenceQuotes),
   };
 }
 
 async function synthesizeFinal(chunks: ChunkSummary[], workshopName: string | null) {
-  const prompt = `Create a detailed, executive-grade report from the chunk summaries.
+  const prompt = `Create a structured, executive-grade report from the chunk summaries.
 
 Return ONLY valid JSON with schema:
 {
-  "visionStatement": string,
   "executiveSummary": string,
-  "detailedNarrative": string,
-  "themes": string[],
-  "constraints": string[],
-  "opportunities": string[],
+  "decisions": string[],
+  "risks": string[],
+  "actions": [{"action": string, "owner": string | null}],
+  "openQuestions": string[],
   "evidenceQuotes": string[]
 }
 
 Rules:
 - Use only the summaries below.
-- Make the narrative long-form and specific.
+- Provide concrete decisions, risks, and actions grounded in evidence.
+- Keep actions concise; include owners when named (else null).
 - Include direct quotes (verbatim) in evidenceQuotes.
 
 Workshop: ${workshopName || 'Unknown'}
 
 Chunk summaries:
 ${chunks
-  .map((c, idx) => `Chunk ${idx + 1}:\n- Summary: ${c.executiveSummary}\n- Themes: ${c.keyThemes.join('; ')}\n- Constraints: ${c.constraints.join('; ')}\n- Opportunities: ${c.opportunities.join('; ')}\n- Quotes: ${c.evidenceQuotes.join(' | ')}`)
+  .map(
+    (c, idx) =>
+      `Chunk ${idx + 1}:\n- Summary: ${c.executiveSummary}\n- Decisions: ${c.decisions.join('; ')}\n- Risks: ${c.risks.join('; ')}\n- Actions: ${c.actions.map((a) => `${a.action}${a.owner ? ` (owner: ${a.owner})` : ''}`).join('; ')}\n- Quotes: ${c.evidenceQuotes.join(' | ')}`
+  )
   .join('\n\n')}`;
 
   const completion = await openai.chat.completions.create({
@@ -126,13 +142,24 @@ ${chunks
 
   const arr = (value: unknown) => (Array.isArray(value) ? value.map((v) => safeString(v)).filter(Boolean) : []);
 
+  const actionsRaw = Array.isArray(obj.actions) ? obj.actions : [];
+  const actions = actionsRaw
+    .map((a) => {
+      if (!a || typeof a !== 'object') return null;
+      const rec = a as Record<string, unknown>;
+      const action = safeString(rec.action);
+      const ownerRaw = rec.owner;
+      const owner = typeof ownerRaw === 'string' && ownerRaw.trim() ? ownerRaw.trim() : null;
+      return action ? { action, owner } : null;
+    })
+    .filter(Boolean) as Array<{ action: string; owner: string | null }>;
+
   return {
-    visionStatement: safeString(obj.visionStatement),
     executiveSummary: safeString(obj.executiveSummary),
-    detailedNarrative: safeString(obj.detailedNarrative),
-    themes: arr(obj.themes),
-    constraints: arr(obj.constraints),
-    opportunities: arr(obj.opportunities),
+    decisions: arr(obj.decisions),
+    risks: arr(obj.risks),
+    actions,
+    openQuestions: arr(obj.openQuestions),
     evidenceQuotes: arr(obj.evidenceQuotes),
   };
 }
