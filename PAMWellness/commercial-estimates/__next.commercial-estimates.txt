@@ -1,0 +1,4 @@
+1:"$Sreact.fragment"
+2:I[74181,["/PAMWellness/_next/static/chunks/996b0060ac472752.js","/PAMWellness/_next/static/chunks/586008578bb1ed14.js"],"default"]
+3:I[5908,["/PAMWellness/_next/static/chunks/996b0060ac472752.js","/PAMWellness/_next/static/chunks/586008578bb1ed14.js"],"default"]
+0:{"buildId":"yQhMne1FFT-ldQRq15gWN","rsc":["$","$1","c",{"children":[null,["$","$L2",null,{"parallelRouterKey":"children","template":["$","$L3",null,{}]}]]}],"loading":null,"isPartial":false}
