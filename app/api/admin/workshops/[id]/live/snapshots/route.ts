@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
+
+function prismaErrorDetail(error: unknown): { message: string; code?: string; meta?: unknown } {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return {
+      message: error.message,
+      code: error.code,
+      meta: error.meta,
+    };
+  }
+  if (error instanceof Prisma.PrismaClientValidationError) {
+    return { message: error.message };
+  }
+  if (error instanceof Error) return { message: error.message };
+  return { message: String(error) };
+}
 
 function isMissingSnapshotsTable(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
@@ -52,7 +69,11 @@ export async function GET(
       );
     }
     console.error('Error listing live snapshots:', error);
-    return NextResponse.json({ ok: false, error: 'Failed to list snapshots' }, { status: 500 });
+    const detail = prismaErrorDetail(error);
+    return NextResponse.json(
+      { ok: false, error: 'Failed to list snapshots', detail: detail.message, code: detail.code, meta: detail.meta },
+      { status: 500 }
+    );
   }
 }
 
@@ -84,6 +105,17 @@ export async function POST(
       return NextResponse.json({ ok: false, error: 'Missing payload' }, { status: 400 });
     }
 
+     const workshopExists = await prisma.workshop.findUnique({
+       where: { id: workshopId },
+       select: { id: true },
+     });
+     if (!workshopExists) {
+       return NextResponse.json(
+         { ok: false, error: 'Workshop not found', detail: 'Cannot create snapshot for an unknown workshop' },
+         { status: 404 }
+       );
+     }
+
     const created = (await (prisma as any).liveWorkshopSnapshot.create({
       data: {
         workshopId,
@@ -112,7 +144,17 @@ export async function POST(
         { status: 409 }
       );
     }
+    const detail = prismaErrorDetail(error);
+    if (detail.code === 'P2003') {
+      return NextResponse.json(
+        { ok: false, error: 'Failed to create snapshot', detail: detail.message, code: detail.code, meta: detail.meta },
+        { status: 409 }
+      );
+    }
     console.error('Error creating live snapshot:', error);
-    return NextResponse.json({ ok: false, error: 'Failed to create snapshot' }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: 'Failed to create snapshot', detail: detail.message, code: detail.code, meta: detail.meta },
+      { status: 500 }
+    );
   }
 }

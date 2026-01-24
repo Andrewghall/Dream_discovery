@@ -330,10 +330,36 @@ export default function WorkshopLivePage({ params }: PageProps) {
       return;
     }
 
+    const MAX_SNAPSHOT_NODES = 300;
+    const trimmedNodes = nodes.slice(Math.max(0, nodes.length - MAX_SNAPSHOT_NODES));
+    const compactNodesById: Record<string, HemisphereNodeDatum> = {};
+    for (const n of trimmedNodes) {
+      compactNodesById[n.dataPointId] = {
+        dataPointId: n.dataPointId,
+        createdAtMs: n.createdAtMs,
+        rawText: n.rawText,
+        dataPointSource: n.dataPointSource,
+        dialoguePhase: n.dialoguePhase ?? null,
+        intent: n.intent ?? null,
+        themeId: n.themeId ?? null,
+        themeLabel: n.themeLabel ?? null,
+        transcriptChunk: null,
+        classification: n.classification
+          ? {
+              primaryType: n.classification.primaryType,
+              confidence: n.classification.confidence,
+              keywords: n.classification.keywords || [],
+              suggestedArea: n.classification.suggestedArea ?? null,
+              updatedAt: n.classification.updatedAt,
+            }
+          : null,
+      };
+    }
+
     const payload = {
       v: 1,
       dialoguePhase,
-      nodesById,
+      nodesById: compactNodesById,
       selectedNodeId,
       themesById,
       nodeThemeById,
