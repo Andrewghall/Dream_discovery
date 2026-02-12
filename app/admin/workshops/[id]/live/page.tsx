@@ -1808,8 +1808,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
       confidence = captureAPIResult.transcription.confidence;
       source = captureAPIResult.transcription.source === 'whisper' ? 'whisper' : 'deepgram';
 
-      // Log SLM output for visibility
-      console.log('[SLM Output]', {
+      // Get speaker ID from diarization
+      const speakerId = captureAPIResult.transcription.speaker !== null
+        ? `speaker_${captureAPIResult.transcription.speaker}`
+        : null;
+
+      // Log SLM output with speaker info for visibility
+      console.log('[SLM Output with Speaker]', {
+        speaker: speakerId,
         raw: captureAPIResult.transcription.rawText,
         clean: captureAPIResult.transcription.cleanText,
         entities: captureAPIResult.analysis.entities,
@@ -1857,7 +1863,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
 
     const chunk: NormalizedTranscriptChunk = {
-      speakerId: null,
+      speakerId,  // From CaptureAPI diarization
       startTime,
       endTime,
       text,

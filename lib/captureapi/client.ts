@@ -19,6 +19,7 @@ export interface CaptureAPITranscription {
   cleanText: string
   source: 'deepgram' | 'whisper'
   confidence: number | null
+  speaker: number | null  // Speaker ID from diarization (0, 1, 2, etc.)
 }
 
 export interface CaptureAPIAnalysis {
