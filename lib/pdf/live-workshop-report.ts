@@ -1,5 +1,8 @@
 import chromium from '@sparticuz/chromium';
-import puppeteer from 'puppeteer-core';
+import puppeteerCore from 'puppeteer-core';
+// Use regular puppeteer in development (has bundled Chromium)
+// @ts-ignore - puppeteer may not be installed in production
+import puppeteerFull from 'puppeteer';
 
 type DomainLens = {
   People: string;
@@ -117,13 +120,26 @@ export async function generateLiveWorkshopReportPdf(params: LiveWorkshopReport):
     </html>
   `;
 
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath());
-  const browser = await puppeteer.launch({
-    args: chromium.args,
-    executablePath,
-    headless: true,
-    defaultViewport: { width: 1280, height: 720 },
-  });
+  // Use different puppeteer setup for development vs production
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  let browser;
+  if (isDev) {
+    // Development: use regular puppeteer with bundled Chromium
+    browser = await puppeteerFull.launch({
+      headless: true,
+      defaultViewport: { width: 1280, height: 720 },
+    });
+  } else {
+    // Production: use puppeteer-core with sparticuz chromium for serverless
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath());
+    browser = await puppeteerCore.launch({
+      args: chromium.args,
+      executablePath,
+      headless: true,
+      defaultViewport: { width: 1280, height: 720 },
+    });
+  }
 
   try {
     const page = await browser.newPage();

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { emitWorkshopEvent } from '@/lib/realtime/workshop-events';
 import { classifyDataPoint } from '@/lib/workshop/classify-datapoint';
 import { deriveIntent } from '@/lib/workshop/derive-intent';
+import { analyzeUtteranceAgentically, AgenticContext } from '@/lib/agents/workshop-analyst-agent';
 
 type IngestTranscriptChunkBody = {
   speakerId: string | null;
@@ -84,7 +85,19 @@ export async function POST(
       if (!existing.dataPoint.annotation?.intent) {
         void (async () => {
           try {
-            const intent = await deriveIntent({ text });
+            // Fetch recent context for intent derivation
+            const recentTranscripts = await prisma.transcriptChunk.findMany({
+              where: { workshopId },
+              orderBy: { createdAt: 'desc' },
+              take: 10,
+              select: { text: true, speakerId: true },
+            });
+            const contextMessages = recentTranscripts.reverse().map((t) => ({
+              speaker: t.speakerId,
+              text: t.text,
+            }));
+
+            const intent = await deriveIntent({ text, recentContext: contextMessages });
             if (!intent) return;
 
             const annotation = await prisma.dataPointAnnotation.upsert({
@@ -187,10 +200,32 @@ export async function POST(
       },
     });
 
-    const intentPromise = deriveIntent({ text }).catch(() => null);
+    // Fetch recent conversation context for AI analysis
+    // Exclude the current transcript chunk to avoid circular reference
+    const recentTranscripts = await prisma.transcriptChunk.findMany({
+      where: {
+        workshopId,
+        id: { not: transcriptChunk.id }, // Exclude current chunk
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: {
+        text: true,
+        speakerId: true,
+        createdAt: true,
+      },
+    });
 
-    // Classify
-    const cls = await classifyDataPoint({ text });
+    // Reverse to chronological order (oldest first) for context
+    const contextMessages = recentTranscripts.reverse().map((t) => ({
+      speaker: t.speakerId,
+      text: t.text,
+    }));
+
+    const intentPromise = deriveIntent({ text, recentContext: contextMessages }).catch(() => null);
+
+    // Classify with conversation context
+    const cls = await classifyDataPoint({ text, recentContext: contextMessages });
 
     const classification = await prisma.dataPointClassification.create({
       data: {
@@ -245,6 +280,124 @@ export async function POST(
         },
       });
     }
+
+    // Run agentic analysis asynchronously (don't block the response)
+    void (async () => {
+      try {
+        // Get workshop context for agent
+        const workshop = await prisma.workshop.findUnique({
+          where: { id: workshopId },
+          select: {
+            name: true,
+            description: true,
+            businessContext: true,
+          },
+        });
+
+        if (!workshop) return;
+
+        // Build agent context with more utterances for richer understanding
+        const agentTranscripts = await prisma.transcriptChunk.findMany({
+          where: { workshopId },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          select: {
+            id: true,
+            text: true,
+            speakerId: true,
+            createdAt: true,
+          },
+        });
+
+        // Get emerging themes from prior classifications
+        const existingThemes = await prisma.dataPointClassification.findMany({
+          where: {
+            dataPoint: { workshopId },
+          },
+          select: {
+            keywords: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        });
+
+        // Aggregate theme occurrences
+        const themeMap = new Map<string, { count: number; lastSeen: Date }>();
+        for (const cls of existingThemes) {
+          for (const keyword of cls.keywords || []) {
+            const existing = themeMap.get(keyword);
+            if (!existing || cls.createdAt > existing.lastSeen) {
+              themeMap.set(keyword, {
+                count: (existing?.count || 0) + 1,
+                lastSeen: cls.createdAt,
+              });
+            }
+          }
+        }
+
+        const emergingThemes = Array.from(themeMap.entries())
+          .filter(([, data]) => data.count >= 2)
+          .slice(0, 10)
+          .map(([label, data]) => ({
+            label,
+            occurrences: data.count,
+            lastSeen: data.lastSeen.toISOString(),
+          }));
+
+        // Build agent context
+        const agenticContext: AgenticContext = {
+          workshopGoal: workshop.businessContext || workshop.description || workshop.name,
+          currentPhase: dialoguePhase || 'REIMAGINE',
+          recentUtterances: agentTranscripts.reverse().map((t) => ({
+            id: t.id,
+            speaker: t.speakerId,
+            text: t.text,
+          })),
+          emergingThemes,
+        };
+
+        // Run agentic analysis
+        const analysis = await analyzeUtteranceAgentically({
+          utterance: text,
+          speaker: body.speakerId,
+          utteranceId: dataPoint.id,
+          context: agenticContext,
+        });
+
+        // Store the analysis
+        await prisma.agenticAnalysis.create({
+          data: {
+            dataPointId: dataPoint.id,
+            semanticMeaning: analysis.interpretation.semanticMeaning,
+            speakerIntent: analysis.interpretation.speakerIntent,
+            temporalFocus: analysis.interpretation.temporalFocus,
+            sentimentTone: analysis.interpretation.sentimentTone,
+            domains: analysis.domains,
+            themes: analysis.themes,
+            connections: analysis.connections,
+            overallConfidence: analysis.overallConfidence,
+            uncertainties: analysis.uncertainties,
+            agentModel: 'gpt-4o-mini',
+            analysisVersion: '1.0',
+          },
+        });
+
+        // Emit event for real-time UI updates
+        emitWorkshopEvent(workshopId, {
+          id: nanoid(),
+          type: 'agentic.analyzed',
+          createdAt: Date.now(),
+          payload: {
+            dataPointId: dataPoint.id,
+            analysis,
+          },
+        });
+      } catch (error) {
+        console.error('Agentic analysis failed:', error);
+        // Don't fail the transcript ingestion if agentic analysis fails
+      }
+    })();
 
     return NextResponse.json({
       ok: true,

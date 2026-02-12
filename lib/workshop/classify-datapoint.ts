@@ -29,6 +29,7 @@ function safePrimaryType(v: string): DataPointPrimaryType {
 
 export async function classifyDataPoint(params: {
   text: string;
+  recentContext?: Array<{ speaker: string | null; text: string }>;
 }): Promise<{
   primaryType: DataPointPrimaryType;
   confidence: number | null;
@@ -49,6 +50,26 @@ export async function classifyDataPoint(params: {
 
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
+  // Build messages array with conversation context
+  const messages: OpenAI.ChatCompletionMessageParam[] = [];
+
+  // Add conversation history if provided
+  if (params.recentContext && params.recentContext.length > 0) {
+    messages.push({
+      role: 'system',
+      content: 'Here is recent conversation context for reference. Use this to understand pronouns, references, and conversational continuity when classifying the current statement.',
+    });
+
+    params.recentContext.forEach((msg) => {
+      const speaker = msg.speaker || 'Unknown';
+      messages.push({
+        role: 'user',
+        content: `${speaker}: ${msg.text}`,
+      });
+    });
+  }
+
+  // Add current classification request
   const prompt = `Classify this workshop statement into a primary type and suggest an area.
 
 Primary types: Visionary, Opportunity, Constraint, Risk, Enabler, Action, Question, Insight.
@@ -61,10 +82,12 @@ Return strict JSON with keys:
 
 Text:\n${JSON.stringify(cleaned)}`;
 
+  messages.push({ role: 'user', content: prompt });
+
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0.2,
-    messages: [{ role: 'user', content: prompt }],
+    messages,
     response_format: { type: 'json_object' },
   });
 

@@ -32,6 +32,7 @@ import {
 } from '@/components/live/hemisphere-nodes';
 import { LiveDomainRadar } from '@/components/live/live-domain-radar';
 import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
+import { transcribeAudio, type CaptureAPIResponse } from '@/lib/captureapi/client';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -330,6 +331,18 @@ export default function WorkshopLivePage({ params }: PageProps) {
       return;
     }
 
+    // Prepare utterances and interpreted nodes for report generation
+    const utterances = utteranceNodes.map((n) => ({
+      rawText: n.rawText,
+      createdAtMs: n.createdAtMs,
+    }));
+
+    const interpreted = interpretedNodes.map((n) => ({
+      rawText: n.rawText,
+      createdAtMs: n.createdAtMs,
+      classification: n.classification,
+    }));
+
     const payload = {
       v: 1,
       dialoguePhase,
@@ -340,6 +353,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
       dependencyEdgesById,
       dependencyProcessedIds: Array.from(dependencyProcessedRef.current),
       dependencyProcessedCount,
+      // Add data needed for report generation
+      utterances,
+      interpreted,
+      synthesisByDomain,
+      pressurePoints,
     };
 
     try {
@@ -1583,11 +1601,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const eventUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/events`, [workshopId]);
   const ingestUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/transcript`, [workshopId]);
-  const deepgramUrl = useMemo(
-    () => `/api/workshops/${encodeURIComponent(workshopId)}/deepgram/transcribe`,
-    [workshopId]
-  );
-  const whisperUrl = useMemo(() => `/api/transcribe`, []);
 
   useEffect(() => {
     statusRef.current = status;
@@ -1778,72 +1791,39 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const CHUNK_MS = 10_000;
 
   const transcribeAndForward = async (blob: Blob, startTime: number, endTime: number) => {
-    const asFile = new File([blob], 'chunk', { type: blob.type || 'application/octet-stream' });
-
     let text = '';
     let confidence: number | null = null;
     let source: NormalizedTranscriptChunk['source'] = 'deepgram';
-    let dgErr: string | null = null;
-    let wErr: string | null = null;
+    let captureAPIResult: CaptureAPIResponse | null = null;
 
     try {
-      const fd = new FormData();
-      fd.append('audio', asFile);
-      const dgRes = await fetch(deepgramUrl, { method: 'POST', body: fd });
-      const dgPayload = (await dgRes.json().catch(() => ({}))) as {
-        text?: string;
-        confidence?: number | null;
-        error?: unknown;
-        detail?: unknown;
-      };
-      if (dgRes.ok && dgPayload?.text) {
-        text = String(dgPayload.text).trim();
-        confidence = typeof dgPayload.confidence === 'number' ? dgPayload.confidence : null;
-        source = 'deepgram';
-      } else if (!dgRes.ok) {
-        dgErr = errorMessage(dgPayload) || `Deepgram failed (${dgRes.status})`;
-      }
-    } catch {
-      dgErr = 'Deepgram request failed';
-    }
+      // Call CaptureAPI for transcription with SLM processing
+      captureAPIResult = await transcribeAudio(blob, {
+        mode: 'workshop',
+        enableSLM: true,
+      });
 
-    if (!text && !dgErr) {
-      const msg = 'Deepgram returned empty transcript (likely silence / low audio)';
-      if (msg !== lastEmptyDeepgramRef.current) {
-        lastEmptyDeepgramRef.current = msg;
-        setDebugTrace((t) => [...t, msg]);
-      }
-      return;
-    }
+      // Use clean text from SLM processing
+      text = captureAPIResult.transcription.cleanText.trim();
+      confidence = captureAPIResult.transcription.confidence;
+      source = captureAPIResult.transcription.source === 'whisper' ? 'whisper' : 'deepgram';
 
-    if (!text && dgErr) {
-      if (whisperDisabledRef.current) {
-        wErr = 'Whisper disabled (previous OpenAI 401)';
-      } else {
-        try {
-          const fd = new FormData();
-          fd.append('audio', asFile);
-          const wRes = await fetch(whisperUrl, { method: 'POST', body: fd });
-          const wPayload = (await wRes.json().catch(() => ({}))) as { text?: string; error?: unknown; detail?: unknown };
-          if (wRes.ok && wPayload?.text) {
-            text = String(wPayload.text).trim();
-            confidence = null;
-            source = 'whisper';
-          } else if (!wRes.ok) {
-            wErr = errorMessage(wPayload) || `Whisper failed (${wRes.status})`;
-            if (wRes.status === 401) {
-              whisperDisabledRef.current = true;
-              setDebugTrace((t) => [...t, 'Whisper disabled due to OpenAI 401 (invalid API key)']);
-            }
-          }
-        } catch {
-          wErr = 'Whisper request failed';
-        }
-      }
-    }
+      // Log SLM output for visibility
+      console.log('[SLM Output]', {
+        raw: captureAPIResult.transcription.rawText,
+        clean: captureAPIResult.transcription.cleanText,
+        entities: captureAPIResult.analysis.entities,
+        tone: captureAPIResult.analysis.emotionalTone,
+        confidence: captureAPIResult.analysis.confidence,
+        slmUsed: captureAPIResult.metadata.slmUsed,
+        processingTime: `${captureAPIResult.metadata.processingTimeMs}ms`,
+      });
 
-    if (!text) {
-      const msg = `Transcription failed (Deepgram: ${dgErr || 'no transcript'}; Whisper: ${wErr || 'no transcript'})`;
+    } catch (error) {
+      console.error('[CaptureAPI] Transcription failed:', error);
+
+      // Show generic message to facilitators
+      const msg = 'Transcription unavailable - check audio input';
       if (msg !== lastTranscriptionErrorRef.current) {
         lastTranscriptionErrorRef.current = msg;
         setError(msg);
@@ -1852,6 +1832,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
       return;
     }
 
+    // Check if transcription is empty (likely silence)
+    if (!text) {
+      console.debug('[CaptureAPI] Returned empty transcript (likely silence / low audio)');
+      return;
+    }
+
+    // Clear any previous error
     if (lastTranscriptionErrorRef.current) {
       lastTranscriptionErrorRef.current = '';
       setError(null);
@@ -1975,9 +1962,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
       recorderGenerationRef.current += 1;
       const mt = recorderMimeTypeRef.current;
       startRecorderOnCurrentStream(mt);
-      setDebugTrace((t) => [...t, 'Recorder restarted (watchdog)']);
-    } catch {
-      setDebugTrace((t) => [...t, 'Recorder restart failed']);
+      // Log to console for developers, not for facilitators
+      console.debug('Recorder restarted (watchdog)');
+    } catch (err) {
+      // Only show user-actionable message to facilitators
+      console.error('Recorder restart failed:', err);
+      setDebugTrace((t) => [...t, 'Audio capture interrupted - please refresh if issue persists']);
     }
   };
 
@@ -2268,9 +2258,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
       ]);
 
       // 1) Start SSE first so we can see events immediately
-      setDebugTrace((t) => [...t, 'Starting SSE…']);
+      console.debug('Starting SSE…');
       startSse();
-      setDebugTrace((t) => [...t, 'SSE started']);
+      console.debug('SSE started');
 
       void requestWakeLock();
 

@@ -92,6 +92,7 @@ model DataPoint {
   questionKey       String?
   classification    DataPointClassification?
   annotation        DataPointAnnotation?
+  agenticAnalysis   AgenticAnalysis?
   participant       WorkshopParticipant?     @relation(fields: [participantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_participantid_fkey")
   session           ConversationSession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_sessionid_fkey")
   transcriptChunk   TranscriptChunk?         @relation(fields: [transcriptChunkId], references: [id])
@@ -132,6 +133,39 @@ model DataPointAnnotation {
   dataPoint DataPoint @relation(fields: [dataPointId], references: [id], onDelete: Cascade)
 
   @@map("data_point_annotations")
+}
+
+model AgenticAnalysis {
+  id                 String   @id @default(cuid())
+  dataPointId        String   @unique
+
+  // Agent's interpretation
+  semanticMeaning    String   // What the agent understood this to mean
+  speakerIntent      String   // What the speaker was trying to do
+  temporalFocus      String   // past, present, future, timeless
+  sentimentTone      String   // positive, neutral, concerned, critical
+
+  // Domain assignments with reasoning (stored as JSON)
+  domains            Json     // Array of {domain, relevance, reasoning}
+
+  // Themes identified (stored as JSON)
+  themes             Json     // Array of {label, category, confidence, reasoning}
+
+  // Connections to other utterances (stored as JSON)
+  connections        Json     // Array of {type, targetUtteranceId, reasoning}
+
+  // Agent confidence and uncertainties
+  overallConfidence  Float
+  uncertainties      String[] // What the agent is unsure about
+
+  // Metadata
+  agentModel         String   // Which AI model was used
+  analysisVersion    String   @default("1.0")
+  createdAt          DateTime @default(now())
+
+  dataPoint          DataPoint @relation(fields: [dataPointId], references: [id], onDelete: Cascade)
+
+  @@map("agentic_analyses")
 }
 
 model WorkshopParticipant {
