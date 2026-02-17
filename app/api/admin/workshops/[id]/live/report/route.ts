@@ -37,6 +37,36 @@ function safePhase(value: string | null): LivePhase | null {
   return null;
 }
 
+function extractDomainLens(byDomain: Record<string, any>, domain: string): string {
+  if (!byDomain || !byDomain[domain]) {
+    return `No ${domain} insights available from synthesis.`;
+  }
+
+  const domainData = byDomain[domain];
+  const insights: string[] = [];
+
+  const categories = ['aspirations', 'constraints', 'enablers', 'opportunities'];
+  for (const category of categories) {
+    if (domainData[category] && Array.isArray(domainData[category])) {
+      const items = domainData[category];
+      if (items.length > 0) {
+        insights.push(`**${category.charAt(0).toUpperCase() + category.slice(1)}:**`);
+        for (const item of items.slice(0, 3)) { // Top 3 per category
+          // Agent returns 'label' not 'insight'
+          const text = item.label || item.insight || '';
+          if (text) {
+            insights.push(`• ${text}`);
+          }
+        }
+      }
+    }
+  }
+
+  return insights.length > 0
+    ? insights.join('\n')
+    : `No ${domain} insights available from synthesis.`;
+}
+
 function safeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -192,33 +222,139 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'No live snapshot found for this phase' }, { status: 404 });
     }
 
-    const extracted = extractLiveNotes(snapshot.payload);
-    const notes = [...extracted.utterances, ...extracted.interpreted].filter(Boolean).join('\n');
+    // NEW: Call agentic synthesis endpoint to get real workshop data
+    console.log('[Live Report] Calling agentic synthesis for workshop:', workshopId);
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.2,
-      messages: [
-        {
-          role: 'system',
-          content: buildPrompt({
-            workshopName: workshop?.name ?? null,
-            phase: phaseParam,
-            notes,
-            themes: extracted.themes,
-            pressure: extracted.pressure,
-          }),
-        },
-      ],
-      response_format: { type: 'json_object' },
-    });
-
-    const raw = completion.choices?.[0]?.message?.content || '{}';
-    let parsed: Partial<LiveReportPayload> = {};
+    let agenticSynthesis: any = null;
     try {
-      parsed = JSON.parse(raw) as Partial<LiveReportPayload>;
-    } catch {
-      parsed = {};
+      const synthesisUrl = new URL(`/api/admin/workshops/${workshopId}/synthesize`, request.url);
+      const synthesisResponse = await fetch(synthesisUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (synthesisResponse.ok) {
+        agenticSynthesis = await synthesisResponse.json();
+        console.log('[Live Report] Agentic synthesis received:', agenticSynthesis.utteranceCount, 'utterances analyzed');
+      } else {
+        console.warn('[Live Report] Synthesis failed, falling back to snapshot data');
+      }
+    } catch (synthError) {
+      console.warn('[Live Report] Synthesis error, falling back to snapshot data:', synthError);
+    }
+
+    // If we have agentic synthesis, use it; otherwise fall back to old method
+    let parsed: Partial<LiveReportPayload> = {};
+
+    if (agenticSynthesis?.synthesis) {
+      // Use agentic synthesis results directly
+      console.log('[Live Report] Using agentic synthesis for report generation');
+      const synthesis = agenticSynthesis.synthesis;
+
+      // Transform synthesizedThemes array into byDomain object
+      const byDomain: Record<string, any> = {};
+      if (synthesis.synthesizedThemes && Array.isArray(synthesis.synthesizedThemes)) {
+        for (const theme of synthesis.synthesizedThemes) {
+          if (theme.domain) {
+            byDomain[theme.domain] = theme;
+          }
+        }
+      }
+
+      // Build vision statement from aspirations across all domains
+      const aspirations: string[] = [];
+      for (const theme of synthesis.synthesizedThemes || []) {
+        if (theme.aspirations && Array.isArray(theme.aspirations)) {
+          aspirations.push(...theme.aspirations.map((a: any) => a.label || '').filter(Boolean));
+        }
+      }
+
+      // Build constraints from synthesis
+      const constraints: string[] = [];
+      for (const theme of synthesis.synthesizedThemes || []) {
+        if (theme.constraints && Array.isArray(theme.constraints)) {
+          constraints.push(...theme.constraints.map((c: any) => c.label || '').filter(Boolean));
+        }
+      }
+
+      // Build opportunities from synthesis
+      const opportunities: string[] = [];
+      for (const theme of synthesis.synthesizedThemes || []) {
+        if (theme.opportunities && Array.isArray(theme.opportunities)) {
+          opportunities.push(...theme.opportunities.map((o: any) => o.label || '').filter(Boolean));
+        }
+      }
+
+      // Extract evidence quotes from synthesis
+      const evidenceQuotes: string[] = [];
+      for (const theme of synthesis.synthesizedThemes || []) {
+        const categories = ['aspirations', 'constraints', 'enablers', 'opportunities'];
+        for (const category of categories) {
+          if (category in theme) {
+            const items = (theme as any)[category] || [];
+            for (const item of items) {
+              if (item.evidence && Array.isArray(item.evidence)) {
+                evidenceQuotes.push(...item.evidence.filter((e: any) => typeof e === 'string'));
+              }
+            }
+          }
+        }
+      }
+
+      parsed = {
+        visionStatement: aspirations.length > 0
+          ? `The workshop participants envision a future where:\n\n${aspirations.slice(0, 5).map((a, i) => `${i + 1}. ${a}`).join('\n\n')}`
+          : 'Vision statement not available from synthesis.',
+        executiveSummary: synthesis.crossDomainInsights && synthesis.crossDomainInsights.length > 0
+          ? `Key insights from the workshop:\n\n${synthesis.crossDomainInsights.slice(0, 3).map((i: any) => `• ${i.insight || ''}`).join('\n\n')}`
+          : 'Executive summary not available from synthesis.',
+        narrative: `This workshop explored themes across ${Object.keys(byDomain).length} key domains, revealing ${aspirations.length} aspirations, ${constraints.length} constraints, and ${opportunities.length} opportunities.`,
+        domainLenses: {
+          People: extractDomainLens(byDomain, 'People'),
+          Customer: extractDomainLens(byDomain, 'Customer'),
+          Technology: extractDomainLens(byDomain, 'Technology'),
+          Regulation: extractDomainLens(byDomain, 'Regulation'),
+          Organisation: extractDomainLens(byDomain, 'Operations'), // Map Operations to Organisation
+        },
+        constraints: constraints.length > 0
+          ? constraints.map((c, i) => `${i + 1}. ${c}`).join('\n\n')
+          : 'No constraints identified in synthesis.',
+        opportunities: opportunities.length > 0
+          ? opportunities.map((o, i) => `${i + 1}. ${o}`).join('\n\n')
+          : 'No opportunities identified in synthesis.',
+        approach: 'Approach recommendations based on agentic analysis.',
+        evidenceQuotes: evidenceQuotes.slice(0, 10), // Top 10 evidence quotes
+      };
+    } else {
+      // Fall back to old OpenAI synthesis from snapshot
+      console.log('[Live Report] Falling back to snapshot-based synthesis');
+      const extracted = extractLiveNotes(snapshot.payload);
+      const notes = [...extracted.utterances, ...extracted.interpreted].filter(Boolean).join('\n');
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        messages: [
+          {
+            role: 'system',
+            content: buildPrompt({
+              workshopName: workshop?.name ?? null,
+              phase: phaseParam,
+              notes,
+              themes: extracted.themes,
+              pressure: extracted.pressure,
+            }),
+          },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const raw = completion.choices?.[0]?.message?.content || '{}';
+      try {
+        parsed = JSON.parse(raw) as Partial<LiveReportPayload>;
+      } catch {
+        parsed = {};
+      }
     }
 
     const domainLenses = parsed.domainLenses && typeof parsed.domainLenses === 'object'

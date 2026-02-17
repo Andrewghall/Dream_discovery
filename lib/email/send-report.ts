@@ -9,6 +9,7 @@ export async function sendDiscoveryReportEmail(params: {
   executiveSummary: string;
   tone: string | null;
   feedback: string;
+  orgName?: string | null;
   inputQuality?: {
     score: number;
     label: 'high' | 'medium' | 'low';
@@ -35,6 +36,7 @@ export async function sendDiscoveryReportEmail(params: {
     executiveSummary,
     tone,
     feedback,
+    orgName,
     inputQuality,
     keyInsights,
     phaseInsights,
@@ -54,6 +56,7 @@ export async function sendDiscoveryReportEmail(params: {
     inputQuality,
     keyInsights,
     phaseInsights,
+    orgName,
   });
 
   const html = `
@@ -62,7 +65,7 @@ export async function sendDiscoveryReportEmail(params: {
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
   <p>Hi ${participantName},</p>
   <p>Thank you for participating in the DREAM Discovery questionnaire. Attached is your summary report (PDF).</p>
-  <p>Kind regards,<br/>Ethenta</p>
+  <p>Kind regards,<br/>${orgName || 'DREAM Discovery'}</p>
 </body>
 </html>
 `;

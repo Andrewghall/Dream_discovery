@@ -25,6 +25,7 @@ async function main() {
       id: 'demo-user',
       email: 'admin@demo.com',
       name: 'Demo Admin',
+      password: '$2b$10$placeholder',
       organizationId: org.id,
     },
   });

@@ -190,7 +190,9 @@ export async function generateDiscoveryReportPdf(params: {
   keyInsights?: KeyInsight[];
   phaseInsights: PhaseInsight[];
   wordCloudThemes?: WordCloudTheme[];
+  orgName?: string | null;
 }): Promise<Buffer> {
+  const orgName = params.orgName || 'DREAM Discovery';
   const reportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   const safeWorkshopName = params.workshopName ? escapeHtml(params.workshopName) : 'DREAM Discovery';
   const safeParticipant = escapeHtml(params.participantName);
@@ -439,7 +441,7 @@ export async function generateDiscoveryReportPdf(params: {
       footerTemplate: `
         <div style="width:100%; font-size:7pt; font-family:Arial, sans-serif; color:#555; padding:0 24px;">
           <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center;">
-            <div style="text-align:left;">Copyright 2026 Ethenta</div>
+            <div style="text-align:left;">Copyright ${new Date().getFullYear()} ${orgName}</div>
             <div></div>
             <div style="text-align:right;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
           </div>

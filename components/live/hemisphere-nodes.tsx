@@ -19,11 +19,13 @@ export type HemisphereNodeDatum = {
   createdAtMs: number;
   rawText: string;
   dataPointSource: string;
+  speakerId?: string | null;
   dialoguePhase: HemisphereDialoguePhase | null;
   intent?: string | null;
   themeId?: string | null;
   themeLabel?: string | null;
   transcriptChunk: {
+    speakerId?: string | null;
     startTimeMs: number;
     endTimeMs: number;
     confidence: number | null;
@@ -35,6 +37,13 @@ export type HemisphereNodeDatum = {
     keywords: string[];
     suggestedArea: string | null;
     updatedAt: string;
+  } | null;
+  agenticAnalysis?: {
+    domains: Array<{domain: string; relevance: number; reasoning: string}>;
+    themes: Array<{label: string; category: string; confidence: number; reasoning: string}>;
+    semanticMeaning: string;
+    sentimentTone: string;
+    overallConfidence: number;
   } | null;
 };
 

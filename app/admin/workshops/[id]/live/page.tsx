@@ -50,10 +50,12 @@ type DataPointCreatedPayload = {
     id: string;
     rawText: string;
     source: string;
+    speakerId?: string | null;
     createdAt: string | Date;
     dialoguePhase?: HemisphereDialoguePhase | null;
   };
   transcriptChunk?: {
+    speakerId?: string | null;
     startTimeMs: number;
     endTimeMs: number;
     confidence: number | null;
@@ -121,7 +123,18 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
   const [forwardedCount, setForwardedCount] = useState(0);
   const [debugTrace, setDebugTrace] = useState<string[]>([]);
+  const [slmOutputs, setSlmOutputs] = useState<Array<{
+    timestamp: number;
+    rawText: string;
+    cleanText: string;
+    entities: Array<{ type: string; value: string }>;
+    emotionalTone: string;
+    confidence: number;
+  }>>([]);
   const [tabHiddenWarning, setTabHiddenWarning] = useState(false);
+  const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0); // 0-100 for audio level meter
+  const [isSaving, setIsSaving] = useState(false); // Button loading state
 
   const [nodesById, setNodesById] = useState<Record<string, HemisphereNodeDatum>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -324,12 +337,91 @@ export default function WorkshopLivePage({ params }: PageProps) {
     void fetchSnapshots();
   }, [snapshotUrl]);
 
+  // Auto-save every 5 minutes when capturing
+  useEffect(() => {
+    if (status !== 'capturing') {
+      return;
+    }
+
+    // Save immediately when capture starts
+    void autoSave();
+
+    // Then save every 5 minutes
+    const intervalId = setInterval(() => {
+      void autoSave();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [status]);
+
+  // Audio level monitoring during capture
+  useEffect(() => {
+    if (status !== 'capturing') {
+      setAudioLevel(0);
+      return;
+    }
+
+    let animationId: number;
+    let audioContext: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+
+    const setupAudioMonitoring = async () => {
+      try {
+        // Wait a bit for captureStreamRef to be ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const stream = captureStreamRef.current;
+        if (!stream) return;
+
+        audioContext = new AudioContext();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
+
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        const updateLevel = () => {
+          if (!analyser || status !== 'capturing') return;
+
+          analyser.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          const level = Math.min(100, (average / 255) * 100 * 1.5); // Scale up for visibility
+          setAudioLevel(level);
+
+          animationId = requestAnimationFrame(updateLevel);
+        };
+
+        updateLevel();
+      } catch (err) {
+        console.warn('Audio level monitoring failed:', err);
+      }
+    };
+
+    void setupAudioMonitoring();
+
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+      if (audioContext) {
+        audioContext.close();
+      }
+    };
+  }, [status]);
+
   const saveSnapshot = async () => {
     const name = snapshotName.trim();
     if (!name) {
       setSnapshotsError('Snapshot name is required');
       return;
     }
+
+    setIsSaving(true);
 
     // Prepare utterances and interpreted nodes for report generation
     const utterances = utteranceNodes.map((n) => ({
@@ -362,11 +454,27 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
     try {
       setSnapshotsError(null);
-      const r = await fetch(snapshotUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, dialoguePhase, payload }),
-      });
+
+      // Find existing snapshot for this dialogue phase
+      const existing = snapshots.find((s) => s.dialoguePhase === dialoguePhase);
+
+      let r;
+      if (existing) {
+        // UPDATE existing snapshot
+        r = await fetch(`${snapshotUrl}/${existing.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payload }),
+        });
+      } else {
+        // CREATE new snapshot
+        r = await fetch(snapshotUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, dialoguePhase, payload }),
+        });
+      }
+
       const json = (await r.json().catch(() => null)) as
         | { ok?: boolean; snapshot?: { id: string }; error?: string; detail?: string }
         | null;
@@ -380,6 +488,77 @@ export default function WorkshopLivePage({ params }: PageProps) {
       setSelectedSnapshotId(json.snapshot.id);
     } catch (e) {
       setSnapshotsError(e instanceof Error ? e.message : 'Failed to save snapshot');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const autoSave = async () => {
+    // Auto-save with timestamp-based name
+    const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const autoSaveName = `Auto-save ${timestamp}`;
+
+    // Prepare payload (same as manual save)
+    const utterances = utteranceNodes.map((n) => ({
+      rawText: n.rawText,
+      createdAtMs: n.createdAtMs,
+    }));
+
+    const interpreted = interpretedNodes.map((n) => ({
+      rawText: n.rawText,
+      createdAtMs: n.createdAtMs,
+      classification: n.classification,
+    }));
+
+    const payload = {
+      v: 1,
+      dialoguePhase,
+      nodesById,
+      selectedNodeId,
+      themesById,
+      nodeThemeById,
+      dependencyEdgesById,
+      dependencyProcessedIds: Array.from(dependencyProcessedRef.current),
+      dependencyProcessedCount,
+      utterances,
+      interpreted,
+      synthesisByDomain,
+      pressurePoints,
+    };
+
+    try {
+      // Find existing snapshot for this dialogue phase
+      const existing = snapshots.find((s) => s.dialoguePhase === dialoguePhase);
+
+      let r;
+      if (existing) {
+        // UPDATE existing snapshot
+        r = await fetch(`${snapshotUrl}/${existing.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payload }),
+        });
+      } else {
+        // CREATE new snapshot with auto-save name
+        r = await fetch(snapshotUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: autoSaveName, dialoguePhase, payload }),
+        });
+      }
+
+      const json = (await r.json().catch(() => null)) as
+        | { ok?: boolean; snapshot?: { id: string }; error?: string; detail?: string }
+        | null;
+
+      if (r.ok && json?.ok === true) {
+        setLastAutoSaveTime(new Date());
+        console.log('[Auto-save] Snapshot saved:', existing ? 'Updated existing' : autoSaveName);
+      } else {
+        console.warn('[Auto-save] Failed to save snapshot:', json?.error);
+      }
+    } catch (e) {
+      console.warn('[Auto-save] Error:', e instanceof Error ? e.message : 'Unknown error');
     }
   };
 
@@ -773,12 +952,27 @@ export default function WorkshopLivePage({ params }: PageProps) {
       dependencyProcessedRef.current.add(n.dataPointId);
       changed = true;
 
-      const i = interpretLiveUtterance(n.rawText);
-      const domain = i.domain;
+      // Use agentic analysis for domain detection if available
+      let domain: string;
+      let candidates: string[] = [];
 
-      const mentioned = (i.domains || []).filter((d) => d !== domain);
-      const fallbackMentioned = inferMentionedDomains(n.rawText).filter((d) => d !== domain);
-      const candidates = mentioned.length ? mentioned : fallbackMentioned;
+      if (n.agenticAnalysis?.domains && n.agenticAnalysis.domains.length > 0) {
+        // Use agentic analysis domains
+        const sortedDomains = [...n.agenticAnalysis.domains].sort((a, b) => b.relevance - a.relevance);
+        domain = sortedDomains[0].domain;
+        // Other domains with significant relevance (> 0.3) are candidates for dependencies
+        candidates = sortedDomains
+          .slice(1)
+          .filter((d) => d.relevance > 0.3)
+          .map((d) => d.domain);
+      } else {
+        // Fallback to keyword-based detection
+        const i = interpretLiveUtterance(n.rawText);
+        domain = i.domain;
+        const mentioned = (i.domains || []).filter((d) => d !== domain);
+        const fallbackMentioned = inferMentionedDomains(n.rawText).filter((d) => d !== domain);
+        candidates = mentioned.length ? mentioned : fallbackMentioned;
+      }
 
       const shouldInfer = hasDependencyLanguage(n.rawText) || candidates.length > 0;
       if (!shouldInfer) continue;
@@ -800,8 +994,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
           }
         : {
             id,
-            fromDomain: domain,
-            toDomain,
+            fromDomain: domain as LiveDomain,
+            toDomain: toDomain as LiveDomain,
             count: 1,
             aspirationCount: kind === 'aspiration' ? 1 : 0,
             constraintCount: kind === 'constraint' ? 1 : 0,
@@ -890,8 +1084,26 @@ export default function WorkshopLivePage({ params }: PageProps) {
         if (!emb || cancelled) return;
         embeddingCacheRef.current.set(n.dataPointId, emb);
 
-        const i = interpretLiveUtterance(n.rawText);
-        const domain = i.domain;
+        // Use agentic analysis domains if available, otherwise fall back to keyword matching
+        let domain: string;
+        if (n.agenticAnalysis?.domains && n.agenticAnalysis.domains.length > 0) {
+          // Use the highest relevance domain from agentic analysis
+          const topDomain = n.agenticAnalysis.domains.reduce((best, curr) =>
+            curr.relevance > best.relevance ? curr : best
+          );
+          domain = topDomain.domain;
+          console.log('[Agentic Domain Used]', {
+            dataPointId: n.dataPointId,
+            domain,
+            relevance: topDomain.relevance,
+            reasoning: topDomain.reasoning,
+          });
+        } else {
+          // Fallback to keyword-based detection
+          const i = interpretLiveUtterance(n.rawText);
+          domain = i.domain;
+          console.log('[Keyword Domain Used]', { dataPointId: n.dataPointId, domain });
+        }
         const intentType = classificationFromInterpretation(n.rawText, new Date().toISOString()).primaryType;
 
         const existingThemes = Object.values(themesRef.current).filter(
@@ -925,7 +1137,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
         const nextTheme: LiveTheme = {
           id: themeId,
           label: prevTheme?.label ?? shortLabel(n.rawText, 7),
-          domain,
+          domain: domain as LiveDomain,
           intentType: String(intentType),
           strength: nextStrength,
           centroidEmbedding: nextCentroid,
@@ -1795,6 +2007,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     let confidence: number | null = null;
     let source: NormalizedTranscriptChunk['source'] = 'deepgram';
     let captureAPIResult: CaptureAPIResponse | null = null;
+    let speakerId: string | null = null;
 
     try {
       // Call CaptureAPI for transcription with SLM processing
@@ -1809,7 +2022,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       source = captureAPIResult.transcription.source === 'whisper' ? 'whisper' : 'deepgram';
 
       // Get speaker ID from diarization
-      const speakerId = captureAPIResult.transcription.speaker !== null
+      speakerId = captureAPIResult.transcription.speaker !== null
         ? `speaker_${captureAPIResult.transcription.speaker}`
         : null;
 
@@ -1824,6 +2037,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
         slmUsed: captureAPIResult.metadata.slmUsed,
         processingTime: `${captureAPIResult.metadata.processingTimeMs}ms`,
       });
+
+      // Update SLM outputs state for debug panel visualization
+      setSlmOutputs(prev => [...prev.slice(-9), {
+        timestamp: Date.now(),
+        rawText: captureAPIResult!.transcription.rawText,
+        cleanText: captureAPIResult!.transcription.cleanText,
+        entities: captureAPIResult!.analysis.entities,
+        emotionalTone: captureAPIResult!.analysis.emotionalTone,
+        confidence: captureAPIResult!.analysis.confidence,
+      }]);
 
     } catch (error) {
       console.error('[CaptureAPI] Transcription failed:', error);
@@ -1871,13 +2094,29 @@ export default function WorkshopLivePage({ params }: PageProps) {
       source,
     };
 
+    // Include SLM metadata if available
+    const requestBody = {
+      ...chunk,
+      dialoguePhase,
+      ...(captureAPIResult && {
+        rawText: captureAPIResult.transcription.rawText,
+        slmMetadata: {
+          entities: captureAPIResult.analysis.entities,
+          emotionalTone: captureAPIResult.analysis.emotionalTone,
+          slmConfidence: captureAPIResult.analysis.confidence,
+          processingTimeMs: captureAPIResult.metadata.processingTimeMs,
+          slmUsed: captureAPIResult.metadata.slmUsed,
+        },
+      }),
+    };
+
     lastHealthyAtRef.current = Date.now();
 
     try {
       const r = await fetch(ingestUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...chunk, dialoguePhase }),
+        body: JSON.stringify(requestBody),
       });
       if (r.ok) {
         setForwardedCount((n) => n + 1);
@@ -2123,9 +2362,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
           createdAtMs,
           rawText: String(p.dataPoint.rawText ?? ''),
           dataPointSource: String(p.dataPoint.source ?? ''),
+          speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
           dialoguePhase: dpPhase,
           transcriptChunk: p.transcriptChunk
             ? {
+                speakerId: p.transcriptChunk.speakerId || null,
                 startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
                 endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
                 confidence:
@@ -2213,6 +2454,54 @@ export default function WorkshopLivePage({ params }: PageProps) {
         });
       } catch {
         // ignore
+      }
+    });
+
+    es.addEventListener('agentic.analyzed', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
+        const p = evt.payload as {
+          dataPointId: string;
+          analysis: {
+            interpretation: {
+              semanticMeaning: string;
+              sentimentTone: string;
+            };
+            domains: Array<{domain: string; relevance: number; reasoning: string}>;
+            themes: Array<{label: string; category: string; confidence: number; reasoning: string}>;
+            overallConfidence: number;
+          };
+        };
+        const dataPointId = p?.dataPointId;
+        if (!dataPointId) return;
+
+        console.log('[Agentic Analysis Received]', {
+          dataPointId,
+          domains: p.analysis.domains,
+          themes: p.analysis.themes,
+          semanticMeaning: p.analysis.interpretation.semanticMeaning,
+        });
+
+        setNodesById((prev) => {
+          const existing = prev[dataPointId];
+          if (!existing) return prev;
+
+          return {
+            ...prev,
+            [dataPointId]: {
+              ...existing,
+              agenticAnalysis: {
+                domains: p.analysis.domains,
+                themes: p.analysis.themes,
+                semanticMeaning: p.analysis.interpretation.semanticMeaning,
+                sentimentTone: p.analysis.interpretation.sentimentTone,
+                overallConfidence: p.analysis.overallConfidence,
+              },
+            },
+          };
+        });
+      } catch (err) {
+        console.error('[Agentic Analysis Error]', err);
       }
     });
 
@@ -2666,13 +2955,59 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     </DialogContent>
                   </Dialog>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 items-center">
                     <Button onClick={startCapture} disabled={status === 'capturing'}>
                       {status === 'capturing' ? 'Capturing…' : 'Start Capture'}
                     </Button>
                     <Button variant="outline" onClick={stopCapture} disabled={status !== 'capturing'}>
                       Stop
                     </Button>
+
+                    {/* Recording indicator */}
+                    <div className="flex items-center gap-2 ml-2">
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          status === 'capturing' ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
+                        }`}
+                      />
+                      <span className="text-sm font-medium">
+                        {status === 'capturing' ? 'Recording' : 'Not Recording'}
+                      </span>
+                    </div>
+
+                    {/* Audio level meter */}
+                    {status === 'capturing' && (
+                      <div className="flex items-center gap-2 ml-4">
+                        <svg
+                          className="w-4 h-4 text-gray-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                          />
+                        </svg>
+                        <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-green-500 transition-all duration-100"
+                            style={{ width: `${audioLevel}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-600 w-10 text-right">
+                          {Math.round(audioLevel)}%
+                        </span>
+                      </div>
+                    )}
+
+                    {status === 'capturing' && lastAutoSaveTime && (
+                      <span className="text-xs text-muted-foreground ml-2">
+                        Last auto-save: {lastAutoSaveTime.toLocaleTimeString()}
+                      </span>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -2711,8 +3046,41 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     <Button type="button" variant="outline" onClick={() => setSnapshotName(defaultSnapshotName)}>
                       Use default
                     </Button>
-                    <Button type="button" onClick={() => void saveSnapshot()}>
-                      Save snapshot
+                    <Button
+                      type="button"
+                      onClick={() => void saveSnapshot()}
+                      disabled={isSaving}
+                      className={`transition-all duration-200 ${
+                        isSaving ? 'bg-green-600 scale-95' : 'hover:scale-105 active:scale-95'
+                      }`}
+                    >
+                      {isSaving ? (
+                        <>
+                          <svg
+                            className="animate-spin -ml-1 mr-2 h-4 w-4 inline"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                          </svg>
+                          Saving...
+                        </>
+                      ) : (
+                        'Save snapshot'
+                      )}
                     </Button>
                   </div>
 
@@ -3219,11 +3587,18 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     <div className="text-xs text-muted-foreground mb-2">Selected</div>
                     {selectedNode ? (
                       <div className="space-y-2">
-                        <div className="text-sm font-medium">
-                          {selectedNode.classification?.primaryType ?? 'UNCLASSIFIED'}
-                          {selectedNode.classification?.confidence != null
-                            ? ` • ${(selectedNode.classification.confidence * 100).toFixed(0)}%`
-                            : ''}
+                        <div className="flex items-center gap-2">
+                          {selectedNode.speakerId && (
+                            <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                              {selectedNode.speakerId.replace('speaker_', 'Speaker ')}
+                            </span>
+                          )}
+                          <div className="text-sm font-medium">
+                            {selectedNode.classification?.primaryType ?? 'UNCLASSIFIED'}
+                            {selectedNode.classification?.confidence != null
+                              ? ` • ${(selectedNode.classification.confidence * 100).toFixed(0)}%`
+                              : ''}
+                          </div>
                         </div>
                         <div className="text-sm whitespace-pre-wrap break-words">{selectedNode.rawText}</div>
                       </div>
@@ -3245,8 +3620,15 @@ export default function WorkshopLivePage({ params }: PageProps) {
                             className="w-full min-w-0 text-left rounded-md border bg-background px-2 py-2 hover:bg-muted/40"
                             onClick={() => setSelectedNodeId(n.dataPointId)}
                           >
-                            <div className="text-xs text-muted-foreground">
-                              {n.classification?.primaryType ?? 'UNCLASSIFIED'}
+                            <div className="flex items-center gap-2 mb-1">
+                              {n.speakerId && (
+                                <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                                  {n.speakerId.replace('speaker_', 'S')}
+                                </span>
+                              )}
+                              <div className="text-xs text-muted-foreground">
+                                {n.classification?.primaryType ?? 'UNCLASSIFIED'}
+                              </div>
                             </div>
                             <div className="min-w-0 text-sm font-medium whitespace-normal break-words">
                               {n.rawText}
@@ -3267,6 +3649,39 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   </CardHeader>
                   <CardContent>
                     <pre className="text-xs whitespace-pre-wrap break-words">{debugTrace.join('\n')}</pre>
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {slmOutputs.length > 0 ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>🤖 SLM Output (Last 10)</CardTitle>
+                    <CardDescription>Real-time transcript cleanup via CaptureAPI</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {slmOutputs.map((out, i) => (
+                        <div key={i} className="p-2 bg-gray-50 rounded text-xs border">
+                          <div className="font-mono text-red-600 mb-1">
+                            <span className="font-semibold">Raw:</span> {out.rawText}
+                          </div>
+                          <div className="font-mono text-green-600 mb-1">
+                            <span className="font-semibold">Clean:</span> {out.cleanText}
+                          </div>
+                          <div className="text-gray-600 mb-1">
+                            <span className="font-semibold">Entities:</span>{' '}
+                            {out.entities.length > 0
+                              ? out.entities.map(e => `${e.type}:${e.value}`).join(', ')
+                              : 'none'}
+                          </div>
+                          <div className="text-gray-600">
+                            <span className="font-semibold">Tone:</span> {out.emotionalTone} |{' '}
+                            <span className="font-semibold">Confidence:</span> {out.confidence.toFixed(2)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </CardContent>
                 </Card>
               ) : null}

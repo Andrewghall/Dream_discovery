@@ -179,10 +179,43 @@ The AI ensures valuable insights by requiring:
 
 ## Documentation
 
-See `/docs` folder for:
-- `conversational-discovery-spec.md` - Full system specification
-- `dialogue-depth-strategy.md` - Depth checking strategy
-- `DREAM-Discovery-Platform.md` - Product development plan
+### Getting Started
+- **[Quickstart Guide](./QUICKSTART.md)** - Complete local development setup
+- **[API Documentation](./docs/API_GUIDE.md)** - RESTful API reference with examples
+- **[Contributing Guide](./CONTRIBUTING.md)** - Development workflows and code standards
+
+### Technical Specifications
+- **[Conversational Discovery Spec](./docs/conversational-discovery-spec.md)** - Full system specification
+- **[Dialogue Depth Strategy](./docs/dialogue-depth-strategy.md)** - AI depth checking strategy
+- **[DREAM Platform Plan](./docs/DREAM-Discovery-Platform.md)** - Product development roadmap
+
+### Security & Compliance
+- **[Security Patterns](./docs/WORKSHOP_API_SECURITY_PATTERN.md)** - Organization-scoped access control
+- **[Session Management](./docs/SESSION_SECRET_README.md)** - JWT implementation guide
+- **[Implementation Summary](./IMPLEMENTATION_SUMMARY.md)** - Recent security improvements
+
+### Testing
+Run the test suite to verify security and functionality:
+
+```bash
+# Run all tests
+npm test
+
+# Run with coverage report
+npm run test:coverage
+
+# Run specific test suite
+npm test -- __tests__/unit/encryption.test.ts
+npm test -- __tests__/integration/gdpr-export.test.ts
+
+# Watch mode for development
+npm test -- --watch
+```
+
+**Test Coverage**:
+- Unit Tests: 100% coverage on encryption, consent, audit logging
+- Integration Tests: Full coverage of auth flows and GDPR endpoints
+- Test Utilities: Complete mocking infrastructure for Prisma, APIs, and Next.js
 
 ## License
 

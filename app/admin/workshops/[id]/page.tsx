@@ -75,6 +75,7 @@ export default function WorkshopDetailPage({ params }: PageProps) {
   });
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [summaryDownloading, setSummaryDownloading] = useState(false);
+  const [scratchpadPreparing, setScratchpadPreparing] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -332,6 +333,32 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     }
   };
 
+  const handlePrepareForScratchpad = async () => {
+    if (scratchpadPreparing) return;
+    try {
+      setScratchpadPreparing(true);
+      const response = await fetch(`/api/admin/workshops/${encodeURIComponent(id)}/prepare-scratchpad`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const message = data?.error || `Failed to prepare scratchpad (HTTP ${response.status})`;
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `scratchpad-content-${id}-${ts}.json`;
+      downloadJson(filename, payload.orderedContent);
+      setSuccessMessage('Scratchpad content prepared and downloaded successfully!');
+      setShowSuccessDialog(true);
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : 'Failed to prepare scratchpad');
+    } finally {
+      setScratchpadPreparing(false);
+    }
+  };
+
   const handleBackfillReports = async () => {
     if (backfillRunning) return;
 
@@ -531,6 +558,11 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                   Spider
                 </Button>
               </Link>
+              <Link href={`/admin/workshops/${id}/scratchpad`}>
+                <Button variant="outline" size="lg">
+                  Scratchpad
+                </Button>
+              </Link>
               <Button onClick={handleClearEmailStatus} variant="outline" size="lg">
                 Clear Email Status
               </Button>
@@ -609,9 +641,27 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                 <div className="text-sm text-muted-foreground">
                   Generates a corporate future-state narrative from live workshop signals and discovery reports.
                 </div>
-                <Button variant="outline" onClick={() => void handleDownloadSummary()} disabled={summaryDownloading}>
-                  {summaryDownloading ? 'Generating summary…' : 'Download Summary'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => void handleDownloadSummary()}
+                    disabled={summaryDownloading || workshop.status !== 'COMPLETED'}
+                  >
+                    {summaryDownloading ? 'Generating summary…' : 'Download Summary'}
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={() => void handlePrepareForScratchpad()}
+                    disabled={scratchpadPreparing || workshop.status !== 'COMPLETED'}
+                  >
+                    {scratchpadPreparing ? 'Preparing…' : 'Prepare for Scratchpad'}
+                  </Button>
+                </div>
+                {workshop.status !== 'COMPLETED' && (
+                  <p className="text-xs text-muted-foreground">
+                    Summary and scratchpad preparation will be available when workshop is completed.
+                  </p>
+                )}
               </CardContent>
             </Card>
 

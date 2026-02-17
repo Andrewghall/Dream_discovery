@@ -1,14 +1,78 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * GET /api/admin/workshops/[id]
+ *
+ * Retrieves complete workshop details including all participants.
+ * Access restricted to authenticated users within the workshop's organization.
+ *
+ * @param request - NextRequest
+ * @param params - Route params containing:
+ *   - id: string - Workshop ID
+ *
+ * @returns NextResponse with one of:
+ *   - 200: { workshop: {...} } - Workshop details with participants array
+ *   - 401: { error: "Unauthorized" } - No valid session
+ *   - 403: { error: string } - User lacks access to this workshop (wrong organization)
+ *   - 404: { error: "Workshop not found" } - Workshop ID doesn't exist
+ *   - 500: { error: string } - Internal server error
+ *
+ * @security
+ * - Requires admin_session JWT cookie (PLATFORM_ADMIN or TENANT_ADMIN role)
+ * - TENANT_ADMIN: Can only access workshops in their own organization
+ * - PLATFORM_ADMIN: Can access all workshops across all organizations
+ * - Organization validation performed via validateWorkshopAccess middleware
+ *
+ * @example
+ * GET /api/admin/workshops/workshop-123
+ * Cookie: admin_session=<jwt-token>
+ *
+ * Response 200:
+ * {
+ *   "workshop": {
+ *     "id": "workshop-123",
+ *     "name": "Product Strategy Discovery",
+ *     "description": "...",
+ *     "businessContext": "...",
+ *     "status": "IN_PROGRESS",
+ *     "organizationId": "org-123",
+ *     "participants": [
+ *       {
+ *         "id": "participant-1",
+ *         "email": "user@example.com",
+ *         "name": "John Doe",
+ *         "role": "Product Manager",
+ *         "responseCompletedAt": "2024-01-15T10:30:00.000Z",
+ *         ...
+ *       }
+ *     ],
+ *     ...
+ *   }
+ * }
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+
+    // Authenticate user
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Validate workshop access (organization-scoped)
+    const validation = await validateWorkshopAccess(id, user.organizationId, user.role);
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.error }, { status: 403 });
+    }
 
     const workshop = await prisma.workshop.findUnique({
       where: { id },
@@ -25,6 +89,7 @@ export async function GET(
             discoveryToken: true,
             attributionPreference: true,
             emailSentAt: true,
+            doNotSendAgain: true,
             responseStartedAt: true,
             responseCompletedAt: true,
             reminderSentAt: true,
@@ -51,6 +116,53 @@ export async function GET(
   }
 }
 
+/**
+ * PATCH /api/admin/workshops/[id]
+ *
+ * Updates workshop settings. Currently supports updating the includeRegulation flag.
+ * Access restricted to authenticated users within the workshop's organization.
+ *
+ * @param request - NextRequest with JSON body containing:
+ *   - includeRegulation: boolean (optional) - Whether to include regulatory context in AI analysis
+ *   - Additional workshop fields can be added in future
+ *
+ * @param params - Route params containing:
+ *   - id: string - Workshop ID to update
+ *
+ * @returns NextResponse with one of:
+ *   - 200: { success: true, workshop: {...} } - Workshop successfully updated
+ *   - 401: { error: "Unauthorized" } - No valid session
+ *   - 403: { error: string } - User lacks access to this workshop (wrong organization)
+ *   - 404: { error: "Workshop not found" } - Workshop ID doesn't exist
+ *   - 500: { error: string } - Internal server error
+ *
+ * @security
+ * - Requires admin_session JWT cookie (PLATFORM_ADMIN or TENANT_ADMIN role)
+ * - TENANT_ADMIN: Can only update workshops in their own organization
+ * - PLATFORM_ADMIN: Can update all workshops across all organizations
+ * - Organization validation performed via validateWorkshopAccess middleware
+ *
+ * @example
+ * PATCH /api/admin/workshops/workshop-123
+ * Cookie: admin_session=<jwt-token>
+ * Content-Type: application/json
+ *
+ * {
+ *   "includeRegulation": true
+ * }
+ *
+ * Response 200:
+ * {
+ *   "success": true,
+ *   "workshop": {
+ *     "id": "workshop-123",
+ *     "name": "Product Strategy Discovery",
+ *     "includeRegulation": true,
+ *     "updatedAt": "2024-01-15T10:35:00.000Z",
+ *     ...
+ *   }
+ * }
+ */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -59,6 +171,18 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
     const includeRegulation = body?.includeRegulation as boolean | undefined;
+
+    // Authenticate user
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Validate workshop access (organization-scoped)
+    const validation = await validateWorkshopAccess(id, user.organizationId, user.role);
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.error }, { status: 403 });
+    }
 
     const workshop = await prisma.workshop.findUnique({
       where: { id },
@@ -86,12 +210,72 @@ export async function PATCH(
   }
 }
 
+/**
+ * DELETE /api/admin/workshops/[id]
+ *
+ * Permanently deletes a workshop and all associated data.
+ * Access restricted to authenticated users within the workshop's organization.
+ *
+ * **WARNING: This is a destructive operation that cannot be undone.**
+ * Deletes:
+ * - Workshop record
+ * - All participants
+ * - All conversation sessions
+ * - All messages, data points, insights, and reports
+ * - All consent records
+ *
+ * @param request - NextRequest
+ * @param params - Route params containing:
+ *   - id: string - Workshop ID to delete
+ *
+ * @returns NextResponse with one of:
+ *   - 200: { success: true, message: string } - Workshop successfully deleted
+ *   - 401: { error: "Unauthorized" } - No valid session
+ *   - 403: { error: string } - User lacks access to this workshop (wrong organization)
+ *   - 404: { error: "Workshop not found" } - Workshop ID doesn't exist
+ *   - 500: { error: string } - Internal server error
+ *
+ * @security
+ * - Requires admin_session JWT cookie (PLATFORM_ADMIN or TENANT_ADMIN role)
+ * - TENANT_ADMIN: Can only delete workshops in their own organization
+ * - PLATFORM_ADMIN: Can delete all workshops across all organizations
+ * - Organization validation performed via validateWorkshopAccess middleware
+ * - CASCADE deletion handled by database foreign key constraints
+ *
+ * @caution
+ * - This operation is irreversible
+ * - All participant data will be deleted
+ * - All AI-generated insights and reports will be lost
+ * - Consider data export before deletion if needed
+ *
+ * @example
+ * DELETE /api/admin/workshops/workshop-123
+ * Cookie: admin_session=<jwt-token>
+ *
+ * Response 200:
+ * {
+ *   "success": true,
+ *   "message": "Workshop deleted successfully"
+ * }
+ */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+
+    // Authenticate user
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Validate workshop access (organization-scoped)
+    const validation = await validateWorkshopAccess(id, user.organizationId, user.role);
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.error }, { status: 403 });
+    }
 
     const workshop = await prisma.workshop.findUnique({
       where: { id },

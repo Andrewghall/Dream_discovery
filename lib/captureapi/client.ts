@@ -119,13 +119,56 @@ export async function transcribeAudio(
       )
     }
 
-    const result: CaptureAPIResponse = await response.json()
+    const result: any = await response.json()
 
     if (!result.success) {
       throw new Error('CaptureAPI returned success=false')
     }
 
-    return result
+    // Handle new response format with utterances array
+    if (result.utterances && Array.isArray(result.utterances)) {
+      // Combine all utterances into a single transcription
+      const allRawText = result.utterances.map((u: any) => u.rawText).join(' ')
+      const allCleanText = result.utterances.map((u: any) => u.cleanText).join(' ')
+
+      // Aggregate entities from all utterances
+      const allEntities: CaptureAPIEntity[] = []
+      for (const utterance of result.utterances) {
+        if (utterance.entities && Array.isArray(utterance.entities)) {
+          allEntities.push(...utterance.entities)
+        }
+      }
+
+      // Use first utterance for base properties
+      const firstUtterance = result.utterances[0]
+
+      // Convert to expected format
+      const convertedResult: CaptureAPIResponse = {
+        success: true,
+        transcription: {
+          rawText: allRawText.trim(),
+          cleanText: allCleanText.trim(),
+          source: firstUtterance.source,
+          confidence: firstUtterance.confidence,
+          speaker: firstUtterance.speaker,
+        },
+        analysis: {
+          entities: allEntities,
+          emotionalTone: firstUtterance.emotionalTone || 'neutral',
+          confidence: firstUtterance.slmConfidence || 0.5,
+        },
+        metadata: {
+          processingTimeMs: result.metadata.processingTimeMs,
+          wasOnline: result.metadata.wasOnline,
+          slmUsed: result.metadata.slmUsed,
+          slmModel: result.metadata.slmModel,
+        },
+      }
+
+      return convertedResult
+    }
+
+    return result as CaptureAPIResponse
 
   } catch (error) {
     // Log error for debugging

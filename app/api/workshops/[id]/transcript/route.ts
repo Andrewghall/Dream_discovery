@@ -11,10 +11,19 @@ type IngestTranscriptChunkBody = {
   speakerId: string | null;
   startTime: number;
   endTime: number;
-  text: string;
+  text: string; // Clean text from SLM
+  rawText?: string; // Original from transcription service
   confidence: number | null;
   source: 'zoom' | 'deepgram' | 'whisper';
   dialoguePhase?: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null;
+  // SLM metadata
+  slmMetadata?: {
+    entities: Array<{ type: string; value: string }>;
+    emotionalTone: string;
+    slmConfidence: number;
+    processingTimeMs: number;
+    slmUsed: boolean;
+  };
 };
 
 function safeDialoguePhase(
@@ -40,6 +49,34 @@ export async function POST(
     if (!text) {
       return NextResponse.json({ error: 'Missing text' }, { status: 400 });
     }
+
+    // OPTIMIZATION: Fetch recent transcripts once and cache (prevents 3 separate queries)
+    let cachedRecentTranscripts: Array<{
+      id: string;
+      text: string;
+      speakerId: string | null;
+      createdAt: Date;
+    }> | null = null;
+
+    const getRecentTranscripts = async (excludeId?: string) => {
+      if (!cachedRecentTranscripts) {
+        cachedRecentTranscripts = await prisma.transcriptChunk.findMany({
+          where: { workshopId },
+          orderBy: { createdAt: 'desc' },
+          take: 20, // Fetch 20 to cover all use cases
+          select: {
+            id: true,
+            text: true,
+            speakerId: true,
+            createdAt: true,
+          },
+        });
+      }
+      // Filter out excluded ID if provided
+      return excludeId
+        ? cachedRecentTranscripts.filter((t) => t.id !== excludeId)
+        : cachedRecentTranscripts;
+    };
 
     const startTimeMs = Number.isFinite(body.startTime) ? Math.max(0, Math.round(body.startTime)) : 0;
     const endTimeMs = Number.isFinite(body.endTime) ? Math.max(startTimeMs, Math.round(body.endTime)) : startTimeMs;
@@ -85,14 +122,9 @@ export async function POST(
       if (!existing.dataPoint.annotation?.intent) {
         void (async () => {
           try {
-            // Fetch recent context for intent derivation
-            const recentTranscripts = await prisma.transcriptChunk.findMany({
-              where: { workshopId },
-              orderBy: { createdAt: 'desc' },
-              take: 10,
-              select: { text: true, speakerId: true },
-            });
-            const contextMessages = recentTranscripts.reverse().map((t) => ({
+            // Use cached transcripts for intent derivation
+            const recentTranscripts = await getRecentTranscripts();
+            const contextMessages = recentTranscripts.slice(0, 10).reverse().map((t) => ({
               speaker: t.speakerId,
               text: t.text,
             }));
@@ -150,6 +182,13 @@ export async function POST(
           text,
           confidence: typeof body.confidence === 'number' ? body.confidence : null,
           source: src,
+          // Store SLM metadata in the metadata JSON field
+          metadata: body.slmMetadata || body.rawText
+            ? {
+                ...(body.rawText && { rawText: body.rawText }),
+                ...(body.slmMetadata && { slmMetadata: body.slmMetadata }),
+              }
+            : undefined,
         },
       }));
 
@@ -200,24 +239,12 @@ export async function POST(
       },
     });
 
-    // Fetch recent conversation context for AI analysis
+    // Use cached transcripts for AI analysis context
     // Exclude the current transcript chunk to avoid circular reference
-    const recentTranscripts = await prisma.transcriptChunk.findMany({
-      where: {
-        workshopId,
-        id: { not: transcriptChunk.id }, // Exclude current chunk
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      select: {
-        text: true,
-        speakerId: true,
-        createdAt: true,
-      },
-    });
+    const recentTranscripts = await getRecentTranscripts(transcriptChunk.id);
 
-    // Reverse to chronological order (oldest first) for context
-    const contextMessages = recentTranscripts.reverse().map((t) => ({
+    // Reverse to chronological order (oldest first) for context, take 10
+    const contextMessages = recentTranscripts.slice(0, 10).reverse().map((t) => ({
       speaker: t.speakerId,
       text: t.text,
     }));
@@ -297,17 +324,8 @@ export async function POST(
         if (!workshop) return;
 
         // Build agent context with more utterances for richer understanding
-        const agentTranscripts = await prisma.transcriptChunk.findMany({
-          where: { workshopId },
-          orderBy: { createdAt: 'desc' },
-          take: 20,
-          select: {
-            id: true,
-            text: true,
-            speakerId: true,
-            createdAt: true,
-          },
-        });
+        // Use cached transcripts for agent analysis
+        const agentTranscripts = await getRecentTranscripts();
 
         // Get emerging themes from prior classifications
         const existingThemes = await prisma.dataPointClassification.findMany({

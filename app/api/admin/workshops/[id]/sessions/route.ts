@@ -16,14 +16,24 @@ export async function GET(
     const { id: workshopId } = await params;
     const status = request.nextUrl.searchParams.get('status');
 
+    // PAGINATION: Add query params
+    const page = parseInt(request.nextUrl.searchParams.get('page') || '1', 10);
+    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50', 10), 200); // Max 200
+    const skip = (page - 1) * limit;
+
     const where: Prisma.ConversationSessionWhereInput = { workshopId };
     if (typeof status === 'string' && status.trim() && isConversationStatus(status.trim())) {
       const s = status.trim() as ConversationStatus;
       where.status = s;
     }
 
+    // Get total count for pagination
+    const totalCount = await prisma.conversationSession.count({ where });
+
     const sessions = await prisma.conversationSession.findMany({
       where,
+      skip,
+      take: limit,
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,
@@ -60,6 +70,13 @@ export async function GET(
         participant: s.participant,
         hasReport: hasReport.has(s.id),
       })),
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        hasMore: page * limit < totalCount,
+      },
     });
   } catch (error) {
     console.error('Error listing workshop sessions:', error);

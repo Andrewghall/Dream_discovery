@@ -1,0 +1,339 @@
+{
+  "workshopId": "demo-workshop-123",
+  "workshopName": "PAM Wellness Digital Transformation",
+  "generatedAt": "2026-02-12T22:35:00.000Z",
+  "sections": [
+    {
+      "domain": "People",
+      "content": [
+        {
+          "type": "aspiration",
+          "text": "Empower clinicians with unified digital tools that reduce administrative burden and increase patient engagement time",
+          "sourceId": "dp_001",
+          "confidence": 0.92
+        },
+        {
+          "type": "aspiration",
+          "text": "Create a seamless employee wellness journey that integrates mental health, physical health, and preventive care",
+          "sourceId": "dp_002",
+          "confidence": 0.88
+        },
+        {
+          "type": "opportunity",
+          "text": "Implement single sign-on across all health platforms to reduce clinician friction and improve adoption",
+          "sourceId": "dp_015",
+          "confidence": 0.85
+        },
+        {
+          "type": "constraint",
+          "text": "Current staff lack training on digital health platforms, requiring significant upskilling investment",
+          "sourceId": "dp_023",
+          "confidence": 0.91
+        },
+        {
+          "type": "constraint",
+          "text": "Clinician resistance to change due to previous failed technology rollouts",
+          "sourceId": "dp_024",
+          "confidence": 0.87
+        },
+        {
+          "type": "risk",
+          "text": "High staff turnover could undermine digital transformation if not addressed with proper change management",
+          "sourceId": "dp_035",
+          "confidence": 0.83
+        }
+      ]
+    },
+    {
+      "domain": "Customer",
+      "content": [
+        {
+          "type": "aspiration",
+          "text": "Deliver real-time visibility into employee health metrics and wellness program engagement for employers",
+          "sourceId": "dp_003",
+          "confidence": 0.94
+        },
+        {
+          "type": "aspiration",
+          "text": "Provide employees with a single, intuitive app for booking appointments, accessing care, and tracking wellness goals",
+          "sourceId": "dp_004",
+          "confidence": 0.90
+        },
+        {
+          "type": "opportunity",
+          "text": "Leverage automated reminders and personalized wellness nudges to increase program participation by 40%",
+          "sourceId": "dp_016",
+          "confidence": 0.86
+        },
+        {
+          "type": "opportunity",
+          "text": "Introduce AI-powered triage to route employees to appropriate care levels faster",
+          "sourceId": "dp_017",
+          "confidence": 0.82
+        },
+        {
+          "type": "enabler",
+          "text": "Mobile-first design ensures accessibility for distributed workforce",
+          "sourceId": "dp_028",
+          "confidence": 0.88
+        },
+        {
+          "type": "constraint",
+          "text": "Employers demand ROI visibility within 6 months, requiring rapid deployment and measurement",
+          "sourceId": "dp_025",
+          "confidence": 0.89
+        },
+        {
+          "type": "risk",
+          "text": "Poor user experience could lead to low adoption and contract cancellations",
+          "sourceId": "dp_036",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "domain": "Technology",
+      "content": [
+        {
+          "type": "aspiration",
+          "text": "Build a scalable, modular platform that supports continuous enhancement and new service integration",
+          "sourceId": "dp_005",
+          "confidence": 0.93
+        },
+        {
+          "type": "aspiration",
+          "text": "Achieve 99.9% uptime with automated monitoring and self-healing infrastructure",
+          "sourceId": "dp_006",
+          "confidence": 0.87
+        },
+        {
+          "type": "opportunity",
+          "text": "Migrate legacy systems to cloud-native architecture for improved performance and cost efficiency",
+          "sourceId": "dp_018",
+          "confidence": 0.84
+        },
+        {
+          "type": "opportunity",
+          "text": "Implement API-first design to enable rapid third-party integrations",
+          "sourceId": "dp_019",
+          "confidence": 0.91
+        },
+        {
+          "type": "enabler",
+          "text": "Existing data lake provides foundation for analytics and reporting capabilities",
+          "sourceId": "dp_029",
+          "confidence": 0.86
+        },
+        {
+          "type": "enabler",
+          "text": "DevOps culture already established, enabling faster release cycles",
+          "sourceId": "dp_030",
+          "confidence": 0.82
+        },
+        {
+          "type": "constraint",
+          "text": "Legacy patient management system cannot be replaced immediately due to clinical dependencies",
+          "sourceId": "dp_026",
+          "confidence": 0.88
+        },
+        {
+          "type": "constraint",
+          "text": "Technical debt in billing systems requires parallel maintenance during migration",
+          "sourceId": "dp_027",
+          "confidence": 0.85
+        },
+        {
+          "type": "risk",
+          "text": "Integration complexity with 15+ existing health systems could delay launch",
+          "sourceId": "dp_037",
+          "confidence": 0.89
+        }
+      ]
+    },
+    {
+      "domain": "Regulation",
+      "content": [
+        {
+          "type": "aspiration",
+          "text": "Maintain HIPAA compliance while enabling seamless data sharing between care teams",
+          "sourceId": "dp_007",
+          "confidence": 0.95
+        },
+        {
+          "type": "opportunity",
+          "text": "Implement role-based access controls with audit trails to exceed compliance requirements",
+          "sourceId": "dp_020",
+          "confidence": 0.90
+        },
+        {
+          "type": "enabler",
+          "text": "Existing SOC2 Type II certification provides foundation for security framework",
+          "sourceId": "dp_031",
+          "confidence": 0.87
+        },
+        {
+          "type": "constraint",
+          "text": "GDPR requirements for international employees add complexity to data residency",
+          "sourceId": "dp_032",
+          "confidence": 0.84
+        },
+        {
+          "type": "constraint",
+          "text": "State-specific telehealth regulations require multi-jurisdictional compliance mapping",
+          "sourceId": "dp_033",
+          "confidence": 0.86
+        },
+        {
+          "type": "risk",
+          "text": "Pending healthcare data privacy legislation could require platform redesign",
+          "sourceId": "dp_038",
+          "confidence": 0.81
+        }
+      ]
+    },
+    {
+      "domain": "Organisation",
+      "content": [
+        {
+          "type": "aspiration",
+          "text": "Transform PAM Wellness into a data-driven organization with real-time operational insights",
+          "sourceId": "dp_008",
+          "confidence": 0.89
+        },
+        {
+          "type": "aspiration",
+          "text": "Establish cross-functional digital product teams aligned to customer journeys",
+          "sourceId": "dp_009",
+          "confidence": 0.86
+        },
+        {
+          "type": "opportunity",
+          "text": "Automate manual reporting processes to free up 20 hours per week for strategic analysis",
+          "sourceId": "dp_021",
+          "confidence": 0.88
+        },
+        {
+          "type": "opportunity",
+          "text": "Create Centers of Excellence for AI, data analytics, and digital health innovation",
+          "sourceId": "dp_022",
+          "confidence": 0.83
+        },
+        {
+          "type": "enabler",
+          "text": "Executive sponsorship from CEO and CFO ensures organizational alignment",
+          "sourceId": "dp_034",
+          "confidence": 0.92
+        },
+        {
+          "type": "constraint",
+          "text": "Siloed departments resist collaborative workflows required for platform success",
+          "sourceId": "dp_039",
+          "confidence": 0.87
+        },
+        {
+          "type": "constraint",
+          "text": "Budget constraints limit ability to hire specialized digital health talent",
+          "sourceId": "dp_040",
+          "confidence": 0.85
+        },
+        {
+          "type": "risk",
+          "text": "Organizational change fatigue from previous transformation initiatives",
+          "sourceId": "dp_041",
+          "confidence": 0.84
+        }
+      ]
+    }
+  ],
+  "designPrinciples": [
+    {
+      "label": "Patient and employee centricity",
+      "category": "core",
+      "description": "Every design decision prioritizes ease of use and value for end users"
+    },
+    {
+      "label": "Intelligent design groups",
+      "category": "approach",
+      "description": "AI-powered personalization and smart defaults reduce cognitive load"
+    },
+    {
+      "label": "Omni-channel experience",
+      "category": "technical",
+      "description": "Seamless experience across mobile, web, and in-person touchpoints"
+    },
+    {
+      "label": "Unified product narrative",
+      "category": "strategic",
+      "description": "Consistent brand and experience across all wellness services"
+    },
+    {
+      "label": "Data accountability",
+      "category": "governance",
+      "description": "Clear ownership and security for all health data"
+    },
+    {
+      "label": "Scale and sustainability",
+      "category": "technical",
+      "description": "Platform architecture supports 10x growth without redesign"
+    }
+  ],
+  "strategicShifts": [
+    {
+      "from": "Fragmented point solutions",
+      "to": "Unified digital care platform",
+      "impact": "high"
+    },
+    {
+      "from": "Reactive sick care",
+      "to": "Proactive preventive wellness",
+      "impact": "high"
+    },
+    {
+      "from": "Manual operations",
+      "to": "Automated intelligent workflows",
+      "impact": "medium"
+    },
+    {
+      "from": "Siloed departments",
+      "to": "Cross-functional product teams",
+      "impact": "medium"
+    }
+  ],
+  "linkedIntelligence": {
+    "clinical": [
+      {
+        "title": "Evidence-based care pathways",
+        "insight": "Integration with clinical guidelines improves outcomes by 25%"
+      },
+      {
+        "title": "Behavioral health integration",
+        "insight": "Combining mental and physical health services increases engagement"
+      }
+    ],
+    "strategic": [
+      {
+        "title": "Market differentiation",
+        "insight": "Unified platform positions PAM as innovation leader vs competitors"
+      },
+      {
+        "title": "Revenue expansion",
+        "insight": "Platform enables new B2B2C revenue streams through employer partnerships"
+      }
+    ],
+    "commercial": [
+      {
+        "title": "Cost optimization",
+        "insight": "Automation reduces operational costs by £50K annually per 1,000 members"
+      },
+      {
+        "title": "Faster time-to-value",
+        "insight": "Modular architecture enables 2-week implementation vs 6-month custom builds"
+      }
+    ]
+  },
+  "metadata": {
+    "totalDataPoints": 41,
+    "reportCount": 8,
+    "agenticAnalysisCount": 35
+  }
+}

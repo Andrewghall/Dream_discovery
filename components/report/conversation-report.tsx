@@ -93,6 +93,8 @@ export function ConversationReport({
   onDownloadPdf,
   pdfMode,
   questionSetVersion,
+  orgName,
+  orgLogoUrl,
 }: {
   executiveSummary: string;
   tone: string | null;
@@ -113,6 +115,8 @@ export function ConversationReport({
   onDownloadPdf?: () => void | Promise<void>;
   pdfMode?: boolean;
   questionSetVersion?: string | null;
+  orgName?: string | null;
+  orgLogoUrl?: string | null;
 }) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
@@ -174,7 +178,7 @@ export function ConversationReport({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <img src="/ethenta-logo.png" alt="Ethenta" className="h-8 w-auto" />
+          <img src={orgLogoUrl || '/upstreamworks-logo.png'} alt={orgName || 'Logo'} className="h-8 w-auto" />
         </div>
         <img src="/Dream.PNG" alt="DREAM" className="w-full h-auto max-h-28 object-contain" />
         <div className="text-sm font-medium text-center">
@@ -432,7 +436,7 @@ export function ConversationReport({
       {!pdfMode && (
         <div className="print-only print-footer">
           <div className="print-footer-row">
-            <div className="print-footer-left">Copyright 2026 Ethenta</div>
+            <div className="print-footer-left">Copyright {new Date().getFullYear()} {orgName || 'DREAM Discovery'}</div>
             <div className="print-footer-right">
               <span className="print-page-number" />
             </div>

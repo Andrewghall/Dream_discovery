@@ -37,7 +37,11 @@ export default function NewWorkshopPage() {
 
       if (response.ok) {
         const data = await response.json();
-        router.push(`/admin/workshops/${data.workshop.id}`);
+        if (formData.workshopType === 'SALES') {
+          router.push(`/sales/${data.workshop.id}/plan`);
+        } else {
+          router.push(`/admin/workshops/${data.workshop.id}`);
+        }
       } else {
         const data = await response.json().catch(() => null);
         const detailsMessage =
@@ -95,14 +99,8 @@ export default function NewWorkshopPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="STRATEGY">Strategic Planning</SelectItem>
-                    <SelectItem value="PROCESS">Process Improvement</SelectItem>
-                    <SelectItem value="CHANGE">Organizational Change</SelectItem>
-                    <SelectItem value="TEAM">Team Effectiveness</SelectItem>
-                    <SelectItem value="CUSTOMER">Customer Experience</SelectItem>
-                    <SelectItem value="INNOVATION">Innovation</SelectItem>
-                    <SelectItem value="CULTURE">Culture & Values</SelectItem>
-                    <SelectItem value="CUSTOM">Custom</SelectItem>
+                    <SelectItem value="CUSTOM">DREAM</SelectItem>
+                    <SelectItem value="SALES">Sales Call</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

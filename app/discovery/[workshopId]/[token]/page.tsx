@@ -72,6 +72,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
   const [draftMessage, setDraftMessage] = useState('');
+  const [organization, setOrganization] = useState<{ name: string; logoUrl: string | null; primaryColor: string | null } | null>(null);
   const [isPdfMode, setIsPdfMode] = useState(() => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search);
@@ -189,6 +190,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
       const data = await response.json();
       setSessionId(data.sessionId);
+      if (data.organization) setOrganization(data.organization);
       const incomingMessages = (data.messages || []) as Message[];
       const shouldPrependIntroHeader =
         incomingMessages.length > 0 &&
@@ -481,7 +483,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         <div className="border-b bg-background">
           <div className="px-4 py-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <Image src="/ethenta-logo.png" alt="Ethenta" width={120} height={32} className="h-8 w-auto" priority />
+              <Image src={organization?.logoUrl || '/upstreamworks-logo.png'} alt={organization?.name || 'Logo'} width={120} height={32} className="h-8 w-auto" priority />
             </div>
           </div>
           <Image
@@ -516,7 +518,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             </button>
           </div>
 
-          <div className="mt-10 text-xs text-muted-foreground">© Ethenta Ltd</div>
+          <div className="mt-10 text-xs text-muted-foreground">© {organization?.name || 'DREAM Discovery'}</div>
         </div>
       </div>
     );
@@ -552,7 +554,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         <div className="border-b bg-background">
           <div className="px-4 py-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <Image src="/ethenta-logo.png" alt="Ethenta" width={120} height={32} className="h-8 w-auto" priority />
+              <Image src={organization?.logoUrl || '/upstreamworks-logo.png'} alt={organization?.name || 'Logo'} width={120} height={32} className="h-8 w-auto" priority />
             </div>
             <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap">
               {typeof questionNumber === 'number' && (

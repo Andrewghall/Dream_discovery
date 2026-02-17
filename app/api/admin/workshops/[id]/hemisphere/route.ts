@@ -240,6 +240,7 @@ export async function GET(
     const { id: workshopId } = await params;
     const runType = safeRunType(request.nextUrl.searchParams.get('runType'));
 
+    // Optimized: Fetch sessions with reports and insights in single query using include
     const allSessions = (await (prisma as any).conversationSession.findMany({
       where: {
         workshopId,
@@ -260,36 +261,15 @@ export async function GET(
             email: true,
           },
         },
-      },
-    })) as Array<{
-      id: string;
-      participantId: string;
-      createdAt: Date;
-      completedAt: Date | null;
-      runType?: string | null;
-      questionSetVersion?: string | null;
-      participant: { id: string; name: string; email: string };
-    }>;
-
-    const sessions = allSessions.filter((s) => safeRunType(s.runType) === runType);
-
-    const sessionIds = sessions.map((s) => s.id);
-
-    const reports = sessionIds.length
-      ? ((await (prisma as any).conversationReport.findMany({
-          where: { sessionId: { in: sessionIds } },
+        report: {
           select: {
             sessionId: true,
             keyInsights: true,
             phaseInsights: true,
             wordCloudThemes: true,
           },
-        })) as Array<{ sessionId: string; keyInsights: unknown; phaseInsights: unknown; wordCloudThemes: unknown }>)
-      : [];
-
-    const insights = sessionIds.length
-      ? await prisma.conversationInsight.findMany({
-          where: { sessionId: { in: sessionIds } },
+        },
+        insights: {
           select: {
             id: true,
             sessionId: true,
@@ -302,10 +282,40 @@ export async function GET(
             createdAt: true,
           },
           orderBy: { createdAt: 'asc' },
-        })
-      : [];
+        },
+      },
+    })) as Array<{
+      id: string;
+      participantId: string;
+      createdAt: Date;
+      completedAt: Date | null;
+      runType?: string | null;
+      questionSetVersion?: string | null;
+      participant: { id: string; name: string; email: string };
+      report?: { sessionId: string; keyInsights: unknown; phaseInsights: unknown; wordCloudThemes: unknown } | null;
+      insights: Array<{
+        id: string;
+        sessionId: string;
+        participantId: string;
+        insightType: string;
+        category: string | null;
+        text: string;
+        severity: number | null;
+        confidence: number;
+        createdAt: Date;
+      }>;
+    }>;
 
-    const reportBySession = new Map(reports.map((r) => [r.sessionId, r]));
+    const sessions = allSessions.filter((s) => safeRunType(s.runType) === runType);
+    const sessionIds = sessions.map((s) => s.id);
+
+    // Build maps from included data (no separate queries needed)
+    const reportBySession = new Map(
+      sessions.filter((s) => s.report).map((s) => [s.id, s.report!])
+    );
+
+    const insights = sessions.flatMap((s) => s.insights);
+
     const sessionById = new Map(sessions.map((s) => [s.id, s]));
 
     const nodesById = new Map<string, HemisphereNode>();

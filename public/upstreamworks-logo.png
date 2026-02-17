@@ -1,0 +1,1304 @@
+<!DOCTYPE html><!--[if IE 7]><html class="ie ie7" lang="en-US"><![endif]--><!--[if IE 8]><html class="ie ie8" lang="en-US"><![endif]--><!--[if !(IE 7) & !(IE 8)]><!--><html lang="en-US"><!--<![endif]--><head>	<meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Page not found - upstreamworks.com upstreamworks.com</title><link rel="pingback" href="https://www.upstreamworks.com/xmlrpc.php"><!--[if lt IE 9]>	<script src="https://www.upstreamworks.com/wp-content/themes/upstreamworks/js/html5.js"></script>	<![endif]--><meta name='robots' content='noindex, follow' />
+<script id="cookieyes" type="text/javascript" src="https://cdn-cookieyes.com/client_data/397e520f13614cec7ef84950/script.js"></script><meta name="dlm-version" content="5.1.6">
+<!-- Google Tag Manager for WordPress by gtm4wp.com -->
+<script data-cfasync="false" data-pagespeed-no-defer>
+	var gtm4wp_datalayer_name = "dataLayer";
+	var dataLayer = dataLayer || [];
+</script>
+<!-- End Google Tag Manager for WordPress by gtm4wp.com -->
+	<!-- This site is optimized with the Yoast SEO plugin v26.9 - https://yoast.com/product/yoast-seo-wordpress/ -->
+	<meta property="og:locale" content="en_US" />
+	<meta property="og:title" content="Page not found - upstreamworks.com" />
+	<meta property="og:site_name" content="upstreamworks.com" />
+	<script type="application/ld+json" class="yoast-schema-graph">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://www.upstreamworks.com/#website","url":"https://www.upstreamworks.com/","name":"Upstream Works Software","description":"Omnichannel Contact Center","publisher":{"@id":"https://www.upstreamworks.com/#organization"},"potentialAction":[{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://www.upstreamworks.com/?s={search_term_string}"},"query-input":{"@type":"PropertyValueSpecification","valueRequired":true,"valueName":"search_term_string"}}],"inLanguage":"en-US"},{"@type":"Organization","@id":"https://www.upstreamworks.com/#organization","name":"Upstream Works","url":"https://www.upstreamworks.com/","logo":{"@type":"ImageObject","inLanguage":"en-US","@id":"https://www.upstreamworks.com/#/schema/logo/image/","url":"https://www.upstreamworks.com/wp-content/uploads/2016/07/upstreamworks-logo.png","contentUrl":"https://www.upstreamworks.com/wp-content/uploads/2016/07/upstreamworks-logo.png","width":405,"height":187,"caption":"Upstream Works"},"image":{"@id":"https://www.upstreamworks.com/#/schema/logo/image/"},"sameAs":["https://www.facebook.com/UpstreamWorks/","https://x.com/upstream_works","https://www.linkedin.com/company/upstream-works-software","https://www.youtube.com/user/UpstreamWorks"]}]}</script>
+	<!-- / Yoast SEO plugin. -->
+
+
+<link rel='dns-prefetch' href='//fonts.googleapis.com' />
+		<!-- This site uses the Google Analytics by MonsterInsights plugin v10.0.2 - Using Analytics tracking - https://www.monsterinsights.com/ -->
+							<script src="//www.googletagmanager.com/gtag/js?id=G-PCK5L30SSL"  data-cfasync="false" data-wpfc-render="false" type="text/javascript" async></script>
+			<script data-cfasync="false" data-wpfc-render="false" type="text/javascript">
+				var mi_version = '10.0.2';
+				var mi_track_user = true;
+				var mi_no_track_reason = '';
+								var MonsterInsightsDefaultLocations = {"page_location":"https:\/\/www.upstreamworks.com\/wp-content\/uploads\/2016\/07\/upstreamworks-logo.png\/"};
+								if ( typeof MonsterInsightsPrivacyGuardFilter === 'function' ) {
+					var MonsterInsightsLocations = (typeof MonsterInsightsExcludeQuery === 'object') ? MonsterInsightsPrivacyGuardFilter( MonsterInsightsExcludeQuery ) : MonsterInsightsPrivacyGuardFilter( MonsterInsightsDefaultLocations );
+				} else {
+					var MonsterInsightsLocations = (typeof MonsterInsightsExcludeQuery === 'object') ? MonsterInsightsExcludeQuery : MonsterInsightsDefaultLocations;
+				}
+
+								var disableStrs = [
+										'ga-disable-G-PCK5L30SSL',
+									];
+
+				/* Function to detect opted out users */
+				function __gtagTrackerIsOptedOut() {
+					for (var index = 0; index < disableStrs.length; index++) {
+						if (document.cookie.indexOf(disableStrs[index] + '=true') > -1) {
+							return true;
+						}
+					}
+
+					return false;
+				}
+
+				/* Disable tracking if the opt-out cookie exists. */
+				if (__gtagTrackerIsOptedOut()) {
+					for (var index = 0; index < disableStrs.length; index++) {
+						window[disableStrs[index]] = true;
+					}
+				}
+
+				/* Opt-out function */
+				function __gtagTrackerOptout() {
+					for (var index = 0; index < disableStrs.length; index++) {
+						document.cookie = disableStrs[index] + '=true; expires=Thu, 31 Dec 2099 23:59:59 UTC; path=/';
+						window[disableStrs[index]] = true;
+					}
+				}
+
+				if ('undefined' === typeof gaOptout) {
+					function gaOptout() {
+						__gtagTrackerOptout();
+					}
+				}
+								window.dataLayer = window.dataLayer || [];
+
+				window.MonsterInsightsDualTracker = {
+					helpers: {},
+					trackers: {},
+				};
+				if (mi_track_user) {
+					function __gtagDataLayer() {
+						dataLayer.push(arguments);
+					}
+
+					function __gtagTracker(type, name, parameters) {
+						if (!parameters) {
+							parameters = {};
+						}
+
+						if (parameters.send_to) {
+							__gtagDataLayer.apply(null, arguments);
+							return;
+						}
+
+						if (type === 'event') {
+														parameters.send_to = monsterinsights_frontend.v4_id;
+							var hookName = name;
+							if (typeof parameters['event_category'] !== 'undefined') {
+								hookName = parameters['event_category'] + ':' + name;
+							}
+
+							if (typeof MonsterInsightsDualTracker.trackers[hookName] !== 'undefined') {
+								MonsterInsightsDualTracker.trackers[hookName](parameters);
+							} else {
+								__gtagDataLayer('event', name, parameters);
+							}
+							
+						} else {
+							__gtagDataLayer.apply(null, arguments);
+						}
+					}
+
+					__gtagTracker('js', new Date());
+					__gtagTracker('set', {
+						'developer_id.dZGIzZG': true,
+											});
+					if ( MonsterInsightsLocations.page_location ) {
+						__gtagTracker('set', MonsterInsightsLocations);
+					}
+										__gtagTracker('config', 'G-PCK5L30SSL', {"forceSSL":"true","link_attribution":"true","page_path":'\/404.html?page=' + document.location.pathname + document.location.search + '&from=' + document.referrer} );
+										window.gtag = __gtagTracker;										(function () {
+						/* https://developers.google.com/analytics/devguides/collection/analyticsjs/ */
+						/* ga and __gaTracker compatibility shim. */
+						var noopfn = function () {
+							return null;
+						};
+						var newtracker = function () {
+							return new Tracker();
+						};
+						var Tracker = function () {
+							return null;
+						};
+						var p = Tracker.prototype;
+						p.get = noopfn;
+						p.set = noopfn;
+						p.send = function () {
+							var args = Array.prototype.slice.call(arguments);
+							args.unshift('send');
+							__gaTracker.apply(null, args);
+						};
+						var __gaTracker = function () {
+							var len = arguments.length;
+							if (len === 0) {
+								return;
+							}
+							var f = arguments[len - 1];
+							if (typeof f !== 'object' || f === null || typeof f.hitCallback !== 'function') {
+								if ('send' === arguments[0]) {
+									var hitConverted, hitObject = false, action;
+									if ('event' === arguments[1]) {
+										if ('undefined' !== typeof arguments[3]) {
+											hitObject = {
+												'eventAction': arguments[3],
+												'eventCategory': arguments[2],
+												'eventLabel': arguments[4],
+												'value': arguments[5] ? arguments[5] : 1,
+											}
+										}
+									}
+									if ('pageview' === arguments[1]) {
+										if ('undefined' !== typeof arguments[2]) {
+											hitObject = {
+												'eventAction': 'page_view',
+												'page_path': arguments[2],
+											}
+										}
+									}
+									if (typeof arguments[2] === 'object') {
+										hitObject = arguments[2];
+									}
+									if (typeof arguments[5] === 'object') {
+										Object.assign(hitObject, arguments[5]);
+									}
+									if ('undefined' !== typeof arguments[1].hitType) {
+										hitObject = arguments[1];
+										if ('pageview' === hitObject.hitType) {
+											hitObject.eventAction = 'page_view';
+										}
+									}
+									if (hitObject) {
+										action = 'timing' === arguments[1].hitType ? 'timing_complete' : hitObject.eventAction;
+										hitConverted = mapArgs(hitObject);
+										__gtagTracker('event', action, hitConverted);
+									}
+								}
+								return;
+							}
+
+							function mapArgs(args) {
+								var arg, hit = {};
+								var gaMap = {
+									'eventCategory': 'event_category',
+									'eventAction': 'event_action',
+									'eventLabel': 'event_label',
+									'eventValue': 'event_value',
+									'nonInteraction': 'non_interaction',
+									'timingCategory': 'event_category',
+									'timingVar': 'name',
+									'timingValue': 'value',
+									'timingLabel': 'event_label',
+									'page': 'page_path',
+									'location': 'page_location',
+									'title': 'page_title',
+									'referrer' : 'page_referrer',
+								};
+								for (arg in args) {
+																		if (!(!args.hasOwnProperty(arg) || !gaMap.hasOwnProperty(arg))) {
+										hit[gaMap[arg]] = args[arg];
+									} else {
+										hit[arg] = args[arg];
+									}
+								}
+								return hit;
+							}
+
+							try {
+								f.hitCallback();
+							} catch (ex) {
+							}
+						};
+						__gaTracker.create = newtracker;
+						__gaTracker.getByName = newtracker;
+						__gaTracker.getAll = function () {
+							return [];
+						};
+						__gaTracker.remove = noopfn;
+						__gaTracker.loaded = true;
+						window['__gaTracker'] = __gaTracker;
+					})();
+									} else {
+										console.log("");
+					(function () {
+						function __gtagTracker() {
+							return null;
+						}
+
+						window['__gtagTracker'] = __gtagTracker;
+						window['gtag'] = __gtagTracker;
+					})();
+									}
+			</script>
+							<!-- / Google Analytics by MonsterInsights -->
+		<style id='wp-img-auto-sizes-contain-inline-css' type='text/css'>
+img:is([sizes=auto i],[sizes^="auto," i]){contain-intrinsic-size:3000px 1500px}
+/*# sourceURL=wp-img-auto-sizes-contain-inline-css */
+</style>
+<link rel='stylesheet' id='sdm-styles-css' href='https://www.upstreamworks.com/wp-content/plugins/simple-download-monitor/css/sdm_wp_styles.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<style id='wp-emoji-styles-inline-css' type='text/css'>
+
+	img.wp-smiley, img.emoji {
+		display: inline !important;
+		border: none !important;
+		box-shadow: none !important;
+		height: 1em !important;
+		width: 1em !important;
+		margin: 0 0.07em !important;
+		vertical-align: -0.1em !important;
+		background: none !important;
+		padding: 0 !important;
+	}
+/*# sourceURL=wp-emoji-styles-inline-css */
+</style>
+<link rel='stylesheet' id='wp-block-library-css' href='https://www.upstreamworks.com/wp-includes/css/dist/block-library/style.min.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<style id='classic-theme-styles-inline-css' type='text/css'>
+/*! This file is auto-generated */
+.wp-block-button__link{color:#fff;background-color:#32373c;border-radius:9999px;box-shadow:none;text-decoration:none;padding:calc(.667em + 2px) calc(1.333em + 2px);font-size:1.125em}.wp-block-file__button{background:#32373c;color:#fff;text-decoration:none}
+/*# sourceURL=/wp-includes/css/classic-themes.min.css */
+</style>
+<style id='global-styles-inline-css' type='text/css'>
+:root{--wp--preset--aspect-ratio--square: 1;--wp--preset--aspect-ratio--4-3: 4/3;--wp--preset--aspect-ratio--3-4: 3/4;--wp--preset--aspect-ratio--3-2: 3/2;--wp--preset--aspect-ratio--2-3: 2/3;--wp--preset--aspect-ratio--16-9: 16/9;--wp--preset--aspect-ratio--9-16: 9/16;--wp--preset--color--black: #000000;--wp--preset--color--cyan-bluish-gray: #abb8c3;--wp--preset--color--white: #ffffff;--wp--preset--color--pale-pink: #f78da7;--wp--preset--color--vivid-red: #cf2e2e;--wp--preset--color--luminous-vivid-orange: #ff6900;--wp--preset--color--luminous-vivid-amber: #fcb900;--wp--preset--color--light-green-cyan: #7bdcb5;--wp--preset--color--vivid-green-cyan: #00d084;--wp--preset--color--pale-cyan-blue: #8ed1fc;--wp--preset--color--vivid-cyan-blue: #0693e3;--wp--preset--color--vivid-purple: #9b51e0;--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple: linear-gradient(135deg,rgb(6,147,227) 0%,rgb(155,81,224) 100%);--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan: linear-gradient(135deg,rgb(122,220,180) 0%,rgb(0,208,130) 100%);--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange: linear-gradient(135deg,rgb(252,185,0) 0%,rgb(255,105,0) 100%);--wp--preset--gradient--luminous-vivid-orange-to-vivid-red: linear-gradient(135deg,rgb(255,105,0) 0%,rgb(207,46,46) 100%);--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray: linear-gradient(135deg,rgb(238,238,238) 0%,rgb(169,184,195) 100%);--wp--preset--gradient--cool-to-warm-spectrum: linear-gradient(135deg,rgb(74,234,220) 0%,rgb(151,120,209) 20%,rgb(207,42,186) 40%,rgb(238,44,130) 60%,rgb(251,105,98) 80%,rgb(254,248,76) 100%);--wp--preset--gradient--blush-light-purple: linear-gradient(135deg,rgb(255,206,236) 0%,rgb(152,150,240) 100%);--wp--preset--gradient--blush-bordeaux: linear-gradient(135deg,rgb(254,205,165) 0%,rgb(254,45,45) 50%,rgb(107,0,62) 100%);--wp--preset--gradient--luminous-dusk: linear-gradient(135deg,rgb(255,203,112) 0%,rgb(199,81,192) 50%,rgb(65,88,208) 100%);--wp--preset--gradient--pale-ocean: linear-gradient(135deg,rgb(255,245,203) 0%,rgb(182,227,212) 50%,rgb(51,167,181) 100%);--wp--preset--gradient--electric-grass: linear-gradient(135deg,rgb(202,248,128) 0%,rgb(113,206,126) 100%);--wp--preset--gradient--midnight: linear-gradient(135deg,rgb(2,3,129) 0%,rgb(40,116,252) 100%);--wp--preset--font-size--small: 13px;--wp--preset--font-size--medium: 20px;--wp--preset--font-size--large: 36px;--wp--preset--font-size--x-large: 42px;--wp--preset--spacing--20: 0.44rem;--wp--preset--spacing--30: 0.67rem;--wp--preset--spacing--40: 1rem;--wp--preset--spacing--50: 1.5rem;--wp--preset--spacing--60: 2.25rem;--wp--preset--spacing--70: 3.38rem;--wp--preset--spacing--80: 5.06rem;--wp--preset--shadow--natural: 6px 6px 9px rgba(0, 0, 0, 0.2);--wp--preset--shadow--deep: 12px 12px 50px rgba(0, 0, 0, 0.4);--wp--preset--shadow--sharp: 6px 6px 0px rgba(0, 0, 0, 0.2);--wp--preset--shadow--outlined: 6px 6px 0px -3px rgb(255, 255, 255), 6px 6px rgb(0, 0, 0);--wp--preset--shadow--crisp: 6px 6px 0px rgb(0, 0, 0);}:where(.is-layout-flex){gap: 0.5em;}:where(.is-layout-grid){gap: 0.5em;}body .is-layout-flex{display: flex;}.is-layout-flex{flex-wrap: wrap;align-items: center;}.is-layout-flex > :is(*, div){margin: 0;}body .is-layout-grid{display: grid;}.is-layout-grid > :is(*, div){margin: 0;}:where(.wp-block-columns.is-layout-flex){gap: 2em;}:where(.wp-block-columns.is-layout-grid){gap: 2em;}:where(.wp-block-post-template.is-layout-flex){gap: 1.25em;}:where(.wp-block-post-template.is-layout-grid){gap: 1.25em;}.has-black-color{color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-color{color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-color{color: var(--wp--preset--color--white) !important;}.has-pale-pink-color{color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-color{color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-color{color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-color{color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-color{color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-color{color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-color{color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-color{color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-color{color: var(--wp--preset--color--vivid-purple) !important;}.has-black-background-color{background-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-background-color{background-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-background-color{background-color: var(--wp--preset--color--white) !important;}.has-pale-pink-background-color{background-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-background-color{background-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-background-color{background-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-background-color{background-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-background-color{background-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-background-color{background-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-background-color{background-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-background-color{background-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-background-color{background-color: var(--wp--preset--color--vivid-purple) !important;}.has-black-border-color{border-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-border-color{border-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-border-color{border-color: var(--wp--preset--color--white) !important;}.has-pale-pink-border-color{border-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-border-color{border-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-border-color{border-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-border-color{border-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-border-color{border-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-border-color{border-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-border-color{border-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-border-color{border-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-border-color{border-color: var(--wp--preset--color--vivid-purple) !important;}.has-vivid-cyan-blue-to-vivid-purple-gradient-background{background: var(--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple) !important;}.has-light-green-cyan-to-vivid-green-cyan-gradient-background{background: var(--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan) !important;}.has-luminous-vivid-amber-to-luminous-vivid-orange-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange) !important;}.has-luminous-vivid-orange-to-vivid-red-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-orange-to-vivid-red) !important;}.has-very-light-gray-to-cyan-bluish-gray-gradient-background{background: var(--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray) !important;}.has-cool-to-warm-spectrum-gradient-background{background: var(--wp--preset--gradient--cool-to-warm-spectrum) !important;}.has-blush-light-purple-gradient-background{background: var(--wp--preset--gradient--blush-light-purple) !important;}.has-blush-bordeaux-gradient-background{background: var(--wp--preset--gradient--blush-bordeaux) !important;}.has-luminous-dusk-gradient-background{background: var(--wp--preset--gradient--luminous-dusk) !important;}.has-pale-ocean-gradient-background{background: var(--wp--preset--gradient--pale-ocean) !important;}.has-electric-grass-gradient-background{background: var(--wp--preset--gradient--electric-grass) !important;}.has-midnight-gradient-background{background: var(--wp--preset--gradient--midnight) !important;}.has-small-font-size{font-size: var(--wp--preset--font-size--small) !important;}.has-medium-font-size{font-size: var(--wp--preset--font-size--medium) !important;}.has-large-font-size{font-size: var(--wp--preset--font-size--large) !important;}.has-x-large-font-size{font-size: var(--wp--preset--font-size--x-large) !important;}
+:where(.wp-block-post-template.is-layout-flex){gap: 1.25em;}:where(.wp-block-post-template.is-layout-grid){gap: 1.25em;}
+:where(.wp-block-term-template.is-layout-flex){gap: 1.25em;}:where(.wp-block-term-template.is-layout-grid){gap: 1.25em;}
+:where(.wp-block-columns.is-layout-flex){gap: 2em;}:where(.wp-block-columns.is-layout-grid){gap: 2em;}
+:root :where(.wp-block-pullquote){font-size: 1.5em;line-height: 1.6;}
+/*# sourceURL=global-styles-inline-css */
+</style>
+<link rel='stylesheet' id='SFSImainCss-css' href='https://www.upstreamworks.com/wp-content/plugins/ultimate-social-media-icons/css/sfsi-style.css?ver=2.9.7' type='text/css' media='all' />
+<link rel='stylesheet' id='wp-fullcalendar-css' href='https://www.upstreamworks.com/wp-content/plugins/wp-fullcalendar/includes/css/main.css?ver=1.6' type='text/css' media='all' />
+<link rel='stylesheet' id='wp-fullcalendar-tippy-light-border-css' href='https://www.upstreamworks.com/wp-content/plugins/wp-fullcalendar/includes/css/tippy/light-border.css?ver=1.6' type='text/css' media='all' />
+<link rel='stylesheet' id='jquery-ui-css' href='https://www.upstreamworks.com/wp-content/plugins/wp-fullcalendar/includes/css/jquery-ui/ui-lightness/jquery-ui.min.css?ver=1.6' type='text/css' media='all' />
+<link rel='stylesheet' id='jquery-ui-theme-css' href='https://www.upstreamworks.com/wp-content/plugins/wp-fullcalendar/includes/css/jquery-ui/ui-lightness/theme.css?ver=1.6' type='text/css' media='all' />
+<link rel='stylesheet' id='style-css' href='https://www.upstreamworks.com/wp-content/themes/upstreamworks/style.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='hind-font-css' href='https://fonts.googleapis.com/css?family=Hind%3A400%2C300%2C500%2C600%2C700&#038;ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='Montserrat-font-css' href='https://fonts.googleapis.com/css?family=Montserrat%3A400%2C700&#038;ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='fonts-css-css' href='https://www.upstreamworks.com/wp-content/themes/upstreamworks/fonts/fonts.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='font-aw-css' href='https://www.upstreamworks.com/wp-content/themes/upstreamworks/font-awesome/css/font-awesome.min.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='bootstrap-css-css' href='https://www.upstreamworks.com/wp-content/themes/upstreamworks/stylesheets/bootstrap.min.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='mmenu-css-css' href='https://www.upstreamworks.com/wp-content/themes/upstreamworks/stylesheets/jquery.mmenu.all.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='global-css-css' href='https://www.upstreamworks.com/wp-content/themes/upstreamworks/stylesheets/global.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='device-css-css' href='https://www.upstreamworks.com/wp-content/themes/upstreamworks/stylesheets/device.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='vc_plugin_table_style_css-css' href='https://www.upstreamworks.com/wp-content/plugins/easy-tables-vc/assets/css/style.css?ver=1.0.0' type='text/css' media='all' />
+<link rel='stylesheet' id='vc_plugin_themes_css-css' href='https://www.upstreamworks.com/wp-content/plugins/easy-tables-vc/assets/css/themes.css?ver=0d66de6863ec463ef093afdd2deffd3f' type='text/css' media='all' />
+<link rel='stylesheet' id='js_composer_front-css' href='https://www.upstreamworks.com/wp-content/plugins/js_composer/assets/css/js_composer.min.css?ver=8.7.2' type='text/css' media='all' />
+<link rel='stylesheet' id='elementor-frontend-css' href='https://www.upstreamworks.com/wp-content/uploads/elementor/css/custom-frontend.min.css?ver=1770937425' type='text/css' media='all' />
+<link rel='stylesheet' id='eael-general-css' href='https://www.upstreamworks.com/wp-content/plugins/essential-addons-for-elementor-lite/assets/front-end/css/view/general.min.css?ver=6.5.8' type='text/css' media='all' />
+<style id='rocket-lazyload-inline-css' type='text/css'>
+.rll-youtube-player{position:relative;padding-bottom:56.23%;height:0;overflow:hidden;max-width:100%;}.rll-youtube-player:focus-within{outline: 2px solid currentColor;outline-offset: 5px;}.rll-youtube-player iframe{position:absolute;top:0;left:0;width:100%;height:100%;z-index:100;background:0 0}.rll-youtube-player img{bottom:0;display:block;left:0;margin:auto;max-width:100%;width:100%;position:absolute;right:0;top:0;border:none;height:auto;-webkit-transition:.4s all;-moz-transition:.4s all;transition:.4s all}.rll-youtube-player img:hover{-webkit-filter:brightness(75%)}.rll-youtube-player .play{height:100%;width:100%;left:0;top:0;position:absolute;background:url(https://www.upstreamworks.com/wp-content/plugins/wp-rocket/assets/img/youtube.png) no-repeat center;background-color: transparent !important;cursor:pointer;border:none;}
+/*# sourceURL=rocket-lazyload-inline-css */
+</style>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.min.js?ver=10.0.2" id="monsterinsights-frontend-script-js" async="async" data-wp-strategy="async"></script>
+<script data-cfasync="false" data-wpfc-render="false" type="text/javascript" id='monsterinsights-frontend-script-js-extra'>/* <![CDATA[ */
+var monsterinsights_frontend = {"js_events_tracking":"true","download_extensions":"doc,pdf,ppt,zip,xls,docx,pptx,xlsx","inbound_paths":"[{\"path\":\"\\\/recommend\\\/\",\"label\":\"affiliate\"}]","home_url":"https:\/\/www.upstreamworks.com","hash_tracking":"false","v4_id":"G-PCK5L30SSL"};/* ]]> */
+</script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-includes/js/jquery/jquery.min.js?ver=3.7.1" id="jquery-core-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1" id="jquery-migrate-js"></script>
+<script type="text/javascript" id="sdm-scripts-js-extra">
+/* <![CDATA[ */
+var sdm_ajax_script = {"ajaxurl":"https://www.upstreamworks.com/wp-admin/admin-ajax.php"};
+//# sourceURL=sdm-scripts-js-extra
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/simple-download-monitor/js/sdm_wp_scripts.js?ver=0d66de6863ec463ef093afdd2deffd3f" id="sdm-scripts-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-includes/js/jquery/ui/core.min.js?ver=1.13.3" id="jquery-ui-core-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-includes/js/jquery/ui/menu.min.js?ver=1.13.3" id="jquery-ui-menu-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-includes/js/jquery/ui/selectmenu.min.js?ver=1.13.3" id="jquery-ui-selectmenu-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-includes/js/jquery/ui/tooltip.min.js?ver=1.13.3" id="jquery-ui-tooltip-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-includes/js/dist/vendor/moment.min.js?ver=2.30.1" id="moment-js"></script>
+<script type="text/javascript" id="moment-js-after">
+/* <![CDATA[ */
+moment.updateLocale( 'en_US', {"months":["January","February","March","April","May","June","July","August","September","October","November","December"],"monthsShort":["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],"weekdays":["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],"weekdaysShort":["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],"week":{"dow":1},"longDateFormat":{"LT":"g:i a","LTS":null,"L":null,"LL":"F j, Y","LLL":"F j, Y g:i a","LLLL":null}} );
+//# sourceURL=moment-js-after
+/* ]]> */
+</script>
+<script type="text/javascript" id="wp-fullcalendar-js-extra">
+/* <![CDATA[ */
+var WPFC = {"ajaxurl":"https://www.upstreamworks.com/wp-admin/admin-ajax.php?action=WP_FullCalendar","firstDay":"1","wpfc_theme":"jquery-ui","wpfc_limit":"3","wpfc_limit_txt":"more ...","timeFormat":"h(:mm)A","defaultView":"month","weekends":"true","header":{"left":"prev,next today","center":"title","right":"month,basicWeek,basicDay"},"wpfc_qtips":"1","tippy_theme":"light-border","tippy_placement":"auto","tippy_loading":"Loading..."};
+//# sourceURL=wp-fullcalendar-js-extra
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/wp-fullcalendar/includes/js/main.js?ver=1.6" id="wp-fullcalendar-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/themes/upstreamworks/javascripts/global.js?ver=0d66de6863ec463ef093afdd2deffd3f" id="global-js-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/themes/upstreamworks/javascripts/jquery.mmenu.min.all.js?ver=0d66de6863ec463ef093afdd2deffd3f" id="mmenu-js-js"></script>
+<script></script><link rel="https://api.w.org/" href="https://www.upstreamworks.com/wp-json/" /><link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://www.upstreamworks.com/xmlrpc.php?rsd" />
+
+<!-- start Simple Custom CSS and JS -->
+<link rel="stylesheet" 
+href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"><!-- end Simple Custom CSS and JS -->
+<!-- start Simple Custom CSS and JS -->
+<style type="text/css">
+.page-template-template_products_roles a.anchor {
+    display: block;
+    position: relative;
+    top: -140px;
+    visibility: hidden;
+}
+
+.page-template-template_home4 .teamArea .team .sub a { width: 120% }
+
+.page-template-template_home4 .successArea, .page-template-template_home4 .teamArea, .page-template-template_home4 .actionArea { display: none } 
+
+.caseArea .case.event { cursor: auto }
+
+@media only screen and (max-width: 600px) {
+  .page-id-3523 .subproduct .customerpic { display: none }
+  .page-id-3523 .subproduct .whitepaper, .page-id-3523 .subproduct .customercontent { width: 100% !important; height: auto}
+}
+
+.category-events .newsArea .news .sub .text span { display: none}
+
+.archive .news .image img { max-width: 100%; height: auto}
+.archive .news .sub .text h3 { clear: both}
+.archive .news .cat-and-date span { float: left; margin-right: 10px}</style>
+<!-- end Simple Custom CSS and JS -->
+<!-- start Simple Custom CSS and JS -->
+<style type="text/css">
+/* Add your CSS code here.
+
+For example:
+.example {
+    color: red;
+}
+
+For brushing up on your CSS knowledge, check out http://www.w3schools.com/css/css_syntax.asp
+
+End of comment */ 
+
+/* Add your CSS code here.
+
+For example:
+.example {
+    color: red;
+}
+
+For brushing up on your CSS knowledge, check out http://www.w3schools.com/css/css_syntax.asp
+
+End of comment */ 
+
+/* Add your CSS code here.
+
+For example:
+.example {
+    color: red;
+}
+
+For brushing up on your CSS knowledge, check out http://www.w3schools.com/css/css_syntax.asp
+
+End of comment */ 
+
+/* BEGIN MAFORM Style Overrides */
+body form.maForm {
+    padding: 20px 0px 0px;
+}
+
+body form.maForm label {
+    font-weight: normal;
+}
+
+.maForm label {
+    margin-bottom: 7px;
+    font-weight: normal;
+    /* color: #FBFBFB !important; */
+}
+
+body form.maForm input {
+	height: 37px;
+	width: 100%;
+	margin-top: 3px;
+	background-color: #fafafa;
+	font-size: 14px;
+}
+
+body form.maForm input[type="radio"] {
+	height: 17px;
+	margin: 2px 7px 2px 4px;
+}
+
+body form.maForm input[type="checkbox"] {
+	float: none;
+	position: static;
+	opacity: 1;
+	width: inherit;
+}
+
+body form.maForm select {
+	width: 100%;
+	height: 39px;
+}
+
+form.maForm textarea {
+    width: 100%;
+}
+
+body form.maForm .maFormElement:last-of-type {
+	text-align: center;
+}
+
+body form.maForm button {
+	font-size: 14px;
+	text-shadow: none;
+	padding: 12px 15px;
+  	margin: 25px 0 30px 0;
+	color: #fff;
+	font-weight: 400;
+	border: none;
+	background-color: #60ba9e;
+	background-image: none;
+	width: 100% !important;
+	text-transform: uppercase;
+}
+
+body form.maForm button:hover {
+	border-width: 2px;
+    color: #fff;
+	background-color: #000;
+}
+/* CONTACT FORMS */
+#MAform-594f5247-66a2-49e0-94d3-128532263a13
+.maForm label {
+  font-weight: normal;
+    font-size: 16px;
+    color: #0878be;
+}
+
+/* DEMO FORMS */
+#MAform-b9ae5fa3-4761-4d20-af8a-4c3db8b4fc3d
+.maForm label {
+  font-weight: normal;
+    font-size: 16px;
+    color: #FFF;
+}
+
+
+/* WEBINAR FORMS */
+#MAform-684250a4-7e8e-4b86-a41f-a7d1df58760a
+.maForm label {
+  font-weight: normal;
+    font-size: 16px;
+    color: #FFF;
+}
+
+/* WEBINAR FORMS business impact assessment*/
+#MAform-dccf7a73-425e-4747-8510-0c5a1d67860b
+.maForm label {
+  font-weight: normal;
+    font-size: 16px;
+    color: #FFF;
+}
+
+
+/* WEBINAR FORMS Knowledge Management for a Better Customer Experience test */
+#MAform-b6998da7-b02d-447a-a9ad-05be67405675
+.maForm label {
+  font-weight: normal;
+    font-size: 16px;
+    color: #FFF;
+}
+
+
+
+/* END MAFORM Style Overrides */
+.smartArea2 {
+    padding: 40px 0 60px 0;
+  }
+.smartArea2 .row {
+    padding-top: 20px;
+}
+/* Portrait phones and smaller */
+@media (max-width: 480px) {
+
+          .bgimg {
+        background-image: none !important;
+    }
+
+}
+
+</style>
+<!-- end Simple Custom CSS and JS -->
+<meta name="follow.it-verification-code-VUZtSkdndnVlN2lkNnpHZWEveWF0eE9YaVI4Vnp3clhEVnJrMnNWNnEwSlplOTVEcnVrR3htWk9YaU11VE41UkRkRkJiYm1HbWt6bEhqY3Vyci9kQkZNVlNIUEluY1QvdUlKSnRScWRLZktGMGpOejFTUCtGRHBLQ0pwelRCai98aXdpTTNBWGVZaFVzMVVjWDJScVRJdVVNNmpGb3VJbDJSWWw0WlROUVF4TT0=" content="g1sAzyaWppCpKq4xEkmX"/>
+<!-- Google Tag Manager for WordPress by gtm4wp.com -->
+<!-- GTM Container placement set to footer -->
+<script data-cfasync="false" data-pagespeed-no-defer type="text/javascript">
+	var dataLayer_content = {"pagePostType":"404-error"};
+	dataLayer.push( dataLayer_content );
+</script>
+<script data-cfasync="false" data-pagespeed-no-defer type="text/javascript">
+(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'//www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-MVPP9WQR');
+</script>
+<!-- End Google Tag Manager for WordPress by gtm4wp.com --><style type="text/css">.recentcomments a{display:inline !important;padding:0 !important;margin:0 !important;}</style>			<style>
+				.e-con.e-parent:nth-of-type(n+4):not(.e-lazyloaded):not(.e-no-lazyload),
+				.e-con.e-parent:nth-of-type(n+4):not(.e-lazyloaded):not(.e-no-lazyload) * {
+					background-image: none !important;
+				}
+				@media screen and (max-height: 1024px) {
+					.e-con.e-parent:nth-of-type(n+3):not(.e-lazyloaded):not(.e-no-lazyload),
+					.e-con.e-parent:nth-of-type(n+3):not(.e-lazyloaded):not(.e-no-lazyload) * {
+						background-image: none !important;
+					}
+				}
+				@media screen and (max-height: 640px) {
+					.e-con.e-parent:nth-of-type(n+2):not(.e-lazyloaded):not(.e-no-lazyload),
+					.e-con.e-parent:nth-of-type(n+2):not(.e-lazyloaded):not(.e-no-lazyload) * {
+						background-image: none !important;
+					}
+				}
+			</style>
+			<meta name="generator" content="Powered by WPBakery Page Builder - drag and drop page builder for WordPress."/>
+		<style type="text/css" id="wp-custom-css">
+			/*
+You can add your own CSS here.
+
+Click the help icon above to learn more.
+*/
+
+
+body form.maForm {
+    padding: 20px 0px 0px;
+
+}
+body form.maForm label {
+    font-weight: normal;
+}
+#MAform-c269e1cf-dfae-4d8f-9785-8d5c439ab6c4
+.maForm label {
+  font-weight: normal;
+    font-size: 16px;
+    color: #FFF;
+}
+
+
+.headsetArea {
+    padding: 67px 132px 0px 22px;
+    width: 100%;
+    float: left;
+    text-align: center;
+    background-color: grey
+}
+.headsetArea .text {
+    padding: 0px 0px 0 0px;
+    font-size: 18px;
+    color: #e3e3e3;
+    text-align: left;
+    line-height: 26px;
+    margin: -66px 0 0 -36px;
+}
+
+ul, ol {
+    margin-left: 0px;
+}
+div.wpcf7-validation-errors {
+    background-color: #ffffff;
+}
+div.wpcf7-mail-sent-ok {
+    background-color: #ffffff;
+}
+.footerArea .link ul {
+    list-style: none;
+    margin-left: auto;
+}
+.channelArea {
+    margin-bottom: 0px;
+}
+.engageArea h2 {
+    width: 100%;
+	}
+/*
+products page hlink text
+*/
+.smartArea .text a.hlink {
+    font-size: 18px;
+}
+.fineseArea .text a {
+    padding: 12px 41px 9px;
+    display: inline-block;
+    font-size: 16px;
+    color: #0679bc;
+    font-weight: 500;
+    text-decoration: none;
+    text-transform: uppercase;
+    line-height: normal;
+    border: 1px solid #0878be;
+}
+
+.fineseArea .text a.hlink {
+    padding: 0px;
+    display: inline-block;
+    font-size: 18px;
+    color: #0679bc;
+    font-weight: 500;
+    text-decoration: none;
+    line-height: normal;
+    border: 0px solid #000000;
+    text-transform: none;
+}
+.fineseArea .text a.hlink:hover {
+    color: #68C09A;
+    text-decoration: underline;
+}
+.single-post .h1 { font-size: 100px; }
+/*
+menu child page link
+*/
+.menuArea li:last-child ul, .menuArea li#menu-item-18 ul {
+  right: 0px;
+  left: auto;
+  width: 390px;
+}
+
+.menuArea .sub-menu .sub-menu {
+	display: none;
+	padding: 0;
+}
+
+.menuArea .sub-menu .menu-item-has-children:hover .sub-menu {
+	left: 100%;
+	top: 0;
+	display: block;
+}
+
+.menuArea .sub-menu .menu-item-has-children::before {
+	content: "";
+	border-color: #0777BE transparent;
+	border-width: 8px 8px 0 8px;
+	border-style: solid;
+	position: absolute;
+	left: auto;
+	right: 30px;
+	top: 15px;
+}
+
+.menuArea .sub-menu .menu-item-has-children:hover::before {
+	border-color: #fff transparent;
+}
+
+.menuArea .sub-menu .menu-item-has-children:hover > a {
+	color: #fff;
+	background: #0777BE;
+}
+
+/* .menuArea ul ul ul {
+	position: relative;
+	background-color: rgba(255, 255, 255, 0.1);
+	padding: 0;
+} */
+
+/* .menuArea ul ul ul li {
+	padding-left: 10px;
+} */
+
+.menuArea ul ul ul:before {
+	left: auto;
+	right: 30px;
+	top: -20px;
+	display: none;
+}
+
+.menuArea ul ul li.menu-item-has-children:first-child a:before {
+	position: absolute;
+	right: 30px;
+	top: -20px;
+	left: auto;
+	content: "";
+	border-color: #FFF transparent;
+	border-width: 8px 8px 0 8px;
+	border-style: solid;
+}
+
+.swiper.swiper-8 .swiper-slide {
+	width: 300px;
+}
+.shortbannerArea {
+ background-color: #0a7cbb; /* For browsers that do not support gradients */
+  background-image: linear-gradient(to right, #65bf9b , #0a7cbb);
+}
+		</style>
+		<noscript><style> .wpb_animate_when_almost_visible { opacity: 1; }</style></noscript><noscript><style id="rocket-lazyload-nojs-css">.rll-youtube-player, [data-lazy-src]{display:none !important;}</style></noscript>  
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-610621116"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'AW-610621116');
+</script>
+
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-NRHX2X3');</script>
+<!-- End Google Tag Manager -->
+
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-42289123-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+
+<script type="text/javascript" language="javascript">
+      var sf14gv = 12243;
+      (function() {
+      var sf14g = document.createElement('script'); sf14g.type = 'text/javascript'; sf14g.async = true;
+      sf14g.src = ('https:' == document.location.protocol ? 'https://' : 'http://') + 't.sf14g.com/sf14g.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(sf14g, s);
+      })();
+</script> 
+<meta name="google-site-verification" content="30ycLKRe540zJvLx4VbB-OHC84yfD4YSgDLZtVvXKYo" />
+<meta name="google-site-verification" content="y2MHLTGN0Awqnw9yHmzm0bPLh3S0IArEJWR_bFWpfZ8" />
+ <script src="https://www.upstreamworks.com/wp-content/themes/upstreamworks/javascripts/cf7.js"></script> 
+<script>
+	window.SGPMPopupLoader=window.SGPMPopupLoader||{ids:[],popups:{},call:function(w,d,s,l,id){
+		w['sgp']=w['sgp']||function(){(w['sgp'].q=w['sgp'].q||[]).push(arguments[0]);}; 
+		var sg1=d.createElement(s),sg0=d.getElementsByTagName(s)[0];
+		if(SGPMPopupLoader && SGPMPopupLoader.ids && SGPMPopupLoader.ids.length > 0){SGPMPopupLoader.ids.push(id); return;}
+		SGPMPopupLoader.ids.push(id);
+		sg1.onload = function(){SGPMPopup.openSGPMPopup();}; sg1.async=true; sg1.src=l;
+		sg0.parentNode.insertBefore(sg1,sg0);
+		return {};
+	}};
+	SGPMPopupLoader.call(window,document,'script','https://popupmaker.com/assets/lib/SGPMPopup.min.js','91441001');
+</script>
+
+<!-- Hotjar Tracking Code for https://www.upstreamworks.com/platforms/amazon-connect/watch-demo -->
+<script>
+    (function(h,o,t,j,a,r){
+        h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};
+        h._hjSettings={hjid:2442198,hjsv:6};
+        a=o.getElementsByTagName('head')[0];
+        r=o.createElement('script');r.async=1;
+        r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;
+        a.appendChild(r);
+    })(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');
+</script>
+	
+</head>
+<body class="error404 wp-theme-upstreamworks sfsi_actvite_theme_default wpb-js-composer js-comp-ver-8.7.2 vc_responsive elementor-default elementor-kit-81038"><!-- BEGIN: wrapper -->
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NRHX2X3"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+
+<div id="wrapper"><!-- BEGIN: header wrapper -->    
+<header id="headerWrapper">
+<div class="container"><!-- BEGIN: logo area -->
+	<nav class="logoArea">	<a href="https://www.upstreamworks.com/"><img src="https://www.upstreamworks.com/wp-content/themes/upstreamworks/images/logo.png" alt="upstreamworks.com" /></a></nav><!-- END: logo area --><!-- BEGIN: header right --><div class="headeRight"><!-- BEGIN: contact area --><nav class="contactArea"><div class="menu-topmenu-container"><ul id="menu-topmenu" class="menu"><li id="menu-item-81631" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-81631"><a href="https://www.upstreamworks.com/demo">Demo</a></li>
+<li id="menu-item-13502" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-13502"><a href="https://customers.upstreamworks.com/SignIn">Customer Login</a></li>
+<li id="menu-item-458" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-458"><a target="_blank" href="https://partners.upstreamworks.com/">Partner Login</a></li>
+<li id="menu-item-7954" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-7954"><a href="https://www.upstreamworks.com/about/contact-us/">Contact us</a></li>
+</ul></div></nav><!-- END: contact area --><!-- BEGIN: menu area --><nav class="menuArea"><div class="menu-mainmenu-container"><ul id="menu-mainmenu" class="menu"><li id="menu-item-87175" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-87175"><a href="#">Products</a>
+<ul class="sub-menu">
+	<li id="menu-item-87183" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87183"><a href="https://www.upstreamworks.com/all-products/">All Products</a></li>
+	<li id="menu-item-87172" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87172"><a href="https://www.upstreamworks.com/products/single-agent-desktop">Agent Desktop</a></li>
+	<li id="menu-item-91519" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-91519"><a href="#">AgentNow Video CX</a>
+	<ul class="sub-menu">
+		<li id="menu-item-90880" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-90880"><a href="https://www.upstreamworks.com/products/agentnow-video-cx">AgentNow Overview</a></li>
+		<li id="menu-item-91520" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-91520"><a href="https://www.upstreamworks.com/products/agentnow-use-cases">AgentNow Use Cases</a></li>
+	</ul>
+</li>
+	<li id="menu-item-87184" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87184"><a href="https://www.upstreamworks.com/products/supervisor-desktop">Supervisor Desktop</a></li>
+	<li id="menu-item-87185" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87185"><a href="https://www.upstreamworks.com/products/digital-desktop">Digital Desktop</a></li>
+	<li id="menu-item-87186" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-87186"><a href="#">AI &#038; Automation</a>
+	<ul class="sub-menu">
+		<li id="menu-item-87187" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87187"><a href="https://www.upstreamworks.com/products/ai-and-automation-solutions">AI &#038; Automation Solutions</a></li>
+		<li id="menu-item-87188" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87188"><a href="https://www.upstreamworks.com/products/ai-ecosystem">AI Ecosystem</a></li>
+		<li id="menu-item-87498" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87498"><a href="https://www.upstreamworks.com/products/omni-ai-hub">Omni AI Hub</a></li>
+	</ul>
+</li>
+	<li id="menu-item-87190" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87190"><a href="https://www.upstreamworks.com/products/integration/">Application Integrations</a></li>
+	<li id="menu-item-87191" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87191"><a href="https://www.upstreamworks.com/products/assist-knowledge">Assist Knowledge</a></li>
+	<li id="menu-item-87192" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87192"><a href="https://www.upstreamworks.com/products/omnichannel-customer-experience">Omnichannel CX</a></li>
+	<li id="menu-item-90455" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-90455"><a href="https://www.upstreamworks.com/products/reports-and-analytics">Analytics &#038; Reporting</a></li>
+</ul>
+</li>
+<li id="menu-item-87176" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-87176"><a href="#">Solutions</a>
+<ul class="sub-menu">
+	<li id="menu-item-87173" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87173"><a href="https://www.upstreamworks.com/all-platforms">All Platforms</a></li>
+	<li id="menu-item-93203" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93203"><a href="https://www.upstreamworks.com/platforms/amazon-connect-2">Amazon Connect</a></li>
+	<li id="menu-item-87194" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87194"><a href="https://www.upstreamworks.com/platforms/cisco-enterprise/">Cisco Enterprise</a></li>
+	<li id="menu-item-93202" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93202"><a href="https://www.upstreamworks.com/platforms/digital-solutions-2">Digital Solutions</a></li>
+	<li id="menu-item-93201" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93201"><a href="https://www.upstreamworks.com/platforms/webex-contact-center-2">Webex Contact Center</a></li>
+	<li id="menu-item-87198" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87198"><a href="https://www.upstreamworks.com/platforms/healthcare">Healthcare Solutions</a></li>
+	<li id="menu-item-87199" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87199"><a href="https://www.upstreamworks.com/platforms/security-and-compliance">Security &#038; Compliance</a></li>
+</ul>
+</li>
+<li id="menu-item-87177" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-87177"><a href="#">Resources</a>
+<ul class="sub-menu">
+	<li id="menu-item-87178" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87178"><a href="https://www.upstreamworks.com/all-resources/">All Resources</a></li>
+	<li id="menu-item-87229" class="menu-item menu-item-type-taxonomy menu-item-object-category menu-item-87229"><a href="https://www.upstreamworks.com/category/blog/">Blog</a></li>
+	<li id="menu-item-93928" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93928"><a href="https://www.upstreamworks.com/customer-stories/">Customer Stories</a></li>
+	<li id="menu-item-87202" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87202"><a href="https://www.upstreamworks.com/demos-and-videos">Demos &#038; Videos</a></li>
+	<li id="menu-item-87203" class="menu-item menu-item-type-taxonomy menu-item-object-category menu-item-87203"><a href="https://www.upstreamworks.com/category/webinars">Webinars</a></li>
+	<li id="menu-item-87204" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87204"><a href="https://www.upstreamworks.com/contact-center-glossary/">Glossary</a></li>
+	<li id="menu-item-87205" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87205"><a href="https://www.upstreamworks.com/podcasts/">Podcasts</a></li>
+	<li id="menu-item-87208" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87208"><a href="https://www.upstreamworks.com/whitepapers/">Reports &#038; Insights</a></li>
+</ul>
+</li>
+<li id="menu-item-87179" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-87179"><a href="#">Support</a>
+<ul class="sub-menu">
+	<li id="menu-item-87233" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87233"><a href="https://www.upstreamworks.com/support/support-and-services">Support &#038; Services</a></li>
+	<li id="menu-item-87209" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87209"><a href="https://www.upstreamworks.com/support/product-activation">Subscription Agreement<br>&#038; Activation</a></li>
+	<li id="menu-item-87210" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87210"><a href="https://www.upstreamworks.com/support/professional-services/">Professional Services</a></li>
+	<li id="menu-item-87211" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87211"><a href="https://www.upstreamworks.com/support/training">Training</a></li>
+</ul>
+</li>
+<li id="menu-item-87180" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-87180"><a href="#">Partners</a>
+<ul class="sub-menu">
+	<li id="menu-item-87227" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87227"><a href="https://www.upstreamworks.com/all-partners/">All Partners</a></li>
+	<li id="menu-item-87215" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87215"><a href="https://www.upstreamworks.com/partners/become-a-partner/">Become A Partner</a></li>
+</ul>
+</li>
+<li id="menu-item-87181" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-87181"><a href="#">About Us</a>
+<ul class="sub-menu">
+	<li id="menu-item-87217" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87217"><a href="https://www.upstreamworks.com/company">Company</a></li>
+	<li id="menu-item-87234" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87234"><a href="https://www.upstreamworks.com/about/contact-us/">Contact us</a></li>
+	<li id="menu-item-87220" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87220"><a href="https://www.upstreamworks.com/awards/">Awards</a></li>
+	<li id="menu-item-87219" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87219"><a href="https://www.upstreamworks.com/leadership/">Leadership</a></li>
+	<li id="menu-item-87213" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87213"><a href="https://www.upstreamworks.com/careers/">Careers</a></li>
+	<li id="menu-item-87226" class="menu-item menu-item-type-taxonomy menu-item-object-category menu-item-87226"><a href="https://www.upstreamworks.com/category/news/">News</a></li>
+</ul>
+</li>
+</ul></div>	</nav><!-- END: menu area --><!-- BEGIN: mobilemenu area --><nav class="mobilemenuArea"><a class="menutoggle" href="#menu"><span></span><span></span><span></span></a><nav id="menu"><div class="menu-mobilemenu-container"><ul id="menu-mobilemenu" class="menu"><li id="menu-item-84511" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-home menu-item-84511"><a href="https://www.upstreamworks.com/">Home</a></li>
+<li id="menu-item-76162" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-76162"><a href="#">Products</a>
+<ul class="sub-menu">
+	<li id="menu-item-76161" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76161"><a href="https://www.upstreamworks.com/all-products/">All Products</a></li>
+	<li id="menu-item-85676" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85676"><a href="https://www.upstreamworks.com/products/single-agent-desktop">Agent Desktop</a></li>
+	<li id="menu-item-90883" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-90883"><a href="https://www.upstreamworks.com/products/agentnow-video-cx">AgentNow Video CX</a></li>
+	<li id="menu-item-91522" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-91522"><a href="https://www.upstreamworks.com/products/agentnow-use-cases">AgentNow Use Cases</a></li>
+	<li id="menu-item-87165" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87165"><a href="https://www.upstreamworks.com/products/agentnow-on-azure">AgentNow on Azure</a></li>
+	<li id="menu-item-87166" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87166"><a href="https://www.upstreamworks.com/products/agentnow-on-webex">AgentNow on Webex</a></li>
+	<li id="menu-item-85920" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85920"><a href="https://www.upstreamworks.com/products/supervisor-desktop">Supervisor Desktop</a></li>
+	<li id="menu-item-85880" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85880"><a href="https://www.upstreamworks.com/products/digital-desktop">Digital Desktop</a></li>
+	<li id="menu-item-86574" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-86574"><a href="https://www.upstreamworks.com/products/ai-and-automation-solutions">AI &#038; Automation Solutions</a></li>
+	<li id="menu-item-78689" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-78689"><a href="https://www.upstreamworks.com/products/ai-ecosystem">AI Ecosystem</a></li>
+	<li id="menu-item-87500" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87500"><a href="https://www.upstreamworks.com/products/omni-ai-hub">Omni AI Hub</a></li>
+	<li id="menu-item-85884" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85884"><a href="https://www.upstreamworks.com/products/integration/">Application Integrations</a></li>
+	<li id="menu-item-85682" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85682"><a href="https://www.upstreamworks.com/products/assist-knowledge">Assist Knowledge</a></li>
+	<li id="menu-item-85917" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85917"><a href="https://www.upstreamworks.com/products/omnichannel-customer-experience">Omnichannel CX</a></li>
+	<li id="menu-item-90457" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-90457"><a href="https://www.upstreamworks.com/products/reports-and-analytics">Analytics &#038; Reporting</a></li>
+</ul>
+</li>
+<li id="menu-item-76163" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-76163"><a href="#">Solutions</a>
+<ul class="sub-menu">
+	<li id="menu-item-76164" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76164"><a href="https://www.upstreamworks.com/all-platforms">All Platforms</a></li>
+	<li id="menu-item-93194" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93194"><a href="https://www.upstreamworks.com/platforms/amazon-connect-2">Amazon Connect</a></li>
+	<li id="menu-item-73647" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-73647"><a href="https://www.upstreamworks.com/platforms/cisco-enterprise/">Cisco Enterprise</a></li>
+	<li id="menu-item-93193" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93193"><a href="https://www.upstreamworks.com/platforms/digital-solutions-2">Digital Solutions</a></li>
+	<li id="menu-item-93192" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93192"><a href="https://www.upstreamworks.com/platforms/webex-contact-center-2">Webex Contact Center</a></li>
+	<li id="menu-item-84802" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-84802"><a href="https://www.upstreamworks.com/platforms/healthcare">Healthcare</a></li>
+	<li id="menu-item-84803" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-84803"><a href="https://www.upstreamworks.com/platforms/security-and-compliance">Security &#038; Compliance</a></li>
+</ul>
+</li>
+<li id="menu-item-76166" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-76166"><a href="#">Resources</a>
+<ul class="sub-menu">
+	<li id="menu-item-76165" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76165"><a href="https://www.upstreamworks.com/all-resources/">All Resources</a></li>
+	<li id="menu-item-70998" class="menu-item menu-item-type-post_type menu-item-object-page current_page_parent menu-item-70998"><a href="https://www.upstreamworks.com/blog/">Blog</a></li>
+	<li id="menu-item-93929" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93929"><a href="https://www.upstreamworks.com/customer-stories/">Customer Stories</a></li>
+	<li id="menu-item-81416" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-81416"><a href="https://www.upstreamworks.com/demos-and-videos">Demos &#038; Videos</a></li>
+	<li id="menu-item-86086" class="menu-item menu-item-type-taxonomy menu-item-object-category menu-item-86086"><a href="https://www.upstreamworks.com/category/webinars">Webinars</a></li>
+	<li id="menu-item-70999" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-70999"><a href="https://www.upstreamworks.com/contact-center-glossary/">Glossary</a></li>
+	<li id="menu-item-71000" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-71000"><a href="https://www.upstreamworks.com/podcasts/">Podcasts</a></li>
+	<li id="menu-item-71001" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-71001"><a href="https://www.upstreamworks.com/whitepapers/">Reports &#038; Insights</a></li>
+</ul>
+</li>
+<li id="menu-item-76168" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-76168"><a href="#">Support</a>
+<ul class="sub-menu">
+	<li id="menu-item-76167" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76167"><a href="https://www.upstreamworks.com/support/support-and-services">Support &#038; Services</a></li>
+	<li id="menu-item-84814" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-84814"><a href="https://www.upstreamworks.com/support/product-activation">Subscription Agreement &#038; Activation</a></li>
+	<li id="menu-item-1509" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1509"><a href="https://www.upstreamworks.com/support/professional-services/">Professional Services</a></li>
+	<li id="menu-item-84816" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-84816"><a href="https://www.upstreamworks.com/support/training">Training</a></li>
+	<li id="menu-item-84815" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-84815"><a href="https://www.upstreamworks.com/?page_id=76652">Notifications</a></li>
+</ul>
+</li>
+<li id="menu-item-76170" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-76170"><a href="#">Partners</a>
+<ul class="sub-menu">
+	<li id="menu-item-76169" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76169"><a href="https://www.upstreamworks.com/all-partners/">All Partners</a></li>
+	<li id="menu-item-76171" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76171"><a href="https://www.upstreamworks.com/partners/become-a-partner/">Become A Partner</a></li>
+</ul>
+</li>
+<li id="menu-item-76173" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-76173"><a href="#">About us</a>
+<ul class="sub-menu">
+	<li id="menu-item-76172" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76172"><a href="https://www.upstreamworks.com/company">Company</a></li>
+	<li id="menu-item-7955" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-7955"><a href="https://www.upstreamworks.com/about/contact-us/">Contact us</a></li>
+	<li id="menu-item-4490" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4490"><a href="https://www.upstreamworks.com/awards/">Awards</a></li>
+	<li id="menu-item-78811" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-78811"><a href="https://www.upstreamworks.com/leadership/">Leadership</a></li>
+	<li id="menu-item-5592" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-5592"><a href="https://www.upstreamworks.com/careers/old">Careers</a></li>
+	<li id="menu-item-295" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-295"><a href="https://www.upstreamworks.com/news/">News</a></li>
+</ul>
+</li>
+<li id="menu-item-5415" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-5415"><a href="https://partners.upstreamworks.com/">Partner Portal</a></li>
+<li id="menu-item-92582" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-92582"><a href="https://customers.upstreamworks.com/">Customer Portal</a></li>
+</ul></div>	</nav>	</nav><!-- END: mobilemenu area -->	</div><!-- END: header right -->   </div>    </header>    <!-- END: header wrapper -->
+    <!-- BEGIN: banner wrapper -->
+    <section id="bannerWrapper">
+    	
+		<!-- BEGIN: shortbanner area -->
+		  
+    </section>
+    <!-- END: banner wrapper -->
+	
+    <!-- BEGIN: middle wrapper -->
+    <section id="middleWrapper">
+		
+		<!-- BEGIN: content area -->
+        <article class="contentArea">
+        	<div class="container">
+			
+				<h1 class="page-title">Not Found</h1>
+            
+			</div>
+        </article>
+        <!-- END: content area -->
+				      
+    </section>
+    <!-- END: middle wrapper -->
+
+    <!-- BEGIN: footer wrapper -->
+    <footer id="footerWrapper">
+    	<div class="container">
+		
+        <!-- BEGIN: footer area -->
+        <div class="footerArea">
+			
+			<nav class="link"><h3>Products</h3><div class="menu-products-container"><ul id="menu-products" class="menu"><li id="menu-item-76107" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76107"><a href="https://www.upstreamworks.com/all-products/">All Products</a></li>
+<li id="menu-item-85677" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85677"><a href="https://www.upstreamworks.com/products/single-agent-desktop">Agent Desktop</a></li>
+<li id="menu-item-90881" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-90881"><a href="https://www.upstreamworks.com/products/agentnow-video-cx">AgentNow Video CX</a></li>
+<li id="menu-item-91521" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-91521"><a href="https://www.upstreamworks.com/products/agentnow-use-cases">AgentNow Use Cases</a></li>
+<li id="menu-item-87163" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87163"><a href="https://www.upstreamworks.com/products/agentnow-on-azure">AgentNow on Azure</a></li>
+<li id="menu-item-87164" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87164"><a href="https://www.upstreamworks.com/products/agentnow-on-webex">AgentNow on Webex</a></li>
+<li id="menu-item-85922" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85922"><a href="https://www.upstreamworks.com/products/supervisor-desktop">Supervisor Desktop</a></li>
+<li id="menu-item-85879" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85879"><a href="https://www.upstreamworks.com/products/digital-desktop">Digital Desktop</a></li>
+<li id="menu-item-86572" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-86572"><a href="https://www.upstreamworks.com/products/ai-and-automation-solutions">AI &#038; Automation Solutions</a></li>
+<li id="menu-item-84079" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-84079"><a href="https://www.upstreamworks.com/products/ai-ecosystem">AI Ecosystem</a></li>
+<li id="menu-item-87499" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-87499"><a href="https://www.upstreamworks.com/products/omni-ai-hub">Omni AI Hub</a></li>
+<li id="menu-item-85883" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85883"><a href="https://www.upstreamworks.com/products/integration/">Application Integrations</a></li>
+<li id="menu-item-85684" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85684"><a href="https://www.upstreamworks.com/products/assist-knowledge">Assist Knowledge</a></li>
+<li id="menu-item-85916" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-85916"><a href="https://www.upstreamworks.com/products/omnichannel-customer-experience">Omnichannel CX</a></li>
+<li id="menu-item-90456" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-90456"><a href="https://www.upstreamworks.com/products/reports-and-analytics">Analytics &#038; Reporting</a></li>
+</ul></div></nav><nav class="link"><h3>Solutions</h3><div class="menu-solutions-container"><ul id="menu-solutions" class="menu"><li id="menu-item-81275" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-81275"><a href="https://www.upstreamworks.com/all-platforms">All Platforms</a></li>
+<li id="menu-item-93200" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93200"><a href="https://www.upstreamworks.com/platforms/amazon-connect-2">Amazon Connect</a></li>
+<li id="menu-item-73650" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-73650"><a href="https://www.upstreamworks.com/platforms/cisco-enterprise/">Cisco Enterprise</a></li>
+<li id="menu-item-93199" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93199"><a href="https://www.upstreamworks.com/platforms/digital-solutions-2">Digital Solutions</a></li>
+<li id="menu-item-93198" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93198"><a href="https://www.upstreamworks.com/platforms/webex-contact-center-2">Webex Contact Center</a></li>
+<li id="menu-item-81496" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-81496"><a href="https://www.upstreamworks.com/platforms/healthcare">Healthcare Solutions</a></li>
+<li id="menu-item-79692" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-79692"><a href="https://www.upstreamworks.com/platforms/security-and-compliance">Security &#038; Compliance</a></li>
+</ul></div></nav><nav class="link"><h3>Resources</h3><div class="menu-resources-container"><ul id="menu-resources" class="menu"><li id="menu-item-76112" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76112"><a href="https://www.upstreamworks.com/all-resources/">All Resources</a></li>
+<li id="menu-item-1310" class="menu-item menu-item-type-taxonomy menu-item-object-category menu-item-1310"><a href="https://www.upstreamworks.com/category/blog/">Blog</a></li>
+<li id="menu-item-93930" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-93930"><a href="https://www.upstreamworks.com/customer-stories/">Customer Stories</a></li>
+<li id="menu-item-81418" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-81418"><a href="https://www.upstreamworks.com/demos-and-videos">Demos &#038; Videos</a></li>
+<li id="menu-item-82600" class="menu-item menu-item-type-taxonomy menu-item-object-category menu-item-82600"><a href="https://www.upstreamworks.com/category/webinars">Webinars</a></li>
+<li id="menu-item-7137" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-7137"><a href="https://www.upstreamworks.com/contact-center-glossary/">Glossary</a></li>
+<li id="menu-item-8693" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-8693"><a href="https://www.upstreamworks.com/podcasts/">Podcasts</a></li>
+<li id="menu-item-1211" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1211"><a href="https://www.upstreamworks.com/whitepapers/">Reporting &#038; Insights</a></li>
+</ul></div></nav><nav class="link"><h3>Support</h3><div class="menu-support-container"><ul id="menu-support" class="menu"><li id="menu-item-76117" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76117"><a href="https://www.upstreamworks.com/support/support-and-services/">Support &#038; Services</a></li>
+<li id="menu-item-76078" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76078"><a href="https://www.upstreamworks.com/support/product-activation">Subscription Agreement &#038; Activation</a></li>
+<li id="menu-item-72612" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-72612"><a href="https://www.upstreamworks.com/support/professional-services/">Professional Services</a></li>
+<li id="menu-item-83373" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-83373"><a href="https://www.upstreamworks.com/support/training">Training</a></li>
+</ul></div></nav><nav class="link"><h3>Partners</h3><div class="menu-partners-container"><ul id="menu-partners" class="menu"><li id="menu-item-76123" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76123"><a href="https://www.upstreamworks.com/all-partners/">All Partners</a></li>
+<li id="menu-item-1770" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-1770"><a href="https://www.upstreamworks.com/partners/become-a-partner/">Become A Partner</a></li>
+</ul></div></nav><nav class="link"><h3>About Us</h3><div class="menu-about-us-container"><ul id="menu-about-us" class="menu"><li id="menu-item-76129" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76129"><a href="https://www.upstreamworks.com/company/">Company</a></li>
+<li id="menu-item-7956" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-7956"><a href="https://www.upstreamworks.com/about/contact-us/">Contact us</a></li>
+<li id="menu-item-4487" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4487"><a href="https://www.upstreamworks.com/awards/">Awards</a></li>
+<li id="menu-item-78810" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-78810"><a href="https://www.upstreamworks.com/leadership/">Leadership</a></li>
+<li id="menu-item-1311" class="menu-item menu-item-type-taxonomy menu-item-object-category menu-item-1311"><a href="https://www.upstreamworks.com/category/news/">News</a></li>
+<li id="menu-item-82338" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-82338"><a href="https://www.upstreamworks.com/careers/">Careers</a></li>
+<li id="menu-item-80149" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-privacy-policy menu-item-80149"><a rel="privacy-policy" href="https://www.upstreamworks.com/privacy-statement/">Privacy Statement</a></li>
+</ul></div></nav>					 
+        </div>
+        <!-- BEGIN: footer area -->
+        
+        <!-- BEGIN: copyright area -->
+        <div class="copyrightArea">
+			
+			<aside class="copyright">
+			
+				
+<p>© 2026 Upstream Works All Rights Reserved.</p>
+
+
+				
+				<div class="menu-about-us-container"><ul id="menu-about-us-1" class="menu"><li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-76129"><a href="https://www.upstreamworks.com/company/">Company</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-7956"><a href="https://www.upstreamworks.com/about/contact-us/">Contact us</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-4487"><a href="https://www.upstreamworks.com/awards/">Awards</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-78810"><a href="https://www.upstreamworks.com/leadership/">Leadership</a></li>
+<li class="menu-item menu-item-type-taxonomy menu-item-object-category menu-item-1311"><a href="https://www.upstreamworks.com/category/news/">News</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-82338"><a href="https://www.upstreamworks.com/careers/">Careers</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-privacy-policy menu-item-80149"><a rel="privacy-policy" href="https://www.upstreamworks.com/privacy-statement/">Privacy Statement</a></li>
+</ul></div>			
+			</aside>
+			
+			<nav class="social">
+				<ul>
+					<li><a class="fa-brands fa-linkedin" target="_blank" href="https://www.linkedin.com/company/upstream-works-software"></a></li>
+					
+					<li><a class="fa-brands fa-square-facebook" target="_blank" href="https://www.facebook.com/UpstreamWorks/"></a></li>
+					
+                    <li><a class="fa-brands fa-square-bluesky" target="_blank" href="https://bsky.app/profile/upstreamworks.bsky.social"></a></li>
+				</ul>
+			
+			</nav>
+       		
+        </div>
+        <!-- BEGIN: copyright area -->
+		
+		 </div> 
+    </footer>
+    <!-- END: footer wrapper -->
+    
+</div>
+<!-- END: wrapper -->
+
+ <script type="speculationrules">
+{"prefetch":[{"source":"document","where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":["/wp-*.php","/wp-admin/*","/wp-content/uploads/*","/wp-content/*","/wp-content/plugins/*","/wp-content/themes/upstreamworks/*","/*\\?(.+)"]}},{"not":{"selector_matches":"a[rel~=\"nofollow\"]"}},{"not":{"selector_matches":".no-prefetch, .no-prefetch a"}}]},"eagerness":"conservative"}]}
+</script>
+                <!--facebook like and share js -->
+                <div id="fb-root"></div>
+                <script>
+                    (function(d, s, id) {
+                        var js, fjs = d.getElementsByTagName(s)[0];
+                        if (d.getElementById(id)) return;
+                        js = d.createElement(s);
+                        js.id = id;
+                        js.src = "https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v3.2";
+                        fjs.parentNode.insertBefore(js, fjs);
+                    }(document, 'script', 'facebook-jssdk'));
+                </script>
+                <script>
+window.addEventListener('sfsi_functions_loaded', function() {
+    if (typeof sfsi_responsive_toggle == 'function') {
+        sfsi_responsive_toggle(0);
+        // console.log('sfsi_responsive_toggle');
+
+    }
+})
+</script>
+    <script>
+        window.addEventListener('sfsi_functions_loaded', function () {
+            if (typeof sfsi_plugin_version == 'function') {
+                sfsi_plugin_version(2.77);
+            }
+        });
+
+        function sfsi_processfurther(ref) {
+            var feed_id = 'VUZtSkdndnVlN2lkNnpHZWEveWF0eE9YaVI4Vnp3clhEVnJrMnNWNnEwSlplOTVEcnVrR3htWk9YaU11VE41UkRkRkJiYm1HbWt6bEhqY3Vyci9kQkZNVlNIUEluY1QvdUlKSnRScWRLZktGMGpOejFTUCtGRHBLQ0pwelRCai98aXdpTTNBWGVZaFVzMVVjWDJScVRJdVVNNmpGb3VJbDJSWWw0WlROUVF4TT0=';
+            var feedtype = 8;
+            var email = jQuery(ref).find('input[name="email"]').val();
+            var filter = /^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+            if ((email != "Enter your email") && (filter.test(email))) {
+                if (feedtype == "8") {
+                    var url = "https://api.follow.it/subscription-form/" + feed_id + "/" + feedtype;
+                    window.open(url, "popupwindow", "scrollbars=yes,width=1080,height=760");
+                    return true;
+                }
+            } else {
+                alert("Please enter email address");
+                jQuery(ref).find('input[name="email"]').focus();
+                return false;
+            }
+        }
+    </script>
+    <style type="text/css" aria-selected="true">
+        .sfsi_subscribe_Popinner {
+             width: 100% !important;
+
+            height: auto !important;
+
+         padding: 18px 0px !important;
+
+            background-color: #ffffff !important;
+        }
+
+        .sfsi_subscribe_Popinner form {
+            margin: 0 20px !important;
+        }
+
+        .sfsi_subscribe_Popinner h5 {
+            font-family: Helvetica,Arial,sans-serif !important;
+
+             font-weight: bold !important;   color:#000000 !important; font-size: 16px !important;   text-align:center !important; margin: 0 0 10px !important;
+            padding: 0 !important;
+        }
+
+        .sfsi_subscription_form_field {
+            margin: 5px 0 !important;
+            width: 100% !important;
+            display: inline-flex;
+            display: -webkit-inline-flex;
+        }
+
+        .sfsi_subscription_form_field input {
+            width: 100% !important;
+            padding: 10px 0px !important;
+        }
+
+        .sfsi_subscribe_Popinner input[type=email] {
+         font-family: Helvetica,Arial,sans-serif !important;   font-style:normal !important;   font-size:14px !important; text-align: center !important;        }
+
+        .sfsi_subscribe_Popinner input[type=email]::-webkit-input-placeholder {
+
+         font-family: Helvetica,Arial,sans-serif !important;   font-style:normal !important;  font-size: 14px !important;   text-align:center !important;        }
+
+        .sfsi_subscribe_Popinner input[type=email]:-moz-placeholder {
+            /* Firefox 18- */
+         font-family: Helvetica,Arial,sans-serif !important;   font-style:normal !important;   font-size: 14px !important;   text-align:center !important;
+        }
+
+        .sfsi_subscribe_Popinner input[type=email]::-moz-placeholder {
+            /* Firefox 19+ */
+         font-family: Helvetica,Arial,sans-serif !important;   font-style: normal !important;
+              font-size: 14px !important;   text-align:center !important;        }
+
+        .sfsi_subscribe_Popinner input[type=email]:-ms-input-placeholder {
+
+            font-family: Helvetica,Arial,sans-serif !important;  font-style:normal !important;   font-size:14px !important;
+         text-align: center !important;        }
+
+        .sfsi_subscribe_Popinner input[type=submit] {
+
+         font-family: Helvetica,Arial,sans-serif !important;   font-weight: bold !important;   color:#000000 !important; font-size: 16px !important;   text-align:center !important; background-color: #dedede !important;        }
+
+                .sfsi_shortcode_container {
+            float: left;
+        }
+
+        .sfsi_shortcode_container .norm_row .sfsi_wDiv {
+            position: relative !important;
+        }
+
+        .sfsi_shortcode_container .sfsi_holders {
+            display: none;
+        }
+
+            </style>
+
+    
+<!-- GTM Container placement set to footer -->
+<!-- Google Tag Manager (noscript) -->
+				<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MVPP9WQR" height="0" width="0" style="display:none;visibility:hidden" aria-hidden="true"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->			<script>
+				const lazyloadRunObserver = () => {
+					const lazyloadBackgrounds = document.querySelectorAll( `.e-con.e-parent:not(.e-lazyloaded)` );
+					const lazyloadBackgroundObserver = new IntersectionObserver( ( entries ) => {
+						entries.forEach( ( entry ) => {
+							if ( entry.isIntersecting ) {
+								let lazyloadBackground = entry.target;
+								if( lazyloadBackground ) {
+									lazyloadBackground.classList.add( 'e-lazyloaded' );
+								}
+								lazyloadBackgroundObserver.unobserve( entry.target );
+							}
+						});
+					}, { rootMargin: '200px 0px 200px 0px' } );
+					lazyloadBackgrounds.forEach( ( lazyloadBackground ) => {
+						lazyloadBackgroundObserver.observe( lazyloadBackground );
+					} );
+				};
+				const events = [
+					'DOMContentLoaded',
+					'elementor/lazyload/observe',
+				];
+				events.forEach( ( event ) => {
+					document.addEventListener( event, lazyloadRunObserver );
+				} );
+			</script>
+			<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/ultimate-social-media-icons/js/shuffle/modernizr.custom.min.js?ver=0d66de6863ec463ef093afdd2deffd3f" id="SFSIjqueryModernizr-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/ultimate-social-media-icons/js/shuffle/jquery.shuffle.min.js?ver=0d66de6863ec463ef093afdd2deffd3f" id="SFSIjqueryShuffle-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/ultimate-social-media-icons/js/shuffle/random-shuffle-min.js?ver=0d66de6863ec463ef093afdd2deffd3f" id="SFSIjqueryrandom-shuffle-js"></script>
+<script type="text/javascript" id="SFSICustomJs-js-extra">
+/* <![CDATA[ */
+var sfsi_icon_ajax_object = {"nonce":"fcfc64ef8f","ajax_url":"https://www.upstreamworks.com/wp-admin/admin-ajax.php","plugin_url":"https://www.upstreamworks.com/wp-content/plugins/ultimate-social-media-icons/"};
+//# sourceURL=SFSICustomJs-js-extra
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/ultimate-social-media-icons/js/custom.js?ver=2.9.7" id="SFSICustomJs-js"></script>
+<script type="text/javascript" id="rocket-browser-checker-js-after">
+/* <![CDATA[ */
+"use strict";var _createClass=function(){function defineProperties(target,props){for(var i=0;i<props.length;i++){var descriptor=props[i];descriptor.enumerable=descriptor.enumerable||!1,descriptor.configurable=!0,"value"in descriptor&&(descriptor.writable=!0),Object.defineProperty(target,descriptor.key,descriptor)}}return function(Constructor,protoProps,staticProps){return protoProps&&defineProperties(Constructor.prototype,protoProps),staticProps&&defineProperties(Constructor,staticProps),Constructor}}();function _classCallCheck(instance,Constructor){if(!(instance instanceof Constructor))throw new TypeError("Cannot call a class as a function")}var RocketBrowserCompatibilityChecker=function(){function RocketBrowserCompatibilityChecker(options){_classCallCheck(this,RocketBrowserCompatibilityChecker),this.passiveSupported=!1,this._checkPassiveOption(this),this.options=!!this.passiveSupported&&options}return _createClass(RocketBrowserCompatibilityChecker,[{key:"_checkPassiveOption",value:function(self){try{var options={get passive(){return!(self.passiveSupported=!0)}};window.addEventListener("test",null,options),window.removeEventListener("test",null,options)}catch(err){self.passiveSupported=!1}}},{key:"initRequestIdleCallback",value:function(){!1 in window&&(window.requestIdleCallback=function(cb){var start=Date.now();return setTimeout(function(){cb({didTimeout:!1,timeRemaining:function(){return Math.max(0,50-(Date.now()-start))}})},1)}),!1 in window&&(window.cancelIdleCallback=function(id){return clearTimeout(id)})}},{key:"isDataSaverModeOn",value:function(){return"connection"in navigator&&!0===navigator.connection.saveData}},{key:"supportsLinkPrefetch",value:function(){var elem=document.createElement("link");return elem.relList&&elem.relList.supports&&elem.relList.supports("prefetch")&&window.IntersectionObserver&&"isIntersecting"in IntersectionObserverEntry.prototype}},{key:"isSlowConnection",value:function(){return"connection"in navigator&&"effectiveType"in navigator.connection&&("2g"===navigator.connection.effectiveType||"slow-2g"===navigator.connection.effectiveType)}}]),RocketBrowserCompatibilityChecker}();
+//# sourceURL=rocket-browser-checker-js-after
+/* ]]> */
+</script>
+<script type="text/javascript" id="rocket-preload-links-js-extra">
+/* <![CDATA[ */
+var RocketPreloadLinksConfig = {"excludeUris":"/demos-and-videos/|/all-platforms/|/webinars/advanced-enterprise-ready-solutions-on-cisco-finesse-webex/|/about/contact-us/|/(?:.+/)?feed(?:/(?:.+/?)?)?$|/(?:.+/)?embed/|/(index.php/)?(.*)wp-json(/.*|$)|/refer/|/go/|/recommend/|/recommends/","usesTrailingSlash":"","imageExt":"jpg|jpeg|gif|png|tiff|bmp|webp|avif|pdf|doc|docx|xls|xlsx|php","fileExt":"jpg|jpeg|gif|png|tiff|bmp|webp|avif|pdf|doc|docx|xls|xlsx|php|html|htm","siteUrl":"https://www.upstreamworks.com","onHoverDelay":"100","rateThrottle":"3"};
+//# sourceURL=rocket-preload-links-js-extra
+/* ]]> */
+</script>
+<script type="text/javascript" id="rocket-preload-links-js-after">
+/* <![CDATA[ */
+(function() {
+"use strict";var r="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(e){return typeof e}:function(e){return e&&"function"==typeof Symbol&&e.constructor===Symbol&&e!==Symbol.prototype?"symbol":typeof e},e=function(){function i(e,t){for(var n=0;n<t.length;n++){var i=t[n];i.enumerable=i.enumerable||!1,i.configurable=!0,"value"in i&&(i.writable=!0),Object.defineProperty(e,i.key,i)}}return function(e,t,n){return t&&i(e.prototype,t),n&&i(e,n),e}}();function i(e,t){if(!(e instanceof t))throw new TypeError("Cannot call a class as a function")}var t=function(){function n(e,t){i(this,n),this.browser=e,this.config=t,this.options=this.browser.options,this.prefetched=new Set,this.eventTime=null,this.threshold=1111,this.numOnHover=0}return e(n,[{key:"init",value:function(){!this.browser.supportsLinkPrefetch()||this.browser.isDataSaverModeOn()||this.browser.isSlowConnection()||(this.regex={excludeUris:RegExp(this.config.excludeUris,"i"),images:RegExp(".("+this.config.imageExt+")$","i"),fileExt:RegExp(".("+this.config.fileExt+")$","i")},this._initListeners(this))}},{key:"_initListeners",value:function(e){-1<this.config.onHoverDelay&&document.addEventListener("mouseover",e.listener.bind(e),e.listenerOptions),document.addEventListener("mousedown",e.listener.bind(e),e.listenerOptions),document.addEventListener("touchstart",e.listener.bind(e),e.listenerOptions)}},{key:"listener",value:function(e){var t=e.target.closest("a"),n=this._prepareUrl(t);if(null!==n)switch(e.type){case"mousedown":case"touchstart":this._addPrefetchLink(n);break;case"mouseover":this._earlyPrefetch(t,n,"mouseout")}}},{key:"_earlyPrefetch",value:function(t,e,n){var i=this,r=setTimeout(function(){if(r=null,0===i.numOnHover)setTimeout(function(){return i.numOnHover=0},1e3);else if(i.numOnHover>i.config.rateThrottle)return;i.numOnHover++,i._addPrefetchLink(e)},this.config.onHoverDelay);t.addEventListener(n,function e(){t.removeEventListener(n,e,{passive:!0}),null!==r&&(clearTimeout(r),r=null)},{passive:!0})}},{key:"_addPrefetchLink",value:function(i){return this.prefetched.add(i.href),new Promise(function(e,t){var n=document.createElement("link");n.rel="prefetch",n.href=i.href,n.onload=e,n.onerror=t,document.head.appendChild(n)}).catch(function(){})}},{key:"_prepareUrl",value:function(e){if(null===e||"object"!==(void 0===e?"undefined":r(e))||!1 in e||-1===["http:","https:"].indexOf(e.protocol))return null;var t=e.href.substring(0,this.config.siteUrl.length),n=this._getPathname(e.href,t),i={original:e.href,protocol:e.protocol,origin:t,pathname:n,href:t+n};return this._isLinkOk(i)?i:null}},{key:"_getPathname",value:function(e,t){var n=t?e.substring(this.config.siteUrl.length):e;return n.startsWith("/")||(n="/"+n),this._shouldAddTrailingSlash(n)?n+"/":n}},{key:"_shouldAddTrailingSlash",value:function(e){return this.config.usesTrailingSlash&&!e.endsWith("/")&&!this.regex.fileExt.test(e)}},{key:"_isLinkOk",value:function(e){return null!==e&&"object"===(void 0===e?"undefined":r(e))&&(!this.prefetched.has(e.href)&&e.origin===this.config.siteUrl&&-1===e.href.indexOf("?")&&-1===e.href.indexOf("#")&&!this.regex.excludeUris.test(e.href)&&!this.regex.images.test(e.href))}}],[{key:"run",value:function(){"undefined"!=typeof RocketPreloadLinksConfig&&new n(new RocketBrowserCompatibilityChecker({capture:!0,passive:!0}),RocketPreloadLinksConfig).init()}}]),n}();t.run();
+}());
+
+//# sourceURL=rocket-preload-links-js-after
+/* ]]> */
+</script>
+<script type="text/javascript" id="rocket_lazyload_css-js-extra">
+/* <![CDATA[ */
+var rocket_lazyload_css_data = {"threshold":"300"};
+//# sourceURL=rocket_lazyload_css-js-extra
+/* ]]> */
+</script>
+<script type="text/javascript" id="rocket_lazyload_css-js-after">
+/* <![CDATA[ */
+!function o(n,c,a){function u(t,e){if(!c[t]){if(!n[t]){var r="function"==typeof require&&require;if(!e&&r)return r(t,!0);if(s)return s(t,!0);throw(e=new Error("Cannot find module '"+t+"'")).code="MODULE_NOT_FOUND",e}r=c[t]={exports:{}},n[t][0].call(r.exports,function(e){return u(n[t][1][e]||e)},r,r.exports,o,n,c,a)}return c[t].exports}for(var s="function"==typeof require&&require,e=0;e<a.length;e++)u(a[e]);return u}({1:[function(e,t,r){"use strict";{const c="undefined"==typeof rocket_pairs?[]:rocket_pairs,a=(("undefined"==typeof rocket_excluded_pairs?[]:rocket_excluded_pairs).map(t=>{var e=t.selector;document.querySelectorAll(e).forEach(e=>{e.setAttribute("data-rocket-lazy-bg-"+t.hash,"excluded")})}),document.querySelector("#wpr-lazyload-bg-container"));var o=rocket_lazyload_css_data.threshold||300;const u=new IntersectionObserver(e=>{e.forEach(t=>{t.isIntersecting&&c.filter(e=>t.target.matches(e.selector)).map(t=>{var e;t&&((e=document.createElement("style")).textContent=t.style,a.insertAdjacentElement("afterend",e),t.elements.forEach(e=>{u.unobserve(e),e.setAttribute("data-rocket-lazy-bg-"+t.hash,"loaded")}))})})},{rootMargin:o+"px"});function n(){0<(0<arguments.length&&void 0!==arguments[0]?arguments[0]:[]).length&&c.forEach(t=>{try{document.querySelectorAll(t.selector).forEach(e=>{"loaded"!==e.getAttribute("data-rocket-lazy-bg-"+t.hash)&&"excluded"!==e.getAttribute("data-rocket-lazy-bg-"+t.hash)&&(u.observe(e),(t.elements||=[]).push(e))})}catch(e){console.error(e)}})}n(),function(){const r=window.MutationObserver;return function(e,t){if(e&&1===e.nodeType)return(t=new r(t)).observe(e,{attributes:!0,childList:!0,subtree:!0}),t}}()(document.querySelector("body"),n)}},{}]},{},[1]);
+//# sourceURL=rocket_lazyload_css-js-after
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/page-links-to/dist/new-tab.js?ver=3.3.7" id="page-links-to-js"></script>
+<script type="text/javascript" id="eael-general-js-extra">
+/* <![CDATA[ */
+var localize = {"ajaxurl":"https://www.upstreamworks.com/wp-admin/admin-ajax.php","nonce":"310f2ab67d","i18n":{"added":"Added ","compare":"Compare","loading":"Loading..."},"eael_translate_text":{"required_text":"is a required field","invalid_text":"Invalid","billing_text":"Billing","shipping_text":"Shipping","fg_mfp_counter_text":"of"},"page_permalink":"https://www.upstreamworks.com/cx-trends-2026-3-ai-driven-shifts-reshaping-contact-center-experiences","cart_redirectition":"","cart_page_url":"","el_breakpoints":{"mobile":{"label":"Mobile Portrait","value":767,"default_value":767,"direction":"max","is_enabled":true},"mobile_extra":{"label":"Mobile Landscape","value":880,"default_value":880,"direction":"max","is_enabled":false},"tablet":{"label":"Tablet Portrait","value":1024,"default_value":1024,"direction":"max","is_enabled":true},"tablet_extra":{"label":"Tablet Landscape","value":1200,"default_value":1200,"direction":"max","is_enabled":false},"laptop":{"label":"Laptop","value":1366,"default_value":1366,"direction":"max","is_enabled":false},"widescreen":{"label":"Widescreen","value":2400,"default_value":2400,"direction":"min","is_enabled":true}},"ParticleThemesData":{"default":"{\"particles\":{\"number\":{\"value\":160,\"density\":{\"enable\":true,\"value_area\":800}},\"color\":{\"value\":\"#ffffff\"},\"shape\":{\"type\":\"circle\",\"stroke\":{\"width\":0,\"color\":\"#000000\"},\"polygon\":{\"nb_sides\":5},\"image\":{\"src\":\"img/github.svg\",\"width\":100,\"height\":100}},\"opacity\":{\"value\":0.5,\"random\":false,\"anim\":{\"enable\":false,\"speed\":1,\"opacity_min\":0.1,\"sync\":false}},\"size\":{\"value\":3,\"random\":true,\"anim\":{\"enable\":false,\"speed\":40,\"size_min\":0.1,\"sync\":false}},\"line_linked\":{\"enable\":true,\"distance\":150,\"color\":\"#ffffff\",\"opacity\":0.4,\"width\":1},\"move\":{\"enable\":true,\"speed\":6,\"direction\":\"none\",\"random\":false,\"straight\":false,\"out_mode\":\"out\",\"bounce\":false,\"attract\":{\"enable\":false,\"rotateX\":600,\"rotateY\":1200}}},\"interactivity\":{\"detect_on\":\"canvas\",\"events\":{\"onhover\":{\"enable\":true,\"mode\":\"repulse\"},\"onclick\":{\"enable\":true,\"mode\":\"push\"},\"resize\":true},\"modes\":{\"grab\":{\"distance\":400,\"line_linked\":{\"opacity\":1}},\"bubble\":{\"distance\":400,\"size\":40,\"duration\":2,\"opacity\":8,\"speed\":3},\"repulse\":{\"distance\":200,\"duration\":0.4},\"push\":{\"particles_nb\":4},\"remove\":{\"particles_nb\":2}}},\"retina_detect\":true}","nasa":"{\"particles\":{\"number\":{\"value\":250,\"density\":{\"enable\":true,\"value_area\":800}},\"color\":{\"value\":\"#ffffff\"},\"shape\":{\"type\":\"circle\",\"stroke\":{\"width\":0,\"color\":\"#000000\"},\"polygon\":{\"nb_sides\":5},\"image\":{\"src\":\"img/github.svg\",\"width\":100,\"height\":100}},\"opacity\":{\"value\":1,\"random\":true,\"anim\":{\"enable\":true,\"speed\":1,\"opacity_min\":0,\"sync\":false}},\"size\":{\"value\":3,\"random\":true,\"anim\":{\"enable\":false,\"speed\":4,\"size_min\":0.3,\"sync\":false}},\"line_linked\":{\"enable\":false,\"distance\":150,\"color\":\"#ffffff\",\"opacity\":0.4,\"width\":1},\"move\":{\"enable\":true,\"speed\":1,\"direction\":\"none\",\"random\":true,\"straight\":false,\"out_mode\":\"out\",\"bounce\":false,\"attract\":{\"enable\":false,\"rotateX\":600,\"rotateY\":600}}},\"interactivity\":{\"detect_on\":\"canvas\",\"events\":{\"onhover\":{\"enable\":true,\"mode\":\"bubble\"},\"onclick\":{\"enable\":true,\"mode\":\"repulse\"},\"resize\":true},\"modes\":{\"grab\":{\"distance\":400,\"line_linked\":{\"opacity\":1}},\"bubble\":{\"distance\":250,\"size\":0,\"duration\":2,\"opacity\":0,\"speed\":3},\"repulse\":{\"distance\":400,\"duration\":0.4},\"push\":{\"particles_nb\":4},\"remove\":{\"particles_nb\":2}}},\"retina_detect\":true}","bubble":"{\"particles\":{\"number\":{\"value\":15,\"density\":{\"enable\":true,\"value_area\":800}},\"color\":{\"value\":\"#1b1e34\"},\"shape\":{\"type\":\"polygon\",\"stroke\":{\"width\":0,\"color\":\"#000\"},\"polygon\":{\"nb_sides\":6},\"image\":{\"src\":\"img/github.svg\",\"width\":100,\"height\":100}},\"opacity\":{\"value\":0.3,\"random\":true,\"anim\":{\"enable\":false,\"speed\":1,\"opacity_min\":0.1,\"sync\":false}},\"size\":{\"value\":50,\"random\":false,\"anim\":{\"enable\":true,\"speed\":10,\"size_min\":40,\"sync\":false}},\"line_linked\":{\"enable\":false,\"distance\":200,\"color\":\"#ffffff\",\"opacity\":1,\"width\":2},\"move\":{\"enable\":true,\"speed\":8,\"direction\":\"none\",\"random\":false,\"straight\":false,\"out_mode\":\"out\",\"bounce\":false,\"attract\":{\"enable\":false,\"rotateX\":600,\"rotateY\":1200}}},\"interactivity\":{\"detect_on\":\"canvas\",\"events\":{\"onhover\":{\"enable\":false,\"mode\":\"grab\"},\"onclick\":{\"enable\":false,\"mode\":\"push\"},\"resize\":true},\"modes\":{\"grab\":{\"distance\":400,\"line_linked\":{\"opacity\":1}},\"bubble\":{\"distance\":400,\"size\":40,\"duration\":2,\"opacity\":8,\"speed\":3},\"repulse\":{\"distance\":200,\"duration\":0.4},\"push\":{\"particles_nb\":4},\"remove\":{\"particles_nb\":2}}},\"retina_detect\":true}","snow":"{\"particles\":{\"number\":{\"value\":450,\"density\":{\"enable\":true,\"value_area\":800}},\"color\":{\"value\":\"#fff\"},\"shape\":{\"type\":\"circle\",\"stroke\":{\"width\":0,\"color\":\"#000000\"},\"polygon\":{\"nb_sides\":5},\"image\":{\"src\":\"img/github.svg\",\"width\":100,\"height\":100}},\"opacity\":{\"value\":0.5,\"random\":true,\"anim\":{\"enable\":false,\"speed\":1,\"opacity_min\":0.1,\"sync\":false}},\"size\":{\"value\":5,\"random\":true,\"anim\":{\"enable\":false,\"speed\":40,\"size_min\":0.1,\"sync\":false}},\"line_linked\":{\"enable\":false,\"distance\":500,\"color\":\"#ffffff\",\"opacity\":0.4,\"width\":2},\"move\":{\"enable\":true,\"speed\":6,\"direction\":\"bottom\",\"random\":false,\"straight\":false,\"out_mode\":\"out\",\"bounce\":false,\"attract\":{\"enable\":false,\"rotateX\":600,\"rotateY\":1200}}},\"interactivity\":{\"detect_on\":\"canvas\",\"events\":{\"onhover\":{\"enable\":true,\"mode\":\"bubble\"},\"onclick\":{\"enable\":true,\"mode\":\"repulse\"},\"resize\":true},\"modes\":{\"grab\":{\"distance\":400,\"line_linked\":{\"opacity\":0.5}},\"bubble\":{\"distance\":400,\"size\":4,\"duration\":0.3,\"opacity\":1,\"speed\":3},\"repulse\":{\"distance\":200,\"duration\":0.4},\"push\":{\"particles_nb\":4},\"remove\":{\"particles_nb\":2}}},\"retina_detect\":true}","nyan_cat":"{\"particles\":{\"number\":{\"value\":150,\"density\":{\"enable\":false,\"value_area\":800}},\"color\":{\"value\":\"#ffffff\"},\"shape\":{\"type\":\"star\",\"stroke\":{\"width\":0,\"color\":\"#000000\"},\"polygon\":{\"nb_sides\":5},\"image\":{\"src\":\"http://wiki.lexisnexis.com/academic/images/f/fb/Itunes_podcast_icon_300.jpg\",\"width\":100,\"height\":100}},\"opacity\":{\"value\":0.5,\"random\":false,\"anim\":{\"enable\":false,\"speed\":1,\"opacity_min\":0.1,\"sync\":false}},\"size\":{\"value\":4,\"random\":true,\"anim\":{\"enable\":false,\"speed\":40,\"size_min\":0.1,\"sync\":false}},\"line_linked\":{\"enable\":false,\"distance\":150,\"color\":\"#ffffff\",\"opacity\":0.4,\"width\":1},\"move\":{\"enable\":true,\"speed\":14,\"direction\":\"left\",\"random\":false,\"straight\":true,\"out_mode\":\"out\",\"bounce\":false,\"attract\":{\"enable\":false,\"rotateX\":600,\"rotateY\":1200}}},\"interactivity\":{\"detect_on\":\"canvas\",\"events\":{\"onhover\":{\"enable\":false,\"mode\":\"grab\"},\"onclick\":{\"enable\":true,\"mode\":\"repulse\"},\"resize\":true},\"modes\":{\"grab\":{\"distance\":200,\"line_linked\":{\"opacity\":1}},\"bubble\":{\"distance\":400,\"size\":40,\"duration\":2,\"opacity\":8,\"speed\":3},\"repulse\":{\"distance\":200,\"duration\":0.4},\"push\":{\"particles_nb\":4},\"remove\":{\"particles_nb\":2}}},\"retina_detect\":true}"},"eael_login_nonce":"72404c3d02","eael_register_nonce":"b7eb1a3efe","eael_lostpassword_nonce":"d0db82cc77","eael_resetpassword_nonce":"7b195b8264"};
+//# sourceURL=eael-general-js-extra
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/essential-addons-for-elementor-lite/assets/front-end/js/view/general.min.js?ver=6.5.8" id="eael-general-js"></script>
+<script type="text/javascript" src="https://www.upstreamworks.com/wp-content/plugins/wp-rocket/assets/js/heartbeat.js?ver=3.20.3" id="heartbeat-js"></script>
+<script></script><script>window.lazyLoadOptions=[{elements_selector:"img[data-lazy-src],.rocket-lazyload,iframe[data-lazy-src]",data_src:"lazy-src",data_srcset:"lazy-srcset",data_sizes:"lazy-sizes",class_loading:"lazyloading",class_loaded:"lazyloaded",threshold:300,callback_loaded:function(element){if(element.tagName==="IFRAME"&&element.dataset.rocketLazyload=="fitvidscompatible"){if(element.classList.contains("lazyloaded")){if(typeof window.jQuery!="undefined"){if(jQuery.fn.fitVids){jQuery(element).parent().fitVids()}}}}}},{elements_selector:".rocket-lazyload",data_src:"lazy-src",data_srcset:"lazy-srcset",data_sizes:"lazy-sizes",class_loading:"lazyloading",class_loaded:"lazyloaded",threshold:300,}];window.addEventListener('LazyLoad::Initialized',function(e){var lazyLoadInstance=e.detail.instance;if(window.MutationObserver){var observer=new MutationObserver(function(mutations){var image_count=0;var iframe_count=0;var rocketlazy_count=0;mutations.forEach(function(mutation){for(var i=0;i<mutation.addedNodes.length;i++){if(typeof mutation.addedNodes[i].getElementsByTagName!=='function'){continue}
+if(typeof mutation.addedNodes[i].getElementsByClassName!=='function'){continue}
+images=mutation.addedNodes[i].getElementsByTagName('img');is_image=mutation.addedNodes[i].tagName=="IMG";iframes=mutation.addedNodes[i].getElementsByTagName('iframe');is_iframe=mutation.addedNodes[i].tagName=="IFRAME";rocket_lazy=mutation.addedNodes[i].getElementsByClassName('rocket-lazyload');image_count+=images.length;iframe_count+=iframes.length;rocketlazy_count+=rocket_lazy.length;if(is_image){image_count+=1}
+if(is_iframe){iframe_count+=1}}});if(image_count>0||iframe_count>0||rocketlazy_count>0){lazyLoadInstance.update()}});var b=document.getElementsByTagName("body")[0];var config={childList:!0,subtree:!0};observer.observe(b,config)}},!1)</script><script data-no-minify="1" async src="https://www.upstreamworks.com/wp-content/plugins/wp-rocket/assets/js/lazyload/17.8.3/lazyload.min.js"></script><script>function lazyLoadThumb(e,alt,l){var t='<img fetchpriority="high" data-lazy-src="https://i.ytimg.com/vi/ID/hqdefault.jpg" alt="" width="480" height="360"><noscript><img src="https://i.ytimg.com/vi/ID/hqdefault.jpg" alt="" width="480" height="360"></noscript>',a='<button class="play" aria-label="Play Youtube video"></button>';if(l){t=t.replace('data-lazy-','');t=t.replace('loading="lazy"','');t=t.replace(/<noscript>.*?<\/noscript>/g,'');}t=t.replace('alt=""','alt="'+alt+'"');return t.replace("ID",e)+a}function lazyLoadYoutubeIframe(){var e=document.createElement("iframe"),t="ID?autoplay=1";t+=0===this.parentNode.dataset.query.length?"":"&"+this.parentNode.dataset.query;e.setAttribute("src",t.replace("ID",this.parentNode.dataset.src)),e.setAttribute("frameborder","0"),e.setAttribute("allowfullscreen","1"),e.setAttribute("allow","accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"),this.parentNode.parentNode.replaceChild(e,this.parentNode)}document.addEventListener("DOMContentLoaded",function(){var exclusions=[];var e,t,p,u,l,a=document.getElementsByClassName("rll-youtube-player");for(t=0;t<a.length;t++)(e=document.createElement("div")),(u='https://i.ytimg.com/vi/ID/hqdefault.jpg'),(u=u.replace('ID',a[t].dataset.id)),(l=exclusions.some(exclusion=>u.includes(exclusion))),e.setAttribute("data-id",a[t].dataset.id),e.setAttribute("data-query",a[t].dataset.query),e.setAttribute("data-src",a[t].dataset.src),(e.innerHTML=lazyLoadThumb(a[t].dataset.id,a[t].dataset.alt,l)),a[t].appendChild(e),(p=e.querySelector(".play")),(p.onclick=lazyLoadYoutubeIframe)});</script><!-- Netresults -->
+<script id="__maSrc" type="text/javascript" data-pid="18624"> (function(c,a,p,s) { p=c.createElement(a); p.type='text/java'+a; p.setAttribute('crossorigin', 'anonymous'); p.src='https://beacon.cdnma.com/apps/18624/capture.js'; s=c.getElementsByTagName(a)[0];s.parentNode.insertBefore(p,s); }(document,'script')); </script>
+<!-- END: wrapper -->
+
+ <script src="https://www.upstreamworks.com/wp-content/themes/upstreamworks/javascripts/eventsadj.js"></script> 	
+
+<!-- Upstream Works Chat -->
+<script>
+
+    (function(win, doc, s, host, file, ts, obj, id, elem, sib) {
+        win[obj] = win[obj] || (function() { (win[obj].queue = win[obj].queue || []).push(arguments); });
+        elem = doc.createElement(s);
+        elem.async = 1;
+        elem.src = host + file + "?" + ts;
+        elem.id = id;
+        elem.setAttribute('data-host', host);
+        sib = doc.getElementsByTagName(s)[0];
+        sib.parentNode.insertBefore(elem, sib);
+    })(window, document, 'script', 'https://custservice.uwd.upstreamworkssoftware.com', '/scripts/floatingChat.js', Math.round(new Date().getTime() / 1.44e6), '_uwc', '_uwc-tag');
+  /*
+    Use one command from below commands as User can fetch form either by url or by tagName
+    _uwc('use-form', 'https://abc.com/chatform');
+    _uwc('use-form', 'Default_1');
+  */
+  _uwc('check-availability', ['Chat']);
+  
+   _uwc('create', 1);
+   
+</script>
+<!-- End Upstream Works Chat -->
+
+</body>
+</html>

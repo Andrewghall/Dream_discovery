@@ -1,32 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { getSession } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // TODO: Add authentication and get orgId from session
-    // For now, we'll fetch all workshops
-    
-    const workshops = await prisma.workshop.findMany({
-      include: {
-        participants: {
-          select: {
-            id: true,
-            responseCompletedAt: true,
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
+    const orgId = session.organizationId;
+
+    const url = request.nextUrl;
+    const page = parseInt(url.searchParams.get('page') || '1', 10);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
+    const skip = (page - 1) * limit;
+
+    const where = isPlatformAdmin ? {} : { organizationId: orgId! };
+
+    const [totalCount, workshops] = await Promise.all([
+      prisma.workshop.count({ where }),
+      prisma.workshop.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          participants: {
+            select: {
+              id: true,
+              responseCompletedAt: true,
+            },
+          },
+          _count: {
+            select: {
+              participants: true,
+            },
           },
         },
-        _count: {
-          select: {
-            participants: true,
-          },
+        orderBy: {
+          createdAt: 'desc',
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+      }),
+    ]);
 
     type WorkshopRow = (typeof workshops)[number];
     type WorkshopParticipantRow = WorkshopRow['participants'][number];
@@ -42,7 +61,16 @@ export async function GET(request: NextRequest) {
     }));
 
     return NextResponse.json(
-      { workshops: workshopsWithStats },
+      {
+        workshops: workshopsWithStats,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+          hasMore: page * limit < totalCount,
+        },
+      },
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (error: unknown) {
@@ -50,66 +78,41 @@ export async function GET(request: NextRequest) {
 
     if (error instanceof PrismaClientKnownRequestError) {
       return NextResponse.json(
-        {
-          error: 'Failed to fetch workshops',
-          details: {
-            code: error.code,
-            message: error.message,
-            meta: error.meta,
-          },
-        },
+        { error: 'Failed to fetch workshops', details: { code: error.code, message: error.message, meta: error.meta } },
         { status: 500 }
       );
     }
 
     if (error instanceof Error) {
       return NextResponse.json(
-        {
-          error: 'Failed to fetch workshops',
-          details: {
-            message: error.message,
-          },
-        },
+        { error: 'Failed to fetch workshops', details: { message: error.message } },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(
-      { error: 'Failed to fetch workshops' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch workshops' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { name, description, businessContext, workshopType, scheduledDate, responseDeadline, includeRegulation } = body;
 
-    // TODO: Add authentication and get userId and orgId from session
-    // For now, we'll need to create a default org and user first
+    // Determine which org this workshop belongs to
+    const organizationId = session.role === 'PLATFORM_ADMIN'
+      ? (body.organizationId || session.organizationId)
+      : session.organizationId!;
 
-    await prisma.organization.upsert({
-      where: { id: 'demo-org' },
-      update: {},
-      create: {
-        id: 'demo-org',
-        name: 'Demo Organization',
-      },
-    });
+    if (!organizationId) {
+      return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
+    }
 
-    await prisma.user.upsert({
-      where: { id: 'demo-user' },
-      update: {},
-      create: {
-        id: 'demo-user',
-        email: 'demo@dream.local',
-        name: 'Demo User',
-        organizationId: 'demo-org',
-      },
-    });
-
-    // Create workshop
     const workshop = await prisma.workshop.create({
       data: {
         name,
@@ -119,8 +122,8 @@ export async function POST(request: NextRequest) {
         includeRegulation: includeRegulation ?? true,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,
-        organizationId: 'demo-org', // Using demo org from seed data
-        createdById: 'demo-user', // Using demo user from seed data
+        organizationId,
+        createdById: session.userId,
       },
     });
 
@@ -130,33 +133,18 @@ export async function POST(request: NextRequest) {
 
     if (error instanceof PrismaClientKnownRequestError) {
       return NextResponse.json(
-        {
-          error: 'Failed to create workshop',
-          details: {
-            code: error.code,
-            message: error.message,
-            meta: error.meta,
-          },
-        },
+        { error: 'Failed to create workshop', details: { code: error.code, message: error.message, meta: error.meta } },
         { status: 500 }
       );
     }
 
     if (error instanceof Error) {
       return NextResponse.json(
-        {
-          error: 'Failed to create workshop',
-          details: {
-            message: error.message,
-          },
-        },
+        { error: 'Failed to create workshop', details: { message: error.message } },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(
-      { error: 'Failed to create workshop' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create workshop' }, { status: 500 });
   }
 }

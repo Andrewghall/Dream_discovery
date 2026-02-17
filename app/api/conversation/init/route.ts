@@ -22,7 +22,13 @@ export async function POST(request: NextRequest) {
     const participant = await prisma.workshopParticipant.findUnique({
       where: { discoveryToken: token },
       include: {
-        workshop: true,
+        workshop: {
+          include: {
+            organization: {
+              select: { name: true, logoUrl: true, primaryColor: true },
+            },
+          },
+        },
       },
     });
 
@@ -116,6 +122,7 @@ export async function POST(request: NextRequest) {
         language: refetchedSession.language,
         voiceEnabled: refetchedSession.voiceEnabled,
         includeRegulation: refetchedSession.includeRegulation,
+        organization: participant.workshop.organization,
         messages: (refetchedSession.messages || []).map((msg: any) => ({
           id: msg.id,
           role: msg.role,
@@ -243,6 +250,7 @@ export async function POST(request: NextRequest) {
       language: session.language,
       voiceEnabled: session.voiceEnabled,
       includeRegulation: session.includeRegulation,
+      organization: participant.workshop.organization,
       messages: ((session as any).messages || []).map((msg: any) => ({
         id: msg.id,
         role: msg.role,

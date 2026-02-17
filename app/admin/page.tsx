@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { LoadingButton } from '@/components/ui/loading-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Users, MessageSquare, TrendingUp } from 'lucide-react';
+import { Plus, Users, MessageSquare, TrendingUp, ShieldCheck, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
@@ -40,11 +42,18 @@ interface DebugEnvResponse {
 }
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [loading, setLoading] = useState(true);
   const [workshopsError, setWorkshopsError] = useState<string | null>(null);
   const [dbDebug, setDbDebug] = useState<DebugEnvResponse | null>(null);
   const [dbDebugError, setDbDebugError] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<Array<{
+    id: string; type: string; action: string; resource: string;
+    success: boolean; email: string; timestamp: string;
+    details: Record<string, unknown> | null;
+  }>>([]);
   const [demoReport, setDemoReport] = useState<null | {
     executiveSummary: string;
     tone: string | null;
@@ -69,6 +78,14 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchWorkshops();
     fetchDbDebug();
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => setUserRole(data.role || null))
+      .catch(() => null);
+    fetch('/api/admin/audit-logs?limit=10', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => setAuditLogs(data.logs || []))
+      .catch(() => null);
   }, []);
 
   const fetchWorkshops = async () => {
@@ -138,6 +155,11 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'COMPLETED':
@@ -167,19 +189,41 @@ export default function AdminDashboard() {
         <div className="no-print flex items-center justify-between mb-8">
           <div>
             <div className="flex items-center gap-3">
-              <Image src="/ethenta-logo.png" alt="Ethenta" width={128} height={37} priority />
+              <Image src={process.env.NEXT_PUBLIC_PLATFORM_LOGO || '/upstreamworks-logo.png'} alt="Platform Logo" width={128} height={37} priority />
               <h1 className="text-3xl font-bold tracking-tight">DREAM Discovery</h1>
             </div>
             <p className="text-muted-foreground mt-1">
               Manage workshops and discovery conversations
             </p>
           </div>
-          <Link href="/admin/workshops/new">
-            <Button size="lg">
-              <Plus className="h-4 w-4 mr-2" />
-              New Workshop
+          <div className="flex gap-2">
+            {userRole === 'PLATFORM_ADMIN' && (
+              <Link href="/admin/organizations">
+                <Button size="lg" variant="outline">
+                  Organizations
+                </Button>
+              </Link>
+            )}
+            {userRole === 'TENANT_ADMIN' && (
+              <Link href="/admin/users">
+                <Button size="lg" variant="outline">
+                  Users
+                </Button>
+              </Link>
+            )}
+            {userRole !== 'TENANT_USER' && (
+              <Link href="/admin/workshops/new">
+                <Button size="lg">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Workshop
+                </Button>
+              </Link>
+            )}
+            <Button size="lg" variant="outline" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
             </Button>
-          </Link>
+          </div>
         </div>
 
         <div className="no-print mb-6">
@@ -302,7 +346,7 @@ export default function AdminDashboard() {
                 {workshops.map((workshop) => (
                   <Link
                     key={workshop.id}
-                    href={`/admin/workshops/${workshop.id}`}
+                    href={workshop.workshopType === 'SALES' ? `/sales/${workshop.id}` : `/admin/workshops/${workshop.id}`}
                     className="block"
                   >
                     <div className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
@@ -353,6 +397,61 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
+        <Card className="no-print mt-8">
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4" />
+                  Recent Activity
+                </CardTitle>
+                <CardDescription>Latest security events and user actions</CardDescription>
+              </div>
+              <Link href="/admin/audit-logs">
+                <Button variant="outline" size="sm">View All Logs</Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {auditLogs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No activity yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-muted-foreground border-b">
+                      <th className="pb-2 pr-4 font-medium">Time</th>
+                      <th className="pb-2 pr-4 font-medium">Action</th>
+                      <th className="pb-2 pr-4 font-medium">User</th>
+                      <th className="pb-2 pr-4 font-medium">Resource</th>
+                      <th className="pb-2 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {auditLogs.map(log => (
+                      <tr key={`${log.type}-${log.id}`} className="hover:bg-muted/30">
+                        <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap">
+                          {new Date(log.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="py-2 pr-4 whitespace-nowrap font-mono text-xs">{log.action}</td>
+                        <td className="py-2 pr-4 text-muted-foreground max-w-[160px] truncate">{log.email}</td>
+                        <td className="py-2 pr-4 text-muted-foreground text-xs max-w-[120px] truncate">{log.resource}</td>
+                        <td className="py-2">
+                          <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${
+                            log.success ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {log.success ? 'OK' : 'Fail'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card className="mt-8">
           <CardHeader>
             <div className="flex items-start justify-between gap-3">
@@ -362,9 +461,9 @@ export default function AdminDashboard() {
               </div>
               <div className="flex items-center gap-2">
                 {!demoReport && (
-                  <Button variant="outline" onClick={fetchDemoReport} disabled={demoReportLoading}>
-                    {demoReportLoading ? 'Loading…' : 'Preview Example Report'}
-                  </Button>
+                  <LoadingButton variant="outline" onClick={fetchDemoReport} loading={demoReportLoading} loadingText="Loading Report…">
+                    Preview Example Report
+                  </LoadingButton>
                 )}
                 {demoReport && (
                   <Button
