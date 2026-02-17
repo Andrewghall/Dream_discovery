@@ -1,27 +1,11 @@
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
+import { getSession } from '@/lib/auth/session';
 import { Button } from '@/components/ui/button';
 import { Monitor, Smartphone, X } from 'lucide-react';
 
-async function getAdminSession() {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get('session');
-
-  if (!sessionCookie) {
-    return null;
-  }
-
-  try {
-    const decoded = Buffer.from(sessionCookie.value, 'base64').toString('utf-8');
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
-}
-
 export default async function ActiveSessionsPage() {
-  const session = await getAdminSession();
+  const session = await getSession();
 
   if (!session || session.role !== 'PLATFORM_ADMIN') {
     redirect('/login');
