@@ -5,18 +5,24 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase credentials not configured. Image upload will not work.');
+function getSupabaseClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error('Supabase credentials not configured. Image upload will not work.');
+  }
+  return createClient(url, anonKey);
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// Service role client — bypasses RLS, server-side only, never exposed to browser
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey || supabaseAnonKey);
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !anonKey) {
+    throw new Error('Supabase credentials not configured. Image upload will not work.');
+  }
+  return createClient(url, serviceRoleKey || anonKey);
+}
 
 const BUCKET_NAME = 'workshop-images';
 
@@ -43,8 +49,10 @@ export async function uploadImage(file: File, workshopId: string): Promise<strin
     const fileExt = file.name.split('.').pop();
     const fileName = `${workshopId}/solution-overview-${Date.now()}.${fileExt}`;
 
+    const client = getSupabaseClient();
+
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const { data, error } = await client.storage
       .from(BUCKET_NAME)
       .upload(fileName, file, {
         cacheControl: '3600',
@@ -56,7 +64,7 @@ export async function uploadImage(file: File, workshopId: string): Promise<strin
     }
 
     // Get public URL
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = client.storage
       .from(BUCKET_NAME)
       .getPublicUrl(fileName);
 
@@ -82,7 +90,7 @@ export async function deleteImage(imageUrl: string): Promise<void> {
 
     const filePath = urlParts[1];
 
-    const { error } = await supabase.storage
+    const { error } = await getSupabaseClient().storage
       .from(BUCKET_NAME)
       .remove([filePath]);
 
@@ -105,13 +113,15 @@ export async function uploadOrgLogo(file: File, organizationId: string): Promise
   const fileExt = file.name.split('.').pop();
   const fileName = `organizations/${organizationId}/logo-${Date.now()}.${fileExt}`;
 
-  const { error } = await supabaseAdmin.storage
+  const admin = getSupabaseAdmin();
+
+  const { error } = await admin.storage
     .from(BUCKET_NAME)
     .upload(fileName, file, { cacheControl: '3600', upsert: true });
 
   if (error) throw error;
 
-  const { data: urlData } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(fileName);
+  const { data: urlData } = admin.storage.from(BUCKET_NAME).getPublicUrl(fileName);
   return urlData.publicUrl;
 }
 
@@ -121,14 +131,16 @@ export async function uploadOrgLogo(file: File, organizationId: string): Promise
  */
 export async function initializeStorageBucket() {
   try {
+    const client = getSupabaseClient();
+
     // Check if bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets();
+    const { data: buckets } = await client.storage.listBuckets();
 
     const bucketExists = buckets?.some(b => b.name === BUCKET_NAME);
 
     if (!bucketExists) {
       // Create bucket
-      const { error } = await supabase.storage.createBucket(BUCKET_NAME, {
+      const { error } = await client.storage.createBucket(BUCKET_NAME, {
         public: true,
         fileSizeLimit: 5 * 1024 * 1024, // 5MB
         allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
