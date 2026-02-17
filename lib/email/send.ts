@@ -6,14 +6,25 @@ import {
   tenantOnboardingTemplate,
 } from './templates';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error('RESEND_API_KEY is not configured');
+    }
+    _resend = new Resend(apiKey);
+  }
+  return _resend;
+}
+
 const fromEmail = process.env.FROM_EMAIL || 'onboarding@resend.dev';
 
 /**
  * Generic email sender used by monitoring/alerts and other internal systems.
  */
 export async function sendEmail(params: { to: string; subject: string; html: string }) {
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResend().emails.send({
     from: fromEmail,
     to: [params.to],
     subject: params.subject,
@@ -58,7 +69,7 @@ export async function sendWorkshopInvitation(params: {
   const sender = orgFromEmail(params.organizationName);
 
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: sender,
       to: [params.to],
       subject: `Workshop Invitation: ${params.workshopName}`,
@@ -90,7 +101,7 @@ export async function sendPasswordReset(params: {
   });
 
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: fromEmail,
       to: [params.to],
       subject: 'Reset Your Password - DREAM Discovery',
@@ -133,7 +144,7 @@ export async function sendWelcomeEmail(params: {
   const sender = params.from ?? orgFromEmail(params.organizationName);
 
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: sender,
       to: [params.to],
       subject: 'Welcome to DREAM Discovery - Your Account is Ready',
@@ -170,7 +181,7 @@ export async function sendTenantOnboarding(params: {
   const sender = orgFromEmail(params.organizationName);
 
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: sender,
       to: [params.billingEmail],
       subject: `Welcome to DREAM Discovery — ${params.organizationName} is ready`,
