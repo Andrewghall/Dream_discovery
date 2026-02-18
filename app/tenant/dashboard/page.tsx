@@ -168,7 +168,7 @@ export default async function TenantDashboardPage() {
             ) : (
               <div className="space-y-4">
                 {workshops.map((workshop) => (
-                  <Link key={workshop.id} href={workshop.workshopType === 'SALES' ? `/sales/${workshop.id}` : `/tenant/workshops/${workshop.id}`} className="block">
+                  <Link key={workshop.id} href={workshop.workshopType === 'SALES' ? `/sales/${workshop.id}` : `/admin/workshops/${workshop.id}`} className="block">
                     <div className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">

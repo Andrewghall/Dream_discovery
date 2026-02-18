@@ -40,7 +40,7 @@ export default function NewWorkshopPage() {
         if (formData.workshopType === 'SALES') {
           router.push(`/sales/${data.workshop.id}/plan`);
         } else {
-          router.push(`/tenant/workshops/${data.workshop.id}`);
+          router.push(`/admin/workshops/${data.workshop.id}`);
         }
       } else {
         const data = await response.json().catch(() => null);

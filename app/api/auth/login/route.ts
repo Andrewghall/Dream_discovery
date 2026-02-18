@@ -137,8 +137,7 @@ export async function POST(request: NextRequest) {
     };
 
     const jwt = await createSessionToken(sessionPayload);
-    const isTenantRole = TENANT_ROLES.includes(user.role);
-    const redirectTo = isTenantRole ? '/tenant/dashboard' : '/admin';
+    const redirectTo = '/admin';
 
     const cookieStore = await cookies();
     cookieStore.set('session', jwt, {
