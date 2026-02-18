@@ -114,6 +114,13 @@ function errorMessage(value: unknown): string {
   return 'Unknown error';
 }
 
+/** Prefer agentic confidence (semantic) over classification confidence (regex/GPT-classify) */
+function bestConfidence(node: HemisphereNodeDatum | null | undefined): number | null {
+  if (!node) return null;
+  if (node.agenticAnalysis?.overallConfidence != null) return node.agenticAnalysis.overallConfidence;
+  return node.classification?.confidence ?? null;
+}
+
 export default function WorkshopLivePage({ params }: PageProps) {
   const { id: workshopId } = use(params);
 
@@ -3595,8 +3602,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
                           )}
                           <div className="text-sm font-medium">
                             {selectedNode.classification?.primaryType ?? 'UNCLASSIFIED'}
-                            {selectedNode.classification?.confidence != null
-                              ? ` • ${(selectedNode.classification.confidence * 100).toFixed(0)}%`
+                            {bestConfidence(selectedNode) != null
+                              ? ` • ${(bestConfidence(selectedNode)! * 100).toFixed(0)}%`
                               : ''}
                           </div>
                         </div>
@@ -3698,9 +3705,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
               <DialogTitle>Datapoint</DialogTitle>
               <DialogDescription>
                 {selectedNode?.classification?.primaryType ?? 'UNCLASSIFIED'}
-                {selectedNode?.classification?.confidence != null
-                  ? ` • ${(selectedNode.classification.confidence * 100).toFixed(0)}%`
+                {bestConfidence(selectedNode) != null
+                  ? ` • ${(bestConfidence(selectedNode)! * 100).toFixed(0)}%`
                   : ''}
+                {selectedNode?.agenticAnalysis ? ' (agentic)' : ''}
               </DialogDescription>
             </DialogHeader>
 
@@ -3748,6 +3756,31 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     </div>
                   </div>
                 </div>
+
+                {selectedNode?.agenticAnalysis && (
+                  <div className="rounded-md border border-blue-200 bg-blue-50/50 p-3">
+                    <div className="font-medium mb-1 text-blue-800">Agentic Analysis</div>
+                    <div className="text-muted-foreground">
+                      Confidence: {(selectedNode.agenticAnalysis.overallConfidence * 100).toFixed(0)}%
+                    </div>
+                    <div className="text-muted-foreground">
+                      Meaning: {selectedNode.agenticAnalysis.semanticMeaning}
+                    </div>
+                    <div className="text-muted-foreground">
+                      Tone: {selectedNode.agenticAnalysis.sentimentTone}
+                    </div>
+                    {selectedNode.agenticAnalysis.domains.length > 0 && (
+                      <div className="text-muted-foreground">
+                        Domains: {selectedNode.agenticAnalysis.domains.map(d => `${d.domain} (${(d.relevance * 100).toFixed(0)}%)`).join(', ')}
+                      </div>
+                    )}
+                    {selectedNode.agenticAnalysis.themes.length > 0 && (
+                      <div className="text-muted-foreground">
+                        Themes: {selectedNode.agenticAnalysis.themes.map(t => `${t.label} (${t.category})`).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
             <DialogFooter>

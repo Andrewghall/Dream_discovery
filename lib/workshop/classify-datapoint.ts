@@ -76,7 +76,11 @@ Primary types: Visionary, Opportunity, Constraint, Risk, Enabler, Action, Questi
 
 Return strict JSON with keys:
 - primaryType (string)
-- confidence (number 0-1 or null)
+- confidence (number 0-1): how clearly the statement fits the assigned type.
+  0.85-1.0 = very clearly fits (explicit language, unmistakable intent)
+  0.65-0.84 = fits well (clear from context even if indirect language)
+  0.45-0.64 = moderate fit (ambiguous, could be multiple types)
+  Below 0.45 = weak fit (very unclear). For typical workshop speech, default to ~0.75 not 0.5.
 - keywords (array of 0-8 short strings)
 - suggestedArea (string or null)
 

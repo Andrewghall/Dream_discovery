@@ -426,7 +426,9 @@ function classifyCognitiveTypes(t: string, temporal: TemporalIntent): CognitiveT
 }
 
 function confidenceFromSignals(signals: number): { confidence: number; weight: ConfidenceWeight } {
-  const c = clamp01(0.25 + 0.75 * clamp01(signals / 6));
+  // Floor at 0.45, reaches 1.0 at 5 signals (was: floor 0.25, needed 6 signals)
+  // This avoids the jarring 50% default for natural conversational speech
+  const c = clamp01(0.45 + 0.55 * clamp01(signals / 5));
   const w: ConfidenceWeight = c >= 0.78 ? 'high' : c >= 0.55 ? 'mid' : 'low';
   return { confidence: c, weight: w };
 }
@@ -454,7 +456,8 @@ export function interpretLiveUtterance(text: string): LiveInterpretation {
   const domain = domains[0] ?? pickBestDomain(domainScores);
 
   const { confidence, weight } = confidenceFromSignals(
-    domainScores.reduce((acc, x) => acc + (x.score > 0 ? 1 : 0), 0) +
+    // Count total keyword hits across all domains (not just how many domains matched)
+    domainScores.reduce((acc, x) => acc + x.score, 0) +
       cognitiveTypes.length +
       (temporalIntent === 'FUTURE' ? 2 : temporalIntent === 'LIMIT' ? 2 : 1)
   );
