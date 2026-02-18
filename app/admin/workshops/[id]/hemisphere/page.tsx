@@ -258,8 +258,7 @@ function MiniHemisphere({
 
         const sx = cx + rx * R * persp;
         const sy = cy - py * R * persp;
-        const previewDensity = nodes.length <= 20 ? 1 : Math.max(0.3, 1 / (1 + Math.log10(nodes.length / 20)));
-        const r = (1.0 + Math.sqrt(Math.max(1, n.weight || 1)) * 0.45) * dpr * persp * previewDensity;
+        const r = (1.0 + Math.sqrt(Math.max(1, n.weight || 1)) * 0.45) * dpr * persp;
 
         const palette = colorForType(n.type);
         const alpha = 0.4 + depth * 0.5;
@@ -761,6 +760,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     VISION: true, BELIEF: true, CHALLENGE: true, FRICTION: true, CONSTRAINT: true, ENABLER: true, EVIDENCE: false,
   });
   const [minWeight, setMinWeight] = useState(0);
+  const [nodeSizeScale, setNodeSizeScale] = useState(50); // 0-100 slider, 50 = default
 
   // Fetch snapshots
   useEffect(() => {
@@ -1127,9 +1127,10 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         .filter((x): x is { n: HemisphereNode; q: { x: number; y: number; z: number; s: number } } => !!x.q)
         .sort((a, b) => a.q.z - b.q.z);
 
-      // Scale node size down as count grows — keeps dots elegant at any density
-      const nodeCount = ordered.length;
-      const densityScale = nodeCount <= 20 ? 1 : Math.max(0.25, 1 / (1 + Math.log10(nodeCount / 20)));
+      // User-controlled size: slider 0-100, mapped to 0.3x – 2.5x multiplier (50 = 1x)
+      const userScale = nodeSizeScale <= 50
+        ? 0.3 + (nodeSizeScale / 50) * 0.7   // 0→0.3, 50→1.0
+        : 1.0 + ((nodeSizeScale - 50) / 50) * 1.5; // 50→1.0, 100→2.5
 
       const influenceRadius = (n: HemisphereNode, q: { z: number; s: number }) => {
         const sev = typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.5;
@@ -1140,7 +1141,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const depth = clamp01((q.z + 1) / 2);
         const depthMult = 0.85 + depth * 0.55;
         const sharpMult = 0.92 + conf * 0.16;
-        return (1.6 + freq * 1.1) * (1 + sev * 0.8) * crossMult * depthMult * sharpMult * densityScale;
+        return (1.6 + freq * 1.1) * (1 + sev * 0.8) * crossMult * depthMult * sharpMult * userScale;
       };
 
       let maxNormal = 1;
@@ -1237,7 +1238,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
     rafRef.current = requestAnimationFrame(draw);
     return () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); rafRef.current = null; };
-  }, [visibleNodes, visibleEdges, positions, activeNodeSet, activeEdgeSet, clusterCenters, zoomClusterId, graph?.coreTruthNodeId, hoveredNodeId, nodeById, clusterByNodeId]);
+  }, [visibleNodes, visibleEdges, positions, activeNodeSet, activeEdgeSet, clusterCenters, zoomClusterId, graph?.coreTruthNodeId, hoveredNodeId, nodeById, clusterByNodeId, nodeSizeScale]);
 
   /* ─── Render ─── */
   return (
@@ -1396,6 +1397,13 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                     <input type="range" min={0} max={Math.max(1, Math.round(maxWeight))} value={minWeight} onChange={(e) => setMinWeight(Number(e.target.value) || 0)} className="w-full" />
                   </div>
                   )}
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-slate-300">
+                      <span>Node size</span>
+                      <span className="text-slate-200">{nodeSizeScale}%</span>
+                    </div>
+                    <input type="range" min={5} max={100} value={nodeSizeScale} onChange={(e) => setNodeSizeScale(Number(e.target.value) || 50)} className="w-full" />
+                  </div>
                 </div>
               </div>
             )}
