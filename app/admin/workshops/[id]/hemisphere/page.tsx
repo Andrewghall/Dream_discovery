@@ -258,7 +258,8 @@ function MiniHemisphere({
 
         const sx = cx + rx * R * persp;
         const sy = cy - py * R * persp;
-        const r = (1.5 + Math.sqrt(Math.max(1, n.weight || 1)) * 0.8) * dpr * persp;
+        const previewDensity = nodes.length <= 20 ? 1 : Math.max(0.3, 1 / (1 + Math.log10(nodes.length / 20)));
+        const r = (1.0 + Math.sqrt(Math.max(1, n.weight || 1)) * 0.45) * dpr * persp * previewDensity;
 
         const palette = colorForType(n.type);
         const alpha = 0.4 + depth * 0.5;
@@ -1126,16 +1127,20 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         .filter((x): x is { n: HemisphereNode; q: { x: number; y: number; z: number; s: number } } => !!x.q)
         .sort((a, b) => a.q.z - b.q.z);
 
+      // Scale node size down as count grows — keeps dots elegant at any density
+      const nodeCount = ordered.length;
+      const densityScale = nodeCount <= 20 ? 1 : Math.max(0.25, 1 / (1 + Math.log10(nodeCount / 20)));
+
       const influenceRadius = (n: HemisphereNode, q: { z: number; s: number }) => {
         const sev = typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.5;
         const conf = typeof n.confidence === 'number' ? clamp01(n.confidence) : 0.7;
         const cross = uniq((n.phaseTags || []).map((t) => String(t).toLowerCase())).length;
-        const crossMult = 1 + 0.35 * Math.min(3, Math.max(0, cross - 1));
+        const crossMult = 1 + 0.20 * Math.min(3, Math.max(0, cross - 1));
         const freq = Math.sqrt(Math.max(1, n.weight || 1));
         const depth = clamp01((q.z + 1) / 2);
-        const depthMult = 0.85 + depth * 0.75;
-        const sharpMult = 0.90 + conf * 0.20;
-        return (2.2 + freq * 2.05) * (1 + sev * 1.35) * crossMult * depthMult * sharpMult;
+        const depthMult = 0.85 + depth * 0.55;
+        const sharpMult = 0.92 + conf * 0.16;
+        return (1.6 + freq * 1.1) * (1 + sev * 0.8) * crossMult * depthMult * sharpMult * densityScale;
       };
 
       let maxNormal = 1;
