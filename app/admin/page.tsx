@@ -211,14 +211,12 @@ export default function AdminDashboard() {
                 </Button>
               </Link>
             )}
-            {userRole !== 'TENANT_USER' && (
-              <Link href="/admin/workshops/new">
-                <Button size="lg">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Workshop
-                </Button>
-              </Link>
-            )}
+            <Link href="/admin/workshops/new">
+              <Button size="lg">
+                <Plus className="h-4 w-4 mr-2" />
+                New Workshop
+              </Button>
+            </Link>
             <Button size="lg" variant="outline" onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" />
               Logout
