@@ -41,6 +41,16 @@ export type HemisphereNodeDatum = {
   agenticAnalysis?: {
     domains: Array<{domain: string; relevance: number; reasoning: string}>;
     themes: Array<{label: string; category: string; confidence: number; reasoning: string}>;
+    actors: Array<{
+      name: string;
+      role: string;
+      interactions: Array<{
+        withActor: string;
+        action: string;
+        sentiment: string;
+        context: string;
+      }>;
+    }>;
     semanticMeaning: string;
     sentimentTone: string;
     overallConfidence: number;

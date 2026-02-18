@@ -1,6 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string; snapshotId: string }> }
+) {
+  try {
+    const { id: workshopId, snapshotId } = await params;
+
+    const snapshot = await (prisma as any).liveWorkshopSnapshot.findFirst({
+      where: {
+        id: snapshotId,
+        workshopId,
+      },
+    });
+
+    if (!snapshot) {
+      return NextResponse.json(
+        { ok: false, error: 'Snapshot not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      snapshot: {
+        id: snapshot.id,
+        name: snapshot.name,
+        dialoguePhase: snapshot.dialoguePhase,
+        payload: snapshot.payload,
+        createdAt: snapshot.createdAt,
+        updatedAt: snapshot.updatedAt,
+      },
+    });
+  } catch (error) {
+    console.error('[GET Snapshot] Error:', error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Failed to load snapshot',
+        detail: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; snapshotId: string }> }

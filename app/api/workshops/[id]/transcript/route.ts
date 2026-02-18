@@ -402,6 +402,7 @@ export async function POST(
             domains: analysis.domains,
             themes: analysis.themes,
             connections: analysis.connections,
+            actors: analysis.actors,
             overallConfidence: analysis.overallConfidence,
             uncertainties: analysis.uncertainties,
             agentModel: 'gpt-4o-mini',

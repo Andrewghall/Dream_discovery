@@ -40,6 +40,18 @@ export type AgenticAnalysis = {
     reasoning: string;
   }>;
 
+  // Business actors/roles mentioned in this utterance
+  actors: Array<{
+    name: string;           // e.g., "Customer", "Agent", "Executive", "Supplier"
+    role: string;           // brief description of their role in context
+    interactions: Array<{
+      withActor: string;    // who they interact with
+      action: string;       // what happens: "contacts", "escalates to", "approves"
+      sentiment: string;    // how it feels: "frustrated", "smooth", "delayed"
+      context: string;      // from the utterance
+    }>;
+  }>;
+
   // Agent's confidence in this analysis
   overallConfidence: number;
 
@@ -95,6 +107,13 @@ ${context.emergingThemes.length > 0 ? `\nEmerging Themes You've Detected:\n${con
 - Constraint: Blockers, limits, risks, dependencies, challenges
 - Enabler: What makes things possible, capabilities needed, foundational elements
 - Opportunity: Potential improvements, chances to create value, untapped possibilities
+
+**Actors** (extract any business roles/personas mentioned):
+- Identify every actor/role referenced (e.g., Customer, Agent, Executive, Supplier, New Starter, Team Lead, Analyst, Auditor, Manager, System)
+- For each actor, describe their role in context
+- Map how actors interact with each other (who does what to/for whom)
+- Note the sentiment of each interaction (frustrated, smooth, delayed, empowered, etc.)
+- "System" or "Platform" can be an actor when it mediates interactions
 - Risk: Threats, concerns, things that could go wrong
 
 **Your Reasoning**:
@@ -141,7 +160,10 @@ Analyze this utterance in the context of the conversation. Consider:
 3. Which domains does this meaningfully relate to? (with reasoning)
 4. What themes emerge from this? (with confidence and reasoning)
 5. How does this connect to prior utterances? (builds on, contradicts, elaborates, etc.)
-6. What are you uncertain about in your analysis?
+6. What business actors/roles are mentioned or implied? (customer, agent, executive, supplier, etc.)
+   - How do they interact with each other?
+   - What is the sentiment of each interaction?
+7. What are you uncertain about in your analysis?
 
 Be specific, be honest about uncertainty, and always provide reasoning.`;
 }
@@ -197,6 +219,7 @@ export async function analyzeUtteranceAgentically(params: {
       domains: Array.isArray(analysis.domains) ? analysis.domains : [],
       themes: Array.isArray(analysis.themes) ? analysis.themes : [],
       connections: Array.isArray(analysis.connections) ? analysis.connections : [],
+      actors: Array.isArray(analysis.actors) ? analysis.actors : [],
       overallConfidence: typeof analysis.overallConfidence === 'number'
         ? Math.max(0, Math.min(1, analysis.overallConfidence))
         : 0.5,

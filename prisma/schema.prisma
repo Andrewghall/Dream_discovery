@@ -241,6 +241,9 @@ model AgenticAnalysis {
   // Connections to other utterances (stored as JSON)
   connections        Json     // Array of {type, targetUtteranceId, reasoning}
 
+  // Business actors/roles mentioned (stored as JSON)
+  actors             Json?    // Array of {name, role, interactions: [{withActor, action, sentiment, context}]}
+
   // Agent confidence and uncertainties
   overallConfidence  Float
   uncertainties      String[] // What the agent is unsure about

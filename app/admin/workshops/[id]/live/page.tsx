@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import React, { use, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,79 @@ import { transcribeAudio, type CaptureAPIResponse } from '@/lib/captureapi/clien
 
 type PageProps = {
   params: Promise<{ id: string }>;
+};
+
+/* ── Actor Journey helpers ─────────────────────────────────── */
+
+const STAGE_KEYWORDS: [string[], string][] = [
+  [['contact', 'call', 'reach', 'request', 'initiate', 'submit', 'enquir', 'inquir', 'register', 'sign up', 'onboard'], 'Contact'],
+  [['assess', 'review', 'evaluat', 'check', 'examin', 'diagnos', 'analys', 'investigat', 'screen', 'triage'], 'Assessment'],
+  [['escalat', 'transfer', 'hand', 'refer', 'route', 'redirect', 'forward'], 'Escalation'],
+  [['process', 'handle', 'manag', 'coordinat', 'schedul', 'assign', 'allocat', 'configur'], 'Processing'],
+  [['approv', 'decid', 'authoris', 'authoriz', 'sign off', 'confirm', 'accept', 'reject', 'deny'], 'Decision'],
+  [['resolv', 'complet', 'deliver', 'implement', 'close', 'fix', 'fulfill', 'provision', 'deploy'], 'Resolution'],
+  [['follow', 'monitor', 'track', 'maintain', 'support', 'feedback', 'survey', 'retain'], 'Follow-up'],
+  [['wait', 'delay', 'queue', 'hold', 'pending', 'block', 'stuck', 'bottleneck'], 'Waiting'],
+];
+
+function inferStage(action: string): string {
+  const a = action.toLowerCase();
+  for (const [keywords, stage] of STAGE_KEYWORDS) {
+    if (keywords.some((kw) => a.includes(kw))) return stage;
+  }
+  return 'Processing';
+}
+
+function sentimentColor(sentiment: string): string {
+  const s = sentiment.toLowerCase();
+  if (s.includes('frustrat') || s.includes('critical') || s.includes('angry') || s.includes('block') || s.includes('fail') || s.includes('break'))
+    return 'bg-red-900/40 border-red-500/50 text-red-200';
+  if (s.includes('concern') || s.includes('delay') || s.includes('slow') || s.includes('confus') || s.includes('unclear') || s.includes('anxious'))
+    return 'bg-amber-900/40 border-amber-500/50 text-amber-200';
+  if (s.includes('smooth') || s.includes('positiv') || s.includes('empower') || s.includes('efficien') || s.includes('good') || s.includes('satisf') || s.includes('happy'))
+    return 'bg-emerald-900/40 border-emerald-500/50 text-emerald-200';
+  return 'bg-zinc-800/60 border-zinc-600/50 text-zinc-300';
+}
+
+function sentimentCategory(sentiment: string): 'positive' | 'concerned' | 'critical' | 'neutral' {
+  const s = sentiment.toLowerCase();
+  if (s.includes('frustrat') || s.includes('critical') || s.includes('angry') || s.includes('block') || s.includes('fail') || s.includes('break'))
+    return 'critical';
+  if (s.includes('concern') || s.includes('delay') || s.includes('slow') || s.includes('confus') || s.includes('unclear') || s.includes('anxious'))
+    return 'concerned';
+  if (s.includes('smooth') || s.includes('positiv') || s.includes('empower') || s.includes('efficien') || s.includes('good') || s.includes('satisf') || s.includes('happy'))
+    return 'positive';
+  return 'neutral';
+}
+
+function normaliseName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return 'Unknown';
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
+type AggActorInfo = {
+  name: string;
+  roles: string[];
+  mentionCount: number;
+  sentiments: string[];
+  dominantSentiment: string;
+};
+
+type AggInteraction = {
+  fromActor: string;
+  toActor: string;
+  action: string;
+  sentiment: string;
+  context: string;
+  utteranceId: string;
+  stage: string;
+};
+
+type JourneyStageInfo = {
+  label: string;
+  orderIndex: number;
+  interactionCount: number;
 };
 
 type RealtimeEvent = {
@@ -142,6 +215,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
   const [audioLevel, setAudioLevel] = useState(0); // 0-100 for audio level meter
   const [isSaving, setIsSaving] = useState(false); // Button loading state
+  const [workshopName, setWorkshopName] = useState<string>('');
 
   const [nodesById, setNodesById] = useState<Record<string, HemisphereNodeDatum>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -201,6 +275,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [micTesting, setMicTesting] = useState(false);
 
   const [revealOpen, setRevealOpen] = useState(false);
+  const [actorJourneyExpanded, setActorJourneyExpanded] = useState(false);
 
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -343,6 +418,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
   useEffect(() => {
     void fetchSnapshots();
   }, [snapshotUrl]);
+
+  // Fetch workshop name for auto-save naming
+  useEffect(() => {
+    fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.workshop?.name) setWorkshopName(data.workshop.name);
+      })
+      .catch(() => {/* ignore */});
+  }, [workshopId]);
 
   // Auto-save every 5 minutes when capturing
   useEffect(() => {
@@ -501,9 +586,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
   };
 
   const autoSave = async () => {
-    // Auto-save with timestamp-based name
-    const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const autoSaveName = `Auto-save ${timestamp}`;
+    // Auto-save with workshop name + formatted date/time
+    const now = new Date();
+    const datePart = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const timePart = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const autoSaveName = workshopName
+      ? `${workshopName} — ${datePart} ${timePart}`
+      : `Auto-save ${now.toISOString().slice(0, 19).replace('T', ' ')}`;
 
     // Prepare payload (same as manual save)
     const utterances = utteranceNodes.map((n) => ({
@@ -1805,6 +1894,112 @@ export default function WorkshopLivePage({ params }: PageProps) {
     };
   }, [utteranceNodes]);
 
+  /* ── Actor journey aggregation ──────────────────────────── */
+  const actorJourney = useMemo(() => {
+    const actorMap = new Map<string, { roles: Set<string>; mentionCount: number; sentiments: string[] }>();
+    const allInteractions: AggInteraction[] = [];
+    const stageOrder: string[] = [];
+    const stageSet = new Set<string>();
+
+    for (const node of Object.values(nodesById)) {
+      const actors = node.agenticAnalysis?.actors;
+      if (!Array.isArray(actors) || actors.length === 0) continue;
+
+      for (const actor of actors) {
+        const name = normaliseName(actor.name);
+        let info = actorMap.get(name);
+        if (!info) {
+          info = { roles: new Set<string>(), mentionCount: 0, sentiments: [] };
+          actorMap.set(name, info);
+        }
+        info.mentionCount += 1;
+        if (actor.role) info.roles.add(actor.role);
+
+        if (Array.isArray(actor.interactions)) {
+          for (const ix of actor.interactions) {
+            const stage = inferStage(ix.action);
+            const sentiment = ix.sentiment || 'neutral';
+
+            info.sentiments.push(sentiment);
+
+            allInteractions.push({
+              fromActor: name,
+              toActor: normaliseName(ix.withActor),
+              action: ix.action,
+              sentiment,
+              context: ix.context || '',
+              utteranceId: node.dataPointId,
+              stage,
+            });
+
+            if (!stageSet.has(stage)) {
+              stageSet.add(stage);
+              stageOrder.push(stage);
+            }
+          }
+        }
+      }
+    }
+
+    // Build actors array
+    const actors: AggActorInfo[] = [];
+    actorMap.forEach((info, name) => {
+      // Compute dominant sentiment
+      const counts: Record<string, number> = {};
+      for (const s of info.sentiments) {
+        const cat = sentimentCategory(s);
+        counts[cat] = (counts[cat] || 0) + 1;
+      }
+      let dominant = 'neutral';
+      let maxCount = 0;
+      for (const [cat, c] of Object.entries(counts)) {
+        if (c > maxCount) { maxCount = c; dominant = cat; }
+      }
+
+      actors.push({
+        name,
+        roles: Array.from(info.roles),
+        mentionCount: info.mentionCount,
+        sentiments: info.sentiments,
+        dominantSentiment: dominant,
+      });
+    });
+
+    // Sort actors by mention count descending
+    actors.sort((a, b) => b.mentionCount - a.mentionCount);
+
+    // Build stages array
+    const stages: JourneyStageInfo[] = stageOrder.map((label, i) => ({
+      label,
+      orderIndex: i,
+      interactionCount: allInteractions.filter((ix) => ix.stage === label).length,
+    }));
+
+    // Build grid: key = "ActorName::StageLabel" → interactions[]
+    const grid = new Map<string, AggInteraction[]>();
+    for (const ix of allInteractions) {
+      const key = `${ix.fromActor}::${ix.stage}`;
+      const arr = grid.get(key);
+      if (arr) arr.push(ix);
+      else grid.set(key, [ix]);
+    }
+
+    // Sentiment breakdown
+    const sentimentBreakdown = { positive: 0, concerned: 0, critical: 0, neutral: 0 };
+    for (const ix of allInteractions) {
+      sentimentBreakdown[sentimentCategory(ix.sentiment)] += 1;
+    }
+
+    return { actors, stages, grid, allInteractions, totalInteractions: allInteractions.length, sentimentBreakdown };
+  }, [nodesById]);
+
+  // Auto-expand actor journey when enough data arrives
+  useEffect(() => {
+    if (!actorJourneyExpanded && actorJourney.totalInteractions >= 3) {
+      setActorJourneyExpanded(true);
+    }
+  }, [actorJourney.totalInteractions, actorJourneyExpanded]);
+
   const phaseLabel = useMemo(() => {
     switch (dialoguePhase) {
       case 'REIMAGINE':
@@ -2476,6 +2671,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
             };
             domains: Array<{domain: string; relevance: number; reasoning: string}>;
             themes: Array<{label: string; category: string; confidence: number; reasoning: string}>;
+            actors?: Array<{
+              name: string;
+              role: string;
+              interactions: Array<{
+                withActor: string;
+                action: string;
+                sentiment: string;
+                context: string;
+              }>;
+            }>;
             overallConfidence: number;
           };
         };
@@ -2500,6 +2705,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
               agenticAnalysis: {
                 domains: p.analysis.domains,
                 themes: p.analysis.themes,
+                actors: Array.isArray(p.analysis.actors) ? p.analysis.actors : [],
                 semanticMeaning: p.analysis.interpretation.semanticMeaning,
                 sentimentTone: p.analysis.interpretation.sentimentTone,
                 overallConfidence: p.analysis.overallConfidence,
@@ -3554,10 +3760,167 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 </CardContent>
               </Card>
 
+              {/* ── Actor Journey Swim-Lane Map ─────────────── */}
+              {actorJourney.totalInteractions > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">Actor Journey Map</CardTitle>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setActorJourneyExpanded((v) => !v)}
+                      >
+                        {actorJourneyExpanded ? '▲ Collapse' : '▼ Expand'}
+                      </Button>
+                    </div>
+                    <CardDescription>
+                      {actorJourney.actors.length} actor{actorJourney.actors.length !== 1 ? 's' : ''} • {actorJourney.totalInteractions} interaction{actorJourney.totalInteractions !== 1 ? 's' : ''} • {actorJourney.stages.length} stage{actorJourney.stages.length !== 1 ? 's' : ''}
+                    </CardDescription>
+                    {/* Sentiment breakdown bar */}
+                    {actorJourney.totalInteractions > 0 && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {actorJourney.sentimentBreakdown.positive > 0 && (
+                          <div className="flex items-center gap-1 text-xs">
+                            <div
+                              className="h-2 rounded-full bg-emerald-500"
+                              style={{ width: `${Math.max(8, (actorJourney.sentimentBreakdown.positive / actorJourney.totalInteractions) * 60)}px` }}
+                            />
+                            <span className="text-emerald-400 tabular-nums">{actorJourney.sentimentBreakdown.positive}</span>
+                          </div>
+                        )}
+                        {actorJourney.sentimentBreakdown.concerned > 0 && (
+                          <div className="flex items-center gap-1 text-xs">
+                            <div
+                              className="h-2 rounded-full bg-amber-500"
+                              style={{ width: `${Math.max(8, (actorJourney.sentimentBreakdown.concerned / actorJourney.totalInteractions) * 60)}px` }}
+                            />
+                            <span className="text-amber-400 tabular-nums">{actorJourney.sentimentBreakdown.concerned}</span>
+                          </div>
+                        )}
+                        {actorJourney.sentimentBreakdown.critical > 0 && (
+                          <div className="flex items-center gap-1 text-xs">
+                            <div
+                              className="h-2 rounded-full bg-red-500"
+                              style={{ width: `${Math.max(8, (actorJourney.sentimentBreakdown.critical / actorJourney.totalInteractions) * 60)}px` }}
+                            />
+                            <span className="text-red-400 tabular-nums">{actorJourney.sentimentBreakdown.critical}</span>
+                          </div>
+                        )}
+                        {actorJourney.sentimentBreakdown.neutral > 0 && (
+                          <div className="flex items-center gap-1 text-xs">
+                            <div
+                              className="h-2 rounded-full bg-zinc-500"
+                              style={{ width: `${Math.max(8, (actorJourney.sentimentBreakdown.neutral / actorJourney.totalInteractions) * 60)}px` }}
+                            />
+                            <span className="text-zinc-400 tabular-nums">{actorJourney.sentimentBreakdown.neutral}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardHeader>
+                  {actorJourneyExpanded && (
+                    <CardContent className="pt-0">
+                      <div className="overflow-x-auto -mx-4 px-4">
+                        <div
+                          className="grid gap-px bg-border/30 min-w-fit"
+                          style={{
+                            gridTemplateColumns: `120px repeat(${actorJourney.stages.length}, minmax(140px, 1fr))`,
+                          }}
+                        >
+                          {/* Header row: empty corner + stage labels */}
+                          <div className="bg-background p-2 sticky left-0 z-10" />
+                          {actorJourney.stages.map((stage) => (
+                            <div
+                              key={stage.label}
+                              className="bg-background p-2 text-center border-b"
+                            >
+                              <div className="text-xs font-semibold">{stage.label}</div>
+                              <div className="text-[10px] text-muted-foreground tabular-nums">{stage.interactionCount}</div>
+                            </div>
+                          ))}
+
+                          {/* Actor swim-lane rows */}
+                          {actorJourney.actors.map((actor) => {
+                            // Mini sentiment bar data
+                            const actorSentiments = actor.sentiments.map(sentimentCategory);
+                            const pos = actorSentiments.filter((s) => s === 'positive').length;
+                            const con = actorSentiments.filter((s) => s === 'concerned').length;
+                            const cri = actorSentiments.filter((s) => s === 'critical').length;
+                            const total = actorSentiments.length || 1;
+
+                            return (
+                              <React.Fragment key={actor.name}>
+                                {/* Actor label cell (sticky left) */}
+                                <div className="bg-background p-2 sticky left-0 z-10 border-b flex flex-col justify-center min-w-[120px]">
+                                  <div className="text-xs font-semibold truncate">{actor.name}</div>
+                                  <div className="text-[10px] text-muted-foreground">{actor.mentionCount} mention{actor.mentionCount !== 1 ? 's' : ''}</div>
+                                  {/* Mini sentiment bar */}
+                                  <div className="flex h-1.5 w-full mt-1 rounded-full overflow-hidden bg-zinc-800">
+                                    {pos > 0 && <div className="bg-emerald-500" style={{ width: `${(pos / total) * 100}%` }} />}
+                                    {con > 0 && <div className="bg-amber-500" style={{ width: `${(con / total) * 100}%` }} />}
+                                    {cri > 0 && <div className="bg-red-500" style={{ width: `${(cri / total) * 100}%` }} />}
+                                  </div>
+                                </div>
+
+                                {/* Intersection cells */}
+                                {actorJourney.stages.map((stage) => {
+                                  const key = `${actor.name}::${stage.label}`;
+                                  const interactions = actorJourney.grid.get(key);
+
+                                  return (
+                                    <div
+                                      key={key}
+                                      className="bg-background p-1.5 border-b min-h-[56px] flex flex-col gap-1"
+                                    >
+                                      {interactions && interactions.length > 0 ? (
+                                        interactions.slice(0, 3).map((ix, i) => (
+                                          <button
+                                            key={`${ix.utteranceId}-${i}`}
+                                            type="button"
+                                            className={`rounded border p-1.5 text-left transition-colors hover:ring-1 hover:ring-white/20 ${sentimentColor(ix.sentiment)}`}
+                                            onClick={() => setSelectedNodeId(ix.utteranceId)}
+                                          >
+                                            <div className="text-[11px] font-medium leading-tight line-clamp-2">
+                                              {ix.action}
+                                            </div>
+                                            {ix.context && (
+                                              <div className="text-[10px] opacity-70 leading-tight mt-0.5 line-clamp-1">
+                                                {ix.context}
+                                              </div>
+                                            )}
+                                            <div className="text-[9px] opacity-50 mt-0.5">
+                                              → {ix.toActor}
+                                            </div>
+                                          </button>
+                                        ))
+                                      ) : (
+                                        <div className="h-full w-full rounded border border-dashed border-zinc-700/40" />
+                                      )}
+                                      {interactions && interactions.length > 3 && (
+                                        <div className="text-[10px] text-muted-foreground text-center">
+                                          +{interactions.length - 3} more
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+              )}
+
               <Card>
                 <CardHeader>
                   <CardTitle>Workboard</CardTitle>
-                  <CardDescription>{phaseLabel} • What’s happening in the room</CardDescription>
+                  <CardDescription>{phaseLabel} • What's happening in the room</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">

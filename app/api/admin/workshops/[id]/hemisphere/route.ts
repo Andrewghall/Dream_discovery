@@ -161,6 +161,45 @@ function defaultSeverity(type: NodeType): number | undefined {
   return undefined;
 }
 
+// --- Snapshot-based types and helpers ---
+
+type LivePrimaryType = 'VISIONARY' | 'OPPORTUNITY' | 'CONSTRAINT' | 'RISK' | 'ENABLER' | 'ACTION' | 'QUESTION' | 'INSIGHT';
+
+function mapLivePrimaryTypeToNodeType(primary: LivePrimaryType): Exclude<NodeType, 'EVIDENCE'> {
+  switch (primary) {
+    case 'VISIONARY': return 'VISION';
+    case 'OPPORTUNITY': return 'BELIEF';
+    case 'RISK': return 'CHALLENGE';
+    case 'ACTION': return 'ENABLER';
+    case 'QUESTION': return 'CHALLENGE';
+    case 'INSIGHT': return 'ENABLER';
+    case 'CONSTRAINT': return 'CONSTRAINT';
+    case 'ENABLER': return 'ENABLER';
+    default: return 'CHALLENGE';
+  }
+}
+
+function domainToPhaseTag(domain: string): string | null {
+  const d = (domain || '').trim().toLowerCase();
+  if (d.includes('people') || d.includes('human') || d.includes('talent') || d.includes('workforce') || d.includes('hr')) return 'people';
+  if (d.includes('corporate') || d.includes('business') || d.includes('enterprise') || d.includes('organization') || d.includes('organisation') || d.includes('strategy')) return 'corporate';
+  if (d.includes('customer') || d.includes('client') || d.includes('user') || d.includes('consumer') || d.includes('market')) return 'customer';
+  if (d.includes('tech') || d.includes('digital') || d.includes('software') || d.includes('data') || d.includes('infrastructure') || d.includes('system')) return 'technology';
+  if (d.includes('regulat') || d.includes('compliance') || d.includes('legal') || d.includes('governance') || d.includes('policy')) return 'regulation';
+  return null;
+}
+
+function phaseTagsFromDomains(domains: Array<{ domain: string; relevance: number; reasoning: string }> | undefined | null): string[] {
+  if (!Array.isArray(domains)) return [];
+  const tags: string[] = [];
+  for (const d of domains) {
+    if (!d || typeof d.domain !== 'string') continue;
+    const tag = domainToPhaseTag(d.domain);
+    if (tag) tags.push(tag);
+  }
+  return uniq(tags);
+}
+
 function inferNodeTypeFromText(text: string): Exclude<NodeType, 'EVIDENCE'> {
   const t = (text || '').toLowerCase();
   if (/(\bvision\b|\bfuture\b|\blooking ahead\b|\bambition\b|\bwe want\b)/.test(t)) return 'VISION';
@@ -238,6 +277,300 @@ export async function GET(
 ) {
   try {
     const { id: workshopId } = await params;
+    const source = request.nextUrl.searchParams.get('source');
+    const snapshotIdParam = request.nextUrl.searchParams.get('snapshotId');
+
+    // ── Snapshot-based flow ──────────────────────────────────────────────
+    if (source === 'snapshot') {
+      if (!snapshotIdParam) {
+        return NextResponse.json({ ok: false, error: 'Missing snapshotId parameter' }, { status: 400 });
+      }
+
+      const snapshot = await (prisma as any).liveWorkshopSnapshot.findFirst({
+        where: { id: snapshotIdParam, workshopId },
+      }) as { id: string; name: string; dialoguePhase: string; payload: unknown; createdAt: Date; updatedAt: Date } | null;
+
+      if (!snapshot) {
+        return NextResponse.json({ ok: false, error: 'Snapshot not found' }, { status: 404 });
+      }
+
+      const payload = snapshot.payload as Record<string, unknown> | null;
+      const liveNodes = (payload && typeof payload === 'object' && payload.nodes && typeof payload.nodes === 'object' && !Array.isArray(payload.nodes))
+        ? payload.nodes as Record<string, any>
+        : {} as Record<string, any>;
+
+      const nodesById = new Map<string, HemisphereNode>();
+
+      for (const [dataPointId, datum] of Object.entries(liveNodes)) {
+        if (!datum || typeof datum !== 'object') continue;
+        const rawText = typeof datum.rawText === 'string' ? datum.rawText.trim() : '';
+        if (!rawText) continue;
+
+        const classification = datum.classification && typeof datum.classification === 'object' ? datum.classification : null;
+        const agenticAnalysis = datum.agenticAnalysis && typeof datum.agenticAnalysis === 'object' ? datum.agenticAnalysis : null;
+
+        const primaryType: LivePrimaryType = (classification && typeof classification.primaryType === 'string')
+          ? classification.primaryType as LivePrimaryType
+          : 'INSIGHT';
+        const mappedType = mapLivePrimaryTypeToNodeType(primaryType);
+
+        const phaseTags = phaseTagsFromDomains(agenticAnalysis?.domains);
+
+        const confidence = (agenticAnalysis && typeof agenticAnalysis.overallConfidence === 'number')
+          ? clamp01(agenticAnalysis.overallConfidence)
+          : (classification && typeof classification.confidence === 'number')
+            ? clamp01(classification.confidence)
+            : undefined;
+
+        const speakerId = typeof datum.speakerId === 'string' ? datum.speakerId : null;
+
+        const nodeId = `${mappedType}:live:${dataPointId}`;
+        nodesById.set(nodeId, {
+          id: nodeId,
+          type: mappedType,
+          label: shortLabel(rawText, 8),
+          summary: rawText,
+          phaseTags,
+          layer: layerForType(mappedType),
+          weight: 1,
+          severity: defaultSeverity(mappedType),
+          confidence,
+          sources: [{ sessionId: 'live', participantName: speakerId || 'Speaker' }],
+          evidence: [{ quote: rawText }],
+        });
+      }
+
+      let allNodes: HemisphereNode[] = [...nodesById.values()].sort((a, b) => b.weight - a.weight);
+
+      // Compute edges using Jaccard similarity (same logic as session-based flow)
+      const nodesForSimilarity = allNodes.slice(0, 140);
+      const tokenById = new Map(nodesForSimilarity.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
+
+      const edgesById = new Map<string, HemisphereEdge>();
+      const addEdge = (edge: HemisphereEdge) => {
+        const prev = edgesById.get(edge.id);
+        if (!prev || edge.strength > prev.strength) edgesById.set(edge.id, edge);
+      };
+
+      const layerDepthSnap = (layer: HemisphereLayer): number => {
+        if (layer === 'H1') return 1;
+        if (layer === 'H2') return 2;
+        if (layer === 'H3') return 3;
+        return 4;
+      };
+
+      for (let i = 0; i < nodesForSimilarity.length; i++) {
+        for (let j = i + 1; j < nodesForSimilarity.length; j++) {
+          const a = nodesForSimilarity[i];
+          const b = nodesForSimilarity[j];
+          const da = layerDepthSnap(a.layer);
+          const db = layerDepthSnap(b.layer);
+          if (da === 4 || db === 4) continue;
+          if (Math.abs(da - db) > 2) continue;
+          const ta = tokenById.get(a.id) || new Set<string>();
+          const tb = tokenById.get(b.id) || new Set<string>();
+          const sim = jaccard(ta, tb);
+
+          const involvesH1 = a.layer === 'H1' || b.layer === 'H1';
+          const eqThresh = involvesH1 ? 0.22 : 0.28;
+          const derivThresh = involvesH1 ? 0.17 : 0.20;
+          const reinfThresh = involvesH1 ? 0.13 : 0.16;
+
+          if (sim >= eqThresh) {
+            const src = a.id;
+            const tgt = b.id;
+            const id = `EQUIVALENT:${src < tgt ? `${src}|${tgt}` : `${tgt}|${src}`}`;
+            addEdge({ id, source: src, target: tgt, strength: clamp01(sim), kind: 'EQUIVALENT' });
+            continue;
+          }
+
+          if (sim >= derivThresh && da !== db && da !== 4 && db !== 4) {
+            const h1Source = da < db ? a.id : b.id;
+            const h1Target = da < db ? b.id : a.id;
+            const src = involvesH1 ? h1Source : da > db ? a.id : b.id;
+            const tgt = involvesH1 ? h1Target : da > db ? b.id : a.id;
+            const id = `DERIVATIVE:${src}|${tgt}`;
+            addEdge({ id, source: src, target: tgt, strength: clamp01(sim), kind: 'DERIVATIVE' });
+            continue;
+          }
+
+          if (sim >= reinfThresh) {
+            const src = a.id;
+            const tgt = b.id;
+            const id = `REINFORCING:${src < tgt ? `${src}|${tgt}` : `${tgt}|${src}`}`;
+            addEdge({ id, source: src, target: tgt, strength: clamp01(sim), kind: 'REINFORCING' });
+          }
+        }
+      }
+
+      const edges = [...edgesById.values()];
+      const degree = degreeByNode(edges);
+
+      // Core Truth generation (same logic as session-based flow)
+      const candidateNodes = allNodes;
+      const crossDomainCount = (n: HemisphereNode) => uniq((n.phaseTags || []).map((t) => String(t).toLowerCase())).length;
+      const severity01 = (n: HemisphereNode) => (typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.5);
+
+      const scored = candidateNodes
+        .map((n) => {
+          const cross = crossDomainCount(n);
+          const crossMult = 1 + 0.45 * Math.min(3, Math.max(0, cross - 1));
+          const sev = severity01(n);
+          const deg = degree.get(n.id) || 0;
+          const score = Math.max(1, n.weight) * (1 + sev * 1.6) * crossMult + deg * 2.5;
+          return { n, score, deg, cross, sev };
+        })
+        .sort((a, b) => b.score - a.score || b.deg - a.deg || b.n.weight - a.n.weight);
+
+      const driverNodes = scored.slice(0, 6).map((r) => r.n);
+      const centralNodes = scored.slice(0, 10).map((r) => r.n);
+
+      const coreTruthNodeId = 'CORE_TRUTH';
+      const coreType: Exclude<NodeType, 'EVIDENCE'> =
+        centralNodes.some((n) => n.type === 'CONSTRAINT') ? 'CONSTRAINT' : 'CHALLENGE';
+
+      let coreSummary = '';
+      try {
+        if (!env.OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY');
+
+        const evidenceQuotes = driverNodes
+          .flatMap((n) => (Array.isArray(n.evidence) ? n.evidence : []))
+          .map((e) => (e && typeof e === 'object' && typeof e.quote === 'string' ? e.quote.trim() : ''))
+          .filter(Boolean)
+          .slice(0, 10);
+
+        const driverLines = driverNodes
+          .map((n, idx) => {
+            const cross = crossDomainCount(n);
+            const sev = typeof n.severity === 'number' ? n.severity : null;
+            const deg = degree.get(n.id) || 0;
+            return `${idx + 1}. [${n.type}] ${n.label}${n.summary ? ` — ${n.summary}` : ''} (weight=${n.weight}, severity=${sev ?? 'null'}, crossDomain=${cross}, centrality=${deg.toFixed(2)})`;
+          })
+          .join('\n');
+
+        const prompt = `Synthesize a single causal Core Truth statement describing the organisation's gravity well.
+
+Requirements:
+- Output strict JSON with schema: {"sentence": string}
+- Exactly ONE sentence.
+- 16-28 words.
+- Must express causality (e.g., "because", "drives", "causes", "amplifies", "leads to").
+- Prefer concrete operational mechanism over abstract phrasing (approvals, handoffs, queues, rework, unclear ownership, tooling constraints).
+- Do NOT use bullet points.
+- Do NOT mention "drivers" or "nodes".
+- Neutral mirror of today: no blame, no judgement, no recommendations (avoid "should", "need to", "must").
+- Do NOT reference participant identity, roles, or introductions.
+
+Top drivers:
+${driverLines}
+
+Evidence quotes (if helpful):
+${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (none)'}
+`;
+
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          temperature: 0.25,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are an organisational intelligence analyst. Produce a single, high-signal causal sentence executives can recognise immediately. Ground claims in provided drivers/quotes and avoid generic consultant language.',
+            },
+            { role: 'user', content: prompt },
+          ],
+          response_format: { type: 'json_object' },
+        });
+
+        const raw = completion.choices?.[0]?.message?.content?.trim() || '{}';
+        const parsed = safeParseJson<{ sentence?: unknown }>(raw);
+        const sent = parsed && typeof parsed.sentence === 'string' ? parsed.sentence.trim() : '';
+        coreSummary = sent;
+      } catch (e) {
+        coreSummary = '';
+        console.warn('Core Truth agentic synthesis failed (snapshot):', e);
+      }
+
+      allNodes.push({
+        id: coreTruthNodeId,
+        type: coreType,
+        label: 'Core Truth',
+        summary: coreSummary.trim() ? coreSummary : undefined,
+        phaseTags: uniq(centralNodes.flatMap((n) => n.phaseTags)),
+        layer: layerForType(coreType),
+        weight: 10,
+        severity: defaultSeverity(coreType),
+        confidence: undefined,
+        sources: [],
+        evidence: [],
+      });
+
+      for (let i = 0; i < centralNodes.length; i++) {
+        const n = centralNodes[i];
+        const src = coreTruthNodeId;
+        const tgt = n.id;
+        const id = `DERIVATIVE:${src}|${tgt}`;
+        const strength = clamp01(0.95 - i * 0.04);
+        edges.push({ id, source: src, target: tgt, strength, kind: 'DERIVATIVE' });
+      }
+
+      // Orphan recovery for snapshot nodes
+      const tokenAll = new Map(allNodes.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
+      let degree2 = degreeByNode(edges);
+      const orphanIds = allNodes
+        .map((n) => n.id)
+        .filter((id) => id !== coreTruthNodeId && (degree2.get(id) || 0) <= 0);
+
+      if (orphanIds.length) {
+        for (const orphanId of orphanIds) {
+          const orphanNode = allNodes.find((n) => n.id === orphanId);
+          if (!orphanNode) continue;
+          const ta = tokenAll.get(orphanId) || new Set<string>();
+
+          let best: { other: HemisphereNode; sim: number } | null = null;
+          for (const other of allNodes) {
+            if (other.id === orphanId) continue;
+            const tb = tokenAll.get(other.id) || new Set<string>();
+            const sim = jaccard(ta, tb);
+            if (!best || sim > best.sim) best = { other, sim };
+          }
+
+          const other = best?.other || allNodes.find((n) => n.id === coreTruthNodeId) || null;
+          if (!other) continue;
+
+          const sim = best ? best.sim : 0;
+          const src = orphanId;
+          const tgt = other.id;
+          const id = `REINFORCING:${src < tgt ? `${src}|${tgt}` : `${tgt}|${src}`}`;
+          const strength = clamp01(0.12 + 0.38 * clamp01(sim));
+          edges.push({ id, source: src, target: tgt, strength, kind: 'REINFORCING' });
+        }
+        degree2 = degreeByNode(edges);
+      }
+
+      const allNodesById = new Set(allNodes.map((n) => n.id));
+      const filteredEdges = edges.filter((e) => allNodesById.has(e.source) && allNodesById.has(e.target));
+
+      const hemisphereGraph: HemisphereGraph = {
+        nodes: allNodes,
+        edges: filteredEdges,
+        coreTruthNodeId,
+      };
+
+      return NextResponse.json({
+        ok: true,
+        workshopId,
+        source: 'snapshot',
+        snapshotId: snapshot.id,
+        snapshotName: snapshot.name,
+        generatedAt: new Date().toISOString(),
+        sessionCount: 0,
+        participantCount: 0,
+        hemisphereGraph,
+      });
+    }
+
+    // ── Session-based flow (existing) ────────────────────────────────────
     const runType = safeRunType(request.nextUrl.searchParams.get('runType'));
 
     // Optimized: Fetch sessions with reports and insights in single query using include

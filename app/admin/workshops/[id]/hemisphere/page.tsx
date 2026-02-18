@@ -1,13 +1,14 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
-type NodeType = 'VISION' | 'BELIEF' | 'CHALLENGE' | 'FRICTION' | 'CONSTRAINT' | 'ENABLER' | 'EVIDENCE';
+/* ─────────────────────────── Types ─────────────────────────── */
 
+type NodeType = 'VISION' | 'BELIEF' | 'CHALLENGE' | 'FRICTION' | 'CONSTRAINT' | 'ENABLER' | 'EVIDENCE';
 type HemisphereLayer = 'H1' | 'H2' | 'H3' | 'H4';
 
 type HemisphereNode = {
@@ -46,12 +47,53 @@ type HemisphereResponse = {
   sessionCount: number;
   participantCount: number;
   hemisphereGraph: HemisphereGraph;
+  snapshotId?: string;
+  snapshotName?: string;
   error?: string;
 };
 
-type PageProps = {
-  params: Promise<{ id: string }>;
+type Snapshot = { id: string; name: string; dialoguePhase: string; createdAt: string };
+
+type ActorJourneyStep = {
+  order: number;
+  action: string;
+  channel?: string;
+  actors: string[];
+  sentiment: string;
+  insights: string[];
+  painPoints: string[];
 };
+
+type ActorSummary = {
+  name: string;
+  role: string;
+  mentionCount: number;
+  domains: string[];
+  sentimentBreakdown: Record<string, number>;
+  keyInteractions: Array<{ withActor: string; frequency: number; primaryAction: string; primarySentiment: string }>;
+};
+
+type ActorJourneyResponse = {
+  ok: boolean;
+  journey: { centralActor: string; steps: ActorJourneyStep[] } | null;
+  actors: ActorSummary[];
+  generatedAt: string;
+};
+
+type DomainTab = 'all' | 'people' | 'corporate' | 'customer' | 'technology' | 'regulation';
+
+type PageProps = { params: Promise<{ id: string }> };
+
+/* ─────────────────────────── Constants ─────────────────────────── */
+
+const DOMAIN_TABS: { key: DomainTab; label: string; color: string }[] = [
+  { key: 'all', label: 'All Domains', color: '#94a3b8' },
+  { key: 'people', label: 'People', color: '#a78bfa' },
+  { key: 'corporate', label: 'Operations', color: '#f97316' },
+  { key: 'customer', label: 'Customer', color: '#60a5fa' },
+  { key: 'technology', label: 'Technology', color: '#34d399' },
+  { key: 'regulation', label: 'Regulation', color: '#fb7185' },
+];
 
 const ALL_PHASES = ['people', 'corporate', 'customer', 'technology', 'regulation'] as const;
 const ALL_TYPES: NodeType[] = ['VISION', 'BELIEF', 'CHALLENGE', 'FRICTION', 'CONSTRAINT', 'ENABLER'];
@@ -59,6 +101,8 @@ const ALL_TYPES: NodeType[] = ['VISION', 'BELIEF', 'CHALLENGE', 'FRICTION', 'CON
 const STOPWORDS = new Set([
   'a','an','and','are','as','at','be','but','by','for','from','has','have','i','if','in','into','is','it','its','me','my','no','not','of','on','or','our','so','that','the','their','then','there','these','they','this','to','too','up','us','was','we','were','what','when','where','which','who','why','will','with','you','your',
 ]);
+
+/* ─────────────────────────── Utility Functions ─────────────────────────── */
 
 function clamp01(n: number) {
   if (!Number.isFinite(n)) return 0;
@@ -85,20 +129,13 @@ function easeInOutCubic(t: number) {
 
 function colorForType(type: NodeType): { fill: string; glow: string } {
   switch (type) {
-    case 'VISION':
-      return { fill: '#60a5fa', glow: 'rgba(96,165,250,0.85)' };
-    case 'BELIEF':
-      return { fill: '#a78bfa', glow: 'rgba(167,139,250,0.85)' };
-    case 'CHALLENGE':
-      return { fill: '#fb7185', glow: 'rgba(251,113,133,0.85)' };
-    case 'FRICTION':
-      return { fill: '#f97316', glow: 'rgba(249,115,22,0.85)' };
-    case 'CONSTRAINT':
-      return { fill: '#ef4444', glow: 'rgba(239,68,68,0.85)' };
-    case 'ENABLER':
-      return { fill: '#34d399', glow: 'rgba(52,211,153,0.85)' };
-    case 'EVIDENCE':
-      return { fill: '#94a3b8', glow: 'rgba(148,163,184,0.75)' };
+    case 'VISION': return { fill: '#60a5fa', glow: 'rgba(96,165,250,0.85)' };
+    case 'BELIEF': return { fill: '#a78bfa', glow: 'rgba(167,139,250,0.85)' };
+    case 'CHALLENGE': return { fill: '#fb7185', glow: 'rgba(251,113,133,0.85)' };
+    case 'FRICTION': return { fill: '#f97316', glow: 'rgba(249,115,22,0.85)' };
+    case 'CONSTRAINT': return { fill: '#ef4444', glow: 'rgba(239,68,68,0.85)' };
+    case 'ENABLER': return { fill: '#34d399', glow: 'rgba(52,211,153,0.85)' };
+    case 'EVIDENCE': return { fill: '#94a3b8', glow: 'rgba(148,163,184,0.75)' };
   }
 }
 
@@ -111,14 +148,7 @@ function uniq<T>(arr: T[]) {
 }
 
 function words(text: string): string[] {
-  return (text || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, ' ')
-    .split(/\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .filter((w) => w.length >= 3)
-    .filter((w) => !STOPWORDS.has(w));
+  return (text || '').toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).map((s) => s.trim()).filter(Boolean).filter((w) => w.length >= 3).filter((w) => !STOPWORDS.has(w));
 }
 
 function tokenSet(text: string): Set<string> {
@@ -133,8 +163,565 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   return uni <= 0 ? 0 : inter / uni;
 }
 
+function sentimentColor(sentiment: string): string {
+  const s = (sentiment || '').toLowerCase();
+  if (s.includes('frustrat') || s.includes('critical') || s.includes('angry') || s.includes('negative')) return '#ef4444';
+  if (s.includes('concern') || s.includes('delay') || s.includes('slow') || s.includes('anxious')) return '#f59e0b';
+  if (s.includes('positive') || s.includes('smooth') || s.includes('empower') || s.includes('satisfied')) return '#34d399';
+  return '#94a3b8';
+}
+
+/* ─────────────────────────── 3D Hemisphere Types ─────────────────────────── */
+
 type Vec3 = { x: number; y: number; z: number };
 type NodePose = { id: string; p: Vec3; clusterId: string; layer: HemisphereLayer; type: NodeType };
+
+/* ─────────────────────────── Mini Hemisphere Canvas ─────────────────────────── */
+
+function MiniHemisphere({
+  nodes,
+  edges,
+  coreTruthNodeId,
+  label,
+  nodeCount,
+  color,
+  active,
+  onClick,
+}: {
+  nodes: HemisphereNode[];
+  edges: HemisphereEdge[];
+  coreTruthNodeId: string;
+  label: string;
+  nodeCount: number;
+  color: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const draw = (tMs: number) => {
+      const dpr = window.devicePixelRatio || 1;
+      const w = 180 * dpr;
+      const h = 120 * dpr;
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+
+      const cx = w / 2;
+      const cy = h * 0.65;
+      const R = Math.min(w, h) * 0.38;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Background
+      const bg = ctx.createRadialGradient(cx, cy, R * 0.05, cx, cy, R * 1.2);
+      bg.addColorStop(0, 'rgba(2,6,23,1)');
+      bg.addColorStop(1, 'rgba(0,0,0,1)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, w, h);
+
+      // Dome arc
+      ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+      ctx.lineWidth = dpr;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, Math.PI, 0, false);
+      ctx.stroke();
+
+      // Nodes
+      const spin = tMs * 0.00003;
+      const cs = Math.cos(spin);
+      const sn = Math.sin(spin);
+
+      for (const n of nodes) {
+        if (n.id === coreTruthNodeId) continue;
+        const u = hash01(`u:${n.id}`);
+        const v = hash01(`v:${n.id}`);
+        const theta = u * Math.PI * 2;
+        const phi = (Math.PI / 2) * clamp01(0.05 + v * 0.9);
+        const radial = Math.sin(phi);
+        const py = Math.cos(phi);
+        const px = Math.cos(theta) * radial;
+        const pz = Math.sin(theta) * radial;
+
+        const rx = px * cs - pz * sn;
+        const rz = px * sn + pz * cs;
+        const depth = (rz + 1) / 2;
+        const persp = 0.7 + depth * 0.5;
+
+        const sx = cx + rx * R * persp;
+        const sy = cy - py * R * persp;
+        const r = (1.5 + Math.sqrt(Math.max(1, n.weight || 1)) * 0.8) * dpr * persp;
+
+        const palette = colorForType(n.type);
+        const alpha = 0.4 + depth * 0.5;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = palette.fill;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = 1;
+      rafRef.current = requestAnimationFrame(draw);
+    };
+
+    rafRef.current = requestAnimationFrame(draw);
+    return () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); };
+  }, [nodes, coreTruthNodeId]);
+
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex flex-col items-center rounded-lg border transition-all ${
+        active
+          ? 'border-white/30 bg-white/10 ring-1 ring-white/20'
+          : 'border-white/10 bg-black/30 hover:border-white/20 hover:bg-white/5'
+      }`}
+      style={{ width: 180, height: 150 }}
+    >
+      <canvas ref={canvasRef} className="w-full rounded-t-lg" style={{ height: 110 }} />
+      <div className="flex items-center gap-1.5 py-1">
+        <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+        <span className="text-[11px] font-medium text-slate-200">{label}</span>
+        <Badge variant="outline" className="h-4 border-white/20 px-1 text-[10px] text-slate-300">
+          {nodeCount}
+        </Badge>
+      </div>
+    </button>
+  );
+}
+
+/* ─────────────────────────── Domain Synthesis Card ─────────────────────────── */
+
+function DomainSynthesisCard({
+  domain,
+  nodes,
+  edges,
+  allNodes,
+}: {
+  domain: DomainTab;
+  nodes: HemisphereNode[];
+  edges: HemisphereEdge[];
+  allNodes: HemisphereNode[];
+}) {
+  const domainLabel = DOMAIN_TABS.find((d) => d.key === domain)?.label || 'All Domains';
+  const nonEvidence = nodes.filter((n) => n.type !== 'EVIDENCE');
+
+  // Group by type for breakdown
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const n of nonEvidence) {
+      counts[n.type] = (counts[n.type] || 0) + 1;
+    }
+    return counts;
+  }, [nonEvidence]);
+
+  // Cluster themes using edges
+  const themes = useMemo(() => {
+    const nodeIds = new Set(nonEvidence.map((n) => n.id));
+    const parent = new Map<string, string>();
+    const find = (x: string): string => {
+      const p = parent.get(x);
+      if (!p || p === x) { parent.set(x, x); return x; }
+      const r = find(p); parent.set(x, r); return r;
+    };
+    const union = (a: string, b: string) => {
+      const ra = find(a); const rb = find(b);
+      if (ra !== rb) parent.set(ra, rb);
+    };
+
+    for (const n of nonEvidence) parent.set(n.id, n.id);
+    for (const e of edges) {
+      if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue;
+      if (e.strength >= 0.2) union(e.source, e.target);
+    }
+
+    const groups = new Map<string, HemisphereNode[]>();
+    for (const n of nonEvidence) {
+      const root = find(n.id);
+      const arr = groups.get(root) || [];
+      arr.push(n);
+      groups.set(root, arr);
+    }
+
+    return [...groups.values()]
+      .filter((g) => g.length >= 1)
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 8)
+      .map((group) => {
+        const rep = group.sort((a, b) => (b.weight || 0) - (a.weight || 0))[0];
+        return { label: rep.label, count: group.length, type: rep.type, nodes: group };
+      });
+  }, [nonEvidence, edges]);
+
+  // Cross-domain connections
+  const crossDomainLinks = useMemo(() => {
+    if (domain === 'all') return [];
+    const nodeIds = new Set(nonEvidence.map((n) => n.id));
+    const connections = new Map<string, number>();
+    for (const e of edges) {
+      const sourceIn = nodeIds.has(e.source);
+      const targetIn = nodeIds.has(e.target);
+      if (sourceIn && !targetIn) {
+        const otherNode = allNodes.find((n) => n.id === e.target);
+        if (otherNode) {
+          const otherDomains = (otherNode.phaseTags || []).map((t) => String(t).toLowerCase());
+          for (const d of otherDomains) {
+            if (d !== domain) connections.set(d, (connections.get(d) || 0) + 1);
+          }
+        }
+      } else if (!sourceIn && targetIn) {
+        const otherNode = allNodes.find((n) => n.id === e.source);
+        if (otherNode) {
+          const otherDomains = (otherNode.phaseTags || []).map((t) => String(t).toLowerCase());
+          for (const d of otherDomains) {
+            if (d !== domain) connections.set(d, (connections.get(d) || 0) + 1);
+          }
+        }
+      }
+    }
+    return [...connections.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  }, [domain, nonEvidence, edges, allNodes]);
+
+  // Top insights by weight
+  const topInsights = nonEvidence
+    .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+    .slice(0, 6);
+
+  // Sentiment distribution from evidence
+  const sentimentDist = useMemo(() => {
+    let positive = 0, neutral = 0, concerned = 0, critical = 0;
+    for (const n of nonEvidence) {
+      if (n.type === 'VISION' || n.type === 'BELIEF' || n.type === 'ENABLER') positive++;
+      else if (n.type === 'CHALLENGE' || n.type === 'FRICTION') concerned++;
+      else if (n.type === 'CONSTRAINT') critical++;
+      else neutral++;
+    }
+    const total = Math.max(1, positive + neutral + concerned + critical);
+    return { positive: positive / total, neutral: neutral / total, concerned: concerned / total, critical: critical / total };
+  }, [nonEvidence]);
+
+  if (nonEvidence.length === 0) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+        <div className="text-sm text-slate-400">No data points in {domainLabel}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header stats */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div className="text-[11px] text-slate-400">Nodes</div>
+          <div className="text-lg font-semibold text-slate-50">{nonEvidence.length}</div>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div className="text-[11px] text-slate-400">Themes</div>
+          <div className="text-lg font-semibold text-slate-50">{themes.length}</div>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div className="text-[11px] text-slate-400">Connections</div>
+          <div className="text-lg font-semibold text-slate-50">
+            {edges.filter((e) => {
+              const ns = new Set(nonEvidence.map((n) => n.id));
+              return ns.has(e.source) && ns.has(e.target);
+            }).length}
+          </div>
+        </div>
+      </div>
+
+      {/* Sentiment bar */}
+      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+        <div className="mb-1.5 text-[11px] font-medium text-slate-300">Sentiment Distribution</div>
+        <div className="flex h-3 overflow-hidden rounded-full">
+          {sentimentDist.positive > 0 && <div className="bg-emerald-500" style={{ width: `${sentimentDist.positive * 100}%` }} />}
+          {sentimentDist.neutral > 0 && <div className="bg-slate-500" style={{ width: `${sentimentDist.neutral * 100}%` }} />}
+          {sentimentDist.concerned > 0 && <div className="bg-amber-500" style={{ width: `${sentimentDist.concerned * 100}%` }} />}
+          {sentimentDist.critical > 0 && <div className="bg-red-500" style={{ width: `${sentimentDist.critical * 100}%` }} />}
+        </div>
+        <div className="mt-1.5 flex gap-3 text-[10px] text-slate-400">
+          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />Positive</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-500" />Neutral</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />Concerned</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />Critical</span>
+        </div>
+      </div>
+
+      {/* Type breakdown */}
+      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+        <div className="mb-2 text-[11px] font-medium text-slate-300">Type Breakdown</div>
+        <div className="flex flex-wrap gap-1.5">
+          {Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
+            const c = colorForType(type as NodeType);
+            return (
+              <div key={type} className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: c.fill }} />
+                <span className="text-[11px] text-slate-200">{labelForType(type as NodeType)}</span>
+                <span className="text-[11px] font-medium text-slate-400">{count}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Key themes */}
+      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+        <div className="mb-2 text-[11px] font-medium text-slate-300">Key Themes</div>
+        <div className="space-y-1.5">
+          {themes.slice(0, 6).map((theme, idx) => {
+            const c = colorForType(theme.type);
+            return (
+              <div key={idx} className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="inline-block h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.fill }} />
+                  <span className="text-xs text-slate-200 truncate">{theme.label}</span>
+                </div>
+                <Badge variant="outline" className="h-4 border-white/15 px-1.5 text-[10px] text-slate-300 flex-shrink-0">
+                  {theme.count} node{theme.count !== 1 ? 's' : ''}
+                </Badge>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Top insights */}
+      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+        <div className="mb-2 text-[11px] font-medium text-slate-300">Top Insights</div>
+        <div className="space-y-2">
+          {topInsights.map((node) => {
+            const c = colorForType(node.type);
+            return (
+              <div key={node.id} className="rounded-md border border-white/10 bg-black/30 px-2.5 py-2">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: c.fill }} />
+                  <span className="text-[11px] font-medium text-slate-300">{labelForType(node.type)}</span>
+                  {typeof node.confidence === 'number' && (
+                    <span className="text-[10px] text-slate-500">{Math.round(node.confidence * 100)}%</span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-200 line-clamp-2">{node.summary || node.label}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Cross-domain connections */}
+      {crossDomainLinks.length > 0 && (
+        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+          <div className="mb-2 text-[11px] font-medium text-slate-300">Cross-Domain Connections</div>
+          <div className="space-y-1">
+            {crossDomainLinks.map(([otherDomain, count]) => {
+              const tab = DOMAIN_TABS.find((d) => d.key === otherDomain);
+              return (
+                <div key={otherDomain} className="flex items-center gap-2 text-xs">
+                  <span className="inline-block h-1.5 w-8 rounded-full" style={{ backgroundColor: tab?.color || '#94a3b8', opacity: 0.6 }} />
+                  <span className="text-slate-200 capitalize">{tab?.label || otherDomain}</span>
+                  <span className="text-slate-500">{count} link{count !== 1 ? 's' : ''}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────── Actor Journey Panel ─────────────────────────── */
+
+function ActorJourneyPanel({ workshopId, snapshotId }: { workshopId: string; snapshotId?: string }) {
+  const [data, setData] = useState<ActorJourneyResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchActors = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const params = new URLSearchParams();
+        if (snapshotId) params.set('snapshotId', snapshotId);
+        const r = await fetch(
+          `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere/actors?${params.toString()}`,
+          { cache: 'no-store' }
+        );
+        const json = (await r.json().catch(() => null)) as ActorJourneyResponse | null;
+        if (!r.ok || !json?.ok) {
+          setError('Failed to load actor journey');
+          return;
+        }
+        setData(json);
+      } catch {
+        setError('Failed to load actor journey');
+      } finally {
+        setLoading(false);
+      }
+    };
+    void fetchActors();
+  }, [workshopId, snapshotId]);
+
+  if (loading) return <div className="flex items-center justify-center py-12"><div className="text-sm text-slate-400">Synthesising actor journey...</div></div>;
+  if (error) return <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>;
+  if (!data?.actors?.length) return <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-400">No actors detected in workshop data. Actors are extracted from live workshop conversations about business roles and personas.</div>;
+
+  const journey = data.journey;
+  const actors = data.actors;
+
+  return (
+    <div className="space-y-4">
+      {/* Journey Flow */}
+      {journey && journey.steps.length > 0 && (
+        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-3">
+          <div className="mb-3 text-[11px] font-medium text-slate-300">
+            Customer Journey Flow
+          </div>
+          <div className="relative pl-4">
+            {/* Vertical spine line */}
+            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gradient-to-b from-blue-400/50 via-slate-500/30 to-slate-500/10" />
+
+            {journey.steps.map((step, idx) => (
+              <div key={idx} className="relative mb-4 last:mb-0">
+                {/* Dot on the spine */}
+                <div
+                  className="absolute -left-[9px] top-1 h-3 w-3 rounded-full border-2 border-black"
+                  style={{ backgroundColor: sentimentColor(step.sentiment) }}
+                />
+
+                <div className="ml-3 rounded-md border border-white/10 bg-black/30 px-3 py-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-medium text-slate-200">{step.order}. {step.action}</span>
+                    {step.channel && (
+                      <Badge variant="outline" className="h-4 border-white/15 px-1 text-[9px] text-slate-400">
+                        {step.channel}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {step.actors.map((a) => (
+                      <span key={a} className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-slate-300">
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-1 mb-1">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sentimentColor(step.sentiment) }} />
+                    <span className="text-[10px] text-slate-400 capitalize">{step.sentiment}</span>
+                  </div>
+
+                  {step.insights.length > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      {step.insights.slice(0, 2).map((ins, i) => (
+                        <div key={i} className="text-[10px] text-slate-400 italic">"{ins}"</div>
+                      ))}
+                    </div>
+                  )}
+
+                  {step.painPoints.length > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      {step.painPoints.slice(0, 2).map((pp, i) => (
+                        <div key={i} className="text-[10px] text-red-400/80">! {pp}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Actor Cards */}
+      <div className="space-y-3">
+        <div className="text-[11px] font-medium text-slate-300">Actor Summary</div>
+        {actors.map((actor) => {
+          const total = Object.values(actor.sentimentBreakdown || {}).reduce((a, b) => a + b, 0);
+          return (
+            <div key={actor.name} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-100">{actor.name}</span>
+                  <Badge variant="outline" className="h-4 border-white/15 px-1.5 text-[10px] text-slate-400">
+                    {actor.mentionCount} mention{actor.mentionCount !== 1 ? 's' : ''}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-400 mb-2">{actor.role}</div>
+
+              {actor.domains.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {actor.domains.map((d) => {
+                    const tab = DOMAIN_TABS.find((t) => t.key === d);
+                    return (
+                      <span key={d} className="rounded-full px-1.5 py-0.5 text-[10px] text-slate-300 capitalize" style={{ backgroundColor: `${tab?.color || '#94a3b8'}20`, border: `1px solid ${tab?.color || '#94a3b8'}40` }}>
+                        {tab?.label || d}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Sentiment bar */}
+              {total > 0 && (
+                <div className="mb-2">
+                  <div className="flex h-2 overflow-hidden rounded-full bg-black/20">
+                    {Object.entries(actor.sentimentBreakdown).map(([sentiment, count]) => (
+                      <div
+                        key={sentiment}
+                        className="h-full"
+                        style={{ width: `${(count / total) * 100}%`, backgroundColor: sentimentColor(sentiment) }}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-500">
+                    {Object.entries(actor.sentimentBreakdown).map(([sentiment, count]) => (
+                      <span key={sentiment} className="flex items-center gap-0.5">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sentimentColor(sentiment) }} />
+                        {sentiment}: {count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Key interactions */}
+              {actor.keyInteractions?.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[10px] text-slate-500">Key Interactions</div>
+                  {actor.keyInteractions.slice(0, 3).map((ki, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 text-[11px]">
+                      <span className="inline-block h-1 w-1 rounded-full" style={{ backgroundColor: sentimentColor(ki.primarySentiment) }} />
+                      <span className="text-slate-300">{ki.primaryAction}</span>
+                      <span className="text-slate-500">with</span>
+                      <span className="text-slate-300">{ki.withActor}</span>
+                      <span className="text-slate-500">({ki.frequency}x)</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── Main Page Component ─────────────────────────── */
 
 export default function WorkshopHemispherePage({ params }: PageProps) {
   const { id: workshopId } = use(params);
@@ -143,6 +730,16 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<HemisphereResponse | null>(null);
 
+  // Snapshot management
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
+  const [showSnapshotDropdown, setShowSnapshotDropdown] = useState(false);
+
+  // Domain tabs
+  const [activeDomain, setActiveDomain] = useState<DomainTab>('all');
+  const [rightTab, setRightTab] = useState<'synthesis' | 'actors'>('synthesis');
+
+  // Canvas & interaction
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const hitMapRef = useRef<Map<string, { x: number; y: number; r: number }>>(new Map());
@@ -150,44 +747,47 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [zoomClusterId, setZoomClusterId] = useState<string | null>(null);
-
-  const [highlightDominantDrivers, setHighlightDominantDrivers] = useState(false);
-  const [showCausalChains, setShowCausalChains] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const prevRunTypeRef = useRef<'BASELINE' | 'FOLLOWUP'>('BASELINE');
   const transitionRef = useRef<{ startMs: number; from: Map<string, NodePose> } | null>(null);
   const prevPositionsRef = useRef<Map<string, NodePose>>(new Map());
 
   const [phaseFilter, setPhaseFilter] = useState<Record<(typeof ALL_PHASES)[number], boolean>>({
-    people: true,
-    corporate: true,
-    customer: true,
-    technology: true,
-    regulation: true,
+    people: true, corporate: true, customer: true, technology: true, regulation: true,
   });
-
   const [typeFilter, setTypeFilter] = useState<Record<NodeType, boolean>>({
-    VISION: true,
-    BELIEF: true,
-    CHALLENGE: true,
-    FRICTION: true,
-    CONSTRAINT: true,
-    ENABLER: true,
-    EVIDENCE: false,
+    VISION: true, BELIEF: true, CHALLENGE: true, FRICTION: true, CONSTRAINT: true, ENABLER: true, EVIDENCE: false,
   });
-
   const [minWeight, setMinWeight] = useState(0);
-  const [onlyCrossDomain, setOnlyCrossDomain] = useState(false);
 
+  // Fetch snapshots
+  useEffect(() => {
+    const fetchSnapshots = async () => {
+      try {
+        const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/live/snapshots`);
+        const json = await r.json().catch(() => null);
+        if (json?.ok && Array.isArray(json.snapshots)) {
+          setSnapshots(json.snapshots);
+        }
+      } catch { /* ignore */ }
+    };
+    void fetchSnapshots();
+  }, [workshopId]);
+
+  // Fetch hemisphere data
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         setError(null);
-        const r = await fetch(
-          `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?runType=${encodeURIComponent(runType)}&bust=${Date.now()}`,
-          { cache: 'no-store' }
-        );
+        let url: string;
+        if (selectedSnapshotId) {
+          url = `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?source=snapshot&snapshotId=${encodeURIComponent(selectedSnapshotId)}&bust=${Date.now()}`;
+        } else {
+          url = `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?runType=${encodeURIComponent(runType)}&bust=${Date.now()}`;
+        }
+        const r = await fetch(url, { cache: 'no-store' });
         const json = (await r.json().catch(() => null)) as HemisphereResponse | null;
         if (!r.ok || !json || !json.ok) {
           setData(null);
@@ -202,19 +802,17 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         setLoading(false);
       }
     };
-
     void fetchData();
-  }, [workshopId, runType]);
+  }, [workshopId, runType, selectedSnapshotId]);
 
   useEffect(() => {
     setHoveredNodeId(null);
     setSelectedNodeId(null);
     setZoomClusterId(null);
-  }, [runType, workshopId]);
+  }, [runType, workshopId, selectedSnapshotId]);
 
   useEffect(() => {
     if (prevRunTypeRef.current !== runType) {
-      // Start a transition between the prior layout and the new layout.
       prevRunTypeRef.current = runType;
       transitionRef.current = { startMs: performance.now(), from: new Map(prevPositionsRef.current) };
     }
@@ -223,41 +821,50 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const graph = data?.hemisphereGraph || null;
   const nodes = graph?.nodes || [];
   const edges = graph?.edges || [];
-
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
-
   const maxWeight = useMemo(() => nodes.reduce((m, n) => Math.max(m, n.weight || 0), 1), [nodes]);
+
+  // Filter nodes for active domain
+  const domainFilteredNodes = useMemo(() => {
+    if (activeDomain === 'all') return nodes;
+    return nodes.filter((n) => {
+      const tags = (n.phaseTags || []).map((t) => String(t).toLowerCase());
+      return tags.length === 0 || tags.includes(activeDomain);
+    });
+  }, [nodes, activeDomain]);
+
+  // Nodes per domain for mini-hemispheres
+  const nodesPerDomain = useMemo(() => {
+    const map: Record<string, HemisphereNode[]> = {};
+    for (const domain of ALL_PHASES) {
+      map[domain] = nodes.filter((n) => {
+        const tags = (n.phaseTags || []).map((t) => String(t).toLowerCase());
+        return tags.includes(domain);
+      });
+    }
+    return map;
+  }, [nodes]);
 
   const clusterByNodeId = useMemo(() => {
     const parent = new Map<string, string>();
     const find = (x: string): string => {
       const p = parent.get(x);
-      if (!p) {
-        parent.set(x, x);
-        return x;
-      }
+      if (!p) { parent.set(x, x); return x; }
       if (p === x) return x;
-      const r = find(p);
-      parent.set(x, r);
-      return r;
+      const r = find(p); parent.set(x, r); return r;
     };
-    const union = (a: string, b: string) => {
-      const ra = find(a);
-      const rb = find(b);
-      if (ra !== rb) parent.set(ra, rb);
-    };
-
-    for (const n of nodes) parent.set(n.id, n.id);
+    const union = (a: string, b: string) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+    for (const n of domainFilteredNodes) parent.set(n.id, n.id);
     for (const e of edges) {
       if (e.kind !== 'EQUIVALENT') continue;
       if (e.strength < 0.28) continue;
+      if (!parent.has(e.source) || !parent.has(e.target)) continue;
       union(e.source, e.target);
     }
-
     const out = new Map<string, string>();
-    for (const n of nodes) out.set(n.id, find(n.id));
+    for (const n of domainFilteredNodes) out.set(n.id, find(n.id));
     return out;
-  }, [nodes, edges]);
+  }, [domainFilteredNodes, edges]);
 
   const degreeById = useMemo(() => {
     const deg = new Map<string, number>();
@@ -271,6 +878,10 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
   const baseVisibleNodes = useMemo(() => {
     const phaseOk = (n: HemisphereNode) => {
+      if (activeDomain !== 'all') {
+        const tags = (n.phaseTags || []).map((t) => String(t).toLowerCase());
+        return tags.length === 0 || tags.includes(activeDomain);
+      }
       const tags = Array.isArray(n.phaseTags) ? n.phaseTags : [];
       if (tags.length === 0) return true;
       return tags.some((t) => {
@@ -280,68 +891,32 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     };
     const typeOk = (n: HemisphereNode) => typeFilter[n.type] !== false;
     const weightOk = (n: HemisphereNode) => (n.weight || 0) >= minWeight;
-    const crossDomainOk = (n: HemisphereNode) => {
-      if (!onlyCrossDomain) return true;
-      const tags = uniq((n.phaseTags || []).map((t) => String(t).toLowerCase()));
-      return tags.length >= 2;
-    };
-
-    // Option A: keep evidence nodes out of the base view; they appear only when you select a node.
-    let base = nodes.filter((n) => n.type !== 'EVIDENCE' && phaseOk(n) && typeOk(n) && weightOk(n) && crossDomainOk(n));
-
-    if (highlightDominantDrivers && base.length) {
-      const influence = (n: HemisphereNode) => {
-        const sev = typeof n.severity === 'number' ? clamp01((n.severity - 1) / 4) : 0.5;
-        const cross = uniq((n.phaseTags || []).map((t) => String(t).toLowerCase())).length;
-        const crossMult = 1 + 0.35 * Math.min(3, Math.max(0, cross - 1));
-        const deg = degreeById.get(n.id) || 0;
-        return (Math.max(1, n.weight || 1) * (1 + sev * 1.6) * crossMult) + deg * 2.2;
-      };
-      const scores = base.map(influence).sort((a, b) => b - a);
-      const threshold = scores[Math.max(0, Math.floor(scores.length * 0.18))] || scores[0] || 0;
-      base = base.filter((n) => influence(n) >= threshold);
-    }
-
+    const base = domainFilteredNodes.filter((n) => n.type !== 'EVIDENCE' && phaseOk(n) && typeOk(n) && weightOk(n));
     base.sort((a, b) => (b.weight || 0) - (a.weight || 0));
     return base;
-  }, [nodes, phaseFilter, typeFilter, minWeight, onlyCrossDomain, highlightDominantDrivers, degreeById]);
+  }, [domainFilteredNodes, phaseFilter, typeFilter, minWeight, activeDomain]);
 
   const selectedEvidenceNodes = useMemo(() => {
     if (!selectedNodeId) return [] as HemisphereNode[];
     const selected = nodeById.get(selectedNodeId);
-    if (!selected) return [] as HemisphereNode[];
-    if (selected.type === 'EVIDENCE') return [] as HemisphereNode[];
-
+    if (!selected || selected.type === 'EVIDENCE') return [] as HemisphereNode[];
     const sessionIds = new Set((selected.sources || []).map((s) => s.sessionId).filter(Boolean));
     if (sessionIds.size === 0) return [] as HemisphereNode[];
-
     const selectedTokens = tokenSet(`${selected.label} ${selected.summary || ''}`);
-
-    const evid = nodes
-      .filter((n) => n.type === 'EVIDENCE')
-      .filter((n) => (n.sources || []).some((s) => sessionIds.has(s.sessionId)))
-      .map((n) => {
-        const sim = jaccard(selectedTokens, tokenSet(`${n.label} ${n.summary || ''}`));
-        return { n, sim };
-      })
+    return nodes
+      .filter((n) => n.type === 'EVIDENCE' && (n.sources || []).some((s) => sessionIds.has(s.sessionId)))
+      .map((n) => ({ n, sim: jaccard(selectedTokens, tokenSet(`${n.label} ${n.summary || ''}`)) }))
       .filter((r) => r.sim >= 0.08)
-      .sort((a, b) => b.sim - a.sim || (b.n.weight || 0) - (a.n.weight || 0))
+      .sort((a, b) => b.sim - a.sim)
       .slice(0, 12)
       .map((r) => r.n);
-
-    return evid;
   }, [selectedNodeId, nodeById, nodes]);
 
   const visibleNodes = useMemo(() => {
     if (!selectedNodeId) return baseVisibleNodes;
     const ids = new Set(baseVisibleNodes.map((n) => n.id));
     const merged = [...baseVisibleNodes];
-    for (const n of selectedEvidenceNodes) {
-      if (!ids.has(n.id)) {
-        merged.push(n);
-        ids.add(n.id);
-      }
-    }
+    for (const n of selectedEvidenceNodes) { if (!ids.has(n.id)) { merged.push(n); ids.add(n.id); } }
     return merged;
   }, [baseVisibleNodes, selectedEvidenceNodes, selectedNodeId]);
 
@@ -350,37 +925,30 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const evidenceEdges = useMemo(() => {
     if (!selectedNodeId) return [] as HemisphereEdge[];
     return selectedEvidenceNodes.map((n) => ({
-      id: `EVIDENCE_LINK:${selectedNodeId}:${n.id}`,
-      source: selectedNodeId,
-      target: n.id,
-      strength: 0.9,
-      kind: 'EVIDENCE_LINK' as const,
+      id: `EVIDENCE_LINK:${selectedNodeId}:${n.id}`, source: selectedNodeId, target: n.id, strength: 0.9, kind: 'EVIDENCE_LINK' as const,
     }));
   }, [selectedEvidenceNodes, selectedNodeId]);
 
   const visibleEdges = useMemo(() => {
-    let base = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
+    const base = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
     return [...base, ...evidenceEdges];
-  }, [edges, visibleNodeIds, evidenceEdges, showCausalChains]);
+  }, [edges, visibleNodeIds, evidenceEdges]);
 
   const selectedNode = selectedNodeId ? nodeById.get(selectedNodeId) || null : null;
 
   const positions = useMemo(() => {
     const out = new Map<string, NodePose>();
     const bandForLayer = (layer: HemisphereLayer): { a: number; b: number } => {
-      // H1 (intent) lives closer to the apex.
       if (layer === 'H1') return { a: 0.02, b: 0.18 };
       if (layer === 'H2') return { a: 0.34, b: 0.56 };
       if (layer === 'H3') return { a: 0.56, b: 0.78 };
       return { a: 0.78, b: 0.98 };
     };
-
     const clusterTheta = new Map<string, number>();
     for (const n of visibleNodes) {
       const cid = clusterByNodeId.get(n.id) || n.id;
       if (!clusterTheta.has(cid)) clusterTheta.set(cid, hash01(cid) * Math.PI * 2);
     }
-
     for (const n of visibleNodes) {
       const cid = clusterByNodeId.get(n.id) || n.id;
       const baseTheta = clusterTheta.get(cid) || 0;
@@ -390,54 +958,39 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       const phiT = lerp(band.a, band.b, v);
       const phi = (Math.PI / 2) * clamp01(phiT);
       const theta = baseTheta + (u - 0.5) * 0.95;
-
       const radial = Math.sin(phi);
       const y = Math.cos(phi);
       const x = Math.cos(theta) * radial;
       const z = Math.sin(theta) * radial;
-
       const coreId = graph?.coreTruthNodeId;
       if (coreId && n.id === coreId) {
-        // Core Truth is the gravity well at the dome's center.
         out.set(n.id, { id: n.id, clusterId: 'CORE', layer: n.layer, type: n.type, p: { x: 0, y: 0.55, z: 0 } });
       } else {
         out.set(n.id, { id: n.id, clusterId: cid, layer: n.layer, type: n.type, p: { x, y, z } });
       }
     }
-
     return out;
   }, [visibleNodes, clusterByNodeId, graph?.coreTruthNodeId]);
 
-  useEffect(() => {
-    prevPositionsRef.current = positions;
-  }, [positions]);
+  useEffect(() => { prevPositionsRef.current = positions; }, [positions]);
 
   const clusterCenters = useMemo(() => {
     const acc = new Map<string, { x: number; y: number; z: number; n: number }>();
     for (const pose of positions.values()) {
       const prev = acc.get(pose.clusterId) || { x: 0, y: 0, z: 0, n: 0 };
-      prev.x += pose.p.x;
-      prev.y += pose.p.y;
-      prev.z += pose.p.z;
-      prev.n += 1;
+      prev.x += pose.p.x; prev.y += pose.p.y; prev.z += pose.p.z; prev.n += 1;
       acc.set(pose.clusterId, prev);
     }
     const out = new Map<string, Vec3>();
-    for (const [cid, a] of acc.entries()) {
-      out.set(cid, { x: a.x / Math.max(1, a.n), y: a.y / Math.max(1, a.n), z: a.z / Math.max(1, a.n) });
-    }
+    for (const [cid, a] of acc.entries()) out.set(cid, { x: a.x / Math.max(1, a.n), y: a.y / Math.max(1, a.n), z: a.z / Math.max(1, a.n) });
     return out;
   }, [positions]);
 
   const adjacency = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const e of visibleEdges) {
-      const a = m.get(e.source) || [];
-      a.push(e.target);
-      m.set(e.source, a);
-      const b = m.get(e.target) || [];
-      b.push(e.source);
-      m.set(e.target, b);
+      const a = m.get(e.source) || []; a.push(e.target); m.set(e.source, a);
+      const b = m.get(e.target) || []; b.push(e.source); m.set(e.target, b);
     }
     return m;
   }, [visibleEdges]);
@@ -460,43 +1013,34 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     return set;
   }, [hoveredNodeId, selectedNodeId, visibleEdges, activeNodeSet]);
 
-  const updateHoverFromPointer = (clientX: number, clientY: number) => {
+  const updateHoverFromPointer = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const dpr = window.devicePixelRatio || 1;
     const x = (clientX - rect.left) * dpr;
     const y = (clientY - rect.top) * dpr;
-
     let best: { id: string; d2: number } | null = null;
     for (const [id, p] of hitMapRef.current.entries()) {
-      const dx = p.x - x;
-      const dy = p.y - y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 <= p.r * p.r) {
-        if (!best || d2 < best.d2) best = { id, d2 };
-      }
+      const dx = p.x - x; const dy = p.y - y; const d2 = dx * dx + dy * dy;
+      if (d2 <= p.r * p.r && (!best || d2 < best.d2)) best = { id, d2 };
     }
     setHoveredNodeId(best ? best.id : null);
-  };
+  }, []);
 
+  /* ─── Canvas draw loop ─── */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const reduceMotion = typeof window !== 'undefined' && window.matchMedia
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false;
+    const reduceMotion = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
 
     const project = (p: Vec3, w: number, h: number, tMs: number) => {
-      const cx = w / 2;
-      const cy = h * 0.60;
-      const R = Math.min(w, h) * 0.42;
+      const cx = w / 2; const cy = h * 0.60; const R = Math.min(w, h) * 0.42;
       const spin = reduceMotion ? 0 : tMs * 0.00004;
-      const cs = Math.cos(spin);
-      const sn = Math.sin(spin);
+      const cs = Math.cos(spin); const sn = Math.sin(spin);
       const x = p.x * cs - p.z * sn;
       const z = p.x * sn + p.z * cs;
       const y = p.y + (reduceMotion ? 0 : Math.sin(tMs * 0.001 + (x + z) * 3) * 0.012);
@@ -507,18 +1051,12 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
     const draw = (tMs: number) => {
       const rect = canvas.getBoundingClientRect();
-      const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+      const dpr = window.devicePixelRatio || 1;
       const w = Math.max(1, Math.floor(rect.width * dpr));
       const h = Math.max(1, Math.floor(rect.height * dpr));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-      }
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 
-      const cx = w / 2;
-      const cy = h * 0.60;
-      const R = Math.min(w, h) * 0.42;
-
+      const cx = w / 2; const cy = h * 0.60; const R = Math.min(w, h) * 0.42;
       ctx.clearRect(0, 0, w, h);
 
       const bg = ctx.createRadialGradient(cx, cy, R * 0.05, cx, cy, R * 1.35);
@@ -530,20 +1068,13 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       ctx.save();
       ctx.strokeStyle = 'rgba(148,163,184,0.22)';
       ctx.lineWidth = Math.max(1, 1.1 * dpr);
-      ctx.beginPath();
-      ctx.arc(cx, cy, R, Math.PI, 0, false);
-      ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, R, Math.PI, 0, false); ctx.stroke();
       ctx.lineWidth = Math.max(1, 0.8 * dpr);
-      for (const rr of [0.25, 0.5, 0.75]) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, R * rr, Math.PI, 0, false);
-        ctx.stroke();
-      }
+      for (const rr of [0.25, 0.5, 0.75]) { ctx.beginPath(); ctx.arc(cx, cy, R * rr, Math.PI, 0, false); ctx.stroke(); }
       ctx.restore();
 
       const cam = zoomClusterId ? clusterCenters.get(zoomClusterId) : null;
       const zoom = zoomClusterId ? 1.7 : 1;
-
       const hoverActive = !!hoveredNodeId;
 
       const proj = new Map<string, { x: number; y: number; z: number; s: number }>();
@@ -555,12 +1086,12 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       if (trans && transT >= 1) transitionRef.current = null;
 
       const lerpVec = (a: Vec3, b: Vec3, t: number): Vec3 => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), z: lerp(a.z, b.z, t) });
-      const poseFor = (id: string): { p: Vec3; enter: number } | null => {
+      const poseFor = (id: string): { p: Vec3 } | null => {
         const toPose = positions.get(id);
         if (!toPose) return null;
         const fromPose = trans?.from.get(id);
-        if (!trans || !fromPose) return { p: toPose.p, enter: trans ? transEase : 1 };
-        return { p: lerpVec(fromPose.p, toPose.p, transEase), enter: 1 };
+        if (!trans || !fromPose) return { p: toPose.p };
+        return { p: lerpVec(fromPose.p, toPose.p, transEase) };
       };
 
       for (const n of visibleNodes) {
@@ -574,32 +1105,22 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         proj.set(n.id, { x, y, z: q.z, s: q.persp * zoom });
       }
 
+      // Draw edges
       for (const e of visibleEdges) {
-        const a = proj.get(e.source);
-        const b = proj.get(e.target);
+        const a = proj.get(e.source); const b = proj.get(e.target);
         if (!a || !b) continue;
         const active = activeEdgeSet.has(e.id);
-        const baseAlpha = 0.26;
-        const alpha = active ? 0.82 : baseAlpha;
-
+        const alpha = active ? 0.82 : 0.26;
         const baseWidth = 0.75 + 1.55 * clamp01(e.strength);
-        const width = Math.min(2.8, baseWidth);
         const unrelatedFade = hoverActive && hoveredNodeId && !(activeNodeSet.has(e.source) && activeNodeSet.has(e.target)) ? 0.30 : 1;
-
         ctx.setLineDash([]);
-
-        const stroke = `rgba(148,163,184,${clamp01(alpha) * unrelatedFade})`;
-
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = Math.max(1, width * dpr * (active ? 1.25 : 1));
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
+        ctx.strokeStyle = `rgba(148,163,184,${clamp01(alpha) * unrelatedFade})`;
+        ctx.lineWidth = Math.max(1, Math.min(2.8, baseWidth) * dpr * (active ? 1.25 : 1));
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       }
-
       ctx.setLineDash([]);
 
+      // Draw nodes
       const ordered = [...visibleNodes]
         .map((n) => ({ n, q: proj.get(n.id) }))
         .filter((x): x is { n: HemisphereNode; q: { x: number; y: number; z: number; s: number } } => !!x.q)
@@ -620,17 +1141,13 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       let maxNormal = 1;
       const normalRadii: number[] = [];
       for (const { n, q } of ordered) {
-        const coreId = graph?.coreTruthNodeId;
-        if (coreId && n.id === coreId) continue;
+        if (graph?.coreTruthNodeId && n.id === graph.coreTruthNodeId) continue;
         const rr = influenceRadius(n, q);
         maxNormal = Math.max(maxNormal, rr);
         normalRadii.push(rr);
       }
-
       normalRadii.sort((a, b) => a - b);
-      const p90 = normalRadii.length
-        ? normalRadii[Math.max(0, Math.min(normalRadii.length - 1, Math.floor(normalRadii.length * 0.9)))]
-        : maxNormal;
+      const p90 = normalRadii.length ? normalRadii[Math.max(0, Math.min(normalRadii.length - 1, Math.floor(normalRadii.length * 0.9)))] : maxNormal;
       const normalRef = Math.max(1, p90 || maxNormal);
 
       for (const { n, q } of ordered) {
@@ -650,10 +1167,8 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const zoomedOut = !!zoomClusterId;
         const zoomClusterMatch = zoomClusterId ? (clusterByNodeId.get(n.id) || null) === zoomClusterId : true;
         const dimmed = zoomedOut && !zoomClusterMatch && !active;
-
         const unrelated = hoverActive && hoveredNodeId && !activeNodeSet.has(n.id);
         const unrelatedAlpha = unrelated ? 0.30 : 1;
-
         const baseGlow = 0.14 + sev * 0.62;
         const glowAlpha = core ? 0.98 : baseGlow + (active ? 0.28 : 0);
         const blur = (1 - conf) * 10 + (1 - clamp01((q.z + 1) / 2)) * 6;
@@ -663,22 +1178,15 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         ctx.fillStyle = core ? 'rgba(248,250,252,0.95)' : palette.glow;
         ctx.shadowColor = core ? 'rgba(191,219,254,0.95)' : palette.glow;
         ctx.shadowBlur = (reduceMotion ? 8 : 12) * q.s + blur;
-        ctx.beginPath();
-        ctx.arc(q.x, q.y, r * (core ? 1.22 : 1.1), 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(q.x, q.y, r * (core ? 1.22 : 1.1), 0, Math.PI * 2); ctx.fill();
         ctx.restore();
 
         ctx.save();
         const depth = clamp01((q.z + 1) / 2);
         const depthAlpha = 0.40 + depth * 0.60;
         ctx.globalAlpha = (dimmed ? 0.20 : active ? 1 : 0.92) * depthAlpha * unrelatedAlpha;
-
-        // Brightness communicates severity.
-        const fill = core ? '#f8fafc' : palette.fill;
-        ctx.fillStyle = fill;
-        ctx.beginPath();
-        ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillStyle = core ? '#f8fafc' : palette.fill;
+        ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = active ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.45)';
         ctx.lineWidth = Math.max(1, (active ? 1.4 : 1) * dpr);
         ctx.stroke();
@@ -692,40 +1200,29 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         const hn = nodeById.get(hoveredNodeId);
         const hp = proj.get(hoveredNodeId);
         if (hn && hp) {
-          const label = hn.label;
           ctx.save();
           ctx.font = `${Math.max(12, 13 * dpr)}px ui-sans-serif, system-ui, -apple-system, Segoe UI`;
-          const metrics = ctx.measureText(label);
+          const metrics = ctx.measureText(hn.label);
           const pad = 10 * dpr;
-          const tw = metrics.width;
-          const th = 16 * dpr;
-          const boxW = tw + pad * 2;
-          const boxH = th + pad;
+          const tw = metrics.width; const th = 16 * dpr;
+          const boxW = tw + pad * 2; const boxH = th + pad;
           const x = Math.min(w - boxW - 6 * dpr, hp.x + 10 * dpr);
           const y = Math.max(6 * dpr, hp.y - boxH - 10 * dpr);
-
           ctx.fillStyle = 'rgba(15,23,42,0.92)';
           ctx.strokeStyle = 'rgba(148,163,184,0.35)';
           ctx.lineWidth = Math.max(1, 1 * dpr);
-
-          // rounded rect (manual)
           const r0 = 8 * dpr;
           ctx.beginPath();
-          ctx.moveTo(x + r0, y);
-          ctx.lineTo(x + boxW - r0, y);
+          ctx.moveTo(x + r0, y); ctx.lineTo(x + boxW - r0, y);
           ctx.quadraticCurveTo(x + boxW, y, x + boxW, y + r0);
           ctx.lineTo(x + boxW, y + boxH - r0);
           ctx.quadraticCurveTo(x + boxW, y + boxH, x + boxW - r0, y + boxH);
           ctx.lineTo(x + r0, y + boxH);
           ctx.quadraticCurveTo(x, y + boxH, x, y + boxH - r0);
-          ctx.lineTo(x, y + r0);
-          ctx.quadraticCurveTo(x, y, x + r0, y);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-
+          ctx.lineTo(x, y + r0); ctx.quadraticCurveTo(x, y, x + r0, y);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
           ctx.fillStyle = 'rgba(226,232,240,0.95)';
-          ctx.fillText(label, x + pad, y + pad + th);
+          ctx.fillText(hn.label, x + pad, y + pad + th);
           ctx.restore();
         }
       }
@@ -734,335 +1231,333 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     };
 
     rafRef.current = requestAnimationFrame(draw);
-    return () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    };
-  }, [
-    visibleNodes,
-    visibleEdges,
-    positions,
-    activeNodeSet,
-    activeEdgeSet,
-    clusterCenters,
-    zoomClusterId,
-    graph?.coreTruthNodeId,
-    hoveredNodeId,
-    nodeById,
-    clusterByNodeId,
-  ]);
+    return () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); rafRef.current = null; };
+  }, [visibleNodes, visibleEdges, positions, activeNodeSet, activeEdgeSet, clusterCenters, zoomClusterId, graph?.coreTruthNodeId, hoveredNodeId, nodeById, clusterByNodeId]);
 
+  /* ─── Render ─── */
   return (
-    <div className="fixed inset-0 bg-black">
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 h-full w-full"
-        onMouseMove={(e) => updateHoverFromPointer(e.clientX, e.clientY)}
-        onMouseLeave={() => setHoveredNodeId(null)}
-        onClick={() => {
-          if (hoveredNodeId) {
-            setSelectedNodeId(hoveredNodeId);
-            return;
-          }
-          setSelectedNodeId(null);
-          setZoomClusterId(null);
-        }}
-        onDoubleClick={() => {
-          if (!hoveredNodeId) return;
-          const cid = clusterByNodeId.get(hoveredNodeId) || null;
-          if (!cid) return;
-          setZoomClusterId((prev) => (prev === cid ? null : cid));
-        }}
-      />
-
-      <div className="pointer-events-none absolute inset-0">
-        <div className="pointer-events-auto absolute left-4 top-4 flex items-center gap-2">
+    <div className="fixed inset-0 bg-black flex flex-col">
+      {/* ─── Header ─── */}
+      <div className="flex items-center justify-between border-b border-white/10 bg-black/80 px-4 py-2.5 flex-shrink-0">
+        <div className="flex items-center gap-3">
           <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}`}>
-            <Button variant="ghost" className="text-slate-200 hover:text-white hover:bg-white/10">
-              Back
+            <Button variant="ghost" size="sm" className="text-slate-200 hover:text-white hover:bg-white/10">
+              ← Back
             </Button>
           </Link>
-          <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/spider`}>
-            <Button variant="outline" className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10">
-              Spider
-            </Button>
-          </Link>
-          <Badge variant="outline" className="border-white/20 text-slate-200">
-            {runType}
-          </Badge>
-          {zoomClusterId ? (
+          <div className="h-4 w-px bg-white/15" />
+          <h1 className="text-sm font-semibold text-slate-100">Workshop Output</h1>
+          {data?.generatedAt && (
+            <span className="text-[11px] text-slate-500">
+              Generated {new Date(data.generatedAt).toLocaleString()}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Snapshot dropdown */}
+          <div className="relative">
             <Button
               size="sm"
               variant="outline"
-              className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10"
-              onClick={() => setZoomClusterId(null)}
+              className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs"
+              onClick={() => setShowSnapshotDropdown(!showSnapshotDropdown)}
             >
-              Reset Zoom
+              {selectedSnapshotId
+                ? snapshots.find((s) => s.id === selectedSnapshotId)?.name || 'Snapshot'
+                : 'Load Live Session ▾'}
             </Button>
-          ) : null}
-        </div>
-
-        <div className="pointer-events-auto absolute right-4 top-4 flex items-center gap-2">
-          <Button
-            variant={runType === 'BASELINE' ? 'default' : 'outline'}
-            className={runType === 'BASELINE' ? '' : 'bg-black/30 text-slate-200 border-white/20 hover:bg-white/10'}
-            onClick={() => setRunType('BASELINE')}
-          >
-            Baseline
-          </Button>
-          <Button
-            variant={runType === 'FOLLOWUP' ? 'default' : 'outline'}
-            className={runType === 'FOLLOWUP' ? '' : 'bg-black/30 text-slate-200 border-white/20 hover:bg-white/10'}
-            onClick={() => setRunType('FOLLOWUP')}
-          >
-            Follow-up
-          </Button>
-        </div>
-
-        <div className="pointer-events-auto absolute left-4 bottom-4 w-[340px] max-w-[calc(100vw-2rem)] rounded-lg border border-white/10 bg-black/40 backdrop-blur px-3 py-3">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-xs font-semibold text-slate-200">Filters</div>
-            <Badge variant="outline" className="border-white/20 text-slate-200">
-              {visibleNodes.length} nodes
-            </Badge>
-          </div>
-
-          <div className="space-y-2">
-            <div>
-              <div className="mb-1 text-[11px] font-medium text-slate-300">Phases</div>
-              <div className="flex flex-wrap gap-1">
-                {ALL_PHASES.map((p) => (
-                  <Button
-                    key={p}
-                    size="sm"
-                    variant={phaseFilter[p] ? 'default' : 'outline'}
-                    className={
-                      phaseFilter[p]
-                        ? 'h-7 px-2 text-xs'
-                        : 'h-7 px-2 text-xs bg-black/20 text-slate-200 border-white/15 hover:bg-white/10'
-                    }
-                    onClick={() => setPhaseFilter((prev) => ({ ...prev, [p]: !prev[p] }))}
+            {showSnapshotDropdown && (
+              <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-lg border border-white/15 bg-[#0f172a] shadow-xl">
+                <div className="p-2 border-b border-white/10">
+                  <div className="text-[11px] text-slate-400 px-2 py-1">Available Snapshots</div>
+                </div>
+                <div className="max-h-64 overflow-auto p-1">
+                  <button
+                    className={`w-full rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 ${
+                      !selectedSnapshotId ? 'bg-white/10 text-white' : 'text-slate-300'
+                    }`}
+                    onClick={() => { setSelectedSnapshotId(null); setShowSnapshotDropdown(false); }}
                   >
-                    {p}
-                  </Button>
-                ))}
+                    Discovery Sessions (Default)
+                  </button>
+                  {snapshots.map((snap) => (
+                    <button
+                      key={snap.id}
+                      className={`w-full rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 ${
+                        selectedSnapshotId === snap.id ? 'bg-white/10 text-white' : 'text-slate-300'
+                      }`}
+                      onClick={() => { setSelectedSnapshotId(snap.id); setShowSnapshotDropdown(false); }}
+                    >
+                      <div className="font-medium">{snap.name}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {new Date(snap.createdAt).toLocaleString()} · {snap.dialoguePhase}
+                      </div>
+                    </button>
+                  ))}
+                  {snapshots.length === 0 && (
+                    <div className="px-3 py-4 text-center text-[11px] text-slate-500">
+                      No live session snapshots available
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div>
-              <div className="mb-1 text-[11px] font-medium text-slate-300">Node types</div>
-              <div className="flex flex-wrap gap-1">
-                {ALL_TYPES.map((t) => (
-                  <Button
-                    key={t}
-                    size="sm"
-                    variant={typeFilter[t] ? 'default' : 'outline'}
-                    className={
-                      typeFilter[t]
-                        ? 'h-7 px-2 text-xs'
-                        : 'h-7 px-2 text-xs bg-black/20 text-slate-200 border-white/15 hover:bg-white/10'
-                    }
-                    onClick={() => setTypeFilter((prev) => ({ ...prev, [t]: !prev[t] }))}
-                  >
-                    {labelForType(t)}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-slate-300">
-                <div>Signal strength</div>
-                <div className="text-slate-200">≥ {minWeight}</div>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={Math.max(1, Math.round(maxWeight))}
-                value={minWeight}
-                onChange={(e) => setMinWeight(Number(e.target.value) || 0)}
-                className="w-full"
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-medium text-slate-300">Only cross-domain nodes</div>
-              <Button
-                size="sm"
-                variant={onlyCrossDomain ? 'default' : 'outline'}
-                className={
-                  onlyCrossDomain
-                    ? 'h-7 px-2 text-xs'
-                    : 'h-7 px-2 text-xs bg-black/20 text-slate-200 border-white/15 hover:bg-white/10'
-                }
-                onClick={() => setOnlyCrossDomain((v) => !v)}
-              >
-                {onlyCrossDomain ? 'On' : 'Off'}
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-medium text-slate-300">Highlight dominant drivers</div>
-              <Button
-                size="sm"
-                variant={highlightDominantDrivers ? 'default' : 'outline'}
-                className={
-                  highlightDominantDrivers
-                    ? 'h-7 px-2 text-xs'
-                    : 'h-7 px-2 text-xs bg-black/20 text-slate-200 border-white/15 hover:bg-white/10'
-                }
-                onClick={() => setHighlightDominantDrivers((v) => !v)}
-              >
-                {highlightDominantDrivers ? 'On' : 'Off'}
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-medium text-slate-300">Show causal chains</div>
-              <Button
-                size="sm"
-                variant={showCausalChains ? 'default' : 'outline'}
-                className={
-                  showCausalChains
-                    ? 'h-7 px-2 text-xs'
-                    : 'h-7 px-2 text-xs bg-black/20 text-slate-200 border-white/15 hover:bg-white/10'
-                }
-                onClick={() => setShowCausalChains((v) => !v)}
-              >
-                {showCausalChains ? 'On' : 'Off'}
-              </Button>
-            </div>
+            )}
           </div>
 
-          <div className="mt-3 text-[11px] text-slate-400">
-            {loading ? 'Loading…' : error ? error : data ? `Generated ${new Date(data.generatedAt).toLocaleString()}` : ''}
-          </div>
+          {/* Run type toggle (only when not viewing snapshot) */}
+          {!selectedSnapshotId && (
+            <>
+              <div className="h-4 w-px bg-white/15" />
+              <Button
+                size="sm"
+                variant={runType === 'BASELINE' ? 'default' : 'outline'}
+                className={runType === 'BASELINE' ? 'text-xs' : 'bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs'}
+                onClick={() => setRunType('BASELINE')}
+              >
+                Baseline
+              </Button>
+              <Button
+                size="sm"
+                variant={runType === 'FOLLOWUP' ? 'default' : 'outline'}
+                className={runType === 'FOLLOWUP' ? 'text-xs' : 'bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs'}
+                onClick={() => setRunType('FOLLOWUP')}
+              >
+                Follow-up
+              </Button>
+            </>
+          )}
         </div>
+      </div>
 
-        <div className="pointer-events-auto absolute right-4 bottom-4 w-[260px] max-w-[calc(100vw-2rem)] rounded-lg border border-white/10 bg-black/40 backdrop-blur px-3 py-3">
-          <div className="mb-2 text-xs font-semibold text-slate-200">Legend</div>
-          <div className="grid grid-cols-2 gap-2">
-            {ALL_TYPES.map((t) => {
-              const c = colorForType(t);
-              return (
-                <div key={t} className="flex items-center gap-2 text-xs text-slate-200">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: c.fill }} />
-                  <span>{labelForType(t)}</span>
-                </div>
-              );
-            })}
-          </div>
+      {/* ─── Main content (two columns) ─── */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left column: Hemisphere canvas */}
+        <div className="relative flex-1 min-w-0">
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0 h-full w-full"
+            onMouseMove={(e) => updateHoverFromPointer(e.clientX, e.clientY)}
+            onMouseLeave={() => setHoveredNodeId(null)}
+            onClick={() => {
+              if (hoveredNodeId) { setSelectedNodeId(hoveredNodeId); return; }
+              setSelectedNodeId(null); setZoomClusterId(null);
+            }}
+            onDoubleClick={() => {
+              if (!hoveredNodeId) return;
+              const cid = clusterByNodeId.get(hoveredNodeId) || null;
+              if (!cid) return;
+              setZoomClusterId((prev) => (prev === cid ? null : cid));
+            }}
+          />
 
-          <div className="mt-3 border-t border-white/10 pt-3">
-            <div className="mb-2 text-xs font-semibold text-slate-200">Edges</div>
-            <div className="space-y-2 text-[11px] text-slate-200">
-              <div className="flex items-start gap-2">
-                <span className="mt-[6px] inline-block h-px w-7" style={{ backgroundColor: 'rgba(148,163,184,0.9)' }} />
-                <div className="min-w-0">
-                  <div className="font-medium">Equivalent</div>
-                  <div className="text-slate-400">Same construct / meaning.</div>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <span
-                  className="mt-[6px] inline-block h-px w-7"
-                  style={{ backgroundImage: 'linear-gradient(to right, rgba(167,139,250,0.95) 40%, rgba(0,0,0,0) 0%)', backgroundSize: '6px 1px', backgroundRepeat: 'repeat-x' }}
-                />
-                <div className="min-w-0">
-                  <div className="font-medium">Reinforcing</div>
-                  <div className="text-slate-400">Conceptual overlap that tends to compound.</div>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <div className="mt-[3px] flex items-center gap-1">
-                  <span
-                    className="inline-block h-px w-6"
-                    style={{ backgroundImage: 'linear-gradient(to right, rgba(56,189,248,0.95) 45%, rgba(0,0,0,0) 0%)', backgroundSize: '8px 1px', backgroundRepeat: 'repeat-x' }}
-                  />
-                  <span className="text-sky-300">&gt;</span>
-                </div>
-                <div className="min-w-0">
-                  <div className="font-medium">Derivative</div>
-                  <div className="text-slate-400">Upstream condition tends to drive downstream effect.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {selectedNode ? (
-          <div className="pointer-events-auto absolute right-0 top-0 h-full w-[420px] max-w-[calc(100vw-0rem)] border-l border-white/10 bg-black/60 backdrop-blur p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs text-slate-400">{labelForType(selectedNode.type)}</div>
-                <div className="mt-1 text-lg font-semibold text-slate-50 truncate">{selectedNode.label}</div>
-              </div>
+          {/* Filter overlay (bottom-left of canvas) */}
+          <div className="pointer-events-none absolute inset-0">
+            <div className="pointer-events-auto absolute left-3 bottom-3">
               <Button
-                variant="ghost"
-                className="text-slate-200 hover:text-white hover:bg-white/10"
-                onClick={() => setSelectedNodeId(null)}
+                size="sm"
+                variant="outline"
+                className="bg-black/50 text-slate-200 border-white/20 hover:bg-white/10 text-xs"
+                onClick={() => setShowFilters(!showFilters)}
               >
-                Close
+                Filters ({visibleNodes.length})
               </Button>
             </div>
 
-            {selectedNode.summary ? (
-              <div className="mt-3 text-sm text-slate-200 whitespace-pre-wrap">{selectedNode.summary}</div>
-            ) : selectedNodeId === (graph?.coreTruthNodeId || 'CORE_TRUTH') ? (
-              <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                Agentic synthesis unavailable. Ensure <code className="text-amber-100">OPENAI_API_KEY</code> is configured for this environment.
+            {showFilters && (
+              <div className="pointer-events-auto absolute left-3 bottom-12 w-[300px] rounded-lg border border-white/10 bg-black/80 backdrop-blur px-3 py-3">
+                <div className="space-y-2">
+                  <div>
+                    <div className="mb-1 text-[11px] font-medium text-slate-300">Node types</div>
+                    <div className="flex flex-wrap gap-1">
+                      {ALL_TYPES.map((t) => (
+                        <Button
+                          key={t} size="sm"
+                          variant={typeFilter[t] ? 'default' : 'outline'}
+                          className={typeFilter[t] ? 'h-6 px-2 text-[11px]' : 'h-6 px-2 text-[11px] bg-black/20 text-slate-200 border-white/15 hover:bg-white/10'}
+                          onClick={() => setTypeFilter((prev) => ({ ...prev, [t]: !prev[t] }))}
+                        >
+                          {labelForType(t)}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-slate-300">
+                      <span>Min weight</span>
+                      <span className="text-slate-200">≥ {minWeight}</span>
+                    </div>
+                    <input type="range" min={0} max={Math.max(1, Math.round(maxWeight))} value={minWeight} onChange={(e) => setMinWeight(Number(e.target.value) || 0)} className="w-full" />
+                  </div>
+                </div>
               </div>
-            ) : null}
+            )}
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {uniq((selectedNode.phaseTags || []).map((p) => String(p).toLowerCase()))
-                .slice(0, 10)
-                .map((p) => (
-                  <Badge key={p} variant="outline" className="border-white/15 text-slate-200">
-                    {p}
-                  </Badge>
+            {/* Legend (bottom-right of canvas) */}
+            <div className="pointer-events-auto absolute right-3 bottom-3 flex items-center gap-3 rounded-lg border border-white/10 bg-black/50 backdrop-blur px-3 py-2">
+              {ALL_TYPES.map((t) => {
+                const c = colorForType(t);
+                return (
+                  <div key={t} className="flex items-center gap-1 text-[10px] text-slate-300">
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: c.fill }} />
+                    <span>{labelForType(t)}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Loading/error indicator */}
+            {(loading || error) && (
+              <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2">
+                <div className={`rounded-md px-3 py-1.5 text-xs ${error ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 'bg-black/60 text-slate-300 border border-white/10'}`}>
+                  {loading ? 'Loading hemisphere...' : error}
+                </div>
+              </div>
+            )}
+
+            {/* Zoom reset */}
+            {zoomClusterId && (
+              <div className="pointer-events-auto absolute left-3 top-3">
+                <Button size="sm" variant="outline" className="bg-black/50 text-slate-200 border-white/20 hover:bg-white/10 text-xs" onClick={() => setZoomClusterId(null)}>
+                  Reset Zoom
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Selected node detail overlay */}
+          {selectedNode && (
+            <div className="pointer-events-auto absolute right-0 top-0 h-full w-[360px] border-l border-white/10 bg-black/70 backdrop-blur overflow-auto p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs text-slate-400">{labelForType(selectedNode.type)}</div>
+                  <div className="mt-1 text-base font-semibold text-slate-50 truncate">{selectedNode.label}</div>
+                </div>
+                <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white hover:bg-white/10" onClick={() => setSelectedNodeId(null)}>
+                  ✕
+                </Button>
+              </div>
+              {selectedNode.summary && <div className="mt-3 text-sm text-slate-200 whitespace-pre-wrap">{selectedNode.summary}</div>}
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {uniq((selectedNode.phaseTags || []).map((p) => String(p).toLowerCase())).slice(0, 10).map((p) => (
+                  <Badge key={p} variant="outline" className="border-white/15 text-slate-200 text-[11px]">{p}</Badge>
                 ))}
-            </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-              <div className="rounded-md border border-white/10 bg-white/5 px-2 py-2">
-                <div className="text-slate-400">Weight</div>
-                <div className="text-slate-50 font-medium">{selectedNode.weight}</div>
               </div>
-              <div className="rounded-md border border-white/10 bg-white/5 px-2 py-2">
-                <div className="text-slate-400">Severity</div>
-                <div className="text-slate-50 font-medium">
-                  {typeof selectedNode.severity === 'number' ? selectedNode.severity.toFixed(1) : '—'}
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-md border border-white/10 bg-white/5 px-2 py-1.5">
+                  <div className="text-slate-400">Weight</div>
+                  <div className="text-slate-50 font-medium">{selectedNode.weight}</div>
+                </div>
+                <div className="rounded-md border border-white/10 bg-white/5 px-2 py-1.5">
+                  <div className="text-slate-400">Severity</div>
+                  <div className="text-slate-50 font-medium">{typeof selectedNode.severity === 'number' ? selectedNode.severity.toFixed(1) : '—'}</div>
+                </div>
+                <div className="rounded-md border border-white/10 bg-white/5 px-2 py-1.5">
+                  <div className="text-slate-400">Confidence</div>
+                  <div className="text-slate-50 font-medium">{typeof selectedNode.confidence === 'number' ? `${Math.round(selectedNode.confidence * 100)}%` : '—'}</div>
                 </div>
               </div>
-              <div className="rounded-md border border-white/10 bg-white/5 px-2 py-2">
-                <div className="text-slate-400">Confidence</div>
-                <div className="text-slate-50 font-medium">
-                  {typeof selectedNode.confidence === 'number' ? `${Math.round(selectedNode.confidence * 100)}%` : '—'}
-                </div>
-              </div>
-            </div>
-
-            {Array.isArray(selectedNode.evidence) && selectedNode.evidence.length ? (
-              <div className="mt-5">
-                <div className="text-xs font-semibold text-slate-200">Supporting quotes</div>
-                <div className="mt-2 space-y-2">
-                  {selectedNode.evidence
-                    .filter((e) => e && typeof e === 'object' && (e.quote || e.qaTag))
-                    .slice(0, 6)
-                    .map((e, idx) => (
-                      <div key={idx} className="rounded-md border border-white/10 bg-white/5 px-3 py-2">
-                        {e.qaTag ? <div className="mb-1 text-[11px] text-slate-400">{e.qaTag}</div> : null}
-                        {e.quote ? <div className="text-sm text-slate-200 whitespace-pre-wrap">{e.quote}</div> : null}
+              {Array.isArray(selectedNode.evidence) && selectedNode.evidence.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-xs font-semibold text-slate-200">Supporting quotes</div>
+                  <div className="mt-2 space-y-1.5">
+                    {selectedNode.evidence.filter((e) => e?.quote).slice(0, 4).map((e, idx) => (
+                      <div key={idx} className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5">
+                        {e.qaTag && <div className="mb-0.5 text-[10px] text-slate-400">{e.qaTag}</div>}
+                        <div className="text-xs text-slate-200 whitespace-pre-wrap">{e.quote}</div>
                       </div>
                     ))}
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right column: Synthesis / Actor Journey */}
+        <div className="w-[420px] flex-shrink-0 border-l border-white/10 bg-[#0a0f1a] flex flex-col overflow-hidden">
+          {/* Domain tabs */}
+          <div className="flex flex-wrap gap-1 border-b border-white/10 px-3 py-2">
+            {DOMAIN_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveDomain(tab.key)}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-all ${
+                  activeDomain === tab.key
+                    ? 'bg-white/15 text-white'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                }`}
+              >
+                <span className="inline-block h-1.5 w-1.5 rounded-full mr-1" style={{ backgroundColor: tab.color, opacity: activeDomain === tab.key ? 1 : 0.5 }} />
+                {tab.label}
+                {tab.key !== 'all' && (
+                  <span className="ml-1 text-[10px] text-slate-500">
+                    {(nodesPerDomain[tab.key] || []).filter((n) => n.type !== 'EVIDENCE').length}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
-        ) : null}
+
+          {/* Synthesis / Actors toggle */}
+          <div className="flex border-b border-white/10">
+            <button
+              onClick={() => setRightTab('synthesis')}
+              className={`flex-1 py-2 text-xs font-medium transition-all ${
+                rightTab === 'synthesis' ? 'text-white border-b-2 border-blue-500' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Domain Synthesis
+            </button>
+            <button
+              onClick={() => setRightTab('actors')}
+              className={`flex-1 py-2 text-xs font-medium transition-all ${
+                rightTab === 'actors' ? 'text-white border-b-2 border-purple-500' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Actor Journey
+            </button>
+          </div>
+
+          {/* Content area */}
+          <div className="flex-1 overflow-auto px-3 py-3">
+            {rightTab === 'synthesis' ? (
+              <DomainSynthesisCard
+                domain={activeDomain}
+                nodes={activeDomain === 'all' ? nodes.filter((n) => n.type !== 'EVIDENCE') : (nodesPerDomain[activeDomain] || []).filter((n) => n.type !== 'EVIDENCE')}
+                edges={edges}
+                allNodes={nodes}
+              />
+            ) : (
+              <ActorJourneyPanel
+                workshopId={workshopId}
+                snapshotId={selectedSnapshotId || undefined}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Domain Lens Strip (bottom) ─── */}
+      <div className="flex-shrink-0 border-t border-white/10 bg-[#060a14] px-4 py-3">
+        <div className="flex items-center gap-3 overflow-x-auto">
+          {DOMAIN_TABS.filter((d) => d.key !== 'all').map((tab) => {
+            const domainNodes = nodesPerDomain[tab.key] || [];
+            return (
+              <MiniHemisphere
+                key={tab.key}
+                nodes={domainNodes}
+                edges={edges}
+                coreTruthNodeId={graph?.coreTruthNodeId || ''}
+                label={tab.label}
+                nodeCount={domainNodes.filter((n) => n.type !== 'EVIDENCE').length}
+                color={tab.color}
+                active={activeDomain === tab.key}
+                onClick={() => setActiveDomain(tab.key)}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
