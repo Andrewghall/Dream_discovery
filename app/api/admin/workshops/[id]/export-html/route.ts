@@ -106,7 +106,8 @@ async function generateStaticHTMLPackage(workshop: any) {
   const orgName = organization.name;
   const primaryColor = organization.primaryColor || '#1E40AF';
   const secondaryColor = organization.secondaryColor || '#3B82F6';
-  const logo = organization.logo || '';
+  // Use client logo (per-workshop) if available, else org logo (tenant)
+  const logo = sp.clientLogoUrl || organization.logoUrl || '';
 
   const files: Record<string, string> = {};
 

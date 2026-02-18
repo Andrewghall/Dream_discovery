@@ -51,6 +51,7 @@ interface ScratchpadData {
   customerJourney: any;
   summaryContent: any;
   solutionImageUrl?: string | null;
+  clientLogoUrl?: string | null;
   status: 'DRAFT' | 'IN_REVIEW' | 'PUBLISHED';
   createdAt: string;
   updatedAt: string;
@@ -61,6 +62,13 @@ interface Workshop {
   id: string;
   name: string;
   status: string;
+  organization?: {
+    id: string;
+    name: string;
+    logoUrl: string | null;
+    primaryColor: string | null;
+    secondaryColor: string | null;
+  };
 }
 
 export default function ScratchpadPage({ params }: PageProps) {
@@ -342,11 +350,17 @@ export default function ScratchpadPage({ params }: PageProps) {
                 Back
               </Button>
             </Link>
-            <img
-              src="/upstreamworks-logo.png"
-              alt="Upstream Works"
-              className="h-10 w-auto"
-            />
+            {(scratchpad?.clientLogoUrl || workshop?.organization?.logoUrl) ? (
+              <img
+                src={scratchpad?.clientLogoUrl || workshop?.organization?.logoUrl || ''}
+                alt={workshop?.organization?.name || 'Organization'}
+                className="h-10 w-auto"
+              />
+            ) : (
+              <span className="text-lg font-semibold text-muted-foreground">
+                {workshop?.organization?.name || workshop?.name || 'Workshop'}
+              </span>
+            )}
           </div>
 
           <div className="flex gap-2">

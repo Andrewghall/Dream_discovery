@@ -96,6 +96,15 @@ export async function GET(
             createdAt: true,
           },
         },
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            primaryColor: true,
+            secondaryColor: true,
+          },
+        },
       },
     });
 
