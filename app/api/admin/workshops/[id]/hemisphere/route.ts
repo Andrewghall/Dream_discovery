@@ -182,7 +182,7 @@ function mapLivePrimaryTypeToNodeType(primary: LivePrimaryType): Exclude<NodeTyp
 function domainToPhaseTag(domain: string): string | null {
   const d = (domain || '').trim().toLowerCase();
   if (d.includes('people') || d.includes('human') || d.includes('talent') || d.includes('workforce') || d.includes('hr')) return 'people';
-  if (d.includes('corporate') || d.includes('business') || d.includes('enterprise') || d.includes('organization') || d.includes('organisation') || d.includes('strategy')) return 'corporate';
+  if (d.includes('corporate') || d.includes('business') || d.includes('enterprise') || d.includes('organization') || d.includes('organisation') || d.includes('strategy') || d.includes('operation')) return 'corporate';
   if (d.includes('customer') || d.includes('client') || d.includes('user') || d.includes('consumer') || d.includes('market')) return 'customer';
   if (d.includes('tech') || d.includes('digital') || d.includes('software') || d.includes('data') || d.includes('infrastructure') || d.includes('system')) return 'technology';
   if (d.includes('regulat') || d.includes('compliance') || d.includes('legal') || d.includes('governance') || d.includes('policy')) return 'regulation';

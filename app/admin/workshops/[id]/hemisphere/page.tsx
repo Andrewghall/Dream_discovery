@@ -870,7 +870,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     if (activeDomain === 'all') return nodes;
     return nodes.filter((n) => {
       const tags = (n.phaseTags || []).map((t) => String(t).toLowerCase());
-      return tags.length === 0 || tags.includes(activeDomain);
+      return tags.includes(activeDomain);
     });
   }, [nodes, activeDomain]);
 
@@ -921,7 +921,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     const phaseOk = (n: HemisphereNode) => {
       if (activeDomain !== 'all') {
         const tags = (n.phaseTags || []).map((t) => String(t).toLowerCase());
-        return tags.length === 0 || tags.includes(activeDomain);
+        return tags.includes(activeDomain);
       }
       const tags = Array.isArray(n.phaseTags) ? n.phaseTags : [];
       if (tags.length === 0) return true;
