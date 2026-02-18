@@ -327,6 +327,16 @@ export async function GET(
 
         const speakerId = typeof datum.speakerId === 'string' ? datum.speakerId : null;
 
+        // Derive weight from richness of the node data
+        const domainCount = Array.isArray(agenticAnalysis?.domains) ? (agenticAnalysis.domains as unknown[]).length : 0;
+        const actorCount = Array.isArray(agenticAnalysis?.actors) ? (agenticAnalysis.actors as unknown[]).length : 0;
+        const interactionCount = Array.isArray(agenticAnalysis?.actors)
+          ? (agenticAnalysis.actors as Array<Record<string, unknown>>).reduce(
+              (sum: number, a) => sum + (Array.isArray(a?.interactions) ? (a.interactions as unknown[]).length : 0), 0)
+          : 0;
+        const keywordCount = Array.isArray(classification?.keywords) ? (classification.keywords as unknown[]).length : 0;
+        const computedWeight = 1 + domainCount + actorCount + Math.floor(interactionCount / 2) + Math.floor(keywordCount / 3);
+
         const nodeId = `${mappedType}:live:${dataPointId}`;
         nodesById.set(nodeId, {
           id: nodeId,
@@ -335,7 +345,7 @@ export async function GET(
           summary: rawText,
           phaseTags,
           layer: layerForType(mappedType),
-          weight: 1,
+          weight: computedWeight,
           severity: defaultSeverity(mappedType),
           confidence,
           sources: [{ sessionId: 'live', participantName: speakerId || 'Speaker' }],

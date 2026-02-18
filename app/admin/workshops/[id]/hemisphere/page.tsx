@@ -1382,6 +1382,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                       ))}
                     </div>
                   </div>
+                  {maxWeight > 1 && (
                   <div>
                     <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-slate-300">
                       <span>Min weight</span>
@@ -1389,6 +1390,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                     </div>
                     <input type="range" min={0} max={Math.max(1, Math.round(maxWeight))} value={minWeight} onChange={(e) => setMinWeight(Number(e.target.value) || 0)} className="w-full" />
                   </div>
+                  )}
                 </div>
               </div>
             )}
