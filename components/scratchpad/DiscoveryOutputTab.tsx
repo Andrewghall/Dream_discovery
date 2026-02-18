@@ -4,9 +4,12 @@ import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { MessageSquare, Users, TrendingUp, Brain } from 'lucide-react';
+import { EditableText } from './EditableText';
+import { EditableList } from './EditableList';
 
 interface DiscoveryOutputTabProps {
   data: any;
+  onChange?: (data: any) => void;
 }
 
 const colorMap: Record<string, { border: string; bg: string; text: string; hex: string }> = {
@@ -294,7 +297,14 @@ function CombinedWordCloud({ sections }: { sections: any[] }) {
 
 /* ── Main Component ───────────────────────────────────────────── */
 
-export function DiscoveryOutputTab({ data }: DiscoveryOutputTabProps) {
+export function DiscoveryOutputTab({ data, onChange }: DiscoveryOutputTabProps) {
+  const update = (fn: (d: any) => void) => {
+    if (!onChange) return;
+    const clone = JSON.parse(JSON.stringify(data));
+    fn(clone);
+    onChange(clone);
+  };
+
   if (!data || !data.sections) {
     return (
       <Card className="p-8 text-center">
@@ -374,9 +384,29 @@ export function DiscoveryOutputTab({ data }: DiscoveryOutputTabProps) {
                 <div className="flex items-center gap-4">
                   <div className="text-4xl">{section.icon}</div>
                   <div className="text-left">
-                    <div className="font-bold text-lg">{section.domain}</div>
+                    <div className="font-bold text-lg">
+                      {onChange ? (
+                        <EditableText
+                          value={section.domain}
+                          onChange={(v) => update((d) => { d.sections[idx].domain = v; })}
+                          className="font-bold text-lg"
+                        />
+                      ) : (
+                        section.domain
+                      )}
+                    </div>
                     <div className="text-sm opacity-70">
-                      {section.utteranceCount} insights • Top themes: {section.topThemes?.join(', ')}
+                      {section.utteranceCount} insights • Top themes:{' '}
+                      {onChange ? (
+                        <EditableList
+                          items={section.topThemes || []}
+                          onChange={(items) => update((d) => { d.sections[idx].topThemes = items; })}
+                          itemClassName="text-sm opacity-70"
+                          addLabel="+ Add theme"
+                        />
+                      ) : (
+                        section.topThemes?.join(', ')
+                      )}
                     </div>
                   </div>
                 </div>
@@ -395,8 +425,33 @@ export function DiscoveryOutputTab({ data }: DiscoveryOutputTabProps) {
                       <div className="space-y-3">
                         {section.quotes.map((quote: any, i: number) => (
                           <Card key={i} className={`p-4 border-l-4 ${colors.border.replace('border-', 'border-l-')} bg-white`}>
-                            <p className="text-sm italic mb-2">&ldquo;{quote.text}&rdquo;</p>
-                            <p className="text-xs text-muted-foreground">— {quote.author}</p>
+                            {onChange ? (
+                              <>
+                                <p className="text-sm italic mb-2">
+                                  &ldquo;
+                                  <EditableText
+                                    value={quote.text}
+                                    onChange={(v) => update((d) => { d.sections[idx].quotes[i].text = v; })}
+                                    className="text-sm italic"
+                                    multiline
+                                  />
+                                  &rdquo;
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  —{' '}
+                                  <EditableText
+                                    value={quote.author}
+                                    onChange={(v) => update((d) => { d.sections[idx].quotes[i].author = v; })}
+                                    className="text-xs text-muted-foreground"
+                                  />
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-sm italic mb-2">&ldquo;{quote.text}&rdquo;</p>
+                                <p className="text-xs text-muted-foreground">— {quote.author}</p>
+                              </>
+                            )}
                           </Card>
                         ))}
                       </div>
@@ -428,9 +483,46 @@ export function DiscoveryOutputTab({ data }: DiscoveryOutputTabProps) {
                         )}
                       </div>
                       <div className="flex justify-between text-xs mt-2 text-muted-foreground">
-                        <span>Concerned ({section.sentiment.concerned}%)</span>
-                        <span>Neutral ({section.sentiment.neutral}%)</span>
-                        <span>Optimistic ({section.sentiment.optimistic}%)</span>
+                        {onChange ? (
+                          <>
+                            <span>
+                              Concerned (
+                              <EditableText
+                                value={String(section.sentiment.concerned)}
+                                onChange={(v) => update((d) => { d.sections[idx].sentiment.concerned = v; })}
+                                type="number"
+                                className="text-xs text-muted-foreground inline w-12"
+                              />
+                              %)
+                            </span>
+                            <span>
+                              Neutral (
+                              <EditableText
+                                value={String(section.sentiment.neutral)}
+                                onChange={(v) => update((d) => { d.sections[idx].sentiment.neutral = v; })}
+                                type="number"
+                                className="text-xs text-muted-foreground inline w-12"
+                              />
+                              %)
+                            </span>
+                            <span>
+                              Optimistic (
+                              <EditableText
+                                value={String(section.sentiment.optimistic)}
+                                onChange={(v) => update((d) => { d.sections[idx].sentiment.optimistic = v; })}
+                                type="number"
+                                className="text-xs text-muted-foreground inline w-12"
+                              />
+                              %)
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Concerned ({section.sentiment.concerned}%)</span>
+                            <span>Neutral ({section.sentiment.neutral}%)</span>
+                            <span>Optimistic ({section.sentiment.optimistic}%)</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}

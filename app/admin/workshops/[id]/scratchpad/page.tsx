@@ -1,10 +1,11 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Save, Eye, Lock, Download } from 'lucide-react';
+import { ArrowLeft, Save, Eye, Lock, Download, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave';
 import Link from 'next/link';
 import {
   Dialog,
@@ -76,6 +77,7 @@ export default function ScratchpadPage({ params }: PageProps) {
   const [showSetPasswordDialog, setShowSetPasswordDialog] = useState(false);
   const [newCommercialPassword, setNewCommercialPassword] = useState('');
   const [confirmCommercialPassword, setConfirmCommercialPassword] = useState('');
+  const [saveVersion, setSaveVersion] = useState(0);
 
   useEffect(() => {
     fetchData();
@@ -105,30 +107,24 @@ export default function ScratchpadPage({ params }: PageProps) {
     }
   };
 
-  const handleEditItem = (sectionIndex: number, itemIndex: number, newText: string) => {
-    if (!scratchpad?.discoveryOutput) return;
+  // Auto-save: debounced save when any tab changes
+  const autoSaveFn = useCallback(async () => {
+    if (!scratchpad) return;
+    const response = await fetch(`/api/admin/workshops/${workshopId}/scratchpad`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(scratchpad),
+    });
+    if (!response.ok) throw new Error('Auto-save failed');
+  }, [scratchpad, workshopId]);
 
-    const updated = { ...scratchpad };
-    updated.discoveryOutput.sections[sectionIndex].content[itemIndex].text = newText;
-    setScratchpad(updated);
-  };
+  const saveStatus = useAutoSave(saveVersion, autoSaveFn);
 
-  const handleDeleteItem = (sectionIndex: number, itemIndex: number) => {
-    if (!scratchpad?.discoveryOutput) return;
-    if (!confirm('Delete this item?')) return;
-
-    const updated = { ...scratchpad };
-    updated.discoveryOutput.sections[sectionIndex].content.splice(itemIndex, 1);
-    setScratchpad(updated);
-  };
-
-  const handleAddItem = (sectionIndex: number, newItem: any) => {
-    if (!scratchpad?.discoveryOutput) return;
-
-    const updated = { ...scratchpad };
-    updated.discoveryOutput.sections[sectionIndex].content.push(newItem);
-    setScratchpad(updated);
-  };
+  // Generic tab change handler — updates scratchpad state and bumps save version
+  const handleTabChange = useCallback((field: keyof ScratchpadData) => (updated: any) => {
+    setScratchpad((prev) => prev ? { ...prev, [field]: updated } : prev);
+    setSaveVersion((v) => v + 1);
+  }, []);
 
   const handleSave = async () => {
     if (!scratchpad) return;
@@ -407,6 +403,25 @@ export default function ScratchpadPage({ params }: PageProps) {
               <Lock className="h-4 w-4 mr-2" />
               Set Commercial Password
             </Button>
+            {/* Auto-save status indicator */}
+            {saveStatus === 'saving' && (
+              <span className="flex items-center gap-1.5 text-xs text-blue-600 px-3 py-1.5 bg-blue-50 rounded-full">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Saving...
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="flex items-center gap-1.5 text-xs text-green-600 px-3 py-1.5 bg-green-50 rounded-full">
+                <CheckCircle2 className="h-3 w-3" />
+                Saved
+              </span>
+            )}
+            {saveStatus === 'error' && (
+              <span className="flex items-center gap-1.5 text-xs text-red-600 px-3 py-1.5 bg-red-50 rounded-full">
+                <AlertCircle className="h-3 w-3" />
+                Save failed
+              </span>
+            )}
             <Button variant="outline" onClick={handleSave} disabled={saving}>
               <Save className="h-4 w-4 mr-2" />
               {saving ? 'Saving...' : 'Save Draft'}
@@ -453,33 +468,28 @@ export default function ScratchpadPage({ params }: PageProps) {
           </TabsList>
 
           <TabsContent value="exec-summary">
-            <ExecutiveSummaryTab data={scratchpad.execSummary} />
+            <ExecutiveSummaryTab data={scratchpad.execSummary} onChange={handleTabChange('execSummary')} />
           </TabsContent>
 
           <TabsContent value="discovery">
-            <DiscoveryOutputTab data={scratchpad.discoveryOutput} />
+            <DiscoveryOutputTab data={scratchpad.discoveryOutput} onChange={handleTabChange('discoveryOutput')} />
           </TabsContent>
 
           <TabsContent value="reimagine">
-            <ReimaginOutputTab data={scratchpad.reimagineContent} customerJourney={scratchpad.customerJourney} />
+            <ReimaginOutputTab data={scratchpad.reimagineContent} customerJourney={scratchpad.customerJourney} onChange={handleTabChange('reimagineContent')} />
           </TabsContent>
 
           <TabsContent value="constraints">
-            <ConstraintsTab data={scratchpad.constraintsContent} />
+            <ConstraintsTab data={scratchpad.constraintsContent} onChange={handleTabChange('constraintsContent')} />
           </TabsContent>
 
           <TabsContent value="solution">
-            <PotentialSolutionTab
-              data={scratchpad.potentialSolution}
-              onChange={(updated) => {
-                setScratchpad((prev) => prev ? { ...prev, potentialSolution: updated } : prev);
-              }}
-            />
+            <PotentialSolutionTab data={scratchpad.potentialSolution} onChange={handleTabChange('potentialSolution')} />
           </TabsContent>
 
           <TabsContent value="commercial">
             {commercialUnlocked ? (
-              <CommercialTab data={scratchpad.commercialContent} />
+              <CommercialTab data={scratchpad.commercialContent} onChange={handleTabChange('commercialContent')} />
             ) : (
               <Card className="p-8 text-center">
                 <Lock className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
@@ -492,16 +502,11 @@ export default function ScratchpadPage({ params }: PageProps) {
           </TabsContent>
 
           <TabsContent value="customer-journey">
-            <CustomerJourneyTab
-              data={scratchpad.customerJourney}
-              onChange={(updated) => {
-                setScratchpad((prev) => prev ? { ...prev, customerJourney: updated } : prev);
-              }}
-            />
+            <CustomerJourneyTab data={scratchpad.customerJourney} onChange={handleTabChange('customerJourney')} />
           </TabsContent>
 
           <TabsContent value="summary">
-            <SummaryTab data={scratchpad.summaryContent} />
+            <SummaryTab data={scratchpad.summaryContent} onChange={handleTabChange('summaryContent')} />
           </TabsContent>
         </Tabs>
       </div>

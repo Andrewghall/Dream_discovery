@@ -1,6 +1,8 @@
 'use client';
 
 import { Card } from '@/components/ui/card';
+import { EditableText } from './EditableText';
+import { EditableList } from './EditableList';
 
 interface PotentialSolutionTabProps {
   data: any;
@@ -24,6 +26,13 @@ export function PotentialSolutionTab({ data, onChange }: PotentialSolutionTabPro
     );
   }
 
+  const update = (fn: (d: any) => void) => {
+    if (!onChange) return;
+    const clone = JSON.parse(JSON.stringify(data));
+    fn(clone);
+    onChange(clone);
+  };
+
   const enablers = Array.isArray(data.enablers) ? data.enablers : [];
   const implPath = Array.isArray(data.implementationPath) ? data.implementationPath : [];
 
@@ -38,9 +47,12 @@ export function PotentialSolutionTab({ data, onChange }: PotentialSolutionTabPro
           Solution &amp; Enablers
         </h1>
         <div className="space-y-6 max-w-4xl">
-          <p className="text-lg text-gray-700 leading-relaxed">
-            {data.overview || 'Based on the workshop analysis, the following enablers and implementation path have been identified.'}
-          </p>
+          <EditableText
+            value={data.overview || 'Based on the workshop analysis, the following enablers and implementation path have been identified.'}
+            onChange={(v) => update((d) => { d.overview = v; })}
+            className="text-lg text-gray-700 leading-relaxed"
+            multiline
+          />
         </div>
       </div>
 
@@ -54,27 +66,45 @@ export function PotentialSolutionTab({ data, onChange }: PotentialSolutionTabPro
             {enablers.map((enabler: any, idx: number) => (
               <div key={idx} className="bg-white rounded-2xl p-8 shadow-sm border border-black/5">
                 <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900 flex-1">{enabler.title}</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 flex-1">
+                    <EditableText
+                      value={enabler.title}
+                      onChange={(v) => update((d) => { d.enablers[idx].title = v; })}
+                      className="text-lg font-semibold text-gray-900"
+                    />
+                  </h3>
                   <span className={`ml-3 px-3 py-1 rounded-full text-[10px] font-semibold uppercase border ${PRIORITY_COLORS[enabler.priority] || PRIORITY_COLORS.MEDIUM}`}>
-                    {enabler.priority || 'MEDIUM'}
+                    <EditableText
+                      value={enabler.priority || 'MEDIUM'}
+                      onChange={(v) => update((d) => { d.enablers[idx].priority = v; })}
+                      className="text-[10px] font-semibold uppercase"
+                    />
                   </span>
                 </div>
                 {enabler.domain && (
                   <div className="inline-block px-2.5 py-0.5 rounded-full bg-slate-100 text-[10px] text-slate-500 font-medium mb-3">
-                    {enabler.domain}
+                    <EditableText
+                      value={enabler.domain}
+                      onChange={(v) => update((d) => { d.enablers[idx].domain = v; })}
+                      className="text-[10px] text-slate-500 font-medium"
+                    />
                   </div>
                 )}
-                <p className="text-sm text-gray-600 leading-relaxed mb-4">{enabler.description}</p>
+                <EditableText
+                  value={enabler.description}
+                  onChange={(v) => update((d) => { d.enablers[idx].description = v; })}
+                  className="text-sm text-gray-600 leading-relaxed mb-4"
+                  multiline
+                />
                 {Array.isArray(enabler.dependencies) && enabler.dependencies.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2 font-medium">Dependencies</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {enabler.dependencies.map((dep: string, i: number) => (
-                        <span key={i} className="inline-block px-2 py-0.5 rounded bg-slate-50 text-[11px] text-slate-600 border border-slate-100">
-                          {dep}
-                        </span>
-                      ))}
-                    </div>
+                    <EditableList
+                      items={enabler.dependencies}
+                      onChange={(items) => update((d) => { d.enablers[idx].dependencies = items; })}
+                      itemClassName="inline-block px-2 py-0.5 rounded bg-slate-50 text-[11px] text-slate-600 border border-slate-100"
+                      addLabel="+ Add dependency"
+                    />
                   </div>
                 )}
               </div>
@@ -97,9 +127,19 @@ export function PotentialSolutionTab({ data, onChange }: PotentialSolutionTabPro
                     {idx + 1}
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{phase.phase || `Phase ${idx + 1}`}</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      <EditableText
+                        value={phase.phase || `Phase ${idx + 1}`}
+                        onChange={(v) => update((d) => { d.implementationPath[idx].phase = v; })}
+                        className="text-lg font-semibold text-gray-900"
+                      />
+                    </h3>
                     {phase.timeframe && (
-                      <span className="text-sm text-gray-500">{phase.timeframe}</span>
+                      <EditableText
+                        value={phase.timeframe}
+                        onChange={(v) => update((d) => { d.implementationPath[idx].timeframe = v; })}
+                        className="text-sm text-gray-500"
+                      />
                     )}
                   </div>
                 </div>
@@ -107,27 +147,27 @@ export function PotentialSolutionTab({ data, onChange }: PotentialSolutionTabPro
                   {Array.isArray(phase.actions) && phase.actions.length > 0 && (
                     <div>
                       <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-3 font-medium">Actions</div>
-                      <ul className="space-y-2">
-                        {phase.actions.map((action: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                            {action}
-                          </li>
-                        ))}
-                      </ul>
+                      <EditableList
+                        items={phase.actions}
+                        onChange={(items) => update((d) => { d.implementationPath[idx].actions = items; })}
+                        bullet="•"
+                        bulletClassName="mt-1.5 h-1.5 w-1.5 text-blue-400 flex-shrink-0"
+                        itemClassName="text-sm text-gray-700"
+                        addLabel="+ Add action"
+                      />
                     </div>
                   )}
                   {Array.isArray(phase.outcomes) && phase.outcomes.length > 0 && (
                     <div>
                       <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-3 font-medium">Expected Outcomes</div>
-                      <ul className="space-y-2">
-                        {phase.outcomes.map((outcome: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-green-400 flex-shrink-0" />
-                            {outcome}
-                          </li>
-                        ))}
-                      </ul>
+                      <EditableList
+                        items={phase.outcomes}
+                        onChange={(items) => update((d) => { d.implementationPath[idx].outcomes = items; })}
+                        bullet="•"
+                        bulletClassName="mt-1.5 h-1.5 w-1.5 text-green-400 flex-shrink-0"
+                        itemClassName="text-sm text-gray-700"
+                        addLabel="+ Add outcome"
+                      />
                     </div>
                   )}
                 </div>

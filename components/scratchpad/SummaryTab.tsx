@@ -1,12 +1,17 @@
+'use client';
+
 import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Lightbulb, CheckCircle2, Target, Calendar } from 'lucide-react';
+import { EditableText } from './EditableText';
+import { EditableList } from './EditableList';
 
 interface SummaryTabProps {
   data: any;
+  onChange?: (data: any) => void;
 }
 
-export function SummaryTab({ data }: SummaryTabProps) {
+export function SummaryTab({ data, onChange }: SummaryTabProps) {
   if (!data || typeof data !== 'object') {
     return (
       <Card className="p-8 text-center">
@@ -16,6 +21,13 @@ export function SummaryTab({ data }: SummaryTabProps) {
       </Card>
     );
   }
+
+  const update = (fn: (d: any) => void) => {
+    if (!onChange) return;
+    const clone = JSON.parse(JSON.stringify(data));
+    fn(clone);
+    onChange(clone);
+  };
 
   return (
     <div className="space-y-6">
@@ -40,20 +52,28 @@ export function SummaryTab({ data }: SummaryTabProps) {
                 <div className="flex items-center gap-4">
                   <Lightbulb className="h-8 w-8 text-blue-600" />
                   <div className="text-left">
-                    <div className="font-bold text-lg">{category.category}</div>
+                    <div className="font-bold text-lg">
+                      <EditableText
+                        value={category.category}
+                        onChange={(v) => update((d) => { d.keyFindings[idx].category = v; })}
+                        className="font-bold text-lg"
+                      />
+                    </div>
                     <div className="text-sm opacity-70">{category.findings.length} key insights</div>
                   </div>
                 </div>
               </AccordionTrigger>
               <AccordionContent>
-                <ul className="space-y-3 pt-4">
-                  {category.findings.map((finding: string, i: number) => (
-                    <li key={i} className="flex gap-3 p-3 bg-white rounded-lg border">
-                      <CheckCircle2 className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                      <span className="text-sm leading-relaxed">{finding}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="pt-4">
+                  <EditableList
+                    items={category.findings}
+                    onChange={(items) => update((d) => { d.keyFindings[idx].findings = items; })}
+                    bullet="✓"
+                    bulletClassName="text-blue-600 flex-shrink-0 mt-0.5"
+                    itemClassName="text-sm leading-relaxed"
+                    addLabel="+ Add finding"
+                  />
+                </div>
               </AccordionContent>
             </AccordionItem>
           ))}
@@ -81,20 +101,36 @@ export function SummaryTab({ data }: SummaryTabProps) {
                       <div className="text-3xl">{idx === 0 ? '1️⃣' : idx === 1 ? '2️⃣' : idx === 2 ? '3️⃣' : '4️⃣'}</div>
                       <div className="flex-1">
                         <div className="flex items-start justify-between mb-2">
-                          <h4 className="font-semibold text-lg">{step.step}</h4>
+                          <h4 className="font-semibold text-lg">
+                            <EditableText
+                              value={step.step}
+                              onChange={(v) => update((d) => { d.recommendedNextSteps[idx].step = v; })}
+                              className="font-semibold text-lg"
+                            />
+                          </h4>
                           <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-800 border border-green-300">
-                            {step.timeframe}
+                            <EditableText
+                              value={step.timeframe}
+                              onChange={(v) => update((d) => { d.recommendedNextSteps[idx].timeframe = v; })}
+                              className="text-xs"
+                            />
                           </span>
                         </div>
-                        <p className="text-sm text-muted-foreground mb-3">Owner: {step.owner}</p>
-                        <ul className="space-y-2">
-                          {step.actions.map((action: string, i: number) => (
-                            <li key={i} className="flex gap-2 text-sm">
-                              <span className="text-green-600">▸</span>
-                              <span>{action}</span>
-                            </li>
-                          ))}
-                        </ul>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Owner: <EditableText
+                            value={step.owner}
+                            onChange={(v) => update((d) => { d.recommendedNextSteps[idx].owner = v; })}
+                            className="text-sm"
+                          />
+                        </p>
+                        <EditableList
+                          items={step.actions}
+                          onChange={(items) => update((d) => { d.recommendedNextSteps[idx].actions = items; })}
+                          bullet="▸"
+                          bulletClassName="text-green-600 flex-shrink-0"
+                          itemClassName="text-sm"
+                          addLabel="+ Add action"
+                        />
                       </div>
                     </div>
                   </Card>
@@ -115,18 +151,36 @@ export function SummaryTab({ data }: SummaryTabProps) {
                 <div className="flex items-start gap-3">
                   <Target className="h-6 w-6 text-indigo-600 flex-shrink-0 mt-1" />
                   <div className="flex-1">
-                    <h4 className="font-semibold text-indigo-900 mb-2">{metric.metric}</h4>
+                    <h4 className="font-semibold text-indigo-900 mb-2">
+                      <EditableText
+                        value={metric.metric}
+                        onChange={(v) => update((d) => { d.successMetrics[idx].metric = v; })}
+                        className="font-semibold text-indigo-900"
+                      />
+                    </h4>
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Baseline:</span>
-                        <span className="font-medium">{metric.baseline}</span>
+                        <EditableText
+                          value={metric.baseline}
+                          onChange={(v) => update((d) => { d.successMetrics[idx].baseline = v; })}
+                          className="font-medium text-sm"
+                        />
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Target:</span>
-                        <span className="font-medium text-green-700">{metric.target}</span>
+                        <EditableText
+                          value={metric.target}
+                          onChange={(v) => update((d) => { d.successMetrics[idx].target = v; })}
+                          className="font-medium text-green-700 text-sm"
+                        />
                       </div>
                       <div className="text-xs text-muted-foreground pt-1 border-t">
-                        {metric.measurement}
+                        <EditableText
+                          value={metric.measurement}
+                          onChange={(v) => update((d) => { d.successMetrics[idx].measurement = v; })}
+                          className="text-xs text-muted-foreground"
+                        />
                       </div>
                     </div>
                   </div>

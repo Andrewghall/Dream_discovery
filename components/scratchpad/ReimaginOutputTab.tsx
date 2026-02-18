@@ -1,10 +1,13 @@
 import { Fragment } from 'react';
 import { Card } from '@/components/ui/card';
 import Image from 'next/image';
+import { EditableText } from './EditableText';
+import { EditableList } from './EditableList';
 
 interface ReimaginOutputTabProps {
   data: any;
   customerJourney?: any;
+  onChange?: (data: any) => void;
 }
 
 /* ── Sentiment colours (matches CustomerJourneyTab) ────────────── */
@@ -152,7 +155,14 @@ function JourneyMapCompact({ journey }: { journey: { stages: string[]; actors: {
 
 /* ── Main Component ────────────────────────────────────────────── */
 
-export function ReimaginOutputTab({ data, customerJourney }: ReimaginOutputTabProps) {
+export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginOutputTabProps) {
+  const update = (fn: (d: any) => void) => {
+    if (!onChange) return;
+    const clone = JSON.parse(JSON.stringify(data));
+    fn(clone);
+    onChange(clone);
+  };
+
   if (!data || typeof data !== 'object') {
     return (
       <Card className="p-8 text-center">
@@ -185,16 +195,31 @@ export function ReimaginOutputTab({ data, customerJourney }: ReimaginOutputTabPr
         <div className="inline-block px-4 py-1.5 rounded-full border border-black/10 text-[10px] uppercase tracking-[0.25em] text-black/40 mb-8 font-medium">
           REIMAGINE OUTPUT
         </div>
-        <h1 className="text-7xl font-semibold mb-8 leading-[1.1] text-gray-900" style={{ fontFamily: 'DM Serif Display, Georgia, serif' }}>
-          {data?.reimagineContent?.title || 'Reimagine Output'}
+        <h1 className="text-7xl font-semibold mb-8 leading-[1.1] text-gray-900">
+          <EditableText
+            value={data?.reimagineContent?.title || 'Reimagine Output'}
+            onChange={(v) => update((d) => { d.reimagineContent.title = v; })}
+            className="text-7xl font-semibold leading-[1.1] text-gray-900"
+            style={{ fontFamily: 'DM Serif Display, Georgia, serif' }}
+          />
         </h1>
         <div className="space-y-6 max-w-4xl">
-          <p className="text-lg text-gray-700 leading-relaxed">
-            {data?.reimagineContent?.description || 'The Reimagine session focused on defining the future direction of the business.'}
-          </p>
-          <p className="text-lg text-gray-700 leading-relaxed">
-            {data?.reimagineContent?.subtitle || 'The conversation explored what must change in the way the business operates and delivers value.'}
-          </p>
+          <div className="text-lg text-gray-700 leading-relaxed">
+            <EditableText
+              value={data?.reimagineContent?.description || 'The Reimagine session focused on defining the future direction of the business.'}
+              onChange={(v) => update((d) => { d.reimagineContent.description = v; })}
+              className="text-lg text-gray-700 leading-relaxed"
+              multiline
+            />
+          </div>
+          <div className="text-lg text-gray-700 leading-relaxed">
+            <EditableText
+              value={data?.reimagineContent?.subtitle || 'The conversation explored what must change in the way the business operates and delivers value.'}
+              onChange={(v) => update((d) => { d.reimagineContent.subtitle = v; })}
+              className="text-lg text-gray-700 leading-relaxed"
+              multiline
+            />
+          </div>
           <p className="text-sm text-gray-500 leading-relaxed italic">
             The themes below are presented in order of importance and emphasis during the session.
           </p>
@@ -248,40 +273,56 @@ export function ReimaginOutputTab({ data, customerJourney }: ReimaginOutputTabPr
         {/* First Green Box from supportingSection */}
         {data?.reimagineContent?.supportingSection && (
           <div className="bg-gradient-to-br from-teal-100 to-emerald-100 rounded-2xl p-10 border-2 border-teal-200">
-            <h3 className="font-bold text-3xl mb-4 text-gray-900">{data.reimagineContent.supportingSection.title}</h3>
-            <p className="text-sm text-gray-800 mb-7 leading-relaxed font-medium">
-              {data.reimagineContent.supportingSection.description}
-            </p>
-            <ul className="space-y-4">
-              {data.reimagineContent.supportingSection.points?.map((point: string, index: number) => (
-                <li key={index} className="flex items-start gap-4">
-                  <span className="text-teal-700 font-bold text-xl mt-0.5">•</span>
-                  <span className="text-sm text-gray-900 leading-relaxed font-medium">
-                    {point}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <h3 className="font-bold text-3xl mb-4 text-gray-900">
+              <EditableText
+                value={data.reimagineContent.supportingSection.title}
+                onChange={(v) => update((d) => { d.reimagineContent.supportingSection.title = v; })}
+                className="font-bold text-3xl text-gray-900"
+              />
+            </h3>
+            <div className="text-sm text-gray-800 mb-7 leading-relaxed font-medium">
+              <EditableText
+                value={data.reimagineContent.supportingSection.description}
+                onChange={(v) => update((d) => { d.reimagineContent.supportingSection.description = v; })}
+                className="text-sm text-gray-800 leading-relaxed font-medium"
+                multiline
+              />
+            </div>
+            <EditableList
+              items={data.reimagineContent.supportingSection.points || []}
+              onChange={(items) => update((d) => { d.reimagineContent.supportingSection.points = items; })}
+              bullet="•"
+              bulletClassName="text-teal-700 font-bold text-xl mt-0.5 flex-shrink-0"
+              itemClassName="text-sm text-gray-900 leading-relaxed font-medium"
+            />
           </div>
         )}
 
         {/* Accordion sections as green boxes */}
         {data?.reimagineContent?.accordionSections?.map((section: any, index: number) => (
           <div key={index} className="bg-gradient-to-br from-teal-50 to-emerald-50 rounded-2xl p-10 border-2 border-teal-200">
-            <h3 className="font-bold text-2xl mb-4 text-gray-900">{section.title}</h3>
-            <p className="text-sm text-gray-800 mb-6 leading-relaxed font-medium">
-              {section.description}
-            </p>
-            <ul className="space-y-4">
-              {section.points?.map((point: string, pointIndex: number) => (
-                <li key={pointIndex} className="flex items-start gap-4">
-                  <span className="text-teal-700 font-bold text-xl mt-0.5">•</span>
-                  <span className="text-sm text-gray-900 leading-relaxed font-medium">
-                    {point}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <h3 className="font-bold text-2xl mb-4 text-gray-900">
+              <EditableText
+                value={section.title}
+                onChange={(v) => update((d) => { d.reimagineContent.accordionSections[index].title = v; })}
+                className="font-bold text-2xl text-gray-900"
+              />
+            </h3>
+            <div className="text-sm text-gray-800 mb-6 leading-relaxed font-medium">
+              <EditableText
+                value={section.description}
+                onChange={(v) => update((d) => { d.reimagineContent.accordionSections[index].description = v; })}
+                className="text-sm text-gray-800 leading-relaxed font-medium"
+                multiline
+              />
+            </div>
+            <EditableList
+              items={section.points || []}
+              onChange={(items) => update((d) => { d.reimagineContent.accordionSections[index].points = items; })}
+              bullet="•"
+              bulletClassName="text-teal-700 font-bold text-xl mt-0.5 flex-shrink-0"
+              itemClassName="text-sm text-gray-900 leading-relaxed font-medium"
+            />
           </div>
         ))}
       </div>
@@ -319,13 +360,31 @@ export function ReimaginOutputTab({ data, customerJourney }: ReimaginOutputTabPr
                   <div className="flex items-start gap-4 flex-1">
                     <div className="w-10 h-10 rounded-full bg-orange-700 text-white flex items-center justify-center font-bold text-base flex-shrink-0">{index + 1}</div>
                     <div className="flex-1">
-                      <span className="font-semibold text-gray-900 text-lg block mb-2">{theme.title}</span>
+                      <span className="font-semibold text-gray-900 text-lg block mb-2">
+                        <EditableText
+                          value={theme.title}
+                          onChange={(v) => update((d) => { d.reimagineContent.primaryThemes[index].title = v; })}
+                          className="font-semibold text-gray-900 text-lg"
+                        />
+                      </span>
                       {theme.weighting && (
-                        <span className="text-xs text-gray-500 italic">{theme.weighting}</span>
+                        <span className="text-xs text-gray-500 italic">
+                          <EditableText
+                            value={theme.weighting}
+                            onChange={(v) => update((d) => { d.reimagineContent.primaryThemes[index].weighting = v; })}
+                            className="text-xs text-gray-500 italic"
+                          />
+                        </span>
                       )}
                     </div>
                   </div>
-                  <span className="px-4 py-2 rounded-full text-xs font-bold bg-orange-700 text-white uppercase tracking-wider flex-shrink-0">{theme.badge}</span>
+                  <span className="px-4 py-2 rounded-full text-xs font-bold bg-orange-700 text-white uppercase tracking-wider flex-shrink-0">
+                    <EditableText
+                      value={theme.badge}
+                      onChange={(v) => update((d) => { d.reimagineContent.primaryThemes[index].badge = v; })}
+                      className="text-xs font-bold text-white uppercase tracking-wider"
+                    />
+                  </span>
                 </div>
               </div>
             )) || (
@@ -343,24 +402,37 @@ export function ReimaginOutputTab({ data, customerJourney }: ReimaginOutputTabPr
                   <div className="text-xs uppercase tracking-[0.15em] text-amber-900 font-bold">SHIFT ONE</div>
                 </div>
                 <h4 className="font-bold text-2xl text-gray-900 leading-tight">
-                  {data?.reimagineContent?.shiftOne?.title || 'First Key Shift'}
+                  <EditableText
+                    value={data?.reimagineContent?.shiftOne?.title || 'First Key Shift'}
+                    onChange={(v) => update((d) => { d.reimagineContent.shiftOne.title = v; })}
+                    className="font-bold text-2xl text-gray-900 leading-tight"
+                  />
                 </h4>
               </div>
               <div className="p-8 flex-1">
-                <p className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
-                  {data?.reimagineContent?.shiftOne?.description || 'Description of the first major shift or transformation theme from the reimagine session.'}
-                </p>
-                <div className="text-sm text-gray-700 space-y-3 leading-relaxed font-medium">
+                <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
+                  <EditableText
+                    value={data?.reimagineContent?.shiftOne?.description || 'Description of the first major shift or transformation theme from the reimagine session.'}
+                    onChange={(v) => update((d) => { d.reimagineContent.shiftOne.description = v; })}
+                    className="text-sm text-gray-800 leading-relaxed font-medium"
+                    multiline
+                  />
+                </div>
+                <div className="text-sm text-gray-700 leading-relaxed font-medium">
                   {data?.reimagineContent?.shiftOne?.details?.length > 0 ? (
-                    data.reimagineContent.shiftOne.details.map((detail: string, index: number) => (
-                      <p key={index}>• {detail}</p>
-                    ))
+                    <EditableList
+                      items={data.reimagineContent.shiftOne.details}
+                      onChange={(items) => update((d) => { d.reimagineContent.shiftOne.details = items; })}
+                      bullet="•"
+                      bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
+                      itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
+                    />
                   ) : (
-                    <>
+                    <div className="space-y-3">
                       <p>• Key detail point one</p>
                       <p>• Key detail point two</p>
                       <p>• Key detail point three</p>
-                    </>
+                    </div>
                   )}
                 </div>
               </div>
@@ -380,13 +452,31 @@ export function ReimaginOutputTab({ data, customerJourney }: ReimaginOutputTabPr
                   <div className="flex items-start gap-4 flex-1">
                     <div className="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-base flex-shrink-0">{index + 1}</div>
                     <div className="flex-1">
-                      <span className="font-semibold text-gray-900 text-lg block mb-2">{theme.title}</span>
+                      <span className="font-semibold text-gray-900 text-lg block mb-2">
+                        <EditableText
+                          value={theme.title}
+                          onChange={(v) => update((d) => { d.reimagineContent.supportingThemes[index].title = v; })}
+                          className="font-semibold text-gray-900 text-lg"
+                        />
+                      </span>
                       {theme.weighting && (
-                        <span className="text-xs text-gray-500 italic">{theme.weighting}</span>
+                        <span className="text-xs text-gray-500 italic">
+                          <EditableText
+                            value={theme.weighting}
+                            onChange={(v) => update((d) => { d.reimagineContent.supportingThemes[index].weighting = v; })}
+                            className="text-xs text-gray-500 italic"
+                          />
+                        </span>
                       )}
                     </div>
                   </div>
-                  <span className="px-4 py-2 rounded-full text-xs font-bold bg-sky-500 text-white uppercase tracking-wider flex-shrink-0">{theme.badge}</span>
+                  <span className="px-4 py-2 rounded-full text-xs font-bold bg-sky-500 text-white uppercase tracking-wider flex-shrink-0">
+                    <EditableText
+                      value={theme.badge}
+                      onChange={(v) => update((d) => { d.reimagineContent.supportingThemes[index].badge = v; })}
+                      className="text-xs font-bold text-white uppercase tracking-wider"
+                    />
+                  </span>
                 </div>
               </div>
             )) || (
@@ -404,24 +494,37 @@ export function ReimaginOutputTab({ data, customerJourney }: ReimaginOutputTabPr
                   <div className="text-xs uppercase tracking-[0.15em] text-sky-900 font-bold">SHIFT TWO</div>
                 </div>
                 <h4 className="font-bold text-2xl text-gray-900 leading-tight">
-                  {data?.reimagineContent?.shiftTwo?.title || 'Second Key Shift'}
+                  <EditableText
+                    value={data?.reimagineContent?.shiftTwo?.title || 'Second Key Shift'}
+                    onChange={(v) => update((d) => { d.reimagineContent.shiftTwo.title = v; })}
+                    className="font-bold text-2xl text-gray-900 leading-tight"
+                  />
                 </h4>
               </div>
               <div className="p-8 flex-1">
-                <p className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
-                  {data?.reimagineContent?.shiftTwo?.description || 'Description of the second major shift or transformation theme from the reimagine session.'}
-                </p>
-                <div className="text-sm text-gray-700 space-y-3 leading-relaxed font-medium">
+                <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
+                  <EditableText
+                    value={data?.reimagineContent?.shiftTwo?.description || 'Description of the second major shift or transformation theme from the reimagine session.'}
+                    onChange={(v) => update((d) => { d.reimagineContent.shiftTwo.description = v; })}
+                    className="text-sm text-gray-800 leading-relaxed font-medium"
+                    multiline
+                  />
+                </div>
+                <div className="text-sm text-gray-700 leading-relaxed font-medium">
                   {data?.reimagineContent?.shiftTwo?.details?.length > 0 ? (
-                    data.reimagineContent.shiftTwo.details.map((detail: string, index: number) => (
-                      <p key={index}>• {detail}</p>
-                    ))
+                    <EditableList
+                      items={data.reimagineContent.shiftTwo.details}
+                      onChange={(items) => update((d) => { d.reimagineContent.shiftTwo.details = items; })}
+                      bullet="•"
+                      bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
+                      itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
+                    />
                   ) : (
-                    <>
+                    <div className="space-y-3">
                       <p>• Key detail point one</p>
                       <p>• Key detail point two</p>
                       <p>• Key detail point three</p>
-                    </>
+                    </div>
                   )}
                 </div>
               </div>
@@ -432,23 +535,30 @@ export function ReimaginOutputTab({ data, customerJourney }: ReimaginOutputTabPr
       {/* Horizon Vision Alignment */}
       <div>
         <h3 className="font-bold text-3xl mb-8 text-gray-900">
-          {data?.reimagineContent?.horizonVision?.title || 'Horizon Vision Alignment'}
+          <EditableText
+            value={data?.reimagineContent?.horizonVision?.title || 'Horizon Vision Alignment'}
+            onChange={(v) => update((d) => { d.reimagineContent.horizonVision.title = v; })}
+            className="font-bold text-3xl text-gray-900"
+          />
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {data?.reimagineContent?.horizonVision?.columns?.length > 0 ? (
             data.reimagineContent.horizonVision.columns.map((column: any, index: number) => (
               <div key={index} className="p-10 bg-white rounded-2xl shadow-md">
-                <h4 className="font-bold text-xl mb-6 text-gray-900">{column.title}</h4>
-                <ul className="space-y-4">
-                  {column.points?.map((point: string, pointIndex: number) => (
-                    <li key={pointIndex} className="flex items-start gap-4">
-                      <span className="text-gray-400 font-bold text-xl mt-0.5">•</span>
-                      <span className="text-sm text-gray-800 leading-relaxed font-medium">
-                        {point}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <h4 className="font-bold text-xl mb-6 text-gray-900">
+                  <EditableText
+                    value={column.title}
+                    onChange={(v) => update((d) => { d.reimagineContent.horizonVision.columns[index].title = v; })}
+                    className="font-bold text-xl text-gray-900"
+                  />
+                </h4>
+                <EditableList
+                  items={column.points || []}
+                  onChange={(items) => update((d) => { d.reimagineContent.horizonVision.columns[index].points = items; })}
+                  bullet="•"
+                  bulletClassName="text-gray-400 font-bold text-xl mt-0.5 flex-shrink-0"
+                  itemClassName="text-sm text-gray-800 leading-relaxed font-medium"
+                />
               </div>
             ))
           ) : (
