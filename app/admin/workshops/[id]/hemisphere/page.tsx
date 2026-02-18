@@ -215,9 +215,10 @@ function MiniHemisphere({
         canvas.height = h;
       }
 
+      // Full sphere: center in middle
       const cx = w / 2;
-      const cy = h * 0.65;
-      const R = Math.min(w, h) * 0.38;
+      const cy = h * 0.50;
+      const R = Math.min(w, h) * 0.36;
 
       ctx.clearRect(0, 0, w, h);
 
@@ -228,11 +229,11 @@ function MiniHemisphere({
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, w, h);
 
-      // Dome arc
+      // Full sphere outline
       ctx.strokeStyle = 'rgba(148,163,184,0.15)';
       ctx.lineWidth = dpr;
       ctx.beginPath();
-      ctx.arc(cx, cy, R, Math.PI, 0, false);
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
       ctx.stroke();
 
       // Nodes
@@ -245,7 +246,8 @@ function MiniHemisphere({
         const u = hash01(`u:${n.id}`);
         const v = hash01(`v:${n.id}`);
         const theta = u * Math.PI * 2;
-        const phi = (Math.PI / 2) * clamp01(0.05 + v * 0.9);
+        // Full sphere: phi from 0 to π
+        const phi = Math.PI * clamp01(0.05 + v * 0.9);
         const radial = Math.sin(phi);
         const py = Math.cos(phi);
         const px = Math.cos(theta) * radial;
@@ -979,11 +981,14 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
   const positions = useMemo(() => {
     const out = new Map<string, NodePose>();
+    // Full sphere: phi ranges from 0 (top) to π (bottom)
+    // Layer bands spread across the full sphere with spacing
+    // Since EVIDENCE (H4) nodes are filtered out, spread H1–H3 across the FULL sphere
     const bandForLayer = (layer: HemisphereLayer): { a: number; b: number } => {
-      if (layer === 'H1') return { a: 0.02, b: 0.18 };
-      if (layer === 'H2') return { a: 0.34, b: 0.56 };
-      if (layer === 'H3') return { a: 0.56, b: 0.78 };
-      return { a: 0.78, b: 0.98 };
+      if (layer === 'H1') return { a: 0.05, b: 0.28 };   // Top region (Vision, Belief)
+      if (layer === 'H2') return { a: 0.38, b: 0.62 };   // Middle region (Challenge, Friction)
+      if (layer === 'H3') return { a: 0.72, b: 0.95 };   // Bottom region (Constraint, Enabler)
+      return { a: 0.78, b: 0.95 };                        // H4 fallback (rarely visible)
     };
     const clusterTheta = new Map<string, number>();
     for (const n of visibleNodes) {
@@ -997,15 +1002,16 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       const v = hash01(`v:${n.id}`);
       const band = bandForLayer(n.layer);
       const phiT = lerp(band.a, band.b, v);
-      const phi = (Math.PI / 2) * clamp01(phiT);
-      const theta = baseTheta + (u - 0.5) * 0.95;
+      // Full sphere: phi goes from 0 to π (not just 0 to π/2)
+      const phi = Math.PI * clamp01(phiT);
+      const theta = baseTheta + (u - 0.5) * 1.2;
       const radial = Math.sin(phi);
       const y = Math.cos(phi);
       const x = Math.cos(theta) * radial;
       const z = Math.sin(theta) * radial;
       const coreId = graph?.coreTruthNodeId;
       if (coreId && n.id === coreId) {
-        out.set(n.id, { id: n.id, clusterId: 'CORE', layer: n.layer, type: n.type, p: { x: 0, y: 0.55, z: 0 } });
+        out.set(n.id, { id: n.id, clusterId: 'CORE', layer: n.layer, type: n.type, p: { x: 0, y: 0, z: 0 } });
       } else {
         out.set(n.id, { id: n.id, clusterId: cid, layer: n.layer, type: n.type, p: { x, y, z } });
       }
@@ -1079,7 +1085,8 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     const reduceMotion = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
 
     const project = (p: Vec3, w: number, h: number, tMs: number) => {
-      const cx = w / 2; const cy = h * 0.60; const R = Math.min(w, h) * 0.42;
+      // Full sphere: center in the middle of the canvas
+      const cx = w / 2; const cy = h * 0.48; const R = Math.min(w, h) * 0.40;
       const spin = reduceMotion ? 0 : tMs * 0.00004;
       const cs = Math.cos(spin); const sn = Math.sin(spin);
       const x = p.x * cs - p.z * sn;
@@ -1097,7 +1104,8 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       const h = Math.max(1, Math.floor(rect.height * dpr));
       if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 
-      const cx = w / 2; const cy = h * 0.60; const R = Math.min(w, h) * 0.42;
+      // Full sphere: center in the middle of the canvas
+      const cx = w / 2; const cy = h * 0.48; const R = Math.min(w, h) * 0.40;
       ctx.clearRect(0, 0, w, h);
 
       const bg = ctx.createRadialGradient(cx, cy, R * 0.05, cx, cy, R * 1.35);
@@ -1106,12 +1114,19 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, w, h);
 
+      // Full sphere wireframe guides
       ctx.save();
-      ctx.strokeStyle = 'rgba(148,163,184,0.22)';
+      ctx.strokeStyle = 'rgba(148,163,184,0.18)';
       ctx.lineWidth = Math.max(1, 1.1 * dpr);
-      ctx.beginPath(); ctx.arc(cx, cy, R, Math.PI, 0, false); ctx.stroke();
-      ctx.lineWidth = Math.max(1, 0.8 * dpr);
-      for (const rr of [0.25, 0.5, 0.75]) { ctx.beginPath(); ctx.arc(cx, cy, R * rr, Math.PI, 0, false); ctx.stroke(); }
+      // Outer circle (full sphere silhouette)
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+      // Concentric rings
+      ctx.lineWidth = Math.max(1, 0.7 * dpr);
+      ctx.strokeStyle = 'rgba(148,163,184,0.12)';
+      for (const rr of [0.25, 0.5, 0.75]) { ctx.beginPath(); ctx.arc(cx, cy, R * rr, 0, Math.PI * 2); ctx.stroke(); }
+      // Equator line (horizontal ellipse to suggest 3D)
+      ctx.strokeStyle = 'rgba(148,163,184,0.14)';
+      ctx.beginPath(); ctx.ellipse(cx, cy, R, R * 0.25, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
 
       const cam = zoomClusterId ? clusterCenters.get(zoomClusterId) : null;
