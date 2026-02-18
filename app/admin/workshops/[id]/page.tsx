@@ -218,7 +218,6 @@ export default function WorkshopDetailPage({ params }: PageProps) {
   };
 
   const handleSendInvitations = async () => {
-    alert('Button clicked! Sending emails...');
     console.log('🚀 Send Invitations clicked');
     
     try {
@@ -247,7 +246,8 @@ export default function WorkshopDetailPage({ params }: PageProps) {
         }
 
         if (data.emailsSent === 0 && data.message) {
-          alert(data.message);
+          setSuccessMessage(data.message);
+          setShowSuccessDialog(true);
           fetchWorkshop();
           return;
         }
