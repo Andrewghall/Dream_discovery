@@ -461,7 +461,7 @@ export default function ScratchpadPage({ params }: PageProps) {
           </TabsContent>
 
           <TabsContent value="reimagine">
-            <ReimaginOutputTab data={scratchpad.reimagineContent} />
+            <ReimaginOutputTab data={scratchpad.reimagineContent} customerJourney={scratchpad.customerJourney} />
           </TabsContent>
 
           <TabsContent value="constraints">

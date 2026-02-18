@@ -1,20 +1,182 @@
+import { Fragment } from 'react';
 import { Card } from '@/components/ui/card';
 import Image from 'next/image';
 
 interface ReimaginOutputTabProps {
   data: any;
+  customerJourney?: any;
 }
 
-export function ReimaginOutputTab({ data }: ReimaginOutputTabProps) {
+/* ── Sentiment colours (matches CustomerJourneyTab) ────────────── */
+
+const SENTIMENT_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+  positive:  { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-400' },
+  neutral:   { bg: 'bg-slate-50',   border: 'border-slate-200',   text: 'text-slate-600',   dot: 'bg-slate-400' },
+  concerned: { bg: 'bg-amber-50',   border: 'border-amber-200',   text: 'text-amber-700',   dot: 'bg-amber-400' },
+  critical:  { bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     dot: 'bg-red-400' },
+};
+
+/* ── Compact read-only Journey Map ─────────────────────────────── */
+
+function JourneyMapCompact({ journey }: { journey: { stages: string[]; actors: { name: string; role: string }[]; interactions: any[]; painPointSummary?: string; momentOfTruthSummary?: string } }) {
+  const painPointCount = journey.interactions.filter((i: any) => i.isPainPoint).length;
+  const motCount = journey.interactions.filter((i: any) => i.isMomentOfTruth).length;
+  const sentimentCounts = journey.interactions.reduce((acc: Record<string, number>, i: any) => {
+    acc[i.sentiment] = (acc[i.sentiment] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  return (
+    <div className="space-y-6">
+      {/* Stats bar */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-8">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900">{journey.stages.length}</div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-wider">Stages</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900">{journey.actors.length}</div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-wider">Actors</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900">{journey.interactions.length}</div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-wider">Interactions</div>
+          </div>
+          {painPointCount > 0 && (
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">{painPointCount}</div>
+              <div className="text-[10px] text-gray-500 uppercase tracking-wider">Pain Points</div>
+            </div>
+          )}
+          {motCount > 0 && (
+            <div className="text-center">
+              <div className="text-2xl font-bold text-amber-600">{motCount}</div>
+              <div className="text-[10px] text-gray-500 uppercase tracking-wider">Moments of Truth</div>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          {Object.entries(sentimentCounts).map(([key, count]) => (
+            <div key={key} className="flex items-center gap-1.5">
+              <span className={`h-2.5 w-2.5 rounded-full ${SENTIMENT_COLORS[key]?.dot || 'bg-slate-400'}`} />
+              <span className="text-[10px] text-gray-500 capitalize">{key} ({count})</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Compact swim-lane grid */}
+      <div className="bg-white rounded-2xl shadow-sm border border-black/5 overflow-hidden">
+        <div className="overflow-x-auto">
+          <div
+            className="grid min-w-[900px]"
+            style={{
+              gridTemplateColumns: `160px repeat(${journey.stages.length}, minmax(140px, 1fr))`,
+            }}
+          >
+            {/* Header row — stages */}
+            <div className="bg-slate-50 p-3 border-b border-r border-slate-100" />
+            {journey.stages.map((stage: string, idx: number) => (
+              <div key={idx} className="bg-slate-50 p-3 border-b border-r border-slate-100 text-center">
+                <div className="text-[10px] font-semibold text-gray-900 uppercase tracking-wider">{stage}</div>
+              </div>
+            ))}
+
+            {/* Actor rows */}
+            {journey.actors.map((actor: any, actorIdx: number) => (
+              <Fragment key={actorIdx}>
+                <div className="bg-slate-50 p-3 border-b border-r border-slate-100">
+                  <div className="text-xs font-semibold text-gray-900">{actor.name}</div>
+                  <div className="text-[9px] text-gray-400">{actor.role}</div>
+                </div>
+                {journey.stages.map((stage: string, stageIdx: number) => {
+                  const cellInteractions = journey.interactions.filter(
+                    (i: any) =>
+                      i.actor?.toLowerCase() === actor.name?.toLowerCase() &&
+                      i.stage?.toLowerCase() === stage?.toLowerCase()
+                  );
+                  return (
+                    <div key={stageIdx} className="p-1.5 border-b border-r border-slate-100 min-h-[50px]">
+                      <div className="space-y-1">
+                        {cellInteractions.map((interaction: any, idx: number) => {
+                          const style = SENTIMENT_COLORS[interaction.sentiment] || SENTIMENT_COLORS.neutral;
+                          return (
+                            <div key={idx} className={`relative p-1.5 rounded ${style.bg} ${style.border} border`}>
+                              {interaction.isPainPoint && (
+                                <span className="absolute -top-1 -left-1 text-[8px]">🔴</span>
+                              )}
+                              {interaction.isMomentOfTruth && (
+                                <span className="absolute -top-1 -right-1 text-[8px]">⭐</span>
+                              )}
+                              <div className={`text-[9px] font-medium ${style.text} leading-tight`}>
+                                {interaction.action}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Pain point + Moment of truth summaries */}
+      {(journey.painPointSummary || journey.momentOfTruthSummary) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {journey.painPointSummary && (
+            <div className="bg-white rounded-2xl p-8 shadow-sm">
+              <div className="text-[10px] uppercase tracking-[0.15em] text-red-400 mb-3 font-medium">
+                PAIN POINT ANALYSIS
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed">{journey.painPointSummary}</p>
+            </div>
+          )}
+          {journey.momentOfTruthSummary && (
+            <div className="bg-white rounded-2xl p-8 shadow-sm">
+              <div className="text-[10px] uppercase tracking-[0.15em] text-amber-500 mb-3 font-medium">
+                MOMENTS OF TRUTH
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed">{journey.momentOfTruthSummary}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Main Component ────────────────────────────────────────────── */
+
+export function ReimaginOutputTab({ data, customerJourney }: ReimaginOutputTabProps) {
   if (!data || typeof data !== 'object') {
     return (
       <Card className="p-8 text-center">
         <p className="text-muted-foreground">
-          No reimagine data yet. Click "🎯 Load Complete Demo" to populate this tab.
+          No reimagine data yet. Click &quot;🎯 Load Complete Demo&quot; to populate this tab.
         </p>
       </Card>
     );
   }
+
+  // Parse customer journey data
+  const journeyData =
+    customerJourney && typeof customerJourney === 'object'
+      ? {
+          stages: Array.isArray(customerJourney.stages) ? customerJourney.stages : [],
+          actors: Array.isArray(customerJourney.actors) ? customerJourney.actors : [],
+          interactions: Array.isArray(customerJourney.interactions) ? customerJourney.interactions : [],
+          painPointSummary: customerJourney.painPointSummary || '',
+          momentOfTruthSummary: customerJourney.momentOfTruthSummary || '',
+        }
+      : null;
+
+  const hasJourneyData =
+    journeyData && journeyData.stages.length > 0 && journeyData.actors.length > 0;
 
   return (
     <div className="space-y-12 bg-[#f8f4ec] -mx-8 -my-8 px-8 py-12 min-h-screen">
@@ -124,18 +286,24 @@ export function ReimaginOutputTab({ data }: ReimaginOutputTabProps) {
         ))}
       </div>
 
-      {/* Journey Mapping */}
-      {data?.reimagineContent?.journeyMapping && (
+      {/* Journey Mapping — compact grid or placeholder */}
+      {(data?.reimagineContent?.journeyMapping || hasJourneyData) && (
         <div>
-          <h3 className="font-bold text-3xl mb-8 text-gray-900">{data.reimagineContent.journeyMapping.title}</h3>
-          <div className="p-20 bg-gradient-to-br from-amber-100 to-orange-100 rounded-2xl border-2 border-amber-200 text-center">
-            <div className="text-8xl mb-6 opacity-30">🗺️</div>
-            <h4 className="font-bold text-2xl mb-4 text-gray-900">Journey Mapping</h4>
-            <p className="text-base text-gray-700 max-w-2xl mx-auto leading-relaxed">
-              Once Journey Mapping is completed, the visual journey timeline will be uploaded here.
-              This will show the step-by-step transformation journey with key touchpoints and stages.
-            </p>
-          </div>
+          <h3 className="font-bold text-3xl mb-8 text-gray-900">
+            {data?.reimagineContent?.journeyMapping?.title || 'Customer Journey Mapping'}
+          </h3>
+          {hasJourneyData ? (
+            <JourneyMapCompact journey={journeyData!} />
+          ) : (
+            <div className="p-20 bg-gradient-to-br from-amber-100 to-orange-100 rounded-2xl border-2 border-amber-200 text-center">
+              <div className="text-8xl mb-6 opacity-30">🗺️</div>
+              <h4 className="font-bold text-2xl mb-4 text-gray-900">Journey Mapping</h4>
+              <p className="text-base text-gray-700 max-w-2xl mx-auto leading-relaxed">
+                Once Journey Mapping is completed, the visual journey timeline will be uploaded here.
+                This will show the step-by-step transformation journey with key touchpoints and stages.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
