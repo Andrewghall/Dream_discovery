@@ -49,6 +49,8 @@ export default function AdminDashboard() {
   const [dbDebug, setDbDebug] = useState<DebugEnvResponse | null>(null);
   const [dbDebugError, setDbDebugError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<Array<{
     id: string; type: string; action: string; resource: string;
     success: boolean; email: string; timestamp: string;
@@ -80,7 +82,11 @@ export default function AdminDashboard() {
     fetchDbDebug();
     fetch('/api/auth/me', { cache: 'no-store' })
       .then(r => r.json())
-      .then(data => setUserRole(data.role || null))
+      .then(data => {
+        setUserRole(data.role || null);
+        setUserName(data.name || null);
+        setOrgLogoUrl(data.orgLogoUrl || null);
+      })
       .catch(() => null);
     fetch('/api/admin/audit-logs?limit=10', { cache: 'no-store' })
       .then(r => r.json())
@@ -189,11 +195,11 @@ export default function AdminDashboard() {
         <div className="no-print flex items-center justify-between mb-8">
           <div>
             <div className="flex items-center gap-3">
-              <Image src={process.env.NEXT_PUBLIC_PLATFORM_LOGO || '/upstreamworks-logo.png'} alt="Platform Logo" width={128} height={37} priority />
+              <Image src={orgLogoUrl || process.env.NEXT_PUBLIC_PLATFORM_LOGO || '/upstreamworks-logo.png'} alt="Logo" width={128} height={37} priority />
               <h1 className="text-3xl font-bold tracking-tight">DREAM Discovery</h1>
             </div>
             <p className="text-muted-foreground mt-1">
-              Manage workshops and discovery conversations
+              {userName ? `Welcome, ${userName}` : 'Manage workshops and discovery conversations'}
             </p>
           </div>
           <div className="flex gap-2">
