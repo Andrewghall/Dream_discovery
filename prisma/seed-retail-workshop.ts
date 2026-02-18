@@ -70,7 +70,811 @@ type Utterance = {
 
 const baseTime = new Date('2026-02-10T09:00:00Z').getTime();
 
-const UTTERANCES: Utterance[] = [
+// ═══════════════════════════════════════════════════════════════
+// UTTERANCE GENERATOR — produces 970 additional data points
+// ═══════════════════════════════════════════════════════════════
+
+// Seeded PRNG for reproducibility
+function mulberry32(seed: number) {
+  let s = seed;
+  return () => {
+    s |= 0; s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(42);
+function pick<T>(arr: T[]): T { return arr[Math.floor(rng() * arr.length)]; }
+function pickN<T>(arr: T[], n: number): T[] {
+  const shuffled = [...arr].sort(() => rng() - 0.5);
+  return shuffled.slice(0, n);
+}
+function weightedPick<T>(items: T[], weights: number[]): T {
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = rng() * total;
+  for (let i = 0; i < items.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return items[i];
+  }
+  return items[items.length - 1];
+}
+
+// ── Topic pools ──────────────────────────────────────────────
+
+const TOPICS_REIMAGINE = {
+  customer: [
+    'personalised product recommendations based on browsing history',
+    'instant in-store returns with QR code scanning',
+    'proactive delivery delay notifications with rebooking options',
+    'loyalty programme gamification with tiered rewards',
+    'voice commerce integration for hands-free ordering',
+    'social shopping features allowing friends to co-browse',
+    'subscription box service for repeat purchases',
+    'augmented reality try-on for clothing and accessories',
+    'unified shopping basket across web, app, and store',
+    'wishlist sharing with family and gift registries',
+    'real-time price match guarantee across competitors',
+    'birthday and anniversary personalised offers',
+    'live video chat shopping with in-store experts',
+    'premium concierge service for high-value customers',
+    'hassle-free size exchanges with free returns',
+    'guaranteed next-day delivery to any UK address',
+    'real-time stock visibility across all stores online',
+    'smart locker collection points at transport hubs',
+    'gift wrapping and personalised message automation',
+    'customer preference memory across all touchpoints',
+    'predictive reorder reminders for consumable products',
+    'in-app styling advice powered by AI',
+    'same-day delivery from local store inventory',
+    'post-purchase care guides and product tips',
+    'community reviews and user-generated content integration',
+    'flexible payment plans with instant credit decisions',
+    'carbon-neutral delivery options for eco-conscious shoppers',
+    'VIP early access to sales and new collections',
+    'seamless gift card and voucher redemption across channels',
+    'personalised homepage that adapts to shopping behaviour',
+  ],
+  operations: [
+    'automated stock replenishment triggered by sales velocity',
+    'AI-powered shift scheduling based on footfall predictions',
+    'predictive maintenance for store equipment and HVAC',
+    'robotic picking in distribution centres',
+    'dynamic markdown pricing based on sell-through rates',
+    'demand forecasting using weather and event data',
+    'last-mile delivery route optimisation with real-time traffic',
+    'warehouse slotting optimisation for faster picking',
+    'automated click-and-collect staging and notification',
+    'inventory accuracy improvement through RFID rollout',
+    'AI-driven loss prevention using CCTV analytics',
+    'queue management with virtual queuing technology',
+    'express click-and-collect ready in under 30 minutes',
+    'reverse logistics automation for returns processing',
+    'peak season capacity planning with scenario modelling',
+    'store-to-door delivery using local store fulfilment',
+    'automated goods-in receiving with barcode scanning',
+    'energy management and sustainability monitoring per store',
+    'task allocation app for store colleague productivity',
+    'centralised contact centre workforce management',
+    'cross-docking facility to reduce warehousing costs',
+    'supply chain visibility dashboard with real-time tracking',
+    'vendor-managed inventory for key suppliers',
+    'packaging optimisation to reduce waste and shipping costs',
+    'store capacity management for peak trading periods',
+  ],
+  technology: [
+    'unified API gateway connecting all customer touchpoints',
+    'real-time analytics dashboard for store managers',
+    'customer data platform consolidating all data sources',
+    'edge computing in stores for low-latency AI inference',
+    '5G connectivity rollout for bandwidth-intensive services',
+    'cloud-native migration of core retail platforms',
+    'microservices architecture replacing monolithic systems',
+    'event-driven architecture for real-time data streaming',
+    'automated ML pipeline for model training and deployment',
+    'computer vision for shelf monitoring and stockouts',
+    'natural language processing for customer feedback analysis',
+    'recommendation engine using collaborative filtering',
+    'site search improvement with semantic understanding',
+    'mobile-first responsive redesign of e-commerce platform',
+    'progressive web app for offline-capable mobile experience',
+    'GraphQL API for flexible frontend data fetching',
+    'containerised deployment with Kubernetes orchestration',
+    'feature flag system for gradual rollouts and A/B testing',
+    'real-time personalisation engine with sub-100ms latency',
+    'headless commerce platform decoupling frontend and backend',
+    'data lake architecture for unified analytics',
+    'API-first integration strategy for partner ecosystem',
+    'automated testing pipeline for continuous deployment',
+    'observability platform with distributed tracing',
+    'identity and access management modernisation',
+  ],
+  people: [
+    'digital skills academy for all retail colleagues',
+    'career pathway programme from store floor to management',
+    'AI literacy training for non-technical stakeholders',
+    'change management programme for transformation adoption',
+    'leadership coaching for middle management digital confidence',
+    'mental health and wellbeing support for frontline staff',
+    'flexible working arrangements for contact centre agents',
+    'diversity and inclusion initiatives in technology hiring',
+    'peer recognition programme with digital badges',
+    'colleague mobile app for scheduling and communication',
+    'internal knowledge-sharing community platform',
+    'onboarding automation reducing time-to-competence',
+    'performance analytics dashboards for team leaders',
+    'retention bonus programme for high-performing colleagues',
+    'cross-functional secondment programme for skill building',
+    'apprenticeship scheme for digital and data roles',
+    'employee voice survey with real-time sentiment tracking',
+    'store manager empowerment with local decision authority',
+    'buddy system pairing new hires with experienced colleagues',
+    'quarterly innovation hackathons for all departments',
+    'wellbeing days and mental health first aiders in every store',
+    'exit interview analytics to identify retention drivers',
+    'salary benchmarking against retail and tech competitors',
+    'learning management system with personalised development plans',
+    'graduate programme focused on retail technology',
+  ],
+  regulation: [
+    'AI ethics framework with bias detection and monitoring',
+    'GDPR automated data subject access request processing',
+    'Consumer Duty compliance monitoring dashboard',
+    'accessibility compliance for all digital touchpoints',
+    'data sovereignty controls for cross-border operations',
+    'PCI DSS scope reduction through tokenisation',
+    'environmental sustainability reporting automation',
+    'modern slavery supply chain audit automation',
+    'advertising standards compliance for AI-generated content',
+    'age verification for restricted product categories',
+    'product safety recall management system',
+    'cross-border e-commerce tax and duty compliance',
+    'cookie consent management with granular controls',
+    'right to explanation for AI-driven decisions',
+    'data retention policy automation and enforcement',
+    'anti-money laundering checks for high-value transactions',
+    'employee data privacy in workplace monitoring',
+    'third-party vendor risk assessment framework',
+    'algorithmic impact assessment for pricing AI',
+    'regulatory change management tracking system',
+  ],
+};
+
+const TOPICS_CONSTRAINTS = {
+  customer: [
+    'customers abandoning baskets due to complex checkout flow',
+    'inconsistent pricing between online and in-store channels',
+    'loyalty programme perceived as stale with low engagement',
+    'poor mobile app ratings dragging down brand perception',
+    'delivery tracking information being unreliable and delayed',
+    'returns process requiring original receipt and packaging',
+    'customer complaints about impersonal email marketing',
+    'no ability to check in-store stock availability online',
+    'gift card system that does not work across all channels',
+    'customer service chat closing after office hours',
+    'no customer recognition when moving between channels',
+    'long hold times driving customers to social media complaints',
+    'out-of-stock items with no notification when available again',
+    'inflexible delivery slots frustrating working customers',
+    'click-and-collect taking over an hour to be ready',
+    'no personalisation for guest checkout customers',
+    'product descriptions and images being inconsistent across channels',
+    'difficulty reaching a human when AI fails to help',
+    'payment options limited compared to competitors',
+    'size guide inaccuracy leading to high return rates',
+    'no way for customers to provide feedback in the moment',
+    'customer journey requiring re-authentication at every step',
+    'marketing offers not respecting customer preferences',
+    'subscription management being buried in account settings',
+    'complaint resolution taking over five working days',
+  ],
+  operations: [
+    'store colleagues spending too much time on administrative tasks',
+    'click-and-collect failures due to inventory inaccuracy',
+    'contact centre overflow during peak periods with no surge capacity',
+    'manual refund approval process creating customer-facing delays',
+    'warehouse picking errors leading to wrong item deliveries',
+    'shift scheduling not matching actual customer footfall patterns',
+    'returns processing backlog creating warehouse congestion',
+    'lack of real-time visibility into delivery partner performance',
+    'paper-based stock count process taking two days per store',
+    'store-to-store transfer process being slow and unreliable',
+    'contact centre knowledge base being outdated and hard to search',
+    'manager override required for too many routine transactions',
+    'peak trading planning starting too late each year',
+    'no standard operating procedure for AI-assisted service',
+    'goods-in process creating bottleneck during morning deliveries',
+    'energy costs increasing with no store-level monitoring',
+    'customer complaint escalation process being undefined',
+    'multi-channel order modification requiring manual intervention',
+    'fulfilment centre capacity maxed out during promotional events',
+    'supplier lead times increasing with no visibility into pipeline',
+    'cross-dock facility handling only fifty percent of potential volume',
+    'agency staff making up thirty percent of contact centre headcount',
+    'store security incidents taking manager time away from customers',
+    'fleet maintenance costs escalating due to ageing delivery vehicles',
+    'seasonal recruitment starting too late losing best candidates',
+  ],
+  technology: [
+    'legacy point-of-sale system running unsupported Windows version',
+    'customer data spread across seventeen disconnected databases',
+    'mobile app built on deprecated framework requiring complete rewrite',
+    'no CI/CD pipeline meaning manual deployments every two weeks',
+    'search functionality returning irrelevant results for common queries',
+    'payment gateway experiencing intermittent timeout issues',
+    'API rate limits blocking real-time personalisation at scale',
+    'data warehouse ETL jobs failing silently and producing stale reports',
+    'no automated testing meaning regressions discovered in production',
+    'single sign-on not implemented across internal tools',
+    'website performance degrading under load above ten thousand concurrent users',
+    'email marketing platform unable to support real-time triggers',
+    'store WiFi infrastructure unable to support customer-facing services',
+    'disaster recovery plan untested for eighteen months',
+    'security vulnerability scanning backlog of over two hundred items',
+    'CRM system licence costs increasing annually by fifteen percent',
+    'integration middleware reaching end of vendor support',
+    'no feature flagging capability for controlled rollouts',
+    'monitoring gaps meaning issues discovered by customers before IT',
+    'technical documentation sparse and outdated across all platforms',
+    'database connection pooling limits causing intermittent errors',
+    'content management system too rigid for marketing team needs',
+    'batch processing jobs running overnight preventing real-time analytics',
+    'vendor lock-in on key platforms limiting negotiation leverage',
+    'no sandbox environment for safe testing of new integrations',
+  ],
+  people: [
+    'store colleague attrition at twenty-eight percent annually',
+    'digital skills gap across retail management population',
+    'change fatigue from three previous failed transformation programmes',
+    'AI team of only three people for enterprise-wide programme',
+    'training budget cut by forty percent in last financial year',
+    'middle management resistant to empowering frontline colleagues',
+    'no clear career progression from store floor to technology roles',
+    'contact centre agents measured only on call handling time',
+    'poor internal communication about strategic direction',
+    'hiring process taking eight weeks from application to start date',
+    'diversity targets not being met in technology departments',
+    'knowledge hoarding by experienced colleagues nearing retirement',
+    'no formal mentoring programme for new joiners',
+    'colleague engagement scores declining for third consecutive quarter',
+    'performance review process perceived as unfair and subjective',
+    'remote working policy unclear creating inconsistency',
+    'union concerns about AI replacing contact centre jobs',
+    'leadership team lacking retail technology experience',
+    'store manager workload leaving no time for people development',
+    'induction programme not covering digital tools adequately',
+    'high absence rates in contact centre during winter months',
+    'talent pipeline for data science roles completely dry',
+    'no recognition for colleagues who adopt new technology early',
+    'communication gap between head office and store operations',
+    'contractor dependency for critical technical skills',
+  ],
+  regulation: [
+    'DPIA approval taking four months per AI use case',
+    'GDPR data subject requests handled manually with spreadsheets',
+    'Consumer Duty requirements unclear for AI-driven interactions',
+    'accessibility audit revealing over two hundred WCAG failures',
+    'cross-border data transfer mechanisms post-Brexit uncertain',
+    'PCI DSS audit findings requiring infrastructure changes',
+    'environmental reporting requirements increasing annually',
+    'modern slavery due diligence gaps in tier-two suppliers',
+    'advertising standards complaints about personalised pricing',
+    'age verification system producing high false-rejection rates',
+    'product recall notification system being manual and slow',
+    'no automated compliance monitoring for regulatory changes',
+    'privacy policy not updated for new data processing activities',
+    'cookie consent implementation not meeting latest ICO guidance',
+    'information security team of three people covering all compliance',
+    'no data lineage tracking for AI model training data',
+    'regulatory reporting still dependent on manual data extraction',
+    'supplier contracts lacking adequate data processing clauses',
+    'whistleblowing hotline not promoted to store colleagues',
+    'annual compliance training completion rate below seventy percent',
+  ],
+};
+
+const TOPICS_APPROACH = {
+  customer: [
+    'deploy conversational AI chatbot handling top 10 enquiry types',
+    'launch personalised product recommendation engine on homepage',
+    'implement QR-code based instant returns in flagship stores',
+    'build proactive delivery notification system with rebooking',
+    'redesign loyalty programme with gamification and tiers',
+    'create unified shopping basket syncing across web and app',
+    'pilot AR try-on feature for top clothing categories',
+    'implement real-time stock availability on product pages',
+    'launch live video shopping with in-store stylists',
+    'build customer preference centre for communication control',
+    'deploy sentiment analysis on customer feedback channels',
+    'create VIP concierge experience for top-tier loyalty members',
+    'implement one-click reorder for consumable products',
+    'build post-purchase care journey with automated touchpoints',
+    'launch customer co-creation panel for product development',
+    'deploy smart search with visual and voice capabilities',
+    'build personalised email journeys based on lifecycle stage',
+    'implement flexible delivery slots with evening and weekend options',
+    'create in-app appointment booking for personal shopping',
+    'deploy customer effort score measurement at every touchpoint',
+    'build abandoned basket recovery with personalised incentives',
+    'implement social proof features showing real-time purchases',
+    'launch carbon-neutral delivery option at checkout',
+    'create seamless gift experience with digital wrapping and messages',
+    'deploy NPS follow-up automation for detractor recovery',
+  ],
+  operations: [
+    'deploy AI triage routing for contact centre enquiries',
+    'implement agent-assist AI copilot for delivery issues',
+    'roll out RFID tagging for inventory accuracy improvement',
+    'build automated click-and-collect staging system',
+    'deploy AI-powered workforce scheduling for all stores',
+    'implement real-time delivery partner performance dashboard',
+    'create automated returns processing workflow',
+    'launch store task management app for colleague productivity',
+    'deploy demand forecasting model for stock replenishment',
+    'implement express returns kiosk in top 20 stores',
+    'build centralised command centre for multi-channel operations',
+    'deploy predictive maintenance system for store equipment',
+    'implement dynamic pricing engine for markdown optimisation',
+    'create store-to-door fulfilment from local inventory',
+    'launch virtual queuing system for busy store periods',
+    'deploy quality monitoring AI for contact centre calls',
+    'implement automated goods-in receiving with scan verification',
+    'build cross-dock automation for faster supplier processing',
+    'deploy energy monitoring and sustainability dashboards per store',
+    'implement peak trading war room with real-time KPIs',
+    'create supplier collaboration portal for inventory planning',
+    'launch automated escalation workflow for unresolved complaints',
+    'deploy robotic process automation for back-office tasks',
+    'implement last-mile delivery slot optimisation algorithm',
+    'build real-time store capacity monitoring for safety compliance',
+  ],
+  technology: [
+    'deploy event-driven architecture with CDC from legacy OMS',
+    'build customer data platform starting with identity resolution',
+    'implement API gateway for unified service mesh',
+    'migrate e-commerce platform to headless architecture',
+    'deploy Azure OpenAI for agent-assist and content generation',
+    'build real-time personalisation engine on customer data platform',
+    'implement feature flag system for gradual AI rollouts',
+    'deploy containerised microservices for new capabilities',
+    'build data lake consolidating all analytical data sources',
+    'implement observability platform with alerting and tracing',
+    'deploy progressive web app for mobile-first experience',
+    'build automated ML pipeline for model training and monitoring',
+    'implement GraphQL layer for flexible frontend development',
+    'deploy store network upgrade to full fibre in all locations',
+    'build integration hub connecting all partner systems',
+    'implement automated security scanning in CI/CD pipeline',
+    'deploy cloud-based contact centre platform replacing on-premise',
+    'build A/B testing framework for continuous experimentation',
+    'implement data quality monitoring for customer records',
+    'deploy edge computing nodes in flagship stores for AI inference',
+    'build vendor-agnostic AI orchestration layer',
+    'implement zero-trust security architecture',
+    'deploy content management system upgrade for marketing agility',
+    'build real-time streaming pipeline for event processing',
+    'implement disaster recovery automation with regular testing',
+  ],
+  people: [
+    'launch digital skills academy for all 5000 retail colleagues',
+    'create AI champion network with representatives in every store',
+    'implement structured change management programme for transformation',
+    'build career pathway from store floor to digital and data roles',
+    'deploy colleague mobile app for scheduling and engagement',
+    'launch leadership development programme for store managers',
+    'create cross-functional CX transformation team of six',
+    'implement peer recognition platform with digital rewards',
+    'deploy mental health first aider training across all stores',
+    'build internal talent marketplace for project-based assignments',
+    'launch apprenticeship scheme for data and AI roles',
+    'create colleague innovation fund for grassroots improvements',
+    'implement real-time engagement pulse surveys',
+    'deploy AI-assisted onboarding reducing time-to-competence by 40%',
+    'build knowledge base with AI-powered search for store teams',
+    'launch flexible working pilot for contact centre agents',
+    'create diversity and inclusion targets for technology hiring',
+    'implement exit interview analytics dashboard for HR',
+    'deploy automated shift-swap platform for colleague flexibility',
+    'build training simulation environment for new AI tools',
+    'launch quarterly hackathons for cross-functional innovation',
+    'create store colleague advisory panel for technology adoption',
+    'implement wellbeing score tracking in colleague app',
+    'deploy automated reference and background check processing',
+    'build succession planning tool for key retail positions',
+  ],
+  regulation: [
+    'deploy pre-approved AI governance framework for fast-track DPIA',
+    'implement automated GDPR data subject request processing',
+    'build Consumer Duty compliance monitoring dashboard',
+    'deploy accessibility testing automation in CI/CD pipeline',
+    'create data sovereignty controls for cross-border transfers',
+    'implement PCI DSS scope reduction through tokenisation rollout',
+    'build environmental impact reporting automation',
+    'deploy modern slavery supply chain monitoring platform',
+    'create AI transparency labelling for customer-facing systems',
+    'implement cookie consent management with preference centre',
+    'build regulatory change monitoring with impact assessment',
+    'deploy automated compliance training with progress tracking',
+    'create data lineage tracking for AI model governance',
+    'implement right-to-explanation capability for AI decisions',
+    'build vendor risk assessment automation platform',
+    'deploy privacy-by-design review gate in development process',
+    'create incident response automation for data breaches',
+    'implement algorithmic fairness testing for pricing models',
+    'build regulatory reporting automation replacing manual processes',
+    'deploy whistleblowing platform with anonymous reporting',
+  ],
+};
+
+// ── Sentence templates by primaryType ────────────────────────
+
+const TEMPLATES: Record<string, string[]> = {
+  VISIONARY: [
+    'Imagine if we could achieve {topic}. That would fundamentally change how customers perceive us and drive a step-change in loyalty and lifetime value.',
+    'My vision is {topic}. In two years I want a customer to say our experience is the benchmark for retail — not just in the UK but globally.',
+    'What if {topic} became our reality? The data shows this would increase customer satisfaction by at least twenty points and reduce churn significantly.',
+    'I see a future where {topic}. Every competitor is moving in this direction and we need to lead, not follow.',
+    'The north star should be {topic}. Everything else we discuss today should ladder up to this aspiration.',
+    'We should aim for {topic}. Our customers are already expecting this from the best digital-native brands they interact with.',
+    'Picture this: {topic}. The technology exists today, the question is whether we have the ambition and the governance to make it happen.',
+    'I want us to be known for {topic}. That becomes our brand differentiator in a market where product and price are increasingly commoditised.',
+    'The ultimate aspiration is {topic}. If we get this right it transforms not just the customer experience but the economics of our entire operation.',
+    'In five years, I believe {topic} will be table stakes. The question is whether we get there first or play catch-up with competitors who moved faster.',
+  ],
+  OPPORTUNITY: [
+    'There is a clear opportunity with {topic}. Our competitors have not moved on this yet and we have a twelve-month window to establish leadership.',
+    'The business case for {topic} is compelling — our analysis suggests a return within eighteen months based on conservative assumptions.',
+    'I see {topic} as a quick win. We could pilot this in six weeks and have results to present to the board by next quarter.',
+    'The research shows that {topic} would address one of our biggest customer pain points. Sixty percent of complaints relate to this area.',
+    'We should prioritise {topic}. The investment required is modest compared to the potential revenue uplift and cost reduction.',
+    'Our data tells us that {topic} would reduce customer effort significantly. And we know effort is the number one driver of churn.',
+    'If we execute {topic} well, we differentiate ourselves in a market where most retailers are still stuck in traditional models.',
+    'The opportunity with {topic} is time-sensitive. New regulation coming next year makes this both a commercial opportunity and a compliance enabler.',
+    'I have seen {topic} work brilliantly at other retailers. The best practice is well established and we can fast-follow rather than invent from scratch.',
+    'Investing in {topic} addresses multiple strategic objectives simultaneously — customer satisfaction, operational efficiency, and colleague experience.',
+  ],
+  CONSTRAINT: [
+    'The challenge with {topic} is a significant blocker. We have been dealing with this for over two years and it is getting worse, not better.',
+    'We are fundamentally constrained by {topic}. Until we address this, none of the ambitious plans we are discussing will be achievable.',
+    'I need to flag that {topic} is a hard constraint. There is no workaround and it requires dedicated investment to resolve.',
+    'The reality is that {topic} blocks us at every turn. My team spends thirty percent of their time working around this limitation.',
+    'We cannot ignore that {topic} is a critical constraint. Every transformation programme in the last five years has stumbled on this same issue.',
+    'Let me be blunt — {topic} is killing our ability to innovate. We are building on quicksand and we need to fix the foundation.',
+    'The constraint around {topic} is worse than most people realise. The downstream impact touches every customer touchpoint we have.',
+    'From a regulatory perspective, {topic} creates significant risk. We are operating in a grey area that the regulator could challenge at any time.',
+    'Our current situation with {topic} means we are burning money. The inefficiency cost is in the millions annually and growing.',
+    'The {topic} situation is a ticking time bomb. If we do not address it in the next twelve months, we will face a much larger crisis.',
+  ],
+  RISK: [
+    'I am concerned that {topic} poses a real risk to the programme. We need to plan mitigations before we go further.',
+    'There is a significant risk around {topic}. If we do not manage this carefully, it could derail the entire transformation.',
+    'We need to acknowledge the risk that {topic} presents. The probability is medium but the impact would be severe.',
+    'My worry is that {topic} could undermine everything we are trying to achieve. We have seen this happen at other organisations.',
+    'The risk with {topic} is not just operational — it is reputational. One high-profile failure and customer trust is gone.',
+    'I want to flag that {topic} is a risk we are not adequately managing. We need dedicated resource and clear accountability.',
+    'If {topic} goes wrong, the financial impact could be significant. I estimate exposure in the range of two to five million.',
+    'There is a people risk around {topic}. If we do not manage the human side of this change, adoption will fail.',
+    'The competitive risk of not addressing {topic} is real. Two of our direct competitors have already moved on this.',
+    'We should stress-test our plans against the risk that {topic} materialises. Our current contingency is insufficient.',
+  ],
+  ENABLER: [
+    'What is working well is {topic}. We should build on this strength rather than starting from scratch.',
+    'I want to highlight that {topic} is a genuine enabler. It gives us a foundation that most of our competitors lack.',
+    'The good news is that {topic} is already in place. We can leverage this to accelerate the other initiatives we are discussing.',
+    'Our proof of concept showed that {topic} delivers real results. We saw measurable improvement in the pilot group.',
+    'I think {topic} is an underappreciated enabler. If we invest in it properly, it unlocks multiple downstream capabilities.',
+    'The team has done excellent work on {topic}. This gives us confidence that we can execute the broader programme.',
+    'Building on {topic} is the smart move. The infrastructure is there, the skills exist, and the business case is proven.',
+    'We already have {topic} which puts us ahead. The challenge now is scaling it across the organisation consistently.',
+    'One positive is {topic}. This means we do not have to start from zero — we can iterate from an existing base.',
+    'Let me give credit where it is due — {topic} has been a success. We should use the same approach for the next phase.',
+  ],
+  ACTION: [
+    'I propose we {topic}. This should be our first priority with a target completion of eight to twelve weeks.',
+    'My recommendation is to {topic}. We can start immediately with the resources we have and demonstrate value quickly.',
+    'Let us commit to {topic} as the next concrete step. I will own the delivery and report progress fortnightly.',
+    'We should {topic} as part of Horizon 1. The investment is manageable and the business case is already proven.',
+    'I am proposing we {topic}. I have scoped this with the team and we can deliver an MVP in six weeks.',
+    'The action I want us to agree today is to {topic}. We have talked about this for too long — we need to execute.',
+    'For the next quarter, my priority is to {topic}. I need budget approval of two hundred thousand and two additional headcount.',
+    'We need to {topic} before we can tackle any of the larger initiatives. Think of it as laying the plumbing.',
+    'I suggest we {topic} in parallel with the technology work. This way we are ready to scale when the platform is in place.',
+    'The pilot plan is to {topic} in ten locations. If we see the expected results, we roll out nationally within six months.',
+  ],
+  INSIGHT: [
+    'The data shows that {topic}. This has major implications for how we prioritise our investment.',
+    'Our customer research reveals that {topic}. This should be a key input into our strategy.',
+    'What I find telling is that {topic}. This pattern has been consistent across the last three quarterly surveys.',
+    'An important insight is that {topic}. It challenges some of our assumptions about what customers actually want.',
+    'The numbers are clear on {topic}. We cannot argue with the data — it tells a consistent story.',
+    'My team discovered that {topic}. This was unexpected and changes our understanding of the problem.',
+    'There is a clear trend around {topic}. It is accelerating and will reshape our market within two years.',
+    'What the benchmarking shows is that {topic}. We are behind the industry average on this dimension.',
+    'The insight I want to share is {topic}. It connects several of the challenges we have been discussing.',
+    'Looking at the customer journey data, {topic}. This is where the biggest friction and drop-off occurs.',
+  ],
+  QUESTION: [
+    'I want to ask — how does {topic} fit into our overall prioritisation? Are we aligned on where this sits?',
+    'Has anyone considered the implications of {topic}? I think there are dependencies we have not mapped.',
+    'What is our timeline for {topic}? I want to understand how it sequences with the other workstreams.',
+    'Who owns {topic}? We need clear accountability or it will fall between the cracks like last time.',
+    'How do we measure success for {topic}? We need to agree the KPIs upfront before we start.',
+    'What is the risk if we delay {topic}? I want to understand the cost of inaction.',
+    'Can we afford to do {topic} alongside everything else? I am worried about spreading too thin.',
+    'What are the dependencies for {topic}? I want to make sure we are not blocking other teams.',
+    'Has the {topic} been validated with customers? We should not assume we know what they want.',
+    'What happens to {topic} if the budget is reduced by twenty percent? Do we have a fallback plan?',
+  ],
+};
+
+// ── Actor pool ───────────────────────────────────────────────
+
+const ACTOR_POOL = [
+  { name: 'Customer', role: 'End consumer' },
+  { name: 'Contact centre agent', role: 'Customer service representative' },
+  { name: 'Store colleague', role: 'Retail floor staff' },
+  { name: 'AI assistant', role: 'Automated customer service' },
+  { name: 'Store manager', role: 'Store leadership' },
+  { name: 'Delivery partner', role: 'Third-party logistics provider' },
+  { name: 'AI copilot', role: 'Agent assistance tool' },
+  { name: 'Marketing team', role: 'Customer communications' },
+  { name: 'Warehouse team', role: 'Fulfilment operations' },
+  { name: 'Training team', role: 'Learning and development' },
+  { name: 'IT team', role: 'Technology operations' },
+  { name: 'CRM system', role: 'Customer relationship platform' },
+  { name: 'Loyalty system', role: 'Rewards and retention platform' },
+  { name: 'Chatbot', role: 'Digital self-service tool' },
+  { name: 'FCA', role: 'Financial conduct regulator' },
+  { name: 'Board', role: 'Executive governance' },
+  { name: 'CEO', role: 'Chief executive' },
+  { name: 'Supplier', role: 'Product supplier' },
+  { name: 'Data team', role: 'Data management and analytics' },
+  { name: 'Finance team', role: 'Budget and investment governance' },
+  { name: 'HR team', role: 'People and talent management' },
+  { name: 'Compliance team', role: 'Regulatory compliance' },
+  { name: 'Third-party vendor', role: 'Technology partner' },
+  { name: 'Customer data platform', role: 'Unified data infrastructure' },
+  { name: 'Legacy OMS', role: 'Order management system' },
+  { name: 'Recommendation engine', role: 'AI personalisation system' },
+  { name: 'Store system', role: 'In-store technology platform' },
+  { name: 'Notification system', role: 'Proactive outreach platform' },
+  { name: 'Quality assurance team', role: 'Service quality monitoring' },
+  { name: 'Product team', role: 'Product development and merchandising' },
+];
+
+// ── Interaction action templates by sentiment ────────────────
+
+const INTERACTION_ACTIONS: Record<string, string[]> = {
+  positive: [
+    'delivers personalised service to', 'empowers with real-time data', 'streamlines workflow for',
+    'provides instant resolution to', 'proactively notifies', 'enables self-service for',
+    'reduces wait time for', 'improves accuracy for', 'accelerates delivery to',
+    'supports decision-making for', 'automates routine tasks for', 'enhances experience of',
+  ],
+  concerned: [
+    'struggles to provide timely service to', 'delays response to', 'lacks context when serving',
+    'provides inconsistent information to', 'cannot access full history for', 'over-promises to',
+    'creates confusion for', 'adds unnecessary steps for', 'fails to follow up with',
+    'misroutes enquiry from', 'sends generic communications to', 'loses data about',
+  ],
+  critical: [
+    'fails to resolve issue for', 'blocks progress of', 'frustrates with repeated requests to',
+    'creates service failure for', 'drops the ball on', 'ignores urgent request from',
+    'breaks process for', 'escalates without context to', 'causes repeat contact from',
+    'delivers wrong information to', 'mishandles complaint from', 'forces manual workaround for',
+  ],
+  smooth: [
+    'seamlessly connects with', 'efficiently processes request from', 'integrates data for',
+    'maintains context across interactions with', 'collaborates effectively with',
+    'handoffs cleanly to', 'coordinates timing with', 'shares insights with',
+    'aligns priorities with', 'complements the work of', 'syncs in real-time with',
+    'orchestrates workflow between',
+  ],
+};
+
+const INTERACTION_CONTEXTS: Record<string, string[]> = {
+  positive: [
+    'Customer receives immediate resolution without waiting',
+    'Agent has full context and resolves first-time',
+    'System automates routine task saving significant time',
+    'Proactive alert prevents customer from needing to call',
+    'AI provides accurate recommendation based on preferences',
+    'Colleague empowered with real-time data on shop floor',
+    'Self-service option resolves enquiry in under two minutes',
+  ],
+  concerned: [
+    'Information gap causes delay in resolution',
+    'Customer has to repeat information already provided',
+    'System latency creates frustrating wait for agent',
+    'Handoff between channels loses customer context',
+    'Outdated data leads to incorrect suggestion',
+    'Process requires unnecessary steps adding friction',
+    'Communication gap leaves customer uncertain about status',
+  ],
+  critical: [
+    'Customer contacts for third time about same unresolved issue',
+    'System outage prevents any resolution during peak trading',
+    'Compliance failure puts organisation at regulatory risk',
+    'Data breach exposes customer personal information',
+    'Complete service failure leading to social media escalation',
+    'Agent burnout from impossible workload causing errors',
+    'Legacy system blocks implementation of critical improvement',
+  ],
+  smooth: [
+    'Seamless handoff maintains full conversation context',
+    'Real-time data synchronisation across all touchpoints',
+    'Automated workflow completes without manual intervention',
+    'Integrated systems provide unified customer view',
+    'Cross-functional team collaborates effectively on resolution',
+    'Event-driven architecture enables instant notification',
+    'API integration connects partner systems transparently',
+  ],
+};
+
+// ── Domain and theme labels ──────────────────────────────────
+
+const DOMAIN_NAMES = ['Customer Experience', 'Operations', 'Technology', 'People', 'Regulation'];
+const DOMAIN_KEYS = ['customer', 'operations', 'technology', 'people', 'regulation'] as const;
+
+const THEME_LABELS_BY_DOMAIN: Record<string, string[]> = {
+  customer: ['Seamless Omnichannel', 'Personalisation', 'Self-Service', 'Proactive Communication', 'Customer Effort Reduction', 'Loyalty & Retention', 'Returns Experience', 'Delivery Excellence', 'Voice of Customer', 'Digital Engagement'],
+  operations: ['Contact Centre Efficiency', 'Store Operations', 'Fulfilment Speed', 'Demand Management', 'Workforce Optimisation', 'Supply Chain Visibility', 'Cost Reduction', 'Quality Assurance', 'Peak Management', 'Process Automation'],
+  technology: ['Legacy Modernisation', 'Data Platform', 'AI & ML', 'Cloud Infrastructure', 'Integration Architecture', 'Security & Compliance', 'Mobile First', 'Real-Time Analytics', 'API Strategy', 'DevOps Maturity'],
+  people: ['Colleague Empowerment', 'Skills Development', 'Change Management', 'Retention & Wellbeing', 'Leadership Development', 'Digital Literacy', 'Culture Change', 'Talent Acquisition', 'Diversity & Inclusion', 'Performance Management'],
+  regulation: ['Consumer Duty', 'Data Governance', 'AI Ethics', 'Accessibility', 'Privacy Compliance', 'Cross-Border Compliance', 'Environmental Reporting', 'Vendor Risk', 'Audit & Monitoring', 'Regulatory Change'],
+};
+
+const PHASE_SENTIMENTS: Record<string, Record<string, number>> = {
+  REIMAGINE: { positive: 40, smooth: 20, concerned: 25, critical: 15 },
+  CONSTRAINTS: { critical: 35, concerned: 35, positive: 10, smooth: 20 },
+  DEFINE_APPROACH: { positive: 45, smooth: 25, concerned: 20, critical: 10 },
+};
+
+const PHASE_TYPES: Record<string, { types: string[]; weights: number[] }> = {
+  REIMAGINE: {
+    types: ['VISIONARY', 'OPPORTUNITY', 'INSIGHT', 'ENABLER', 'QUESTION', 'ACTION'],
+    weights: [30, 25, 20, 15, 7, 3],
+  },
+  CONSTRAINTS: {
+    types: ['CONSTRAINT', 'RISK', 'INSIGHT', 'QUESTION', 'ENABLER', 'OPPORTUNITY'],
+    weights: [35, 25, 20, 10, 5, 5],
+  },
+  DEFINE_APPROACH: {
+    types: ['ACTION', 'ENABLER', 'OPPORTUNITY', 'INSIGHT', 'VISIONARY', 'QUESTION'],
+    weights: [35, 25, 15, 12, 8, 5],
+  },
+};
+
+const TEMPORAL_BY_PHASE: Record<string, string[]> = {
+  REIMAGINE: ['future', 'future', 'future', 'present', 'timeless'],
+  CONSTRAINTS: ['present', 'present', 'present', 'past', 'timeless'],
+  DEFINE_APPROACH: ['future', 'future', 'present', 'future', 'timeless'],
+};
+
+// ── Time distribution (minutes → cumulative utterance count) ─
+
+function timeOffsetForIndex(idx: number, total: number): number {
+  // Non-uniform: clustered in active discussion periods
+  // Phase 1 active: 10-55 min, Phase 2 active: 65-115 min, Phase 3 active: 125-175 min
+  const phaseIdx = idx < total / 3 ? 0 : idx < (2 * total) / 3 ? 1 : 2;
+  const phaseStart = [10, 65, 125][phaseIdx];
+  const phaseEnd = [55, 115, 175][phaseIdx];
+  const phaseOffset = idx - (phaseIdx * total) / 3;
+  const phaseTotal = total / 3;
+  const fraction = phaseOffset / phaseTotal;
+  // Add jitter
+  const baseMin = phaseStart + fraction * (phaseEnd - phaseStart);
+  const jitter = (rng() - 0.5) * 3; // +/- 1.5 min
+  const clampedMin = Math.max(phaseStart, Math.min(phaseEnd, baseMin + jitter));
+  return Math.round(clampedMin * 60 * 1000);
+}
+
+// ── Generator function ───────────────────────────────────────
+
+function generateUtterance(index: number): Utterance {
+  const totalGenerated = 970;
+  const phase: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' =
+    index < totalGenerated / 3 ? 'REIMAGINE' : index < (2 * totalGenerated) / 3 ? 'CONSTRAINTS' : 'DEFINE_APPROACH';
+
+  // Pick speaker
+  const speakerIdx = (index + Math.floor(rng() * 3)) % PARTICIPANTS.length;
+  const participant = PARTICIPANTS[speakerIdx];
+
+  // Pick primary type
+  const pt = PHASE_TYPES[phase];
+  const primaryType = weightedPick(pt.types, pt.weights) as Utterance['primaryType'];
+
+  // Pick domain (weighted towards participant's department)
+  const deptToDomain: Record<string, number> = { Executive: 0, Operations: 1, Technology: 2, Customer: 0, Retail: 1, Regulation: 4 };
+  const primaryDomainIdx = deptToDomain[participant.department] ?? Math.floor(rng() * 5);
+  const domainWeights = DOMAIN_KEYS.map((_, i) => (i === primaryDomainIdx ? 4 : 1));
+  const domainKey = weightedPick([...DOMAIN_KEYS], domainWeights);
+
+  // Pick topic
+  const topicPool = phase === 'REIMAGINE' ? TOPICS_REIMAGINE : phase === 'CONSTRAINTS' ? TOPICS_CONSTRAINTS : TOPICS_APPROACH;
+  const topics = topicPool[domainKey as keyof typeof topicPool];
+  const topic = pick(topics);
+
+  // Build raw text from template
+  const templates = TEMPLATES[primaryType] || TEMPLATES.INSIGHT;
+  const template = pick(templates);
+  const rawText = template.replace(/\{topic\}/g, topic);
+
+  // Domains (1-2)
+  const secondaryDomainKey = pick(DOMAIN_KEYS.filter((d) => d !== domainKey));
+  const domains = [
+    { domain: DOMAIN_NAMES[DOMAIN_KEYS.indexOf(domainKey)], relevance: 0.8 + rng() * 0.18, reasoning: `Primary domain for ${topic}` },
+    ...(rng() > 0.4 ? [{ domain: DOMAIN_NAMES[DOMAIN_KEYS.indexOf(secondaryDomainKey)], relevance: 0.55 + rng() * 0.25, reasoning: `Secondary domain impact` }] : []),
+  ];
+
+  // Themes (1-2)
+  const themeLabels = THEME_LABELS_BY_DOMAIN[domainKey];
+  const themes = pickN(themeLabels, rng() > 0.5 ? 2 : 1).map((label) => ({
+    label,
+    category: domainKey === 'regulation' ? 'regulatory' : domainKey === 'people' ? 'people' : rng() > 0.5 ? 'strategic' : 'operational',
+    confidence: 0.75 + rng() * 0.2,
+    reasoning: `Related to ${topic}`,
+  }));
+
+  // Keywords
+  const words = topic.split(/\s+/).filter((w) => w.length > 3);
+  const keywords = pickN(words, Math.min(words.length, 3 + Math.floor(rng() * 3)));
+
+  // Sentiment
+  const sentimentWeights = PHASE_SENTIMENTS[phase];
+  const sentimentKeys = Object.keys(sentimentWeights);
+  const sentiment = weightedPick(sentimentKeys, sentimentKeys.map((k) => sentimentWeights[k]));
+
+  // Actors (1-3 with interactions)
+  const numActors = 1 + Math.floor(rng() * 2);
+  const selectedActors = pickN(ACTOR_POOL, numActors);
+  const actors = selectedActors.map((actor) => {
+    const targetActor = pick(ACTOR_POOL.filter((a) => a.name !== actor.name));
+    const numInteractions = 1 + Math.floor(rng() * 2);
+    const interactions = Array.from({ length: numInteractions }, () => {
+      const ixSentiment = weightedPick(sentimentKeys, sentimentKeys.map((k) => sentimentWeights[k]));
+      const actions = INTERACTION_ACTIONS[ixSentiment] || INTERACTION_ACTIONS.smooth;
+      const contexts = INTERACTION_CONTEXTS[ixSentiment] || INTERACTION_CONTEXTS.smooth;
+      return {
+        withActor: targetActor.name,
+        action: pick(actions) + ' ' + targetActor.name.toLowerCase(),
+        sentiment: ixSentiment,
+        context: pick(contexts),
+      };
+    });
+    return { name: actor.name, role: actor.role, interactions };
+  });
+
+  const confidence = 0.78 + rng() * 0.18;
+  const temporalFocus = pick(TEMPORAL_BY_PHASE[phase]);
+  const timeOffsetMs = timeOffsetForIndex(index, totalGenerated);
+
+  const sentimentToneMap: Record<string, string> = { positive: 'positive', smooth: 'positive', concerned: 'concerned', critical: 'critical' };
+  const sentimentTone = sentimentToneMap[sentiment] || 'neutral';
+
+  return {
+    id: `dp-g${String(index).padStart(4, '0')}`,
+    speakerId: `speaker_${speakerIdx}`,
+    participantId: participant.id,
+    rawText,
+    phase,
+    primaryType,
+    confidence,
+    keywords,
+    domains,
+    themes,
+    actors,
+    sentimentTone,
+    semanticMeaning: `${participant.name} discusses ${topic} in the context of ${DOMAIN_NAMES[DOMAIN_KEYS.indexOf(domainKey)]}`,
+    speakerIntent: `Contributing ${primaryType.toLowerCase()} perspective on ${domainKey} domain`,
+    temporalFocus,
+    timeOffsetMs,
+  };
+}
+
+// ── Build the full 1000 utterances ───────────────────────────
+
+const HAND_WRITTEN: Utterance[] = [
   // ═══════════════════════════════════════════════════════════
   // PHASE 1: REIMAGINE (0:00 - 1:00) — Future vision
   // ═══════════════════════════════════════════════════════════
@@ -855,6 +1659,10 @@ const UTTERANCES: Utterance[] = [
     speakerIntent: 'Proposing AI transparency policy that builds trust and meets regulation', temporalFocus: 'future', timeOffsetMs: 175 * 60 * 1000,
   },
 ];
+
+// Generate 970 more and merge with hand-written anchors
+const GENERATED: Utterance[] = Array.from({ length: 970 }, (_, i) => generateUtterance(i));
+const UTTERANCES: Utterance[] = [...HAND_WRITTEN, ...GENERATED].sort((a, b) => a.timeOffsetMs - b.timeOffsetMs);
 
 // ─── Main seed function ──────────────────────────────────────
 
