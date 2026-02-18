@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { nanoid } from 'nanoid';
 
 import { prisma } from '@/lib/prisma';
@@ -120,7 +121,7 @@ export async function POST(
       }
 
       if (!existing.dataPoint.annotation?.intent) {
-        void (async () => {
+        after(async () => {
           try {
             // Use cached transcripts for intent derivation
             const recentTranscripts = await getRecentTranscripts();
@@ -158,7 +159,7 @@ export async function POST(
           } catch {
             // ignore
           }
-        })();
+        });
       }
 
       return NextResponse.json({
@@ -308,8 +309,8 @@ export async function POST(
       });
     }
 
-    // Run agentic analysis asynchronously (don't block the response)
-    void (async () => {
+    // Run agentic analysis after response is sent (Vercel keeps function alive)
+    after(async () => {
       try {
         // Get workshop context for agent
         const workshop = await prisma.workshop.findUnique({
@@ -376,11 +377,18 @@ export async function POST(
         };
 
         // Run agentic analysis
+        console.log('[Transcript Route] Running agentic analysis for:', text.substring(0, 100));
         const analysis = await analyzeUtteranceAgentically({
           utterance: text,
           speaker: body.speakerId,
           utteranceId: dataPoint.id,
           context: agenticContext,
+        });
+        console.log('[Transcript Route] Agentic result:', {
+          meaning: analysis.interpretation.semanticMeaning.substring(0, 80),
+          domains: analysis.domains.length,
+          themes: analysis.themes.length,
+          confidence: analysis.overallConfidence,
         });
 
         // Store the analysis
@@ -415,7 +423,7 @@ export async function POST(
         console.error('Agentic analysis failed:', error);
         // Don't fail the transcript ingestion if agentic analysis fails
       }
-    })();
+    });
 
     return NextResponse.json({
       ok: true,

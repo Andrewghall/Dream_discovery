@@ -180,7 +180,11 @@ export async function analyzeUtteranceAgentically(params: {
     });
 
     const raw = completion.choices?.[0]?.message?.content || '{}';
+    console.log('[Agentic Agent] OpenAI raw response length:', raw.length, 'first 500 chars:', raw.substring(0, 500));
+
     const analysis = JSON.parse(raw) as Partial<AgenticAnalysis>;
+
+    console.log('[Agentic Agent] Parsed analysis keys:', Object.keys(analysis), 'has interpretation:', !!analysis.interpretation);
 
     // Validate and provide defaults
     return {
@@ -199,7 +203,8 @@ export async function analyzeUtteranceAgentically(params: {
       uncertainties: Array.isArray(analysis.uncertainties) ? analysis.uncertainties : [],
     };
   } catch (error) {
-    console.error('Agentic analysis failed:', error);
+    console.error('[Agentic Agent] Analysis failed:', error instanceof Error ? error.message : error);
+    console.error('[Agentic Agent] Full error:', error);
     throw error;
   }
 }
