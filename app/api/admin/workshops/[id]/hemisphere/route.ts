@@ -295,8 +295,11 @@ export async function GET(
       }
 
       const payload = snapshot.payload as Record<string, unknown> | null;
-      const liveNodes = (payload && typeof payload === 'object' && payload.nodes && typeof payload.nodes === 'object' && !Array.isArray(payload.nodes))
-        ? payload.nodes as Record<string, any>
+      const rawNodes = (payload && typeof payload === 'object')
+        ? (payload.nodesById ?? payload.nodes)
+        : null;
+      const liveNodes = (rawNodes && typeof rawNodes === 'object' && !Array.isArray(rawNodes))
+        ? rawNodes as Record<string, any>
         : {} as Record<string, any>;
 
       const nodesById = new Map<string, HemisphereNode>();
