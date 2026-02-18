@@ -170,92 +170,172 @@ function buildSynthesisPrompt(workshopName: string, data: ReturnType<typeof aggr
   const domainText = domainSummary(data.byDomain);
   const actorText = actorSummary(data.topActors);
   const keywordText = data.topKeywords.slice(0, 30).map(k => `${k.word} (${k.count})`).join(', ');
+  const domainNames = Object.keys(data.byDomain);
+  const domainColors = ['blue', 'purple', 'green', 'orange', 'indigo', 'pink'];
+  const domainIcons: Record<string, string> = {
+    'customer': '👤', 'people': '👥', 'operations': '⚙️', 'technology': '💻',
+    'regulation': '📋', 'default': '🔍',
+  };
 
   return `You are a senior strategy consultant writing a comprehensive workshop output report. This is a premium deliverable (clients pay £10,000+ for this). Write with executive authority, evidence-grounded insight, and strategic clarity.
 
 Workshop: "${workshopName}"
 Total data points analysed: ${data.totalNodes}
+Domains identified: ${domainNames.join(', ')}
 Phases covered: ${Object.entries(data.byPhase).filter(([, v]) => v.length > 0).map(([k, v]) => `${k} (${v.length} utterances)`).join(', ')}
 
-Return ONLY valid JSON with this exact schema — every field is a string unless marked otherwise:
+Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components depend on these exact property names and structures:
 
 {
   "execSummary": {
-    "visionStatement": "string — 2-3 sentence vision anchored in evidence",
-    "strategicContext": "string — 2-3 paragraphs on business context and why this matters",
-    "keyFindings": ["string array — 5-8 bullet-point findings with evidence"]
+    "overview": "string — 3-5 sentence executive overview of the workshop findings and strategic direction",
+    "metrics": {
+      "participantsEngaged": ${data.totalNodes},
+      "domainsExplored": ${domainNames.length},
+      "insightsGenerated": "number — total key insight count derived from data",
+      "transformationalIdeas": "number — count of visionary/opportunity items"
+    },
+    "keyFindings": [
+      {
+        "title": "string — concise finding title",
+        "description": "string — 2-3 sentence explanation grounded in evidence",
+        "impact": "Critical or High or Transformational"
+      }
+    ]
   },
   "discoveryOutput": {
-    "strategicThemes": [
-      { "domain": "string", "theme": "string", "evidence": "string", "severity": "HIGH|MEDIUM|LOW", "type": "ASPIRATION|CONSTRAINT|ENABLER|OPPORTUNITY" }
-    ],
-    "designPrinciples": ["string array — 4-6 design principles derived from the workshop"]
+    "participants": ${JSON.stringify(data.topActors.slice(0, 8).map(a => a.name))},
+    "totalUtterances": ${data.totalNodes},
+    "sections": [
+${domainNames.map((dn, i) => {
+  const bucket = data.byDomain[dn];
+  const total = (bucket?.aspirations?.length || 0) + (bucket?.constraints?.length || 0) + (bucket?.enablers?.length || 0) + (bucket?.opportunities?.length || 0) + (bucket?.actions?.length || 0);
+  const icon = domainIcons[dn.toLowerCase()] || domainIcons['default'];
+  return `      {
+        "domain": "${dn}",
+        "icon": "${icon}",
+        "color": "${domainColors[i % domainColors.length]}",
+        "utteranceCount": ${total},
+        "topThemes": ["generate 3-5 top theme labels for ${dn}"],
+        "wordCloud": [{"word": "string", "size": 1-4}],
+        "quotes": [{"text": "representative quote from the data", "author": "speaker role"}],
+        "sentiment": {"concerned": 0-100, "neutral": 0-100, "optimistic": 0-100},
+        "consensusLevel": 0-100
+      }`;
+}).join(',\n')}
+    ]
   },
   "reimagineContent": {
-    "futureStateVision": "string — 2 paragraphs describing the aspirational future state",
-    "domainAspirations": {
-      "People": { "vision": "string", "keyThemes": ["string array"] },
-      "Operations": { "vision": "string", "keyThemes": ["string array"] },
-      "Customer": { "vision": "string", "keyThemes": ["string array"] },
-      "Technology": { "vision": "string", "keyThemes": ["string array"] },
-      "Regulation": { "vision": "string", "keyThemes": ["string array"] }
+    "reimagineContent": {
+      "title": "string — compelling title for the reimagine output",
+      "description": "string — 2-3 sentence overview of what the reimagine session revealed",
+      "subtitle": "string — supporting subtitle about what was explored",
+      "supportingSection": {
+        "title": "string — title for the core insight section",
+        "description": "string — 1-2 sentence description",
+        "points": ["4-6 key insight points as strings"]
+      },
+      "accordionSections": [
+        {"title": "string", "description": "string", "points": ["3-5 points"]},
+        {"title": "string", "description": "string", "points": ["3-5 points"]}
+      ],
+      "journeyMapping": {"title": "Customer Journey Mapping"},
+      "primaryThemes": [
+        {"title": "string — theme name", "weighting": "string — e.g. Mentioned by 85% of participants", "badge": "PRIMARY or CRITICAL"}
+      ],
+      "shiftOne": {
+        "title": "string — first key strategic shift",
+        "description": "string — 2-3 sentence explanation",
+        "details": ["3-4 supporting detail points"]
+      },
+      "supportingThemes": [
+        {"title": "string", "weighting": "string", "badge": "SUPPORTING or EMERGING"}
+      ],
+      "shiftTwo": {
+        "title": "string — second key strategic shift",
+        "description": "string — 2-3 sentence explanation",
+        "details": ["3-4 supporting detail points"]
+      },
+      "horizonVision": {
+        "title": "Horizon Vision Alignment",
+        "columns": [
+          {"title": "Horizon 1: Foundation (Months 1-6)", "points": ["3-5 initiative points"]},
+          {"title": "Horizon 2: Transformation (Months 6-18)", "points": ["3-5 initiative points"]}
+        ]
+      }
     }
   },
   "constraintsContent": {
-    "overview": "string — 1-2 paragraphs summarising the constraint landscape",
-    "riskMatrix": [
-      { "constraint": "string", "domain": "string", "impact": "HIGH|MEDIUM|LOW", "urgency": "HIGH|MEDIUM|LOW", "evidence": "string" }
+    "regulatory": [
+      {"title": "string", "description": "string — 1-2 sentences", "impact": "Critical or High or Medium or Low", "mitigation": "string — mitigation strategy"}
     ],
-    "pressurePoints": [
-      { "from": "string domain", "to": "string domain", "description": "string" }
+    "technical": [
+      {"title": "string", "description": "string", "impact": "Critical or High or Medium or Low", "mitigation": "string"}
+    ],
+    "commercial": [
+      {"title": "string", "description": "string", "impact": "Critical or High or Medium or Low", "mitigation": "string"}
+    ],
+    "organizational": [
+      {"title": "string", "description": "string", "impact": "Critical or High or Medium or Low", "mitigation": "string"}
     ]
   },
   "potentialSolution": {
     "overview": "string — 1-2 paragraphs on the proposed solution approach",
     "enablers": [
-      { "title": "string", "domain": "string", "priority": "HIGH|MEDIUM|LOW", "description": "string", "dependencies": ["string array"] }
+      {"title": "string", "domain": "string", "priority": "HIGH or MEDIUM or LOW", "description": "string", "dependencies": ["string array"]}
     ],
     "implementationPath": [
-      { "phase": "string (e.g. Phase 1: Quick Wins)", "timeframe": "string", "actions": ["string array"], "outcomes": ["string array"] }
+      {"phase": "string e.g. Phase 1: Quick Wins", "timeframe": "string", "actions": ["string array"], "outcomes": ["string array"]}
     ]
   },
   "commercialContent": {
-    "investmentSummary": "string — overview of investment areas",
+    "investmentSummary": {
+      "totalInvestment": "string — e.g. £1.8M",
+      "fiveYearROI": "string — e.g. 340%",
+      "paybackPeriod": "string — e.g. 14 months",
+      "annualSavings": "string — e.g. £2.1M by Year 2"
+    },
     "deliveryPhases": [
-      { "name": "string", "duration": "string", "focus": "string", "deliverables": ["string array"] }
+      {"phase": "string — e.g. Phase 1: Foundation", "duration": "string — e.g. Months 1-4", "investment": "string — e.g. £450K", "scope": ["3-5 scope items"], "outcomes": ["2-4 expected outcomes"]}
     ],
-    "whatGetsBuilt": ["string array — concrete outputs/capabilities"]
+    "riskAssessment": [
+      {"risk": "string", "probability": "High or Medium or Low", "impact": "Critical or High or Medium", "mitigation": "string"}
+    ]
   },
   "customerJourney": {
-    "stages": ["string array — journey stage names in order"],
-    "actors": [
-      { "name": "string", "role": "string" }
-    ],
+    "stages": ["6-8 journey stage names in order"],
+    "actors": [{"name": "string", "role": "string"}],
     "interactions": [
-      { "actor": "string", "stage": "string", "action": "string", "sentiment": "positive|neutral|concerned|critical", "context": "string", "isPainPoint": false, "isMomentOfTruth": false }
+      {"actor": "string (must match an actor name)", "stage": "string (must match a stage name)", "action": "string", "sentiment": "positive or neutral or concerned or critical", "context": "string", "isPainPoint": false, "isMomentOfTruth": false}
     ],
     "painPointSummary": "string — narrative summary of key pain points",
     "momentOfTruthSummary": "string — narrative on critical moments"
   },
   "summaryContent": {
-    "executiveRecommendations": ["string array — 5-8 key recommendations"],
-    "immediateActions": ["string array — actions for next 30 days"],
-    "thirtyDayPlan": "string",
-    "sixtyDayPlan": "string",
-    "ninetyDayPlan": "string",
-    "closingStatement": "string — powerful closing paragraph"
+    "keyFindings": [
+      {"category": "string — e.g. Customer Impact", "findings": ["3-5 findings in this category"]}
+    ],
+    "recommendedNextSteps": [
+      {"step": "string — step title", "timeframe": "string — e.g. Week 1-2", "owner": "string — e.g. Head of Operations", "actions": ["2-4 specific actions"]}
+    ],
+    "successMetrics": [
+      {"metric": "string — metric name", "baseline": "string — current state", "target": "string — target state", "measurement": "string — how to measure"}
+    ]
   }
 }
 
-Rules:
+CRITICAL RULES:
 - Use ONLY the source material below. Do not invent facts.
 - Write in confident, board-level language suitable for C-suite audiences.
 - Ground every finding in evidence from the workshop data.
-- For the customer journey: create 6-8 stages, 5-8 actors, and 15-25 interactions across the grid.
-- Mark 3-5 interactions as pain points and 2-3 as moments of truth.
-- The risk matrix should have 8-12 items.
-- The enablers list should have 6-10 items.
-- The implementation path should have 3-4 phases.
+- execSummary.keyFindings: generate 5-8 findings. metrics.insightsGenerated and transformationalIdeas must be NUMBERS not strings.
+- discoveryOutput.sections: generate exactly ${domainNames.length} sections for these domains: ${domainNames.join(', ')}. Each needs 8-12 wordCloud items with size 1-4. Sentiment percentages MUST sum to 100.
+- reimagineContent: generate 3-5 primaryThemes and 2-4 supportingThemes.
+- constraintsContent: generate 2-4 items per category.
+- potentialSolution.enablers: 6-10 items. implementationPath: 3-4 phases.
+- commercialContent.deliveryPhases: 3 phases. riskAssessment: 4-6 risks.
+- customerJourney: 6-8 stages, 5-8 actors, 15-25 interactions. Mark 3-5 as isPainPoint:true, 2-3 as isMomentOfTruth:true.
+- summaryContent.keyFindings: 3-5 categories. recommendedNextSteps: 3-4 steps. successMetrics: 4-6 metrics.
 
 ─── DOMAIN ANALYSIS ───
 ${domainText}
@@ -327,7 +407,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.4,
-      max_tokens: 8000,
+      max_tokens: 16000,
       response_format: { type: 'json_object' },
     });
 
