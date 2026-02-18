@@ -735,6 +735,10 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const [showSnapshotDropdown, setShowSnapshotDropdown] = useState(false);
 
+  // Report generation
+  const [generating, setGenerating] = useState(false);
+  const [hasScratchpad, setHasScratchpad] = useState(false);
+
   // Domain tabs
   const [activeDomain, setActiveDomain] = useState<DomainTab>('all');
   const [rightTab, setRightTab] = useState<'synthesis' | 'actors'>('synthesis');
@@ -818,6 +822,42 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       transitionRef.current = { startMs: performance.now(), from: new Map(prevPositionsRef.current) };
     }
   }, [runType]);
+
+  // Check if scratchpad exists
+  useEffect(() => {
+    const checkScratchpad = async () => {
+      try {
+        const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`);
+        const json = await r.json().catch(() => null);
+        setHasScratchpad(!!json?.scratchpad);
+      } catch { /* ignore */ }
+    };
+    void checkScratchpad();
+  }, [workshopId]);
+
+  // Generate report handler
+  const handleGenerateReport = async () => {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere/synthesise`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snapshotId: selectedSnapshotId }),
+      });
+      const json = await r.json().catch(() => null);
+      if (r.ok && json?.ok) {
+        setHasScratchpad(true);
+        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
+      } else {
+        alert(json?.error || 'Failed to generate report');
+      }
+    } catch (e) {
+      alert('Failed to generate report');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const graph = data?.hemisphereGraph || null;
   const nodes = graph?.nodes || [];
@@ -1332,6 +1372,24 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                 Follow-up
               </Button>
             </>
+          )}
+
+          {/* Report generation */}
+          <div className="h-4 w-px bg-white/15" />
+          <Button
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
+            onClick={handleGenerateReport}
+            disabled={generating}
+          >
+            {generating ? 'Generating…' : '✦ Generate Report'}
+          </Button>
+          {hasScratchpad && (
+            <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`} target="_blank">
+              <Button size="sm" variant="outline" className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs">
+                View Output →
+              </Button>
+            </Link>
           )}
         </div>
       </div>

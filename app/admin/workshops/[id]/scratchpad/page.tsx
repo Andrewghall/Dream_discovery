@@ -27,6 +27,8 @@ import { DiscoveryOutputTab } from '@/components/scratchpad/DiscoveryOutputTab';
 import { ReimaginOutputTab } from '@/components/scratchpad/ReimaginOutputTab';
 import { ConstraintsTab } from '@/components/scratchpad/ConstraintsTab';
 import { CommercialTab } from '@/components/scratchpad/CommercialTab';
+import { PotentialSolutionTab } from '@/components/scratchpad/PotentialSolutionTab';
+import { CustomerJourneyTab } from '@/components/scratchpad/CustomerJourneyTab';
 import { SummaryTab } from '@/components/scratchpad/SummaryTab';
 
 interface PageProps {
@@ -43,7 +45,9 @@ interface ScratchpadData {
   discoveryOutput: any;
   reimagineContent: any;
   constraintsContent: any;
+  potentialSolution: any;
   commercialContent: any;
+  customerJourney: any;
   summaryContent: any;
   solutionImageUrl?: string | null;
   status: 'DRAFT' | 'IN_REVIEW' | 'PUBLISHED';
@@ -425,13 +429,15 @@ export default function ScratchpadPage({ params }: PageProps) {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-8">
-            <TabsTrigger value="discovery">Discovery Summary</TabsTrigger>
-            <TabsTrigger value="reimagine">Reimagine Output</TabsTrigger>
-            <TabsTrigger value="constraints">Constraints</TabsTrigger>
-            <TabsTrigger value="solution">Solution Overview</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-8 mb-8">
+            <TabsTrigger value="exec-summary" className="text-xs">Exec Summary</TabsTrigger>
+            <TabsTrigger value="discovery" className="text-xs">Discovery</TabsTrigger>
+            <TabsTrigger value="reimagine" className="text-xs">Reimagine</TabsTrigger>
+            <TabsTrigger value="constraints" className="text-xs">Constraints</TabsTrigger>
+            <TabsTrigger value="solution" className="text-xs">Solution</TabsTrigger>
             <TabsTrigger
               value="commercial"
+              className="text-xs"
               onClick={(e) => {
                 if (!commercialUnlocked) {
                   e.preventDefault();
@@ -439,19 +445,19 @@ export default function ScratchpadPage({ params }: PageProps) {
                 }
               }}
             >
-              <Lock className="h-4 w-4 mr-1" />
+              <Lock className="h-3 w-3 mr-1" />
               Commercial
             </TabsTrigger>
-            <TabsTrigger value="summary">Summary</TabsTrigger>
+            <TabsTrigger value="customer-journey" className="text-xs">Journey Map</TabsTrigger>
+            <TabsTrigger value="summary" className="text-xs">Summary</TabsTrigger>
           </TabsList>
 
+          <TabsContent value="exec-summary">
+            <ExecutiveSummaryTab data={scratchpad.execSummary} />
+          </TabsContent>
+
           <TabsContent value="discovery">
-            <div className="space-y-8">
-              <ExecutiveSummaryTab data={scratchpad.execSummary} />
-              <div className="border-t pt-8">
-                <DiscoveryOutputTab data={scratchpad.discoveryOutput} />
-              </div>
-            </div>
+            <DiscoveryOutputTab data={scratchpad.discoveryOutput} />
           </TabsContent>
 
           <TabsContent value="reimagine">
@@ -463,17 +469,12 @@ export default function ScratchpadPage({ params }: PageProps) {
           </TabsContent>
 
           <TabsContent value="solution">
-            <Card className="p-8">
-              <h2 className="text-2xl font-bold mb-4">Solution Overview</h2>
-              <p className="text-muted-foreground mb-6">
-                High-level solution architecture and approach from the reimagine phase.
-              </p>
-              <Card className="p-6 bg-gradient-to-br from-indigo-50 to-purple-50">
-                <p className="text-sm text-muted-foreground text-center">
-                  Solution overview content will be synthesized from the reimagine phase and workshop outputs.
-                </p>
-              </Card>
-            </Card>
+            <PotentialSolutionTab
+              data={scratchpad.potentialSolution}
+              onChange={(updated) => {
+                setScratchpad((prev) => prev ? { ...prev, potentialSolution: updated } : prev);
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="commercial">
@@ -488,6 +489,15 @@ export default function ScratchpadPage({ params }: PageProps) {
                 </p>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="customer-journey">
+            <CustomerJourneyTab
+              data={scratchpad.customerJourney}
+              onChange={(updated) => {
+                setScratchpad((prev) => prev ? { ...prev, customerJourney: updated } : prev);
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="summary">

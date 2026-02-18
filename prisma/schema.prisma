@@ -427,9 +427,15 @@ model WorkshopScratchpad {
   // Constraints Tab
   constraintsContent Json?   // Strategic tables for constraints
 
+  // Potential Solution Tab
+  potentialSolution  Json?   // Enablers, actions, priority matrix, implementation path
+
   // Commercial Tab (password protected)
   commercialContent  Json?   // Delivery phases, investment summary, what gets built
   commercialPassword String? // Hashed password for commercial tab access
+
+  // Customer Journey Tab
+  customerJourney    Json?   // Actor swim-lanes, editable journey map, pain points
 
   // Summary Tab
   summaryContent     Json?   // Final summary and next steps
