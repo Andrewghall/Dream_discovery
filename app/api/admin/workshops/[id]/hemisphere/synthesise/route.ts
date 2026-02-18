@@ -144,22 +144,23 @@ function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
   return { byDomain, byPhase, topKeywords, topActors, totalNodes };
 }
 
-function domainSummary(byDomain: Record<string, DomainBucket>, maxPerBucket = 15): string {
+function domainSummary(byDomain: Record<string, DomainBucket>, maxPerBucket = 8): string {
+  const trunc = (s: string) => s.length > 150 ? s.slice(0, 147) + '...' : s;
   const lines: string[] = [];
   for (const [domain, bucket] of Object.entries(byDomain)) {
     lines.push(`\n## ${domain}`);
-    if (bucket.aspirations.length) lines.push(`Aspirations (${bucket.aspirations.length}):\n${bucket.aspirations.slice(0, maxPerBucket).map(t => `- ${t}`).join('\n')}`);
-    if (bucket.constraints.length) lines.push(`Constraints (${bucket.constraints.length}):\n${bucket.constraints.slice(0, maxPerBucket).map(t => `- ${t}`).join('\n')}`);
-    if (bucket.enablers.length) lines.push(`Enablers (${bucket.enablers.length}):\n${bucket.enablers.slice(0, maxPerBucket).map(t => `- ${t}`).join('\n')}`);
-    if (bucket.opportunities.length) lines.push(`Opportunities (${bucket.opportunities.length}):\n${bucket.opportunities.slice(0, maxPerBucket).map(t => `- ${t}`).join('\n')}`);
-    if (bucket.actions.length) lines.push(`Actions (${bucket.actions.length}):\n${bucket.actions.slice(0, maxPerBucket).map(t => `- ${t}`).join('\n')}`);
+    if (bucket.aspirations.length) lines.push(`Aspirations (${bucket.aspirations.length}):\n${bucket.aspirations.slice(0, maxPerBucket).map(t => `- ${trunc(t)}`).join('\n')}`);
+    if (bucket.constraints.length) lines.push(`Constraints (${bucket.constraints.length}):\n${bucket.constraints.slice(0, maxPerBucket).map(t => `- ${trunc(t)}`).join('\n')}`);
+    if (bucket.enablers.length) lines.push(`Enablers (${bucket.enablers.length}):\n${bucket.enablers.slice(0, maxPerBucket).map(t => `- ${trunc(t)}`).join('\n')}`);
+    if (bucket.opportunities.length) lines.push(`Opportunities (${bucket.opportunities.length}):\n${bucket.opportunities.slice(0, maxPerBucket).map(t => `- ${trunc(t)}`).join('\n')}`);
+    if (bucket.actions.length) lines.push(`Actions (${bucket.actions.length}):\n${bucket.actions.slice(0, maxPerBucket).map(t => `- ${trunc(t)}`).join('\n')}`);
   }
   return lines.join('\n');
 }
 
 function actorSummary(topActors: Array<{ name: string; role: string; mentions: number; interactions: Array<{ withActor: string; action: string; sentiment: string; context: string }> }>): string {
-  return topActors.map(a => {
-    const topInteractions = a.interactions.slice(0, 5).map(i => `  - ${i.action} with ${i.withActor} (${i.sentiment}): ${i.context}`).join('\n');
+  return topActors.slice(0, 12).map(a => {
+    const topInteractions = a.interactions.slice(0, 3).map(i => `  - ${i.action} with ${i.withActor} (${i.sentiment})`).join('\n');
     return `- ${a.name} (${a.role}, ${a.mentions} mentions)\n${topInteractions}`;
   }).join('\n');
 }
@@ -326,16 +327,16 @@ ${domainNames.map((dn, i) => {
 
 CRITICAL RULES:
 - Use ONLY the source material below. Do not invent facts.
+- Be CONCISE. Keep descriptions to 1-2 sentences. Do NOT write essays.
 - Write in confident, board-level language suitable for C-suite audiences.
-- Ground every finding in evidence from the workshop data.
-- execSummary.keyFindings: generate 5-8 findings. metrics.insightsGenerated and transformationalIdeas must be NUMBERS not strings.
-- discoveryOutput.sections: generate exactly ${domainNames.length} sections for these domains: ${domainNames.join(', ')}. Each needs 8-12 wordCloud items with size 1-4. Sentiment percentages MUST sum to 100.
-- reimagineContent: generate 3-5 primaryThemes and 2-4 supportingThemes.
-- constraintsContent: generate 2-4 items per category.
-- potentialSolution.enablers: 6-10 items. implementationPath: 3-4 phases.
-- commercialContent.deliveryPhases: 3 phases. riskAssessment: 4-6 risks.
-- customerJourney: 6-8 stages, 5-8 actors, 15-25 interactions. Mark 3-5 as isPainPoint:true, 2-3 as isMomentOfTruth:true.
-- summaryContent.keyFindings: 3-5 categories. recommendedNextSteps: 3-4 steps. successMetrics: 4-6 metrics.
+- execSummary.keyFindings: 5-7 findings. metrics values must be NUMBERS not strings.
+- discoveryOutput.sections: exactly ${domainNames.length} sections. Each needs 8-10 wordCloud items (size 1-4). Sentiment MUST sum to 100.
+- reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes.
+- constraintsContent: 2-3 items per category.
+- potentialSolution.enablers: 5-8 items. implementationPath: 3 phases.
+- commercialContent.deliveryPhases: 3 phases. riskAssessment: 3-5 risks.
+- customerJourney: 6 stages, 5-6 actors, 15-20 interactions. Mark 3-4 as isPainPoint:true, 2 as isMomentOfTruth:true.
+- summaryContent.keyFindings: 3-4 categories. recommendedNextSteps: 3 steps. successMetrics: 4 metrics.
 
 ─── DOMAIN ANALYSIS ───
 ${domainText}
@@ -401,15 +402,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // 5. Call GPT-4o
     const prompt = buildSynthesisPrompt(workshop.name || 'Workshop', aggregated);
-    console.log(`[synthesise] Calling GPT-4o for workshop ${workshopId} (${aggregated.totalNodes} nodes)...`);
+    console.log(`[synthesise] Prompt length: ${prompt.length} chars. Calling GPT-4o for workshop ${workshopId} (${aggregated.totalNodes} nodes)...`);
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.4,
-      max_tokens: 16000,
+      temperature: 0.3,
+      max_tokens: 12000,
       response_format: { type: 'json_object' },
     });
+    console.log(`[synthesise] GPT responded. Usage: ${JSON.stringify(completion.usage)}`);
 
     const raw = completion.choices[0]?.message?.content;
     if (!raw) {
