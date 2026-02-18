@@ -191,7 +191,7 @@ Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components
   "execSummary": {
     "overview": "string — 3-5 sentence executive overview of the workshop findings and strategic direction",
     "metrics": {
-      "participantsEngaged": ${data.totalNodes},
+      "participantsEngaged": ${data.topActors.length},
       "domainsExplored": ${domainNames.length},
       "insightsGenerated": "number — total key insight count derived from data",
       "transformationalIdeas": "number — count of visionary/opportunity items"
