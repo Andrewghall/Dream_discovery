@@ -69,6 +69,7 @@ function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
   const allActors: Map<string, { role: string; mentions: number; interactions: Array<{ withActor: string; action: string; sentiment: string; context: string }> }> = new Map();
   const allKeywords: Map<string, number> = new Map();
   let totalNodes = 0;
+  let transformationalCount = 0;
 
   for (const node of Object.values(nodesById)) {
     if (!node || !node.rawText) continue;
@@ -78,6 +79,11 @@ function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
     if (byPhase[phase]) byPhase[phase].push(node);
 
     const primaryType = safeStr(node.classification?.primaryType).toUpperCase();
+
+    // Count visionary/opportunity nodes for transformational ideas metric
+    if (['VISIONARY', 'OPPORTUNITY'].includes(primaryType)) {
+      transformationalCount++;
+    }
 
     // Keywords
     if (Array.isArray(node.classification?.keywords)) {
@@ -141,7 +147,7 @@ function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
     .slice(0, 20)
     .map(([name, data]) => ({ name, ...data }));
 
-  return { byDomain, byPhase, topKeywords, topActors, totalNodes };
+  return { byDomain, byPhase, topKeywords, topActors, totalNodes, transformationalCount };
 }
 
 function domainSummary(byDomain: Record<string, DomainBucket>, maxPerBucket = 8): string {
@@ -193,8 +199,8 @@ Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components
     "metrics": {
       "participantsEngaged": ${data.topActors.length},
       "domainsExplored": ${domainNames.length},
-      "insightsGenerated": "number — total key insight count derived from data",
-      "transformationalIdeas": "number — count of visionary/opportunity items"
+      "insightsGenerated": ${data.totalNodes},
+      "transformationalIdeas": ${data.transformationalCount}
     },
     "keyFindings": [
       {
