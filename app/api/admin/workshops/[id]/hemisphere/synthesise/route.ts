@@ -432,6 +432,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'AI returned invalid JSON' }, { status: 500 });
     }
 
+    // 5b. Force-overwrite metrics with real computed values (GPT may hallucinate them)
+    if (synthesised.execSummary && typeof synthesised.execSummary === 'object') {
+      const es = synthesised.execSummary as Record<string, unknown>;
+      if (!es.metrics || typeof es.metrics !== 'object') es.metrics = {};
+      const m = es.metrics as Record<string, unknown>;
+      m.participantsEngaged = aggregated.topActors.length;
+      m.domainsExplored = Object.keys(aggregated.byDomain).length;
+      m.insightsGenerated = aggregated.totalNodes;
+      m.transformationalIdeas = aggregated.transformationalCount;
+    }
+
     // 6. Upsert scratchpad
     const existing = await prisma.workshopScratchpad.findUnique({ where: { workshopId } });
 
