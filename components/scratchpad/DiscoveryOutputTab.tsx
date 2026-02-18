@@ -1,34 +1,305 @@
+'use client';
+
+import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Badge } from '@/components/ui/badge';
 import { MessageSquare, Users, TrendingUp, Brain } from 'lucide-react';
 
 interface DiscoveryOutputTabProps {
   data: any;
 }
 
-const colorMap: Record<string, { border: string; bg: string; text: string }> = {
-  blue: { border: 'border-blue-200', bg: 'bg-blue-50', text: 'text-blue-600' },
-  purple: { border: 'border-purple-200', bg: 'bg-purple-50', text: 'text-purple-600' },
-  green: { border: 'border-green-200', bg: 'bg-green-50', text: 'text-green-600' },
-  orange: { border: 'border-orange-200', bg: 'bg-orange-50', text: 'text-orange-600' },
-  indigo: { border: 'border-indigo-200', bg: 'bg-indigo-50', text: 'text-indigo-600' },
-  pink: { border: 'border-pink-200', bg: 'bg-pink-50', text: 'text-pink-600' },
+const colorMap: Record<string, { border: string; bg: string; text: string; hex: string }> = {
+  blue:   { border: 'border-blue-200',   bg: 'bg-blue-50',   text: 'text-blue-600',   hex: '#2563eb' },
+  purple: { border: 'border-purple-200', bg: 'bg-purple-50', text: 'text-purple-600', hex: '#9333ea' },
+  green:  { border: 'border-green-200',  bg: 'bg-green-50',  text: 'text-green-600',  hex: '#16a34a' },
+  orange: { border: 'border-orange-200', bg: 'bg-orange-50', text: 'text-orange-600', hex: '#ea580c' },
+  indigo: { border: 'border-indigo-200', bg: 'bg-indigo-50', text: 'text-indigo-600', hex: '#4f46e5' },
+  pink:   { border: 'border-pink-200',   bg: 'bg-pink-50',   text: 'text-pink-600',   hex: '#db2777' },
 };
 
-const sizeClasses = [
-  'text-xl text-opacity-70',
-  'text-2xl',
-  'text-3xl font-semibold',
-  'text-4xl font-bold',
+/* ── Radar / spider chart (pure SVG, no deps) ────────────────── */
+
+function RadarChart({ sections }: { sections: any[] }) {
+  const size = 400;
+  const cx = size / 2;
+  const cy = size / 2;
+  const padding = 80;
+  const radius = (size - padding * 2) / 2;
+  const n = sections.length;
+  if (n < 3) return null;
+
+  const rings = [0.25, 0.5, 0.75, 1];
+  const maxConsensus = 100;
+
+  // Compute angles for each domain
+  const points = sections.map((s: any, i: number) => {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    return { angle, section: s };
+  });
+
+  // Utility: polar to cartesian
+  const ptc = (r: number, angle: number) => ({
+    x: cx + r * Math.cos(angle),
+    y: cy + r * Math.sin(angle),
+  });
+
+  // Build polygon points for consensus values
+  const consensusPolygon = points.map(({ angle, section }) => {
+    const v = Math.min(section.consensusLevel || 0, maxConsensus);
+    const r = (v / maxConsensus) * radius;
+    return ptc(r, angle);
+  });
+
+  // Build polygon points for utterance share (normalised)
+  const maxUtt = Math.max(...sections.map((s: any) => s.utteranceCount || 0), 1);
+  const uttPolygon = points.map(({ angle, section }) => {
+    const v = (section.utteranceCount || 0) / maxUtt;
+    const r = v * radius;
+    return ptc(r, angle);
+  });
+
+  return (
+    <svg
+      width="100%"
+      viewBox={`0 0 ${size} ${size}`}
+      className="max-w-lg mx-auto"
+      role="img"
+      aria-label="Radar chart showing domain coverage and consensus"
+    >
+      {/* Background rings */}
+      {rings.map((t, i) => (
+        <circle
+          key={i}
+          cx={cx}
+          cy={cy}
+          r={t * radius}
+          fill="none"
+          stroke="#e5e7eb"
+          strokeWidth="1"
+        />
+      ))}
+
+      {/* Ring labels */}
+      {rings.map((t, i) => (
+        <text
+          key={`rl-${i}`}
+          x={cx + 4}
+          y={cy - t * radius + 12}
+          fontSize="9"
+          fill="#9ca3af"
+        >
+          {Math.round(t * 100)}%
+        </text>
+      ))}
+
+      {/* Axes */}
+      {points.map(({ angle }, i) => {
+        const end = ptc(radius, angle);
+        return (
+          <line
+            key={`ax-${i}`}
+            x1={cx}
+            y1={cy}
+            x2={end.x}
+            y2={end.y}
+            stroke="#d1d5db"
+            strokeWidth="1"
+          />
+        );
+      })}
+
+      {/* Utterance volume polygon (fill area) */}
+      <polygon
+        points={uttPolygon.map(p => `${p.x},${p.y}`).join(' ')}
+        fill="#818cf8"
+        fillOpacity={0.1}
+        stroke="#818cf8"
+        strokeWidth="1.5"
+        strokeDasharray="4 2"
+      />
+
+      {/* Consensus polygon (main filled area) */}
+      <polygon
+        points={consensusPolygon.map(p => `${p.x},${p.y}`).join(' ')}
+        fill="#6366f1"
+        fillOpacity={0.25}
+        stroke="#6366f1"
+        strokeWidth="2"
+      />
+
+      {/* Dots on consensus polygon */}
+      {consensusPolygon.map((p, i) => (
+        <circle key={`cd-${i}`} cx={p.x} cy={p.y} r="5" fill="#6366f1" stroke="white" strokeWidth="2" />
+      ))}
+
+      {/* Domain labels */}
+      {points.map(({ angle, section }, i) => {
+        const labelR = radius + 36;
+        const lp = ptc(labelR, angle);
+        const anchor =
+          Math.abs(Math.cos(angle)) < 0.15
+            ? 'middle'
+            : Math.cos(angle) > 0
+            ? 'start'
+            : 'end';
+        const colors = colorMap[section.color] || colorMap.blue;
+        return (
+          <g key={`lb-${i}`}>
+            <text
+              x={lp.x}
+              y={lp.y - 6}
+              textAnchor={anchor}
+              dominantBaseline="middle"
+              fontSize="12"
+              fontWeight="600"
+              fill={colors.hex}
+            >
+              {section.domain}
+            </text>
+            <text
+              x={lp.x}
+              y={lp.y + 8}
+              textAnchor={anchor}
+              dominantBaseline="middle"
+              fontSize="10"
+              fill="#6b7280"
+            >
+              {section.consensusLevel}% · {section.utteranceCount} insights
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Legend */}
+      <rect x="10" y={size - 34} width="10" height="10" fill="#6366f1" fillOpacity="0.25" stroke="#6366f1" strokeWidth="1" rx="2" />
+      <text x="24" y={size - 25} fontSize="10" fill="#6b7280">Consensus</text>
+      <rect x="100" y={size - 34} width="10" height="10" fill="#818cf8" fillOpacity="0.15" stroke="#818cf8" strokeWidth="1" strokeDasharray="3 1" rx="2" />
+      <text x="114" y={size - 25} fontSize="10" fill="#6b7280">Insight Volume</text>
+    </svg>
+  );
+}
+
+/* ── Word Cloud (CSS-based, with variety) ─────────────────────── */
+
+const CLOUD_COLORS = [
+  '#2563eb', '#9333ea', '#16a34a', '#ea580c', '#4f46e5', '#db2777',
+  '#0891b2', '#7c3aed', '#059669', '#d97706', '#6366f1', '#e11d48',
 ];
+
+function WordCloud({ words, domainColor }: { words: any[]; domainColor?: string }) {
+  // Deterministic "random" using word index for rotation and colour
+  const items = useMemo(() => {
+    if (!words?.length) return [];
+    return words.map((w: any, i: number) => {
+      const size = Math.min(w.size || 1, 4);
+      // Font size: 14px for size 1 → 36px for size 4
+      const fontSize = 12 + size * 7;
+      const fontWeight = size >= 3 ? 700 : size >= 2 ? 600 : 400;
+      // Slight rotation variety: -15° to 15° based on position
+      const rotation = ((i * 37) % 7 - 3) * 4;
+      // Pick color from palette or use domain color
+      const color = domainColor || CLOUD_COLORS[i % CLOUD_COLORS.length];
+      const opacity = 0.55 + size * 0.12;
+      return { word: w.word, fontSize, fontWeight, rotation, color, opacity };
+    });
+  }, [words, domainColor]);
+
+  if (!items.length) return null;
+
+  return (
+    <div className="bg-white p-6 rounded-lg border">
+      <h4 className="font-semibold mb-4">Key Themes</h4>
+      <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-center min-h-[80px]">
+        {items.map((item, i) => (
+          <span
+            key={i}
+            className="inline-block transition-transform hover:scale-110 cursor-default select-none"
+            style={{
+              fontSize: `${item.fontSize}px`,
+              fontWeight: item.fontWeight,
+              color: item.color,
+              opacity: item.opacity,
+              transform: `rotate(${item.rotation}deg)`,
+              lineHeight: 1.2,
+            }}
+          >
+            {item.word}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Combined Word Cloud (all domains) ────────────────────────── */
+
+function CombinedWordCloud({ sections }: { sections: any[] }) {
+  const allWords = useMemo(() => {
+    const merged: { word: string; size: number; color: string }[] = [];
+    sections.forEach((s: any) => {
+      const colors = colorMap[s.color] || colorMap.blue;
+      (s.wordCloud || []).forEach((w: any) => {
+        merged.push({ word: w.word, size: w.size, color: colors.hex });
+      });
+    });
+    // Sort by size descending, then shuffle a bit for visual variety
+    merged.sort((a, b) => b.size - a.size);
+    // Interleave: take big words and spread small ones between them
+    const result: typeof merged = [];
+    const big = merged.filter(w => w.size >= 3);
+    const small = merged.filter(w => w.size < 3);
+    let si = 0;
+    for (const b of big) {
+      result.push(b);
+      if (si < small.length) result.push(small[si++]);
+      if (si < small.length) result.push(small[si++]);
+    }
+    while (si < small.length) result.push(small[si++]);
+    return result;
+  }, [sections]);
+
+  if (!allWords.length) return null;
+
+  return (
+    <Card className="p-6 border-2 border-violet-100">
+      <h3 className="font-bold text-lg mb-4">Combined Theme Cloud — All Domains</h3>
+      <div className="flex flex-wrap gap-x-5 gap-y-2 items-center justify-center min-h-[120px] p-4 bg-gradient-to-br from-slate-50 to-violet-50 rounded-lg">
+        {allWords.map((item, i) => {
+          const fontSize = 11 + (item.size || 1) * 7;
+          const fontWeight = item.size >= 3 ? 700 : item.size >= 2 ? 600 : 400;
+          const rotation = ((i * 31) % 9 - 4) * 3;
+          const opacity = 0.5 + (item.size || 1) * 0.13;
+          return (
+            <span
+              key={i}
+              className="inline-block transition-transform hover:scale-110 cursor-default select-none"
+              style={{
+                fontSize: `${fontSize}px`,
+                fontWeight,
+                color: item.color,
+                opacity,
+                transform: `rotate(${rotation}deg)`,
+                lineHeight: 1.2,
+              }}
+            >
+              {item.word}
+            </span>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+/* ── Main Component ───────────────────────────────────────────── */
 
 export function DiscoveryOutputTab({ data }: DiscoveryOutputTabProps) {
   if (!data || !data.sections) {
     return (
       <Card className="p-8 text-center">
         <p className="text-muted-foreground">
-          No discovery interview data yet. Click "🎯 Load Complete Demo" to populate this tab.
+          No discovery interview data yet. Click &quot;🎯 Load Complete Demo&quot; to populate this tab.
         </p>
       </Card>
     );
@@ -72,6 +343,20 @@ export function DiscoveryOutputTab({ data }: DiscoveryOutputTabProps) {
         </Card>
       </div>
 
+      {/* Spider Diagram - Consensus by Domain */}
+      {data.sections?.length >= 3 && (
+        <Card className="p-6 border-2 border-indigo-100">
+          <h3 className="font-bold text-lg mb-1">Domain Coverage &amp; Consensus</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Radar chart showing consensus alignment and insight volume across all explored domains
+          </p>
+          <RadarChart sections={data.sections} />
+        </Card>
+      )}
+
+      {/* Combined Word Cloud */}
+      <CombinedWordCloud sections={data.sections || []} />
+
       {/* Domain Synthesis - Collapsible */}
       <Accordion type="multiple" className="w-full space-y-4">
         <div className="text-xl font-bold mb-2">Themes by Domain</div>
@@ -98,25 +383,9 @@ export function DiscoveryOutputTab({ data }: DiscoveryOutputTabProps) {
               </AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-4 pt-4">
-                  {/* Word Cloud Representation */}
+                  {/* Word Cloud per domain */}
                   {section.wordCloud && (
-                    <div className="bg-white p-6 rounded-lg border">
-                      <h4 className="font-semibold mb-4">Key Themes (Word Cloud)</h4>
-                      <div className="flex flex-wrap gap-3 items-center justify-center">
-                        {section.wordCloud.map((item: any, i: number) => {
-                          const sizeClass = sizeClasses[Math.min(item.size - 1, 3)] || sizeClasses[0];
-                          return (
-                            <span
-                              key={i}
-                              className={`${sizeClass} ${colors.text}`}
-                              style={{ opacity: 0.5 + (item.size * 0.125) }}
-                            >
-                              {item.word}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    <WordCloud words={section.wordCloud} domainColor={colors.hex} />
                   )}
 
                   {/* Key Quotes */}
@@ -171,29 +440,6 @@ export function DiscoveryOutputTab({ data }: DiscoveryOutputTabProps) {
           );
         })}
       </Accordion>
-
-      {/* Spider Diagram - Consensus by Domain */}
-      <Card className="p-6 border-2 border-indigo-100">
-        <h3 className="font-bold text-lg mb-4">Domain Coverage & Consensus</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Spider diagram showing participant engagement and consensus levels across domains
-        </p>
-        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-8 rounded-lg">
-          <div className="text-center text-muted-foreground">
-            <div className="text-6xl mb-4">📊</div>
-            <p className="text-sm">
-              Interactive spider diagram would be rendered here showing:
-              <br />
-              {data.sections?.map((s: any, i: number) => (
-                <span key={i}>
-                  {s.domain} ({s.consensusLevel}% consensus)
-                  {i < data.sections.length - 1 ? ' • ' : ''}
-                </span>
-              ))}
-            </p>
-          </div>
-        </div>
-      </Card>
     </div>
   );
 }
