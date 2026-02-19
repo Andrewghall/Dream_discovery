@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { Toaster } from 'sonner';
 
 export default function AdminLayout({
   children,
@@ -20,6 +21,7 @@ export default function AdminLayout({
         </div>
       </div>
       <div className="relative z-10">{children}</div>
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }

@@ -17,6 +17,7 @@ import { requireAuth } from '@/lib/auth/require-auth';
 import { prisma } from '@/lib/prisma';
 import JSZip from 'jszip';
 import fs from 'fs/promises';
+import crypto from 'crypto';
 import path from 'path';
 
 /* ── Tiny helper: HTML-escape user content ── */
@@ -70,11 +71,31 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Support GET for backward compatibility — delegates to handler
+  return handleExport(request, await params, undefined);
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  let body: any = {};
+  try {
+    body = await request.json();
+  } catch {
+    // No body or invalid JSON — that's OK
+  }
+  return handleExport(request, await params, body?.commercialPassword);
+}
+
+async function handleExport(
+  request: NextRequest,
+  { id: workshopId }: { id: string },
+  commercialPasswordPlain: string | undefined
+) {
   try {
     const auth = await requireAuth();
     if (auth instanceof NextResponse) return auth;
-
-    const { id: workshopId } = await params;
 
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },
@@ -98,7 +119,16 @@ export async function GET(
       );
     }
 
-    const htmlPackage = await generateStaticHTMLPackage(workshop);
+    // If a commercial password is set on the scratchpad, generate a SHA-256 hash for client-side verification
+    let commercialPasswordHash: string | null = null;
+    if (workshop.scratchpad.commercialPassword && commercialPasswordPlain) {
+      commercialPasswordHash = crypto
+        .createHash('sha256')
+        .update(commercialPasswordPlain)
+        .digest('hex');
+    }
+
+    const htmlPackage = await generateStaticHTMLPackage(workshop, commercialPasswordHash);
 
     const zip = new JSZip();
     Object.entries(htmlPackage.files).forEach(([filename, content]) => {
@@ -138,7 +168,7 @@ export async function GET(
    GENERATE STATIC HTML PACKAGE
    ================================================================ */
 
-async function generateStaticHTMLPackage(workshop: any) {
+async function generateStaticHTMLPackage(workshop: any, commercialPasswordHash: string | null) {
   const sp = workshop.scratchpad;
   const organization = workshop.organization;
 
@@ -176,7 +206,9 @@ async function generateStaticHTMLPackage(workshop: any) {
     { id: 'reimagine', label: 'Reimagine', content: renderReimag(reimagineContent, customerJourney, houseImages) },
     { id: 'constraints', label: 'Constraints', content: renderConstraints(constraintsContent) },
     { id: 'solution', label: 'Solution', content: renderPotentialSolution(potentialSolution, solutionBase64) },
-    { id: 'commercial', label: 'Commercial', content: renderCommercial(commercialContent) },
+    { id: 'commercial', label: '🔒 Commercial', content: commercialPasswordHash
+      ? renderCommercialProtected(commercialContent, commercialPasswordHash)
+      : renderCommercial(commercialContent) },
     { id: 'customer-journey', label: 'Journey Map', content: renderCustomerJourney(customerJourney) },
     { id: 'summary', label: 'Summary', content: renderSummary(summaryContent) },
   ];
@@ -1702,6 +1734,52 @@ function renderPotentialSolution(data: any, solutionBase64: string | null): stri
 /* ================================================================
    6. COMMERCIAL
    ================================================================ */
+
+function renderCommercialProtected(data: any, passwordHash: string): string {
+  // Render the actual commercial content and base64-encode it for hiding
+  const actualContent = renderCommercial(data);
+  const encodedContent = Buffer.from(actualContent).toString('base64');
+
+  return `
+  <div id="commercial-lock" class="section-card" style="text-align:center;padding:4rem 2rem">
+    <div style="font-size:4rem;margin-bottom:1rem">&#128274;</div>
+    <h2 style="font-size:1.5rem;margin-bottom:0.5rem;color:#111827">Password Protected</h2>
+    <p style="color:#6b7280;margin-bottom:2rem">This section contains sensitive commercial information.<br>Enter the password to continue.</p>
+    <div style="max-width:320px;margin:0 auto">
+      <input type="password" id="commercial-pw-input" placeholder="Enter password"
+        style="width:100%;padding:0.75rem 1rem;border:2px solid #d1d5db;border-radius:8px;font-size:1rem;margin-bottom:0.75rem;outline:none"
+        onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='#d1d5db'"
+        onkeydown="if(event.key==='Enter')unlockCommercial()">
+      <button onclick="unlockCommercial()"
+        style="width:100%;padding:0.75rem 1rem;background:var(--primary);color:white;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">
+        Unlock
+      </button>
+      <p id="commercial-pw-error" style="color:#ef4444;font-size:0.85rem;margin-top:0.75rem;display:none">Incorrect password</p>
+    </div>
+  </div>
+  <div id="commercial-content" style="display:none"></div>
+  <script>
+  var _commercialHash = '${passwordHash}';
+  var _commercialData = '${encodedContent}';
+  async function unlockCommercial() {
+    var pw = document.getElementById('commercial-pw-input').value;
+    var enc = new TextEncoder();
+    var hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(pw));
+    var hashArray = Array.from(new Uint8Array(hashBuffer));
+    var hashHex = hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+    if (hashHex === _commercialHash) {
+      document.getElementById('commercial-lock').style.display = 'none';
+      document.getElementById('commercial-content').style.display = 'block';
+      document.getElementById('commercial-content').innerHTML = atob(_commercialData);
+    } else {
+      var err = document.getElementById('commercial-pw-error');
+      err.style.display = 'block';
+      document.getElementById('commercial-pw-input').style.borderColor = '#ef4444';
+      setTimeout(function() { err.style.display = 'none'; document.getElementById('commercial-pw-input').style.borderColor = '#d1d5db'; }, 2000);
+    }
+  }
+  </script>`;
+}
 
 function renderCommercial(data: any): string {
   if (!data || Object.keys(data).length === 0) {

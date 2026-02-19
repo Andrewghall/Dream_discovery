@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Save, Eye, Lock, Download, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAutoSave, type SaveStatus } from '@/hooks/useAutoSave';
 import Link from 'next/link';
 import {
@@ -146,14 +147,14 @@ export default function ScratchpadPage({ params }: PageProps) {
       });
 
       if (response.ok) {
-        alert('Scratchpad saved successfully!');
+        toast.success('Scratchpad saved successfully');
         await fetchData();
       } else {
         throw new Error('Failed to save');
       }
     } catch (error) {
       console.error('Failed to save scratchpad:', error);
-      alert('Failed to save scratchpad');
+      toast.error('Failed to save scratchpad');
     } finally {
       setSaving(false);
     }
@@ -170,14 +171,14 @@ export default function ScratchpadPage({ params }: PageProps) {
       });
 
       if (response.ok) {
-        alert('Scratchpad published successfully!');
+        toast.success('Scratchpad published successfully');
         await fetchData();
       } else {
         throw new Error('Failed to publish');
       }
     } catch (error) {
       console.error('Failed to publish scratchpad:', error);
-      alert('Failed to publish scratchpad');
+      toast.error('Failed to publish scratchpad');
     }
   };
 
@@ -185,7 +186,11 @@ export default function ScratchpadPage({ params }: PageProps) {
     try {
       setExporting(true);
 
-      const response = await fetch(`/api/admin/workshops/${workshopId}/export-html`);
+      const response = await fetch(`/api/admin/workshops/${workshopId}/export-html`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commercialPassword: commercialPassword || undefined }),
+      });
 
       if (!response.ok) {
         const error = await response.json();
@@ -205,10 +210,10 @@ export default function ScratchpadPage({ params }: PageProps) {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      alert('Report exported successfully! Upload the ZIP contents to your client\'s domain.');
+      toast.success('Report exported! Upload the ZIP contents to your client\'s domain.');
     } catch (error) {
       console.error('Failed to export HTML:', error);
-      alert(`Failed to export: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to export: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setExporting(false);
     }
@@ -231,22 +236,22 @@ export default function ScratchpadPage({ params }: PageProps) {
         setShowPasswordDialog(false);
         setActiveTab('commercial');
       } else {
-        alert('Incorrect password');
+        toast.error('Incorrect password');
       }
     } catch (error) {
       console.error('Failed to verify password:', error);
-      alert('Failed to verify password');
+      toast.error('Failed to verify password');
     }
   };
 
   const setCommercialPasswordHandler = async () => {
     if (newCommercialPassword.length < 6) {
-      alert('Password must be at least 6 characters');
+      toast.warning('Password must be at least 6 characters');
       return;
     }
 
     if (newCommercialPassword !== confirmCommercialPassword) {
-      alert('Passwords do not match');
+      toast.warning('Passwords do not match');
       return;
     }
 
@@ -258,18 +263,18 @@ export default function ScratchpadPage({ params }: PageProps) {
       });
 
       if (response.ok) {
-        alert('Commercial password set successfully');
+        toast.success('Commercial password set successfully');
         setShowSetPasswordDialog(false);
         setNewCommercialPassword('');
         setConfirmCommercialPassword('');
         setCommercialUnlocked(true); // Auto-unlock after setting
       } else {
         const data = await response.json();
-        alert(data.error || 'Failed to set password');
+        toast.error(data.error || 'Failed to set password');
       }
     } catch (error) {
       console.error('Failed to set password:', error);
-      alert('Failed to set password');
+      toast.error('Failed to set password');
     }
   };
 
@@ -322,11 +327,11 @@ export default function ScratchpadPage({ params }: PageProps) {
                   } else {
                     const errorData = await response.json();
                     console.error('Error response:', errorData);
-                    alert(`Error: ${errorData.error || 'Failed to create scratchpad'}`);
+                    toast.error(errorData.error || 'Failed to create scratchpad');
                   }
                 } catch (error) {
                   console.error('Failed to create demo scratchpad:', error);
-                  alert('Failed to create demo scratchpad. Check console for details.');
+                  toast.error('Failed to create demo scratchpad');
                 }
               }}
             >
@@ -374,14 +379,14 @@ export default function ScratchpadPage({ params }: PageProps) {
                     body: JSON.stringify({ loadDemoData: false }),
                   });
                   if (response.ok) {
-                    alert('📋 Empty template loaded with 5 DREAM lenses: Customer, Regulator, Client, Technology, Organisation');
+                    toast.success('Empty template loaded with 5 DREAM lenses');
                     await fetchData();
                   } else {
-                    alert('Failed to load template');
+                    toast.error('Failed to load template');
                   }
                 } catch (error) {
                   console.error('Failed to load template:', error);
-                  alert('Error loading template');
+                  toast.error('Error loading template');
                 }
               }}
             >
@@ -397,14 +402,14 @@ export default function ScratchpadPage({ params }: PageProps) {
                     body: JSON.stringify({ loadDemoData: true }),
                   });
                   if (response.ok) {
-                    alert('✅ Demo data loaded! TravelWise Contact Centre transformation example.');
+                    toast.success('Demo data loaded — TravelWise Contact Centre transformation');
                     await fetchData();
                   } else {
-                    alert('Failed to load demo data');
+                    toast.error('Failed to load demo data');
                   }
                 } catch (error) {
                   console.error('Failed to load demo data:', error);
-                  alert('Error loading demo data');
+                  toast.error('Error loading demo data');
                 }
               }}
             >
