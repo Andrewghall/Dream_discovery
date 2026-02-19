@@ -7,18 +7,28 @@ import { Monitor, Smartphone, X } from 'lucide-react';
 export default async function ActiveSessionsPage() {
   const session = await getSession();
 
-  if (!session || session.role !== 'PLATFORM_ADMIN') {
+  if (!session) {
     redirect('/login');
   }
 
-  // Get all active sessions
+  const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
+  const isTenantAdmin = session.role === 'TENANT_ADMIN';
+
+  if (!isPlatformAdmin && !isTenantAdmin) {
+    redirect('/login');
+  }
+
+  // Get active sessions — scoped by org for tenant admins
+  const sessionWhere: any = {
+    expiresAt: { gt: new Date() },
+    revokedAt: null,
+  };
+  if (!isPlatformAdmin && session.organizationId) {
+    sessionWhere.user = { organizationId: session.organizationId };
+  }
+
   const sessions = await prisma.session.findMany({
-    where: {
-      expiresAt: {
-        gt: new Date(),
-      },
-      revokedAt: null,
-    },
+    where: sessionWhere,
     include: {
       user: {
         select: {

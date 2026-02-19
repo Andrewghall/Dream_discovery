@@ -16,9 +16,24 @@ import {
 export default async function AdminDashboardPage() {
   const session = await getSession();
 
-  if (!session || session.role !== 'PLATFORM_ADMIN') {
+  if (!session) {
     redirect('/login');
   }
+
+  const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
+  const isTenantAdmin = session.role === 'TENANT_ADMIN';
+
+  if (!isPlatformAdmin && !isTenantAdmin) {
+    redirect('/login');
+  }
+
+  // Scope queries for tenant admins to their organization
+  const orgFilter = !isPlatformAdmin && session.organizationId
+    ? { organizationId: session.organizationId }
+    : {};
+  const userOrgFilter = !isPlatformAdmin && session.organizationId
+    ? { where: { organizationId: session.organizationId } }
+    : {};
 
   // Get statistics
   const [
@@ -31,12 +46,17 @@ export default async function AdminDashboardPage() {
     failedLogins,
     activeSessions,
   ] = await Promise.all([
-    prisma.organization.count(),
-    prisma.workshop.count(),
-    prisma.workshopParticipant.count(),
-    prisma.user.count(),
-    prisma.user.count({ where: { isActive: true } }),
+    isPlatformAdmin ? prisma.organization.count() : Promise.resolve(1),
+    prisma.workshop.count({ where: orgFilter }),
+    prisma.workshopParticipant.count({
+      where: !isPlatformAdmin && session.organizationId
+        ? { workshop: { organizationId: session.organizationId } }
+        : {},
+    }),
+    prisma.user.count(userOrgFilter),
+    prisma.user.count({ where: { isActive: true, ...orgFilter } }),
     prisma.workshop.findMany({
+      where: orgFilter,
       take: 5,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -48,20 +68,25 @@ export default async function AdminDashboardPage() {
       where: {
         success: false,
         createdAt: {
-          gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
+          gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
         },
+        ...(isPlatformAdmin ? {} : { email: session.email }),
       },
     }),
     prisma.session.count({
       where: {
         expiresAt: { gt: new Date() },
         revokedAt: null,
+        ...(!isPlatformAdmin && session.organizationId
+          ? { user: { organizationId: session.organizationId } }
+          : {}),
       },
     }),
   ]);
 
   const workshopsByStatus = await prisma.workshop.groupBy({
     by: ['status'],
+    where: orgFilter,
     _count: true,
   });
 

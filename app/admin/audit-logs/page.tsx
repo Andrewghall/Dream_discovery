@@ -10,17 +10,31 @@ import { ClearLogsButton } from './clear-logs-button';
 export default async function AuditLogsPage() {
   const session = await getSession();
 
-  if (!session || session.role !== 'PLATFORM_ADMIN') {
+  if (!session) {
     redirect('/login');
   }
+
+  // Allow PLATFORM_ADMIN and TENANT_ADMIN
+  const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
+  const isTenantAdmin = session.role === 'TENANT_ADMIN';
+
+  if (!isPlatformAdmin && !isTenantAdmin) {
+    redirect('/login');
+  }
+
+  // Scope queries: platform admins see everything, tenant admins see their org only
+  const auditWhere = isPlatformAdmin ? {} : { userEmail: session.email };
+  const loginWhere = isPlatformAdmin ? {} : { email: session.email };
 
   // Fetch audit logs and login attempts in parallel
   const [auditLogs, loginAttempts] = await Promise.all([
     prisma.auditLog.findMany({
+      where: auditWhere,
       take: 100,
       orderBy: { timestamp: 'desc' },
     }),
     prisma.loginAttempt.findMany({
+      where: loginWhere,
       take: 100,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -88,7 +102,7 @@ export default async function AuditLogsPage() {
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
-            <ClearLogsButton />
+            {isPlatformAdmin && <ClearLogsButton />}
           </div>
         </div>
 

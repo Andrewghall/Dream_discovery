@@ -365,7 +365,7 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
                     ? 'border-orange-700 bg-orange-50 ring-2 ring-orange-300 shadow-md'
                     : 'border-orange-700 bg-gray-50 hover:bg-orange-50/50 hover:shadow-sm'
                 }`}
-                onClick={() => setSelectedPrimaryTheme(selectedPrimaryTheme === index ? null : index)}
+                onMouseDown={() => setSelectedPrimaryTheme(selectedPrimaryTheme === index ? null : index)}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4 flex-1">
@@ -411,9 +411,8 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
           {(() => {
             const pt = selectedPrimaryTheme;
             const theme = pt !== null ? data?.reimagineContent?.primaryThemes?.[pt] : null;
-            const showTheme = theme && (theme.description || theme.details?.length > 0);
 
-            if (showTheme) {
+            if (theme) {
               // Show selected theme details
               return (
                 <div className="bg-white rounded-2xl border-2 border-amber-300 shadow-md overflow-hidden flex flex-col animate-in fade-in duration-200">
@@ -534,7 +533,7 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
                     ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-300 shadow-md'
                     : 'border-sky-500 bg-gray-50 hover:bg-sky-50/50 hover:shadow-sm'
                 }`}
-                onClick={() => setSelectedSupportingTheme(selectedSupportingTheme === index ? null : index)}
+                onMouseDown={() => setSelectedSupportingTheme(selectedSupportingTheme === index ? null : index)}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4 flex-1">
@@ -580,9 +579,8 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
           {(() => {
             const st = selectedSupportingTheme;
             const theme = st !== null ? data?.reimagineContent?.supportingThemes?.[st] : null;
-            const showTheme = theme && (theme.description || theme.details?.length > 0);
 
-            if (showTheme) {
+            if (theme) {
               // Show selected theme details
               return (
                 <div className="bg-white rounded-2xl border-2 border-sky-300 shadow-md overflow-hidden flex flex-col animate-in fade-in duration-200">
