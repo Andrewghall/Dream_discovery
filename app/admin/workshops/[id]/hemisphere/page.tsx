@@ -852,10 +852,20 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         setHasScratchpad(true);
         window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
       } else {
-        alert(json?.error || 'Failed to generate report');
+        // If synthesis failed but scratchpad already exists, just open it
+        if (hasScratchpad) {
+          window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
+        } else {
+          alert(json?.error || 'Failed to generate report');
+        }
       }
     } catch (e) {
-      alert('Failed to generate report');
+      // If network error but scratchpad exists, open it
+      if (hasScratchpad) {
+        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
+      } else {
+        alert('Failed to generate report');
+      }
     } finally {
       setGenerating(false);
     }
