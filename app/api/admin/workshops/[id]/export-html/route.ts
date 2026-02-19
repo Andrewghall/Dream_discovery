@@ -822,14 +822,18 @@ function renderReimag(data: any): string {
 
   // Primary themes
   if (data.primaryThemes && data.primaryThemes.length > 0) {
-    html += `<div class="content-section"><h2>Primary Themes</h2><div class="theme-grid">`;
+    html += `<div class="content-section"><h2>Primary Themes</h2>`;
     for (const t of data.primaryThemes) {
-      html += `<div class="theme-card">
-        <h4>${esc(t.title)}</h4>
-        <div class="theme-badge">${esc(t.badge)} &middot; ${esc(t.weighting)}</div>
-      </div>`;
+      html += `<details>
+        <summary>${esc(t.title)} <span class="badge badge-high" style="margin-left:0.5rem">${esc(t.badge)}</span></summary>
+        <div class="details-content">
+          <div class="theme-badge" style="margin-bottom:0.75rem">${esc(t.weighting)}</div>
+          ${t.description ? `<p>${esc(t.description)}</p>` : ''}
+          ${t.details && t.details.length > 0 ? `<ul style="margin-left:1.5rem;margin-top:0.75rem">${t.details.map((d: string) => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
+        </div>
+      </details>`;
     }
-    html += `</div></div>`;
+    html += `</div>`;
   }
 
   // Shift One
@@ -843,14 +847,18 @@ function renderReimag(data: any): string {
 
   // Supporting themes
   if (data.supportingThemes && data.supportingThemes.length > 0) {
-    html += `<div class="content-section"><h2>Supporting Themes</h2><div class="theme-grid">`;
+    html += `<div class="content-section"><h2>Supporting Themes</h2>`;
     for (const t of data.supportingThemes) {
-      html += `<div class="theme-card">
-        <h4>${esc(t.title)}</h4>
-        <div class="theme-badge">${esc(t.badge)} &middot; ${esc(t.weighting)}</div>
-      </div>`;
+      html += `<details>
+        <summary>${esc(t.title)} <span class="badge badge-medium" style="margin-left:0.5rem">${esc(t.badge)}</span></summary>
+        <div class="details-content">
+          <div class="theme-badge" style="margin-bottom:0.75rem">${esc(t.weighting)}</div>
+          ${t.description ? `<p>${esc(t.description)}</p>` : ''}
+          ${t.details && t.details.length > 0 ? `<ul style="margin-left:1.5rem;margin-top:0.75rem">${t.details.map((d: string) => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
+        </div>
+      </details>`;
     }
-    html += `</div></div>`;
+    html += `</div>`;
   }
 
   // Shift Two

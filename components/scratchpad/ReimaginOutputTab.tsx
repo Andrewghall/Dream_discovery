@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import Image from 'next/image';
 import { EditableText } from './EditableText';
@@ -156,6 +156,9 @@ function JourneyMapCompact({ journey }: { journey: { stages: string[]; actors: {
 /* ── Main Component ────────────────────────────────────────────── */
 
 export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginOutputTabProps) {
+  const [selectedPrimaryTheme, setSelectedPrimaryTheme] = useState<number | null>(null);
+  const [selectedSupportingTheme, setSelectedSupportingTheme] = useState<number | null>(null);
+
   const update = (fn: (d: any) => void) => {
     if (!onChange) return;
     const clone = JSON.parse(JSON.stringify(data));
@@ -348,17 +351,27 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
         </div>
       )}
 
-      {/* Primary Themes + SHIFT ONE */}
+      {/* Primary Themes + Detail Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="bg-white rounded-2xl p-10 shadow-sm">
             <h3 className="font-bold text-3xl mb-8 text-gray-900">Primary themes</h3>
             <div className="space-y-5">
             {data?.reimagineContent?.primaryThemes?.map((theme: any, index: number) => (
-              <div key={index} className="p-6 border-l-[6px] border-orange-700 bg-gray-50 rounded-lg">
+              <div
+                key={index}
+                className={`p-6 border-l-[6px] rounded-lg cursor-pointer transition-all duration-200 ${
+                  selectedPrimaryTheme === index
+                    ? 'border-orange-700 bg-orange-50 ring-2 ring-orange-300 shadow-md'
+                    : 'border-orange-700 bg-gray-50 hover:bg-orange-50/50 hover:shadow-sm'
+                }`}
+                onClick={() => setSelectedPrimaryTheme(selectedPrimaryTheme === index ? null : index)}
+              >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4 flex-1">
-                    <div className="w-10 h-10 rounded-full bg-orange-700 text-white flex items-center justify-center font-bold text-base flex-shrink-0">{index + 1}</div>
+                    <div className={`w-10 h-10 rounded-full text-white flex items-center justify-center font-bold text-base flex-shrink-0 ${
+                      selectedPrimaryTheme === index ? 'bg-orange-800 scale-110' : 'bg-orange-700'
+                    } transition-all duration-200`}>{index + 1}</div>
                     <div className="flex-1">
                       <span className="font-semibold text-gray-900 text-lg block mb-2">
                         <EditableText
@@ -394,63 +407,140 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
           </div>
         </div>
 
-        <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl border-2 border-amber-300 shadow-md overflow-hidden h-full flex flex-col">
-              <div className="p-8 bg-gradient-to-br from-amber-100 via-orange-100 to-amber-200">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 rounded-full bg-amber-700 text-white flex items-center justify-center font-bold">1</div>
-                  <div className="text-xs uppercase tracking-[0.15em] text-amber-900 font-bold">SHIFT ONE</div>
-                </div>
-                <h4 className="font-bold text-2xl text-gray-900 leading-tight">
-                  <EditableText
-                    value={data?.reimagineContent?.shiftOne?.title || 'First Key Shift'}
-                    onChange={(v) => update((d) => { d.reimagineContent.shiftOne.title = v; })}
-                    className="font-bold text-2xl text-gray-900 leading-tight"
-                  />
-                </h4>
-              </div>
-              <div className="p-8 flex-1">
-                <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
-                  <EditableText
-                    value={data?.reimagineContent?.shiftOne?.description || 'Description of the first major shift or transformation theme from the reimagine session.'}
-                    onChange={(v) => update((d) => { d.reimagineContent.shiftOne.description = v; })}
-                    className="text-sm text-gray-800 leading-relaxed font-medium"
-                    multiline
-                  />
-                </div>
-                <div className="text-sm text-gray-700 leading-relaxed font-medium">
-                  {data?.reimagineContent?.shiftOne?.details?.length > 0 ? (
-                    <EditableList
-                      items={data.reimagineContent.shiftOne.details}
-                      onChange={(items) => update((d) => { d.reimagineContent.shiftOne.details = items; })}
-                      bullet="•"
-                      bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
-                      itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
-                    />
-                  ) : (
-                    <div className="space-y-3">
-                      <p>• Key detail point one</p>
-                      <p>• Key detail point two</p>
-                      <p>• Key detail point three</p>
+        <div className="lg:col-span-1 lg:sticky lg:top-8 lg:self-start">
+          {(() => {
+            const pt = selectedPrimaryTheme;
+            const theme = pt !== null ? data?.reimagineContent?.primaryThemes?.[pt] : null;
+            const showTheme = theme && (theme.description || theme.details?.length > 0);
+
+            if (showTheme) {
+              // Show selected theme details
+              return (
+                <div className="bg-white rounded-2xl border-2 border-amber-300 shadow-md overflow-hidden flex flex-col animate-in fade-in duration-200">
+                  <div className="p-8 bg-gradient-to-br from-amber-100 via-orange-100 to-amber-200">
+                    <div className="flex items-center justify-between mb-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-amber-700 text-white flex items-center justify-center font-bold">{pt! + 1}</div>
+                        <div className="text-xs uppercase tracking-[0.15em] text-amber-900 font-bold">
+                          {theme.badge || 'THEME'}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setSelectedPrimaryTheme(null)}
+                        className="text-amber-800 hover:text-amber-950 text-sm font-medium px-2 py-1 rounded hover:bg-amber-200/50 transition-colors"
+                      >
+                        ✕
+                      </button>
                     </div>
-                  )}
+                    <h4 className="font-bold text-2xl text-gray-900 leading-tight">
+                      {theme.title}
+                    </h4>
+                  </div>
+                  <div className="p-8 flex-1">
+                    <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
+                      <EditableText
+                        value={theme.description || 'Click to add a description for this theme...'}
+                        onChange={(v) => update((d) => { d.reimagineContent.primaryThemes[pt!].description = v; })}
+                        className="text-sm text-gray-800 leading-relaxed font-medium"
+                        multiline
+                      />
+                    </div>
+                    <div className="text-sm text-gray-700 leading-relaxed font-medium">
+                      {theme.details?.length > 0 ? (
+                        <EditableList
+                          items={theme.details}
+                          onChange={(items) => update((d) => { d.reimagineContent.primaryThemes[pt!].details = items; })}
+                          bullet="•"
+                          bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
+                          itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
+                          addLabel="+ Add detail"
+                        />
+                      ) : (
+                        <EditableList
+                          items={['Key detail point']}
+                          onChange={(items) => update((d) => { d.reimagineContent.primaryThemes[pt!].details = items; })}
+                          bullet="•"
+                          bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
+                          itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
+                          addLabel="+ Add detail"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Default: show SHIFT ONE
+            return (
+              <div className="bg-white rounded-2xl border-2 border-amber-300 shadow-md overflow-hidden flex flex-col">
+                <div className="p-8 bg-gradient-to-br from-amber-100 via-orange-100 to-amber-200">
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="w-10 h-10 rounded-full bg-amber-700 text-white flex items-center justify-center font-bold">1</div>
+                    <div className="text-xs uppercase tracking-[0.15em] text-amber-900 font-bold">SHIFT ONE</div>
+                  </div>
+                  <h4 className="font-bold text-2xl text-gray-900 leading-tight">
+                    <EditableText
+                      value={data?.reimagineContent?.shiftOne?.title || 'First Key Shift'}
+                      onChange={(v) => update((d) => { d.reimagineContent.shiftOne.title = v; })}
+                      className="font-bold text-2xl text-gray-900 leading-tight"
+                    />
+                  </h4>
+                </div>
+                <div className="p-8 flex-1">
+                  <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
+                    <EditableText
+                      value={data?.reimagineContent?.shiftOne?.description || 'Description of the first major shift or transformation theme from the reimagine session.'}
+                      onChange={(v) => update((d) => { d.reimagineContent.shiftOne.description = v; })}
+                      className="text-sm text-gray-800 leading-relaxed font-medium"
+                      multiline
+                    />
+                  </div>
+                  <div className="text-sm text-gray-700 leading-relaxed font-medium">
+                    {data?.reimagineContent?.shiftOne?.details?.length > 0 ? (
+                      <EditableList
+                        items={data.reimagineContent.shiftOne.details}
+                        onChange={(items) => update((d) => { d.reimagineContent.shiftOne.details = items; })}
+                        bullet="•"
+                        bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
+                        itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
+                      />
+                    ) : (
+                      <div className="space-y-3">
+                        <p>• Key detail point one</p>
+                        <p>• Key detail point two</p>
+                        <p>• Key detail point three</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
+        </div>
       </div>
 
-      {/* Supporting Themes + SHIFT TWO */}
+      {/* Supporting Themes + Detail Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="bg-white rounded-2xl p-10 shadow-sm">
             <h3 className="font-bold text-3xl mb-8 text-gray-900">Supporting themes</h3>
             <div className="space-y-5">
             {data?.reimagineContent?.supportingThemes?.map((theme: any, index: number) => (
-              <div key={index} className="p-6 border-l-[6px] border-sky-500 bg-gray-50 rounded-lg">
+              <div
+                key={index}
+                className={`p-6 border-l-[6px] rounded-lg cursor-pointer transition-all duration-200 ${
+                  selectedSupportingTheme === index
+                    ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-300 shadow-md'
+                    : 'border-sky-500 bg-gray-50 hover:bg-sky-50/50 hover:shadow-sm'
+                }`}
+                onClick={() => setSelectedSupportingTheme(selectedSupportingTheme === index ? null : index)}
+              >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4 flex-1">
-                    <div className="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-base flex-shrink-0">{index + 1}</div>
+                    <div className={`w-10 h-10 rounded-full text-white flex items-center justify-center font-bold text-base flex-shrink-0 ${
+                      selectedSupportingTheme === index ? 'bg-sky-600 scale-110' : 'bg-sky-500'
+                    } transition-all duration-200`}>{index + 1}</div>
                     <div className="flex-1">
                       <span className="font-semibold text-gray-900 text-lg block mb-2">
                         <EditableText
@@ -486,50 +576,117 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
           </div>
         </div>
 
-        <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl border-2 border-sky-300 shadow-md overflow-hidden h-full flex flex-col">
-              <div className="p-8 bg-gradient-to-br from-sky-100 via-blue-100 to-indigo-200">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 rounded-full bg-sky-700 text-white flex items-center justify-center font-bold">2</div>
-                  <div className="text-xs uppercase tracking-[0.15em] text-sky-900 font-bold">SHIFT TWO</div>
-                </div>
-                <h4 className="font-bold text-2xl text-gray-900 leading-tight">
-                  <EditableText
-                    value={data?.reimagineContent?.shiftTwo?.title || 'Second Key Shift'}
-                    onChange={(v) => update((d) => { d.reimagineContent.shiftTwo.title = v; })}
-                    className="font-bold text-2xl text-gray-900 leading-tight"
-                  />
-                </h4>
-              </div>
-              <div className="p-8 flex-1">
-                <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
-                  <EditableText
-                    value={data?.reimagineContent?.shiftTwo?.description || 'Description of the second major shift or transformation theme from the reimagine session.'}
-                    onChange={(v) => update((d) => { d.reimagineContent.shiftTwo.description = v; })}
-                    className="text-sm text-gray-800 leading-relaxed font-medium"
-                    multiline
-                  />
-                </div>
-                <div className="text-sm text-gray-700 leading-relaxed font-medium">
-                  {data?.reimagineContent?.shiftTwo?.details?.length > 0 ? (
-                    <EditableList
-                      items={data.reimagineContent.shiftTwo.details}
-                      onChange={(items) => update((d) => { d.reimagineContent.shiftTwo.details = items; })}
-                      bullet="•"
-                      bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
-                      itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
-                    />
-                  ) : (
-                    <div className="space-y-3">
-                      <p>• Key detail point one</p>
-                      <p>• Key detail point two</p>
-                      <p>• Key detail point three</p>
+        <div className="lg:col-span-1 lg:sticky lg:top-8 lg:self-start">
+          {(() => {
+            const st = selectedSupportingTheme;
+            const theme = st !== null ? data?.reimagineContent?.supportingThemes?.[st] : null;
+            const showTheme = theme && (theme.description || theme.details?.length > 0);
+
+            if (showTheme) {
+              // Show selected theme details
+              return (
+                <div className="bg-white rounded-2xl border-2 border-sky-300 shadow-md overflow-hidden flex flex-col animate-in fade-in duration-200">
+                  <div className="p-8 bg-gradient-to-br from-sky-100 via-blue-100 to-indigo-200">
+                    <div className="flex items-center justify-between mb-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-sky-700 text-white flex items-center justify-center font-bold">{st! + 1}</div>
+                        <div className="text-xs uppercase tracking-[0.15em] text-sky-900 font-bold">
+                          {theme.badge || 'THEME'}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setSelectedSupportingTheme(null)}
+                        className="text-sky-800 hover:text-sky-950 text-sm font-medium px-2 py-1 rounded hover:bg-sky-200/50 transition-colors"
+                      >
+                        ✕
+                      </button>
                     </div>
-                  )}
+                    <h4 className="font-bold text-2xl text-gray-900 leading-tight">
+                      {theme.title}
+                    </h4>
+                  </div>
+                  <div className="p-8 flex-1">
+                    <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
+                      <EditableText
+                        value={theme.description || 'Click to add a description for this theme...'}
+                        onChange={(v) => update((d) => { d.reimagineContent.supportingThemes[st!].description = v; })}
+                        className="text-sm text-gray-800 leading-relaxed font-medium"
+                        multiline
+                      />
+                    </div>
+                    <div className="text-sm text-gray-700 leading-relaxed font-medium">
+                      {theme.details?.length > 0 ? (
+                        <EditableList
+                          items={theme.details}
+                          onChange={(items) => update((d) => { d.reimagineContent.supportingThemes[st!].details = items; })}
+                          bullet="•"
+                          bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
+                          itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
+                          addLabel="+ Add detail"
+                        />
+                      ) : (
+                        <EditableList
+                          items={['Key detail point']}
+                          onChange={(items) => update((d) => { d.reimagineContent.supportingThemes[st!].details = items; })}
+                          bullet="•"
+                          bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
+                          itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
+                          addLabel="+ Add detail"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Default: show SHIFT TWO
+            return (
+              <div className="bg-white rounded-2xl border-2 border-sky-300 shadow-md overflow-hidden flex flex-col">
+                <div className="p-8 bg-gradient-to-br from-sky-100 via-blue-100 to-indigo-200">
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="w-10 h-10 rounded-full bg-sky-700 text-white flex items-center justify-center font-bold">2</div>
+                    <div className="text-xs uppercase tracking-[0.15em] text-sky-900 font-bold">SHIFT TWO</div>
+                  </div>
+                  <h4 className="font-bold text-2xl text-gray-900 leading-tight">
+                    <EditableText
+                      value={data?.reimagineContent?.shiftTwo?.title || 'Second Key Shift'}
+                      onChange={(v) => update((d) => { d.reimagineContent.shiftTwo.title = v; })}
+                      className="font-bold text-2xl text-gray-900 leading-tight"
+                    />
+                  </h4>
+                </div>
+                <div className="p-8 flex-1">
+                  <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
+                    <EditableText
+                      value={data?.reimagineContent?.shiftTwo?.description || 'Description of the second major shift or transformation theme from the reimagine session.'}
+                      onChange={(v) => update((d) => { d.reimagineContent.shiftTwo.description = v; })}
+                      className="text-sm text-gray-800 leading-relaxed font-medium"
+                      multiline
+                    />
+                  </div>
+                  <div className="text-sm text-gray-700 leading-relaxed font-medium">
+                    {data?.reimagineContent?.shiftTwo?.details?.length > 0 ? (
+                      <EditableList
+                        items={data.reimagineContent.shiftTwo.details}
+                        onChange={(items) => update((d) => { d.reimagineContent.shiftTwo.details = items; })}
+                        bullet="•"
+                        bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
+                        itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
+                      />
+                    ) : (
+                      <div className="space-y-3">
+                        <p>• Key detail point one</p>
+                        <p>• Key detail point two</p>
+                        <p>• Key detail point three</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
+        </div>
       </div>
 
       {/* Horizon Vision Alignment */}

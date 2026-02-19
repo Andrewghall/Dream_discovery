@@ -248,7 +248,7 @@ ${domainNames.map((dn, i) => {
       ],
       "journeyMapping": {"title": "Customer Journey Mapping"},
       "primaryThemes": [
-        {"title": "string — theme name", "weighting": "string — e.g. Mentioned by 85% of participants", "badge": "PRIMARY or CRITICAL"}
+        {"title": "string — theme name", "weighting": "string — e.g. Mentioned by 85% of participants", "badge": "PRIMARY or CRITICAL", "description": "string — 2-3 sentence explanation of this theme and its significance", "details": ["3-4 supporting detail points for this theme"]}
       ],
       "shiftOne": {
         "title": "string — first key strategic shift",
@@ -256,7 +256,7 @@ ${domainNames.map((dn, i) => {
         "details": ["3-4 supporting detail points"]
       },
       "supportingThemes": [
-        {"title": "string", "weighting": "string", "badge": "SUPPORTING or EMERGING"}
+        {"title": "string", "weighting": "string", "badge": "SUPPORTING or EMERGING", "description": "string — 2-3 sentence explanation of this supporting theme", "details": ["3-4 supporting detail points"]}
       ],
       "shiftTwo": {
         "title": "string — second key strategic shift",

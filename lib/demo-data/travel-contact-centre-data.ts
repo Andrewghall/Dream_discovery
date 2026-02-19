@@ -285,22 +285,50 @@ export const travelContactCentreData = {
       {
         title: "AI-Powered Self-Service eliminates 70% of inbound call volume",
         badge: "AUTOMATION",
-        weighting: "very high weighting"
+        weighting: "very high weighting",
+        description: "Deploy conversational AI across web, app, and voice channels to handle routine booking queries, changes, and FAQs without human intervention. This frees agents to focus on complex, high-value interactions.",
+        details: [
+          "Natural language IVR handles booking changes and cancellations",
+          "Chatbot resolves FAQ queries 24/7 with 95% accuracy",
+          "Smart routing escalates complex issues to specialist agents",
+          "Self-service portal for itinerary management and document uploads"
+        ]
       },
       {
         title: "Agent upskilling from call handlers to Travel Experience Advisors",
         badge: "PEOPLE",
-        weighting: "high weighting"
+        weighting: "high weighting",
+        description: "Transform the role of contact centre agents from transactional call handlers into knowledgeable Travel Experience Advisors who provide personalised destination expertise and build lasting customer relationships.",
+        details: [
+          "Structured training programme covering 50+ destinations",
+          "Certification pathway with specialist badges (cruise, adventure, luxury)",
+          "Performance metrics shift from call volume to customer satisfaction",
+          "Career progression tied to expertise development"
+        ]
       },
       {
         title: "Omnichannel integration (WhatsApp, Instagram, voice, app, email)",
         badge: "CHANNELS",
-        weighting: "high weighting"
+        weighting: "high weighting",
+        description: "Unify all customer communication channels into a single platform where agents see the complete conversation history regardless of which channel the customer uses, eliminating the need to repeat information.",
+        details: [
+          "Single agent desktop with unified inbox across all channels",
+          "Real-time channel switching without losing context",
+          "WhatsApp and Instagram DM integration for younger demographics",
+          "Consistent brand experience across every touchpoint"
+        ]
       },
       {
         title: "Proactive outreach replaces reactive complaint handling",
         badge: "SHIFT",
-        weighting: "medium weighting"
+        weighting: "medium weighting",
+        description: "Move from waiting for customers to call with problems to actively monitoring journeys and reaching out before issues escalate. Flight delays, weather disruptions, and booking anomalies trigger automated proactive notifications.",
+        details: [
+          "Real-time flight and weather monitoring triggers proactive alerts",
+          "Automated rebooking suggestions sent before customers call",
+          "Post-trip follow-up with personalised recommendations",
+          "Disruption management dashboard for mass event handling"
+        ]
       }
     ],
 
@@ -318,22 +346,46 @@ export const travelContactCentreData = {
       {
         title: "Peak season auto-scaling handles 300% traffic surge",
         badge: "CAPACITY",
-        weighting: "high weighting"
+        weighting: "high weighting",
+        description: "Implement elastic cloud infrastructure and flexible staffing models that automatically scale during peak booking periods, ensuring consistent service quality even during 300% traffic surges.",
+        details: [
+          "Cloud-based contact centre scales agents and AI capacity on demand",
+          "Predictive staffing models based on historical booking patterns",
+          "Overflow routing to specialist partner networks during peaks"
+        ]
       },
       {
         title: "Real-time AI co-pilot assists agents during calls",
         badge: "ENABLEMENT",
-        weighting: "medium weighting"
+        weighting: "medium weighting",
+        description: "Equip agents with an AI co-pilot that listens to conversations in real-time, surfacing relevant knowledge articles, pricing information, and suggested responses to improve first-call resolution.",
+        details: [
+          "Live transcription with real-time sentiment analysis",
+          "Auto-surfacing of relevant policies and destination info",
+          "Smart response suggestions based on conversation context"
+        ]
       },
       {
         title: "Gamification drives agent engagement and retention",
         badge: "CULTURE",
-        weighting: "medium weighting"
+        weighting: "medium weighting",
+        description: "Introduce gamification elements to boost agent motivation, reduce attrition, and create a culture of continuous improvement through friendly competition and recognition.",
+        details: [
+          "Leaderboards for customer satisfaction and knowledge scores",
+          "Achievement badges for destination expertise milestones",
+          "Team challenges with rewards during peak periods"
+        ]
       },
       {
         title: "Video call capability for complex destination consultations",
         badge: "INNOVATION",
-        weighting: "low weighting"
+        weighting: "low weighting",
+        description: "Offer video call consultations for high-value bookings where agents can share screens, show destination imagery, and build personal rapport with customers considering premium travel packages.",
+        details: [
+          "Screen-sharing for itinerary walkthroughs and virtual tours",
+          "Scheduled video appointments for premium customers",
+          "Integration with CRM for personalised visual presentations"
+        ]
       }
     ],
 
