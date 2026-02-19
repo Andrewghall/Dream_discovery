@@ -14,10 +14,6 @@ export default async function ActiveSessionsPage() {
   const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
   const isTenantAdmin = session.role === 'TENANT_ADMIN';
 
-  if (!isPlatformAdmin && !isTenantAdmin) {
-    redirect('/login');
-  }
-
   // Get active sessions — scoped by org for tenant admins
   const sessionWhere: any = {
     expiresAt: { gt: new Date() },

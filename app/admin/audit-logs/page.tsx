@@ -14,13 +14,8 @@ export default async function AuditLogsPage() {
     redirect('/login');
   }
 
-  // Allow PLATFORM_ADMIN and TENANT_ADMIN
   const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
   const isTenantAdmin = session.role === 'TENANT_ADMIN';
-
-  if (!isPlatformAdmin && !isTenantAdmin) {
-    redirect('/login');
-  }
 
   // Scope queries: platform admins see everything, tenant admins see their org only
   const auditWhere = isPlatformAdmin ? {} : { userEmail: session.email };

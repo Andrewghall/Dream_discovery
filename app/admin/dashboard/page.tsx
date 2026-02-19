@@ -23,10 +23,6 @@ export default async function AdminDashboardPage() {
   const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
   const isTenantAdmin = session.role === 'TENANT_ADMIN';
 
-  if (!isPlatformAdmin && !isTenantAdmin) {
-    redirect('/login');
-  }
-
   // Scope queries for tenant admins to their organization
   const orgFilter = !isPlatformAdmin && session.organizationId
     ? { organizationId: session.organizationId }
