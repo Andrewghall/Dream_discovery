@@ -23,11 +23,13 @@ const colorMap: Record<string, { border: string; bg: string; text: string; hex: 
 
 /* ── Radar / spider chart (pure SVG, no deps) ────────────────── */
 
+function clampVal(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+
 function RadarChart({ sections }: { sections: any[] }) {
-  const size = 400;
+  const size = 500;
   const cx = size / 2;
   const cy = size / 2;
-  const padding = 80;
+  const padding = 110;
   const radius = (size - padding * 2) / 2;
   const n = sections.length;
   if (n < 3) return null;
@@ -136,7 +138,7 @@ function RadarChart({ sections }: { sections: any[] }) {
         <circle key={`cd-${i}`} cx={p.x} cy={p.y} r="5" fill="#6366f1" stroke="white" strokeWidth="2" />
       ))}
 
-      {/* Domain labels */}
+      {/* Domain labels — clamped to stay within SVG bounds */}
       {points.map(({ angle, section }, i) => {
         const labelR = radius + 36;
         const lp = ptc(labelR, angle);
@@ -147,28 +149,42 @@ function RadarChart({ sections }: { sections: any[] }) {
             ? 'start'
             : 'end';
         const colors = colorMap[section.color] || colorMap.blue;
+        const domainLabel = section.domain || '';
+        const subLabel = `${section.consensusLevel || 0}% · ${section.utteranceCount || 0} insights`;
+        const longest = Math.max(domainLabel.length, subLabel.length);
+        const estWidth = longest * 12 * 0.6;
+        const minPad = 6;
+        let x = lp.x;
+        if (anchor === 'start') {
+          x = clampVal(x, minPad, size - estWidth - minPad);
+        } else if (anchor === 'end') {
+          x = clampVal(x, estWidth + minPad, size - minPad);
+        } else {
+          x = clampVal(x, estWidth / 2 + minPad, size - estWidth / 2 - minPad);
+        }
+        const y = clampVal(lp.y, 18, size - minPad);
         return (
           <g key={`lb-${i}`}>
             <text
-              x={lp.x}
-              y={lp.y - 6}
+              x={x}
+              y={y - 6}
               textAnchor={anchor}
               dominantBaseline="middle"
               fontSize="12"
               fontWeight="600"
               fill={colors.hex}
             >
-              {section.domain}
+              {domainLabel}
             </text>
             <text
-              x={lp.x}
-              y={lp.y + 8}
+              x={x}
+              y={y + 8}
               textAnchor={anchor}
               dominantBaseline="middle"
               fontSize="10"
               fill="#6b7280"
             >
-              {section.consensusLevel}% · {section.utteranceCount} insights
+              {subLabel}
             </text>
           </g>
         );
