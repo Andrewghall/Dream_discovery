@@ -15,10 +15,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { prisma } from '@/lib/prisma';
+import OpenAI from 'openai';
 import JSZip from 'jszip';
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import path from 'path';
+
+export const runtime = 'nodejs';
+export const maxDuration = 120;
 
 /* ── Tiny helper: HTML-escape user content ── */
 function esc(s: any): string {
@@ -165,6 +169,126 @@ async function handleExport(
 }
 
 /* ================================================================
+   AI-GENERATED SECTION SUMMARIES
+   ================================================================ */
+
+type SectionSummaries = {
+  discoveryPhaseSummary: string;
+  discoverySummary: string;
+  reimagineSummary: string;
+  constraintsSummary: string;
+  solutionSummary: string;
+  commercialSummary: string;
+  journeyMapSummary: string;
+  overallSummary: string;
+};
+
+/** Truncate arrays for token-safe prompt building */
+function trimForPrompt(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.slice(0, 10).map(trimForPrompt);
+  const out: any = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'wordCloud' && Array.isArray(v)) out[k] = (v as any[]).slice(0, 5);
+    else if (k === 'quotes' && Array.isArray(v)) out[k] = (v as any[]).slice(0, 3);
+    else if (k === 'interactions' && Array.isArray(v)) out[k] = (v as any[]).slice(0, 12);
+    else out[k] = trimForPrompt(v);
+  }
+  return out;
+}
+
+async function generateSectionSummaries(
+  workshopName: string,
+  execSummary: any,
+  discoveryOutput: any,
+  reimagineContent: any,
+  constraintsContent: any,
+  potentialSolution: any,
+  commercialContent: any,
+  customerJourney: any,
+  summaryContent: any
+): Promise<SectionSummaries | null> {
+  if (!process.env.OPENAI_API_KEY) {
+    console.log('[export-html] No OPENAI_API_KEY — skipping AI summary generation');
+    return null;
+  }
+
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const prompt = `You are a senior strategy consultant who has just completed a comprehensive transformation workshop. You are writing executive insight summaries for a board-level report that will be delivered to C-suite stakeholders. This is a premium deliverable (clients pay £10,000+ for this report).
+
+Your summaries must be:
+- PROFOUND: Go beyond restating findings. Identify the deeper strategic implications, the non-obvious connections between themes, and the "so what" that a CEO would care about.
+- EVIDENCE-GROUNDED: Reference specific themes, metrics, and findings from the data. Never be generic or use filler phrases like "key challenges were identified."
+- STRATEGICALLY SHARP: Write with the precision of a McKinsey partner presenting to a board. Every sentence should carry weight.
+- CROSS-REFERENCING: Where relevant, connect insights across sections (e.g., how a constraint relates to a journey pain point, or how a reimagine theme addresses a discovery finding).
+
+Workshop: "${workshopName}"
+
+Here is the complete structured data from all workshop sections:
+
+EXECUTIVE SUMMARY DATA:
+${JSON.stringify(trimForPrompt(execSummary))}
+
+DISCOVERY OUTPUT:
+${JSON.stringify(trimForPrompt(discoveryOutput))}
+
+REIMAGINE CONTENT:
+${JSON.stringify(trimForPrompt(reimagineContent))}
+
+CONSTRAINTS:
+${JSON.stringify(trimForPrompt(constraintsContent))}
+
+POTENTIAL SOLUTION:
+${JSON.stringify(trimForPrompt(potentialSolution))}
+
+COMMERCIAL CONTENT:
+${JSON.stringify(trimForPrompt(commercialContent))}
+
+CUSTOMER JOURNEY:
+${JSON.stringify(trimForPrompt(customerJourney))}
+
+SUMMARY CONTENT:
+${JSON.stringify(trimForPrompt(summaryContent))}
+
+Return ONLY valid JSON with this exact structure:
+{
+  "discoveryPhaseSummary": "2-3 paragraphs (separated by \\n\\n) providing a profound synthesis of the entire discovery phase. This is the flagship insight block that opens the Discovery tab. Weave together the key themes across all domains, identify the underlying tensions and opportunities, and articulate what the discovery data collectively reveals about the organisation's strategic position. Write as if presenting the 'aha moment' to a board.",
+  "discoverySummary": "3-5 sentences. Sharp executive summary of the discovery findings that highlights the most significant patterns, consensus levels, and what the evidence points to.",
+  "reimagineSummary": "3-5 sentences. Capture the transformational vision that emerged, the key strategic shifts identified, and why they matter for the organisation's future.",
+  "constraintsSummary": "3-5 sentences. Synthesise the constraint landscape — which constraints are truly blocking vs manageable, and what the mitigation picture looks like.",
+  "solutionSummary": "3-5 sentences. Articulate the solution thesis — what makes this approach compelling, how it addresses the core constraints, and the implementation logic.",
+  "commercialSummary": "3-5 sentences. Frame the investment case — the ROI narrative, the phasing logic, and the risk-adjusted value proposition.",
+  "journeyMapSummary": "3-5 sentences. Distil the customer journey insights — where the critical pain points cluster, the moments of truth, and what this means for transformation priorities.",
+  "overallSummary": "3-5 sentences. The final synthesis — pull together the entire workshop narrative arc from discovery through to recommended next steps."
+}
+
+CRITICAL: Do NOT use generic consulting language. Every claim must be traceable to the data provided. If data for a section is empty or missing, write "No data available for this section." Do not fabricate.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      max_tokens: 4000,
+      response_format: { type: 'json_object' },
+    });
+
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) {
+      console.error('[export-html] AI returned empty response');
+      return null;
+    }
+
+    console.log(`[export-html] AI summaries generated. Usage: ${JSON.stringify(completion.usage)}`);
+    return JSON.parse(raw) as SectionSummaries;
+  } catch (error) {
+    console.error('[export-html] AI summary generation failed:', error);
+    return null;
+  }
+}
+
+/* ================================================================
    GENERATE STATIC HTML PACKAGE
    ================================================================ */
 
@@ -187,14 +311,29 @@ async function generateStaticHTMLPackage(workshop: any, commercialPasswordHash: 
   const logoUrl = sp.clientLogoUrl || organization.logoUrl || '';
   const solutionImageUrl = sp.solutionImageUrl || '';
 
-  // Fetch images and embed as base64
-  const [logoBase64, solutionBase64, houseOldB64, houseRefreshedB64, houseIdealB64] = await Promise.all([
-    fetchImageAsBase64(logoUrl),
-    fetchImageAsBase64(solutionImageUrl),
-    readLocalImageAsBase64('PAMWellness/house-old.png'),
-    readLocalImageAsBase64('PAMWellness/house-refreshed.png'),
-    readLocalImageAsBase64('PAMWellness/house-ideal.png'),
+  // Fetch images and generate AI summaries in parallel
+  const [imageResults, summaries] = await Promise.all([
+    Promise.all([
+      fetchImageAsBase64(logoUrl),
+      fetchImageAsBase64(solutionImageUrl),
+      readLocalImageAsBase64('PAMWellness/house-old.png'),
+      readLocalImageAsBase64('PAMWellness/house-refreshed.png'),
+      readLocalImageAsBase64('PAMWellness/house-ideal.png'),
+    ]),
+    generateSectionSummaries(
+      workshop.name,
+      execSummary,
+      discoveryOutput,
+      reimagineContent,
+      constraintsContent,
+      potentialSolution,
+      commercialContent,
+      customerJourney,
+      summaryContent
+    ),
   ]);
+
+  const [logoBase64, solutionBase64, houseOldB64, houseRefreshedB64, houseIdealB64] = imageResults;
   const houseImages = { old: houseOldB64, refreshed: houseRefreshedB64, ideal: houseIdealB64 };
 
   const files: Record<string, string> = {};
@@ -202,15 +341,15 @@ async function generateStaticHTMLPackage(workshop: any, commercialPasswordHash: 
   // Build tab content
   const tabsHTML = [
     { id: 'exec-summary', label: 'Exec Summary', content: renderExecutiveSummary(execSummary) },
-    { id: 'discovery', label: 'Discovery', content: renderDiscoveryOutput(discoveryOutput) },
-    { id: 'reimagine', label: 'Reimagine', content: renderReimag(reimagineContent, customerJourney, houseImages) },
-    { id: 'constraints', label: 'Constraints', content: renderConstraints(constraintsContent) },
-    { id: 'solution', label: 'Solution', content: renderPotentialSolution(potentialSolution, solutionBase64) },
+    { id: 'discovery', label: 'Discovery', content: renderDiscoveryOutput(discoveryOutput, summaries) },
+    { id: 'reimagine', label: 'Reimagine', content: renderReimag(reimagineContent, customerJourney, houseImages, summaries) },
+    { id: 'constraints', label: 'Constraints', content: renderConstraints(constraintsContent, summaries) },
+    { id: 'solution', label: 'Solution', content: renderPotentialSolution(potentialSolution, solutionBase64, summaries) },
     { id: 'commercial', label: '🔒 Commercial', content: commercialPasswordHash
-      ? renderCommercialProtected(commercialContent, commercialPasswordHash)
-      : renderCommercial(commercialContent) },
-    { id: 'customer-journey', label: 'Journey Map', content: renderCustomerJourney(customerJourney) },
-    { id: 'summary', label: 'Summary', content: renderSummary(summaryContent) },
+      ? renderCommercialProtected(commercialContent, commercialPasswordHash, summaries)
+      : renderCommercial(commercialContent, summaries) },
+    { id: 'customer-journey', label: 'Journey Map', content: renderCustomerJourney(customerJourney, summaries) },
+    { id: 'summary', label: 'Summary', content: renderSummary(summaryContent, summaries) },
   ];
 
   const tabButtons = tabsHTML.map((t, i) =>
@@ -897,6 +1036,49 @@ blockquote cite { display: block; font-size: 0.8rem; color: #6b7280; margin-top:
 }
 
 /* ================================================================
+   AI EXECUTIVE INSIGHT CARDS
+   ================================================================ */
+
+function renderExecutiveInsightCard(
+  summary: string,
+  options?: { isHero?: boolean; title?: string }
+): string {
+  const title = options?.title || 'Executive Insight';
+  const isHero = options?.isHero || false;
+
+  if (isHero) {
+    const paragraphs = summary.split(/\n\n+/).filter(Boolean);
+    return `
+    <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);
+      color:white;padding:2.5rem;border-radius:16px;margin-bottom:2rem;
+      border-left:6px solid #f59e0b">
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem">
+        <span style="font-size:1.5rem">&#9733;</span>
+        <h3 style="font-size:1.2rem;font-weight:700;letter-spacing:0.02em;
+          text-transform:uppercase;color:#fbbf24;margin:0">${esc(title)}</h3>
+      </div>
+      ${paragraphs.map(p =>
+        `<p style="font-size:1rem;line-height:1.8;opacity:0.95;
+          margin-bottom:1rem;max-width:900px">${esc(p)}</p>`
+      ).join('')}
+    </div>`;
+  }
+
+  return `
+  <div style="background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%);
+    border:2px solid #7dd3fc;border-left:6px solid #0284c7;
+    border-radius:12px;padding:1.75rem;margin-bottom:1.5rem">
+    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+      <span style="font-size:1.1rem">&#128161;</span>
+      <h3 style="font-size:0.85rem;font-weight:700;text-transform:uppercase;
+        letter-spacing:0.08em;color:#0369a1;margin:0">${esc(title)}</h3>
+    </div>
+    <p style="font-size:0.95rem;color:#1e3a5f;line-height:1.7;margin:0;
+      font-weight:500">${esc(summary)}</p>
+  </div>`;
+}
+
+/* ================================================================
    1. EXECUTIVE SUMMARY
    ================================================================ */
 
@@ -982,10 +1164,10 @@ function renderExecutiveSummary(data: any): string {
    ================================================================ */
 
 function renderRadarChartSVG(sections: any[]): string {
-  const size = 400;
+  const size = 500;
   const cx = size / 2;
   const cy = size / 2;
-  const padding = 80;
+  const padding = 110;
   const radius = (size - padding * 2) / 2;
   const n = sections.length;
   if (n < 3) return '';
@@ -1043,14 +1225,29 @@ function renderRadarChartSVG(sections: any[]): string {
     const p = ptc((v / maxConsensus) * radius, angle);
     svg += `<circle cx="${p.x}" cy="${p.y}" r="5" fill="#6366f1" stroke="white" stroke-width="2"/>`;
   }
-  // Labels
+  // Labels – clamp positions so text doesn't extend beyond the SVG viewBox
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
   for (const { angle, section } of points) {
     const labelR = radius + 36;
     const lp = ptc(labelR, angle);
     const anchor = Math.abs(Math.cos(angle)) < 0.15 ? 'middle' : Math.cos(angle) > 0 ? 'start' : 'end';
     const color = colorHex[section.color] || colorHex.blue;
-    svg += `<text x="${lp.x}" y="${lp.y - 6}" text-anchor="${anchor}" dominant-baseline="middle" font-size="12" font-weight="600" fill="${color}">${esc(section.domain)}</text>`;
-    svg += `<text x="${lp.x}" y="${lp.y + 8}" text-anchor="${anchor}" dominant-baseline="middle" font-size="10" fill="#6b7280">${section.consensusLevel || 0}% · ${section.utteranceCount || 0} insights</text>`;
+    const domainLabel = section.domain || '';
+    const subLabel = `${section.consensusLevel || 0}% · ${section.utteranceCount || 0} insights`;
+    const longest = Math.max(domainLabel.length, subLabel.length);
+    const estWidth = longest * 12 * 0.6; // approximate text width
+    const minPad = 6;
+    let x = lp.x;
+    if (anchor === 'start') {
+      x = clamp(x, minPad, size - estWidth - minPad);
+    } else if (anchor === 'end') {
+      x = clamp(x, estWidth + minPad, size - minPad);
+    } else {
+      x = clamp(x, estWidth / 2 + minPad, size - estWidth / 2 - minPad);
+    }
+    const y = clamp(lp.y, 18, size - minPad);
+    svg += `<text x="${x}" y="${y - 6}" text-anchor="${anchor}" dominant-baseline="middle" font-size="12" font-weight="600" fill="${color}">${esc(domainLabel)}</text>`;
+    svg += `<text x="${x}" y="${y + 8}" text-anchor="${anchor}" dominant-baseline="middle" font-size="10" fill="#6b7280">${subLabel}</text>`;
   }
   // Legend
   svg += `<rect x="10" y="${size - 34}" width="10" height="10" fill="#6366f1" fill-opacity="0.25" stroke="#6366f1" stroke-width="1" rx="2"/>`;
@@ -1117,12 +1314,28 @@ function renderCombinedWordCloud(sections: any[]): string {
   return html;
 }
 
-function renderDiscoveryOutput(data: any): string {
+function renderDiscoveryOutput(data: any, summaries: SectionSummaries | null): string {
   if (!data || Object.keys(data).length === 0) {
     return '<div class="section-card"><p>No discovery output available.</p></div>';
   }
 
   let html = '';
+
+  // Discovery Phase Summary — the flagship "wow" hero block
+  if (summaries?.discoveryPhaseSummary) {
+    html += renderExecutiveInsightCard(summaries.discoveryPhaseSummary, {
+      isHero: true,
+      title: 'Discovery Phase Synthesis',
+    });
+  }
+
+  // Per-section executive insight
+  if (summaries?.discoverySummary) {
+    html += renderExecutiveInsightCard(summaries.discoverySummary, {
+      title: 'Executive Insight',
+    });
+  }
+
   const sections = data.sections || [];
 
   // Overview stats
@@ -1413,7 +1626,7 @@ function renderJourneyMapCompact(journey: any): string {
   return html;
 }
 
-function renderReimag(data: any, customerJourney: any, houseImages?: { old: string | null; refreshed: string | null; ideal: string | null }): string {
+function renderReimag(data: any, customerJourney: any, houseImages?: { old: string | null; refreshed: string | null; ideal: string | null }, summaries?: SectionSummaries | null): string {
   if (!data || Object.keys(data).length === 0) {
     return '<div class="section-card"><p>No reimagine content available.</p></div>';
   }
@@ -1429,6 +1642,13 @@ function renderReimag(data: any, customerJourney: any, houseImages?: { old: stri
     ${rc.subtitle ? `<p class="desc">${esc(rc.subtitle)}</p>` : ''}
     <p class="note">The themes below are presented in order of importance and emphasis during the session.</p>
   </div>`;
+
+  // Executive Insight
+  if (summaries?.reimagineSummary) {
+    html += renderExecutiveInsightCard(summaries.reimagineSummary, {
+      title: 'Executive Insight: Reimagine',
+    });
+  }
 
   // Section label
   html += `<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.15em;color:#D4A89A;margin-bottom:2rem;font-weight:500">HOW WE APPROACHED THE REIMAGINE SESSION</div>`;
@@ -1602,7 +1822,7 @@ function renderReimag(data: any, customerJourney: any, houseImages?: { old: stri
    4. CONSTRAINTS
    ================================================================ */
 
-function renderConstraints(data: any): string {
+function renderConstraints(data: any, summaries?: SectionSummaries | null): string {
   if (!data || Object.keys(data).length === 0) {
     return '<div class="section-card"><p>No constraints defined.</p></div>';
   }
@@ -1615,6 +1835,14 @@ function renderConstraints(data: any): string {
   ];
 
   let html = '';
+
+  // Executive Insight
+  if (summaries?.constraintsSummary) {
+    html += renderExecutiveInsightCard(summaries.constraintsSummary, {
+      title: 'Executive Insight: Constraints',
+    });
+  }
+
   for (const cat of categories) {
     const items = data[cat.key];
     if (!items || !Array.isArray(items) || items.length === 0) continue;
@@ -1660,7 +1888,7 @@ function renderConstraints(data: any): string {
    5. POTENTIAL SOLUTION
    ================================================================ */
 
-function renderPotentialSolution(data: any, solutionBase64: string | null): string {
+function renderPotentialSolution(data: any, solutionBase64: string | null, summaries?: SectionSummaries | null): string {
   if (!data || Object.keys(data).length === 0) {
     return '<div class="section-card"><p>No solution data available.</p></div>';
   }
@@ -1673,6 +1901,13 @@ function renderPotentialSolution(data: any, solutionBase64: string | null): stri
     <h1>Solution &amp; Enablers</h1>
     <p class="desc">${esc(data.overview || 'Based on the workshop analysis, the following enablers and implementation path have been identified.')}</p>
   </div>`;
+
+  // Executive Insight
+  if (summaries?.solutionSummary) {
+    html += renderExecutiveInsightCard(summaries.solutionSummary, {
+      title: 'Executive Insight: Solution',
+    });
+  }
 
   // Solution image
   if (solutionBase64) {
@@ -1735,9 +1970,9 @@ function renderPotentialSolution(data: any, solutionBase64: string | null): stri
    6. COMMERCIAL
    ================================================================ */
 
-function renderCommercialProtected(data: any, passwordHash: string): string {
+function renderCommercialProtected(data: any, passwordHash: string, summaries?: SectionSummaries | null): string {
   // Render the actual commercial content and base64-encode it for hiding
-  const actualContent = renderCommercial(data);
+  const actualContent = renderCommercial(data, summaries);
   const encodedContent = Buffer.from(actualContent).toString('base64');
 
   return `
@@ -1781,7 +2016,7 @@ function renderCommercialProtected(data: any, passwordHash: string): string {
   </script>`;
 }
 
-function renderCommercial(data: any): string {
+function renderCommercial(data: any, summaries?: SectionSummaries | null): string {
   if (!data || Object.keys(data).length === 0) {
     return '<div class="section-card"><p>No commercial content available.</p></div>';
   }
@@ -1792,6 +2027,13 @@ function renderCommercial(data: any): string {
   html += `<div style="background:#fff3cd;border-left:4px solid #ffc107;padding:1rem;margin-bottom:1.5rem;border-radius:4px;font-size:0.9rem">
     &#9888;&#65039; Note: This section contains sensitive commercial information.
   </div>`;
+
+  // Executive Insight
+  if (summaries?.commercialSummary) {
+    html += renderExecutiveInsightCard(summaries.commercialSummary, {
+      title: 'Executive Insight: Commercial',
+    });
+  }
 
   // Investment Summary
   if (data.investmentSummary) {
@@ -1874,7 +2116,7 @@ function renderCommercial(data: any): string {
    7. CUSTOMER JOURNEY
    ================================================================ */
 
-function renderCustomerJourney(data: any): string {
+function renderCustomerJourney(data: any, summaries?: SectionSummaries | null): string {
   if (!data || Object.keys(data).length === 0) {
     return '<div class="section-card"><p>No customer journey data available.</p></div>';
   }
@@ -1887,6 +2129,13 @@ function renderCustomerJourney(data: any): string {
     <h1>Customer Journey Map</h1>
     <p class="desc">A comprehensive view of the customer experience across all stages, actors, and touchpoints.</p>
   </div>`;
+
+  // Executive Insight
+  if (summaries?.journeyMapSummary) {
+    html += renderExecutiveInsightCard(summaries.journeyMapSummary, {
+      title: 'Executive Insight: Customer Journey',
+    });
+  }
 
   const stages: string[] = data.stages || [];
   const actors: any[] = data.actors || [];
@@ -1920,12 +2169,19 @@ function renderCustomerJourney(data: any): string {
    8. SUMMARY
    ================================================================ */
 
-function renderSummary(data: any): string {
+function renderSummary(data: any, summaries?: SectionSummaries | null): string {
   if (!data || Object.keys(data).length === 0) {
     return '<div class="section-card"><p>No summary available.</p></div>';
   }
 
   let html = '';
+
+  // Executive Insight
+  if (summaries?.overallSummary) {
+    html += renderExecutiveInsightCard(summaries.overallSummary, {
+      title: 'Executive Insight: Summary',
+    });
+  }
 
   // Key Findings by category
   if (data.keyFindings && Array.isArray(data.keyFindings) && data.keyFindings.length > 0) {
