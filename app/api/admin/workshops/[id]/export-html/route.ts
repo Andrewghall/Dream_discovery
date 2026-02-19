@@ -544,13 +544,13 @@ body {
 
 /* ── Section Cards ── */
 .section-card {
-  background: white; padding: 2rem; margin-bottom: 1.5rem;
-  border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  border: 1px solid #e5e7eb;
+  background: white; padding: 2.5rem; margin-bottom: 1.5rem;
+  border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border: 1px solid rgba(0,0,0,0.05);
 }
 .section-card h2 {
-  color: var(--primary); margin-bottom: 1rem; font-size: 1.3rem;
-  padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;
+  color: var(--primary); margin-bottom: 1rem; font-size: 1.5rem;
+  padding-bottom: 0.75rem; border-bottom: 2px solid #e5e7eb; font-weight: 700;
 }
 
 /* ── Metrics Grid ── */
@@ -737,7 +737,7 @@ blockquote cite { display: block; font-size: 0.8rem; color: #6b7280; margin-top:
   background: linear-gradient(135deg, #ccfbf1, #d1fae5);
   border-radius: 16px; padding: 2.5rem; border: 2px solid #99f6e4;
 }
-.accent-box h3 { font-weight: 700; font-size: 1.5rem; margin-bottom: 1rem; color: #111827; }
+.accent-box h3 { font-weight: 700; font-size: 1.875rem; margin-bottom: 1rem; color: #111827; }
 .accent-box .desc { font-size: 0.85rem; color: #1f2937; margin-bottom: 1.5rem; line-height: 1.6; font-weight: 500; }
 .accent-box ul { list-style: none; padding: 0; }
 .accent-box li { padding: 0.3rem 0; font-size: 0.85rem; color: #111827; font-weight: 500; }
@@ -760,7 +760,7 @@ blockquote cite { display: block; font-size: 0.8rem; color: #6b7280; margin-top:
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 0.9rem; flex-shrink: 0;
 }
-.theme-card .name { font-weight: 600; font-size: 1.05rem; color: #111827; display: block; margin-bottom: 0.35rem; }
+.theme-card .name { font-weight: 600; font-size: 1.125rem; color: #111827; display: block; margin-bottom: 0.35rem; }
 .theme-card .weighting { font-size: 0.75rem; color: #6b7280; font-style: italic; }
 .theme-badge-pill {
   padding: 0.4rem 1rem; border-radius: 9999px; font-size: 0.7rem;
@@ -1497,66 +1497,23 @@ function renderThreeHouses(images: { old: string | null; refreshed: string | nul
       <div class="house-img">${oldImg}</div>
       <div class="house-body">
         <h3>The Old House</h3>
-        <p style="font-weight:500;color:#7f1d1d;margin-bottom:0.5rem">Today's Constrained Way</p>
-        <p style="font-weight:500;font-size:0.85rem;color:#991b1b;margin-bottom:0.5rem">The Noisy, Cluttered Present</p>
-        <ul style="list-style:none;padding:0;font-size:0.85rem;color:#991b1b">
-          <li style="padding:0.2rem 0">&bull; Full of internal noise and politics</li>
-          <li style="padding:0.2rem 0">&bull; Constrained by legacy systems</li>
-          <li style="padding:0.2rem 0">&bull; Limited by "how we've always done it"</li>
-          <li style="padding:0.2rem 0">&bull; Weighed down by accumulated baggage</li>
-        </ul>
-        <p style="font-size:0.75rem;font-style:italic;color:#b91c1c;margin-top:0.75rem">This is where we are stuck today.</p>
+        <p>What do we see today? Where are things patched, fragile or overly complex?</p>
       </div>
     </div>
     <div class="house-card house-orange">
       <div class="house-img">${refreshedImg}</div>
       <div class="house-body">
         <h3>The Refreshed House</h3>
-        <p style="font-weight:500;color:#7c2d12;margin-bottom:0.5rem">Small Incremental Steps</p>
-        <p style="font-weight:500;font-size:0.85rem;color:#9a3412;margin-bottom:0.5rem">The Trap of Small Fixes</p>
-        <ul style="list-style:none;padding:0;font-size:0.85rem;color:#9a3412">
-          <li style="padding:0.2rem 0">&bull; Polish the existing approach</li>
-          <li style="padding:0.2rem 0">&bull; Make incremental improvements</li>
-          <li style="padding:0.2rem 0">&bull; Optimize what already exists</li>
-          <li style="padding:0.2rem 0">&bull; Same house, slightly better paint</li>
-        </ul>
-        <p style="font-size:0.75rem;font-style:italic;color:#c2410c;margin-top:0.75rem">This makes little material difference — still constrained.</p>
+        <p>What improves but remains structurally the same?</p>
       </div>
     </div>
     <div class="house-card house-green">
       <div class="house-img">${idealImg}</div>
       <div class="house-body">
         <h3>The Ideal House</h3>
-        <p style="font-weight:500;color:#14532d;margin-bottom:0.5rem">Transformational Reimagination</p>
-        <p style="font-weight:500;font-size:0.85rem;color:#166534;margin-bottom:0.5rem">The Next Level</p>
-        <ul style="list-style:none;padding:0;font-size:0.85rem;color:#166534">
-          <li style="padding:0.2rem 0">&bull; If we could start from scratch today...</li>
-          <li style="padding:0.2rem 0">&bull; With no legacy constraints...</li>
-          <li style="padding:0.2rem 0">&bull; Ignoring "how it's always been done"...</li>
-          <li style="padding:0.2rem 0">&bull; What would we actually build?</li>
-        </ul>
-        <p style="font-size:0.75rem;font-style:italic;color:#16a34a;margin-top:0.75rem">This is transformational change — material difference.</p>
+        <p>Ignoring walls and constraints. What would we design from the ground up? What would feel effortless?</p>
       </div>
     </div>
-  </div>
-
-  <div style="background:#fefce8;border:2px solid #fef08a;border-radius:16px;padding:2rem;margin-bottom:2rem">
-    <h3 style="font-weight:700;font-size:1rem;color:#854d0e;margin-bottom:1rem">The Strategic Choice</h3>
-    <p style="font-weight:500;font-size:0.9rem;color:#111827;margin-bottom:1rem">
-      Most organizations get stuck in the middle house — making small improvements that feel productive but don't create material change.
-    </p>
-    <p style="font-size:0.85rem;color:#6b7280;margin-bottom:0.5rem">
-      <strong style="color:#7f1d1d">The Old House (Left):</strong> Today's reality is noisy and constrained. Full of internal politics, external pressures, legacy systems, and "how we've always done it."
-    </p>
-    <p style="font-size:0.85rem;color:#6b7280;margin-bottom:0.5rem">
-      <strong style="color:#9a3412">The Refreshed House (Middle) — THE TRAP:</strong> Small incremental steps that polish the existing approach. You're still in the same constrained house, just with slightly better paint.
-    </p>
-    <p style="font-size:0.85rem;color:#6b7280;margin-bottom:1rem">
-      <strong style="color:#166534">The Ideal House (Right) — THE GOAL:</strong> True reimagination. Remove all the noise. Ask: "If we could start from scratch today, with no constraints, what would we build?"
-    </p>
-    <p style="font-size:0.85rem;font-style:italic;color:#111827;border-top:1px solid #fde047;padding-top:1rem">
-      <strong>The point of DREAM workshops:</strong> Force teams to skip the middle house and reimagine without constraints. The agentic AI helps identify which insights are transformational (Ideal House) vs incremental (Refreshed House).
-    </p>
   </div>`;
 }
 
@@ -1634,6 +1591,13 @@ function renderReimag(data: any, customerJourney: any, houseImages?: { old: stri
   const rc = data.reimagineContent || data;
   let html = '<div class="beige-page">';
 
+  // Executive Insight (matches in-app: insight card before title)
+  if (summaries?.reimagineSummary) {
+    html += renderExecutiveInsightCard(summaries.reimagineSummary, {
+      title: 'Executive Insight: Reimagine',
+    });
+  }
+
   // Title card
   html += `<div class="reimagine-title-card">
     <span class="tag">REIMAGINE OUTPUT</span>
@@ -1642,13 +1606,6 @@ function renderReimag(data: any, customerJourney: any, houseImages?: { old: stri
     ${rc.subtitle ? `<p class="desc">${esc(rc.subtitle)}</p>` : ''}
     <p class="note">The themes below are presented in order of importance and emphasis during the session.</p>
   </div>`;
-
-  // Executive Insight
-  if (summaries?.reimagineSummary) {
-    html += renderExecutiveInsightCard(summaries.reimagineSummary, {
-      title: 'Executive Insight: Reimagine',
-    });
-  }
 
   // Section label
   html += `<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.15em;color:#D4A89A;margin-bottom:2rem;font-weight:500">HOW WE APPROACHED THE REIMAGINE SESSION</div>`;
@@ -1895,19 +1852,19 @@ function renderPotentialSolution(data: any, solutionBase64: string | null, summa
 
   let html = '<div class="solution-page">';
 
+  // Executive Insight (matches in-app: insight card before title)
+  if (summaries?.solutionSummary) {
+    html += renderExecutiveInsightCard(summaries.solutionSummary, {
+      title: 'Executive Insight: Solution',
+    });
+  }
+
   // Title card
   html += `<div class="solution-title-card">
     <span class="tag">POTENTIAL SOLUTION</span>
     <h1>Solution &amp; Enablers</h1>
     <p class="desc">${esc(data.overview || 'Based on the workshop analysis, the following enablers and implementation path have been identified.')}</p>
   </div>`;
-
-  // Executive Insight
-  if (summaries?.solutionSummary) {
-    html += renderExecutiveInsightCard(summaries.solutionSummary, {
-      title: 'Executive Insight: Solution',
-    });
-  }
 
   // Solution image
   if (solutionBase64) {
@@ -1943,10 +1900,16 @@ function renderPotentialSolution(data: any, solutionBase64: string | null, summa
   // Implementation roadmap
   if (data.implementationPath && Array.isArray(data.implementationPath) && data.implementationPath.length > 0) {
     html += `<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.15em;color:#D4A89A;margin-bottom:2rem;font-weight:500;margin-top:3rem">IMPLEMENTATION ROADMAP</div>`;
-    for (const phase of data.implementationPath) {
+    for (let pi = 0; pi < data.implementationPath.length; pi++) {
+      const phase = data.implementationPath[pi];
       html += `<div class="roadmap-phase">
-        <h4>${esc(phase.phase)}</h4>
-        <div class="phase-timeframe">${esc(phase.timeframe)}</div>
+        <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.75rem">
+          <div style="width:40px;height:40px;border-radius:50%;background:#2563eb;color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;flex-shrink:0">${pi + 1}</div>
+          <div>
+            <h4 style="margin-bottom:0">${esc(phase.phase)}</h4>
+            ${phase.timeframe ? `<div class="phase-timeframe" style="margin-bottom:0">${esc(phase.timeframe)}</div>` : ''}
+          </div>
+        </div>
         <div class="roadmap-actions">`;
       if (phase.actions?.length > 0) {
         html += `<div class="roadmap-col"><h5>Actions</h5><ul>`;
@@ -2123,19 +2086,19 @@ function renderCustomerJourney(data: any, summaries?: SectionSummaries | null): 
 
   let html = '<div class="beige-page">';
 
+  // Executive Insight (matches in-app: insight card before title)
+  if (summaries?.journeyMapSummary) {
+    html += renderExecutiveInsightCard(summaries.journeyMapSummary, {
+      title: 'Executive Insight: Customer Journey',
+    });
+  }
+
   // Title
   html += `<div class="reimagine-title-card" style="margin-bottom:2rem">
     <span class="tag">CUSTOMER JOURNEY</span>
     <h1>Customer Journey Map</h1>
     <p class="desc">A comprehensive view of the customer experience across all stages, actors, and touchpoints.</p>
   </div>`;
-
-  // Executive Insight
-  if (summaries?.journeyMapSummary) {
-    html += renderExecutiveInsightCard(summaries.journeyMapSummary, {
-      title: 'Executive Insight: Customer Journey',
-    });
-  }
 
   const stages: string[] = data.stages || [];
   const actors: any[] = data.actors || [];
@@ -2183,58 +2146,87 @@ function renderSummary(data: any, summaries?: SectionSummaries | null): string {
     });
   }
 
-  // Key Findings by category
+  // Key Findings by category — accordion-style cards matching in-app
   if (data.keyFindings && Array.isArray(data.keyFindings) && data.keyFindings.length > 0) {
-    html += `<div class="section-card"><h2>Key Findings</h2>`;
+    html += `<h3 style="font-weight:700;font-size:1.25rem;margin-bottom:1rem;color:#111827">Key Findings</h3>`;
     for (const group of data.keyFindings) {
-      html += `<div class="findings-category">
-        <h3>${esc(group.category)}</h3>
-        <ul>`;
+      html += `<div class="accordion-item" style="border:2px solid #bfdbfe;background:#eff6ff;margin-bottom:0.75rem">
+        <button class="accordion-trigger" onclick="toggleAccordion(this)">
+          <span class="accordion-icon">&#9654;</span>
+          <span style="font-size:1.25rem;margin-right:0.5rem">&#128161;</span>
+          <div>
+            <span style="font-weight:700;font-size:1.05rem">${esc(group.category)}</span>
+            <span style="font-size:0.8rem;opacity:0.7;margin-left:0.75rem">${group.findings?.length || 0} key insights</span>
+          </div>
+        </button>
+        <div class="accordion-content">
+          <ul style="list-style:none;padding:0">`;
       if (group.findings && Array.isArray(group.findings)) {
         for (const finding of group.findings) {
-          html += `<li>${esc(finding)}</li>`;
+          html += `<li style="padding:0.3rem 0;font-size:0.9rem;display:flex;gap:0.5rem"><span style="color:#2563eb;flex-shrink:0">&#10003;</span> ${esc(finding)}</li>`;
         }
       }
-      html += `</ul></div>`;
+      html += `</ul></div></div>`;
+    }
+  }
+
+  // Recommended Next Steps — card-based layout matching in-app
+  if (data.recommendedNextSteps && Array.isArray(data.recommendedNextSteps) && data.recommendedNextSteps.length > 0) {
+    html += `<div class="accordion-item" style="border:2px solid #bbf7d0;background:#f0fdf4;margin-top:1.5rem">
+      <button class="accordion-trigger" onclick="toggleAccordion(this)">
+        <span class="accordion-icon">&#9654;</span>
+        <span style="font-size:1.25rem;margin-right:0.5rem">&#128197;</span>
+        <div>
+          <span style="font-weight:700;font-size:1.05rem">Recommended Next Steps</span>
+          <span style="font-size:0.8rem;opacity:0.7;margin-left:0.75rem">Priority actions with timeline</span>
+        </div>
+      </button>
+      <div class="accordion-content">
+        <div style="display:flex;flex-direction:column;gap:1rem;padding-top:0.5rem">`;
+    const stepEmojis = ['1\uFE0F\u20E3', '2\uFE0F\u20E3', '3\uFE0F\u20E3', '4\uFE0F\u20E3', '5\uFE0F\u20E3'];
+    for (let si = 0; si < data.recommendedNextSteps.length; si++) {
+      const step = data.recommendedNextSteps[si];
+      html += `<div style="background:white;border:2px solid #dcfce7;border-radius:12px;padding:1.25rem">
+        <div style="display:flex;align-items:flex-start;gap:1rem">
+          <span style="font-size:1.5rem">${stepEmojis[si] || ''}</span>
+          <div style="flex:1">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem">
+              <strong style="font-size:1.05rem;color:#111827">${esc(step.step)}</strong>
+              <span style="font-size:0.7rem;padding:0.2rem 0.5rem;border-radius:9999px;background:#dcfce7;color:#166534;border:1px solid #86efac;white-space:nowrap">${esc(step.timeframe)}</span>
+            </div>
+            <p style="font-size:0.85rem;color:#6b7280;margin-bottom:0.75rem">Owner: ${esc(step.owner)}</p>`;
+      if (step.actions && Array.isArray(step.actions) && step.actions.length > 0) {
+        html += `<ul style="list-style:none;padding:0">`;
+        for (const a of step.actions) {
+          html += `<li style="padding:0.15rem 0;font-size:0.85rem;display:flex;gap:0.5rem"><span style="color:#16a34a;flex-shrink:0">&#9656;</span> ${esc(a)}</li>`;
+        }
+        html += `</ul>`;
+      }
+      html += `</div></div></div>`;
+    }
+    html += `</div></div></div>`;
+  }
+
+  // Success Metrics — card grid matching in-app
+  if (data.successMetrics && Array.isArray(data.successMetrics) && data.successMetrics.length > 0) {
+    html += `<h3 style="font-weight:700;font-size:1.25rem;margin:1.5rem 0 1rem;color:#111827">Success Metrics</h3>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem">`;
+    for (const m of data.successMetrics) {
+      html += `<div style="background:#eef2ff;border:2px solid #c7d2fe;border-radius:12px;padding:1.25rem">
+        <div style="display:flex;align-items:flex-start;gap:0.75rem">
+          <span style="font-size:1.25rem;color:#4f46e5;flex-shrink:0">&#127919;</span>
+          <div style="flex:1">
+            <h4 style="font-weight:600;color:#312e81;margin-bottom:0.5rem;font-size:0.95rem">${esc(m.metric)}</h4>
+            <div style="font-size:0.85rem">
+              <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem"><span style="color:#6b7280">Baseline:</span><span style="font-weight:500">${esc(m.baseline)}</span></div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem"><span style="color:#6b7280">Target:</span><span style="font-weight:500;color:#16a34a">${esc(m.target)}</span></div>
+              <div style="font-size:0.75rem;color:#6b7280;padding-top:0.5rem;border-top:1px solid #e0e7ff">${esc(m.measurement)}</div>
+            </div>
+          </div>
+        </div>
+      </div>`;
     }
     html += `</div>`;
-  }
-
-  // Recommended Next Steps
-  if (data.recommendedNextSteps && Array.isArray(data.recommendedNextSteps) && data.recommendedNextSteps.length > 0) {
-    html += `<div class="section-card"><h2>Recommended Next Steps</h2>
-    <table class="summary-table">
-      <thead><tr><th>Step</th><th>Timeframe</th><th>Owner</th><th>Actions</th></tr></thead>
-      <tbody>`;
-    for (const step of data.recommendedNextSteps) {
-      const actions = step.actions && Array.isArray(step.actions)
-        ? `<ul style="margin:0;padding-left:1.25rem">${step.actions.map((a: string) => `<li>${esc(a)}</li>`).join('')}</ul>`
-        : '-';
-      html += `<tr>
-        <td><strong>${esc(step.step)}</strong></td>
-        <td>${esc(step.timeframe)}</td>
-        <td>${esc(step.owner)}</td>
-        <td>${actions}</td>
-      </tr>`;
-    }
-    html += `</tbody></table></div>`;
-  }
-
-  // Success Metrics
-  if (data.successMetrics && Array.isArray(data.successMetrics) && data.successMetrics.length > 0) {
-    html += `<div class="section-card"><h2>Success Metrics</h2>
-    <table class="summary-table">
-      <thead><tr><th>Metric</th><th>Baseline</th><th>Target</th><th>Measurement</th></tr></thead>
-      <tbody>`;
-    for (const m of data.successMetrics) {
-      html += `<tr>
-        <td><strong>${esc(m.metric)}</strong></td>
-        <td>${esc(m.baseline)}</td>
-        <td>${esc(m.target)}</td>
-        <td>${esc(m.measurement)}</td>
-      </tr>`;
-    }
-    html += `</tbody></table></div>`;
   }
 
   return html || '<div class="section-card"><p>No summary data available.</p></div>';
