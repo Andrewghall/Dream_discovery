@@ -8,6 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Mic, MicOff, Square, FileText, ArrowLeft, Clock, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import Link from 'next/link';
 import { transcribeAudio } from '@/lib/captureapi/client';
+import { nanoid } from 'nanoid';
+import { useDiagnosticTraces } from '@/hooks/useDiagnosticTraces';
+import { PipelineSniffer } from '@/components/diagnostics/pipeline-sniffer';
+import type { ServerTimings } from '@/lib/diagnostics/types';
 
 interface TranscriptEntry {
   id: string;
@@ -69,21 +73,38 @@ export default function SalesLivePage() {
   const [coachingPrompts, setCoachingPrompts] = useState<CoachingPrompt[]>([]);
   const [planCoverage, setPlanCoverage] = useState<PlanCoverageItem[]>([]);
 
+  // Developer diagnostics
+  const [isDeveloper, setIsDeveloper] = useState(false);
+  const diagnostics = useDiagnosticTraces();
+
+  useEffect(() => {
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.isDeveloper) setIsDeveloper(true); })
+      .catch(() => null);
+  }, []);
+
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const queueRef = useRef<{ blob: Blob; startTime: number; endTime: number }[]>([]);
+  const queueRef = useRef<{ blob: Blob; startTime: number; endTime: number; traceId?: string }[]>([]);
   const processingRef = useRef(false);
   const stopRef = useRef(false);
   const chunkStartRef = useRef(0);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number>(0);
+  const latestTraceIdRef = useRef<string | null>(null);
 
-  // Auto-scroll transcript
+  // Auto-scroll transcript + record render timing for diagnostics
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [transcript]);
+    // Record UI render timestamp for the latest trace
+    if (isDeveloper && latestTraceIdRef.current) {
+      diagnostics.recordTimestamp(latestTraceIdRef.current, 't_uiRendered', Date.now());
+      latestTraceIdRef.current = null;
+    }
+  }, [transcript, isDeveloper, diagnostics]);
 
   // Elapsed timer
   useEffect(() => {
@@ -101,8 +122,17 @@ export default function SalesLivePage() {
     const es = new EventSource(`/api/sales/${workshopId}/events`);
 
     es.addEventListener('transcript.new', (e) => {
+      const t_sseReceived = Date.now();
       const data = JSON.parse(e.data);
       const p = data.payload;
+
+      // Pipeline diagnostics — merge server timings
+      if (p._serverTimings) {
+        const st = p._serverTimings as ServerTimings;
+        diagnostics.mergeServerTimestamps(st);
+        diagnostics.recordTimestamp(st.traceId, 't_sseReceived', t_sseReceived);
+      }
+
       setTranscript((prev) => [...prev, {
         id: p.id,
         speakerId: p.speakerId,
@@ -182,11 +212,27 @@ export default function SalesLivePage() {
       if (!item) break;
 
       try {
+        const tid = item.traceId;
+        if (tid) diagnostics.recordTimestamp(tid, 't_captureApiSent', Date.now());
+
         const result = await transcribeAudio(item.blob, { mode: 'workshop', enableSLM: true });
+
+        if (tid) {
+          diagnostics.recordTimestamp(tid, 't_captureApiReceived', Date.now());
+          if (result.metadata?.processingTimeMs) {
+            diagnostics.setCaptureApiReportedMs(tid, result.metadata.processingTimeMs);
+          }
+        }
 
         if (result.success && result.transcription?.cleanText?.trim()) {
           const text = result.transcription.cleanText.trim();
           const speakerId = result.transcription.speaker != null ? `speaker_${result.transcription.speaker}` : null;
+
+          if (tid) {
+            diagnostics.setTextPreview(tid, text);
+            diagnostics.recordTimestamp(tid, 't_serverPostSent', Date.now());
+            latestTraceIdRef.current = tid;
+          }
 
           // Post to our sales transcript endpoint
           await fetch(`/api/sales/${workshopId}/transcript`, {
@@ -205,6 +251,7 @@ export default function SalesLivePage() {
                 emotionalTone: result.analysis.emotionalTone,
                 slmConfidence: result.analysis.confidence,
               } : undefined,
+              ...(tid ? { traceId: tid } : {}),
             }),
           });
 
@@ -225,7 +272,7 @@ export default function SalesLivePage() {
     }
 
     processingRef.current = false;
-  }, [workshopId, callStartTime]);
+  }, [workshopId, callStartTime, diagnostics]);
 
   // Start capture
   const startCapture = async () => {
@@ -244,10 +291,15 @@ export default function SalesLivePage() {
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
           const now = Date.now();
+          const traceId = isDeveloper ? nanoid(10) : undefined;
+          if (traceId) {
+            diagnostics.recordTimestamp(traceId, 't_audioCaptured', now);
+          }
           queueRef.current.push({
             blob: e.data,
             startTime: chunkStartRef.current,
             endTime: now,
+            traceId,
           });
           chunkStartRef.current = now;
           processQueue();
@@ -521,6 +573,18 @@ export default function SalesLivePage() {
           </div>
         </div>
       </div>
+
+      {/* Pipeline Sniffer — developer only */}
+      {isDeveloper && (
+        <PipelineSniffer
+          traces={diagnostics.traces}
+          stats={diagnostics.stats}
+          paused={diagnostics.paused}
+          onTogglePause={() => diagnostics.setPaused(!diagnostics.paused)}
+          onClear={diagnostics.clear}
+          onExport={diagnostics.exportTraces}
+        />
+      )}
     </div>
   );
 }

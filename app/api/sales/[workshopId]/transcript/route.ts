@@ -19,6 +19,8 @@ export async function POST(
   { params }: { params: Promise<{ workshopId: string }> }
 ) {
   try {
+    const t_serverReceived = Date.now();
+
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -26,7 +28,7 @@ export async function POST(
 
     const { workshopId } = await params;
     const body = await request.json();
-    const { speakerId, startTime, endTime, text, rawText, confidence, source, slmMetadata } = body;
+    const { speakerId, startTime, endTime, text, rawText, confidence, source, slmMetadata, traceId } = body;
 
     if (!text || text.trim().length === 0) {
       return NextResponse.json({ success: true, skipped: true });
@@ -77,7 +79,10 @@ export async function POST(
       }),
     ]);
 
+    const t_dbWriteComplete = Date.now();
+
     // Emit SSE event for live UI (transcript chunk is saved)
+    const t_sseEmitted = Date.now();
     emitSalesEvent(workshopId, {
       type: 'transcript.new',
       payload: {
@@ -89,6 +94,15 @@ export async function POST(
         endTime,
         confidence,
         emotionalTone: slmMetadata?.emotionalTone || null,
+        // Pipeline diagnostics — only included when a developer sends a traceId
+        ...(traceId ? {
+          _serverTimings: {
+            traceId,
+            t_serverReceived,
+            t_dbWriteComplete,
+            t_sseEmitted,
+          },
+        } : {}),
       },
     });
 

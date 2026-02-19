@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/prisma';
+import { isDeveloperEmail } from '@/lib/auth/is-developer';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,5 +30,6 @@ export async function GET() {
     name: user?.name || null,
     orgName: user?.organization?.name || null,
     orgLogoUrl: user?.organization?.logoUrl || null,
+    isDeveloper: isDeveloperEmail(session.email),
   });
 }
