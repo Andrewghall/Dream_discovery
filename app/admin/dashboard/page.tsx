@@ -31,8 +31,8 @@ export default async function AdminDashboardPage() {
   const orgFilter = !isPlatformAdmin && session.organizationId
     ? { organizationId: session.organizationId }
     : {};
-  const userOrgFilter = !isPlatformAdmin && session.organizationId
-    ? { where: { organizationId: session.organizationId } }
+  const userWhere = !isPlatformAdmin && session.organizationId
+    ? { organizationId: session.organizationId }
     : {};
 
   // Get statistics
@@ -53,8 +53,8 @@ export default async function AdminDashboardPage() {
         ? { workshop: { organizationId: session.organizationId } }
         : {},
     }),
-    prisma.user.count(userOrgFilter),
-    prisma.user.count({ where: { isActive: true, ...orgFilter } }),
+    prisma.user.count({ where: userWhere }),
+    prisma.user.count({ where: { isActive: true, ...userWhere } }),
     prisma.workshop.findMany({
       where: orgFilter,
       take: 5,
