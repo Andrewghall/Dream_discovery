@@ -20,6 +20,14 @@ export function WordCloud({
   className?: string;
   variant?: 'neutral' | 'ambition' | 'reality';
 }) {
+  if (!words || words.length === 0) {
+    return (
+      <div className={cn('word-cloud flex items-center justify-center text-muted-foreground text-sm py-4', className)}>
+        No data available
+      </div>
+    );
+  }
+
   const max = Math.max(1, ...words.map((w) => w.value));
 
   const neutralPalette = [

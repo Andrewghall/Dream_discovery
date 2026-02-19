@@ -53,6 +53,14 @@ export function RadarChart({
   const baseData = (series?.[0]?.data?.length ? series[0].data : data) || [];
   const n = baseData.length;
 
+  if (n < 1) {
+    return (
+      <div className={cn('w-full flex items-center justify-center text-muted-foreground text-sm py-8', className)}>
+        No data available
+      </div>
+    );
+  }
+
   const normalizedSeries: RadarSeries[] =
     series && series.length
       ? series

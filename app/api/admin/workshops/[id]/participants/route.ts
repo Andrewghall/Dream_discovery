@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/require-auth';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(
@@ -6,6 +7,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { id: workshopId } = await params;
     const body = await request.json();
     const { name, email, role, department } = body;
@@ -36,6 +40,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { id: workshopId } = await params;
     const body = await request.json().catch(() => ({}));
     const participantId = body?.participantId as string | undefined;
@@ -72,6 +79,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { id: workshopId } = await params;
     const body = (await request.json().catch(() => null)) as
       | { participantId?: unknown; doNotSendAgain?: unknown }

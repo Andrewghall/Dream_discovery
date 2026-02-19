@@ -218,18 +218,13 @@ export default function WorkshopDetailPage({ params }: PageProps) {
   };
 
   const handleSendInvitations = async () => {
-    console.log('🚀 Send Invitations clicked');
-    
     try {
-      // Simple, direct fetch call
       const response = await fetch(`/api/admin/workshops/${id}/send-invitations`, {
         method: 'POST',
       });
 
-      console.log('📥 Response received:', response.status);
       if (response.ok) {
         const data = await response.json();
-        console.log('📊 Response data:', data);
 
         if (data.errors?.length) {
           const errors: unknown = data.errors;

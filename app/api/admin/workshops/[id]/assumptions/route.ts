@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/require-auth';
 import OpenAI from 'openai';
 
 import { prisma } from '@/lib/prisma';
@@ -65,6 +66,9 @@ function pickFromProvided(params: {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { id: workshopId } = await params;
     const workshop = await prisma.workshop.findUnique({ where: { id: workshopId } });
     if (!workshop) return NextResponse.json({ ok: false, error: 'Workshop not found' }, { status: 404 });

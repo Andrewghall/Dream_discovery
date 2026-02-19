@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth/require-auth';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { id: workshopId } = await params;
 
     // Clear emailSentAt for all participants in this workshop

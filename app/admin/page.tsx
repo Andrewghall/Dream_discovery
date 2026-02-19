@@ -81,16 +81,23 @@ export default function AdminDashboard() {
     fetchWorkshops();
     fetchDbDebug();
     fetch('/api/auth/me', { cache: 'no-store' })
-      .then(r => r.json())
+      .then(r => {
+        if (r.status === 401) { router.push('/login'); return null; }
+        return r.json();
+      })
       .then(data => {
+        if (!data) return;
         setUserRole(data.role || null);
         setUserName(data.name || null);
         setOrgLogoUrl(data.orgLogoUrl || null);
       })
       .catch(() => null);
     fetch('/api/admin/audit-logs?limit=10', { cache: 'no-store' })
-      .then(r => r.json())
-      .then(data => setAuditLogs(data.logs || []))
+      .then(r => {
+        if (r.status === 401) { router.push('/login'); return null; }
+        return r.json();
+      })
+      .then(data => { if (data) setAuditLogs(data.logs || []); })
       .catch(() => null);
   }, []);
 

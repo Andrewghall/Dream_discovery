@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/require-auth';
 import { prisma } from '@/lib/prisma';
 import { sendWelcomeEmail } from '@/lib/email/send';
 import * as bcrypt from 'bcryptjs';
@@ -15,6 +16,9 @@ function generateTemporaryPassword(): string {
 
 export async function GET() {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const organizations = await prisma.organization.findMany({
       orderBy: {
         name: 'asc',
@@ -33,6 +37,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { name, logoUrl, primaryColor, secondaryColor, maxSeats, billingEmail, adminName } = await request.json();
 
     if (!name?.trim()) {
@@ -129,6 +136,9 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { id, name, logoUrl, primaryColor, secondaryColor, maxSeats, billingEmail, adminName } = await request.json();
 
     if (!id) {
@@ -157,6 +167,9 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { id } = await request.json();
     if (!id) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });

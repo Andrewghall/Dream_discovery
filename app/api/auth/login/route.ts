@@ -42,7 +42,15 @@ export async function POST(request: NextRequest) {
     const adminPassword = process.env.ADMIN_PASSWORD;
 
     if (adminUsername && email.toLowerCase().trim() === adminUsername.toLowerCase()) {
-      if (password !== adminPassword) {
+      // Use bcrypt.compare for admin password — the env var ADMIN_PASSWORD must be a bcrypt hash.
+      // Falls back to plain-text comparison if the env value doesn't look like a bcrypt hash (starts with $2).
+      const isAdminValid = adminPassword
+        ? adminPassword.startsWith('$2')
+          ? await bcrypt.compare(password, adminPassword)
+          : password === adminPassword
+        : false;
+
+      if (!isAdminValid) {
         return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
       }
 

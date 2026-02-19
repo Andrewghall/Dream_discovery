@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { InsightCategory, InsightType } from '@prisma/client';
 import { createHash } from 'crypto';
+import { requireAuth } from '@/lib/auth/require-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -143,6 +144,9 @@ export async function GET(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { sessionId } = await params;
 
     const report = await (prisma as any).conversationReport.findUnique({ where: { sessionId } });
@@ -163,6 +167,9 @@ export async function POST(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { sessionId } = await params;
     const force = request.nextUrl.searchParams.get('force') === '1';
     const includeInsights = request.nextUrl.searchParams.get('insights') === '1';

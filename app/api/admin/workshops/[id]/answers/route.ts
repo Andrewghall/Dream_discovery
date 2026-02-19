@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/require-auth';
 import { prisma } from '@/lib/prisma';
 import { ConversationStatus, Prisma } from '@prisma/client';
 import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
@@ -142,6 +143,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth();
+    if (auth instanceof NextResponse) return auth;
+
     const { id: workshopId } = await params;
 
     const sessionId = request.nextUrl.searchParams.get('sessionId');

@@ -17,6 +17,20 @@ const impactColors: Record<string, string> = {
   Low: 'bg-green-100 text-green-800 border-green-300',
 };
 
+// Pre-defined Tailwind class maps — avoids dynamic class construction that Tailwind can't detect
+const colorStyles: Record<string, { border200: string; bg50: string; text600: string; border100: string }> = {
+  blue:   { border200: 'border-blue-200',   bg50: 'bg-blue-50',   text600: 'text-blue-600',   border100: 'border-blue-100' },
+  purple: { border200: 'border-purple-200', bg50: 'bg-purple-50', text600: 'text-purple-600', border100: 'border-purple-100' },
+  green:  { border200: 'border-green-200',  bg50: 'bg-green-50',  text600: 'text-green-600',  border100: 'border-green-100' },
+  orange: { border200: 'border-orange-200', bg50: 'bg-orange-50', text600: 'text-orange-600', border100: 'border-orange-100' },
+};
+
+const mitigationStyles: Record<string, { bg50: string; border400: string; text900: string; text800: string }> = {
+  green:  { bg50: 'bg-green-50',  border400: 'border-green-400',  text900: 'text-green-900',  text800: 'text-green-800' },
+  purple: { bg50: 'bg-purple-50', border400: 'border-purple-400', text900: 'text-purple-900', text800: 'text-purple-800' },
+  orange: { bg50: 'bg-orange-50', border400: 'border-orange-400', text900: 'text-orange-900', text800: 'text-orange-800' },
+};
+
 const CATEGORIES = [
   { key: 'regulatory', label: 'Regulatory Constraints', sublabel: 'compliance requirements', Icon: Shield, color: 'blue', mitigationColor: 'green' },
   { key: 'technical', label: 'Technical Constraints', sublabel: 'technical blockers', Icon: Code, color: 'purple', mitigationColor: 'purple' },
@@ -59,16 +73,18 @@ export function ConstraintsTab({ data, onChange }: ConstraintsTabProps) {
         {CATEGORIES.map(({ key, label, sublabel, Icon, color, mitigationColor }) => {
           const items = data[key];
           if (!items) return null;
+          const cs = colorStyles[color];
+          const ms = mitigationStyles[mitigationColor];
 
           return (
             <AccordionItem
               key={key}
               value={key}
-              className={`border-2 border-${color}-200 bg-${color}-50 rounded-lg px-6`}
+              className={`border-2 ${cs.border200} ${cs.bg50} rounded-lg px-6`}
             >
               <AccordionTrigger className="hover:no-underline">
                 <div className="flex items-center gap-4">
-                  <Icon className={`h-8 w-8 text-${color}-600`} />
+                  <Icon className={`h-8 w-8 ${cs.text600}`} />
                   <div className="text-left">
                     <div className="font-bold text-lg">{label}</div>
                     <div className="text-sm opacity-70">{items.length} {sublabel}</div>
@@ -78,7 +94,7 @@ export function ConstraintsTab({ data, onChange }: ConstraintsTabProps) {
               <AccordionContent>
                 <div className="space-y-4 pt-4">
                   {items.map((item: any, idx: number) => (
-                    <Card key={idx} className={`p-4 border-2 border-${color}-100`}>
+                    <Card key={idx} className={`p-4 border-2 ${cs.border100}`}>
                       <div className="flex items-start justify-between mb-3">
                         <EditableText
                           value={item.title}
@@ -97,12 +113,12 @@ export function ConstraintsTab({ data, onChange }: ConstraintsTabProps) {
                         className="text-sm text-muted-foreground mb-3"
                         multiline
                       />
-                      <div className={`bg-${mitigationColor}-50 border-l-4 border-${mitigationColor}-400 p-3`}>
-                        <p className={`text-sm font-medium text-${mitigationColor}-900`}>Mitigation:</p>
+                      <div className={`${ms.bg50} border-l-4 ${ms.border400} p-3`}>
+                        <p className={`text-sm font-medium ${ms.text900}`}>Mitigation:</p>
                         <EditableText
                           value={item.mitigation}
                           onChange={(v) => updateItem(key, idx, 'mitigation', v)}
-                          className={`text-sm text-${mitigationColor}-800`}
+                          className={`text-sm ${ms.text800}`}
                           multiline
                         />
                       </div>
