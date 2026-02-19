@@ -16,6 +16,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { prisma } from '@/lib/prisma';
 import JSZip from 'jszip';
+import fs from 'fs/promises';
+import path from 'path';
 
 /* ── Tiny helper: HTML-escape user content ── */
 function esc(s: any): string {
@@ -27,9 +29,31 @@ function esc(s: any): string {
     .replace(/"/g, '&quot;');
 }
 
-/* ── Fetch and base64 encode a remote image ── */
+/* ── Read a local file from public/ as base64 data URI ── */
+async function readLocalImageAsBase64(relativePath: string): Promise<string | null> {
+  try {
+    const publicDir = path.join(process.cwd(), 'public');
+    const filePath = path.join(publicDir, relativePath);
+    const buffer = await fs.readFile(filePath);
+    const ext = path.extname(filePath).toLowerCase().replace('.', '');
+    const mimeMap: Record<string, string> = {
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+      gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+    };
+    const contentType = mimeMap[ext] || 'image/png';
+    return `data:${contentType};base64,${buffer.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
+/* ── Fetch and base64 encode an image (remote URL or local path) ── */
 async function fetchImageAsBase64(url: string): Promise<string | null> {
   if (!url) return null;
+  // Handle relative URLs by reading from local filesystem
+  if (url.startsWith('/')) {
+    return readLocalImageAsBase64(url);
+  }
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!response.ok) return null;
@@ -134,10 +158,14 @@ async function generateStaticHTMLPackage(workshop: any) {
   const solutionImageUrl = sp.solutionImageUrl || '';
 
   // Fetch images and embed as base64
-  const [logoBase64, solutionBase64] = await Promise.all([
+  const [logoBase64, solutionBase64, houseOldB64, houseRefreshedB64, houseIdealB64] = await Promise.all([
     fetchImageAsBase64(logoUrl),
     fetchImageAsBase64(solutionImageUrl),
+    readLocalImageAsBase64('PAMWellness/house-old.png'),
+    readLocalImageAsBase64('PAMWellness/house-refreshed.png'),
+    readLocalImageAsBase64('PAMWellness/house-ideal.png'),
   ]);
+  const houseImages = { old: houseOldB64, refreshed: houseRefreshedB64, ideal: houseIdealB64 };
 
   const files: Record<string, string> = {};
 
@@ -145,7 +173,7 @@ async function generateStaticHTMLPackage(workshop: any) {
   const tabsHTML = [
     { id: 'exec-summary', label: 'Exec Summary', content: renderExecutiveSummary(execSummary) },
     { id: 'discovery', label: 'Discovery', content: renderDiscoveryOutput(discoveryOutput) },
-    { id: 'reimagine', label: 'Reimagine', content: renderReimag(reimagineContent, customerJourney) },
+    { id: 'reimagine', label: 'Reimagine', content: renderReimag(reimagineContent, customerJourney, houseImages) },
     { id: 'constraints', label: 'Constraints', content: renderConstraints(constraintsContent) },
     { id: 'solution', label: 'Solution', content: renderPotentialSolution(potentialSolution, solutionBase64) },
     { id: 'commercial', label: 'Commercial', content: renderCommercial(commercialContent) },
@@ -1208,41 +1236,82 @@ function renderDiscoveryOutput(data: any): string {
    3. REIMAGINE
    ================================================================ */
 
-function renderThreeHousesSVGs(): string {
+function renderThreeHouses(images: { old: string | null; refreshed: string | null; ideal: string | null }): string {
+  const oldImg = images.old
+    ? `<img src="${images.old}" alt="The Old House" style="width:100%;height:100%;object-fit:contain">`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" fill="none" viewBox="0 0 24 24" stroke="#fca5a5" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"/></svg>`;
+  const refreshedImg = images.refreshed
+    ? `<img src="${images.refreshed}" alt="The Refreshed House" style="width:100%;height:100%;object-fit:contain">`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" fill="none" viewBox="0 0 24 24" stroke="#fdba74" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>`;
+  const idealImg = images.ideal
+    ? `<img src="${images.ideal}" alt="The Ideal House" style="width:100%;height:100%;object-fit:contain">`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" fill="none" viewBox="0 0 24 24" stroke="#86efac" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>`;
+
   return `<div class="three-houses">
     <div class="house-card house-red">
-      <div class="house-img">
-        <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" fill="none" viewBox="0 0 24 24" stroke="#fca5a5" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"/>
-        </svg>
-      </div>
+      <div class="house-img">${oldImg}</div>
       <div class="house-body">
         <h3>The Old House</h3>
-        <p>What do we see today? Where are things patched, fragile or overly complex?</p>
+        <p style="font-weight:500;color:#7f1d1d;margin-bottom:0.5rem">Today's Constrained Way</p>
+        <p style="font-weight:500;font-size:0.85rem;color:#991b1b;margin-bottom:0.5rem">The Noisy, Cluttered Present</p>
+        <ul style="list-style:none;padding:0;font-size:0.85rem;color:#991b1b">
+          <li style="padding:0.2rem 0">&bull; Full of internal noise and politics</li>
+          <li style="padding:0.2rem 0">&bull; Constrained by legacy systems</li>
+          <li style="padding:0.2rem 0">&bull; Limited by "how we've always done it"</li>
+          <li style="padding:0.2rem 0">&bull; Weighed down by accumulated baggage</li>
+        </ul>
+        <p style="font-size:0.75rem;font-style:italic;color:#b91c1c;margin-top:0.75rem">This is where we are stuck today.</p>
       </div>
     </div>
     <div class="house-card house-orange">
-      <div class="house-img">
-        <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" fill="none" viewBox="0 0 24 24" stroke="#fdba74" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
-        </svg>
-      </div>
+      <div class="house-img">${refreshedImg}</div>
       <div class="house-body">
         <h3>The Refreshed House</h3>
-        <p>What improves but remains structurally the same?</p>
+        <p style="font-weight:500;color:#7c2d12;margin-bottom:0.5rem">Small Incremental Steps</p>
+        <p style="font-weight:500;font-size:0.85rem;color:#9a3412;margin-bottom:0.5rem">The Trap of Small Fixes</p>
+        <ul style="list-style:none;padding:0;font-size:0.85rem;color:#9a3412">
+          <li style="padding:0.2rem 0">&bull; Polish the existing approach</li>
+          <li style="padding:0.2rem 0">&bull; Make incremental improvements</li>
+          <li style="padding:0.2rem 0">&bull; Optimize what already exists</li>
+          <li style="padding:0.2rem 0">&bull; Same house, slightly better paint</li>
+        </ul>
+        <p style="font-size:0.75rem;font-style:italic;color:#c2410c;margin-top:0.75rem">This makes little material difference — still constrained.</p>
       </div>
     </div>
     <div class="house-card house-green">
-      <div class="house-img">
-        <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" fill="none" viewBox="0 0 24 24" stroke="#86efac" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-        </svg>
-      </div>
+      <div class="house-img">${idealImg}</div>
       <div class="house-body">
         <h3>The Ideal House</h3>
-        <p>Ignoring walls and constraints. What would we design from the ground up?</p>
+        <p style="font-weight:500;color:#14532d;margin-bottom:0.5rem">Transformational Reimagination</p>
+        <p style="font-weight:500;font-size:0.85rem;color:#166534;margin-bottom:0.5rem">The Next Level</p>
+        <ul style="list-style:none;padding:0;font-size:0.85rem;color:#166534">
+          <li style="padding:0.2rem 0">&bull; If we could start from scratch today...</li>
+          <li style="padding:0.2rem 0">&bull; With no legacy constraints...</li>
+          <li style="padding:0.2rem 0">&bull; Ignoring "how it's always been done"...</li>
+          <li style="padding:0.2rem 0">&bull; What would we actually build?</li>
+        </ul>
+        <p style="font-size:0.75rem;font-style:italic;color:#16a34a;margin-top:0.75rem">This is transformational change — material difference.</p>
       </div>
     </div>
+  </div>
+
+  <div style="background:#fefce8;border:2px solid #fef08a;border-radius:16px;padding:2rem;margin-bottom:2rem">
+    <h3 style="font-weight:700;font-size:1rem;color:#854d0e;margin-bottom:1rem">The Strategic Choice</h3>
+    <p style="font-weight:500;font-size:0.9rem;color:#111827;margin-bottom:1rem">
+      Most organizations get stuck in the middle house — making small improvements that feel productive but don't create material change.
+    </p>
+    <p style="font-size:0.85rem;color:#6b7280;margin-bottom:0.5rem">
+      <strong style="color:#7f1d1d">The Old House (Left):</strong> Today's reality is noisy and constrained. Full of internal politics, external pressures, legacy systems, and "how we've always done it."
+    </p>
+    <p style="font-size:0.85rem;color:#6b7280;margin-bottom:0.5rem">
+      <strong style="color:#9a3412">The Refreshed House (Middle) — THE TRAP:</strong> Small incremental steps that polish the existing approach. You're still in the same constrained house, just with slightly better paint.
+    </p>
+    <p style="font-size:0.85rem;color:#6b7280;margin-bottom:1rem">
+      <strong style="color:#166534">The Ideal House (Right) — THE GOAL:</strong> True reimagination. Remove all the noise. Ask: "If we could start from scratch today, with no constraints, what would we build?"
+    </p>
+    <p style="font-size:0.85rem;font-style:italic;color:#111827;border-top:1px solid #fde047;padding-top:1rem">
+      <strong>The point of DREAM workshops:</strong> Force teams to skip the middle house and reimagine without constraints. The agentic AI helps identify which insights are transformational (Ideal House) vs incremental (Refreshed House).
+    </p>
   </div>`;
 }
 
@@ -1312,7 +1381,7 @@ function renderJourneyMapCompact(journey: any): string {
   return html;
 }
 
-function renderReimag(data: any, customerJourney: any): string {
+function renderReimag(data: any, customerJourney: any, houseImages?: { old: string | null; refreshed: string | null; ideal: string | null }): string {
   if (!data || Object.keys(data).length === 0) {
     return '<div class="section-card"><p>No reimagine content available.</p></div>';
   }
@@ -1333,7 +1402,7 @@ function renderReimag(data: any, customerJourney: any): string {
   html += `<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.15em;color:#D4A89A;margin-bottom:2rem;font-weight:500">HOW WE APPROACHED THE REIMAGINE SESSION</div>`;
 
   // Three Houses
-  html += renderThreeHousesSVGs();
+  html += renderThreeHouses(houseImages || { old: null, refreshed: null, ideal: null });
 
   // Green accent boxes
   const accentSections = [];
