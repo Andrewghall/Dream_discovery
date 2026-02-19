@@ -3,6 +3,7 @@
 import { Card } from '@/components/ui/card';
 import { EditableText } from './EditableText';
 import { EditableList } from './EditableList';
+import { AiInsightCard } from './AiInsightCard';
 
 interface PotentialSolutionTabProps {
   data: any;
@@ -38,6 +39,9 @@ export function PotentialSolutionTab({ data, onChange }: PotentialSolutionTabPro
 
   return (
     <div className="space-y-12 bg-[#f8f4ec] -mx-8 -my-8 px-8 py-12 min-h-screen">
+      {/* AI Executive Insight */}
+      {data._aiSummary && <AiInsightCard summary={data._aiSummary} />}
+
       {/* Title */}
       <div className="bg-white rounded-3xl p-16 border-0 shadow-sm">
         <div className="inline-block px-4 py-1.5 rounded-full border border-black/10 text-[10px] uppercase tracking-[0.25em] text-black/40 mb-8 font-medium">

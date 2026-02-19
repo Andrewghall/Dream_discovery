@@ -6,6 +6,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { MessageSquare, Users, TrendingUp, Brain } from 'lucide-react';
 import { EditableText } from './EditableText';
 import { EditableList } from './EditableList';
+import { AiInsightCard } from './AiInsightCard';
 
 interface DiscoveryOutputTabProps {
   data: any;
@@ -337,6 +338,9 @@ export function DiscoveryOutputTab({ data, onChange }: DiscoveryOutputTabProps) 
 
   return (
     <div className="space-y-6">
+      {/* AI Executive Insight */}
+      {data._aiSummary && <AiInsightCard summary={data._aiSummary} />}
+
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold mb-2">Discovery Interview Synthesis</h2>

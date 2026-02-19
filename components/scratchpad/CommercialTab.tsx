@@ -5,6 +5,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { DollarSign, TrendingUp, Calendar, AlertTriangle } from 'lucide-react';
 import { EditableText } from './EditableText';
 import { EditableList } from './EditableList';
+import { AiInsightCard } from './AiInsightCard';
 
 interface CommercialTabProps {
   data: any;
@@ -31,6 +32,9 @@ export function CommercialTab({ data, onChange }: CommercialTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* AI Executive Insight */}
+      {data._aiSummary && <AiInsightCard summary={data._aiSummary} />}
+
       <div>
         <h2 className="text-2xl font-bold mb-2">Commercial Approach</h2>
         <p className="text-muted-foreground">

@@ -211,6 +211,7 @@ Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components
     ]
   },
   "discoveryOutput": {
+    "_aiSummary": "string — 3-5 sentence PROFOUND executive synthesis of the discovery findings. Go beyond restating findings — identify the deeper strategic implications, non-obvious connections, and the 'so what' a CEO would care about. Write with McKinsey-partner precision.",
     "participants": ${JSON.stringify(data.topActors.slice(0, 8).map(a => a.name))},
     "totalUtterances": ${data.totalNodes},
     "sections": [
@@ -233,6 +234,7 @@ ${domainNames.map((dn, i) => {
     ]
   },
   "reimagineContent": {
+    "_aiSummary": "string — 3-5 sentence executive synthesis of the reimagine vision. Capture the transformational shifts identified, why they matter, and the strategic imperative they create. Be profound, not generic.",
     "reimagineContent": {
       "title": "string — compelling title for the reimagine output",
       "description": "string — 2-3 sentence overview of what the reimagine session revealed",
@@ -273,6 +275,7 @@ ${domainNames.map((dn, i) => {
     }
   },
   "constraintsContent": {
+    "_aiSummary": "string — 3-5 sentence executive synthesis of the constraint landscape. Which constraints are truly blocking vs manageable? What does the mitigation picture look like? What must be resolved first?",
     "regulatory": [
       {"title": "string", "description": "string — 1-2 sentences", "impact": "Critical or High or Medium or Low", "mitigation": "string — mitigation strategy"}
     ],
@@ -287,6 +290,7 @@ ${domainNames.map((dn, i) => {
     ]
   },
   "potentialSolution": {
+    "_aiSummary": "string — 3-5 sentence executive synthesis of the solution thesis. What makes this approach compelling? How does it address the core constraints? What is the implementation logic?",
     "overview": "string — 1-2 paragraphs on the proposed solution approach",
     "enablers": [
       {"title": "string", "domain": "string", "priority": "HIGH or MEDIUM or LOW", "description": "string", "dependencies": ["string array"]}
@@ -296,6 +300,7 @@ ${domainNames.map((dn, i) => {
     ]
   },
   "commercialContent": {
+    "_aiSummary": "string — 3-5 sentence executive synthesis of the investment case. Frame the ROI narrative, the phasing logic, and the risk-adjusted value proposition.",
     "investmentSummary": {
       "totalInvestment": "string — e.g. £1.8M",
       "fiveYearROI": "string — e.g. 340%",
@@ -310,6 +315,7 @@ ${domainNames.map((dn, i) => {
     ]
   },
   "customerJourney": {
+    "_aiSummary": "string — 3-5 sentence executive synthesis of customer journey insights. Where do the critical pain points cluster? What are the moments of truth? What does this mean for transformation priorities?",
     "stages": ["6-8 journey stage names in order"],
     "actors": [{"name": "string", "role": "string"}],
     "interactions": [
@@ -319,6 +325,7 @@ ${domainNames.map((dn, i) => {
     "momentOfTruthSummary": "string — narrative on critical moments"
   },
   "summaryContent": {
+    "_aiSummary": "string — 3-5 sentence final synthesis pulling together the entire workshop narrative arc from discovery through to recommended next steps. This is the concluding executive insight.",
     "keyFindings": [
       {"category": "string — e.g. Customer Impact", "findings": ["3-5 findings in this category"]}
     ],
@@ -335,6 +342,7 @@ CRITICAL RULES:
 - Use ONLY the source material below. Do not invent facts.
 - Be CONCISE. Keep descriptions to 1-2 sentences. Do NOT write essays.
 - Write in confident, board-level language suitable for C-suite audiences.
+- _aiSummary fields: These are EXECUTIVE INSIGHT summaries shown at the top of each output page. They must be PROFOUND — go beyond restating findings. Identify deeper strategic implications, non-obvious connections between themes, and the "so what" that a CEO would care about. Reference specific evidence from the data. Write with McKinsey-partner precision. Every sentence must carry weight. NEVER use generic consulting filler.
 - execSummary.keyFindings: 5-7 findings. metrics values must be NUMBERS not strings.
 - discoveryOutput.sections: exactly ${domainNames.length} sections. Each needs 8-10 wordCloud items (size 1-4). Sentiment MUST sum to 100.
 - reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes.

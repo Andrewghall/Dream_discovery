@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Shield, Code, DollarSign, Users } from 'lucide-react';
 import { EditableText } from './EditableText';
+import { AiInsightCard } from './AiInsightCard';
 
 interface ConstraintsTabProps {
   data: any;
@@ -62,6 +63,9 @@ export function ConstraintsTab({ data, onChange }: ConstraintsTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* AI Executive Insight */}
+      {data._aiSummary && <AiInsightCard summary={data._aiSummary} />}
+
       <div>
         <h2 className="text-2xl font-bold mb-2">Constraints &amp; Blockers</h2>
         <p className="text-muted-foreground">

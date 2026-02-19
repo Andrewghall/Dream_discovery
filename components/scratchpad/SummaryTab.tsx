@@ -5,6 +5,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Lightbulb, CheckCircle2, Target, Calendar } from 'lucide-react';
 import { EditableText } from './EditableText';
 import { EditableList } from './EditableList';
+import { AiInsightCard } from './AiInsightCard';
 
 interface SummaryTabProps {
   data: any;
@@ -31,8 +32,11 @@ export function SummaryTab({ data, onChange }: SummaryTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* AI Executive Insight */}
+      {data._aiSummary && <AiInsightCard summary={data._aiSummary} />}
+
       <div>
-        <h2 className="text-2xl font-bold mb-2">Executive Summary & Next Steps</h2>
+        <h2 className="text-2xl font-bold mb-2">Executive Summary &amp; Next Steps</h2>
         <p className="text-muted-foreground">
           Key findings, recommended actions, and success metrics.
         </p>
