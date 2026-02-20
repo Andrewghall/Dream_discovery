@@ -82,7 +82,7 @@ function sentimentCategory(sentiment: string): 'positive' | 'concerned' | 'criti
 }
 
 function normaliseName(name: string): string {
-  const trimmed = name.trim();
+  const trimmed = (name || '').trim();
   if (!trimmed) return 'Unknown';
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
 }
@@ -262,6 +262,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [snapshotsError, setSnapshotsError] = useState<string | null>(null);
   const [snapshotName, setSnapshotName] = useState('');
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
+  const [lastSavedSnapshotId, setLastSavedSnapshotId] = useState<string | null>(null);
   const lastDefaultSnapshotNameRef = useRef<string>('');
   const [liveReportDownloading, setLiveReportDownloading] = useState(false);
 
@@ -371,10 +372,17 @@ export default function WorkshopLivePage({ params }: PageProps) {
   );
 
   const defaultSnapshotName = useMemo(() => {
-    const d = new Date();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const yy = String(d.getFullYear() % 100).padStart(2, '0');
+    const now = new Date();
+    const datePart = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    if (workshopName?.trim()) {
+      return `${workshopName} — ${datePart}`;
+    }
+
+    // Fallback if no workshop name loaded yet
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const yy = String(now.getFullYear() % 100).padStart(2, '0');
     const phase =
       dialoguePhase === 'CONSTRAINTS'
         ? 'constraints'
@@ -382,7 +390,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
           ? 'define-approach'
           : 'reimagine';
     return `Live-v1-${dd}${mm}${yy}-${phase}-workshop`;
-  }, [dialoguePhase]);
+  }, [workshopName, dialoguePhase]);
 
   useEffect(() => {
     const current = snapshotName.trim();
@@ -578,6 +586,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       }
       await fetchSnapshots();
       setSelectedSnapshotId(json.snapshot.id);
+      setLastSavedSnapshotId(json.snapshot.id);
     } catch (e) {
       setSnapshotsError(e instanceof Error ? e.message : 'Failed to save snapshot');
     } finally {
@@ -585,7 +594,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
   };
 
-  const autoSave = async () => {
+  const autoSave = async (): Promise<string | null> => {
     // Auto-save with workshop name + formatted date/time
     const now = new Date();
     const datePart = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -649,12 +658,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
       if (r.ok && json?.ok === true) {
         setLastAutoSaveTime(new Date());
+        const savedId = existing ? existing.id : (json.snapshot?.id ?? null);
         console.log('[Auto-save] Snapshot saved:', existing ? 'Updated existing' : autoSaveName);
+        return savedId;
       } else {
         console.warn('[Auto-save] Failed to save snapshot:', json?.error);
+        return null;
       }
     } catch (e) {
       console.warn('[Auto-save] Error:', e instanceof Error ? e.message : 'Unknown error');
+      return null;
     }
   };
 
@@ -2877,6 +2890,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
     wakeLockRef.current = null;
 
+    // Auto-save final state when stopping
+    const savedId = await autoSave();
+    if (savedId) {
+      setLastSavedSnapshotId(savedId);
+      await fetchSnapshots();
+    }
+
     setStatus('stopped');
   };
 
@@ -3175,6 +3195,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     <Button variant="outline" onClick={stopCapture} disabled={status !== 'capturing'}>
                       Stop
                     </Button>
+
+                    {status === 'stopped' && lastSavedSnapshotId && utteranceNodes.length > 0 && (
+                      <Link href={`/admin/workshops/${workshopId}/hemisphere?snapshotId=${lastSavedSnapshotId}`}>
+                        <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                          Review in Hemisphere →
+                        </Button>
+                      </Link>
+                    )}
 
                     {/* Recording indicator */}
                     <div className="flex items-center gap-2 ml-2">

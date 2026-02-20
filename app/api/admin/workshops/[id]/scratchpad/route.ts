@@ -19,7 +19,15 @@ export async function GET(
 
     // Return null scratchpad if not found (instead of 404)
     // This allows the UI to handle creation
-    return NextResponse.json({ scratchpad: scratchpad || null });
+    if (scratchpad) {
+      // Strip the bcrypt hash — never send it to the client
+      const { commercialPassword, ...rest } = scratchpad;
+      return NextResponse.json({
+        scratchpad: rest,
+        hasCommercialPassword: !!commercialPassword,
+      });
+    }
+    return NextResponse.json({ scratchpad: null, hasCommercialPassword: false });
   } catch (error) {
     console.error('Failed to fetch scratchpad:', error);
     return NextResponse.json(

@@ -82,6 +82,7 @@ export default function ScratchpadPage({ params }: PageProps) {
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [commercialPassword, setCommercialPassword] = useState('');
   const [commercialUnlocked, setCommercialUnlocked] = useState(false);
+  const [hasPassword, setHasPassword] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showSetPasswordDialog, setShowSetPasswordDialog] = useState(false);
   const [newCommercialPassword, setNewCommercialPassword] = useState('');
@@ -108,6 +109,11 @@ export default function ScratchpadPage({ params }: PageProps) {
       if (scratchpadRes.ok) {
         const data = await scratchpadRes.json();
         setScratchpad(data.scratchpad);
+        setHasPassword(!!data.hasCommercialPassword);
+        // Auto-unlock commercial tab if no password has been set
+        if (!data.hasCommercialPassword) {
+          setCommercialUnlocked(true);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -267,6 +273,7 @@ export default function ScratchpadPage({ params }: PageProps) {
         setShowSetPasswordDialog(false);
         setNewCommercialPassword('');
         setConfirmCommercialPassword('');
+        setHasPassword(true);
         setCommercialUnlocked(true); // Auto-unlock after setting
       } else {
         const data = await response.json();
@@ -473,13 +480,13 @@ export default function ScratchpadPage({ params }: PageProps) {
               value="commercial"
               className="text-xs"
               onClick={(e) => {
-                if (!commercialUnlocked) {
+                if (hasPassword && !commercialUnlocked) {
                   e.preventDefault();
                   handleCommercialAccess();
                 }
               }}
             >
-              <Lock className="h-3 w-3 mr-1" />
+              {hasPassword && !commercialUnlocked && <Lock className="h-3 w-3 mr-1" />}
               Commercial
             </TabsTrigger>
             <TabsTrigger value="customer-journey" className="text-xs">Journey Map</TabsTrigger>
@@ -516,6 +523,9 @@ export default function ScratchpadPage({ params }: PageProps) {
                 <p className="text-muted-foreground">
                   This section requires a password to access.
                 </p>
+                <Button className="mt-4" onClick={handleCommercialAccess}>
+                  Enter Password
+                </Button>
               </Card>
             )}
           </TabsContent>

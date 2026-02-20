@@ -49,6 +49,129 @@ interface Utterance {
   sentiment: string;
 }
 
+// ── Actor definitions for extraction ──────────────────────────
+// These are the business roles referenced in the retail workshop utterances
+const ACTOR_DEFS: Array<{
+  name: string;
+  role: string;
+  patterns: RegExp[];
+}> = [
+  { name: 'Customer', role: 'End consumer', patterns: [/\bcustomer/i, /\bshopper/i, /\bbuyer/i, /\bclient/i, /\bconsumer/i, /\bpeople\s+(buy|shop|browse|return|complain)/i] },
+  { name: 'Store associate', role: 'Frontline retail staff', patterns: [/\bassociate/i, /\bstore\s*staff/i, /\bstore\s*team/i, /\bfloor\s*staff/i, /\bsales\s*assistant/i, /\bfront[\s-]?line/i] },
+  { name: 'Store manager', role: 'Store operations leader', patterns: [/\bstore\s*manager/i, /\bbranch\s*manager/i, /\bmanager/i] },
+  { name: 'Supplier', role: 'External goods supplier', patterns: [/\bsupplier/i, /\bvendor/i, /\bmanufacturer/i, /\btier\s*[123]/i] },
+  { name: 'Warehouse team', role: 'Fulfilment and logistics', patterns: [/\bwarehouse/i, /\bpicking/i, /\bfulfilment/i, /\bdistribution/i] },
+  { name: 'Delivery driver', role: 'Last-mile logistics', patterns: [/\bdriver/i, /\bdelivery/i, /\blast[\s-]?mile/i, /\bcarrier/i, /\bcourier/i] },
+  { name: 'Contact centre agent', role: 'Customer service representative', patterns: [/\bcontact\s*centre/i, /\bcall\s*centre/i, /\bcustomer\s*service/i, /\bagent/i, /\bWISMO/i] },
+  { name: 'Head office', role: 'Corporate leadership', patterns: [/\bhead\s*office/i, /\bHQ/i, /\bboard/i, /\bexecutive/i, /\bsteering\s*committee/i] },
+  { name: 'IT team', role: 'Technology and infrastructure', patterns: [/\bIT\b/, /\bdeveloper/i, /\btech\s*team/i, /\binfrastructure/i, /\bengineering/i] },
+  { name: 'Marketing team', role: 'Brand and campaigns', patterns: [/\bmarketing/i, /\bcampaign/i, /\bCRM/i, /\bcreator/i, /\bcontent\s*team/i] },
+  { name: 'Finance team', role: 'Financial planning and control', patterns: [/\bfinance/i, /\bbudget/i, /\bP&L/i, /\bROI/i, /\bcost\s*per/i] },
+  { name: 'HR team', role: 'People and culture', patterns: [/\bHR\b/i, /\brecruit/i, /\bonboard/i, /\bretention/i, /\btraining\s*programme/i] },
+  { name: 'Merchandising team', role: 'Product range and allocation', patterns: [/\bmerchandis/i, /\ballocation/i, /\brange\s*planning/i, /\bbuying\s*team/i] },
+  { name: 'Legal & compliance', role: 'Regulatory oversight', patterns: [/\blegal/i, /\bcompliance/i, /\bGDPR/i, /\bregulat/i, /\baudit/i] },
+  { name: 'Third-party partner', role: 'External service provider', patterns: [/\bpartner/i, /\bintegrator/i, /\bconsultancy/i, /\boutsoure?c/i] },
+];
+
+// Interaction verbs mapped to sentiments
+const INTERACTION_PATTERNS: Array<{
+  pattern: RegExp;
+  action: string;
+  sentiment: string;
+}> = [
+  { pattern: /\b(complain|frustrat|angry|upset)\b/i, action: 'raises complaint', sentiment: 'negative' },
+  { pattern: /\b(return|refund|exchange)\b/i, action: 'processes return', sentiment: 'negative' },
+  { pattern: /\b(buy|purchas|order|spend)\b/i, action: 'makes purchase', sentiment: 'positive' },
+  { pattern: /\b(recommend|suggest|advis)\b/i, action: 'provides recommendation', sentiment: 'positive' },
+  { pattern: /\b(wait|queue|delay)\b/i, action: 'experiences wait', sentiment: 'negative' },
+  { pattern: /\b(deliver|ship|dispatch|fulfill)\b/i, action: 'fulfils order', sentiment: 'neutral' },
+  { pattern: /\b(search|find|discover|browse|look\s*(it\s+)?up)\b/i, action: 'searches for product', sentiment: 'neutral' },
+  { pattern: /\b(train|learn|develop|onboard)\b/i, action: 'undergoes training', sentiment: 'neutral' },
+  { pattern: /\b(track|monitor|report|analys)\b/i, action: 'monitors performance', sentiment: 'neutral' },
+  { pattern: /\b(integrat|connect|sync|unif)\b/i, action: 'integrates systems', sentiment: 'neutral' },
+  { pattern: /\b(personaliz|personalisation|recommend)\b/i, action: 'personalises experience', sentiment: 'positive' },
+  { pattern: /\b(leave|quit|churn|switch|walk\s*out)\b/i, action: 'leaves or churns', sentiment: 'negative' },
+  { pattern: /\b(engage|loyalt|retain|repeat)\b/i, action: 'engages customer', sentiment: 'positive' },
+  { pattern: /\b(pick|pack|process)\b/i, action: 'processes order', sentiment: 'neutral' },
+  { pattern: /\b(implement|deploy|roll\s*out|launch)\b/i, action: 'implements initiative', sentiment: 'positive' },
+];
+
+/** Extract actors mentioned in an utterance text and build structured actor data */
+function extractActorsFromText(
+  text: string,
+  speakerId: string,
+  sentiment: string,
+): Array<{ name: string; role: string; interactions: Array<{ withActor: string; action: string; sentiment: string; context: string }> }> {
+  // Find which actors are mentioned
+  const mentioned: Array<{ name: string; role: string }> = [];
+  for (const def of ACTOR_DEFS) {
+    for (const pat of def.patterns) {
+      if (pat.test(text)) {
+        mentioned.push({ name: def.name, role: def.role });
+        break;
+      }
+    }
+  }
+
+  // If no actors detected, return the speaker as the sole actor with no interactions
+  if (mentioned.length === 0) {
+    const speaker = participants.find(p => p.id === speakerId);
+    if (speaker) {
+      return [{ name: speaker.name, role: speaker.role, interactions: [] }];
+    }
+    return [];
+  }
+
+  // Find relevant interaction verbs
+  const matchedInteractions: Array<{ action: string; sentiment: string }> = [];
+  for (const ip of INTERACTION_PATTERNS) {
+    if (ip.pattern.test(text)) {
+      matchedInteractions.push({ action: ip.action, sentiment: ip.sentiment });
+    }
+  }
+
+  // Build actor entries with cross-references
+  const result: Array<{ name: string; role: string; interactions: Array<{ withActor: string; action: string; sentiment: string; context: string }> }> = [];
+
+  for (let i = 0; i < mentioned.length; i++) {
+    const actor = mentioned[i];
+    const interactions: Array<{ withActor: string; action: string; sentiment: string; context: string }> = [];
+
+    // Link to other mentioned actors
+    for (let j = 0; j < mentioned.length; j++) {
+      if (i === j) continue;
+      const inter = matchedInteractions[0] || { action: 'interacts with', sentiment: 'neutral' };
+      interactions.push({
+        withActor: mentioned[j].name,
+        action: inter.action,
+        sentiment: inter.sentiment,
+        context: text.substring(0, 100),
+      });
+    }
+
+    // If only one actor, link to the speaker
+    if (mentioned.length === 1 && matchedInteractions.length > 0) {
+      const speaker = participants.find(p => p.id === speakerId);
+      if (speaker) {
+        interactions.push({
+          withActor: speaker.name,
+          action: matchedInteractions[0].action,
+          sentiment: matchedInteractions[0].sentiment,
+          context: text.substring(0, 100),
+        });
+      }
+    }
+
+    result.push({
+      name: actor.name,
+      role: actor.role,
+      interactions,
+    });
+  }
+
+  return result;
+}
+
 // ── All utterances (1000+) ─────────────────────────────────────
 // Organised by domain then phase for readability
 
@@ -513,7 +636,7 @@ async function main() {
           label: t, category: u.primaryType === 'CONSTRAINT' ? 'Constraint' : u.primaryType === 'VISIONARY' ? 'Aspiration' : 'Insight',
           confidence: u.confidence, reasoning: `Theme identified from ${u.phase.toLowerCase()} discussion`,
         })),
-        actors: [],
+        actors: extractActorsFromText(u.rawText, u.speakerId, u.sentiment),
         semanticMeaning: u.rawText.substring(0, 120) + '...',
         sentimentTone: u.sentiment,
         overallConfidence: u.confidence,

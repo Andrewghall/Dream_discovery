@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -727,6 +728,7 @@ function ActorJourneyPanel({ workshopId, snapshotId }: { workshopId: string; sna
 
 export default function WorkshopHemispherePage({ params }: PageProps) {
   const { id: workshopId } = use(params);
+  const searchParams = useSearchParams();
   const [runType, setRunType] = useState<'BASELINE' | 'FOLLOWUP'>('BASELINE');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -781,6 +783,14 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     };
     void fetchSnapshots();
   }, [workshopId]);
+
+  // Auto-select snapshot from URL query parameter (e.g. from "Review in Hemisphere" button)
+  useEffect(() => {
+    const snapshotIdFromUrl = searchParams.get('snapshotId');
+    if (snapshotIdFromUrl && snapshots.length > 0 && snapshots.some(s => s.id === snapshotIdFromUrl)) {
+      setSelectedSnapshotId(snapshotIdFromUrl);
+    }
+  }, [searchParams, snapshots]);
 
   // Fetch hemisphere data
   useEffect(() => {
