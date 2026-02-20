@@ -31,6 +31,7 @@ import {
   type HemispherePrimaryType,
 } from '@/components/live/hemisphere-nodes';
 import { LiveDomainRadar } from '@/components/live/live-domain-radar';
+import { AgenticReasoningPanel, type ReasoningEntry } from '@/components/live/agentic-reasoning-panel';
 import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
 import { transcribeAudio, type CaptureAPIResponse } from '@/lib/captureapi/client';
 
@@ -277,6 +278,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const [revealOpen, setRevealOpen] = useState(false);
   const [actorJourneyExpanded, setActorJourneyExpanded] = useState(false);
+
+  // Cognitive state — live reasoning entries from the DREAM agent
+  const [reasoningEntries, setReasoningEntries] = useState<ReasoningEntry[]>([]);
 
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -779,11 +783,26 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
     const normalized = t.replace(/\s+/g, ' ').trim();
     const parts = normalized
-      .split(/(?<=[.!?])\s+(?=[A-Z0-9“"'])/g)
+      .split(/(?<=[.!?])\s+(?=[A-Z0-9""'])/g)
       .map((s) => s.trim())
       .filter(Boolean);
 
-    return parts.length ? parts : [normalized];
+    // Filter out trivial fragments — filler words / false starts
+    // that are not meaningful enough to warrant their own hemisphere node
+    const FILLER = new Set([
+      'so', 'um', 'uh', 'yeah', 'yes', 'no', 'ok', 'okay', 'right',
+      'well', 'like', 'and', 'but', 'hmm', 'hm', 'ah', 'oh', 'er',
+    ]);
+    const meaningful = (parts.length ? parts : [normalized]).filter((p) => {
+      const words = p.toLowerCase().replace(/[^a-z\s']/g, '').split(/\s+/).filter(Boolean);
+      if (words.length < 3) return false; // Need at least 3 words
+      const substantive = words.filter((w) => !FILLER.has(w));
+      return substantive.length >= 2; // At least 2 non-filler words
+    });
+
+    // If ALL parts got filtered out, keep the original (the server
+    // already filtered truly trivial text, so this is a safety net)
+    return meaningful.length ? meaningful : parts.length ? parts : [normalized];
   }
 
   const hash01 = (s: string): number => {
@@ -2202,7 +2221,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
   };
 
-  const CHUNK_MS = 10_000;
+  const CHUNK_MS = 5_000;
 
   const transcribeAndForward = async (blob: Blob, startTime: number, endTime: number) => {
     let text = '';
@@ -2718,6 +2737,73 @@ export default function WorkshopLivePage({ params }: PageProps) {
       }
     });
 
+    // ── Cognitive state events ─────────────────────────────
+    es.addEventListener('belief.created', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data);
+        const belief = evt.payload?.belief;
+        if (belief) {
+          console.log('[Belief Created]', belief.label, `(${belief.category}, confidence: ${(belief.confidence * 100).toFixed(0)}%)`);
+        }
+      } catch { /* ignore */ }
+    });
+
+    es.addEventListener('belief.reinforced', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data);
+        const belief = evt.payload?.belief;
+        if (belief) {
+          console.log('[Belief Reinforced]', belief.label, `(confidence: ${(belief.confidence * 100).toFixed(0)}%, evidence: ${belief.evidenceCount})`);
+        }
+      } catch { /* ignore */ }
+    });
+
+    es.addEventListener('belief.stabilised', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data);
+        const belief = evt.payload?.belief;
+        if (belief) {
+          console.log('[Belief Stabilised]', belief.label, '— committed to output');
+        }
+      } catch { /* ignore */ }
+    });
+
+    es.addEventListener('contradiction.detected', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data);
+        const c = evt.payload?.contradiction;
+        if (c) {
+          console.log('[Contradiction]', c.beliefA?.label, 'vs', c.beliefB?.label);
+        }
+      } catch { /* ignore */ }
+    });
+
+    es.addEventListener('agentic.reasoning', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data);
+        const p = evt.payload as {
+          level: ReasoningEntry['level'];
+          icon: string;
+          summary: string;
+          details?: string;
+        };
+        if (p?.summary) {
+          setReasoningEntries(prev => {
+            const entry: ReasoningEntry = {
+              timestampMs: evt.createdAt || Date.now(),
+              level: p.level,
+              icon: p.icon,
+              summary: p.summary,
+              details: p.details,
+            };
+            // Keep last 200 entries
+            const next = [...prev, entry];
+            return next.length > 200 ? next.slice(-200) : next;
+          });
+        }
+      } catch { /* ignore */ }
+    });
+
     es.addEventListener('open', () => {
       // ignore
     });
@@ -2876,6 +2962,30 @@ export default function WorkshopLivePage({ params }: PageProps) {
       // ignore
     }
     wakeLockRef.current = null;
+
+    // Flush the server-side utterance buffer so any accumulated
+    // fragments get committed as complete utterances before we stop.
+    try {
+      await fetch(ingestUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          speakerId: null,
+          startTime: 0,
+          endTime: 0,
+          text: '__flush__',
+          confidence: null,
+          source: 'deepgram',
+          dialoguePhase,
+          flush: true,
+        }),
+      });
+    } catch {
+      // ignore — flush is best-effort
+    }
+
+    // Wait briefly for any flushed SSE events to arrive
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     // Auto-save final state when stopping
     const savedId = await autoSave();
@@ -3068,6 +3178,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 </CardContent>
               </Card>
           ) : null}
+
+          {/* DREAM Agent Reasoning Panel */}
+          <AgenticReasoningPanel
+            entries={reasoningEntries}
+            isCapturing={status === 'capturing'}
+          />
 
               <Card>
                 <CardHeader>

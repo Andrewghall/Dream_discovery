@@ -5,7 +5,10 @@ import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
 import { emitWorkshopEvent } from '@/lib/realtime/workshop-events';
 import { deriveIntent } from '@/lib/workshop/derive-intent';
-import { analyzeUtteranceAgentically, AgenticContext } from '@/lib/agents/workshop-analyst-agent';
+import { addFragment, flushWorkshop, type FlushedUtterance } from '@/lib/workshop/utterance-buffer';
+import { getOrCreateCognitiveState } from '@/lib/cognition/state-store';
+import { applyCognitiveUpdate } from '@/lib/cognition/reasoning-engine';
+import { getGPT4oMiniEngine } from '@/lib/cognition/engines/gpt4o-mini-engine';
 
 type IngestTranscriptChunkBody = {
   speakerId: string | null;
@@ -16,6 +19,7 @@ type IngestTranscriptChunkBody = {
   confidence: number | null;
   source: 'zoom' | 'deepgram' | 'whisper';
   dialoguePhase?: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null;
+  flush?: boolean; // When true, force-flush the utterance buffer (e.g. capture stopped)
   // SLM metadata
   slmMetadata?: {
     entities: Array<{ type: string; value: string }>;
@@ -37,6 +41,400 @@ function safeDialoguePhase(
   return null;
 }
 
+// ── Filler word set for trivial-fragment detection ──────────
+const FILLER_WORDS = new Set([
+  'so', 'um', 'uh', 'yeah', 'yes', 'no', 'ok', 'okay', 'right',
+  'well', 'like', 'and', 'but', 'hmm', 'hm', 'ah', 'oh', 'er',
+  'the', 'a', 'an', 'is', 'it', 'i', 'we', 'you', 'they', 'that',
+  'this', 'of', 'to', 'in', 'for', 'on', 'with', 'at', 'by',
+  'just', 'then', 'know', 'mean', 'think', 'got', 'get',
+]);
+
+function isTextTrivial(text: string): boolean {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 3) return true; // Fewer than 3 total words
+  const substantive = text
+    .toLowerCase()
+    .replace(/[^a-z\s']/g, '')
+    .split(/\s+/)
+    .filter((w) => w.length > 1 && !FILLER_WORDS.has(w));
+  return substantive.length < 2; // Fewer than 2 substantive words
+}
+
+// ══════════════════════════════════════════════════════════════
+// processCompleteUtterance — creates DataPoint + agentic analysis
+// for a COMPLETE, buffered utterance (not a raw fragment)
+// ══════════════════════════════════════════════════════════════
+async function processCompleteUtterance(
+  workshopId: string,
+  utterance: FlushedUtterance,
+  bodyDialoguePhase: string | null | undefined,
+  bodySpeakerId: string | null,
+  bodySlmMetadata?: Record<string, unknown>,
+) {
+  const text = utterance.text;
+  const src = utterance.source === 'WHISPER' ? 'WHISPER' : utterance.source === 'ZOOM' ? 'ZOOM' : 'DEEPGRAM';
+
+  // ── Fetch recent transcripts for context ──────────────────
+  const recentTranscripts = await prisma.transcriptChunk.findMany({
+    where: { workshopId },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    select: {
+      id: true,
+      text: true,
+      speakerId: true,
+      createdAt: true,
+    },
+  });
+
+  // ── Dedup check ───────────────────────────────────────────
+  const existing = await prisma.transcriptChunk.findFirst({
+    where: {
+      workshopId,
+      speakerId: utterance.speakerId || null,
+      startTimeMs: utterance.startTimeMs,
+      endTimeMs: utterance.endTimeMs,
+      text,
+      source: src,
+    },
+    include: {
+      dataPoint: {
+        include: {
+          classification: true,
+          annotation: true,
+        },
+      },
+    },
+  });
+
+  if (existing?.dataPoint) {
+    // Already processed — just ensure annotation exists
+    const dataPointId = existing.dataPoint.id;
+    const requestedPhase = safeDialoguePhase(bodyDialoguePhase);
+    if (requestedPhase && !existing.dataPoint.annotation) {
+      try {
+        await prisma.dataPointAnnotation.create({
+          data: { dataPointId, dialoguePhase: requestedPhase },
+        });
+      } catch {
+        // ignore race
+      }
+    }
+    return { deduped: true, dataPointId };
+  }
+
+  // ── Create merged transcript chunk ────────────────────────
+  const transcriptChunk = await prisma.transcriptChunk.create({
+    data: {
+      workshopId,
+      speakerId: utterance.speakerId || null,
+      startTimeMs: utterance.startTimeMs,
+      endTimeMs: utterance.endTimeMs,
+      text,
+      confidence: utterance.confidence,
+      source: src,
+      metadata: (bodySlmMetadata || utterance.rawText
+        ? {
+            ...(utterance.rawText && { rawText: utterance.rawText }),
+            ...(bodySlmMetadata && { slmMetadata: bodySlmMetadata }),
+            buffered: true, // Mark as assembled from multiple fragments
+          }
+        : undefined) as any,
+    },
+  });
+
+  // ── Create DataPoint ──────────────────────────────────────
+  const dataPoint = await prisma.dataPoint.create({
+    data: {
+      workshopId,
+      transcriptChunkId: transcriptChunk.id,
+      rawText: text,
+      source: 'SPEECH',
+      speakerId: utterance.speakerId || null,
+    },
+  });
+
+  const dialoguePhase = safeDialoguePhase(bodyDialoguePhase ?? utterance.dialoguePhase);
+  if (dialoguePhase) {
+    await prisma.dataPointAnnotation.create({
+      data: {
+        dataPointId: dataPoint.id,
+        dialoguePhase,
+      },
+    });
+  }
+
+  // ── Emit SSE: node appears immediately on hemisphere ──────
+  emitWorkshopEvent(workshopId, {
+    id: nanoid(),
+    type: 'datapoint.created',
+    createdAt: Date.now(),
+    payload: {
+      dataPoint: {
+        id: dataPoint.id,
+        rawText: dataPoint.rawText,
+        source: dataPoint.source,
+        speakerId: dataPoint.speakerId,
+        createdAt: dataPoint.createdAt,
+        dialoguePhase,
+      },
+      transcriptChunk: {
+        id: transcriptChunk.id,
+        speakerId: transcriptChunk.speakerId,
+        startTimeMs: transcriptChunk.startTimeMs,
+        endTimeMs: transcriptChunk.endTimeMs,
+        text: transcriptChunk.text,
+        confidence: transcriptChunk.confidence,
+        source: transcriptChunk.source,
+        createdAt: transcriptChunk.createdAt,
+      },
+    },
+  });
+
+  // ── Derive intent (fast, synchronous) ─────────────────────
+  const contextMessages = recentTranscripts.slice(0, 10).reverse().map((t) => ({
+    speaker: t.speakerId,
+    text: t.text,
+  }));
+
+  const intent = await deriveIntent({ text, recentContext: contextMessages }).catch(() => null);
+  if (intent) {
+    const annotation = await prisma.dataPointAnnotation.upsert({
+      where: { dataPointId: dataPoint.id },
+      create: {
+        dataPointId: dataPoint.id,
+        dialoguePhase,
+        intent,
+      },
+      update: { intent },
+    });
+
+    emitWorkshopEvent(workshopId, {
+      id: nanoid(),
+      type: 'annotation.updated',
+      createdAt: Date.now(),
+      payload: {
+        dataPointId: dataPoint.id,
+        annotation: {
+          dialoguePhase: annotation.dialoguePhase,
+          intent: annotation.intent,
+          updatedAt: annotation.updatedAt,
+        },
+      },
+    });
+  }
+
+  // ── Cognitive analysis (async, after response) ──────────────
+  // The DREAM agent processes this utterance in context of its
+  // full cognitive state — beliefs, contradictions, entities, momentum.
+  after(async () => {
+    try {
+      const workshop = await prisma.workshop.findUnique({
+        where: { id: workshopId },
+        select: { name: true, description: true, businessContext: true },
+      });
+      if (!workshop) return;
+
+      // Get or create the cognitive state for this workshop
+      const cognitiveState = getOrCreateCognitiveState(
+        workshopId,
+        workshop.businessContext || workshop.description || workshop.name,
+        (dialoguePhase as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH') || 'REIMAGINE',
+      );
+
+      // Run the cognitive reasoning engine
+      const engine = getGPT4oMiniEngine();
+      console.log('[Cognitive] Processing utterance:', text.substring(0, 100));
+
+      const stateUpdate = await engine.processUtterance(cognitiveState, {
+        text,
+        speaker: bodySpeakerId,
+        utteranceId: dataPoint.id,
+        startTimeMs: utterance.startTimeMs,
+        endTimeMs: utterance.endTimeMs,
+      });
+
+      // Apply the update to the cognitive state (state engine owns dynamics)
+      const events = applyCognitiveUpdate(cognitiveState, stateUpdate, dataPoint.id);
+
+      console.log('[Cognitive] Result:', {
+        primaryType: stateUpdate.primaryType,
+        meaning: stateUpdate.classification.semanticMeaning.substring(0, 80),
+        newBeliefs: events.newBeliefs.length,
+        reinforced: events.reinforcedBeliefs.length,
+        stabilised: events.stabilisedBeliefs.length,
+        contradictions: events.newContradictions.length,
+        totalBeliefs: cognitiveState.beliefs.size,
+      });
+
+      // Store agentic analysis (backwards-compatible with existing schema)
+      await prisma.agenticAnalysis.create({
+        data: {
+          dataPointId: dataPoint.id,
+          semanticMeaning: stateUpdate.classification.semanticMeaning,
+          speakerIntent: stateUpdate.classification.speakerIntent,
+          temporalFocus: stateUpdate.classification.temporalFocus,
+          sentimentTone: stateUpdate.classification.sentimentTone,
+          domains: stateUpdate.beliefUpdates.flatMap(b => b.domains.map(d => ({
+            domain: d.domain,
+            relevance: d.relevance,
+            reasoning: b.reasoning,
+          }))),
+          themes: stateUpdate.beliefUpdates.map(b => ({
+            label: b.label,
+            category: b.category,
+            confidence: b.confidence,
+            reasoning: b.reasoning,
+          })),
+          connections: [],
+          actors: stateUpdate.actorUpdates.map(a => ({
+            name: a.name,
+            role: a.role,
+            interactions: a.interactions,
+          })),
+          overallConfidence: stateUpdate.overallConfidence,
+          uncertainties: [],
+          agentModel: engine.engineName,
+          analysisVersion: '2.0-cognitive',
+        },
+      });
+
+      // Create classification from cognitive analysis
+      const primaryDomain = stateUpdate.beliefUpdates[0]?.domains[0]?.domain || null;
+      const keywords = stateUpdate.beliefUpdates.map(b => b.label).slice(0, 8);
+
+      const classification = await prisma.dataPointClassification.create({
+        data: {
+          dataPointId: dataPoint.id,
+          primaryType: stateUpdate.primaryType,
+          confidence: stateUpdate.overallConfidence,
+          keywords,
+          suggestedArea: primaryDomain,
+        },
+      });
+
+      // Emit classification SSE event (hemisphere node update)
+      emitWorkshopEvent(workshopId, {
+        id: nanoid(),
+        type: 'classification.updated',
+        createdAt: Date.now(),
+        payload: {
+          dataPointId: dataPoint.id,
+          classification: {
+            id: classification.id,
+            primaryType: classification.primaryType,
+            confidence: classification.confidence,
+            keywords: classification.keywords,
+            suggestedArea: classification.suggestedArea,
+            updatedAt: classification.updatedAt,
+          },
+        },
+      });
+
+      // Emit cognitive state events for live UI
+      for (const belief of events.newBeliefs) {
+        emitWorkshopEvent(workshopId, {
+          id: nanoid(),
+          type: 'belief.created',
+          createdAt: Date.now(),
+          payload: {
+            belief: {
+              id: belief.id,
+              label: belief.label,
+              category: belief.category,
+              primaryType: belief.primaryType,
+              domains: belief.domains,
+              confidence: belief.confidence,
+              evidenceCount: belief.evidenceCount,
+              stabilised: belief.stabilised,
+            },
+          },
+        });
+      }
+
+      for (const belief of events.reinforcedBeliefs) {
+        emitWorkshopEvent(workshopId, {
+          id: nanoid(),
+          type: 'belief.reinforced',
+          createdAt: Date.now(),
+          payload: {
+            belief: {
+              id: belief.id,
+              label: belief.label,
+              confidence: belief.confidence,
+              evidenceCount: belief.evidenceCount,
+              stabilised: belief.stabilised,
+            },
+          },
+        });
+      }
+
+      for (const belief of events.stabilisedBeliefs) {
+        emitWorkshopEvent(workshopId, {
+          id: nanoid(),
+          type: 'belief.stabilised',
+          createdAt: Date.now(),
+          payload: {
+            belief: {
+              id: belief.id,
+              label: belief.label,
+              category: belief.category,
+              primaryType: belief.primaryType,
+              domains: belief.domains,
+              confidence: belief.confidence,
+              evidenceCount: belief.evidenceCount,
+            },
+          },
+        });
+      }
+
+      for (const contradiction of events.newContradictions) {
+        const beliefA = cognitiveState.beliefs.get(contradiction.beliefAId);
+        const beliefB = cognitiveState.beliefs.get(contradiction.beliefBId);
+        emitWorkshopEvent(workshopId, {
+          id: nanoid(),
+          type: 'contradiction.detected',
+          createdAt: Date.now(),
+          payload: {
+            contradiction: {
+              id: contradiction.id,
+              beliefA: beliefA ? { id: beliefA.id, label: beliefA.label } : null,
+              beliefB: beliefB ? { id: beliefB.id, label: beliefB.label } : null,
+            },
+          },
+        });
+      }
+
+      // Emit reasoning entries for the live panel
+      for (const entry of events.reasoningEntries) {
+        emitWorkshopEvent(workshopId, {
+          id: nanoid(),
+          type: 'agentic.reasoning',
+          createdAt: entry.timestampMs,
+          payload: {
+            level: entry.level,
+            icon: entry.icon,
+            summary: entry.summary,
+            details: entry.details,
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Cognitive analysis failed:', error);
+    }
+  });
+
+  return {
+    deduped: false,
+    transcriptChunkId: transcriptChunk.id,
+    dataPointId: dataPoint.id,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
+// POST handler — receives raw transcript fragments from client
+// ══════════════════════════════════════════════════════════════
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -46,392 +444,134 @@ export async function POST(
     const body = (await request.json()) as IngestTranscriptChunkBody;
 
     const text = (body?.text || '').trim();
+
+    // ── Handle flush-only requests (no real text) ─────────────
+    if (body.flush && (!text || text === '__flush__')) {
+      const flushed = flushWorkshop(workshopId);
+      const results: Array<{ dataPointId?: string; deduped?: boolean }> = [];
+
+      for (const utterance of flushed) {
+        if (isTextTrivial(utterance.text)) continue;
+        try {
+          const result = await processCompleteUtterance(
+            workshopId,
+            utterance,
+            body.dialoguePhase,
+            body.speakerId,
+          );
+          results.push(result);
+        } catch (error) {
+          console.error('[Transcript] Error processing flushed utterance:', error);
+        }
+      }
+
+      return NextResponse.json({
+        ok: true,
+        flushed: true,
+        flushedCount: results.length,
+        results,
+      });
+    }
+
     if (!text) {
       return NextResponse.json({ error: 'Missing text' }, { status: 400 });
     }
 
-    // OPTIMIZATION: Fetch recent transcripts once and cache (prevents 3 separate queries)
-    let cachedRecentTranscripts: Array<{
-      id: string;
-      text: string;
-      speakerId: string | null;
-      createdAt: Date;
-    }> | null = null;
-
-    const getRecentTranscripts = async (excludeId?: string) => {
-      if (!cachedRecentTranscripts) {
-        cachedRecentTranscripts = await prisma.transcriptChunk.findMany({
-          where: { workshopId },
-          orderBy: { createdAt: 'desc' },
-          take: 20, // Fetch 20 to cover all use cases
-          select: {
-            id: true,
-            text: true,
-            speakerId: true,
-            createdAt: true,
-          },
-        });
-      }
-      // Filter out excluded ID if provided
-      return excludeId
-        ? cachedRecentTranscripts.filter((t) => t.id !== excludeId)
-        : cachedRecentTranscripts;
-    };
-
     const startTimeMs = Number.isFinite(body.startTime) ? Math.max(0, Math.round(body.startTime)) : 0;
     const endTimeMs = Number.isFinite(body.endTime) ? Math.max(startTimeMs, Math.round(body.endTime)) : startTimeMs;
-
     const src =
       body.source === 'deepgram' ? 'DEEPGRAM' : body.source === 'whisper' ? 'WHISPER' : 'ZOOM';
 
-    const existing = await prisma.transcriptChunk.findFirst({
-      where: {
+    // ── Always store the raw transcript chunk for audio timeline ──
+    await prisma.transcriptChunk.create({
+      data: {
         workshopId,
         speakerId: body.speakerId || null,
         startTimeMs,
         endTimeMs,
         text,
+        confidence: typeof body.confidence === 'number' ? body.confidence : null,
         source: src,
+        metadata: body.slmMetadata || body.rawText
+          ? {
+              ...(body.rawText && { rawText: body.rawText }),
+              ...(body.slmMetadata && { slmMetadata: body.slmMetadata }),
+            }
+          : undefined,
       },
-      include: {
-        dataPoint: {
-          include: {
-            classification: true,
-            annotation: true,
-          },
-        },
-      },
-    });
+    }).catch(() => null); // Ignore duplicates
 
-    if (existing?.dataPoint) {
-      const dataPointId = existing.dataPoint.id;
-      const requestedPhase = safeDialoguePhase(body.dialoguePhase);
-      if (requestedPhase && !existing.dataPoint.annotation) {
-        try {
-          await prisma.dataPointAnnotation.create({
-            data: {
-              dataPointId,
-              dialoguePhase: requestedPhase,
-            },
-          });
-        } catch {
-          // ignore (race / already created)
-        }
-      }
-
-      if (!existing.dataPoint.annotation?.intent) {
-        after(async () => {
-          try {
-            // Use cached transcripts for intent derivation
-            const recentTranscripts = await getRecentTranscripts();
-            const contextMessages = recentTranscripts.slice(0, 10).reverse().map((t) => ({
-              speaker: t.speakerId,
-              text: t.text,
-            }));
-
-            const intent = await deriveIntent({ text, recentContext: contextMessages });
-            if (!intent) return;
-
-            const annotation = await prisma.dataPointAnnotation.upsert({
-              where: { dataPointId },
-              create: {
-                dataPointId,
-                dialoguePhase: requestedPhase,
-                intent,
-              },
-              update: { intent },
-            });
-
-            emitWorkshopEvent(workshopId, {
-              id: nanoid(),
-              type: 'annotation.updated',
-              createdAt: Date.now(),
-              payload: {
-                dataPointId,
-                annotation: {
-                  dialoguePhase: annotation.dialoguePhase,
-                  intent: annotation.intent,
-                  updatedAt: annotation.updatedAt,
-                },
-              },
-            });
-          } catch {
-            // ignore
-          }
-        });
-      }
-
+    // ── Filter trivial text before buffering ─────────────────
+    if (isTextTrivial(text)) {
       return NextResponse.json({
         ok: true,
-        deduped: true,
-        transcriptChunkId: existing.id,
-        dataPointId,
-        classificationId: existing.dataPoint.classification?.id || null,
+        buffered: false,
+        skipped: true,
+        reason: 'Trivial fragment — transcript chunk stored only',
       });
     }
 
-    // Persist transcript chunk
-    const transcriptChunk =
-      existing ||
-      (await prisma.transcriptChunk.create({
-        data: {
-          workshopId,
-          speakerId: body.speakerId || null,
-          startTimeMs,
-          endTimeMs,
-          text,
-          confidence: typeof body.confidence === 'number' ? body.confidence : null,
-          source: src,
-          // Store SLM metadata in the metadata JSON field
-          metadata: body.slmMetadata || body.rawText
-            ? {
-                ...(body.rawText && { rawText: body.rawText }),
-                ...(body.slmMetadata && { slmMetadata: body.slmMetadata }),
-              }
-            : undefined,
-        },
-      }));
-
-    // Convert to DataPoint
-    const dataPoint = await prisma.dataPoint.create({
-      data: {
-        workshopId,
-        transcriptChunkId: transcriptChunk.id,
-        rawText: text,
-        source: 'SPEECH',
-        speakerId: body.speakerId || null,
-      },
+    // ── Feed into the utterance buffer ───────────────────────
+    // The buffer accumulates fragments until it detects a complete
+    // thought (sentence boundary, speaker change, or time gap).
+    const flushed = addFragment(workshopId, {
+      text,
+      speakerId: body.speakerId || null,
+      startTimeMs,
+      endTimeMs,
+      confidence: typeof body.confidence === 'number' ? body.confidence : null,
+      source: src,
+      rawText: body.rawText,
+      slmMetadata: body.slmMetadata as Record<string, unknown> | undefined,
+      dialoguePhase: body.dialoguePhase || null,
     });
 
-    const dialoguePhase = safeDialoguePhase(body.dialoguePhase);
-    if (dialoguePhase) {
-      await prisma.dataPointAnnotation.create({
-        data: {
-          dataPointId: dataPoint.id,
-          dialoguePhase,
-        },
-      });
-    }
-
-    emitWorkshopEvent(workshopId, {
-      id: nanoid(),
-      type: 'datapoint.created',
-      createdAt: Date.now(),
-      payload: {
-        dataPoint: {
-          id: dataPoint.id,
-          rawText: dataPoint.rawText,
-          source: dataPoint.source,
-          speakerId: dataPoint.speakerId,
-          createdAt: dataPoint.createdAt,
-          dialoguePhase,
-        },
-        transcriptChunk: {
-          id: transcriptChunk.id,
-          speakerId: transcriptChunk.speakerId,
-          startTimeMs: transcriptChunk.startTimeMs,
-          endTimeMs: transcriptChunk.endTimeMs,
-          text: transcriptChunk.text,
-          confidence: transcriptChunk.confidence,
-          source: transcriptChunk.source,
-          createdAt: transcriptChunk.createdAt,
-        },
-      },
-    });
-
-    // Use cached transcripts for AI analysis context
-    // Exclude the current transcript chunk to avoid circular reference
-    const recentTranscripts = await getRecentTranscripts(transcriptChunk.id);
-
-    // Reverse to chronological order (oldest first) for context, take 10
-    const contextMessages = recentTranscripts.slice(0, 10).reverse().map((t) => ({
-      speaker: t.speakerId,
-      text: t.text,
-    }));
-
-    const intentPromise = deriveIntent({ text, recentContext: contextMessages }).catch(() => null);
-
-    // Classification now handled by the agentic agent in the after() callback below
-    // This ensures full conversation context is used for accurate classification
-
-    const intent = await intentPromise;
-    if (intent) {
-      const annotation = await prisma.dataPointAnnotation.upsert({
-        where: { dataPointId: dataPoint.id },
-        create: {
-          dataPointId: dataPoint.id,
-          dialoguePhase,
-          intent,
-        },
-        update: { intent },
-      });
-
-      emitWorkshopEvent(workshopId, {
-        id: nanoid(),
-        type: 'annotation.updated',
-        createdAt: Date.now(),
-        payload: {
-          dataPointId: dataPoint.id,
-          annotation: {
-            dialoguePhase: annotation.dialoguePhase,
-            intent: annotation.intent,
-            updatedAt: annotation.updatedAt,
-          },
-        },
-      });
-    }
-
-    // Run agentic analysis after response is sent (Vercel keeps function alive)
-    after(async () => {
-      try {
-        // Get workshop context for agent
-        const workshop = await prisma.workshop.findUnique({
-          where: { id: workshopId },
-          select: {
-            name: true,
-            description: true,
-            businessContext: true,
-          },
-        });
-
-        if (!workshop) return;
-
-        // Build agent context with more utterances for richer understanding
-        // Use cached transcripts for agent analysis
-        const agentTranscripts = await getRecentTranscripts();
-
-        // Get emerging themes from prior classifications
-        const existingThemes = await prisma.dataPointClassification.findMany({
-          where: {
-            dataPoint: { workshopId },
-          },
-          select: {
-            keywords: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-        });
-
-        // Aggregate theme occurrences
-        const themeMap = new Map<string, { count: number; lastSeen: Date }>();
-        for (const cls of existingThemes) {
-          for (const keyword of cls.keywords || []) {
-            const existing = themeMap.get(keyword);
-            if (!existing || cls.createdAt > existing.lastSeen) {
-              themeMap.set(keyword, {
-                count: (existing?.count || 0) + 1,
-                lastSeen: cls.createdAt,
-              });
-            }
-          }
+    // If client requested a flush (e.g. capture stopped), force-flush remaining
+    if (body.flush) {
+      const remaining = flushWorkshop(workshopId);
+      for (const r of remaining) {
+        if (!flushed.some((f) => f.text === r.text)) {
+          flushed.push(r);
         }
-
-        const emergingThemes = Array.from(themeMap.entries())
-          .filter(([, data]) => data.count >= 2)
-          .slice(0, 10)
-          .map(([label, data]) => ({
-            label,
-            occurrences: data.count,
-            lastSeen: data.lastSeen.toISOString(),
-          }));
-
-        // Build agent context
-        const agenticContext: AgenticContext = {
-          workshopGoal: workshop.businessContext || workshop.description || workshop.name,
-          currentPhase: dialoguePhase || 'REIMAGINE',
-          recentUtterances: agentTranscripts.reverse().map((t) => ({
-            id: t.id,
-            speaker: t.speakerId,
-            text: t.text,
-          })),
-          emergingThemes,
-        };
-
-        // Run agentic analysis
-        console.log('[Transcript Route] Running agentic analysis for:', text.substring(0, 100));
-        const analysis = await analyzeUtteranceAgentically({
-          utterance: text,
-          speaker: body.speakerId,
-          utteranceId: dataPoint.id,
-          context: agenticContext,
-        });
-        console.log('[Transcript Route] Agentic result:', {
-          meaning: analysis.interpretation.semanticMeaning.substring(0, 80),
-          domains: analysis.domains.length,
-          themes: analysis.themes.length,
-          confidence: analysis.overallConfidence,
-        });
-
-        // Store the analysis
-        await prisma.agenticAnalysis.create({
-          data: {
-            dataPointId: dataPoint.id,
-            semanticMeaning: analysis.interpretation.semanticMeaning,
-            speakerIntent: analysis.interpretation.speakerIntent,
-            temporalFocus: analysis.interpretation.temporalFocus,
-            sentimentTone: analysis.interpretation.sentimentTone,
-            domains: analysis.domains,
-            themes: analysis.themes,
-            connections: analysis.connections,
-            actors: analysis.actors,
-            overallConfidence: analysis.overallConfidence,
-            uncertainties: analysis.uncertainties,
-            agentModel: 'gpt-4o-mini',
-            analysisVersion: '1.0',
-          },
-        });
-
-        // Create classification from the agentic analysis (unified: one agent, one call)
-        const classification = await prisma.dataPointClassification.create({
-          data: {
-            dataPointId: dataPoint.id,
-            primaryType: analysis.primaryType,
-            confidence: analysis.overallConfidence,
-            keywords: analysis.themes.map((t: { label: string }) => t.label).slice(0, 8),
-            suggestedArea: analysis.domains[0]?.domain || null,
-          },
-        });
-
-        // Emit classification event for real-time UI node update
-        emitWorkshopEvent(workshopId, {
-          id: nanoid(),
-          type: 'classification.updated',
-          createdAt: Date.now(),
-          payload: {
-            dataPointId: dataPoint.id,
-            classification: {
-              id: classification.id,
-              primaryType: classification.primaryType,
-              confidence: classification.confidence,
-              keywords: classification.keywords,
-              suggestedArea: classification.suggestedArea,
-              updatedAt: classification.updatedAt,
-            },
-          },
-        });
-
-        // Emit agentic analysis event for real-time UI updates
-        emitWorkshopEvent(workshopId, {
-          id: nanoid(),
-          type: 'agentic.analyzed',
-          createdAt: Date.now(),
-          payload: {
-            dataPointId: dataPoint.id,
-            analysis,
-          },
-        });
-      } catch (error) {
-        console.error('Agentic analysis failed:', error);
-        // Don't fail the transcript ingestion if agentic analysis fails
       }
-    });
+    }
+
+    if (flushed.length === 0) {
+      // Text is being accumulated — waiting for more context
+      return NextResponse.json({
+        ok: true,
+        buffered: true,
+        message: 'Fragment buffered — waiting for complete thought',
+      });
+    }
+
+    // ── Process each flushed complete utterance ──────────────
+    const results: Array<{ dataPointId?: string; deduped?: boolean }> = [];
+
+    for (const utterance of flushed) {
+      // Skip if the merged text is still trivial
+      if (isTextTrivial(utterance.text)) continue;
+
+      try {
+        const result = await processCompleteUtterance(
+          workshopId,
+          utterance,
+          body.dialoguePhase,
+          body.speakerId,
+          body.slmMetadata as Record<string, unknown> | undefined,
+        );
+        results.push(result);
+      } catch (error) {
+        console.error('[Transcript] Error processing buffered utterance:', error);
+      }
+    }
 
     return NextResponse.json({
       ok: true,
-      transcriptChunkId: transcriptChunk.id,
-      dataPointId: dataPoint.id,
-      classificationId: null, // Classification now arrives asynchronously via agentic agent
+      buffered: false,
+      flushedCount: flushed.length,
+      results,
+      classificationId: null, // Classification arrives asynchronously
     });
   } catch (error) {
     console.error('Error ingesting transcript chunk:', error);
