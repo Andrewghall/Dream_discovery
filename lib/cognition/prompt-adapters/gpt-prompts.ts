@@ -161,15 +161,29 @@ Analyse this utterance in context of your accumulated understanding. Return JSON
   ],
   "domainShift": null or {"newFocus": "Domain", "reasoning": "why"},
   "sentimentShift": null or {"newSentiment": "...", "trajectory": "...", "reasoning": "why"},
-  "reasoning": "Your thinking process — what you noticed, what changed in your understanding, what you're uncertain about (2-3 sentences for the facilitator to see)",
+  "deliberation": [
+    "Step 1: What you heard and what the speaker is really saying",
+    "Step 2: How this connects to what you already understand — which existing beliefs does this relate to?",
+    "Step 3: What's changing in your understanding — new insight, reinforcement, tension, or shift?",
+    "Step 4: What you decided to do and why — what beliefs you're creating/reinforcing/weakening",
+    "Step 5: What you're still uncertain about or watching for"
+  ],
   "overallConfidence": 0.0-1.0
 }
+
+CRITICAL — The "deliberation" array is your THINKING PROCESS shown live to the facilitator. This is the most important field. Think step by step:
+1. What is the speaker actually communicating? Read between the lines.
+2. Look at your existing beliefs — does this reinforce something you already think? Contradict it? Add nuance?
+3. How does this shift your overall understanding of the workshop conversation?
+4. Explain your classification and belief decisions — WHY did you choose this primaryType? WHY create/reinforce/weaken?
+5. What are you uncertain about? What would you want to hear next to confirm or revise?
+
+Each step should be a complete thought (1-2 sentences). Write as if you're a senior consultant thinking out loud. The facilitator is watching you reason in real-time — show your working, not just your conclusions.
 
 Important:
 - Reference existing belief IDs when reinforcing/weakening — don't create duplicates
 - Only detect contradictions when beliefs genuinely conflict
-- Your "reasoning" field will be shown to the facilitator in a live panel — make it insightful
-- If this utterance doesn't change your beliefs much, say so honestly`;
+- If this utterance doesn't change your beliefs much, say so in your deliberation and explain why`;
 }
 
 // ── Helper: Beliefs Summary ─────────────────────────────────

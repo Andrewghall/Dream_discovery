@@ -88,8 +88,8 @@ export type CognitiveStateUpdate = {
   domainShift: DomainShift | null;
   sentimentShift: SentimentShift | null;
 
-  // Agent's reasoning (for the live panel)
-  reasoning: string;
+  // Agent's deliberation — step-by-step thinking process (for the live panel)
+  deliberation: string[];
 
   // Overall confidence in this analysis
   overallConfidence: number;
@@ -415,15 +415,16 @@ export function applyCognitiveUpdate(
     }
   }
 
-  // ── Add reasoning entries to state ──────────────────────────
-  // Add the agent's overall reasoning as first entry
-  if (update.reasoning) {
-    reasoningEntries.unshift({
-      timestampMs: now,
-      level: 'utterance',
-      icon: '🟢',
-      summary: update.reasoning,
-    });
+  // ── Add deliberation steps to reasoning entries ─────────────
+  // Each step of the agent's thinking process becomes a separate entry
+  if (update.deliberation && update.deliberation.length > 0) {
+    const deliberationEntries: ReasoningEntry[] = update.deliberation.map((step, i) => ({
+      timestampMs: now + i, // Slight offset so they sort in order
+      level: 'utterance' as const,
+      icon: i === 0 ? '🧠' : i === update.deliberation.length - 1 ? '🎯' : '💭',
+      summary: step,
+    }));
+    reasoningEntries.unshift(...deliberationEntries);
   }
 
   // Keep reasoning log bounded (last 200 entries)

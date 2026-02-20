@@ -140,7 +140,7 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
       actorUpdates: this.normaliseActorUpdates(raw.actorUpdates),
       domainShift: this.normaliseDomainShift(raw.domainShift),
       sentimentShift: this.normaliseSentimentShift(raw.sentimentShift),
-      reasoning: String(raw.reasoning || 'No reasoning provided'),
+      deliberation: this.normaliseDeliberation(raw.deliberation, raw.reasoning),
       overallConfidence: typeof raw.overallConfidence === 'number'
         ? Math.max(0, Math.min(1, raw.overallConfidence))
         : 0.5,
@@ -228,6 +228,21 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
   }
 
   /**
+   * Normalise the deliberation array — the agent's step-by-step thinking.
+   * Falls back to the old `reasoning` field if `deliberation` isn't provided.
+   */
+  private normaliseDeliberation(deliberation: unknown, reasoning: unknown): string[] {
+    if (Array.isArray(deliberation) && deliberation.length > 0) {
+      return deliberation.map(String).filter((s) => s.length > 0);
+    }
+    // Fallback: old-style single reasoning string
+    if (reasoning && typeof reasoning === 'string' && reasoning.length > 0) {
+      return [reasoning];
+    }
+    return ['Processing utterance...'];
+  }
+
+  /**
    * Fallback update when GPT call fails — keeps the system running.
    */
   private fallbackUpdate(utterance: UtteranceInput): CognitiveStateUpdate {
@@ -253,7 +268,7 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
       actorUpdates: [],
       domainShift: null,
       sentimentShift: null,
-      reasoning: 'Analysis engine encountered an error. This utterance has been preserved as a low-confidence insight.',
+      deliberation: ['Analysis engine encountered an error. Preserving utterance as low-confidence insight.'],
       overallConfidence: 0.2,
     };
   }
