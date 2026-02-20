@@ -555,25 +555,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
     try {
       setSnapshotsError(null);
 
-      // Find existing snapshot for this dialogue phase
-      const existing = snapshots.find((s) => s.dialoguePhase === dialoguePhase);
-
-      let r;
-      if (existing) {
-        // UPDATE existing snapshot
-        r = await fetch(`${snapshotUrl}/${existing.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payload }),
-        });
-      } else {
-        // CREATE new snapshot
-        r = await fetch(snapshotUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, dialoguePhase, payload }),
-        });
-      }
+      // Manual save always creates a NEW snapshot with the user's chosen name
+      const r = await fetch(snapshotUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, dialoguePhase, payload }),
+      });
 
       const json = (await r.json().catch(() => null)) as
         | { ok?: boolean; snapshot?: { id: string }; error?: string; detail?: string }
