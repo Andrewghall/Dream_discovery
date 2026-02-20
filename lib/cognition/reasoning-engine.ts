@@ -123,6 +123,7 @@ export interface CognitiveReasoningEngine {
    * The engine receives:
    * - The utterance text and metadata
    * - The FULL cognitive state (beliefs, contradictions, entities, momentum)
+   * - An optional callback for live reasoning step emission
    *
    * The engine returns:
    * - State updates to apply (new beliefs, reinforcements, contradictions, etc.)
@@ -132,6 +133,7 @@ export interface CognitiveReasoningEngine {
   processUtterance(
     state: CognitiveState,
     utterance: UtteranceInput,
+    onReasoningStep?: (entry: ReasoningEntry) => void,
   ): Promise<CognitiveStateUpdate>;
 
   /** Human-readable name of the engine (for logging/UI) */

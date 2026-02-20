@@ -1,16 +1,17 @@
 /**
- * GPT-4o-mini Cognitive Reasoning Engine
+ * GPT-4o-mini Agentic Cognitive Reasoning Engine
  *
- * First implementation of the CognitiveReasoningEngine interface.
- * Evolves from the existing workshop-analyst-agent.ts.
+ * Genuine agentic loop: the model receives an utterance, then DECIDES
+ * which tools to call (query_beliefs, check_contradiction, etc.),
+ * observes results, and continues reasoning until it calls commit_analysis.
  *
- * Model-swappable: replace this file with an SLM engine that
- * implements the same interface.
+ * This is NOT a single-call structured extraction. The model drives
+ * the reasoning process through self-directed tool use.
  */
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
-import type { CognitiveState } from '../cognitive-state';
+import type { CognitiveState, ReasoningEntry } from '../cognitive-state';
 import type {
   CognitiveReasoningEngine,
   CognitiveStateUpdate,
@@ -20,9 +21,16 @@ import type {
   EntityUpdate,
   ActorUpdate,
 } from '../reasoning-engine';
-import { buildSystemPrompt, buildUtterancePrompt } from '../prompt-adapters/gpt-prompts';
+import { buildAgenticSystemPrompt, buildAgenticUserMessage } from '../prompt-adapters/gpt-prompts';
+import { COGNITIVE_TOOLS, executeTool } from './tools';
 
-// ── Safe type parsers ───────────────────────────────────────
+// ── Constants ───────────────────────────────────────────────
+
+const MAX_ITERATIONS = 4;       // Max tool-calling rounds
+const LOOP_TIMEOUT_MS = 5_000;  // Hard timeout for entire loop
+const MODEL = 'gpt-4o-mini';
+
+// ── Safe type parsers (reused from original) ────────────────
 
 type ValidPrimaryType = CognitiveStateUpdate['primaryType'];
 type ValidCategory = BeliefUpdate['category'];
@@ -47,9 +55,7 @@ function safeCategory(v: unknown): ValidCategory {
 
 function safeDomain(v: unknown): ValidDomain {
   const s = String(v || '');
-  // Try exact match first
   if (VALID_DOMAINS.has(s)) return s as ValidDomain;
-  // Try case-insensitive
   for (const d of VALID_DOMAINS) {
     if (d.toLowerCase() === s.toLowerCase()) return d as ValidDomain;
   }
@@ -75,11 +81,11 @@ function safeTrajectory(v: unknown): ValidTrajectory {
 }
 
 // ══════════════════════════════════════════════════════════════
-// GPT-4o-mini Engine Implementation
+// AGENTIC ENGINE
 // ══════════════════════════════════════════════════════════════
 
 export class GPT4oMiniEngine implements CognitiveReasoningEngine {
-  readonly engineName = 'gpt-4o-mini';
+  readonly engineName = 'gpt-4o-mini-agentic';
   private openai: OpenAI;
 
   constructor() {
@@ -92,60 +98,201 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
   async processUtterance(
     state: CognitiveState,
     utterance: UtteranceInput,
+    onReasoningStep?: (entry: ReasoningEntry) => void,
   ): Promise<CognitiveStateUpdate> {
-    const systemPrompt = buildSystemPrompt(state);
-    const userPrompt = buildUtterancePrompt(state, utterance);
+    const systemPrompt = buildAgenticSystemPrompt(state);
+    const userMessage = buildAgenticUserMessage(state, utterance);
+    const deliberation: string[] = [];
+    const startMs = Date.now();
+
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ];
 
     try {
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        temperature: 0.3,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        response_format: { type: 'json_object' },
-      });
+      for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+        // Check timeout
+        if (Date.now() - startMs > LOOP_TIMEOUT_MS) {
+          deliberation.push('Reached time limit — committing current understanding.');
+          console.log(`[Agentic Engine] Timeout after ${iteration} iterations`);
+          break;
+        }
 
-      const raw = completion.choices?.[0]?.message?.content || '{}';
-      console.log('[GPT4oMini Engine] Response length:', raw.length);
+        // On the final iteration, force commit_analysis
+        const isLastIteration = iteration === MAX_ITERATIONS - 1;
+        const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption = isLastIteration
+          ? { type: 'function', function: { name: 'commit_analysis' } }
+          : 'auto';
 
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      return this.normaliseResponse(parsed);
+        console.log(`[Agentic Engine] Iteration ${iteration}${isLastIteration ? ' (forced commit)' : ''}`);
+
+        const completion = await this.openai.chat.completions.create({
+          model: MODEL,
+          temperature: 0.3,
+          messages,
+          tools: COGNITIVE_TOOLS,
+          tool_choice: toolChoice,
+          parallel_tool_calls: true,
+        });
+
+        const choice = completion.choices[0];
+        const assistantMessage = choice.message;
+
+        // Append assistant message to conversation
+        messages.push(assistantMessage);
+
+        // Capture text content (model thinking between tool calls)
+        if (assistantMessage.content) {
+          deliberation.push(assistantMessage.content);
+          onReasoningStep?.({
+            timestampMs: Date.now(),
+            level: 'utterance',
+            icon: '💭',
+            summary: assistantMessage.content,
+          });
+        }
+
+        // No tool calls — model is done
+        if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+          console.log(`[Agentic Engine] No tool calls on iteration ${iteration} — model finished`);
+          break;
+        }
+
+        // Process each tool call
+        let commitArgs: Record<string, unknown> | null = null;
+
+        for (const toolCall of assistantMessage.tool_calls) {
+          // Only handle function tool calls (skip custom tool calls)
+          if (toolCall.type !== 'function') continue;
+
+          const fnName = toolCall.function.name;
+          let fnArgs: Record<string, unknown>;
+
+          try {
+            fnArgs = JSON.parse(toolCall.function.arguments);
+          } catch {
+            fnArgs = {};
+          }
+
+          if (fnName === 'commit_analysis') {
+            // Terminal tool — extract the final analysis
+            commitArgs = fnArgs;
+
+            const meaning = String(fnArgs.semanticMeaning || '').substring(0, 80);
+            deliberation.push(`Committing: ${fnArgs.primaryType} — ${meaning}`);
+            onReasoningStep?.({
+              timestampMs: Date.now(),
+              level: 'utterance',
+              icon: '🎯',
+              summary: `Committing: ${fnArgs.primaryType} — ${meaning}`,
+            });
+
+            // Respond to the tool call (required by API)
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ status: 'committed' }),
+            });
+          } else {
+            // Execute query tool against cognitive state
+            const toolResult = executeTool(fnName, fnArgs, state);
+
+            deliberation.push(toolResult.reasoningSummary);
+            onReasoningStep?.({
+              timestampMs: Date.now(),
+              level: 'utterance',
+              icon: '🔍',
+              summary: toolResult.reasoningSummary,
+            });
+
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: toolResult.result,
+            });
+
+            console.log(`[Agentic Engine] Tool ${fnName}: ${toolResult.reasoningSummary.substring(0, 100)}`);
+          }
+        }
+
+        // If commit_analysis was called, we're done
+        if (commitArgs) {
+          const elapsed = Date.now() - startMs;
+          console.log(`[Agentic Engine] Committed after ${iteration + 1} iterations, ${elapsed}ms`);
+          return this.normaliseCommitArgs(commitArgs, deliberation);
+        }
+      }
+
+      // If we exited the loop without committing (timeout or model stopped),
+      // force one final commit call
+      console.log('[Agentic Engine] Loop ended without commit — forcing final commit');
+      return await this.forceCommit(messages, deliberation);
+
     } catch (error) {
-      console.error('[GPT4oMini Engine] Failed:', error instanceof Error ? error.message : error);
-      // Return a minimal safe update rather than crashing
-      return this.fallbackUpdate(utterance);
+      console.error('[Agentic Engine] Failed:', error instanceof Error ? error.message : error);
+      return this.fallbackUpdate(utterance, deliberation);
     }
   }
 
-  /**
-   * Normalise the raw GPT response into a valid CognitiveStateUpdate.
-   * Handles missing fields, wrong types, and invalid enums.
-   */
-  private normaliseResponse(raw: Record<string, unknown>): CognitiveStateUpdate {
-    const classification = (raw.classification || {}) as Record<string, unknown>;
+  // ── Force a final commit when the loop exits without one ────
 
+  private async forceCommit(
+    messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    deliberation: string[],
+  ): Promise<CognitiveStateUpdate> {
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.3,
+        messages,
+        tools: COGNITIVE_TOOLS,
+        tool_choice: { type: 'function', function: { name: 'commit_analysis' } },
+      });
+
+      const toolCalls = completion.choices[0]?.message?.tool_calls;
+      const firstFnCall = toolCalls?.find(tc => tc.type === 'function');
+      if (firstFnCall && firstFnCall.type === 'function') {
+        const args = JSON.parse(firstFnCall.function.arguments);
+        deliberation.push('Forced commit after loop exhaustion');
+        return this.normaliseCommitArgs(args, deliberation);
+      }
+    } catch (error) {
+      console.error('[Agentic Engine] Force commit failed:', error instanceof Error ? error.message : error);
+    }
+
+    deliberation.push('Force commit failed — returning fallback');
+    return this.fallbackUpdate({ text: '', speaker: null, utteranceId: '', startTimeMs: 0, endTimeMs: 0 }, deliberation);
+  }
+
+  // ── Normalise commit_analysis arguments into CognitiveStateUpdate ──
+
+  private normaliseCommitArgs(
+    args: Record<string, unknown>,
+    deliberation: string[],
+  ): CognitiveStateUpdate {
     return {
-      primaryType: safePrimaryType(raw.primaryType),
+      primaryType: safePrimaryType(args.primaryType),
       classification: {
-        semanticMeaning: String(classification.semanticMeaning || 'Unable to interpret'),
-        speakerIntent: String(classification.speakerIntent || 'Unknown'),
-        temporalFocus: safeTemporal(classification.temporalFocus),
-        sentimentTone: safeSentiment(classification.sentimentTone),
+        semanticMeaning: String(args.semanticMeaning || 'Unable to interpret'),
+        speakerIntent: String(args.speakerIntent || 'Unknown'),
+        temporalFocus: safeTemporal(args.temporalFocus),
+        sentimentTone: safeSentiment(args.sentimentTone),
       },
-      beliefUpdates: this.normaliseBeliefUpdates(raw.beliefUpdates),
-      contradictionUpdates: this.normaliseContradictionUpdates(raw.contradictionUpdates),
-      entityUpdates: this.normaliseEntityUpdates(raw.entityUpdates),
-      actorUpdates: this.normaliseActorUpdates(raw.actorUpdates),
-      domainShift: this.normaliseDomainShift(raw.domainShift),
-      sentimentShift: this.normaliseSentimentShift(raw.sentimentShift),
-      deliberation: this.normaliseDeliberation(raw.deliberation, raw.reasoning),
-      overallConfidence: typeof raw.overallConfidence === 'number'
-        ? Math.max(0, Math.min(1, raw.overallConfidence))
+      beliefUpdates: this.normaliseBeliefUpdates(args.beliefUpdates),
+      contradictionUpdates: this.normaliseContradictionUpdates(args.contradictionUpdates),
+      entityUpdates: this.normaliseEntityUpdates(args.entityUpdates),
+      actorUpdates: this.normaliseActorUpdates(args.actorUpdates),
+      domainShift: this.normaliseDomainShift(args.domainShift),
+      sentimentShift: this.normaliseSentimentShift(args.sentimentShift),
+      deliberation,
+      overallConfidence: typeof args.overallConfidence === 'number'
+        ? Math.max(0, Math.min(1, args.overallConfidence))
         : 0.5,
     };
   }
+
+  // ── Normalisation helpers (reused from original) ──────────
 
   private normaliseBeliefUpdates(raw: unknown): BeliefUpdate[] {
     if (!Array.isArray(raw)) return [];
@@ -164,7 +311,7 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
         : [],
       confidence: typeof b.confidence === 'number' ? Math.max(0, Math.min(1, b.confidence)) : 0.3,
       reasoning: String(b.reasoning || ''),
-    })).filter((b) => b.label.length > 3); // Filter out garbage
+    })).filter((b) => b.label.length > 3);
   }
 
   private normaliseContradictionUpdates(raw: unknown): ContradictionUpdate[] {
@@ -227,25 +374,9 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
     };
   }
 
-  /**
-   * Normalise the deliberation array — the agent's step-by-step thinking.
-   * Falls back to the old `reasoning` field if `deliberation` isn't provided.
-   */
-  private normaliseDeliberation(deliberation: unknown, reasoning: unknown): string[] {
-    if (Array.isArray(deliberation) && deliberation.length > 0) {
-      return deliberation.map(String).filter((s) => s.length > 0);
-    }
-    // Fallback: old-style single reasoning string
-    if (reasoning && typeof reasoning === 'string' && reasoning.length > 0) {
-      return [reasoning];
-    }
-    return ['Processing utterance...'];
-  }
+  // ── Fallback when the entire agentic loop fails ───────────
 
-  /**
-   * Fallback update when GPT call fails — keeps the system running.
-   */
-  private fallbackUpdate(utterance: UtteranceInput): CognitiveStateUpdate {
+  private fallbackUpdate(utterance: UtteranceInput, deliberation: string[]): CognitiveStateUpdate {
     return {
       primaryType: 'INSIGHT',
       classification: {
@@ -254,21 +385,21 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
         temporalFocus: 'present',
         sentimentTone: 'neutral',
       },
-      beliefUpdates: [{
+      beliefUpdates: utterance.text.length > 0 ? [{
         action: 'create',
         label: utterance.text.length > 80 ? utterance.text.substring(0, 80) + '...' : utterance.text,
         category: 'insight',
         primaryType: 'INSIGHT',
         domains: [{ domain: 'Operations', relevance: 0.3 }],
         confidence: 0.2,
-        reasoning: 'Fallback — GPT analysis failed, preserving utterance as low-confidence insight',
-      }],
+        reasoning: 'Fallback — agentic analysis failed, preserving utterance as low-confidence insight',
+      }] : [],
       contradictionUpdates: [],
       entityUpdates: [],
       actorUpdates: [],
       domainShift: null,
       sentimentShift: null,
-      deliberation: ['Analysis engine encountered an error. Preserving utterance as low-confidence insight.'],
+      deliberation: [...deliberation, 'Agentic engine encountered an error. Preserving utterance as low-confidence insight.'],
       overallConfidence: 0.2,
     };
   }

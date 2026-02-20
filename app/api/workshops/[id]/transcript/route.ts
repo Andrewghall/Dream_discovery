@@ -247,13 +247,30 @@ async function processCompleteUtterance(
       const engine = getGPT4oMiniEngine();
       console.log('[Cognitive] Processing utterance:', text.substring(0, 100));
 
-      const stateUpdate = await engine.processUtterance(cognitiveState, {
-        text,
-        speaker: bodySpeakerId,
-        utteranceId: dataPoint.id,
-        startTimeMs: utterance.startTimeMs,
-        endTimeMs: utterance.endTimeMs,
-      });
+      const stateUpdate = await engine.processUtterance(
+        cognitiveState,
+        {
+          text,
+          speaker: bodySpeakerId,
+          utteranceId: dataPoint.id,
+          startTimeMs: utterance.startTimeMs,
+          endTimeMs: utterance.endTimeMs,
+        },
+        // Live reasoning callback — emits each agentic tool call as an SSE event in real-time
+        (entry) => {
+          emitWorkshopEvent(workshopId, {
+            id: nanoid(),
+            type: 'agentic.reasoning',
+            createdAt: entry.timestampMs,
+            payload: {
+              level: entry.level,
+              icon: entry.icon,
+              summary: entry.summary,
+              details: entry.details,
+            },
+          });
+        },
+      );
 
       // Apply the update to the cognitive state (state engine owns dynamics)
       const events = applyCognitiveUpdate(cognitiveState, stateUpdate, dataPoint.id);
