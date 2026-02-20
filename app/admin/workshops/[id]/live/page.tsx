@@ -1848,13 +1848,30 @@ export default function WorkshopLivePage({ params }: PageProps) {
     const tauMs = 10 * 60 * 1000;
 
     for (const n of utteranceNodes) {
-      const i = interpretLiveUtterance(n.rawText);
-      const w = confidenceWeightNumber(i.confidenceWeight);
       const ageMs = Math.max(0, now - (n.createdAtMs || now));
       const recency = Math.exp(-ageMs / Math.max(1, tauMs));
-      const ww = w * (0.5 + 0.5 * recency);
-      for (const d of i.domains || []) {
-        counts[d] = (counts[d] || 0) + ww;
+
+      // Prefer cognitive engine domains over keyword matching
+      if (n.agenticAnalysis?.domains && n.agenticAnalysis.domains.length > 0) {
+        for (const d of n.agenticAnalysis.domains) {
+          const domain = d.domain as LiveDomain;
+          if (domain in counts) {
+            counts[domain] += d.relevance * (0.5 + 0.5 * recency);
+          }
+        }
+      } else if (n.classification?.suggestedArea) {
+        const area = n.classification.suggestedArea as LiveDomain;
+        if (area in counts) {
+          counts[area] += 1.0 * (0.5 + 0.5 * recency);
+        }
+      } else {
+        // Fallback to keyword matching
+        const i = interpretLiveUtterance(n.rawText);
+        const w = confidenceWeightNumber(i.confidenceWeight);
+        const ww = w * (0.5 + 0.5 * recency);
+        for (const d of i.domains || []) {
+          counts[d] = (counts[d] || 0) + ww;
+        }
       }
     }
     return counts;
