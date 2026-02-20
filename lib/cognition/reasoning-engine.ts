@@ -210,8 +210,8 @@ export function applyCognitiveUpdate(
             timestampMs: now,
             level: 'belief',
             icon: '🟢',
-            summary: `Reinforcing: "${existing.label}" (confidence: ${(existing.confidence * 100).toFixed(0)}%)`,
-            details: bu.reasoning,
+            summary: bu.reasoning || `Reinforcing: "${existing.label}"`,
+            details: `"${existing.label}" — confidence: ${(existing.confidence * 100).toFixed(0)}%, evidence: ${existing.evidenceCount}`,
           });
           break;
         }
@@ -243,8 +243,8 @@ export function applyCognitiveUpdate(
           timestampMs: now,
           level: 'belief',
           icon: '🔵',
-          summary: `New belief: "${belief.label}" (${belief.category}, confidence: ${(belief.confidence * 100).toFixed(0)}%)`,
-          details: bu.reasoning,
+          summary: bu.reasoning || `New belief: "${belief.label}"`,
+          details: `${belief.category} — ${belief.domains.map(d => d.domain).join(', ')} — confidence: ${(belief.confidence * 100).toFixed(0)}%`,
         });
       }
     } else if (bu.action === 'reinforce' && bu.beliefId) {
@@ -260,8 +260,8 @@ export function applyCognitiveUpdate(
           timestampMs: now,
           level: 'belief',
           icon: '🟢',
-          summary: `Reinforced: "${existing.label}" (confidence: ${(existing.confidence * 100).toFixed(0)}%)`,
-          details: bu.reasoning,
+          summary: bu.reasoning || `Reinforced: "${existing.label}"`,
+          details: `"${existing.label}" — confidence: ${(existing.confidence * 100).toFixed(0)}%, evidence: ${existing.evidenceCount}`,
         });
       }
     } else if (bu.action === 'weaken' && bu.beliefId) {
@@ -272,8 +272,8 @@ export function applyCognitiveUpdate(
           timestampMs: now,
           level: 'belief',
           icon: '🟡',
-          summary: `Weakened: "${existing.label}" (confidence: ${(existing.confidence * 100).toFixed(0)}%)`,
-          details: bu.reasoning,
+          summary: bu.reasoning || `Weakened: "${existing.label}"`,
+          details: `"${existing.label}" — confidence dropped to ${(existing.confidence * 100).toFixed(0)}%`,
         });
       }
     }
@@ -305,8 +305,8 @@ export function applyCognitiveUpdate(
           timestampMs: now,
           level: 'contradiction',
           icon: '🟡',
-          summary: `Contradiction: "${beliefA.label}" vs "${beliefB.label}"`,
-          details: cu.reasoning,
+          summary: cu.reasoning || `Contradiction detected between two beliefs`,
+          details: `"${beliefA.label}" vs "${beliefB.label}"`,
         });
       }
     } else if (cu.action === 'resolve' && cu.contradictionId) {
@@ -320,7 +320,8 @@ export function applyCognitiveUpdate(
           timestampMs: now,
           level: 'contradiction',
           icon: '🟢',
-          summary: `Resolved: ${cu.resolution || cu.reasoning}`,
+          summary: cu.reasoning || `Contradiction resolved`,
+          details: cu.resolution || undefined,
         });
       }
     }
