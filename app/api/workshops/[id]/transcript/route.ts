@@ -4,7 +4,6 @@ import { nanoid } from 'nanoid';
 
 import { prisma } from '@/lib/prisma';
 import { emitWorkshopEvent } from '@/lib/realtime/workshop-events';
-import { classifyDataPoint } from '@/lib/workshop/classify-datapoint';
 import { deriveIntent } from '@/lib/workshop/derive-intent';
 import { analyzeUtteranceAgentically, AgenticContext } from '@/lib/agents/workshop-analyst-agent';
 
@@ -252,35 +251,8 @@ export async function POST(
 
     const intentPromise = deriveIntent({ text, recentContext: contextMessages }).catch(() => null);
 
-    // Classify with conversation context
-    const cls = await classifyDataPoint({ text, recentContext: contextMessages });
-
-    const classification = await prisma.dataPointClassification.create({
-      data: {
-        dataPointId: dataPoint.id,
-        primaryType: cls.primaryType,
-        confidence: cls.confidence,
-        keywords: cls.keywords,
-        suggestedArea: cls.suggestedArea,
-      },
-    });
-
-    emitWorkshopEvent(workshopId, {
-      id: nanoid(),
-      type: 'classification.updated',
-      createdAt: Date.now(),
-      payload: {
-        dataPointId: dataPoint.id,
-        classification: {
-          id: classification.id,
-          primaryType: classification.primaryType,
-          confidence: classification.confidence,
-          keywords: classification.keywords,
-          suggestedArea: classification.suggestedArea,
-          updatedAt: classification.updatedAt,
-        },
-      },
-    });
+    // Classification now handled by the agentic agent in the after() callback below
+    // This ensures full conversation context is used for accurate classification
 
     const intent = await intentPromise;
     if (intent) {
@@ -410,7 +382,36 @@ export async function POST(
           },
         });
 
-        // Emit event for real-time UI updates
+        // Create classification from the agentic analysis (unified: one agent, one call)
+        const classification = await prisma.dataPointClassification.create({
+          data: {
+            dataPointId: dataPoint.id,
+            primaryType: analysis.primaryType,
+            confidence: analysis.overallConfidence,
+            keywords: analysis.themes.map((t: { label: string }) => t.label).slice(0, 8),
+            suggestedArea: analysis.domains[0]?.domain || null,
+          },
+        });
+
+        // Emit classification event for real-time UI node update
+        emitWorkshopEvent(workshopId, {
+          id: nanoid(),
+          type: 'classification.updated',
+          createdAt: Date.now(),
+          payload: {
+            dataPointId: dataPoint.id,
+            classification: {
+              id: classification.id,
+              primaryType: classification.primaryType,
+              confidence: classification.confidence,
+              keywords: classification.keywords,
+              suggestedArea: classification.suggestedArea,
+              updatedAt: classification.updatedAt,
+            },
+          },
+        });
+
+        // Emit agentic analysis event for real-time UI updates
         emitWorkshopEvent(workshopId, {
           id: nanoid(),
           type: 'agentic.analyzed',
@@ -430,7 +431,7 @@ export async function POST(
       ok: true,
       transcriptChunkId: transcriptChunk.id,
       dataPointId: dataPoint.id,
-      classificationId: classification.id,
+      classificationId: null, // Classification now arrives asynchronously via agentic agent
     });
   } catch (error) {
     console.error('Error ingesting transcript chunk:', error);

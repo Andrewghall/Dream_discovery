@@ -9,7 +9,35 @@ import { env } from '@/lib/env';
  * relying on hardcoded keyword patterns.
  */
 
+type DataPointPrimaryType =
+  | 'VISIONARY'
+  | 'OPPORTUNITY'
+  | 'CONSTRAINT'
+  | 'RISK'
+  | 'ENABLER'
+  | 'ACTION'
+  | 'QUESTION'
+  | 'INSIGHT';
+
+function safePrimaryType(v: unknown): DataPointPrimaryType {
+  const upper = String(v || '').toUpperCase();
+  const allowed: Record<string, DataPointPrimaryType> = {
+    VISIONARY: 'VISIONARY',
+    OPPORTUNITY: 'OPPORTUNITY',
+    CONSTRAINT: 'CONSTRAINT',
+    RISK: 'RISK',
+    ENABLER: 'ENABLER',
+    ACTION: 'ACTION',
+    QUESTION: 'QUESTION',
+    INSIGHT: 'INSIGHT',
+  };
+  return allowed[upper] || 'INSIGHT';
+}
+
 export type AgenticAnalysis = {
+  // Primary classification of this utterance
+  primaryType: DataPointPrimaryType;
+
   // What the agent understood from this utterance
   interpretation: {
     semanticMeaning: string;
@@ -108,6 +136,23 @@ ${context.emergingThemes.length > 0 ? `\nEmerging Themes You've Detected:\n${con
 - Enabler: What makes things possible, capabilities needed, foundational elements
 - Opportunity: Potential improvements, chances to create value, untapped possibilities
 
+**Classification** (assign exactly ONE primaryType based on overall intent):
+- VISIONARY: Aspirational statements about a desired future state, goals, or transformational ideas
+- OPPORTUNITY: Identifying potential improvements, untapped possibilities, chances to create value
+- CONSTRAINT: Explicit blockers, limitations, dependencies, or things that PREVENT progress
+- RISK: Threats, concerns, or things that could go wrong
+- ENABLER: Things that make progress possible — capabilities, tools, foundations, positive conditions
+- ACTION: Specific next steps, commitments, or things to do
+- QUESTION: Direct questions or requests for clarification
+- INSIGHT: Observations, reflections, descriptions of current/past state, sharing experience/knowledge
+
+Classification rules:
+- Speech arrives in real-time fragments. Read the conversation context to understand the speaker's FULL intent.
+- Describing past experience, current reality, or how things work = INSIGHT, not CONSTRAINT
+- Positive or collaborative statements = INSIGHT or ENABLER, not CONSTRAINT
+- Only classify as CONSTRAINT when the speaker is explicitly identifying something that blocks, limits, or prevents progress
+- When uncertain, prefer INSIGHT (the safest, most neutral classification)
+
 **Actors** (extract any business roles/personas mentioned):
 - Identify every actor/role referenced (e.g., Customer, Agent, Executive, Supplier, New Starter, Team Lead, Analyst, Auditor, Manager, System)
 - For each actor, describe their role in context
@@ -164,6 +209,7 @@ Analyze this utterance in the context of the conversation. Consider:
    - How do they interact with each other?
    - What is the sentiment of each interaction?
 7. What are you uncertain about in your analysis?
+8. Classify this utterance with a single primaryType from: VISIONARY, OPPORTUNITY, CONSTRAINT, RISK, ENABLER, ACTION, QUESTION, INSIGHT. Follow the classification rules strictly.
 
 Be specific, be honest about uncertainty, and always provide reasoning.`;
 }
@@ -210,6 +256,7 @@ export async function analyzeUtteranceAgentically(params: {
 
     // Validate and provide defaults
     return {
+      primaryType: safePrimaryType(analysis.primaryType),
       interpretation: {
         semanticMeaning: analysis.interpretation?.semanticMeaning || 'Unable to interpret',
         speakerIntent: analysis.interpretation?.speakerIntent || 'Unknown',
