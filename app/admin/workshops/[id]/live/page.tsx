@@ -33,7 +33,7 @@ import {
 import { LiveDomainRadar } from '@/components/live/live-domain-radar';
 import { AgenticReasoningPanel, type ReasoningEntry } from '@/components/live/agentic-reasoning-panel';
 import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
-import { transcribeAudio, type CaptureAPIResponse } from '@/lib/captureapi/client';
+import { transcribeAudio, checkCaptureAPIHealth, type CaptureAPIResponse } from '@/lib/captureapi/client';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -2289,8 +2289,17 @@ export default function WorkshopLivePage({ params }: PageProps) {
     } catch (error) {
       console.error('[CaptureAPI] Transcription failed:', error);
 
-      // Show generic message to facilitators
-      const msg = 'Transcription unavailable - check audio input';
+      let msg = 'Transcription service error';
+      if (error instanceof Error) {
+        if (error.message.includes('not configured')) {
+          msg = 'CaptureAPI URL is not configured — transcription disabled';
+        } else if (error.message.includes('status 5')) {
+          msg = 'CaptureAPI server error — the service may be restarting';
+        } else {
+          msg = `CaptureAPI error — ${error.message.substring(0, 120)}`;
+        }
+      }
+
       if (msg !== lastTranscriptionErrorRef.current) {
         lastTranscriptionErrorRef.current = msg;
         setError(msg);
@@ -2842,6 +2851,18 @@ export default function WorkshopLivePage({ params }: PageProps) {
     if (micPermission !== 'granted') {
       setError('Please run the microphone check before joining.');
       setMicDialogOpen(true);
+      return;
+    }
+
+    // Pre-capture health check — verify CaptureAPI is reachable before recording
+    const health = await checkCaptureAPIHealth();
+    if (!health.ok) {
+      const messages: Record<string, string> = {
+        not_configured: 'CaptureAPI is not configured — set NEXT_PUBLIC_CAPTUREAPI_URL in your environment.',
+        unreachable: `Cannot reach CaptureAPI at ${health.url} — check that the service is running.`,
+        unhealthy: `CaptureAPI at ${health.url} is not healthy — the service may be restarting.`,
+      };
+      setError(messages[health.reason || 'unreachable'] || 'CaptureAPI is unavailable.');
       return;
     }
 

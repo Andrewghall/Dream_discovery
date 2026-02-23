@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Mic, MicOff, Square, FileText, ArrowLeft, Clock, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import Link from 'next/link';
-import { transcribeAudio } from '@/lib/captureapi/client';
+import { transcribeAudio, checkCaptureAPIHealth } from '@/lib/captureapi/client';
 import { nanoid } from 'nanoid';
 import { useDiagnosticTraces } from '@/hooks/useDiagnosticTraces';
 import { PipelineSniffer } from '@/components/diagnostics/pipeline-sniffer';
@@ -276,6 +276,18 @@ export default function SalesLivePage() {
 
   // Start capture
   const startCapture = async () => {
+    // Pre-capture health check — verify CaptureAPI is reachable
+    const health = await checkCaptureAPIHealth();
+    if (!health.ok) {
+      const messages: Record<string, string> = {
+        not_configured: 'CaptureAPI is not configured — set NEXT_PUBLIC_CAPTUREAPI_URL in your environment.',
+        unreachable: `Cannot reach CaptureAPI at ${health.url} — check that the service is running.`,
+        unhealthy: `CaptureAPI at ${health.url} is not healthy — the service may be restarting.`,
+      };
+      alert(messages[health.reason || 'unreachable'] || 'CaptureAPI is unavailable.');
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },

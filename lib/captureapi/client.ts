@@ -182,26 +182,40 @@ export async function transcribeAudio(
   }
 }
 
+export interface CaptureAPIHealthResult {
+  ok: boolean
+  reason?: 'not_configured' | 'unreachable' | 'unhealthy'
+  url?: string
+}
+
 /**
  * Check if CaptureAPI is available and responding.
- *
- * @returns Promise<boolean> - true if available, false otherwise
+ * Returns a structured result so callers can show specific error messages.
  */
-export async function checkCaptureAPIHealth(): Promise<boolean> {
+export async function checkCaptureAPIHealth(): Promise<CaptureAPIHealthResult> {
+  const url = process.env.NEXT_PUBLIC_CAPTUREAPI_URL || process.env.CAPTUREAPI_URL
+
+  if (!url) {
+    return { ok: false, reason: 'not_configured' }
+  }
+
   try {
-    const baseURL = getCaptureAPIURL()
-    const response = await fetch(`${baseURL}/health`, {
+    const response = await fetch(`${url}/health`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000),
     })
 
-    if (!response.ok) return false
+    if (!response.ok) {
+      return { ok: false, reason: 'unhealthy', url }
+    }
 
     const data = await response.json()
     return data.status === 'healthy'
+      ? { ok: true, url }
+      : { ok: false, reason: 'unhealthy', url }
 
   } catch (error) {
     console.warn('[CaptureAPI] Health check failed:', error)
-    return false
+    return { ok: false, reason: 'unreachable', url }
   }
 }
