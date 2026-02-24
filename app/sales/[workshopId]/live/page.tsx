@@ -347,6 +347,8 @@ export default function SalesLivePage() {
 
       // --- Raw PCM streaming via WebSocket (16kHz mono Int16) ---
       const pcmCtx = new AudioContext({ sampleRate: 16000 });
+      if (pcmCtx.state === 'suspended') await pcmCtx.resume();
+      console.log('[DREAM-DIAG] PCM AudioContext state:', pcmCtx.state, 'sampleRate:', pcmCtx.sampleRate);
       const pcmSource = pcmCtx.createMediaStreamSource(stream);
       const processor = pcmCtx.createScriptProcessor(4096, 1, 1);
       pcmSource.connect(processor);
