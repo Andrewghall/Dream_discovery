@@ -124,7 +124,7 @@ export function AdminHeader({ section }: AdminHeaderProps) {
             <img
               src={src}
               alt={orgName || 'Logo'}
-              className="h-36 w-auto max-w-[400px] object-contain"
+              className="max-h-16 w-auto max-w-[250px] object-contain"
             />
           ) : (
             <span className="text-xl font-bold">{orgName || 'DREAM Discovery'}</span>
