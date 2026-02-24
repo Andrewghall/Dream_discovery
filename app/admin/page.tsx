@@ -132,6 +132,12 @@ export default function AdminDashboard() {
   const fetchDbDebug = async () => {
     try {
       const response = await fetch(`/api/debug/env?bust=${Date.now()}`, { cache: 'no-store' });
+      if (response.status === 401 || response.status === 403) {
+        // Non-admin user — silently hide debug panel (endpoint is PLATFORM_ADMIN only)
+        setDbDebug(null);
+        setDbDebugError(null);
+        return;
+      }
       const data = (await response.json().catch(() => null)) as DebugEnvResponse | null;
       if (!response.ok) {
         setDbDebug(null);
