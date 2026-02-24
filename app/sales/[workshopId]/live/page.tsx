@@ -370,7 +370,6 @@ export default function SalesLivePage() {
         } catch (err) {
           console.error('[CaptureAPIStream] PCM send failed:', err);
         }
-        }
       };
 
       pcmContextRef.current = pcmCtx;
