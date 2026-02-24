@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 
 export function AdminHeader() {
@@ -27,7 +26,8 @@ export function AdminHeader() {
     <div className="no-print border-b bg-background/80 backdrop-blur-sm">
       <div className="container mx-auto px-4 py-3 flex items-center gap-3">
         <Link href="/admin" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-          <Image src={src} alt="Logo" width={120} height={35} className="h-8 w-auto" priority />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt="Logo" className="h-8 w-auto" />
         </Link>
       </div>
     </div>

@@ -55,11 +55,12 @@ export async function POST(request: NextRequest) {
 
     // Update password and mark token as used
     await prisma.$transaction([
-      // Update user password
+      // Update user password and clear mustChangePassword flag
       prisma.user.update({
         where: { id: resetToken.userId },
         data: {
           password: hashedPassword,
+          mustChangePassword: false,
           failedLoginCount: 0,
           lockedUntil: null,
         },

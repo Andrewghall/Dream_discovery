@@ -149,6 +149,7 @@ interface WelcomeEmailData {
   userEmail: string;
   temporaryPassword: string;
   loginUrl: string;
+  setPasswordUrl?: string;
   role: string;
   organizationName?: string;
   maxSeats?: number;
@@ -241,20 +242,20 @@ export function welcomeEmailTemplate(data: WelcomeEmailData): string {
             <tr><td style="padding: 0 36px;">
               <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 16px; margin-bottom: 28px;">
                 <p style="color: #92400E; margin: 0; font-size: 13px; line-height: 1.5;">
-                  You will be asked to create a new password on first sign-in. Please do not share these credentials.
+                  Please set your own password using the button below. Do not share these credentials.
                 </p>
               </div>
             </td></tr>
 
             <!-- CTA Button -->
             <tr><td style="padding: 0 36px 12px 36px; text-align: center;">
-              <a href="${data.loginUrl}" style="display: inline-block; background: #1E3A5F; color: #FFFFFF; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 15px; letter-spacing: 0.2px;">
-                Sign In &amp; Set Password
+              <a href="${data.setPasswordUrl || data.loginUrl}" style="display: inline-block; background: #1E3A5F; color: #FFFFFF; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 15px; letter-spacing: 0.2px;">
+                Set Your Password
               </a>
             </td></tr>
             <tr><td style="padding: 0 36px 36px 36px; text-align: center;">
               <p style="color: #9CA3AF; font-size: 12px; margin: 8px 0 0 0;">
-                Or visit: <a href="${data.loginUrl}" style="color: #6B7280; word-break: break-all;">${data.loginUrl}</a>
+                This link expires in 7 days. After setting your password, sign in at: <a href="${data.loginUrl}" style="color: #6B7280; word-break: break-all;">${data.loginUrl}</a>
               </p>
             </td></tr>
 

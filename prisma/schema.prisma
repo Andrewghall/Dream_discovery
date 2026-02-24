@@ -32,6 +32,7 @@ model User {
   email            String       @unique
   name             String
   password         String       // bcrypt hashed password
+  mustChangePassword Boolean    @default(false) @map("must_change_password")
   role             UserRole     @default(TENANT_ADMIN)
   organizationId   String?      // NULL for platform admins
   isActive         Boolean      @default(true)

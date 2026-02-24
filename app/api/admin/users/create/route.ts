@@ -86,18 +86,30 @@ export async function POST(request: NextRequest) {
     const temporaryPassword = generateTemporaryPassword();
     const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
-    // Create user
+    // Create user with mustChangePassword flag
     const user = await prisma.user.create({
       data: {
         id: nanoid(),
         email: email.toLowerCase().trim(),
         name,
         password: hashedPassword,
+        mustChangePassword: true,
         role: role as 'PLATFORM_ADMIN' | 'TENANT_ADMIN' | 'TENANT_USER',
         organizationId: (role === 'TENANT_ADMIN' || role === 'TENANT_USER') ? organizationId : null,
         isActive: true,
       },
       include: { organization: true },
+    });
+
+    // Create a password-reset token so the welcome email can link directly to "Set Password"
+    const resetToken = nanoid(48);
+    await prisma.passwordResetToken.create({
+      data: {
+        id: nanoid(),
+        token: resetToken,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      },
     });
 
     // Audit log
@@ -119,13 +131,13 @@ export async function POST(request: NextRequest) {
       });
     } catch { /* non-fatal */ }
 
-    // Send welcome email
+    // Send welcome email with password-set link
     let emailSent = false;
     let emailError: string | null = null;
     try {
-      const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}${
-        role === 'PLATFORM_ADMIN' ? '/login' : '/tenant/login'
-      }`;
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const loginUrl = `${baseUrl}${role === 'PLATFORM_ADMIN' ? '/login' : '/tenant/login'}`;
+      const setPasswordUrl = `${baseUrl}/reset-password?token=${resetToken}`;
       console.log('[create] Sending welcome email to', user.email, 'from org:', user.organization?.name);
       const emailResult = await sendWelcomeEmail({
         to: user.email,
@@ -133,6 +145,7 @@ export async function POST(request: NextRequest) {
         userEmail: user.email,
         temporaryPassword,
         loginUrl,
+        setPasswordUrl,
         role: user.role,
         organizationName: user.organization?.name,
         maxSeats: user.organization?.maxSeats ?? undefined,

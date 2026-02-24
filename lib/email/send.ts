@@ -126,6 +126,7 @@ export async function sendWelcomeEmail(params: {
   userEmail: string;
   temporaryPassword: string;
   loginUrl: string;
+  setPasswordUrl?: string;
   role: string;
   organizationName?: string;
   maxSeats?: number;
@@ -136,6 +137,7 @@ export async function sendWelcomeEmail(params: {
     userEmail: params.userEmail,
     temporaryPassword: params.temporaryPassword,
     loginUrl: params.loginUrl,
+    setPasswordUrl: params.setPasswordUrl,
     role: params.role,
     organizationName: params.organizationName,
     maxSeats: params.maxSeats,

@@ -133,6 +133,26 @@ export async function POST(request: NextRequest) {
       data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
     });
 
+    // If user must change password, generate a reset token and redirect there instead of logging in
+    if (user.mustChangePassword) {
+      const resetToken = nanoid(48);
+      await prisma.passwordResetToken.create({
+        data: {
+          id: nanoid(),
+          token: resetToken,
+          userId: user.id,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        mustChangePassword: true,
+        redirectTo: `/reset-password?token=${resetToken}`,
+        user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      });
+    }
+
     const sessionPayload: SessionPayload = {
       sessionId: nanoid(),
       userId: user.id,
