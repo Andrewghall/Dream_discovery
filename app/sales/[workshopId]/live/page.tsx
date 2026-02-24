@@ -94,6 +94,7 @@ export default function SalesLivePage() {
   const chunkStartRef = useRef(0);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const pcmContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number>(0);
   const latestTraceIdRef = useRef<string | null>(null);
 
@@ -338,47 +339,31 @@ export default function SalesLivePage() {
       streamRef.current = stream;
       startAudioMonitoring(stream);
 
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-      mediaRecorderRef.current = recorder;
+      // --- Raw PCM streaming via WebSocket (16kHz mono Int16) ---
+      const pcmCtx = new AudioContext({ sampleRate: 16000 });
+      const pcmSource = pcmCtx.createMediaStreamSource(stream);
+      const processor = pcmCtx.createScriptProcessor(4096, 1, 1);
+      pcmSource.connect(processor);
+      processor.connect(pcmCtx.destination);
 
-      chunkStartRef.current = Date.now();
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          const now = Date.now();
-          const traceId = isDeveloper ? nanoid(10) : undefined;
-          if (traceId) {
-            diagnostics.recordTimestamp(traceId, 't_audioCaptured', now);
+      processor.onaudioprocess = (e: AudioProcessingEvent) => {
+        const ws = captureWSRef.current;
+        if (ws && ws.isReady) {
+          const inputData = e.inputBuffer.getChannelData(0);
+          const pcmData = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            const s = Math.max(-1, Math.min(1, inputData[i]));
+            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
           }
-
-          // Send via WebSocket if connected, otherwise fall back to HTTP queue
-          const ws = captureWSRef.current;
-          if (ws && ws.isReady) {
-            ws.sendAudio(e.data).catch((err) => {
-              console.error('[CaptureAPIStream] Send failed, falling back to queue:', err);
-              queueRef.current.push({ blob: e.data, startTime: chunkStartRef.current, endTime: now, traceId });
-              processQueue();
-            });
-          } else {
-            queueRef.current.push({ blob: e.data, startTime: chunkStartRef.current, endTime: now, traceId });
-            processQueue();
+          try {
+            ws.sendBuffer(pcmData.buffer);
+          } catch (err) {
+            console.error('[CaptureAPIStream] PCM send failed:', err);
           }
-
-          chunkStartRef.current = now;
         }
       };
 
-      recorder.start();
-      // Request data every 10 seconds
-      const chunkInterval = setInterval(() => {
-        if (recorder.state === 'recording') {
-          recorder.requestData();
-        }
-      }, CHUNK_MS);
-
-      recorder.onstop = () => {
-        clearInterval(chunkInterval);
-      };
+      pcmContextRef.current = pcmCtx;
 
       setCallStartTime(Date.now());
       setStatus('capturing');
@@ -396,6 +381,8 @@ export default function SalesLivePage() {
       mediaRecorderRef.current.requestData();
       mediaRecorderRef.current.stop();
     }
+    pcmContextRef.current?.close();
+    pcmContextRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     captureWSRef.current?.close();
     captureWSRef.current = null;

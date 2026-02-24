@@ -303,6 +303,14 @@ export class CaptureAPIStream {
     this.ws.send(buffer)
   }
 
+  /** Send raw PCM audio buffer directly (no Blob conversion). */
+  sendBuffer(buffer: ArrayBuffer): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket not connected')
+    }
+    this.ws.send(buffer)
+  }
+
   /** True if connected and ready to receive audio. */
   get isReady(): boolean {
     return this._ready && this.ws?.readyState === WebSocket.OPEN
