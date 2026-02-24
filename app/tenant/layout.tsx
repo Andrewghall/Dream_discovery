@@ -2,7 +2,7 @@ import Image from 'next/image';
 import { Toaster } from 'sonner';
 import { AdminHeader } from '@/components/admin/AdminHeader';
 
-export default function AdminLayout({
+export default function TenantLayout({
   children,
 }: {
   children: React.ReactNode;
