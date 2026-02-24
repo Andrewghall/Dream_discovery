@@ -2552,7 +2552,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
       await refreshMicDevices();
 
-      const ctx = new AudioContext();
+      // Request 16 kHz so Deepgram gets native-rate PCM — browser may ignore this
+      const ctx = new AudioContext({ sampleRate: 16000 });
       audioContextRef.current = ctx;
       if (ctx.state === 'suspended') {
         await ctx.resume();
@@ -2570,7 +2571,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       pcmProcessor.connect(ctx.destination);
       const nativeSR = ctx.sampleRate;
       const targetSR = 16000;
-      const resampleRatio = nativeSR / targetSR; // exact float (e.g. 2.75625 for 44100Hz)
+      const resampleRatio = nativeSR / targetSR; // exact float ratio
       let pcmChunkCount = 0;
       console.log('[DREAM-DIAG] Resampling:', nativeSR, '→', targetSR, 'Hz (ratio:', resampleRatio.toFixed(4), ')');
 
@@ -2578,15 +2579,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
         const ws = captureWSRef.current;
         if (!ws || !ws.isReady) return;
         const input = e.inputBuffer.getChannelData(0);
-        // Linear interpolation resampling — produces exactly targetSR regardless of native rate
+
+        // Proper linear-interpolation resampling to exactly 16 kHz
         const outLen = Math.round(input.length / resampleRatio);
         const pcm = new Int16Array(outLen);
         for (let i = 0; i < outLen; i++) {
           const srcIdx = i * resampleRatio;
           const idx = Math.floor(srcIdx);
           const frac = srcIdx - idx;
-          const s0 = input[idx] ?? 0;
-          const s1 = input[idx + 1] ?? 0;
+          const s0 = idx < input.length ? input[idx] : 0;
+          const s1 = idx + 1 < input.length ? input[idx + 1] : s0;
           const sample = s0 + frac * (s1 - s0);
           const clamped = Math.max(-1, Math.min(1, sample));
           pcm[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7FFF;
@@ -2594,7 +2596,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
         try {
           ws.sendBuffer(pcm.buffer);
           pcmChunkCount++;
-          if (pcmChunkCount % 50 === 1) console.log('[DREAM-DIAG] PCM chunks sent:', pcmChunkCount);
+          if (pcmChunkCount % 50 === 1) console.log('[DREAM-DIAG] PCM chunks sent:', pcmChunkCount, 'bytes:', pcm.byteLength);
         } catch {
           // ignore
         }
