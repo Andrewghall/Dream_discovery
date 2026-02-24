@@ -33,7 +33,7 @@ import {
 import { LiveDomainRadar } from '@/components/live/live-domain-radar';
 import { AgenticReasoningPanel, type ReasoningEntry } from '@/components/live/agentic-reasoning-panel';
 import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
-import { transcribeAudio, checkCaptureAPIHealth, type CaptureAPIResponse } from '@/lib/captureapi/client';
+import { transcribeAudio, checkCaptureAPIHealth, CaptureAPIStream, type CaptureAPIResponse, type StreamTranscript } from '@/lib/captureapi/client';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -288,6 +288,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const rafRef = useRef<number | null>(null);
 
   const captureStreamRef = useRef<MediaStream | null>(null);
+  const captureWSRef = useRef<CaptureAPIStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderMimeTypeRef = useRef<string>('');
   const recorderGenerationRef = useRef(0);
@@ -2408,8 +2409,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const endTime = Math.max(0, Math.round(now - captureT0Ref.current));
       const startTime = Math.max(lastChunkEndRef.current, Math.max(0, endTime - CHUNK_MS));
       lastChunkEndRef.current = endTime;
-      queueRef.current.push({ blob, startTime, endTime });
-      void processQueue();
+
+      // Send via WebSocket if connected, otherwise fall back to HTTP queue
+      const ws = captureWSRef.current;
+      if (ws && ws.isReady) {
+        ws.sendAudio(blob).catch((err) => {
+          console.error('[CaptureAPIStream] Send failed, falling back to queue:', err);
+          queueRef.current.push({ blob, startTime, endTime });
+          void processQueue();
+        });
+      } else {
+        queueRef.current.push({ blob, startTime, endTime });
+        void processQueue();
+      }
     };
 
     recorder.onerror = () => {
@@ -2854,15 +2866,60 @@ export default function WorkshopLivePage({ params }: PageProps) {
       return;
     }
 
-    // Pre-capture health check — verify CaptureAPI is reachable before recording
-    const health = await checkCaptureAPIHealth();
-    if (!health.ok) {
-      const messages: Record<string, string> = {
-        not_configured: 'CaptureAPI is not configured — set NEXT_PUBLIC_CAPTUREAPI_URL in your environment.',
-        unreachable: `Cannot reach CaptureAPI at ${health.url} — check that the service is running.`,
-        unhealthy: `CaptureAPI at ${health.url} is not healthy — the service may be restarting.`,
-      };
-      setError(messages[health.reason || 'unreachable'] || 'CaptureAPI is unavailable.');
+    // Connect CaptureAPI WebSocket stream for real-time transcription
+    try {
+      const stream = new CaptureAPIStream({
+        onTranscript: async (msg: StreamTranscript) => {
+          const text = msg.cleanText?.trim();
+          if (!text) return;
+
+          // Clear error on successful transcript
+          if (lastTranscriptionErrorRef.current) {
+            lastTranscriptionErrorRef.current = '';
+            setError(null);
+          }
+          lastHealthyAtRef.current = Date.now();
+
+          const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : null;
+          const now = Date.now();
+
+          try {
+            const r = await fetch(ingestUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                speakerId,
+                startTime: now - 5000,
+                endTime: now,
+                text,
+                rawText: msg.rawText,
+                confidence: msg.confidence,
+                source: 'deepgram' as const,
+                dialoguePhase,
+                slmMetadata: {
+                  entities: msg.entities,
+                  emotionalTone: msg.emotionalTone,
+                  slmConfidence: msg.slmConfidence,
+                  slmUsed: msg.slmUsed,
+                },
+              }),
+            });
+            if (r.ok) setForwardedCount((n) => n + 1);
+          } catch {
+            // ignore ingest errors
+          }
+        },
+        onError: (err) => {
+          console.error('[CaptureAPIStream] Error:', err);
+          setError(`CaptureAPI stream error — ${err}`);
+        },
+      });
+
+      await stream.connect();
+      captureWSRef.current = stream;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Cannot connect to CaptureAPI — ${msg}`);
       return;
     }
 
@@ -2986,6 +3043,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
       // ignore
     }
     captureStreamRef.current = null;
+
+    // Close CaptureAPI WebSocket stream
+    try {
+      captureWSRef.current?.close();
+    } catch {
+      // ignore
+    }
+    captureWSRef.current = null;
 
     try {
       esRef.current?.close();

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Mic, MicOff, Square, FileText, ArrowLeft, Clock, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import Link from 'next/link';
-import { transcribeAudio, checkCaptureAPIHealth } from '@/lib/captureapi/client';
+import { transcribeAudio, checkCaptureAPIHealth, CaptureAPIStream, type StreamTranscript } from '@/lib/captureapi/client';
 import { nanoid } from 'nanoid';
 import { useDiagnosticTraces } from '@/hooks/useDiagnosticTraces';
 import { PipelineSniffer } from '@/components/diagnostics/pipeline-sniffer';
@@ -87,6 +87,7 @@ export default function SalesLivePage() {
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const captureWSRef = useRef<CaptureAPIStream | null>(null);
   const queueRef = useRef<{ blob: Blob; startTime: number; endTime: number; traceId?: string }[]>([]);
   const processingRef = useRef(false);
   const stopRef = useRef(false);
@@ -276,15 +277,57 @@ export default function SalesLivePage() {
 
   // Start capture
   const startCapture = async () => {
-    // Pre-capture health check — verify CaptureAPI is reachable
-    const health = await checkCaptureAPIHealth();
-    if (!health.ok) {
-      const messages: Record<string, string> = {
-        not_configured: 'CaptureAPI is not configured — set NEXT_PUBLIC_CAPTUREAPI_URL in your environment.',
-        unreachable: `Cannot reach CaptureAPI at ${health.url} — check that the service is running.`,
-        unhealthy: `CaptureAPI at ${health.url} is not healthy — the service may be restarting.`,
-      };
-      alert(messages[health.reason || 'unreachable'] || 'CaptureAPI is unavailable.');
+    // Connect CaptureAPI WebSocket stream
+    try {
+      const wsStream = new CaptureAPIStream({
+        onTranscript: async (msg: StreamTranscript) => {
+          const text = msg.cleanText?.trim();
+          if (!text) return;
+
+          const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : null;
+          const now = Date.now();
+
+          // Post to sales transcript endpoint
+          await fetch(`/api/sales/${workshopId}/transcript`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              speakerId,
+              startTime: now - 5000,
+              endTime: now,
+              text,
+              rawText: msg.rawText,
+              confidence: msg.confidence,
+              source: 'deepgram',
+              slmMetadata: {
+                entities: msg.entities,
+                emotionalTone: msg.emotionalTone,
+                slmConfidence: msg.slmConfidence,
+              },
+            }),
+          });
+
+          // Fire and forget AI analysis
+          fetch(`/api/sales/${workshopId}/analysis`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chunkText: text,
+              speakerId,
+              callDurationMs: callStartTime ? Date.now() - callStartTime : 0,
+            }),
+          }).catch(console.error);
+        },
+        onError: (err) => {
+          console.error('[CaptureAPIStream] Error:', err);
+        },
+      });
+
+      await wsStream.connect();
+      captureWSRef.current = wsStream;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Cannot connect to CaptureAPI — ${msg}`);
       return;
     }
 
@@ -307,14 +350,21 @@ export default function SalesLivePage() {
           if (traceId) {
             diagnostics.recordTimestamp(traceId, 't_audioCaptured', now);
           }
-          queueRef.current.push({
-            blob: e.data,
-            startTime: chunkStartRef.current,
-            endTime: now,
-            traceId,
-          });
+
+          // Send via WebSocket if connected, otherwise fall back to HTTP queue
+          const ws = captureWSRef.current;
+          if (ws && ws.isReady) {
+            ws.sendAudio(e.data).catch((err) => {
+              console.error('[CaptureAPIStream] Send failed, falling back to queue:', err);
+              queueRef.current.push({ blob: e.data, startTime: chunkStartRef.current, endTime: now, traceId });
+              processQueue();
+            });
+          } else {
+            queueRef.current.push({ blob: e.data, startTime: chunkStartRef.current, endTime: now, traceId });
+            processQueue();
+          }
+
           chunkStartRef.current = now;
-          processQueue();
         }
       };
 
@@ -347,6 +397,8 @@ export default function SalesLivePage() {
       mediaRecorderRef.current.stop();
     }
     streamRef.current?.getTracks().forEach((t) => t.stop());
+    captureWSRef.current?.close();
+    captureWSRef.current = null;
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     audioCtxRef.current?.close();
     setStatus('stopped');

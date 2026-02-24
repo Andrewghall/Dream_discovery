@@ -182,6 +182,147 @@ export async function transcribeAudio(
   }
 }
 
+// ============================================================================
+// WebSocket Streaming Client
+// ============================================================================
+
+export interface StreamTranscript {
+  type: 'transcript'
+  speaker: number | null
+  rawText: string
+  cleanText: string
+  entities: CaptureAPIEntity[]
+  emotionalTone: string
+  confidence: number
+  slmConfidence: number
+  slmUsed: boolean
+  chunk: number
+}
+
+export type StreamMessage =
+  | { type: 'ready'; message: string; slmAvailable: boolean }
+  | StreamTranscript
+  | { type: 'error'; message: string }
+
+/**
+ * WebSocket streaming client for real-time audio transcription via CaptureAPI.
+ *
+ * Opens a persistent WebSocket to CaptureAPI's /api/v1/stream endpoint.
+ * Send audio blobs as binary frames, receive transcript JSON messages.
+ */
+export class CaptureAPIStream {
+  private ws: WebSocket | null = null
+  private url: string
+  private onTranscript: (msg: StreamTranscript) => void
+  private onError: (err: string) => void
+  private onReady: (() => void) | null
+  private _ready = false
+  private _closed = false
+
+  constructor(opts: {
+    onTranscript: (msg: StreamTranscript) => void
+    onError?: (err: string) => void
+    onReady?: () => void
+  }) {
+    const base = getCaptureAPIURL()
+    // Convert http(s) to ws(s)
+    this.url = base.replace(/^http/, 'ws') + '/api/v1/stream'
+    this.onTranscript = opts.onTranscript
+    this.onError = opts.onError || ((e) => console.error('[CaptureAPIStream]', e))
+    this.onReady = opts.onReady || null
+  }
+
+  /** Open the WebSocket connection. Resolves when the server sends 'ready'. */
+  connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this._closed) {
+        reject(new Error('Stream already closed'))
+        return
+      }
+
+      try {
+        this.ws = new WebSocket(this.url)
+        this.ws.binaryType = 'arraybuffer'
+      } catch (err) {
+        reject(new Error(`WebSocket connection failed: ${err}`))
+        return
+      }
+
+      const timeout = setTimeout(() => {
+        reject(new Error('WebSocket connection timed out'))
+        this.close()
+      }, 10_000)
+
+      this.ws.onopen = () => {
+        console.log('[CaptureAPIStream] Connected to', this.url)
+      }
+
+      this.ws.onmessage = (event) => {
+        try {
+          const msg: StreamMessage = JSON.parse(event.data)
+
+          if (msg.type === 'ready') {
+            this._ready = true
+            clearTimeout(timeout)
+            this.onReady?.()
+            resolve()
+          } else if (msg.type === 'transcript') {
+            this.onTranscript(msg as StreamTranscript)
+          } else if (msg.type === 'error') {
+            this.onError(msg.message)
+          }
+        } catch (e) {
+          console.warn('[CaptureAPIStream] Failed to parse message:', e)
+        }
+      }
+
+      this.ws.onerror = (event) => {
+        console.error('[CaptureAPIStream] WebSocket error:', event)
+        clearTimeout(timeout)
+        this.onError('WebSocket connection error')
+        if (!this._ready) reject(new Error('WebSocket error before ready'))
+      }
+
+      this.ws.onclose = (event) => {
+        console.log('[CaptureAPIStream] Closed:', event.code, event.reason)
+        clearTimeout(timeout)
+        this._ready = false
+        if (!this._closed) {
+          this.onError('WebSocket connection closed unexpectedly')
+        }
+      }
+    })
+  }
+
+  /** Send an audio blob to CaptureAPI for transcription. */
+  async sendAudio(blob: Blob): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket not connected')
+    }
+    const buffer = await blob.arrayBuffer()
+    this.ws.send(buffer)
+  }
+
+  /** True if connected and ready to receive audio. */
+  get isReady(): boolean {
+    return this._ready && this.ws?.readyState === WebSocket.OPEN
+  }
+
+  /** Close the WebSocket connection. */
+  close(): void {
+    this._closed = true
+    this._ready = false
+    if (this.ws) {
+      this.ws.close(1000, 'Client closing')
+      this.ws = null
+    }
+  }
+}
+
+// ============================================================================
+// Health Check
+// ============================================================================
+
 export interface CaptureAPIHealthResult {
   ok: boolean
   reason?: 'not_configured' | 'unreachable' | 'unhealthy'
