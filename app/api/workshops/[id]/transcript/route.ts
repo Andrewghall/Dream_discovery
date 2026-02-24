@@ -563,11 +563,15 @@ export async function POST(
     }
 
     // ── Process each flushed complete utterance ──────────────
-    const results: Array<{ dataPointId?: string; deduped?: boolean }> = [];
+    const results: Array<{ dataPointId?: string; deduped?: boolean; error?: string }> = [];
+    const skippedTrivial: string[] = [];
 
     for (const utterance of flushed) {
       // Skip if the merged text is still trivial
-      if (isTextTrivial(utterance.text)) continue;
+      if (isTextTrivial(utterance.text)) {
+        skippedTrivial.push(utterance.text.substring(0, 60));
+        continue;
+      }
 
       try {
         const result = await processCompleteUtterance(
@@ -579,7 +583,9 @@ export async function POST(
         );
         results.push(result);
       } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
         console.error('[Transcript] Error processing buffered utterance:', error);
+        results.push({ error: errMsg });
       }
     }
 
@@ -588,6 +594,7 @@ export async function POST(
       buffered: false,
       flushedCount: flushed.length,
       results,
+      skippedTrivial: skippedTrivial.length > 0 ? skippedTrivial : undefined,
       classificationId: null, // Classification arrives asynchronously
     });
   } catch (error) {
