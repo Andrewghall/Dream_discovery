@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 export function AdminHeader() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [orgName, setOrgName] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/me', { cache: 'no-store' })
@@ -15,6 +16,7 @@ export function AdminHeader() {
       .then(data => {
         if (!data) return;
         setLogoUrl(data.orgLogoUrl || null);
+        setOrgName(data.orgName || null);
       })
       .catch(() => null);
   }, []);
@@ -23,11 +25,11 @@ export function AdminHeader() {
   if (!src) return null;
 
   return (
-    <div className="no-print border-b bg-background/80 backdrop-blur-sm">
-      <div className="container mx-auto px-4 py-3 flex items-center gap-3">
-        <Link href="/admin" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+    <div className="no-print bg-background/80 backdrop-blur-sm">
+      <div className="container mx-auto px-4 pt-6 pb-2">
+        <Link href="/admin" className="inline-flex items-center gap-4 hover:opacity-80 transition-opacity">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt="Logo" className="h-8 w-auto" />
+          <img src={src} alt={orgName || 'Logo'} className="h-14 w-auto" />
         </Link>
       </div>
     </div>
