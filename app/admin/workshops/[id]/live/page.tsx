@@ -432,6 +432,25 @@ export default function WorkshopLivePage({ params }: PageProps) {
     void fetchSnapshots();
   }, [snapshotUrl]);
 
+  // Auto-load latest snapshot when capture stops and hemisphere is empty
+  useEffect(() => {
+    if (status !== 'stopped') return;
+    if (Object.keys(nodesById).length > 0) return; // Already have data from live session
+    // Auto-load latest snapshot to restore hemisphere view
+    if (snapshots.length > 0) {
+      const latest = snapshots[snapshots.length - 1];
+      console.log('[DREAM-DIAG] Auto-loading snapshot after capture stop:', latest.id);
+      setSelectedSnapshotId(latest.id);
+    }
+  }, [status, snapshots]);
+
+  // Trigger snapshot load when selectedSnapshotId is set by auto-load
+  useEffect(() => {
+    if (status === 'stopped' && selectedSnapshotId && Object.keys(nodesById).length === 0) {
+      void loadSnapshot();
+    }
+  }, [selectedSnapshotId, status]);
+
   // Fetch workshop name for auto-save naming
   useEffect(() => {
     fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}`)
@@ -2891,7 +2910,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     try {
       const stream = new CaptureAPIStream({
         onTranscript: async (msg: StreamTranscript) => {
-          const text = msg.cleanText?.trim();
+          const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
           if (!text) return;
 
           // Only ingest FINAL transcripts — interim results are partial duplicates
@@ -2928,7 +2947,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 confidence: msg.confidence,
                 source: 'deepgram' as const,
                 dialoguePhase,
-                flush: true, // Deepgram isFinal transcripts are complete — flush immediately to create DataPoints
+                flush: false, // Let utterance buffer accumulate into complete thoughts; speechFinal triggers flush
                 slmMetadata: {
                   entities: msg.entities,
                   emotionalTone: msg.emotionalTone,
@@ -2977,6 +2996,47 @@ export default function WorkshopLivePage({ params }: PageProps) {
             }
           } catch (fetchErr) {
             console.error('[DREAM-DIAG] Ingest POST network error:', fetchErr);
+          }
+
+          // When Deepgram signals a real utterance boundary (speaker finished),
+          // flush the server-side buffer so accumulated fragments become a DataPoint.
+          if (msg.speechFinal) {
+            console.log('[DREAM-DIAG] speechFinal — flushing buffer for speaker:', speakerId);
+            fetch(ingestUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ flush: true, text: '__flush__', speakerId, dialoguePhase }),
+            }).then(async (flushR) => {
+              if (flushR.ok) {
+                const flushBody = await flushR.json().catch(() => null);
+                console.log('[DREAM-DIAG] Flush response:', flushBody);
+                // Process any flushed results (same logic as above)
+                const flushedResults = flushBody?.results || [];
+                for (const fr of flushedResults) {
+                  const fDpId = fr?.dataPointId || fr?.dataPoint?.id;
+                  if (fDpId) {
+                    const fNode: HemisphereNodeDatum = {
+                      dataPointId: fDpId,
+                      createdAtMs: Date.now(),
+                      rawText: fr?.dataPoint?.rawText || text,
+                      dataPointSource: 'SPEECH',
+                      speakerId: speakerId || null,
+                      dialoguePhase: safePhase(dialoguePhase) ?? null,
+                      transcriptChunk: fr?.transcriptChunk ? {
+                        speakerId: fr.transcriptChunk.speakerId || null,
+                        startTimeMs: Number(fr.transcriptChunk.startTimeMs ?? 0),
+                        endTimeMs: Number(fr.transcriptChunk.endTimeMs ?? 0),
+                        confidence: typeof fr.transcriptChunk.confidence === 'number' ? fr.transcriptChunk.confidence : null,
+                        source: String(fr.transcriptChunk.source || 'DEEPGRAM'),
+                      } : null,
+                      classification: null,
+                    };
+                    setNodesById((prev) => prev[fDpId] ? prev : { ...prev, [fDpId]: fNode });
+                    console.log('[DREAM-DIAG] Flush node added:', fDpId, (fr?.dataPoint?.rawText || '').substring(0, 60));
+                  }
+                }
+              }
+            }).catch(() => {});
           }
         },
         onError: (err) => {
@@ -3275,7 +3335,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
         <div
           className={
             viewMode === 'split'
-              ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] gap-4'
+              ? 'space-y-4'
               : viewMode === 'facilitator'
                 ? 'space-y-4'
                 : 'space-y-4'
@@ -3351,12 +3411,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 </CardContent>
               </Card>
           ) : null}
-
-          {/* DREAM Agent Reasoning Panel */}
-          <AgenticReasoningPanel
-            entries={reasoningEntries}
-            isCapturing={status === 'capturing'}
-          />
 
               <Card>
                 <CardHeader>
@@ -3547,6 +3601,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   {error && <div className="text-sm text-red-600">{error}</div>}
                 </CardContent>
               </Card>
+
+          {/* DREAM Agent Reasoning Panel — below capture controls */}
+          <AgenticReasoningPanel
+            entries={reasoningEntries}
+            isCapturing={status === 'capturing'}
+          />
 
               <Card>
                 <CardHeader>

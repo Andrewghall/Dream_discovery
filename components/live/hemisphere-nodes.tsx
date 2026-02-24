@@ -182,7 +182,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
 
       // Dialogue phase bias (future utterances only). If phase is null, keep base layout unchanged.
       // Right = REIMAGINE, Left = CONSTRAINTS, Center = DEFINE_APPROACH.
-      const phaseStrength = n.dialoguePhase ? 0.22 : 0;
+      const phaseStrength = n.dialoguePhase ? 0.55 : 0;
       const targetTheta =
         n.dialoguePhase === 'CONSTRAINTS'
           ? (5 * Math.PI) / 6

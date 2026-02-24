@@ -83,7 +83,7 @@ export function AgenticReasoningPanel({ entries, isCapturing }: AgenticReasoning
       {!collapsed && (
         <div
           ref={scrollRef}
-          className="max-h-64 overflow-y-auto p-2 space-y-1 font-mono text-xs"
+          className="max-h-40 overflow-y-auto p-2 space-y-1 font-mono text-xs"
         >
           {entries.length === 0 && (
             <div className="text-gray-500 text-center py-4">
