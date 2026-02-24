@@ -2947,6 +2947,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
               // Use dataPointId from response + data from the onTranscript closure
               // (more robust than depending on server returning the full payload).
               const result = respBody?.results?.[0];
+              console.log('[DREAM-DIAG] RESULT ENTRY:', JSON.stringify(result));
               const dpId = result?.dataPointId || result?.dataPoint?.id;
               if (dpId) {
                 const node: HemisphereNodeDatum = {
