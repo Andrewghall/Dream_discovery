@@ -208,7 +208,9 @@ export default function AdminDashboard() {
         <div className="no-print flex items-center justify-between mb-8">
           <div>
             <div className="flex items-center gap-3">
-              <Image src={orgLogoUrl || process.env.NEXT_PUBLIC_PLATFORM_LOGO || '/upstreamworks-logo.png'} alt="Logo" width={128} height={37} priority />
+              {(orgLogoUrl || process.env.NEXT_PUBLIC_PLATFORM_LOGO) && (
+                <Image src={orgLogoUrl || process.env.NEXT_PUBLIC_PLATFORM_LOGO!} alt="Logo" width={128} height={37} priority />
+              )}
               <h1 className="text-3xl font-bold tracking-tight">DREAM Discovery</h1>
             </div>
             <p className="text-muted-foreground mt-1">

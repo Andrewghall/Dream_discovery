@@ -178,7 +178,7 @@ export function ConversationReport({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <img src={orgLogoUrl || '/upstreamworks-logo.png'} alt={orgName || 'Logo'} className="h-8 w-auto" />
+          {orgLogoUrl && <img src={orgLogoUrl} alt={orgName || 'Logo'} className="h-8 w-auto" />}
         </div>
         <img src="/Dream.PNG" alt="DREAM" className="w-full h-auto max-h-28 object-contain" />
         <div className="text-sm font-medium text-center">

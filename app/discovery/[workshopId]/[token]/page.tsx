@@ -483,7 +483,9 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         <div className="border-b bg-background">
           <div className="px-4 py-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <Image src={organization?.logoUrl || '/upstreamworks-logo.png'} alt={organization?.name || 'Logo'} width={120} height={32} className="h-8 w-auto" priority />
+              {organization?.logoUrl && (
+                <Image src={organization.logoUrl} alt={organization.name || 'Logo'} width={120} height={32} className="h-8 w-auto" priority />
+              )}
             </div>
           </div>
           <Image
@@ -554,7 +556,9 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         <div className="border-b bg-background">
           <div className="px-4 py-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <Image src={organization?.logoUrl || '/upstreamworks-logo.png'} alt={organization?.name || 'Logo'} width={120} height={32} className="h-8 w-auto" priority />
+              {organization?.logoUrl && (
+                <Image src={organization.logoUrl} alt={organization.name || 'Logo'} width={120} height={32} className="h-8 w-auto" priority />
+              )}
             </div>
             <div className="no-print flex shrink-0 items-center gap-2 whitespace-nowrap">
               {typeof questionNumber === 'number' && (

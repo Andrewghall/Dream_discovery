@@ -61,7 +61,7 @@ export default async function TenantDashboardPage() {
     });
   };
 
-  const orgLogoUrl = org?.logoUrl || process.env.NEXT_PUBLIC_PLATFORM_LOGO || '/upstreamworks-logo.png';
+  const orgLogoUrl = org?.logoUrl || process.env.NEXT_PUBLIC_PLATFORM_LOGO || null;
   const orgName = org?.name || 'DREAM Discovery';
 
   return (
@@ -71,13 +71,15 @@ export default async function TenantDashboardPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <div className="flex items-center gap-3">
-              <Image
-                src={orgLogoUrl}
-                alt={`${orgName} Logo`}
-                width={128}
-                height={37}
-                priority
-              />
+              {orgLogoUrl && (
+                <Image
+                  src={orgLogoUrl}
+                  alt={`${orgName} Logo`}
+                  width={128}
+                  height={37}
+                  priority
+                />
+              )}
               <h1 className="text-3xl font-bold tracking-tight">{orgName}</h1>
             </div>
             <p className="text-muted-foreground mt-1">Manage workshops and discovery conversations</p>

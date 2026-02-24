@@ -288,7 +288,7 @@ export default function OrganizationsPage() {
                   <Input
                     value={formData.logoUrl}
                     onChange={e => setFormData({ ...formData, logoUrl: e.target.value })}
-                    placeholder="/upstreamworks-logo.png"
+                    placeholder="/logo.png"
                   />
                 )}
                 <div className="mt-2 flex items-center gap-2">
