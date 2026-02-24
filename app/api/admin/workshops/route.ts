@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { getSession } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
@@ -76,20 +75,6 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Error fetching workshops:', error);
 
-    if (error instanceof PrismaClientKnownRequestError) {
-      return NextResponse.json(
-        { error: 'Failed to fetch workshops', details: { code: error.code, message: error.message, meta: error.meta } },
-        { status: 500 }
-      );
-    }
-
-    if (error instanceof Error) {
-      return NextResponse.json(
-        { error: 'Failed to fetch workshops', details: { message: error.message } },
-        { status: 500 }
-      );
-    }
-
     return NextResponse.json({ error: 'Failed to fetch workshops' }, { status: 500 });
   }
 }
@@ -130,20 +115,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ workshop });
   } catch (error: unknown) {
     console.error('Error creating workshop:', error);
-
-    if (error instanceof PrismaClientKnownRequestError) {
-      return NextResponse.json(
-        { error: 'Failed to create workshop', details: { code: error.code, message: error.message, meta: error.meta } },
-        { status: 500 }
-      );
-    }
-
-    if (error instanceof Error) {
-      return NextResponse.json(
-        { error: 'Failed to create workshop', details: { message: error.message } },
-        { status: 500 }
-      );
-    }
 
     return NextResponse.json({ error: 'Failed to create workshop' }, { status: 500 });
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require-auth';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
 import { ConversationStatus, Prisma } from '@prisma/client';
 import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
@@ -147,6 +148,11 @@ export async function GET(
     if (auth instanceof NextResponse) return auth;
 
     const { id: workshopId } = await params;
+
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
 
     const sessionId = request.nextUrl.searchParams.get('sessionId');
     const participantId = request.nextUrl.searchParams.get('participantId');

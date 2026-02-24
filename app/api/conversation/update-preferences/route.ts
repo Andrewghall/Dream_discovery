@@ -9,6 +9,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session ID required' }, { status: 400 });
     }
 
+    // Verify the session exists and belongs to a valid participant
+    const session = await prisma.conversationSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true, participantId: true },
+    });
+    if (!session || !session.participantId) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+
     const updateData: { language?: string; voiceEnabled?: boolean } = {};
     if (typeof language === 'string') updateData.language = language;
     if (typeof voiceEnabled === 'boolean') updateData.voiceEnabled = voiceEnabled;

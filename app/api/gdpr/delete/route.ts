@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
 import { validateParticipantAuth, getGDPRRateLimitKey } from '@/lib/gdpr/validate-participant';
 import { authLimiter } from '@/lib/rate-limit';
+import crypto from 'crypto';
 
 /**
  * POST /api/gdpr/delete
@@ -164,27 +165,63 @@ export async function POST(request: NextRequest) {
 
     const participant = authResult.participant!;
 
-    // Verify confirmation token for safety
-    const expectedToken = Buffer.from(
-      `${participant.email}:${participant.id}:DELETE`
-    ).toString('base64');
+    const hmacSecret = process.env.SESSION_SECRET || '';
 
-    if (confirmationToken && confirmationToken !== expectedToken) {
+    // If no confirmation token provided, generate HMAC-signed token (two-step deletion)
+    if (!confirmationToken) {
+      const tokenData = `${participant.email}:${participant.id}:DELETE:${Date.now()}`;
+      const hmac = crypto.createHmac('sha256', hmacSecret).update(tokenData).digest('hex');
+      const signedToken = Buffer.from(`${tokenData}:${hmac}`).toString('base64');
+
+      return NextResponse.json({
+        success: false,
+        requiresConfirmation: true,
+        confirmationToken: signedToken,
+        message:
+          'Please confirm deletion by including the confirmationToken in your request. This action is irreversible.',
+      });
+    }
+
+    // Verify HMAC-signed confirmation token
+    let decoded: string;
+    try {
+      decoded = Buffer.from(confirmationToken, 'base64').toString();
+    } catch {
       return NextResponse.json(
         { error: 'Invalid confirmation token' },
         { status: 403 }
       );
     }
-
-    // If no confirmation token provided, send it (two-step deletion)
-    if (!confirmationToken) {
-      return NextResponse.json({
-        success: false,
-        requiresConfirmation: true,
-        confirmationToken: expectedToken,
-        message:
-          'Please confirm deletion by including the confirmationToken in your request. This action is irreversible.',
-      });
+    const parts = decoded.split(':');
+    if (parts.length < 5) {
+      return NextResponse.json(
+        { error: 'Invalid confirmation token' },
+        { status: 403 }
+      );
+    }
+    const receivedHmac = parts.pop()!;
+    const dataToVerify = parts.join(':');
+    const expectedHmac = crypto.createHmac('sha256', hmacSecret).update(dataToVerify).digest('hex');
+    if (!crypto.timingSafeEqual(Buffer.from(receivedHmac, 'hex'), Buffer.from(expectedHmac, 'hex'))) {
+      return NextResponse.json(
+        { error: 'Invalid confirmation token' },
+        { status: 403 }
+      );
+    }
+    // Check token is not older than 30 minutes
+    const tokenTimestamp = parseInt(parts[3], 10);
+    if (isNaN(tokenTimestamp) || Date.now() - tokenTimestamp > 30 * 60 * 1000) {
+      return NextResponse.json(
+        { error: 'Confirmation token has expired. Please request a new one.' },
+        { status: 403 }
+      );
+    }
+    // Verify token belongs to this participant
+    if (parts[0] !== participant.email || parts[1] !== participant.id || parts[2] !== 'DELETE') {
+      return NextResponse.json(
+        { error: 'Invalid confirmation token' },
+        { status: 403 }
+      );
     }
 
     // Log the deletion BEFORE it happens (for audit trail)

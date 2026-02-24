@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { subscribeWorkshopEvents } from '@/lib/realtime/workshop-events';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +10,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: workshopId } = await params;
+
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+  const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role);
+  if (!access.valid) {
+    return new Response('Forbidden', { status: 403 });
+  }
 
   const encoder = new TextEncoder();
 

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 export async function GET(
   _req: NextRequest,
@@ -7,6 +9,14 @@ export async function GET(
 ) {
   try {
     const { id: workshopId, snapshotId } = await params;
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
 
     const snapshot = await (prisma as any).liveWorkshopSnapshot.findFirst({
       where: {
@@ -52,6 +62,14 @@ export async function PUT(
 ) {
   try {
     const { id: workshopId, snapshotId } = await params;
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
     const body = await req.json();
 
     // Update the snapshot payload

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,11 +28,20 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: workshopId } = await params;
+
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
+
     const referer = request.headers.get('referer');
     const origin = request.headers.get('origin');
     const userAgent = request.headers.get('user-agent');
-
-    await params; // reserved for future use; keeps the URL workshop-scoped
 
     const deepgramKey = process.env.DEEPGRAM_API_KEY;
     if (!deepgramKey) {

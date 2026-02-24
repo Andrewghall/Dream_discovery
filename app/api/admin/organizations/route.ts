@@ -18,7 +18,25 @@ export async function GET() {
   try {
     const auth = await requireAuth();
     if (auth instanceof NextResponse) return auth;
+    const session = auth;
 
+    // TENANT_USER cannot access organization management
+    if (session.role !== 'PLATFORM_ADMIN' && session.role !== 'TENANT_ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // TENANT_ADMIN can only see their own org
+    if (session.role === 'TENANT_ADMIN') {
+      if (!session.organizationId) {
+        return NextResponse.json({ organizations: [] });
+      }
+      const organization = await prisma.organization.findUnique({
+        where: { id: session.organizationId },
+      });
+      return NextResponse.json({ organizations: organization ? [organization] : [] });
+    }
+
+    // PLATFORM_ADMIN sees all
     const organizations = await prisma.organization.findMany({
       orderBy: {
         name: 'asc',
@@ -39,6 +57,11 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireAuth();
     if (auth instanceof NextResponse) return auth;
+    const session = auth;
+
+    if (session.role !== 'PLATFORM_ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const { name, logoUrl, primaryColor, secondaryColor, maxSeats, billingEmail, adminName } = await request.json();
 
@@ -138,11 +161,22 @@ export async function PATCH(request: NextRequest) {
   try {
     const auth = await requireAuth();
     if (auth instanceof NextResponse) return auth;
+    const session = auth;
+
+    // Only PLATFORM_ADMIN or TENANT_ADMIN (for their own org) can update
+    if (session.role !== 'PLATFORM_ADMIN' && session.role !== 'TENANT_ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const { id, name, logoUrl, primaryColor, secondaryColor, maxSeats, billingEmail, adminName } = await request.json();
 
     if (!id) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
+    }
+
+    // TENANT_ADMIN can only update their own org
+    if (session.role === 'TENANT_ADMIN' && id !== session.organizationId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const organization = await prisma.organization.update({
@@ -169,6 +203,11 @@ export async function DELETE(request: NextRequest) {
   try {
     const auth = await requireAuth();
     if (auth instanceof NextResponse) return auth;
+    const session = auth;
+
+    if (session.role !== 'PLATFORM_ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const { id } = await request.json();
     if (!id) {

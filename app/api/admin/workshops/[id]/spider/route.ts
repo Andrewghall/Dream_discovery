@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fixedQuestionsForVersion, getPhaseOrder } from '@/lib/conversation/fixed-questions';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -193,6 +195,14 @@ function axisIdFor(params: { questionSetVersion: string; phase: string; tag: str
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: workshopId } = await params;
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
 
     const runType = safeRunType(request.nextUrl.searchParams.get('runType'));
     const focus = safeFocus(request.nextUrl.searchParams.get('focus'));

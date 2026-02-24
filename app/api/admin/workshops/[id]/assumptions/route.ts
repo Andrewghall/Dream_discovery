@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require-auth';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import OpenAI from 'openai';
 
 import { prisma } from '@/lib/prisma';
@@ -70,6 +71,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (auth instanceof NextResponse) return auth;
 
     const { id: workshopId } = await params;
+
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
+
     const workshop = await prisma.workshop.findUnique({ where: { id: workshopId } });
     if (!workshop) return NextResponse.json({ ok: false, error: 'Workshop not found' }, { status: 404 });
 

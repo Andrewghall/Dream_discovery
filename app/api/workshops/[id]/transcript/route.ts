@@ -3,6 +3,8 @@ import { after } from 'next/server';
 import { nanoid } from 'nanoid';
 
 import { prisma } from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { emitWorkshopEvent } from '@/lib/realtime/workshop-events';
 import { deriveIntent } from '@/lib/workshop/derive-intent';
 import { addFragment, flushWorkshop, type FlushedUtterance } from '@/lib/workshop/utterance-buffer';
@@ -478,6 +480,16 @@ export async function POST(
 ) {
   try {
     const { id: workshopId } = await params;
+
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = (await request.json()) as IngestTranscriptChunkBody;
 
     const text = (body?.text || '').trim();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateDiscoveryReportPdf } from '@/lib/pdf/discovery-report';
+import { apiLimiter } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -22,6 +23,13 @@ type PhaseInsightPayload = {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit PDF generation (no DB auth available — participant-facing endpoint)
+    const ip = request.headers.get('x-forwarded-for') || 'unknown';
+    const rl = await apiLimiter.check(10, `report-pdf:${ip}`);
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
     const body = (await request.json()) as {
       participantName: string;
       workshopName?: string | null;

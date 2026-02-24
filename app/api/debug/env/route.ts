@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 
  import { prisma } from '@/lib/prisma';
 
@@ -49,6 +50,11 @@ function parseDbUrl(value: string | undefined) {
 }
 
 export async function GET() {
+  const user = await getAuthenticatedUser();
+  if (!user || user.role !== 'PLATFORM_ADMIN') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const deepgram = process.env.DEEPGRAM_API_KEY;
   const openai = process.env.OPENAI_API_KEY;
   const databaseUrl = process.env.DATABASE_URL;

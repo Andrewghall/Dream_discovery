@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (!session) {
+    if (!session || !session.participantId) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 

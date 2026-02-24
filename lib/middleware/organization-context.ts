@@ -1,20 +1,26 @@
 /**
  * Organization Context Middleware
  *
- * Sets the organization ID in the database session for RLS enforcement
- * CRITICAL: This ensures users can only access data from their organization
+ * ⚠️  DEPRECATED — setOrganizationContext / clearOrganizationContext are NOT
+ *     called from any API route.  Prisma connects with the Supabase service-role
+ *     key, which bypasses RLS entirely.  Organization isolation is enforced at the
+ *     application layer via validateWorkshopAccess() in
+ *     lib/middleware/validate-workshop-access.ts.
+ *
+ *     Do NOT rely on these functions for security.  They are retained only to
+ *     avoid breaking imports if any future code references them.
  */
 
 import { prisma } from '@/lib/prisma';
 
+/** @deprecated Not used — Prisma bypasses RLS.  See file header. */
 export async function setOrganizationContext(organizationId: string) {
-  // Set the organization ID in PostgreSQL session variable
-  // This is used by RLS policies to filter data
   await prisma.$executeRawUnsafe(
     `SET LOCAL app.current_org_id = '${organizationId.replace(/'/g, "''")}'`
   );
 }
 
+/** @deprecated Not used — Prisma bypasses RLS.  See file header. */
 export async function clearOrganizationContext() {
   await prisma.$executeRawUnsafe(`RESET app.current_org_id`);
 }

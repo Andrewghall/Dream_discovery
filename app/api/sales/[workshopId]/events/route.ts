@@ -1,5 +1,6 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
+import { prisma } from '@/lib/prisma';
 import { subscribeSalesEvents } from '@/lib/sales/sales-events';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,26 @@ export async function GET(
   }
 
   const { workshopId } = await params;
+
+  // Verify the workshop exists and belongs to the caller's org
+  const workshop = await prisma.workshop.findUnique({
+    where: { id: workshopId },
+    select: { organizationId: true },
+  });
+
+  if (!workshop) {
+    return new Response(JSON.stringify({ error: 'Workshop not found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (session.role !== 'PLATFORM_ADMIN' && workshop.organizationId !== session.organizationId) {
+    return new Response(JSON.stringify({ error: 'Forbidden' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

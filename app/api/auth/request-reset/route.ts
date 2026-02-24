@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
 import { sendPasswordReset } from '@/lib/email/send';
 import crypto from 'crypto';
+import { authLimiter } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Email is required' },
         { status: 400 }
+      );
+    }
+
+    // Rate limit: 3 requests per 15 minutes per email
+    const rl = await authLimiter.check(3, `reset:${email.toLowerCase().trim()}`);
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429 }
       );
     }
 

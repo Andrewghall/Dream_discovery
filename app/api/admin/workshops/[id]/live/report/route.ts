@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
 import { generateLiveWorkshopReportPdf } from '@/lib/pdf/live-workshop-report';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -191,6 +193,14 @@ ${params.notes}`;
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: workshopId } = await params;
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
     const url = new URL(request.url);
     const phaseParam = safePhase(url.searchParams.get('phase'));
     const format = (url.searchParams.get('format') || 'pdf').toLowerCase();

@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require-auth';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import JSZip from 'jszip';
@@ -100,6 +101,11 @@ async function handleExport(
   try {
     const auth = await requireAuth();
     if (auth instanceof NextResponse) return auth;
+
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
 
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },

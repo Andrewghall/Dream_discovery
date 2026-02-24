@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { uploadImage, deleteImage } from '@/lib/storage';
 import { requireAuth } from '@/lib/auth/require-auth';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 export async function POST(
   request: NextRequest,
@@ -12,6 +13,12 @@ export async function POST(
     if (auth instanceof NextResponse) return auth;
 
     const { id: workshopId } = await params;
+
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
+
     const formData = await request.formData();
     const file = formData.get('image') as File;
 
@@ -95,6 +102,11 @@ export async function DELETE(
     if (auth instanceof NextResponse) return auth;
 
     const { id: workshopId } = await params;
+
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
 
     // Get scratchpad to find image URL
     const scratchpad = await prisma.workshopScratchpad.findUnique({

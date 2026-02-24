@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/require-auth';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 export async function POST(
   request: NextRequest,
@@ -11,6 +12,11 @@ export async function POST(
     if (auth instanceof NextResponse) return auth;
 
     const { id: workshopId } = await params;
+
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
 
     // Clear emailSentAt for all participants in this workshop
     const result = await prisma.workshopParticipant.updateMany({

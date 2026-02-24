@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require-auth';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(
@@ -11,6 +12,12 @@ export async function POST(
     if (auth instanceof NextResponse) return auth;
 
     const { id: workshopId } = await params;
+
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
+
     const body = await request.json();
     const { name, email, role, department } = body;
 
@@ -44,6 +51,12 @@ export async function DELETE(
     if (auth instanceof NextResponse) return auth;
 
     const { id: workshopId } = await params;
+
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const participantId = body?.participantId as string | undefined;
 
@@ -83,6 +96,12 @@ export async function PATCH(
     if (auth instanceof NextResponse) return auth;
 
     const { id: workshopId } = await params;
+
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
+
     const body = (await request.json().catch(() => null)) as
       | { participantId?: unknown; doNotSendAgain?: unknown }
       | null;

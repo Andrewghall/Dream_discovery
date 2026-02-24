@@ -27,6 +27,21 @@ export async function POST(
     }
 
     const { workshopId } = await params;
+
+    // Verify the workshop exists and belongs to the caller's org
+    const workshopAuth = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: { organizationId: true },
+    });
+
+    if (!workshopAuth) {
+      return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+    }
+
+    if (session.role !== 'PLATFORM_ADMIN' && workshopAuth.organizationId !== session.organizationId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { speakerId, startTime, endTime, text, rawText, confidence, source, slmMetadata, traceId } = body;
 
