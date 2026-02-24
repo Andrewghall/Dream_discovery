@@ -157,20 +157,25 @@ interface WelcomeEmailData {
 export function welcomeEmailTemplate(data: WelcomeEmailData): string {
   const isTenantAdmin = data.role === 'TENANT_ADMIN';
   const isTenantUser = data.role === 'TENANT_USER';
+  const orgName = data.organizationName || 'your organisation';
+
+  const roleLabel = isTenantAdmin ? 'Administrator' : isTenantUser ? 'User' : 'Platform Administrator';
 
   const bodyText = isTenantAdmin
-    ? `You have been selected to manage the <strong>${data.organizationName || 'DREAM'}</strong> DREAM platform on behalf of your business. Please access from the link below to set up your password and access your domain and users.`
+    ? `You have been set up as the <strong>${orgName}</strong> administrator on the DREAM Discovery platform. Use the credentials below to sign in, set your password, and begin managing your workshops and users.`
     : isTenantUser
-    ? `You have been given access to the <strong>${data.organizationName || 'DREAM'}</strong> DREAM Discovery platform. Please use the link below to set up your password and get started.`
-    : `Your platform administrator account has been created. Please use the link below to set up your password and access the platform.`;
+    ? `You have been given access to the <strong>${orgName}</strong> DREAM Discovery platform. Use the credentials below to sign in and get started.`
+    : `Your platform administrator account has been created. Use the credentials below to sign in and access the platform.`;
 
   const seatsNotice = isTenantAdmin && data.maxSeats
-    ? `<div style="background: #EFF6FF; border-left: 4px solid #3B82F6; padding: 14px 16px; margin: 20px 0; border-radius: 4px;">
-        <p style="color: #1E40AF; margin: 0; font-size: 14px; line-height: 1.6;">
-          You have up to <strong>${data.maxSeats} user${data.maxSeats === 1 ? '' : 's'}</strong> under your licence. If you require additional seats, please contact
-          <a href="mailto:admin@ethenta.com" style="color: #1D4ED8;">admin@ethenta.com</a>.
-        </p>
-      </div>`
+    ? `<tr><td style="padding: 0 0 24px 0;">
+        <div style="background: #EFF6FF; border: 1px solid #DBEAFE; border-radius: 8px; padding: 14px 18px;">
+          <p style="color: #1E40AF; margin: 0; font-size: 14px; line-height: 1.6;">
+            Your licence includes up to <strong>${data.maxSeats} seat${data.maxSeats === 1 ? '' : 's'}</strong>. Need more? Contact
+            <a href="mailto:admin@ethenta.com" style="color: #1D4ED8; text-decoration: underline;">admin@ethenta.com</a>.
+          </p>
+        </div>
+      </td></tr>`
     : '';
 
   return `
@@ -181,70 +186,94 @@ export function welcomeEmailTemplate(data: WelcomeEmailData): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Welcome to DREAM Discovery</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #F3F4F6;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #F3F4F6; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #F3F4F6;">
+    <tr><td align="center" style="padding: 40px 20px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%;">
 
-    <!-- Header -->
-    <div style="text-align: center; margin-bottom: 32px;">
-      <h1 style="color: #1E3A5F; margin: 0 0 6px 0; font-size: 30px; font-weight: 700; letter-spacing: -0.5px;">DREAM Discovery</h1>
-      <p style="color: #6B7280; margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Account Access</p>
-    </div>
+        <!-- Header -->
+        <tr><td style="text-align: center; padding-bottom: 32px;">
+          <h1 style="color: #1E3A5F; margin: 0 0 4px 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">DREAM Discovery</h1>
+          <p style="color: #9CA3AF; margin: 0; font-size: 13px; letter-spacing: 0.5px;">${orgName !== 'your organisation' ? orgName : ''}</p>
+        </td></tr>
 
-    <!-- Card -->
-    <div style="background: #FFFFFF; border-radius: 16px; padding: 36px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+        <!-- Card -->
+        <tr><td>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #FFFFFF; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);">
+            <tr><td style="padding: 36px 36px 0 36px;">
 
-      <h2 style="color: #111827; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Welcome ${data.userName},</h2>
+              <!-- Role badge -->
+              <div style="margin-bottom: 20px;">
+                <span style="display: inline-block; background: #EEF2FF; color: #4338CA; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; letter-spacing: 0.3px;">${roleLabel}</span>
+              </div>
 
-      <p style="color: #374151; line-height: 1.7; margin: 0 0 20px 0; font-size: 16px;">
-        ${bodyText}
-      </p>
+              <h2 style="color: #111827; margin: 0 0 16px 0; font-size: 22px; font-weight: 600;">Welcome, ${data.userName}</h2>
 
-      ${seatsNotice}
+              <p style="color: #4B5563; line-height: 1.7; margin: 0 0 24px 0; font-size: 15px;">
+                ${bodyText}
+              </p>
 
-      <!-- Login Credentials -->
-      <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 20px; margin: 24px 0;">
-        <p style="color: #6B7280; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; margin: 0 0 12px 0;">Your Login Details</p>
-        <table style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td style="color: #6B7280; font-size: 14px; padding: 5px 0; width: 120px; vertical-align: top;">Email</td>
-            <td style="color: #111827; font-size: 14px; font-family: 'Courier New', monospace; padding: 5px 0;">${data.userEmail}</td>
-          </tr>
-          <tr>
-            <td style="color: #6B7280; font-size: 14px; padding: 5px 0; vertical-align: top;">Temp. Password</td>
-            <td style="color: #111827; font-size: 14px; font-family: 'Courier New', monospace; padding: 5px 0;">${data.temporaryPassword}</td>
-          </tr>
-        </table>
-      </div>
+            </td></tr>
 
-      <div style="background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 0 0 28px 0; border-radius: 4px;">
-        <p style="color: #92400E; margin: 0; font-size: 13px; line-height: 1.5;">
-          <strong>Security notice:</strong> You will be prompted to set a new password on first login. Do not share these credentials.
-        </p>
-      </div>
+            ${seatsNotice ? `<tr><td style="padding: 0 36px;">${seatsNotice}</td></tr>` : ''}
 
-      <!-- CTA Button -->
-      <div style="text-align: center; margin: 0 0 12px 0;">
-        <a href="${data.loginUrl}" style="display: inline-block; background: #1E3A5F; color: #FFFFFF; text-decoration: none; padding: 14px 36px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-          Set Up My Account
-        </a>
-      </div>
-      <p style="text-align: center; color: #9CA3AF; font-size: 12px; margin: 0;">
-        Or copy this link: <a href="${data.loginUrl}" style="color: #3B82F6; word-break: break-all;">${data.loginUrl}</a>
-      </p>
+            <!-- Login Credentials -->
+            <tr><td style="padding: 0 36px;">
+              <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px 22px; margin-bottom: 20px;">
+                <p style="color: #9CA3AF; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 14px 0;">Sign-in credentials</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="color: #6B7280; font-size: 13px; padding: 6px 0; width: 90px; vertical-align: top;">Email</td>
+                    <td style="color: #111827; font-size: 14px; font-weight: 500; padding: 6px 0;">${data.userEmail}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding: 4px 0;"><div style="border-top: 1px solid #E5E7EB;"></div></td>
+                  </tr>
+                  <tr>
+                    <td style="color: #6B7280; font-size: 13px; padding: 6px 0; vertical-align: top;">Password</td>
+                    <td style="color: #111827; font-size: 14px; font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace; font-weight: 500; padding: 6px 0; letter-spacing: 0.3px;">${data.temporaryPassword}</td>
+                  </tr>
+                </table>
+              </div>
+            </td></tr>
 
-    </div>
+            <!-- Security notice -->
+            <tr><td style="padding: 0 36px;">
+              <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 16px; margin-bottom: 28px;">
+                <p style="color: #92400E; margin: 0; font-size: 13px; line-height: 1.5;">
+                  You will be asked to create a new password on first sign-in. Please do not share these credentials.
+                </p>
+              </div>
+            </td></tr>
 
-    <!-- Footer -->
-    <div style="text-align: center; padding-top: 4px;">
-      <p style="color: #9CA3AF; font-size: 12px; margin: 0 0 4px 0;">
-        Need help? Contact <a href="mailto:admin@ethenta.com" style="color: #6B7280;">admin@ethenta.com</a>
-      </p>
-      <p style="color: #D1D5DB; font-size: 11px; margin: 0;">
-        &copy; ${new Date().getFullYear()} Ethenta &middot; DREAM Discovery Platform
-      </p>
-    </div>
+            <!-- CTA Button -->
+            <tr><td style="padding: 0 36px 12px 36px; text-align: center;">
+              <a href="${data.loginUrl}" style="display: inline-block; background: #1E3A5F; color: #FFFFFF; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 15px; letter-spacing: 0.2px;">
+                Sign In &amp; Set Password
+              </a>
+            </td></tr>
+            <tr><td style="padding: 0 36px 36px 36px; text-align: center;">
+              <p style="color: #9CA3AF; font-size: 12px; margin: 8px 0 0 0;">
+                Or visit: <a href="${data.loginUrl}" style="color: #6B7280; word-break: break-all;">${data.loginUrl}</a>
+              </p>
+            </td></tr>
 
-  </div>
+          </table>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="text-align: center; padding: 24px 0 0 0;">
+          <p style="color: #9CA3AF; font-size: 12px; margin: 0 0 4px 0;">
+            Need help? <a href="mailto:admin@ethenta.com" style="color: #6B7280; text-decoration: underline;">admin@ethenta.com</a>
+          </p>
+          <p style="color: #D1D5DB; font-size: 11px; margin: 0;">
+            &copy; ${new Date().getFullYear()} Ethenta &middot; DREAM Discovery Platform
+          </p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
 </body>
 </html>
   `.trim();
