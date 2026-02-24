@@ -2410,18 +2410,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const startTime = Math.max(lastChunkEndRef.current, Math.max(0, endTime - CHUNK_MS));
       lastChunkEndRef.current = endTime;
 
-      // Send via WebSocket if connected, otherwise fall back to HTTP queue
-      const ws = captureWSRef.current;
-      if (ws && ws.isReady) {
-        ws.sendAudio(blob).catch((err) => {
-          console.error('[CaptureAPIStream] Send failed, falling back to queue:', err);
-          queueRef.current.push({ blob, startTime, endTime });
-          void processQueue();
-        });
-      } else {
-        queueRef.current.push({ blob, startTime, endTime });
-        void processQueue();
-      }
+      // PCM streaming handles WebSocket path — MediaRecorder blobs go to HTTP queue only
+      queueRef.current.push({ blob, startTime, endTime });
+      void processQueue();
     };
 
     recorder.onerror = () => {
@@ -2552,6 +2543,35 @@ export default function WorkshopLivePage({ params }: PageProps) {
       analyser.smoothingTimeConstant = 0.7;
       source.connect(analyser);
       analyserRef.current = analyser;
+
+      // PCM streaming via WebSocket (piggybacks on this AudioContext)
+      const pcmProcessor = ctx.createScriptProcessor(4096, 1, 1);
+      source.connect(pcmProcessor);
+      pcmProcessor.connect(ctx.destination);
+      const nativeSR = ctx.sampleRate;
+      const targetSR = 16000;
+      const ratio = Math.round(nativeSR / targetSR);
+      let pcmChunkCount = 0;
+      console.log('[DREAM-DIAG] Workshop AudioContext sampleRate:', nativeSR, 'downsample ratio:', ratio);
+
+      pcmProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
+        const ws = captureWSRef.current;
+        if (!ws || !ws.isReady) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        const downLen = Math.floor(inputData.length / ratio);
+        const pcmData = new Int16Array(downLen);
+        for (let i = 0; i < downLen; i++) {
+          const s = Math.max(-1, Math.min(1, inputData[i * ratio]));
+          pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        try {
+          ws.sendBuffer(pcmData.buffer);
+          pcmChunkCount++;
+          if (pcmChunkCount % 50 === 1) console.log('[DREAM-DIAG] PCM chunks sent:', pcmChunkCount);
+        } catch {
+          // ignore
+        }
+      };
 
       const data = new Uint8Array(analyser.fftSize);
 
