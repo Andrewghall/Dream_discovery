@@ -282,14 +282,19 @@ export default function SalesLivePage() {
     try {
       const wsStream = new CaptureAPIStream({
         onTranscript: async (msg: StreamTranscript) => {
+          console.log('[DREAM-DIAG] onTranscript fired:', { type: msg.type, rawText: msg.rawText?.substring(0, 50), cleanText: msg.cleanText?.substring(0, 50), isFinal: (msg as any).isFinal, speaker: msg.speaker });
           const text = msg.cleanText?.trim();
-          if (!text) return;
+          if (!text) {
+            console.log('[DREAM-DIAG] skipping — cleanText empty');
+            return;
+          }
 
           const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : null;
           const now = Date.now();
 
           // Post to sales transcript endpoint
-          await fetch(`/api/sales/${workshopId}/transcript`, {
+          console.log('[DREAM-DIAG] POSTing to /api/sales/' + workshopId + '/transcript');
+          const resp = await fetch(`/api/sales/${workshopId}/transcript`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -307,6 +312,7 @@ export default function SalesLivePage() {
               },
             }),
           });
+          console.log('[DREAM-DIAG] POST response:', resp.status, resp.statusText);
 
           // Fire and forget AI analysis
           fetch(`/api/sales/${workshopId}/analysis`, {
