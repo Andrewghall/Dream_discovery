@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Users, MessageSquare, TrendingUp, ShieldCheck, LogOut } from 'lucide-react';
+import { Plus, Users, MessageSquare, TrendingUp, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
@@ -174,11 +174,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-  };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'COMPLETED':
@@ -215,30 +210,12 @@ export default function AdminDashboard() {
             </p>
           </div>
           <div className="flex gap-2">
-            {userRole === 'PLATFORM_ADMIN' && (
-              <Link href="/admin/organizations">
-                <Button size="lg" variant="outline">
-                  Organizations
-                </Button>
-              </Link>
-            )}
-            {userRole === 'TENANT_ADMIN' && (
-              <Link href="/admin/users">
-                <Button size="lg" variant="outline">
-                  Users
-                </Button>
-              </Link>
-            )}
             <Link href="/admin/workshops/new">
               <Button size="lg">
                 <Plus className="h-4 w-4 mr-2" />
                 New Workshop
               </Button>
             </Link>
-            <Button size="lg" variant="outline" onClick={handleLogout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
           </div>
         </div>
 

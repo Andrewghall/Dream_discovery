@@ -22,7 +22,7 @@ export default function AdminLayout({
         </div>
       </div>
       <div className="relative z-10">
-        <AdminHeader />
+        <AdminHeader section="admin" />
         {children}
       </div>
       <Toaster position="top-right" richColors closeButton />

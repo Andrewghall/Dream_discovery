@@ -22,7 +22,7 @@ export default function TenantLayout({
         </div>
       </div>
       <div className="relative z-10">
-        <AdminHeader />
+        <AdminHeader section="tenant" />
         {children}
       </div>
       <Toaster position="top-right" richColors closeButton />

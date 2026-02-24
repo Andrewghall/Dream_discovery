@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Users, MessageSquare, TrendingUp, LogOut } from 'lucide-react';
+import { Plus, Users, MessageSquare, TrendingUp } from 'lucide-react';
 import Image from 'next/image';
 import { getSession } from '@/lib/auth/session';
 
@@ -76,26 +76,12 @@ export default async function TenantDashboardPage() {
             <p className="text-muted-foreground mt-1">Manage workshops and discovery conversations</p>
           </div>
           <div className="flex gap-2">
-            {isTenantAdmin && (
-              <Link href="/admin/users">
-                <Button size="lg" variant="outline">
-                  <Users className="h-4 w-4 mr-2" />
-                  Users
-                </Button>
-              </Link>
-            )}
             <Link href="/tenant/workshops/new">
               <Button size="lg">
                 <Plus className="h-4 w-4 mr-2" />
                 New Workshop
               </Button>
             </Link>
-            <form action="/api/auth/tenant-logout" method="POST">
-              <Button size="lg" variant="outline" type="submit">
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
-            </form>
           </div>
         </div>
 
