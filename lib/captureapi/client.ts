@@ -196,6 +196,8 @@ export interface StreamTranscript {
   confidence: number
   slmConfidence: number
   slmUsed: boolean
+  isFinal: boolean      // true when Deepgram has finalized this result
+  speechFinal: boolean   // true when speaker finished (utterance boundary)
   chunk: number
 }
 

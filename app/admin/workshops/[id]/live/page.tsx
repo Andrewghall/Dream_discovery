@@ -2893,6 +2893,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
           const text = msg.cleanText?.trim();
           if (!text) return;
 
+          // Only ingest FINAL transcripts — interim results are partial duplicates
+          // that confuse the utterance buffer. Deepgram sends isFinal=true when
+          // the result is finalized with punctuation and smart formatting.
+          if (!msg.isFinal) {
+            console.log('[DREAM-DIAG] Skipping interim transcript:', text.substring(0, 60));
+            return;
+          }
+
+          console.log('[DREAM-DIAG] Final transcript received:', text.substring(0, 80), '| speaker:', msg.speaker);
+
           // Clear error on successful transcript
           if (lastTranscriptionErrorRef.current) {
             lastTranscriptionErrorRef.current = '';
@@ -2924,9 +2934,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 },
               }),
             });
-            if (r.ok) setForwardedCount((n) => n + 1);
-          } catch {
-            // ignore ingest errors
+            if (r.ok) {
+              const body = await r.json().catch(() => null);
+              console.log('[DREAM-DIAG] Ingest POST OK:', r.status, body);
+              setForwardedCount((n) => n + 1);
+            } else {
+              const errText = await r.text().catch(() => '');
+              console.error('[DREAM-DIAG] Ingest POST FAILED:', r.status, errText);
+            }
+          } catch (fetchErr) {
+            console.error('[DREAM-DIAG] Ingest POST network error:', fetchErr);
           }
         },
         onError: (err) => {
