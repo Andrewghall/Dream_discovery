@@ -144,13 +144,24 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
 
         // Capture text content (model thinking between tool calls)
         if (assistantMessage.content) {
-          deliberation.push(assistantMessage.content);
-          onReasoningStep?.({
-            timestampMs: Date.now(),
-            level: 'utterance',
-            icon: '💭',
-            summary: assistantMessage.content,
-          });
+          const thinkingText = assistantMessage.content.trim();
+          deliberation.push(thinkingText); // Always store for DB persistence
+
+          // Only emit substantive thinking to the live panel — skip boilerplate
+          const lc = thinkingText.toLowerCase();
+          const isBoilerplate = thinkingText.length < 40
+            || lc.startsWith("i'll ")
+            || lc.startsWith('i will ')
+            || lc.startsWith('let me ')
+            || lc.startsWith('i need to ');
+          if (!isBoilerplate) {
+            onReasoningStep?.({
+              timestampMs: Date.now(),
+              level: 'utterance',
+              icon: '💭',
+              summary: thinkingText,
+            });
+          }
         }
 
         // No tool calls — model is done
@@ -179,13 +190,21 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
             // Terminal tool — extract the final analysis
             commitArgs = fnArgs;
 
-            const meaning = String(fnArgs.semanticMeaning || '').substring(0, 80);
-            deliberation.push(`Committing: ${fnArgs.primaryType} — ${meaning}`);
+            const meaning = String(fnArgs.semanticMeaning || '').substring(0, 120);
+            const typeKey = String(fnArgs.primaryType || 'INSIGHT').toLowerCase();
+            const typeLabels: Record<string, string> = {
+              visionary: 'vision', opportunity: 'opportunity', constraint: 'constraint',
+              risk: 'risk', enabler: 'enabler', action: 'action item',
+              question: 'question', insight: 'insight',
+            };
+            const friendlyType = typeLabels[typeKey] || typeKey;
+            const commitSummary = `Identified ${friendlyType}: ${meaning}`;
+            deliberation.push(commitSummary);
             onReasoningStep?.({
               timestampMs: Date.now(),
               level: 'utterance',
               icon: '🎯',
-              summary: `Committing: ${fnArgs.primaryType} — ${meaning}`,
+              summary: commitSummary,
             });
 
             // Respond to the tool call (required by API)
@@ -198,13 +217,16 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
             // Execute query tool against cognitive state
             const toolResult = executeTool(fnName, fnArgs, state);
 
-            deliberation.push(toolResult.reasoningSummary);
-            onReasoningStep?.({
-              timestampMs: Date.now(),
-              level: 'utterance',
-              icon: '🔍',
-              summary: toolResult.reasoningSummary,
-            });
+            deliberation.push(toolResult.reasoningSummary || `[${fnName}]`);
+            // Only emit to live reasoning panel if the tool has something meaningful to show
+            if (!toolResult.suppress && toolResult.reasoningSummary) {
+              onReasoningStep?.({
+                timestampMs: Date.now(),
+                level: 'utterance',
+                icon: '🔍',
+                summary: toolResult.reasoningSummary,
+              });
+            }
 
             messages.push({
               role: 'tool',

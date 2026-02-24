@@ -1,14 +1,15 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Brain } from 'lucide-react';
+import { ChevronDown, ChevronUp, Brain, Eye, EyeOff } from 'lucide-react';
 
 /**
- * Agentic Reasoning Panel — Live conversation box showing
- * the DREAM agent's internal reasoning in real-time.
+ * Agentic Reasoning Panel — Live facilitator-facing insight stream.
  *
- * The facilitator can watch the agent think — see its deliberation,
- * classification decisions, belief updates, and contradiction detection.
+ * Default (curated) mode shows only meaningful observations:
+ * new themes, reinforcements, contradictions, stabilisations, and commit decisions.
+ *
+ * Verbose mode shows everything including internal tool queries (for debugging).
  */
 
 export type ReasoningEntry = {
@@ -24,17 +25,36 @@ type AgenticReasoningPanelProps = {
   isCapturing: boolean;
 };
 
+/** Returns true if this entry should be shown in curated (non-verbose) mode. */
+function isCuratedEntry(entry: ReasoningEntry): boolean {
+  // Always hide fragments
+  if (entry.level === 'fragment') return false;
+  // Hide empty summaries
+  if (!entry.summary || entry.summary.trim().length === 0) return false;
+  // Hide internal tool query noise that may have slipped through
+  const s = entry.summary;
+  if (s.startsWith('Queried beliefs')) return false;
+  if (s.startsWith('Searched entities')) return false;
+  if (s.startsWith('Momentum:')) return false;
+  if (s.includes('not found')) return false;
+  // Show everything else (beliefs, contradictions, stabilisations, commits, meaningful tool results)
+  return true;
+}
+
 export function AgenticReasoningPanel({ entries, isCapturing }: AgenticReasoningPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [verbose, setVerbose] = useState(false);
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const displayEntries = verbose ? entries : entries.filter(isCuratedEntry);
 
   // Auto-scroll to bottom when new entries arrive
   useEffect(() => {
     if (scrollRef.current && !collapsed) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [entries.length, collapsed]);
+  }, [displayEntries.length, collapsed]);
 
   const formatTime = (ms: number) => {
     const date = new Date(ms);
@@ -43,12 +63,21 @@ export function AgenticReasoningPanel({ entries, isCapturing }: AgenticReasoning
 
   const levelColour = (level: ReasoningEntry['level']): string => {
     switch (level) {
-      case 'stabilisation': return 'text-red-400';
-      case 'contradiction': return 'text-yellow-400';
-      case 'belief': return 'text-blue-400';
-      case 'utterance': return 'text-green-400';
-      case 'fragment': return 'text-gray-400';
-      default: return 'text-gray-300';
+      case 'stabilisation': return 'text-red-300 font-semibold';
+      case 'contradiction': return 'text-amber-300 font-medium';
+      case 'belief': return 'text-blue-300 font-medium';
+      case 'utterance': return 'text-gray-300';
+      case 'fragment': return 'text-gray-500';
+      default: return 'text-gray-400';
+    }
+  };
+
+  const levelBorder = (level: ReasoningEntry['level']): string => {
+    switch (level) {
+      case 'stabilisation': return 'border-l-2 border-red-500 pl-2';
+      case 'contradiction': return 'border-l-2 border-amber-500 pl-2';
+      case 'belief': return 'border-l-2 border-blue-500 pl-2';
+      default: return '';
     }
   };
 
@@ -69,8 +98,19 @@ export function AgenticReasoningPanel({ entries, isCapturing }: AgenticReasoning
             </span>
           )}
           <span className="text-xs text-gray-500">
-            {entries.length} entries
+            {verbose ? `${entries.length} entries` : `${displayEntries.length} insights`}
           </span>
+          {/* Verbose toggle */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setVerbose(!verbose); }}
+            className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors ${
+              verbose ? 'bg-purple-600/40 text-purple-300' : 'bg-gray-700 text-gray-400 hover:text-gray-300'
+            }`}
+            title={verbose ? 'Showing all entries (debug)' : 'Showing curated insights'}
+          >
+            {verbose ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+            {verbose ? 'All' : 'Curated'}
+          </button>
         </div>
         {collapsed ? (
           <ChevronDown className="w-4 h-4 text-gray-400" />
@@ -85,7 +125,7 @@ export function AgenticReasoningPanel({ entries, isCapturing }: AgenticReasoning
           ref={scrollRef}
           className="max-h-40 overflow-y-auto p-2 space-y-1 font-mono text-xs"
         >
-          {entries.length === 0 && (
+          {displayEntries.length === 0 && (
             <div className="text-gray-500 text-center py-4">
               {isCapturing
                 ? 'Waiting for speech...'
@@ -93,10 +133,10 @@ export function AgenticReasoningPanel({ entries, isCapturing }: AgenticReasoning
             </div>
           )}
 
-          {entries.map((entry, i) => (
+          {displayEntries.map((entry, i) => (
             <div
               key={i}
-              className="flex gap-2 hover:bg-gray-800/50 rounded px-1 py-0.5 cursor-pointer"
+              className={`flex gap-2 hover:bg-gray-800/50 rounded px-1 py-0.5 cursor-pointer ${levelBorder(entry.level)}`}
               onClick={() => setExpandedEntry(expandedEntry === i ? null : i)}
             >
               <span className="text-gray-600 shrink-0 w-16">{formatTime(entry.timestampMs)}</span>

@@ -212,8 +212,8 @@ export function applyCognitiveUpdate(
             timestampMs: now,
             level: 'belief',
             icon: '🟢',
-            summary: bu.reasoning || `Reinforcing: "${existing.label}"`,
-            details: `"${existing.label}" — confidence: ${(existing.confidence * 100).toFixed(0)}%, evidence: ${existing.evidenceCount}`,
+            summary: bu.reasoning || `This reinforces: "${existing.label}"`,
+            details: `Confidence: ${(existing.confidence * 100).toFixed(0)}%, evidence: ${existing.evidenceCount} utterances`,
           });
           break;
         }
@@ -241,12 +241,15 @@ export function applyCognitiveUpdate(
         state.beliefs.set(belief.id, belief);
         newBeliefs.push(belief);
 
+        const displaySummary = (bu.reasoning && bu.reasoning.length > 10)
+          ? bu.reasoning
+          : `New theme emerging: "${belief.label}"`;
         reasoningEntries.push({
           timestampMs: now,
           level: 'belief',
           icon: '🔵',
-          summary: bu.reasoning || `New belief: "${belief.label}"`,
-          details: `${belief.category} — ${belief.domains.map(d => d.domain).join(', ')} — confidence: ${(belief.confidence * 100).toFixed(0)}%`,
+          summary: displaySummary,
+          details: `${belief.category} · ${belief.domains.map(d => d.domain).join(', ')} · confidence: ${(belief.confidence * 100).toFixed(0)}%`,
         });
       }
     } else if (bu.action === 'reinforce' && bu.beliefId) {
@@ -262,8 +265,8 @@ export function applyCognitiveUpdate(
           timestampMs: now,
           level: 'belief',
           icon: '🟢',
-          summary: bu.reasoning || `Reinforced: "${existing.label}"`,
-          details: `"${existing.label}" — confidence: ${(existing.confidence * 100).toFixed(0)}%, evidence: ${existing.evidenceCount}`,
+          summary: bu.reasoning || `This reinforces: "${existing.label}"`,
+          details: `Confidence: ${(existing.confidence * 100).toFixed(0)}%, evidence: ${existing.evidenceCount} utterances`,
         });
       }
     } else if (bu.action === 'weaken' && bu.beliefId) {
@@ -274,8 +277,8 @@ export function applyCognitiveUpdate(
           timestampMs: now,
           level: 'belief',
           icon: '🟡',
-          summary: bu.reasoning || `Weakened: "${existing.label}"`,
-          details: `"${existing.label}" — confidence dropped to ${(existing.confidence * 100).toFixed(0)}%`,
+          summary: bu.reasoning || `Fading: "${existing.label}"`,
+          details: `Confidence dropped to ${(existing.confidence * 100).toFixed(0)}%`,
         });
       }
     }
@@ -306,9 +309,9 @@ export function applyCognitiveUpdate(
         reasoningEntries.push({
           timestampMs: now,
           level: 'contradiction',
-          icon: '🟡',
-          summary: cu.reasoning || `Contradiction detected between two beliefs`,
-          details: `"${beliefA.label}" vs "${beliefB.label}"`,
+          icon: '⚡',
+          summary: cu.reasoning || `Tension: "${beliefA.label}" vs "${beliefB.label}"`,
+          details: `${beliefA.category} vs ${beliefB.category}`,
         });
       }
     } else if (cu.action === 'resolve' && cu.contradictionId) {
@@ -322,7 +325,7 @@ export function applyCognitiveUpdate(
           timestampMs: now,
           level: 'contradiction',
           icon: '🟢',
-          summary: cu.reasoning || `Contradiction resolved`,
+          summary: cu.reasoning || `Tension resolved`,
           details: cu.resolution || undefined,
         });
       }
@@ -411,23 +414,17 @@ export function applyCognitiveUpdate(
         timestampMs: now,
         level: 'stabilisation',
         icon: '🔴',
-        summary: `Stabilised: "${belief.label}" — committed to output`,
+        summary: `Key insight solidified: "${belief.label}"`,
         details: `Evidence: ${belief.evidenceCount} utterances, confidence: ${(belief.confidence * 100).toFixed(0)}%`,
       });
     }
   }
 
-  // ── Add deliberation steps to reasoning entries ─────────────
-  // Each step of the agent's thinking process becomes a separate entry
-  if (update.deliberation && update.deliberation.length > 0) {
-    const deliberationEntries: ReasoningEntry[] = update.deliberation.map((step, i) => ({
-      timestampMs: now + i, // Slight offset so they sort in order
-      level: 'utterance' as const,
-      icon: i === 0 ? '🧠' : i === update.deliberation.length - 1 ? '🎯' : '💭',
-      summary: step,
-    }));
-    reasoningEntries.unshift(...deliberationEntries);
-  }
+  // NOTE: Deliberation steps are NOT added here — they are already emitted in
+  // real-time by the engine's onReasoningStep callback. Adding them here would
+  // create duplicate entries in the SSE stream (emitted both at line 260 and
+  // line 427 in transcript/route.ts). The deliberation array is still stored
+  // in the CognitiveStateUpdate for database persistence via agenticAnalysis.
 
   // Keep reasoning log bounded (last 200 entries)
   state.reasoningLog.push(...reasoningEntries);

@@ -18,6 +18,7 @@ export type ToolResult = {
   name: string;
   result: string;          // JSON string — becomes the tool message content
   reasoningSummary: string; // Short human-readable line for reasoning panel
+  suppress?: boolean;      // If true, engine should NOT emit this to the live reasoning panel
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -325,14 +326,15 @@ function executeQueryBeliefs(
       relevanceScore: Math.round(s.score * 100) + '%',
     }));
 
-  const summary = results.length > 0
-    ? `Queried beliefs for "${pattern}" — found ${results.length} match${results.length === 1 ? '' : 'es'}: ${results.map(r => `"${r.label}" (${r.confidence})`).join(', ')}`
-    : `Queried beliefs for "${pattern}" — no matches found`;
+  const hasMatches = results.length > 0;
 
   return {
     name: 'query_beliefs',
     result: JSON.stringify({ matches: results, totalBeliefs: state.beliefs.size }),
-    reasoningSummary: summary,
+    reasoningSummary: hasMatches
+      ? `Connects to: ${results.map(r => `"${r.label}"`).join(', ')}`
+      : '',
+    suppress: !hasMatches,
   };
 }
 
@@ -399,7 +401,7 @@ function executeCheckContradiction(
   return {
     name: 'check_contradiction',
     result: JSON.stringify(result),
-    reasoningSummary: `Checked contradiction: "${beliefA.label}" vs "${beliefB.label}" — ${result.analysis}`,
+    reasoningSummary: `Tension check: "${beliefA.label}" vs "${beliefB.label}"`,
   };
 }
 
@@ -429,14 +431,15 @@ function executeSearchEntities(
         .map(([name, count]) => ({ name, count })),
     }));
 
-  const summary = results.length > 0
-    ? `Searched entities for "${query}" — found ${results.length}: ${results.map(r => `${r.name} (${r.type}, ${r.mentionCount} mentions)`).join(', ')}`
-    : `Searched entities for "${query}" — none found`;
+  const hasResults = results.length > 0;
 
   return {
     name: 'search_entities',
     result: JSON.stringify({ entities: results, totalTracked: state.entities.size }),
-    reasoningSummary: summary,
+    reasoningSummary: hasResults
+      ? `Tracking: ${results.map(r => r.name).join(', ')}`
+      : '',
+    suppress: !hasResults,
   };
 }
 
@@ -458,7 +461,8 @@ function executeGetActorContext(
     return {
       name: 'get_actor_context',
       result: JSON.stringify({ error: `Actor "${name}" not found`, knownActors: allActors.slice(0, 10) }),
-      reasoningSummary: `Actor "${name}" not found — ${allActors.length} actors known`,
+      reasoningSummary: '',
+      suppress: true,
     };
   }
 
@@ -477,7 +481,7 @@ function executeGetActorContext(
   return {
     name: 'get_actor_context',
     result: JSON.stringify(result),
-    reasoningSummary: `Actor "${actor.name}" — ${actor.role}, ${actor.mentionCount} mentions, ${actor.interactions.length} interactions`,
+    reasoningSummary: `Speaker context: ${actor.name} (${actor.role})`,
   };
 }
 
@@ -498,10 +502,19 @@ function executeGetConversationMomentum(state: CognitiveState): ToolResult {
     activeContradictions: Array.from(state.contradictions.values()).filter(c => !c.resolvedAtMs).length,
   };
 
+  // Build human-friendly summary — suppress if nothing interesting to report
+  const parts: string[] = [];
+  if (m.currentDomainFocus) parts.push(`Focus: ${m.currentDomainFocus}`);
+  if (m.currentSentiment && m.currentSentiment !== 'neutral') {
+    parts.push(`Mood: ${m.currentSentiment} (${m.sentimentTrajectory})`);
+  }
+  const hasMeaningfulInfo = parts.length > 0;
+
   return {
     name: 'get_conversation_momentum',
     result: JSON.stringify(result),
-    reasoningSummary: `Momentum: ${m.currentDomainFocus || 'no focus'}, ${m.currentSentiment} (${m.sentimentTrajectory}), ${m.speakerTurns} turns, ${state.beliefs.size} beliefs`,
+    reasoningSummary: hasMeaningfulInfo ? parts.join(' · ') : '',
+    suppress: !hasMeaningfulInfo,
   };
 }
 
