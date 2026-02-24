@@ -14,6 +14,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -77,6 +78,7 @@ export default function WorkshopDetailPage({ params }: PageProps) {
   const [summaryDownloading, setSummaryDownloading] = useState(false);
   const [scratchpadPreparing, setScratchpadPreparing] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
@@ -261,12 +263,13 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     }
   };
 
-  const handleDeleteWorkshop = async () => {
+  const handleDeleteWorkshop = () => {
     if (!workshop) return;
-    if (!confirm(`Delete workshop "${workshop.name}"? This will permanently delete participants and all discovery data.`)) {
-      return;
-    }
+    setShowDeleteConfirm(true);
+  };
 
+  const confirmDeleteWorkshop = async () => {
+    setShowDeleteConfirm(false);
     try {
       const response = await fetch(`/api/admin/workshops/${id}`, {
         method: 'DELETE',
@@ -931,6 +934,23 @@ export default function WorkshopDetailPage({ params }: PageProps) {
             <DialogDescription>{successMessage}</DialogDescription>
           </DialogHeader>
           <Button onClick={() => setShowSuccessDialog(false)}>Close</Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="bg-white">
+          <DialogHeader>
+            <DialogTitle>Delete Workshop</DialogTitle>
+            <DialogDescription>
+              Delete workshop &ldquo;{workshop?.name}&rdquo;? This will permanently delete
+              participants and all discovery data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDeleteWorkshop}>Delete</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
