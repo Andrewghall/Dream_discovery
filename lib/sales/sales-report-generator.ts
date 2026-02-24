@@ -92,7 +92,7 @@ export async function generateSalesReport(workshopId: string): Promise<SalesRepo
   const meetingPlan = (workshop.meetingPlan as MeetingPlan) || {};
   const speakers = [...new Set(chunks.map((c) => c.speakerId).filter(Boolean))] as string[];
   const totalDurationMs = chunks.length > 0
-    ? (chunks[chunks.length - 1].endTimeMs - chunks[0].startTimeMs)
+    ? Number(chunks[chunks.length - 1].endTimeMs - chunks[0].startTimeMs)
     : 0;
   const durationMins = Math.round(totalDurationMs / 60000);
 

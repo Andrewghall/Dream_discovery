@@ -182,8 +182,8 @@ async function processCompleteUtterance(
       transcriptChunk: {
         id: transcriptChunk.id,
         speakerId: transcriptChunk.speakerId,
-        startTimeMs: transcriptChunk.startTimeMs,
-        endTimeMs: transcriptChunk.endTimeMs,
+        startTimeMs: Number(transcriptChunk.startTimeMs),
+        endTimeMs: Number(transcriptChunk.endTimeMs),
         text: transcriptChunk.text,
         confidence: transcriptChunk.confidence,
         source: transcriptChunk.source,
@@ -459,8 +459,8 @@ async function processCompleteUtterance(
     transcriptChunk: {
       id: transcriptChunk.id,
       speakerId: transcriptChunk.speakerId,
-      startTimeMs: transcriptChunk.startTimeMs,
-      endTimeMs: transcriptChunk.endTimeMs,
+      startTimeMs: Number(transcriptChunk.startTimeMs),
+      endTimeMs: Number(transcriptChunk.endTimeMs),
       text: transcriptChunk.text,
       confidence: transcriptChunk.confidence,
       source: transcriptChunk.source,

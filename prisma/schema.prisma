@@ -145,8 +145,8 @@ model TranscriptChunk {
   id          String           @id @default(cuid())
   workshopId  String
   speakerId   String?
-  startTimeMs Int
-  endTimeMs   Int
+  startTimeMs BigInt
+  endTimeMs   BigInt
   text        String
   confidence  Float?
   source      TranscriptSource
