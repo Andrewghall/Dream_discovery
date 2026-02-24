@@ -2570,22 +2570,29 @@ export default function WorkshopLivePage({ params }: PageProps) {
       pcmProcessor.connect(ctx.destination);
       const nativeSR = ctx.sampleRate;
       const targetSR = 16000;
-      const ratio = Math.round(nativeSR / targetSR);
+      const resampleRatio = nativeSR / targetSR; // exact float (e.g. 2.75625 for 44100Hz)
       let pcmChunkCount = 0;
-      console.log('[DREAM-DIAG] Workshop AudioContext sampleRate:', nativeSR, 'downsample ratio:', ratio);
+      console.log('[DREAM-DIAG] Resampling:', nativeSR, '→', targetSR, 'Hz (ratio:', resampleRatio.toFixed(4), ')');
 
       pcmProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
         const ws = captureWSRef.current;
         if (!ws || !ws.isReady) return;
-        const inputData = e.inputBuffer.getChannelData(0);
-        const downLen = Math.floor(inputData.length / ratio);
-        const pcmData = new Int16Array(downLen);
-        for (let i = 0; i < downLen; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i * ratio]));
-          pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        const input = e.inputBuffer.getChannelData(0);
+        // Linear interpolation resampling — produces exactly targetSR regardless of native rate
+        const outLen = Math.round(input.length / resampleRatio);
+        const pcm = new Int16Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          const srcIdx = i * resampleRatio;
+          const idx = Math.floor(srcIdx);
+          const frac = srcIdx - idx;
+          const s0 = input[idx] ?? 0;
+          const s1 = input[idx + 1] ?? 0;
+          const sample = s0 + frac * (s1 - s0);
+          const clamped = Math.max(-1, Math.min(1, sample));
+          pcm[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7FFF;
         }
         try {
-          ws.sendBuffer(pcmData.buffer);
+          ws.sendBuffer(pcm.buffer);
           pcmChunkCount++;
           if (pcmChunkCount % 50 === 1) console.log('[DREAM-DIAG] PCM chunks sent:', pcmChunkCount);
         } catch {
