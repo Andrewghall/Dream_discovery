@@ -184,10 +184,12 @@ export default function SalesLivePage() {
     return () => es.close();
   }, [status, workshopId]);
 
-  // Audio level monitoring
+  // Audio level monitoring + PCM streaming (single AudioContext)
   const startAudioMonitoring = useCallback((stream: MediaStream) => {
     const ctx = new AudioContext();
     const src = ctx.createMediaStreamSource(stream);
+
+    // Analyser for level meter
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 512;
     src.connect(analyser);
@@ -202,6 +204,39 @@ export default function SalesLivePage() {
       animFrameRef.current = requestAnimationFrame(tick);
     };
     tick();
+
+    // ScriptProcessor for PCM capture (same AudioContext, guaranteed to fire)
+    const processor = ctx.createScriptProcessor(4096, 1, 1);
+    src.connect(processor);
+    processor.connect(ctx.destination);
+
+    const nativeSR = ctx.sampleRate; // usually 48000
+    const targetSR = 16000;
+    const ratio = Math.round(nativeSR / targetSR); // 3 for 48k→16k
+    let pcmChunkCount = 0;
+    console.log('[DREAM-DIAG] AudioContext sampleRate:', nativeSR, 'downsample ratio:', ratio);
+
+    processor.onaudioprocess = (e: AudioProcessingEvent) => {
+      const ws = captureWSRef.current;
+      if (!ws) { if (pcmChunkCount === 0) console.warn('[DREAM-DIAG] captureWSRef is null'); return; }
+      if (!ws.isReady) { if (pcmChunkCount === 0) console.warn('[DREAM-DIAG] ws.isReady=false'); return; }
+
+      const inputData = e.inputBuffer.getChannelData(0);
+      // Downsample from native rate to 16kHz
+      const downLen = Math.floor(inputData.length / ratio);
+      const pcmData = new Int16Array(downLen);
+      for (let i = 0; i < downLen; i++) {
+        const s = Math.max(-1, Math.min(1, inputData[i * ratio]));
+        pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      try {
+        ws.sendBuffer(pcmData.buffer);
+        pcmChunkCount++;
+        if (pcmChunkCount % 50 === 1) console.log('[DREAM-DIAG] PCM chunks sent:', pcmChunkCount, 'bytes:', pcmData.buffer.byteLength);
+      } catch (err) {
+        console.error('[CaptureAPIStream] PCM send failed:', err);
+      }
+    };
   }, []);
 
   // Process transcription queue
@@ -345,37 +380,6 @@ export default function SalesLivePage() {
       streamRef.current = stream;
       startAudioMonitoring(stream);
 
-      // --- Raw PCM streaming via WebSocket (16kHz mono Int16) ---
-      const pcmCtx = new AudioContext({ sampleRate: 16000 });
-      if (pcmCtx.state === 'suspended') await pcmCtx.resume();
-      console.log('[DREAM-DIAG] PCM AudioContext state:', pcmCtx.state, 'sampleRate:', pcmCtx.sampleRate);
-      const pcmSource = pcmCtx.createMediaStreamSource(stream);
-      const processor = pcmCtx.createScriptProcessor(4096, 1, 1);
-      pcmSource.connect(processor);
-      processor.connect(pcmCtx.destination);
-
-      let pcmChunkCount = 0;
-      processor.onaudioprocess = (e: AudioProcessingEvent) => {
-        const ws = captureWSRef.current;
-        if (!ws) { if (pcmChunkCount === 0) console.warn('[DREAM-DIAG] captureWSRef is null'); return; }
-        if (!ws.isReady) { if (pcmChunkCount === 0) console.warn('[DREAM-DIAG] ws.isReady=false'); return; }
-        const inputData = e.inputBuffer.getChannelData(0);
-        const pcmData = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]));
-          pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-        try {
-          ws.sendBuffer(pcmData.buffer);
-          pcmChunkCount++;
-          if (pcmChunkCount % 50 === 1) console.log('[DREAM-DIAG] PCM chunks sent:', pcmChunkCount, 'bytes:', pcmData.buffer.byteLength);
-        } catch (err) {
-          console.error('[CaptureAPIStream] PCM send failed:', err);
-        }
-      };
-
-      pcmContextRef.current = pcmCtx;
-
       setCallStartTime(Date.now());
       setStatus('capturing');
       stopRef.current = false;
@@ -392,8 +396,6 @@ export default function SalesLivePage() {
       mediaRecorderRef.current.requestData();
       mediaRecorderRef.current.stop();
     }
-    pcmContextRef.current?.close();
-    pcmContextRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     captureWSRef.current?.close();
     captureWSRef.current = null;
