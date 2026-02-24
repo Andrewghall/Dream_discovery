@@ -2410,7 +2410,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const startTime = Math.max(lastChunkEndRef.current, Math.max(0, endTime - CHUNK_MS));
       lastChunkEndRef.current = endTime;
 
-      // PCM streaming handles WebSocket path — MediaRecorder blobs go to HTTP queue only
+      // PCM streaming handles WebSocket path — skip HTTP queue when WS is active
+      if (captureWSRef.current?.isReady) return;
       queueRef.current.push({ blob, startTime, endTime });
       void processQueue();
     };
@@ -2896,7 +2897,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
           // Only ingest FINAL transcripts — interim results are partial duplicates
           // that confuse the utterance buffer. Deepgram sends isFinal=true when
           // the result is finalized with punctuation and smart formatting.
-          if (!msg.isFinal) {
+          // Use === false (not !) so undefined passes through (backwards-compatible).
+          if (msg.isFinal === false) {
             console.log('[DREAM-DIAG] Skipping interim transcript:', text.substring(0, 60));
             return;
           }
