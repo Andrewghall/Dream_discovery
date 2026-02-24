@@ -2942,33 +2942,33 @@ export default function WorkshopLivePage({ params }: PageProps) {
               console.log('[DREAM-DIAG] Ingest POST OK:', r.status, respBody);
               setForwardedCount((n) => n + 1);
 
-              // Directly add DataPoint to hemisphere — SSE may not work across
-              // Vercel serverless isolates, so we render immediately from the
-              // POST response instead of waiting for an SSE event.
-              const dp = respBody?.results?.[0]?.dataPoint;
-              const tc = respBody?.results?.[0]?.transcriptChunk;
-              if (dp?.id) {
-                const createdAtMs = typeof dp.createdAt === 'string'
-                  ? Date.parse(dp.createdAt)
-                  : Date.now();
+              // Directly add DataPoint to hemisphere — SSE doesn't work across
+              // Vercel serverless isolates, so we render from the POST response.
+              // Use dataPointId from response + data from the onTranscript closure
+              // (more robust than depending on server returning the full payload).
+              const result = respBody?.results?.[0];
+              const dpId = result?.dataPointId || result?.dataPoint?.id;
+              if (dpId) {
                 const node: HemisphereNodeDatum = {
-                  dataPointId: dp.id,
-                  createdAtMs,
-                  rawText: String(dp.rawText ?? ''),
-                  dataPointSource: String(dp.source ?? 'SPEECH'),
-                  speakerId: dp.speakerId || null,
-                  dialoguePhase: safePhase(dp.dialoguePhase) ?? safePhase(dialoguePhase) ?? null,
-                  transcriptChunk: tc ? {
-                    speakerId: tc.speakerId || null,
-                    startTimeMs: Number(tc.startTimeMs ?? 0),
-                    endTimeMs: Number(tc.endTimeMs ?? 0),
-                    confidence: typeof tc.confidence === 'number' ? tc.confidence : null,
-                    source: String(tc.source ?? 'DEEPGRAM'),
-                  } : null,
-                  classification: null, // Arrives asynchronously via SSE
+                  dataPointId: dpId,
+                  createdAtMs: Date.now(),
+                  rawText: text,
+                  dataPointSource: 'SPEECH',
+                  speakerId: speakerId || null,
+                  dialoguePhase: safePhase(dialoguePhase) ?? null,
+                  transcriptChunk: {
+                    speakerId: speakerId || null,
+                    startTimeMs: now - 5000,
+                    endTimeMs: now,
+                    confidence: msg.confidence,
+                    source: 'DEEPGRAM',
+                  },
+                  classification: null, // Arrives asynchronously
                 };
-                setNodesById((prev) => prev[dp.id] ? prev : { ...prev, [dp.id]: node });
-                console.log('[DREAM-DIAG] Node added to hemisphere:', dp.id, dp.rawText?.substring(0, 60));
+                setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
+                console.log('[DREAM-DIAG] Node added to hemisphere:', dpId, text.substring(0, 60));
+              } else {
+                console.warn('[DREAM-DIAG] No dataPointId in response:', respBody);
               }
             } else {
               const errText = await r.text().catch(() => '');
