@@ -2928,6 +2928,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 confidence: msg.confidence,
                 source: 'deepgram' as const,
                 dialoguePhase,
+                flush: true, // Deepgram isFinal transcripts are complete — flush immediately to create DataPoints
                 slmMetadata: {
                   entities: msg.entities,
                   emotionalTone: msg.emotionalTone,
