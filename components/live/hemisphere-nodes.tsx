@@ -175,15 +175,24 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
 
     const t0 = originTimeMs ?? Math.min(...nodes.map((n) => n.createdAtMs));
 
+    // Domain angles — nodes are pulled toward their classified domain zone
+    const domainAngles: Record<string, number> = {
+      People: (5 * Math.PI) / 6,
+      Operations: (3 * Math.PI) / 4,
+      Customer: Math.PI / 2,
+      Technology: Math.PI / 3,
+      Regulation: Math.PI / 6,
+    };
+
     return nodes.map((n) => {
       const dt = Math.max(0, n.createdAtMs - t0);
       const u = 1 - Math.exp(-dt / Math.max(1, timeScaleMs));
       const baseTheta = Math.PI - clamp01(u) * Math.PI;
 
-      // Dialogue phase bias (future utterances only). If phase is null, keep base layout unchanged.
+      // Layer 1: Dialogue phase bias
       // Right = REIMAGINE, Left = CONSTRAINTS, Center = DEFINE_APPROACH.
-      const phaseStrength = n.dialoguePhase ? 0.55 : 0;
-      const targetTheta =
+      const phaseStrength = n.dialoguePhase ? 0.35 : 0;
+      const phaseTarget =
         n.dialoguePhase === 'CONSTRAINTS'
           ? (5 * Math.PI) / 6
           : n.dialoguePhase === 'DEFINE_APPROACH'
@@ -191,8 +200,15 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
             : n.dialoguePhase === 'REIMAGINE'
               ? Math.PI / 6
               : baseTheta;
+      const thetaAfterPhase = lerp(baseTheta, phaseTarget, phaseStrength);
 
-      const theta = lerp(baseTheta, targetTheta, phaseStrength);
+      // Layer 2: Domain bias — pull node toward its classified domain zone
+      const primaryDomain = n.agenticAnalysis?.domains?.[0]?.domain ?? null;
+      const domainTarget = primaryDomain ? domainAngles[primaryDomain] ?? null : null;
+      const domainStrength = domainTarget != null ? 0.5 : 0;
+      const theta = domainTarget != null
+        ? lerp(thetaAfterPhase, domainTarget, domainStrength)
+        : thetaAfterPhase;
 
       const clsType = n.classification?.primaryType ?? null;
       const clsConf = typeof n.classification?.confidence === 'number' ? n.classification.confidence : null;
@@ -318,8 +334,15 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       return `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
     });
 
-    const spokes = [0.2, 0.4, 0.6, 0.8].map((p) => {
-      const theta = Math.PI - p * Math.PI;
+    // Domain-aligned spokes — visually define the 5 domain zones
+    const domainSpokeAngles = [
+      (5 * Math.PI) / 6,  // People
+      (3 * Math.PI) / 4,  // Operations
+      Math.PI / 2,         // Customer
+      Math.PI / 3,         // Technology
+      Math.PI / 6,         // Regulation
+    ];
+    const spokes = domainSpokeAngles.map((theta) => {
       const x = cx + R * Math.cos(theta);
       const y = cy - R * Math.sin(theta);
       return `M ${cx} ${cy} L ${x} ${y}`;
@@ -359,24 +382,28 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
             Later
           </text>
 
+          {/* Domain zone labels — positioned along the arc */}
           {(
             [
-              { theta: (5 * Math.PI) / 6, label: 'Constraints' },
-              { theta: Math.PI / 2, label: 'Define approach' },
-              { theta: Math.PI / 6, label: 'Reimagine' },
+              { theta: (5 * Math.PI) / 6, label: 'People' },
+              { theta: (3 * Math.PI) / 4, label: 'Ops' },
+              { theta: Math.PI / 2, label: 'Customer' },
+              { theta: Math.PI / 3, label: 'Tech' },
+              { theta: Math.PI / 6, label: 'Regulation' },
             ] as const
           ).map((p) => {
-            const r = backdrop.R * 0.92;
+            const r = backdrop.R * 1.04;
             const x = backdrop.cx + r * Math.cos(p.theta);
             const y = backdrop.cy - r * Math.sin(p.theta);
             return (
               <text
-                key={p.label}
+                key={`domain-${p.label}`}
                 x={x}
                 y={y}
-                fontSize={12}
-                fill="rgba(15,23,42,0.62)"
+                fontSize={11}
+                fill="rgba(99,102,241,0.7)"
                 textAnchor="middle"
+                fontWeight={600}
               >
                 {p.label}
               </text>

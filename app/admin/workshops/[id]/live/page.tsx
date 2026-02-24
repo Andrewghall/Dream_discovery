@@ -2990,6 +2990,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
               console.log('[DREAM-DIAG] RESULT ENTRY:', JSON.stringify(result));
               const dpId = result?.dataPointId || result?.dataPoint?.id;
               if (dpId) {
+                // Keyword-based domain detection — gives immediate positioning
+                // while the async agentic analysis (LLM) may overwrite later via SSE
+                const interp = interpretLiveUtterance(text);
                 const node: HemisphereNodeDatum = {
                   dataPointId: dpId,
                   createdAtMs: Date.now(),
@@ -3005,6 +3008,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     source: 'DEEPGRAM',
                   },
                   classification: null, // Arrives asynchronously
+                  agenticAnalysis: {
+                    domains: [{ domain: interp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
+                    themes: [],
+                    actors: [],
+                    semanticMeaning: '',
+                    sentimentTone: '',
+                    overallConfidence: 0.5,
+                  },
                 };
                 setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
                 console.log('[DREAM-DIAG] Node added to hemisphere:', dpId, text.substring(0, 60));
@@ -3036,10 +3047,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 for (const fr of flushedResults) {
                   const fDpId = fr?.dataPointId || fr?.dataPoint?.id;
                   if (fDpId) {
+                    const flushText = fr?.dataPoint?.rawText || text;
+                    const fInterp = interpretLiveUtterance(flushText);
                     const fNode: HemisphereNodeDatum = {
                       dataPointId: fDpId,
                       createdAtMs: Date.now(),
-                      rawText: fr?.dataPoint?.rawText || text,
+                      rawText: flushText,
                       dataPointSource: 'SPEECH',
                       speakerId: speakerId || null,
                       dialoguePhase: safePhase(dialoguePhase) ?? null,
@@ -3051,6 +3064,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         source: String(fr.transcriptChunk.source || 'DEEPGRAM'),
                       } : null,
                       classification: null,
+                      agenticAnalysis: {
+                        domains: [{ domain: fInterp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
+                        themes: [],
+                        actors: [],
+                        semanticMeaning: '',
+                        sentimentTone: '',
+                        overallConfidence: 0.5,
+                      },
                     };
                     setNodesById((prev) => prev[fDpId] ? prev : { ...prev, [fDpId]: fNode });
                     console.log('[DREAM-DIAG] Flush node added:', fDpId, (fr?.dataPoint?.rawText || '').substring(0, 60));
