@@ -92,7 +92,7 @@ export async function PATCH(
       ...(name?.trim() && { name: name.trim() }),
       ...(email?.trim() && { email: email.toLowerCase().trim() }),
       ...(role && { role }),
-      organizationId: organizationId || null,
+      ...(organizationId !== undefined && { organizationId: organizationId || null }),
       ...(isActive !== undefined && { isActive }),
     },
     select: {

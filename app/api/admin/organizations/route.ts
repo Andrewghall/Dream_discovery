@@ -96,15 +96,23 @@ export async function POST(request: NextRequest) {
         const existing = await prisma.user.findUnique({ where: { email: billingEmail.trim().toLowerCase() } });
 
         if (existing) {
-          // Link existing user to this org if unlinked
-          if (!existing.organizationId) {
+          if (existing.organizationId && existing.organizationId !== organization.id) {
+            // User already belongs to a different org — do NOT silently reassign
+            adminUser = existing;
+            emailError = `User ${billingEmail.trim()} already belongs to another organisation. Reassign them manually via the Users page if needed.`;
+          } else if (!existing.organizationId) {
+            // Unlinked user — link them to this new org
             await prisma.user.update({
               where: { id: existing.id },
               data: { organizationId: organization.id, role: 'TENANT_ADMIN' },
             });
+            adminUser = existing;
+            emailError = 'Existing user linked to this organisation (no email sent — user already has credentials)';
+          } else {
+            // User already belongs to THIS org — nothing to do
+            adminUser = existing;
+            emailError = 'User already belongs to this organisation';
           }
-          adminUser = existing;
-          emailError = 'User already exists — org linked but no email sent (user already has credentials)';
         } else {
           // Create new TENANT_ADMIN user
           temporaryPassword = generateTemporaryPassword();
