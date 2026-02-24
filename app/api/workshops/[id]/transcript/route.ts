@@ -446,6 +446,26 @@ async function processCompleteUtterance(
     deduped: false,
     transcriptChunkId: transcriptChunk.id,
     dataPointId: dataPoint.id,
+    // Include full payload so the client can render immediately
+    // (SSE may not deliver across Vercel serverless isolates)
+    dataPoint: {
+      id: dataPoint.id,
+      rawText: dataPoint.rawText,
+      source: dataPoint.source,
+      speakerId: dataPoint.speakerId,
+      createdAt: dataPoint.createdAt,
+      dialoguePhase,
+    },
+    transcriptChunk: {
+      id: transcriptChunk.id,
+      speakerId: transcriptChunk.speakerId,
+      startTimeMs: transcriptChunk.startTimeMs,
+      endTimeMs: transcriptChunk.endTimeMs,
+      text: transcriptChunk.text,
+      confidence: transcriptChunk.confidence,
+      source: transcriptChunk.source,
+      createdAt: transcriptChunk.createdAt,
+    },
   };
 }
 

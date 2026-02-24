@@ -2938,9 +2938,38 @@ export default function WorkshopLivePage({ params }: PageProps) {
               }),
             });
             if (r.ok) {
-              const body = await r.json().catch(() => null);
-              console.log('[DREAM-DIAG] Ingest POST OK:', r.status, body);
+              const respBody = await r.json().catch(() => null);
+              console.log('[DREAM-DIAG] Ingest POST OK:', r.status, respBody);
               setForwardedCount((n) => n + 1);
+
+              // Directly add DataPoint to hemisphere — SSE may not work across
+              // Vercel serverless isolates, so we render immediately from the
+              // POST response instead of waiting for an SSE event.
+              const dp = respBody?.results?.[0]?.dataPoint;
+              const tc = respBody?.results?.[0]?.transcriptChunk;
+              if (dp?.id) {
+                const createdAtMs = typeof dp.createdAt === 'string'
+                  ? Date.parse(dp.createdAt)
+                  : Date.now();
+                const node: HemisphereNodeDatum = {
+                  dataPointId: dp.id,
+                  createdAtMs,
+                  rawText: String(dp.rawText ?? ''),
+                  dataPointSource: String(dp.source ?? 'SPEECH'),
+                  speakerId: dp.speakerId || null,
+                  dialoguePhase: safePhase(dp.dialoguePhase) ?? safePhase(dialoguePhase) ?? null,
+                  transcriptChunk: tc ? {
+                    speakerId: tc.speakerId || null,
+                    startTimeMs: Number(tc.startTimeMs ?? 0),
+                    endTimeMs: Number(tc.endTimeMs ?? 0),
+                    confidence: typeof tc.confidence === 'number' ? tc.confidence : null,
+                    source: String(tc.source ?? 'DEEPGRAM'),
+                  } : null,
+                  classification: null, // Arrives asynchronously via SSE
+                };
+                setNodesById((prev) => prev[dp.id] ? prev : { ...prev, [dp.id]: node });
+                console.log('[DREAM-DIAG] Node added to hemisphere:', dp.id, dp.rawText?.substring(0, 60));
+              }
             } else {
               const errText = await r.text().catch(() => '');
               console.error('[DREAM-DIAG] Ingest POST FAILED:', r.status, errText);
