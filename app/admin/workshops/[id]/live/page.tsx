@@ -2552,8 +2552,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
       await refreshMicDevices();
 
-      // Request 16 kHz so Deepgram gets native-rate PCM — browser may ignore this
-      const ctx = new AudioContext({ sampleRate: 16000 });
+      // Use browser native sample rate — we resample to 16 kHz ourselves below
+      const ctx = new AudioContext();
       audioContextRef.current = ctx;
       if (ctx.state === 'suspended') {
         await ctx.resume();
@@ -2596,7 +2596,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
         try {
           ws.sendBuffer(pcm.buffer);
           pcmChunkCount++;
-          if (pcmChunkCount % 50 === 1) console.log('[DREAM-DIAG] PCM chunks sent:', pcmChunkCount, 'bytes:', pcm.byteLength);
+          if (pcmChunkCount <= 3 || pcmChunkCount % 50 === 1) {
+            let nonZero = 0;
+            let maxAbs = 0;
+            for (let j = 0; j < pcm.length; j++) {
+              if (pcm[j] !== 0) nonZero++;
+              const abs = Math.abs(pcm[j]);
+              if (abs > maxAbs) maxAbs = abs;
+            }
+            console.log('[DREAM-DIAG] PCM chunk', pcmChunkCount,
+              '| bytes:', pcm.byteLength,
+              '| nonZero:', nonZero + '/' + pcm.length,
+              '| maxAmp:', maxAbs);
+          }
         } catch {
           // ignore
         }
