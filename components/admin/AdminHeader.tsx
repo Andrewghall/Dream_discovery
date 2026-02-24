@@ -25,11 +25,11 @@ export function AdminHeader() {
   if (!src) return null;
 
   return (
-    <div className="no-print bg-background/80 backdrop-blur-sm">
-      <div className="container mx-auto px-4 pt-6 pb-2">
-        <Link href="/admin" className="inline-flex items-center gap-4 hover:opacity-80 transition-opacity">
+    <div className="no-print bg-white/90 backdrop-blur-sm border-b">
+      <div className="container mx-auto px-4 py-5 flex items-center">
+        <Link href="/admin" className="inline-flex items-center hover:opacity-80 transition-opacity">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={orgName || 'Logo'} className="h-14 w-auto" />
+          <img src={src} alt={orgName || 'Logo'} className="h-20 w-auto max-w-[320px] object-contain" />
         </Link>
       </div>
     </div>
