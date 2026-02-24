@@ -259,17 +259,23 @@ export class CaptureAPIStream {
 
       this.ws.onmessage = (event) => {
         try {
+          console.log('[CaptureAPIStream] RAW message received:', typeof event.data === 'string' ? event.data.substring(0, 200) : `binary ${event.data.byteLength} bytes`)
           const msg: StreamMessage = JSON.parse(event.data)
 
           if (msg.type === 'ready') {
+            console.log('[CaptureAPIStream] READY received:', msg)
             this._ready = true
             clearTimeout(timeout)
             this.onReady?.()
             resolve()
           } else if (msg.type === 'transcript') {
+            console.log('[CaptureAPIStream] TRANSCRIPT received:', (msg as any).rawText?.substring(0, 60))
             this.onTranscript(msg as StreamTranscript)
           } else if (msg.type === 'error') {
+            console.log('[CaptureAPIStream] ERROR received:', msg)
             this.onError(msg.message)
+          } else {
+            console.log('[CaptureAPIStream] UNKNOWN message type:', (msg as any).type)
           }
         } catch (e) {
           console.warn('[CaptureAPIStream] Failed to parse message:', e)

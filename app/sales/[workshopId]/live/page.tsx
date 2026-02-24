@@ -352,20 +352,24 @@ export default function SalesLivePage() {
       pcmSource.connect(processor);
       processor.connect(pcmCtx.destination);
 
+      let pcmChunkCount = 0;
       processor.onaudioprocess = (e: AudioProcessingEvent) => {
         const ws = captureWSRef.current;
-        if (ws && ws.isReady) {
-          const inputData = e.inputBuffer.getChannelData(0);
-          const pcmData = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            const s = Math.max(-1, Math.min(1, inputData[i]));
-            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-          }
-          try {
-            ws.sendBuffer(pcmData.buffer);
-          } catch (err) {
-            console.error('[CaptureAPIStream] PCM send failed:', err);
-          }
+        if (!ws) { if (pcmChunkCount === 0) console.warn('[DREAM-DIAG] captureWSRef is null'); return; }
+        if (!ws.isReady) { if (pcmChunkCount === 0) console.warn('[DREAM-DIAG] ws.isReady=false'); return; }
+        const inputData = e.inputBuffer.getChannelData(0);
+        const pcmData = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          const s = Math.max(-1, Math.min(1, inputData[i]));
+          pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        try {
+          ws.sendBuffer(pcmData.buffer);
+          pcmChunkCount++;
+          if (pcmChunkCount % 50 === 1) console.log('[DREAM-DIAG] PCM chunks sent:', pcmChunkCount, 'bytes:', pcmData.buffer.byteLength);
+        } catch (err) {
+          console.error('[CaptureAPIStream] PCM send failed:', err);
+        }
         }
       };
 
