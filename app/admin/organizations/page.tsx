@@ -30,6 +30,7 @@ export default function OrganizationsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<Organization | null>(null);
@@ -80,6 +81,11 @@ export default function OrganizationsPage() {
   };
 
   const cancel = () => {
+    // Revoke any blob preview URL
+    if (pendingLogoFile && formData.logoUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(formData.logoUrl);
+    }
+    setPendingLogoFile(null);
     setEditing(null);
     setCreating(false);
     setError('');
@@ -90,10 +96,17 @@ export default function OrganizationsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const orgId = editing?.id;
+
     if (!orgId) {
-      setError('Save the organization first before uploading a logo.');
+      // Creating a new org — hold the file and show a local preview
+      setPendingLogoFile(file);
+      const previewUrl = URL.createObjectURL(file);
+      setFormData(prev => ({ ...prev, logoUrl: previewUrl }));
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
+
+    // Editing an existing org — upload immediately
     setUploading(true);
     setError('');
     try {
@@ -120,7 +133,12 @@ export default function OrganizationsPage() {
     setSaving(true);
     try {
       const method = creating ? 'POST' : 'PATCH';
-      const body = creating ? formData : { id: editing!.id, ...formData };
+      // Strip blob: preview URLs before saving — the real URL comes after upload
+      const saveData = { ...formData };
+      if (saveData.logoUrl.startsWith('blob:')) {
+        saveData.logoUrl = '';
+      }
+      const body = creating ? saveData : { id: editing!.id, ...saveData };
 
       const res = await fetch('/api/admin/organizations', {
         method,
@@ -131,6 +149,30 @@ export default function OrganizationsPage() {
       if (!res.ok) {
         setError(data.error || 'Failed to save');
       } else {
+        // If we have a pending logo file, upload it now that the org exists
+        if (creating && pendingLogoFile && data.organization?.id) {
+          try {
+            const fd = new FormData();
+            fd.append('file', pendingLogoFile);
+            fd.append('organizationId', data.organization.id);
+            const uploadRes = await fetch('/api/admin/organizations/upload-logo', { method: 'POST', body: fd });
+            const uploadData = await uploadRes.json();
+            if (uploadRes.ok && uploadData.logoUrl) {
+              // Update the org with the real logo URL
+              await fetch('/api/admin/organizations', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: data.organization.id, logoUrl: uploadData.logoUrl }),
+              });
+            }
+          } catch {
+            // Non-fatal — org was created, logo upload just failed
+            setError('Organisation created but logo upload failed. You can re-upload from the edit page.');
+          } finally {
+            setPendingLogoFile(null);
+          }
+        }
+
         if (creating) {
           if (data.emailSent) {
             setSuccess(`Organisation created! Welcome email with login credentials sent to ${formData.billingEmail} ✓`);
@@ -263,14 +305,10 @@ export default function OrganizationsPage() {
                     size="sm"
                     loading={uploading}
                     loadingText="Uploading..."
-                    disabled={!editing}
                     onClick={() => fileInputRef.current?.click()}
                   >
                     Upload from computer
                   </LoadingButton>
-                  {!editing && (
-                    <span className="text-xs text-gray-400">Save org first to enable upload</span>
-                  )}
                 </div>
                 {formData.logoUrl && (
                   <div className="mt-1 flex items-center gap-2 text-sm text-gray-600">
