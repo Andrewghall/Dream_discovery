@@ -425,7 +425,7 @@ export default function OrganizationsPage() {
                         )}
                         <span>{org.maxSeats} seats</span>
                         {org.billingEmail && <span>{org.billingEmail}</span>}
-                        {org.logoUrl && <code className="text-xs">{org.logoUrl}</code>}
+                        {org.logoUrl && <span>Logo ✓</span>}
                       </div>
                     </div>
                   </div>
