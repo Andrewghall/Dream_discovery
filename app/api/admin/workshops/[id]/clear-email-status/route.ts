@@ -13,7 +13,7 @@ export async function POST(
 
     const { id: workshopId } = await params;
 
-    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role, auth.userId);
     if (!access.valid) {
       return NextResponse.json({ error: access.error }, { status: 403 });
     }

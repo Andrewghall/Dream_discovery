@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     }
 
     const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
+    const isTenantAdmin = session.role === 'TENANT_ADMIN';
     const orgId = session.organizationId;
 
     const url = request.nextUrl;
@@ -19,7 +20,12 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
     const skip = (page - 1) * limit;
 
-    const where = isPlatformAdmin ? {} : { organizationId: orgId! };
+    // PLATFORM_ADMIN sees all; TENANT_ADMIN sees all in their org; TENANT_USER sees only their own
+    const where = isPlatformAdmin
+      ? {}
+      : isTenantAdmin
+        ? { organizationId: orgId! }
+        : { organizationId: orgId!, createdById: session.userId };
 
     const [totalCount, workshops] = await Promise.all([
       prisma.workshop.count({ where }),

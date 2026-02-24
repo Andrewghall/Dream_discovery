@@ -197,7 +197,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role);
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
     if (!access.valid) {
       return NextResponse.json({ error: access.error }, { status: 403 });
     }

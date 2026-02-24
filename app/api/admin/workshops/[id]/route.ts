@@ -69,7 +69,7 @@ export async function GET(
     }
 
     // Validate workshop access (organization-scoped)
-    const validation = await validateWorkshopAccess(id, user.organizationId, user.role);
+    const validation = await validateWorkshopAccess(id, user.organizationId, user.role, user.userId);
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 403 });
     }
@@ -188,7 +188,7 @@ export async function PATCH(
     }
 
     // Validate workshop access (organization-scoped)
-    const validation = await validateWorkshopAccess(id, user.organizationId, user.role);
+    const validation = await validateWorkshopAccess(id, user.organizationId, user.role, user.userId);
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 403 });
     }
@@ -281,7 +281,7 @@ export async function DELETE(
     }
 
     // Validate workshop access (organization-scoped)
-    const validation = await validateWorkshopAccess(id, user.organizationId, user.role);
+    const validation = await validateWorkshopAccess(id, user.organizationId, user.role, user.userId);
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 403 });
     }

@@ -14,7 +14,7 @@ export async function POST(
 
     const { id: workshopId } = await params;
 
-    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role, auth.userId);
     if (!access.valid) {
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
@@ -84,7 +84,7 @@ export async function DELETE(
 
     const { id: workshopId } = await params;
 
-    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role, auth.userId);
     if (!access.valid) {
       return NextResponse.json({ error: access.error }, { status: 403 });
     }

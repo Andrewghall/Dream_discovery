@@ -102,7 +102,7 @@ async function handleExport(
     const auth = await requireAuth();
     if (auth instanceof NextResponse) return auth;
 
-    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role);
+    const access = await validateWorkshopAccess(workshopId, auth.organizationId, auth.role, auth.userId);
     if (!access.valid) {
       return NextResponse.json({ error: access.error }, { status: 403 });
     }

@@ -15,7 +15,7 @@ export async function GET(
   if (!user) {
     return new Response('Unauthorized', { status: 401 });
   }
-  const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role);
+  const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
   if (!access.valid) {
     return new Response('Forbidden', { status: 403 });
   }

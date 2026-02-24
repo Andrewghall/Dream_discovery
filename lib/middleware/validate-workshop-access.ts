@@ -16,17 +16,22 @@ export interface WorkshopAccessValidation {
 
 /**
  * Validates that a user can access a workshop
- * Enforces organization-level isolation
+ * Enforces user-level isolation:
+ *   - PLATFORM_ADMIN: any workshop
+ *   - TENANT_ADMIN: any workshop in their org
+ *   - TENANT_USER: only workshops they created
  *
  * @param workshopId Workshop ID to access
  * @param userOrganizationId User's organization ID (null for platform admins)
- * @param userRole User's role (PLATFORM_ADMIN or TENANT_ADMIN)
+ * @param userRole User's role
+ * @param userId User's ID (required for TENANT_USER ownership check)
  * @returns Validation result with workshop data or error
  */
 export async function validateWorkshopAccess(
   workshopId: string,
   userOrganizationId: string | null,
-  userRole: string
+  userRole: string,
+  userId?: string
 ): Promise<WorkshopAccessValidation> {
   // Platform admins can access all workshops
   if (userRole === 'PLATFORM_ADMIN') {
@@ -42,7 +47,7 @@ export async function validateWorkshopAccess(
     return { valid: true, workshop };
   }
 
-  // Tenant admins can only access workshops in their organization
+  // Tenant admins can access all workshops in their organization
   if (userRole === 'TENANT_ADMIN') {
     if (!userOrganizationId) {
       return { valid: false, error: 'Organization ID required for tenant access' };
@@ -59,6 +64,32 @@ export async function validateWorkshopAccess(
 
     if (workshop.organizationId !== userOrganizationId) {
       return { valid: false, error: 'Access denied: Workshop belongs to different organization' };
+    }
+
+    return { valid: true, workshop };
+  }
+
+  // Tenant users can only access workshops they created
+  if (userRole === 'TENANT_USER') {
+    if (!userOrganizationId || !userId) {
+      return { valid: false, error: 'Organization and user ID required for tenant user access' };
+    }
+
+    const workshop = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: { id: true, organizationId: true, createdById: true },
+    });
+
+    if (!workshop) {
+      return { valid: false, error: 'Workshop not found' };
+    }
+
+    if (workshop.organizationId !== userOrganizationId) {
+      return { valid: false, error: 'Access denied: Workshop belongs to different organization' };
+    }
+
+    if (workshop.createdById !== userId) {
+      return { valid: false, error: 'Access denied: You do not own this workshop' };
     }
 
     return { valid: true, workshop };
