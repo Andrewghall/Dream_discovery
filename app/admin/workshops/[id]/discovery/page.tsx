@@ -6,6 +6,12 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Users, BookOpen, TrendingUp } from 'lucide-react';
 
 // ══════════════════════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════════════════════
+
+const RETAIL_WORKSHOP_ID = 'retail-cx-workshop';
+
+// ══════════════════════════════════════════════════════════
 // TYPES
 // ══════════════════════════════════════════════════════════
 
@@ -41,21 +47,130 @@ type WorkshopSummary = {
 };
 
 // ══════════════════════════════════════════════════════════
+// DEMO DATA — retail reference workshop
+// ══════════════════════════════════════════════════════════
+
+const DEMO_SPIDER_DATA: SpiderAxisStat[] = [
+  { axisId: 'cx-personalisation',  label: 'CX Personalisation',   today: { median: 4.2 }, target: { median: 8.5 } },
+  { axisId: 'omnichannel-maturity',label: 'Omnichannel Maturity',  today: { median: 5.1 }, target: { median: 9.0 } },
+  { axisId: 'data-driven-decisions',label: 'Data-Driven Decisions',today: { median: 3.8 }, target: { median: 8.0 } },
+  { axisId: 'ai-adoption',         label: 'AI Adoption',           today: { median: 2.9 }, target: { median: 7.5 } },
+  { axisId: 'process-automation',   label: 'Process Automation',    today: { median: 4.5 }, target: { median: 8.8 } },
+  { axisId: 'workforce-readiness',  label: 'Workforce Readiness',   today: { median: 5.3 }, target: { median: 7.8 } },
+  { axisId: 'supply-chain-agility', label: 'Supply Chain Agility',  today: { median: 4.0 }, target: { median: 8.2 } },
+  { axisId: 'digital-commerce',     label: 'Digital Commerce',      today: { median: 6.1 }, target: { median: 9.2 } },
+  { axisId: 'regulatory-compliance',label: 'Regulatory Compliance', today: { median: 6.8 }, target: { median: 8.0 } },
+  { axisId: 'innovation-culture',   label: 'Innovation Culture',    today: { median: 3.5 }, target: { median: 8.4 } },
+];
+
+const DEMO_WORD_CLOUD: WordCloudItem[] = [
+  { text: 'customer',       value: 47 },
+  { text: 'experience',     value: 42 },
+  { text: 'personalisation',value: 38 },
+  { text: 'journey',        value: 35 },
+  { text: 'omnichannel',    value: 31 },
+  { text: 'automation',     value: 29 },
+  { text: 'loyalty',        value: 27 },
+  { text: 'digital',        value: 26 },
+  { text: 'insight',        value: 25 },
+  { text: 'engagement',     value: 24 },
+  { text: 'friction',       value: 23 },
+  { text: 'seamless',       value: 22 },
+  { text: 'recommendation', value: 21 },
+  { text: 'fulfilment',     value: 20 },
+  { text: 'inventory',      value: 19 },
+  { text: 'conversion',     value: 18 },
+  { text: 'analytics',      value: 18 },
+  { text: 'touchpoint',     value: 17 },
+  { text: 'retention',      value: 17 },
+  { text: 'satisfaction',   value: 16 },
+  { text: 'demand',         value: 15 },
+  { text: 'prediction',     value: 15 },
+  { text: 'segment',        value: 14 },
+  { text: 'feedback',       value: 14 },
+  { text: 'real-time',      value: 13 },
+  { text: 'integration',    value: 13 },
+  { text: 'workforce',      value: 12 },
+  { text: 'training',       value: 12 },
+  { text: 'basket',         value: 11 },
+  { text: 'pricing',        value: 11 },
+  { text: 'supply-chain',   value: 10 },
+  { text: 'sustainability', value: 10 },
+  { text: 'compliance',     value: 9 },
+  { text: 'agility',        value: 9 },
+  { text: 'convenience',    value: 8 },
+  { text: 'data-driven',    value: 8 },
+  { text: 'ai-agent',       value: 8 },
+  { text: 'innovation',     value: 7 },
+  { text: 'click-collect',  value: 7 },
+  { text: 'promotion',      value: 7 },
+  { text: 'self-service',   value: 6 },
+  { text: 'markdown',       value: 6 },
+  { text: 'returns',        value: 6 },
+  { text: 'seasonal',       value: 5 },
+  { text: 'churn',          value: 5 },
+  { text: 'acquisition',    value: 5 },
+  { text: 'mobile',         value: 5 },
+  { text: 'checkout',       value: 4 },
+  { text: 'subscription',   value: 4 },
+  { text: 'community',      value: 4 },
+];
+
+const DEMO_SUMMARY: WorkshopSummary = {
+  workshopId: RETAIL_WORKSHOP_ID,
+  workshopName: 'Retail CX Transformation',
+  generatedAt: new Date().toISOString(),
+  visionStatement:
+    'Transform the end-to-end retail customer experience into a seamlessly personalised, AI-augmented journey — where every touchpoint anticipates customer needs, removes friction, and builds lasting loyalty while empowering colleagues to focus on high-value human interactions.',
+  executiveSummary:
+    'Across 12 participant interviews spanning operations, marketing, technology, and store leadership, a clear consensus emerged: the current retail experience is fragmented across channels, over-reliant on manual processes, and lacking the data infrastructure to deliver meaningful personalisation. Participants consistently identified the gap between customer expectations — shaped by digital-native competitors — and the organisation\'s ability to deliver joined-up experiences. Key themes included the urgent need for omnichannel inventory visibility, AI-driven demand forecasting, and a unified customer data platform. Store colleagues expressed enthusiasm for AI-assisted tools that remove administrative burden, while leadership emphasised the importance of phased adoption to maintain regulatory compliance and workforce confidence. The strongest consensus was that personalisation must move from reactive segmentation to predictive, real-time engagement — but only with transparent data practices that earn customer trust.',
+  lenses: {
+    People:
+      'Workforce readiness is the pivotal enabler. Colleagues are open to AI-assisted tooling but need structured upskilling programmes and clear role evolution pathways. Middle management requires the most support — bridging operational execution with new digital capabilities. Retention risk is highest among experienced store staff who feel technology is being imposed rather than co-designed with them.',
+    Customer:
+      'Customers expect seamless transitions between online browsing, in-store discovery, and post-purchase support. The biggest pain points are inconsistent pricing across channels, lack of real-time stock visibility, and impersonal communications. Loyalty programme members want recognition that transcends transactions — personalised recommendations, early access, and genuine relationship building rather than points-based incentives.',
+    Technology:
+      'The current technology landscape is characterised by siloed systems: a legacy POS, a separate e-commerce platform, and disconnected CRM and inventory management. Participants unanimously prioritised a composable architecture with a unified customer data platform as the foundation. AI adoption should focus first on demand forecasting and inventory optimisation (high impact, lower risk), then progress to customer-facing personalisation engines.',
+    Regulation:
+      'Data privacy and consumer protection regulations are evolving rapidly. Participants flagged GDPR compliance gaps in current marketing automation and a lack of transparent opt-in mechanisms for AI-driven personalisation. Sustainability reporting requirements are also creating urgency around supply chain traceability. A privacy-by-design approach was recommended, embedding compliance into the technology architecture from day one rather than retrofitting.',
+    Organisation:
+      'Organisational structure currently mirrors channel silos — separate teams for online, stores, and wholesale create competing priorities. Participants strongly advocated for cross-functional squads aligned to customer journey stages rather than channels. Decision-making speed was cited as a major constraint — too many approval layers delay responsiveness to market signals. A centre-of-excellence model for AI and data was recommended to accelerate capability building.',
+  },
+  sources: {
+    reportCount: 12,
+    dataPointCount: 847,
+  },
+};
+
+const DEMO_PARTICIPANT_COUNT = 12;
+
+// ══════════════════════════════════════════════════════════
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════
 
 export default function DiscoveryPage({ params }: PageProps) {
   const { id: workshopId } = use(params);
+  const isRetailDemo = workshopId === RETAIL_WORKSHOP_ID;
 
-  const [spiderData, setSpiderData] = useState<SpiderAxisStat[] | null>(null);
-  const [wordCloudData, setWordCloudData] = useState<WordCloudItem[] | null>(null);
-  const [summary, setSummary] = useState<WorkshopSummary | null>(null);
-  const [participantCount, setParticipantCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [spiderData, setSpiderData] = useState<SpiderAxisStat[] | null>(
+    isRetailDemo ? DEMO_SPIDER_DATA : null
+  );
+  const [wordCloudData, setWordCloudData] = useState<WordCloudItem[] | null>(
+    isRetailDemo ? DEMO_WORD_CLOUD : null
+  );
+  const [summary, setSummary] = useState<WorkshopSummary | null>(
+    isRetailDemo ? DEMO_SUMMARY : null
+  );
+  const [participantCount, setParticipantCount] = useState(
+    isRetailDemo ? DEMO_PARTICIPANT_COUNT : 0
+  );
+  const [loading, setLoading] = useState(!isRetailDemo);
+  const [summaryLoading, setSummaryLoading] = useState(!isRetailDemo);
 
-  // ── Fetch spider + keywords ─────────────────────────────
+  // ── Fetch spider + keywords (skip for retail demo) ─────
   useEffect(() => {
+    if (isRetailDemo) return;
+
     async function fetchDiscoveryData() {
       setLoading(true);
       try {
@@ -72,10 +187,12 @@ export default function DiscoveryPage({ params }: PageProps) {
 
         if (keywordsRes.ok) {
           const data = await keywordsRes.json();
-          if (Array.isArray(data.keywords)) {
+          // API returns { terms: [{ text, count }] }
+          const terms = data.terms || data.keywords;
+          if (Array.isArray(terms)) {
             setWordCloudData(
-              data.keywords.slice(0, 60).map((k: { term: string; count: number }) => ({
-                text: k.term,
+              terms.slice(0, 60).map((k: { text?: string; term?: string; count: number }) => ({
+                text: k.text || k.term || '',
                 value: k.count,
               }))
             );
@@ -89,10 +206,12 @@ export default function DiscoveryPage({ params }: PageProps) {
     }
 
     fetchDiscoveryData();
-  }, [workshopId]);
+  }, [workshopId, isRetailDemo]);
 
-  // ── Fetch summary ───────────────────────────────────────
+  // ── Fetch summary (skip for retail demo) ───────────────
   useEffect(() => {
+    if (isRetailDemo) return;
+
     async function fetchSummary() {
       setSummaryLoading(true);
       try {
@@ -112,7 +231,7 @@ export default function DiscoveryPage({ params }: PageProps) {
     }
 
     fetchSummary();
-  }, [workshopId]);
+  }, [workshopId, isRetailDemo]);
 
   // ── Radar chart data transform ──────────────────────────
   const radarChartData = useMemo(() => {
@@ -137,14 +256,6 @@ export default function DiscoveryPage({ params }: PageProps) {
       }));
     return targetData.length > 0 ? [{ name: 'Target', data: targetData }] : undefined;
   }, [spiderData]);
-
-  const LENS_ICONS: Record<string, string> = {
-    People: 'people',
-    Customer: 'customer',
-    Technology: 'technology',
-    Organisation: 'organisation',
-    Regulation: 'regulation',
-  };
 
   // ══════════════════════════════════════════════════════════
   // RENDER
