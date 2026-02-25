@@ -170,7 +170,7 @@ export function AgentOrchestrationPanel({
       {collapsed && displayEntries.length > 0 && (
         <div className="px-5 pb-2 flex items-center gap-2 text-xs text-gray-500 truncate">
           <span>{getAgentStyle(displayEntries[displayEntries.length - 1].agent).icon}</span>
-          <span className="truncate">{displayEntries[displayEntries.length - 1].message.slice(0, 100)}...</span>
+          <span className="truncate">{displayEntries[displayEntries.length - 1].message.slice(0, 200)}</span>
         </div>
       )}
 
@@ -178,7 +178,7 @@ export function AgentOrchestrationPanel({
       {!collapsed && (
         <div
           ref={scrollRef}
-          className="max-h-[500px] overflow-y-auto px-5 pb-5 space-y-4"
+          className="max-h-[80vh] overflow-y-auto px-5 pb-5 space-y-4"
         >
           {displayEntries.length === 0 ? (
             <p className="text-xs text-gray-600 py-12 text-center">
@@ -227,10 +227,26 @@ export function AgentOrchestrationPanel({
                       </span>
                     </div>
 
-                    {/* Message text */}
-                    <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">
-                      {entry.message}
-                    </p>
+                    {/* Message text — with basic markdown rendering */}
+                    <div className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">
+                      {entry.message.split('\n').map((line, li) => {
+                        // Bold: **text**
+                        const parts = line.split(/\*\*(.+?)\*\*/g);
+                        const rendered = parts.map((part, pi) =>
+                          pi % 2 === 1 ? (
+                            <strong key={pi} className="text-gray-100 font-semibold">{part}</strong>
+                          ) : (
+                            <span key={pi}>{part}</span>
+                          )
+                        );
+                        return (
+                          <span key={li}>
+                            {li > 0 && '\n'}
+                            {rendered}
+                          </span>
+                        );
+                      })}
+                    </div>
 
                     {/* Expandable metadata */}
                     {isExpanded && entry.metadata && (

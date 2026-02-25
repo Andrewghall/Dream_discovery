@@ -197,7 +197,7 @@ async function executeResearchTool(
       const content = res.choices[0]?.message?.content || 'No information found.';
       return {
         result: JSON.stringify({ query, focus, findings: content }),
-        summary: `Researched ${focus}: ${content.substring(0, 120)}...`,
+        summary: `**Researched: ${focus}**\n${content}`,
       };
     }
 
@@ -224,7 +224,7 @@ async function executeResearchTool(
       const content = res.choices[0]?.message?.content || 'No trends data available.';
       return {
         result: JSON.stringify({ industry, focus, analysis: content }),
-        summary: `Analysed ${industry} trends: ${content.substring(0, 100)}...`,
+        summary: `**Industry Trends: ${industry}**\n${content}`,
       };
     }
 
@@ -252,7 +252,7 @@ async function executeResearchTool(
       const content = res.choices[0]?.message?.content || 'No domain insights available.';
       return {
         result: JSON.stringify({ domain, industry, insights: content }),
-        summary: `Explored ${domain} in ${industry}: ${content.substring(0, 100)}...`,
+        summary: `**Domain Deep-Dive: ${domain} in ${industry}**\n${content}`,
       };
     }
 
@@ -383,11 +383,19 @@ export async function runResearchAgent(
         if (fnName === 'commit_research') {
           commitArgs = fnArgs;
 
+          // Build full research summary — no truncation
+          const challenges = Array.isArray(fnArgs.keyPublicChallenges)
+            ? (fnArgs.keyPublicChallenges as string[]).map((c) => `  • ${c}`).join('\n')
+            : '  (none identified)';
+          const developments = Array.isArray(fnArgs.recentDevelopments)
+            ? (fnArgs.recentDevelopments as string[]).map((d) => `  • ${d}`).join('\n')
+            : '  (none identified)';
+
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'research-agent',
             to: 'prep-orchestrator',
-            message: `I've completed my research on ${context.clientName || 'the company'}. Here's a summary of what I found:\n\n• Company: ${String(fnArgs.companyOverview || '').substring(0, 200)}...\n• Industry: ${String(fnArgs.industryContext || '').substring(0, 150)}...\n• ${Array.isArray(fnArgs.keyPublicChallenges) ? fnArgs.keyPublicChallenges.length : 0} key challenges identified\n• ${Array.isArray(fnArgs.recentDevelopments) ? fnArgs.recentDevelopments.length : 0} recent developments noted\n\nI've stored the full research with ${Array.isArray(fnArgs.sourceUrls) ? fnArgs.sourceUrls.length : 0} reference sources.`,
+            message: `I've completed my research on ${context.clientName || 'the company'}. Here are my full findings:\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}`,
             type: 'proposal',
             metadata: {
               toolsUsed: ['search_company_info', 'search_industry_trends', 'search_domain_challenges'],
