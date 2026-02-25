@@ -137,6 +137,17 @@ export type WorkshopIntelligence = {
 export type AgentConversationCallback = (entry: AgentConversationEntry) => void;
 
 // ══════════════════════════════════════════════════════════
+// AGENT REVIEW — returned by any agent reviewing proposals
+// ══════════════════════════════════════════════════════════
+
+export type AgentReview = {
+  agent: string;
+  stance: 'agree' | 'challenge' | 'build';
+  feedback: string;
+  suggestedChanges?: string;
+};
+
+// ══════════════════════════════════════════════════════════
 // PREP CONTEXT — shared context passed to all agents
 // ══════════════════════════════════════════════════════════
 

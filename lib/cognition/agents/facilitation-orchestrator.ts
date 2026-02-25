@@ -1,155 +1,57 @@
 /**
- * DREAM Facilitation Orchestrator — Multi-Agent Deliberation
+ * DREAM Facilitation Orchestrator — Real LLM Agent
  *
- * Called at the end of each utterance processing (in the `after()` block
- * of the transcript route). Orchestrates genuine multi-agent deliberation
- * where REAL separate agents challenge each other before sub-questions
- * are surfaced. Not a workflow — a debate.
+ * The Orchestrator is itself a REAL reasoning agent — not a script.
+ * It receives the current session state, reasons about what to do,
+ * and uses tools to consult its team of specialist agents.
  *
- * Pattern: assess → propose → challenge → refine → verify → emit
+ * Every agent in this system is a genuine LLM with its own system prompt,
+ * tools, and multi-turn agentic reasoning loop.
  *
- * Deliberation flow:
- * 1. Theme Agent assesses the conversational landscape (own LLM call)
- * 2. Constraint Agent (CONSTRAINTS phase) identifies gaps (own LLM call)
- * 3. Orchestrator builds deliberation context from research + Discovery + 1 + 2
- * 4. Facilitation Agent proposes sub-questions with full context (own LLM call)
- * 5. REVIEW ROUND — each agent reviews proposals from its domain:
- *    - Theme Agent: does this follow the conversational thread?
- *    - Research Agent: is this grounded in company/industry knowledge?
- *    - Discovery Agent: does this build on participant interviews?
- *    - Constraint Agent: is this phase-appropriate? (REIMAGINE = zero constraints)
- *    Each review is a REAL separate LLM call with domain-specific prompt.
- * 6. If challenged: Facilitation Agent REFINES with feedback (second LLM call)
- * 7. Guardian validates grounding → emit pad.generated
+ * Agents:
+ * 1. ORCHESTRATOR — reasons about the session, decides actions (this file)
+ * 2. THEME AGENT — assesses conversational flow, proposes themes
+ * 3. CONSTRAINT AGENT — maps limitations, reviews phase-appropriateness
+ * 4. FACILITATION AGENT — proposes sub-questions for the main question
+ * 5. GUARDIAN AGENT — validates grounding against cited beliefs
  *
- * The entire deliberation — including challenges, builds, and refinements —
- * is visible in the Agent Conversation Panel. The facilitator sees genuine
- * multi-agent debate, not a rubber-stamp workflow.
+ * The Orchestrator has tools to:
+ * - Assess the session state
+ * - Consult the Theme Agent
+ * - Consult the Constraint Agent
+ * - Request facilitation proposals
+ * - Send proposals to agents for review (real agentic calls)
+ * - Send challenges back for refinement
+ * - Verify and emit approved pads via Guardian
+ *
+ * The entire deliberation is visible in the Agent Conversation Panel.
  */
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
 import type { CognitiveState } from '../cognitive-state';
 import {
-  getGuidanceState,
   getOrCreateGuidanceState,
   type GuidanceState,
 } from '../guidance-state';
-import { runThemeAgent } from './theme-agent';
+import { runThemeAgent, reviewWithThemeAgent } from './theme-agent';
 import { runFacilitationAgent, type DeliberationContext, type PadProposal } from './facilitation-agent';
-import { runConstraintAgent } from './constraint-agent';
+import { runConstraintAgent, reviewWithConstraintAgent } from './constraint-agent';
 import { runGuardianAgent, validateReferences } from './guardian-agent';
-import type { AgentConversationCallback } from './agent-types';
+import type { AgentConversationCallback, AgentReview } from './agent-types';
 
-// ── Timing thresholds ───────────────────────────────────────
+// ── Constants ───────────────────────────────────────────────
 
-const THEME_CHECK_INTERVAL_MS = 60_000;    // Check theme every 60s at most
-const THEME_STALE_MS = 15 * 60_000;        // Suggest new theme after 15min
-const PAD_GENERATION_INTERVAL_MS = 30_000; // Generate pads every 30s
-const PAD_UTTERANCE_THRESHOLD = 5;         // Or every 5 utterances
-const CHALLENGER_MODEL = 'gpt-4o-mini';
-
-// ══════════════════════════════════════════════════════════════
-// CHALLENGER — the orchestrator's critical voice
-// ══════════════════════════════════════════════════════════════
-
-type AgentReview = {
-  agent: string;
-  stance: 'agree' | 'challenge' | 'build';
-  feedback: string;
-};
-
-/**
- * Each agent reviews proposals from its own domain perspective.
- * These are REAL separate LLM calls — each agent runs with its own
- * system prompt and domain context. Not simulated.
- */
-async function runAgentReview(
-  agentName: string,
-  systemPrompt: string,
-  proposalDescription: string,
-): Promise<AgentReview> {
-  if (!env.OPENAI_API_KEY) {
-    return { agent: agentName, stance: 'agree', feedback: 'Review unavailable.' };
-  }
-
-  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-
-  try {
-    const completion = await openai.chat.completions.create({
-      model: CHALLENGER_MODEL,
-      temperature: 0.4,
-      max_tokens: 200,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: proposalDescription },
-      ],
-    });
-
-    const text = completion.choices[0]?.message?.content?.trim() || '';
-    try {
-      const parsed = JSON.parse(text);
-      return {
-        agent: agentName,
-        stance: parsed.stance || 'agree',
-        feedback: parsed.feedback || text,
-      };
-    } catch {
-      // Infer stance from text
-      const lower = text.toLowerCase();
-      const stance = lower.includes('disagree') || lower.includes('concern') || lower.includes('however')
-        ? 'challenge' : lower.includes('also') || lower.includes('add') ? 'build' : 'agree';
-      return { agent: agentName, stance, feedback: text.substring(0, 200) };
-    }
-  } catch {
-    return { agent: agentName, stance: 'agree', feedback: 'Review unavailable.' };
-  }
-}
-
-/**
- * Build the review prompt for each agent type. Each agent reviews
- * from its own domain expertise — not a generic template.
- */
-function buildReviewPrompts(
-  phase: string,
-  mainQuestion: string | null,
-  deliberation: DeliberationContext,
-): Record<string, string> {
-  const goal = mainQuestion ? `The current main question is: "${mainQuestion}".` : '';
-
-  return {
-    'Theme Agent': `You are the Theme Agent reviewing a colleague's proposal. Your domain is conversational flow and thematic coherence.
-${goal}
-${deliberation.themeRecommendation ? `Your earlier assessment: ${deliberation.themeRecommendation}` : ''}
-Does this proposal align with the conversational direction? Does it follow the thread the room is exploring, or does it pull in a different direction? Be honest — if it doesn't fit, say so.
-Respond with JSON: { "stance": "agree"|"challenge"|"build", "feedback": "your specific input" }`,
-
-    'Research Agent': `You are the Research Agent reviewing a colleague's proposal. Your domain is company and industry knowledge.
-${goal}
-${deliberation.researchHighlights ? `Your research findings: ${deliberation.researchHighlights}` : 'You have limited research context.'}
-Is this proposal grounded in what we know about the company and industry? Does it reference real dynamics, or is it generic? Could it be more specific to this client?
-Respond with JSON: { "stance": "agree"|"challenge"|"build", "feedback": "your specific input" }`,
-
-    'Discovery Agent': `You are the Discovery Agent reviewing a colleague's proposal. Your domain is what participants told us in pre-workshop interviews.
-${goal}
-${deliberation.discoveryInsights ? `Discovery findings: ${deliberation.discoveryInsights}` : 'No Discovery data available — flag this gap.'}
-Does this proposal build on what participants have already shared? Does it go deeper rather than retreading ground? Are we asking them to repeat themselves or pushing into new territory?
-Respond with JSON: { "stance": "agree"|"challenge"|"build", "feedback": "your specific input" }`,
-
-    'Constraint Agent': `You are the Constraint Agent reviewing a colleague's proposal. Your domain is limitations, risks, and blockers.
-${goal}
-${deliberation.constraintGaps ? `Known constraints: ${deliberation.constraintGaps}` : ''}
-${phase === 'REIMAGINE'
-  ? 'CRITICAL: We are in REIMAGINE phase. If this proposal mentions ANY constraints, barriers, or limitations — CHALLENGE it immediately. REIMAGINE is pure vision, zero friction.'
-  : phase === 'CONSTRAINTS'
-    ? 'We are in CONSTRAINTS phase. Does this proposal help map real limitations? Is it specific enough?'
-    : 'We are in DEFINE APPROACH. Does this proposal account for known constraints while still being actionable?'}
-Respond with JSON: { "stance": "agree"|"challenge"|"build", "feedback": "your specific input" }`,
-  };
-}
+const THEME_CHECK_INTERVAL_MS = 60_000;
+const THEME_STALE_MS = 15 * 60_000;
+const PAD_GENERATION_INTERVAL_MS = 30_000;
+const PAD_UTTERANCE_THRESHOLD = 5;
+const ORCHESTRATOR_MODEL = 'gpt-4o-mini';
+const MAX_ORCHESTRATOR_ITERATIONS = 6;
+const ORCHESTRATOR_TIMEOUT_MS = 45_000;
 
 // ══════════════════════════════════════════════════════════════
-// SHOULD-RUN CHECKS
+// SHOULD-RUN CHECKS (pre-LLM gating — saves cost)
 // ══════════════════════════════════════════════════════════════
 
 function shouldCheckTheme(
@@ -157,18 +59,10 @@ function shouldCheckTheme(
   gs: GuidanceState,
 ): boolean {
   const now = Date.now();
-
-  // Don't check too frequently
   if (now - gs.lastThemeCheckAtMs < THEME_CHECK_INTERVAL_MS) return false;
-
-  // Check if no active theme
   if (!gs.activeThemeId) return true;
-
-  // Check if active theme is stale
   const activeTheme = gs.themes.find((t) => t.id === gs.activeThemeId);
   if (activeTheme?.startedAtMs && now - activeTheme.startedAtMs > THEME_STALE_MS) return true;
-
-  // Check if domain focus shifted (new beliefs in different domain)
   return false;
 }
 
@@ -177,18 +71,523 @@ function shouldGeneratePads(
   gs: GuidanceState,
 ): boolean {
   const now = Date.now();
-
-  // Check time threshold
   if (now - gs.lastPadGenerationAtMs >= PAD_GENERATION_INTERVAL_MS) return true;
-
-  // Check utterance threshold
   if (gs.utterancesSinceLastPad >= PAD_UTTERANCE_THRESHOLD) return true;
-
   return false;
 }
 
 // ══════════════════════════════════════════════════════════════
-// MAIN ORCHESTRATION FUNCTION
+// ORCHESTRATOR TOOL DEFINITIONS
+// ══════════════════════════════════════════════════════════════
+
+const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'assess_session',
+      description: 'Get the current session state: beliefs, themes, phase, main question, and research/discovery context. Call this first to understand the landscape.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'consult_theme_agent',
+      description: 'Ask the Theme Agent to assess the conversational landscape and recommend whether a new theme is needed. The Theme Agent will query beliefs, check coverage, and reason about the direction.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'consult_constraint_agent',
+      description: 'Ask the Constraint Agent to map recent constraint/risk beliefs. Only useful during CONSTRAINTS phase. The agent will query beliefs and categorise constraints by type and severity.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'request_facilitation_proposals',
+      description: 'Ask the Facilitation Agent to generate sub-question proposals for the current main question. Pass it the deliberation context you have gathered from other agents.',
+      parameters: {
+        type: 'object',
+        properties: {
+          themeContext: { type: 'string', description: 'What the Theme Agent recommended or assessed.' },
+          constraintContext: { type: 'string', description: 'What the Constraint Agent found (gaps, mapped constraints).' },
+          researchContext: { type: 'string', description: 'Relevant research highlights about the company/industry.' },
+          discoveryContext: { type: 'string', description: 'Relevant Discovery interview insights.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'send_proposals_for_review',
+      description: 'Send the Facilitation Agent\'s proposals to the Theme Agent and Constraint Agent for review. Each agent runs as itself with its own tools and reasoning — real agentic calls, not summaries. Returns each agent\'s verdict (agree/challenge/build) and feedback.',
+      parameters: {
+        type: 'object',
+        properties: {
+          proposalSummary: {
+            type: 'string',
+            description: 'A description of the proposals to review.',
+          },
+        },
+        required: ['proposalSummary'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'request_refinement',
+      description: 'Send challenge feedback to the Facilitation Agent and ask it to refine its proposals. Use this after agents have challenged.',
+      parameters: {
+        type: 'object',
+        properties: {
+          challengeFeedback: {
+            type: 'string',
+            description: 'The compiled feedback from agents that challenged the proposals.',
+          },
+        },
+        required: ['challengeFeedback'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'verify_and_emit',
+      description: 'Send final proposals to the Guardian Agent for grounding verification, then emit approved pads to the facilitator screen. This is your commit tool — call it when you are satisfied with the proposals.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+];
+
+// ══════════════════════════════════════════════════════════════
+// ORCHESTRATOR SYSTEM PROMPT
+// ══════════════════════════════════════════════════════════════
+
+function buildOrchestratorSystemPrompt(
+  cogState: CognitiveState,
+  guidanceState: GuidanceState,
+): string {
+  const prep = guidanceState.prepContext;
+  const mainQ = guidanceState.currentMainQuestion;
+  const activeTheme = guidanceState.themes.find((t) => t.id === guidanceState.activeThemeId);
+  const checkTheme = shouldCheckTheme(cogState, guidanceState);
+
+  return `You are the DREAM Orchestrator Agent. You lead a team of specialist agents during a live workshop facilitation session. Your job is to reason about the current state of the conversation and coordinate your team to generate the best possible sub-questions for the facilitator.
+
+SESSION CONTEXT:
+${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : 'No client context'}
+${prep?.dreamTrack ? `DREAM Track: ${prep.dreamTrack}${prep.targetDomain ? ' — Focus: ' + prep.targetDomain : ''}` : ''}
+Phase: ${guidanceState.dialoguePhase}
+Beliefs: ${cogState.beliefs.size}
+${mainQ ? `CURRENT MAIN QUESTION: "${mainQ.text}" (Purpose: ${mainQ.purpose})` : 'No main question active'}
+Active theme: ${activeTheme ? `"${activeTheme.title}" (${activeTheme.lens || 'cross-cutting'})` : 'None'}
+${checkTheme ? 'Theme check is DUE — consider consulting Theme Agent.' : 'Theme check not due yet.'}
+
+YOUR TEAM:
+- Theme Agent: Understands conversational flow. Can query beliefs and assess thematic direction.
+- Constraint Agent: Knows limitations and risks. Can query constraint beliefs and map gaps.
+- Facilitation Agent: Generates sub-question proposals aligned to the main question.
+- Guardian Agent: Validates that outputs are grounded in real beliefs (final verification).
+
+YOUR PROCESS:
+1. assess_session — understand the current landscape
+2. consult_theme_agent — is the conversational direction right? (if theme check is due)
+3. consult_constraint_agent — what constraints exist? (CONSTRAINTS phase only)
+4. request_facilitation_proposals — get sub-question proposals with deliberation context
+5. send_proposals_for_review — let Theme Agent and Constraint Agent review (real agentic calls)
+6. If challenged: request_refinement — send feedback back for a second pass
+7. verify_and_emit — Guardian checks grounding, approved pads go to screen
+
+RULES:
+- You are a REASONING agent. Think about what you learn from each tool call before deciding next steps.
+- Do NOT rubber-stamp — if something doesn't feel right, investigate.
+- ${guidanceState.dialoguePhase === 'REIMAGINE' ? 'REIMAGINE PHASE: Everything must be aspirational. Zero constraints. If any agent or proposal mentions limitations, challenge it.' : guidanceState.dialoguePhase === 'CONSTRAINTS' ? 'CONSTRAINTS PHASE: Map real limitations. Be thorough and specific.' : 'DEFINE APPROACH PHASE: Solutions must be actionable and account for known constraints.'}
+- Be decisive. The facilitator is waiting. Complete your deliberation and call verify_and_emit.`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// TOOL EXECUTION — each tool invokes real agents
+// ══════════════════════════════════════════════════════════════
+
+async function executeOrchestratorTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  cogState: CognitiveState,
+  guidanceState: GuidanceState,
+  onConversation: AgentConversationCallback | undefined,
+  // Mutable state shared across the orchestrator's tool calls
+  state: {
+    deliberation: DeliberationContext;
+    proposals: PadProposal[];
+    themeUpdated: boolean;
+  },
+  emitEvent: (type: string, payload: unknown) => void,
+): Promise<string> {
+  const mainQ = guidanceState.currentMainQuestion;
+  const prep = guidanceState.prepContext;
+
+  switch (toolName) {
+    // ── ASSESS SESSION ──────────────────────────────────────
+    case 'assess_session': {
+      // Gather domain coverage from beliefs
+      const domainCounts: Record<string, number> = {};
+      const categoryCounts: Record<string, number> = {};
+      for (const b of cogState.beliefs.values()) {
+        categoryCounts[b.category] = (categoryCounts[b.category] || 0) + 1;
+        for (const d of b.domains) {
+          domainCounts[d.domain] = (domainCounts[d.domain] || 0) + 1;
+        }
+      }
+
+      // Build research highlights
+      let researchSummary = 'No research available.';
+      if (prep?.research) {
+        const r = prep.research;
+        researchSummary = [
+          r.companyOverview ? `Company: ${r.companyOverview.substring(0, 300)}` : null,
+          r.industryContext ? `Industry: ${r.industryContext.substring(0, 300)}` : null,
+          r.keyPublicChallenges?.length ? `Challenges: ${r.keyPublicChallenges.slice(0, 4).join('; ')}` : null,
+        ].filter(Boolean).join('\n');
+
+        state.deliberation.researchHighlights = researchSummary;
+      }
+
+      // Build discovery highlights
+      let discoverySummary = 'No Discovery data available.';
+      if (prep?.discoveryIntelligence) {
+        const di = prep.discoveryIntelligence;
+        discoverySummary = [
+          `${di.participantCount || 0} participants interviewed.`,
+          di.briefingSummary ? `Summary: ${di.briefingSummary.substring(0, 300)}` : null,
+          di.painPoints?.length ? `Pain points: ${di.painPoints.slice(0, 3).map((p: { description?: string }) => p.description || p).join('; ')}` : null,
+          di.aspirations?.length ? `Aspirations: ${di.aspirations.slice(0, 3).join('; ')}` : null,
+        ].filter(Boolean).join('\n');
+
+        state.deliberation.discoveryInsights = discoverySummary;
+      }
+
+      return JSON.stringify({
+        beliefs: cogState.beliefs.size,
+        domainCoverage: domainCounts,
+        categoryCoverage: categoryCounts,
+        phase: guidanceState.dialoguePhase,
+        mainQuestion: mainQ ? { text: mainQ.text, purpose: mainQ.purpose, phase: mainQ.phase } : null,
+        activeTheme: guidanceState.themes.find((t) => t.id === guidanceState.activeThemeId)?.title || null,
+        completedThemes: guidanceState.themes.filter((t) => t.status === 'completed').map((t) => t.title),
+        research: researchSummary,
+        discovery: discoverySummary,
+      });
+    }
+
+    // ── CONSULT THEME AGENT ─────────────────────────────────
+    case 'consult_theme_agent': {
+      guidanceState.lastThemeCheckAtMs = Date.now();
+
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'orchestrator',
+        to: 'theme-agent',
+        message: `${cogState.beliefs.size} beliefs accumulated.${mainQ ? ` Exploring: "${mainQ.text}".` : ''} Assess the conversational direction.`,
+        type: 'handoff',
+      });
+
+      try {
+        const proposal = await runThemeAgent(cogState, guidanceState, onConversation);
+
+        if (proposal) {
+          if (validateReferences(proposal.sourceBeliefIds, cogState)) {
+            // Guardian validates the theme
+            const verdict = await runGuardianAgent(
+              {
+                proposedOutput: { title: proposal.theme.title, description: proposal.theme.description },
+                outputDescription: `Theme suggestion: "${proposal.theme.title}"`,
+                sourceBeliefIds: proposal.sourceBeliefIds,
+                agentName: 'Theme Agent',
+                currentPhase: guidanceState.dialoguePhase,
+              },
+              cogState,
+              onConversation,
+            );
+
+            if (verdict.verdict !== 'reject') {
+              const theme = verdict.verdict === 'modify' && typeof verdict.modifiedOutput === 'string'
+                ? { ...proposal.theme, title: verdict.modifiedOutput }
+                : proposal.theme;
+
+              emitEvent('theme.suggested', { theme });
+              state.themeUpdated = true;
+              state.deliberation.themeRecommendation = `Conversation gravitating toward "${theme.title}" (${theme.lens || 'cross-cutting'}): ${theme.description || proposal.reasoning}. ${proposal.sourceBeliefIds.length} beliefs support this.`;
+
+              return JSON.stringify({ themeProposed: true, theme: theme.title, reasoning: proposal.reasoning, verified: true });
+            } else {
+              state.deliberation.themeRecommendation = `Theme "${proposal.theme.title}" was proposed but rejected: ${verdict.reasoning}`;
+              return JSON.stringify({ themeProposed: true, rejected: true, reasoning: verdict.reasoning });
+            }
+          }
+          return JSON.stringify({ themeProposed: true, invalidReferences: true });
+        }
+
+        state.deliberation.themeRecommendation = guidanceState.activeThemeId
+          ? 'Current theme remains appropriate.'
+          : null;
+        return JSON.stringify({ themeProposed: false, reason: 'No theme change warranted.' });
+      } catch (error) {
+        return JSON.stringify({ error: error instanceof Error ? error.message : 'Theme check failed' });
+      }
+    }
+
+    // ── CONSULT CONSTRAINT AGENT ────────────────────────────
+    case 'consult_constraint_agent': {
+      if (guidanceState.dialoguePhase !== 'CONSTRAINTS') {
+        return JSON.stringify({ skipped: true, reason: 'Not in CONSTRAINTS phase.' });
+      }
+
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'orchestrator',
+        to: 'constraint-agent',
+        message: `Map constraints and identify coverage gaps.${mainQ ? ` We're exploring: "${mainQ.text}".` : ''}`,
+        type: 'handoff',
+      });
+
+      try {
+        const constraintProposals = await runConstraintAgent(cogState, guidanceState, onConversation);
+        const mapped: string[] = [];
+
+        for (const cp of constraintProposals) {
+          if (validateReferences(cp.sourceBeliefIds, cogState)) {
+            const verdict = await runGuardianAgent(
+              {
+                proposedOutput: { label: cp.constraint.label, severity: cp.constraint.severity },
+                outputDescription: `Constraint: "${cp.constraint.label}" (${cp.constraint.severity})`,
+                sourceBeliefIds: cp.sourceBeliefIds,
+                agentName: 'Constraint Agent',
+                currentPhase: guidanceState.dialoguePhase,
+              },
+              cogState,
+              onConversation,
+            );
+
+            if (verdict.verdict !== 'reject') {
+              const constraint = verdict.verdict === 'modify' && typeof verdict.modifiedOutput === 'string'
+                ? { ...cp.constraint, label: verdict.modifiedOutput }
+                : cp.constraint;
+
+              emitEvent('constraint.mapped', { constraint });
+              mapped.push(`${constraint.label} (${constraint.severity})`);
+            }
+          }
+        }
+
+        if (mapped.length > 0) {
+          state.deliberation.constraintGaps = `Constraints identified: ${mapped.join('; ')}`;
+        }
+
+        return JSON.stringify({ constraintsMapped: mapped.length, constraints: mapped });
+      } catch (error) {
+        return JSON.stringify({ error: error instanceof Error ? error.message : 'Constraint mapping failed' });
+      }
+    }
+
+    // ── REQUEST FACILITATION PROPOSALS ──────────────────────
+    case 'request_facilitation_proposals': {
+      // Build deliberation context from orchestrator's gathered intelligence
+      const deliberation: DeliberationContext = {
+        themeRecommendation: args.themeContext ? String(args.themeContext) : state.deliberation.themeRecommendation,
+        constraintGaps: args.constraintContext ? String(args.constraintContext) : state.deliberation.constraintGaps,
+        researchHighlights: args.researchContext ? String(args.researchContext) : state.deliberation.researchHighlights,
+        discoveryInsights: args.discoveryContext ? String(args.discoveryContext) : state.deliberation.discoveryInsights,
+      };
+
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'orchestrator',
+        to: 'facilitation-agent',
+        message: `Generate sub-questions.${mainQ ? ` Goal: "${mainQ.text}".` : ''} Passing deliberation context from team assessment.`,
+        type: 'handoff',
+      });
+
+      try {
+        state.proposals = await runFacilitationAgent(cogState, guidanceState, onConversation, deliberation);
+
+        if (state.proposals.length === 0) {
+          return JSON.stringify({ proposalCount: 0, reason: 'Facilitation Agent had nothing to propose.' });
+        }
+
+        const summaries = state.proposals.map((p, i) =>
+          `${i + 1}. [${p.pad.type}, ${p.pad.lens || 'General'}] "${p.pad.prompt}" — ${p.reasoning}`,
+        );
+
+        return JSON.stringify({ proposalCount: state.proposals.length, proposals: summaries });
+      } catch (error) {
+        return JSON.stringify({ error: error instanceof Error ? error.message : 'Facilitation failed' });
+      }
+    }
+
+    // ── SEND PROPOSALS FOR REVIEW ───────────────────────────
+    // Real agentic calls — Theme Agent and Constraint Agent
+    // each run their full reasoning loops to review proposals
+    // ────────────────────────────────────────────────────────
+    case 'send_proposals_for_review': {
+      const proposalSummary = String(args.proposalSummary || '');
+
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'orchestrator',
+        to: '',
+        message: `Sending proposals to team for review. Each agent will assess from their domain using their full tools.`,
+        type: 'info',
+      });
+
+      // Run both reviews in parallel — real agentic calls
+      const [themeReview, constraintReview] = await Promise.all([
+        reviewWithThemeAgent(proposalSummary, cogState, guidanceState, onConversation),
+        reviewWithConstraintAgent(proposalSummary, guidanceState.dialoguePhase, cogState, guidanceState, onConversation),
+      ]);
+
+      const reviews = [themeReview, constraintReview];
+      const challenges = reviews.filter((r) => r.stance === 'challenge');
+      const builds = reviews.filter((r) => r.stance === 'build');
+
+      return JSON.stringify({
+        reviewCount: reviews.length,
+        challenges: challenges.length,
+        builds: builds.length,
+        reviews: reviews.map((r) => ({
+          agent: r.agent,
+          stance: r.stance,
+          feedback: r.feedback,
+          suggestedChanges: r.suggestedChanges || null,
+        })),
+      });
+    }
+
+    // ── REQUEST REFINEMENT ──────────────────────────────────
+    case 'request_refinement': {
+      const feedback = String(args.challengeFeedback || '');
+
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'orchestrator',
+        to: 'facilitation-agent',
+        message: `Challenges received. Sending feedback for refinement:\n${feedback}`,
+        type: 'handoff',
+      });
+
+      // Enrich deliberation with challenge feedback
+      const refinedDeliberation: DeliberationContext = {
+        ...state.deliberation,
+        themeRecommendation: [
+          state.deliberation.themeRecommendation,
+          feedback.includes('Theme Agent') ? `CHALLENGE FROM THEME AGENT: ${feedback}` : null,
+        ].filter(Boolean).join(' ') || null,
+        constraintGaps: [
+          state.deliberation.constraintGaps,
+          feedback.includes('Constraint Agent') ? `CHALLENGE FROM CONSTRAINT AGENT: ${feedback}` : null,
+        ].filter(Boolean).join(' ') || null,
+      };
+
+      try {
+        const refined = await runFacilitationAgent(cogState, guidanceState, onConversation, refinedDeliberation);
+
+        if (refined.length > 0) {
+          state.proposals = refined;
+
+          onConversation?.({
+            timestampMs: Date.now(),
+            agent: 'facilitation-agent',
+            to: 'orchestrator',
+            message: `Refined ${refined.length} proposal${refined.length !== 1 ? 's' : ''} incorporating challenge feedback.`,
+            type: 'info',
+          });
+
+          return JSON.stringify({
+            refined: true,
+            proposalCount: refined.length,
+            proposals: refined.map((p, i) => `${i + 1}. "${p.pad.prompt.substring(0, 80)}"`),
+          });
+        }
+
+        return JSON.stringify({ refined: false, reason: 'Facilitation Agent returned empty — keeping original proposals.' });
+      } catch (error) {
+        return JSON.stringify({ refined: false, error: error instanceof Error ? error.message : 'Refinement failed' });
+      }
+    }
+
+    // ── VERIFY AND EMIT ─────────────────────────────────────
+    case 'verify_and_emit': {
+      if (state.proposals.length === 0) {
+        return JSON.stringify({ emitted: 0, reason: 'No proposals to verify.' });
+      }
+
+      let emitted = 0;
+      const results: string[] = [];
+
+      for (const proposal of state.proposals) {
+        if (!validateReferences(proposal.sourceBeliefIds, cogState)) {
+          results.push(`REJECTED (invalid refs): "${proposal.pad.prompt.substring(0, 60)}"`);
+          continue;
+        }
+
+        onConversation?.({
+          timestampMs: Date.now(),
+          agent: 'orchestrator',
+          to: 'guardian',
+          message: `Final grounding check: "${proposal.pad.prompt.substring(0, 80)}..."`,
+          type: 'handoff',
+        });
+
+        const verdict = await runGuardianAgent(
+          {
+            proposedOutput: { prompt: proposal.pad.prompt, type: proposal.pad.type },
+            outputDescription: `Facilitation pad: "${proposal.pad.prompt.substring(0, 100)}"`,
+            sourceBeliefIds: proposal.sourceBeliefIds,
+            agentName: 'Facilitation Agent',
+            currentPhase: guidanceState.dialoguePhase,
+          },
+          cogState,
+          onConversation,
+        );
+
+        if (verdict.verdict !== 'reject') {
+          const pad = verdict.verdict === 'modify' && typeof verdict.modifiedOutput === 'string'
+            ? { ...proposal.pad, prompt: verdict.modifiedOutput }
+            : proposal.pad;
+
+          emitEvent('pad.generated', { pad });
+          emitted++;
+
+          onConversation?.({
+            timestampMs: Date.now(),
+            agent: 'orchestrator',
+            to: '',
+            message: `Approved and surfaced: "${pad.prompt.substring(0, 60)}..."${state.themeUpdated ? ' (aligned with new theme)' : ''}`,
+            type: 'acknowledgement',
+          });
+
+          results.push(`APPROVED: "${pad.prompt.substring(0, 60)}"`);
+        } else {
+          results.push(`REJECTED by Guardian: "${proposal.pad.prompt.substring(0, 60)}" — ${verdict.reasoning}`);
+        }
+      }
+
+      return JSON.stringify({ emitted, total: state.proposals.length, results });
+    }
+
+    default:
+      return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// MAIN ORCHESTRATION FUNCTION — REAL LLM AGENT
 // ══════════════════════════════════════════════════════════════
 
 export async function runFacilitationOrchestrator(
@@ -199,406 +598,142 @@ export async function runFacilitationOrchestrator(
 ): Promise<void> {
   const guidanceState = getOrCreateGuidanceState(workshopId);
 
-  // Freeflow mode — agents go quiet
+  // Pre-LLM gates — no need to spin up the agent for these
   if (guidanceState.freeflowMode) return;
-
-  // Need at least some beliefs to reason about
   if (cogState.beliefs.size < 3) return;
 
-  // Track utterance count
   guidanceState.utterancesSinceLastPad++;
 
-  const now = Date.now();
+  // Only run the full orchestrator if there's work to do
+  const needsThemeCheck = shouldCheckTheme(cogState, guidanceState);
+  const needsPadGeneration = shouldGeneratePads(cogState, guidanceState);
+  if (!needsThemeCheck && !needsPadGeneration) return;
 
-  // ══════════════════════════════════════════════════════════
-  // MULTI-AGENT DELIBERATION — real debate, not a workflow
-  //
-  // Flow:
-  //   1. Theme Agent assesses conversational landscape (own LLM call)
-  //   2. Constraint Agent identifies gaps if CONSTRAINTS phase (own LLM call)
-  //   3. Orchestrator builds deliberation context from 1+2 + research + Discovery
-  //   4. Facilitation Agent proposes sub-questions (own LLM call)
-  //   5. REVIEW ROUND: Theme, Research, Discovery, Constraint agents
-  //      each review from their domain (4 parallel LLM calls)
-  //   6. If challenged: Facilitation Agent refines (second LLM call)
-  //   7. Guardian validates grounding → emit
-  //
-  // Every step is logged in the Agent Conversation Panel.
-  // ══════════════════════════════════════════════════════════
+  if (!env.OPENAI_API_KEY) return;
 
-  const deliberation: DeliberationContext = {};
-  const mainQ = guidanceState.currentMainQuestion;
-  const prep = guidanceState.prepContext;
-
-  // ── Build research + Discovery context for deliberation ──
-
-  if (prep?.research) {
-    const r = prep.research;
-    const highlights = [
-      r.companyOverview ? `Company: ${r.companyOverview.substring(0, 200)}` : null,
-      r.industryContext ? `Industry: ${r.industryContext.substring(0, 200)}` : null,
-      r.keyPublicChallenges?.length ? `Key challenges: ${r.keyPublicChallenges.slice(0, 3).join('; ')}` : null,
-    ].filter(Boolean).join('. ');
-    if (highlights) deliberation.researchHighlights = highlights;
+  // Reset pad generation tracking if we're generating
+  if (needsPadGeneration) {
+    guidanceState.lastPadGenerationAtMs = Date.now();
+    guidanceState.utterancesSinceLastPad = 0;
   }
 
-  if (prep?.discoveryIntelligence) {
-    const di = prep.discoveryIntelligence;
-    const insights = [
-      di.briefingSummary ? `Discovery summary: ${di.briefingSummary.substring(0, 300)}` : null,
-      di.painPoints?.length ? `Key pain points: ${di.painPoints.slice(0, 3).map((p) => p.description || p).join('; ')}` : null,
-      di.aspirations?.length ? `Aspirations: ${di.aspirations.slice(0, 3).join('; ')}` : null,
-    ].filter(Boolean).join('. ');
-    if (insights) deliberation.discoveryInsights = insights;
-  }
+  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const systemPrompt = buildOrchestratorSystemPrompt(cogState, guidanceState);
+  const startMs = Date.now();
 
-  // ── 1. Theme Agent — assess the conversational landscape ──
+  // Mutable state shared across tool calls
+  const orchestratorState = {
+    deliberation: {} as DeliberationContext,
+    proposals: [] as PadProposal[],
+    themeUpdated: false,
+  };
 
-  let themeUpdated = false;
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    {
+      role: 'user',
+      content: `New utterances have been processed. ${cogState.beliefs.size} beliefs accumulated. ${needsThemeCheck ? 'Theme check is due. ' : ''}${needsPadGeneration ? 'Sub-question generation is due. ' : ''}Assess the situation and coordinate your team.`,
+    },
+  ];
 
-  if (shouldCheckTheme(cogState, guidanceState)) {
-    guidanceState.lastThemeCheckAtMs = now;
+  onConversation?.({
+    timestampMs: Date.now(),
+    agent: 'orchestrator',
+    to: '',
+    message: `Deliberation cycle starting. ${cogState.beliefs.size} beliefs.${needsThemeCheck ? ' Theme check due.' : ''}${needsPadGeneration ? ' Pad generation due.' : ''}`,
+    type: 'info',
+  });
 
-    onConversation?.({
-      timestampMs: now,
-      agent: 'orchestrator',
-      to: 'theme-agent',
-      message: `${cogState.beliefs.size} beliefs accumulated.${mainQ ? ` The facilitator is exploring: "${mainQ.text}".` : ''} ${guidanceState.activeThemeId ? 'Does the current theme still serve our goal, or should we shift focus?' : 'No active theme — what conversational thread should we follow?'}`,
-      type: 'handoff',
-    });
-
-    try {
-      const proposal = await runThemeAgent(cogState, guidanceState, onConversation);
-
-      if (proposal) {
-        if (validateReferences(proposal.sourceBeliefIds, cogState)) {
-          onConversation?.({
-            timestampMs: Date.now(),
-            agent: 'orchestrator',
-            to: 'guardian',
-            message: `Theme Agent proposes: "${proposal.theme.title}". Verifying against ${proposal.sourceBeliefIds.length} cited beliefs.`,
-            type: 'handoff',
-          });
-
-          const verdict = await runGuardianAgent(
-            {
-              proposedOutput: { title: proposal.theme.title, description: proposal.theme.description },
-              outputDescription: `Theme suggestion: "${proposal.theme.title}"`,
-              sourceBeliefIds: proposal.sourceBeliefIds,
-              agentName: 'Theme Agent',
-              currentPhase: guidanceState.dialoguePhase,
-            },
-            cogState,
-            onConversation,
+  try {
+    for (let iteration = 0; iteration < MAX_ORCHESTRATOR_ITERATIONS; iteration++) {
+      if (Date.now() - startMs > ORCHESTRATOR_TIMEOUT_MS) {
+        console.log(`[Orchestrator] Timeout after ${iteration} iterations`);
+        // If we have proposals but timed out before verify_and_emit, emit them now
+        if (orchestratorState.proposals.length > 0) {
+          await executeOrchestratorTool(
+            'verify_and_emit', {}, cogState, guidanceState,
+            onConversation, orchestratorState, emitEvent,
           );
-
-          if (verdict.verdict === 'approve' || verdict.verdict === 'modify') {
-            const theme = verdict.verdict === 'modify' && typeof verdict.modifiedOutput === 'string'
-              ? { ...proposal.theme, title: verdict.modifiedOutput }
-              : proposal.theme;
-
-            emitEvent('theme.suggested', { theme });
-            themeUpdated = true;
-
-            // Feed theme recommendation into deliberation context
-            deliberation.themeRecommendation = `The conversation is gravitating toward "${theme.title}" (${theme.lens || 'cross-cutting'}): ${theme.description || proposal.reasoning}. ${proposal.sourceBeliefIds.length} beliefs support this direction.`;
-
-            onConversation?.({
-              timestampMs: Date.now(),
-              agent: 'orchestrator',
-              to: '',
-              message: `Theme "${theme.title}" verified. This will inform the Facilitation Agent's next sub-questions.`,
-              type: 'acknowledgement',
-            });
-          } else {
-            deliberation.themeRecommendation = `Theme Agent proposed "${proposal.theme.title}" but Guardian rejected it: ${verdict.reasoning}. The current conversational thread may need a different angle.`;
-
-            onConversation?.({
-              timestampMs: Date.now(),
-              agent: 'orchestrator',
-              to: '',
-              message: `Theme rejected by Guardian: ${verdict.reasoning}. Noting this for the Facilitation Agent.`,
-              type: 'info',
-            });
-          }
         }
-      } else {
-        // Theme Agent had no proposal — note the stability
-        deliberation.themeRecommendation = guidanceState.activeThemeId
-          ? `The current theme remains appropriate — no shift needed.`
-          : null;
+        break;
       }
-    } catch (error) {
-      console.error('[Orchestrator] Theme check failed:', error instanceof Error ? error.message : error);
-    }
-  }
 
-  // ── 2. Constraint Agent — identify gaps (CONSTRAINTS phase) ──
+      const isLastIteration = iteration === MAX_ORCHESTRATOR_ITERATIONS - 1;
+      const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption = isLastIteration
+        ? { type: 'function', function: { name: 'verify_and_emit' } }
+        : 'auto';
 
-  if (guidanceState.dialoguePhase === 'CONSTRAINTS') {
-    const recentConstraints = Array.from(cogState.beliefs.values()).filter(
-      (b) => ['constraint', 'risk'].includes(b.category) && b.createdAtMs > now - 60_000,
-    );
+      console.log(`[Orchestrator] Iteration ${iteration}${isLastIteration ? ' (forced commit)' : ''}`);
 
-    if (recentConstraints.length > 0) {
-      onConversation?.({
-        timestampMs: Date.now(),
-        agent: 'orchestrator',
-        to: 'constraint-agent',
-        message: `${recentConstraints.length} new constraint/risk beliefs detected.${mainQ ? ` We're exploring: "${mainQ.text}".` : ''} Map these constraints and identify any coverage gaps that the Facilitation Agent should probe.`,
-        type: 'handoff',
+      const completion = await openai.chat.completions.create({
+        model: ORCHESTRATOR_MODEL,
+        temperature: 0.3,
+        messages,
+        tools: ORCHESTRATOR_TOOLS,
+        tool_choice: toolChoice,
       });
 
-      try {
-        const proposals = await runConstraintAgent(cogState, guidanceState, onConversation);
-        const gapNotes: string[] = [];
+      const assistantMessage = completion.choices[0].message;
+      messages.push(assistantMessage);
 
-        for (const proposal of proposals) {
-          if (validateReferences(proposal.sourceBeliefIds, cogState)) {
-            const verdict = await runGuardianAgent(
-              {
-                proposedOutput: { label: proposal.constraint.label, severity: proposal.constraint.severity },
-                outputDescription: `Constraint: "${proposal.constraint.label}" (${proposal.constraint.severity})`,
-                sourceBeliefIds: proposal.sourceBeliefIds,
-                agentName: 'Constraint Agent',
-                currentPhase: guidanceState.dialoguePhase,
-              },
-              cogState,
-              onConversation,
-            );
-
-            if (verdict.verdict !== 'reject') {
-              const constraint = verdict.verdict === 'modify' && typeof verdict.modifiedOutput === 'string'
-                ? { ...proposal.constraint, label: verdict.modifiedOutput }
-                : proposal.constraint;
-
-              emitEvent('constraint.mapped', { constraint });
-              gapNotes.push(`${constraint.label} (${constraint.severity}): ${proposal.reasoning}`);
-            }
-          }
-        }
-
-        // Feed constraint gaps into deliberation context
-        if (gapNotes.length > 0) {
-          deliberation.constraintGaps = `Constraint Agent identified: ${gapNotes.join(' | ')}. The Facilitation Agent should probe these areas to deepen understanding.`;
-        }
-      } catch (error) {
-        console.error('[Orchestrator] Constraint mapping failed:', error instanceof Error ? error.message : error);
-      }
-    }
-  }
-
-  // ── 3. Facilitation Agent — generate sub-questions with full deliberation context ──
-
-  if (shouldGeneratePads(cogState, guidanceState)) {
-    guidanceState.lastPadGenerationAtMs = now;
-    guidanceState.utterancesSinceLastPad = 0;
-
-    const prepInfo = prep?.clientName
-      ? ` We're working with ${prep.clientName}${prep.industry ? ` in ${prep.industry}` : ''}.`
-      : '';
-
-    const mainQGoal = mainQ
-      ? ` CURRENT GOAL: "${mainQ.text}" (Purpose: ${mainQ.purpose}).`
-      : '';
-
-    // Log the deliberation handoff — show what context the Facilitation Agent is receiving
-    const deliberationSummary = [
-      deliberation.themeRecommendation ? `Theme: ${deliberation.themeRecommendation.substring(0, 100)}` : null,
-      deliberation.constraintGaps ? `Constraints: ${deliberation.constraintGaps.substring(0, 100)}` : null,
-      deliberation.researchHighlights ? 'Research context included' : null,
-      deliberation.discoveryInsights ? 'Discovery insights included' : null,
-    ].filter(Boolean);
-
-    onConversation?.({
-      timestampMs: Date.now(),
-      agent: 'orchestrator',
-      to: 'facilitation-agent',
-      message: `${cogState.beliefs.size} beliefs accumulated.${prepInfo}${mainQGoal} Deliberation context: ${deliberationSummary.length > 0 ? deliberationSummary.join('; ') : 'no prior agent input this cycle'}. Generate sub-questions that follow the breadcrumbs toward the goal.`,
-      type: 'handoff',
-    });
-
-    try {
-      // Pass the full deliberation context to the Facilitation Agent
-      let proposals = await runFacilitationAgent(cogState, guidanceState, onConversation, deliberation);
-
-      if (proposals.length === 0) {
-        // Facilitation Agent had nothing to propose — skip
-      } else {
-        // ── DELIBERATION REVIEW ROUND ──────────────────────────
-        // Each agent reviews the proposals from its own domain.
-        // Real separate LLM calls — genuine multi-agent debate.
-        // ────────────────────────────────────────────────────────
-
-        const reviewPrompts = buildReviewPrompts(
-          guidanceState.dialoguePhase,
-          mainQ?.text || null,
-          deliberation,
-        );
-
-        // Describe what the Facilitation Agent proposed
-        const proposalDescription = proposals.map((p, i) =>
-          `Proposal ${i + 1} [${p.pad.type}, lens: ${p.pad.lens || 'General'}]: "${p.pad.prompt}" — Reasoning: ${p.reasoning}`,
-        ).join('\n');
-
+      // Log the orchestrator's reasoning
+      if (assistantMessage.content?.trim()) {
         onConversation?.({
           timestampMs: Date.now(),
           agent: 'orchestrator',
           to: '',
-          message: `Facilitation Agent proposed ${proposals.length} sub-question${proposals.length !== 1 ? 's' : ''}. Opening the floor for review — each agent will assess from their domain.`,
+          message: assistantMessage.content.trim(),
           type: 'info',
         });
+      }
 
-        // Run all agent reviews in parallel — real separate LLM calls
-        const reviewAgents = Object.entries(reviewPrompts);
-        const reviews = await Promise.all(
-          reviewAgents.map(([agentName, prompt]) =>
-            runAgentReview(agentName, prompt, proposalDescription),
-          ),
+      if (!assistantMessage.tool_calls?.length) {
+        console.log(`[Orchestrator] No tool calls on iteration ${iteration} — done`);
+        break;
+      }
+
+      // Process tool calls
+      for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.type !== 'function') continue;
+        const fnName = toolCall.function.name;
+        let fnArgs: Record<string, unknown>;
+        try { fnArgs = JSON.parse(toolCall.function.arguments); } catch { fnArgs = {}; }
+
+        console.log(`[Orchestrator] Tool: ${fnName}`);
+
+        const result = await executeOrchestratorTool(
+          fnName, fnArgs, cogState, guidanceState,
+          onConversation, orchestratorState, emitEvent,
         );
 
-        // Log each agent's review in the conversation panel
-        const challenges: AgentReview[] = [];
-        const builds: AgentReview[] = [];
-
-        for (const review of reviews) {
-          onConversation?.({
-            timestampMs: Date.now(),
-            agent: review.agent.toLowerCase().replace(/\s+/g, '-'),
-            to: 'facilitation-agent',
-            message: `[${review.stance.toUpperCase()}] ${review.feedback}`,
-            type: review.stance === 'challenge' ? 'challenge' : review.stance === 'build' ? 'proposal' : 'info',
-          });
-
-          if (review.stance === 'challenge') challenges.push(review);
-          if (review.stance === 'build') builds.push(review);
-        }
-
-        // ── REFINEMENT ROUND (if challenged) ──────────────────
-        // If any agent challenged, compile their feedback and ask
-        // the Facilitation Agent to refine. One refinement round.
-        // ──────────────────────────────────────────────────────
-
-        if (challenges.length > 0) {
-          const challengeFeedback = challenges
-            .map((c) => `${c.agent}: ${c.feedback}`)
-            .join('\n');
-          const buildFeedback = builds
-            .map((b) => `${b.agent}: ${b.feedback}`)
-            .join('\n');
-
-          onConversation?.({
-            timestampMs: Date.now(),
-            agent: 'orchestrator',
-            to: 'facilitation-agent',
-            message: `${challenges.length} challenge${challenges.length !== 1 ? 's' : ''} received. Sending feedback for refinement:\n${challengeFeedback}${buildFeedback ? `\n\nAdditional suggestions:\n${buildFeedback}` : ''}`,
-            type: 'handoff',
-          });
-
-          // Build enriched deliberation with agent feedback
-          const refinedDeliberation: DeliberationContext = {
-            ...deliberation,
-            // Append challenge feedback so the Facilitation Agent can see what was contested
-            themeRecommendation: [
-              deliberation.themeRecommendation,
-              challenges.find((c) => c.agent === 'Theme Agent')
-                ? `THEME AGENT CHALLENGE: ${challenges.find((c) => c.agent === 'Theme Agent')!.feedback}`
-                : null,
-            ].filter(Boolean).join(' ') || null,
-            researchHighlights: [
-              deliberation.researchHighlights,
-              challenges.find((c) => c.agent === 'Research Agent')
-                ? `RESEARCH AGENT CHALLENGE: ${challenges.find((c) => c.agent === 'Research Agent')!.feedback}`
-                : null,
-            ].filter(Boolean).join(' ') || null,
-            discoveryInsights: [
-              deliberation.discoveryInsights,
-              challenges.find((c) => c.agent === 'Discovery Agent')
-                ? `DISCOVERY AGENT CHALLENGE: ${challenges.find((c) => c.agent === 'Discovery Agent')!.feedback}`
-                : null,
-            ].filter(Boolean).join(' ') || null,
-            constraintGaps: [
-              deliberation.constraintGaps,
-              challenges.find((c) => c.agent === 'Constraint Agent')
-                ? `CONSTRAINT AGENT CHALLENGE: ${challenges.find((c) => c.agent === 'Constraint Agent')!.feedback}`
-                : null,
-            ].filter(Boolean).join(' ') || null,
-          };
-
-          // Second pass — Facilitation Agent refines with challenge feedback
-          const refinedProposals = await runFacilitationAgent(
-            cogState, guidanceState, onConversation, refinedDeliberation,
-          );
-
-          if (refinedProposals.length > 0) {
-            proposals = refinedProposals;
-
-            onConversation?.({
-              timestampMs: Date.now(),
-              agent: 'facilitation-agent',
-              to: 'orchestrator',
-              message: `Refined ${proposals.length} sub-question${proposals.length !== 1 ? 's' : ''} incorporating feedback from ${challenges.map((c) => c.agent).join(', ')}.`,
-              type: 'info',
-            });
-          }
-          // If refinement returned nothing, keep original proposals
-        } else {
-          // No challenges — note the consensus
-          onConversation?.({
-            timestampMs: Date.now(),
-            agent: 'orchestrator',
-            to: '',
-            message: `All agents agree${builds.length > 0 ? ' (with additions)' : ''}. Proceeding to Guardian verification.`,
-            type: 'info',
-          });
-        }
-
-        // ── GUARDIAN VERIFICATION + EMIT ──────────────────────
-        // Final check: Guardian validates grounding before emit
-        // ──────────────────────────────────────────────────────
-
-        for (const proposal of proposals) {
-          if (validateReferences(proposal.sourceBeliefIds, cogState)) {
-            onConversation?.({
-              timestampMs: Date.now(),
-              agent: 'orchestrator',
-              to: 'guardian',
-              message: `Facilitation pad${challenges.length > 0 ? ' (refined)' : ''}: "${proposal.pad.prompt.substring(0, 80)}...". Final grounding check.`,
-              type: 'handoff',
-            });
-
-            const verdict = await runGuardianAgent(
-              {
-                proposedOutput: { prompt: proposal.pad.prompt, type: proposal.pad.type },
-                outputDescription: `Facilitation pad: "${proposal.pad.prompt.substring(0, 100)}"`,
-                sourceBeliefIds: proposal.sourceBeliefIds,
-                agentName: 'Facilitation Agent',
-                currentPhase: guidanceState.dialoguePhase,
-              },
-              cogState,
-              onConversation,
-            );
-
-            if (verdict.verdict !== 'reject') {
-              const pad = verdict.verdict === 'modify' && typeof verdict.modifiedOutput === 'string'
-                ? { ...proposal.pad, prompt: verdict.modifiedOutput }
-                : proposal.pad;
-
-              emitEvent('pad.generated', { pad });
-
-              onConversation?.({
-                timestampMs: Date.now(),
-                agent: 'orchestrator',
-                to: '',
-                message: `Sub-question approved and surfaced: "${pad.prompt.substring(0, 60)}..."${themeUpdated ? ' (aligned with new theme)' : ''}${challenges.length > 0 ? ' (refined after deliberation)' : ''}`,
-                type: 'acknowledgement',
-              });
-            }
-          }
-        }
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: result,
+        });
       }
-    } catch (error) {
-      console.error('[Orchestrator] Pad generation failed:', error instanceof Error ? error.message : error);
+    }
+  } catch (error) {
+    console.error('[Orchestrator] Failed:', error instanceof Error ? error.message : error);
+
+    onConversation?.({
+      timestampMs: Date.now(),
+      agent: 'orchestrator',
+      to: '',
+      message: `Orchestration error: ${error instanceof Error ? error.message : 'Unknown error'}. Attempting recovery.`,
+      type: 'info',
+    });
+
+    // Safety net: if we gathered proposals before the error, try to emit them
+    if (orchestratorState.proposals.length > 0) {
+      try {
+        await executeOrchestratorTool(
+          'verify_and_emit', {}, cogState, guidanceState,
+          onConversation, orchestratorState, emitEvent,
+        );
+      } catch {
+        console.error('[Orchestrator] Recovery emit also failed');
+      }
     }
   }
 }

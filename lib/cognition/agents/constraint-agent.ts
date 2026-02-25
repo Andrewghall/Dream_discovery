@@ -13,7 +13,7 @@ import OpenAI from 'openai';
 import { env } from '@/lib/env';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, ConstraintFlag } from '../guidance-state';
-import type { AgentConversationCallback } from './agent-types';
+import type { AgentConversationCallback, AgentReview } from './agent-types';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -253,4 +253,147 @@ Call map_constraints when ready. Cite sourceBeliefIds for every constraint.`;
   }
 
   return [];
+}
+
+// ══════════════════════════════════════════════════════════════
+// REVIEW MODE — Constraint Agent reviews proposals from its domain
+// Same tools, same reasoning, same agentic loop.
+// ══════════════════════════════════════════════════════════════
+
+const CONSTRAINT_REVIEW_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  CONSTRAINT_TOOLS[0], // query_constraint_beliefs
+  {
+    type: 'function',
+    function: {
+      name: 'submit_review',
+      description: 'Submit your review of the proposals. This is your commit tool.',
+      parameters: {
+        type: 'object',
+        properties: {
+          stance: {
+            type: 'string',
+            enum: ['agree', 'challenge', 'build'],
+            description: 'agree = proposals are phase-appropriate, challenge = proposals violate phase rules or miss known constraints, build = agree but see additional constraint angles',
+          },
+          feedback: {
+            type: 'string',
+            description: 'Your specific assessment from the constraints perspective. Reference known constraints and explain your reasoning.',
+          },
+          suggestedChanges: {
+            type: 'string',
+            description: 'If challenging or building, what specifically should change?',
+          },
+        },
+        required: ['stance', 'feedback'],
+      },
+    },
+  },
+];
+
+export async function reviewWithConstraintAgent(
+  proposals: string,
+  phase: string,
+  cogState: CognitiveState,
+  guidanceState: GuidanceState,
+  onConversation?: AgentConversationCallback,
+): Promise<AgentReview> {
+  if (!env.OPENAI_API_KEY) {
+    return { agent: 'Constraint Agent', stance: 'agree', feedback: 'Constraint Agent unavailable.' };
+  }
+
+  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const prep = guidanceState.prepContext;
+  const startMs = Date.now();
+
+  const phaseInstruction = phase === 'REIMAGINE'
+    ? `CRITICAL: We are in REIMAGINE phase. This is PURE VISION — zero constraints, zero friction, zero barriers. If ANY proposal mentions constraints, limitations, barriers, changes needed, or practical concerns — you MUST CHALLENGE it immediately. REIMAGINE asks "what does perfect look like?" not "what's stopping us?".`
+    : phase === 'CONSTRAINTS'
+      ? `We are in CONSTRAINTS phase. Your home turf. Do these proposals help map real, specific limitations? Are they grounded in beliefs? Are they missing any known constraint domains?`
+      : `We are in DEFINE APPROACH. Do these proposals account for the constraints we've mapped while still being actionable and forward-looking?`;
+
+  const systemPrompt = `You are the DREAM Constraint Agent reviewing proposals from a colleague.
+
+${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : ''}
+Current phase: ${phase}
+Total beliefs: ${cogState.beliefs.size}
+
+Your domain expertise is limitations, risks, and blockers. You know what stands in the way.
+
+${phaseInstruction}
+
+REVIEW MODE: Use query_constraint_beliefs to check what constraints exist in the conversation, then assess whether the proposals are appropriate for this phase. Submit your review with submit_review.`;
+
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `Review these proposals from the Facilitation Agent:\n\n${proposals}\n\nAre these appropriate for the ${phase} phase? Use your tools to check against known constraints.` },
+  ];
+
+  try {
+    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+      if (Date.now() - startMs > LOOP_TIMEOUT_MS) break;
+
+      const isLastIteration = iteration === MAX_ITERATIONS - 1;
+      const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption = isLastIteration
+        ? { type: 'function', function: { name: 'submit_review' } }
+        : 'auto';
+
+      const completion = await openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.3,
+        messages,
+        tools: CONSTRAINT_REVIEW_TOOLS,
+        tool_choice: toolChoice,
+      });
+
+      const assistantMessage = completion.choices[0].message;
+      messages.push(assistantMessage);
+
+      if (assistantMessage.content?.trim()) {
+        onConversation?.({
+          timestampMs: Date.now(),
+          agent: 'constraint-agent',
+          to: 'orchestrator',
+          message: `[REVIEWING] ${assistantMessage.content.trim()}`,
+          type: 'info',
+        });
+      }
+
+      if (!assistantMessage.tool_calls?.length) break;
+
+      for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.type !== 'function') continue;
+        const fnName = toolCall.function.name;
+        let fnArgs: Record<string, unknown>;
+        try { fnArgs = JSON.parse(toolCall.function.arguments); } catch { fnArgs = {}; }
+
+        if (fnName === 'submit_review') {
+          const review: AgentReview = {
+            agent: 'Constraint Agent',
+            stance: (['agree', 'challenge', 'build'].includes(String(fnArgs.stance))
+              ? String(fnArgs.stance) : 'agree') as AgentReview['stance'],
+            feedback: String(fnArgs.feedback || 'No feedback provided.'),
+            suggestedChanges: fnArgs.suggestedChanges ? String(fnArgs.suggestedChanges) : undefined,
+          };
+
+          onConversation?.({
+            timestampMs: Date.now(),
+            agent: 'constraint-agent',
+            to: 'facilitation-agent',
+            message: `[${review.stance.toUpperCase()}] ${review.feedback}${review.suggestedChanges ? `\nSuggestion: ${review.suggestedChanges}` : ''}`,
+            type: review.stance === 'challenge' ? 'challenge' : 'proposal',
+          });
+
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '{"status":"submitted"}' });
+          return review;
+        } else {
+          const toolResult = executeConstraintTool(fnName, fnArgs, cogState);
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: toolResult.result });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Constraint Agent Review] Failed:', error instanceof Error ? error.message : error);
+  }
+
+  return { agent: 'Constraint Agent', stance: 'agree', feedback: 'Review timed out — no objections raised.' };
 }

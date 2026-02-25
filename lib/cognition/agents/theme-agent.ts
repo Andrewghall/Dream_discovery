@@ -14,7 +14,7 @@ import OpenAI from 'openai';
 import { env } from '@/lib/env';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, GuidedTheme } from '../guidance-state';
-import type { AgentConversationCallback } from './agent-types';
+import type { AgentConversationCallback, AgentReview } from './agent-types';
 import type { Lens } from '@/lib/cognitive-guidance/pipeline';
 
 // ── Constants ───────────────────────────────────────────────
@@ -340,4 +340,137 @@ export async function runThemeAgent(
   }
 
   return null;
+}
+
+// ══════════════════════════════════════════════════════════════
+// REVIEW MODE — Theme Agent reviews proposals from its domain
+// Same tools, same reasoning, same agentic loop.
+// ══════════════════════════════════════════════════════════════
+
+const THEME_REVIEW_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  // Same belief query and coverage tools
+  THEME_TOOLS[0], // query_beliefs
+  THEME_TOOLS[1], // get_coverage_summary
+  // Review commit tool
+  {
+    type: 'function',
+    function: {
+      name: 'submit_review',
+      description: 'Submit your review of the proposals. This is your commit tool — call it when you have assessed the proposals from your domain expertise.',
+      parameters: {
+        type: 'object',
+        properties: {
+          stance: {
+            type: 'string',
+            enum: ['agree', 'challenge', 'build'],
+            description: 'agree = proposals align with conversational flow, challenge = proposals conflict with theme direction, build = agree but see additional angles',
+          },
+          feedback: {
+            type: 'string',
+            description: 'Your specific assessment. Reference specific proposals and explain your reasoning from your thematic knowledge.',
+          },
+          suggestedChanges: {
+            type: 'string',
+            description: 'If challenging or building, what specifically should change? Be concrete.',
+          },
+        },
+        required: ['stance', 'feedback'],
+      },
+    },
+  },
+];
+
+export async function reviewWithThemeAgent(
+  proposals: string,
+  cogState: CognitiveState,
+  guidanceState: GuidanceState,
+  onConversation?: AgentConversationCallback,
+): Promise<AgentReview> {
+  if (!env.OPENAI_API_KEY) {
+    return { agent: 'Theme Agent', stance: 'agree', feedback: 'Theme Agent unavailable.' };
+  }
+
+  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const basePrompt = buildThemeSystemPrompt(cogState, guidanceState);
+  const startMs = Date.now();
+
+  const systemPrompt = `${basePrompt}
+
+REVIEW MODE: You are being asked to review proposals from the Facilitation Agent. Use your tools to check whether these proposals align with the current conversational flow and thematic direction. Do they follow the thread the room is exploring, or do they pull in a different direction?
+
+Use query_beliefs and get_coverage_summary to ground your assessment, then submit_review with your verdict.`;
+
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `Review these proposals from the Facilitation Agent:\n\n${proposals}\n\nDo these align with the conversational direction? Use your tools to check.` },
+  ];
+
+  try {
+    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+      if (Date.now() - startMs > LOOP_TIMEOUT_MS) break;
+
+      const isLastIteration = iteration === MAX_ITERATIONS - 1;
+      const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption = isLastIteration
+        ? { type: 'function', function: { name: 'submit_review' } }
+        : 'auto';
+
+      const completion = await openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.3,
+        messages,
+        tools: THEME_REVIEW_TOOLS,
+        tool_choice: toolChoice,
+      });
+
+      const assistantMessage = completion.choices[0].message;
+      messages.push(assistantMessage);
+
+      if (assistantMessage.content?.trim()) {
+        onConversation?.({
+          timestampMs: Date.now(),
+          agent: 'theme-agent',
+          to: 'orchestrator',
+          message: `[REVIEWING] ${assistantMessage.content.trim()}`,
+          type: 'info',
+        });
+      }
+
+      if (!assistantMessage.tool_calls?.length) break;
+
+      for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.type !== 'function') continue;
+        const fnName = toolCall.function.name;
+        let fnArgs: Record<string, unknown>;
+        try { fnArgs = JSON.parse(toolCall.function.arguments); } catch { fnArgs = {}; }
+
+        if (fnName === 'submit_review') {
+          const review: AgentReview = {
+            agent: 'Theme Agent',
+            stance: (['agree', 'challenge', 'build'].includes(String(fnArgs.stance))
+              ? String(fnArgs.stance) : 'agree') as AgentReview['stance'],
+            feedback: String(fnArgs.feedback || 'No feedback provided.'),
+            suggestedChanges: fnArgs.suggestedChanges ? String(fnArgs.suggestedChanges) : undefined,
+          };
+
+          onConversation?.({
+            timestampMs: Date.now(),
+            agent: 'theme-agent',
+            to: 'facilitation-agent',
+            message: `[${review.stance.toUpperCase()}] ${review.feedback}${review.suggestedChanges ? `\nSuggestion: ${review.suggestedChanges}` : ''}`,
+            type: review.stance === 'challenge' ? 'challenge' : 'proposal',
+          });
+
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '{"status":"submitted"}' });
+          return review;
+        } else {
+          const toolResult = executeThemeTool(fnName, fnArgs, cogState, guidanceState);
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: toolResult.result });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Theme Agent Review] Failed:', error instanceof Error ? error.message : error);
+  }
+
+  return { agent: 'Theme Agent', stance: 'agree', feedback: 'Review timed out — no objections raised.' };
 }
