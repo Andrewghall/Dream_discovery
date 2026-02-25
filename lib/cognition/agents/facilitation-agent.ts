@@ -248,9 +248,11 @@ RULES:
 - Never fabricate questions about topics not in the beliefs
 - Connect live discussion to pre-workshop Discovery insights when possible
 - Match the prompt tone to the current phase:
-  REIMAGINE → visionary, aspirational, open-ended
-  CONSTRAINTS → practical, specific, challenging
-  DEFINE_APPROACH → solution-oriented, concrete, actionable
+  REIMAGINE → PURELY visionary, aspirational, zero-constraint. Ask "describe the ideal...",
+    "what does perfect look like...", "imagine no barriers". NEVER mention limitations,
+    blockers, constraints, changes needed, or friction. This is the dream state.
+  CONSTRAINTS → practical, specific, challenging. Probe what stands in the way.
+  DEFINE_APPROACH → solution-oriented, concrete, actionable. Who owns it, what's step one.
 
 When communicating, speak naturally as a colleague would.`;
 }

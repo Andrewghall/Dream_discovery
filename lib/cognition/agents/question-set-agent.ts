@@ -427,6 +427,16 @@ YOUR APPROACH:
      * Be directly scoped to the parent main question's topic
      * Reference concrete research/Discovery findings where possible
      * Give the room something tangible to discuss immediately
+     * CRITICAL — match the phase tone:
+       REIMAGINE subs must be purely aspirational, creative, zero-constraint.
+         Ask "describe the ideal...", "what does perfect look like...",
+         "imagine there are no barriers — what becomes possible?"
+         NEVER mention limitations, barriers, constraints, or changes needed.
+         The creative lens with NO friction is essential.
+       CONSTRAINTS subs should be specific, probing, grounded in the vision.
+         Ask "what stands in the way?", "what limitations exist?"
+       DEFINE_APPROACH subs should be actionable and ownership-focused.
+         Ask "who owns this?", "what's step one?", "how do we prove it?"
 5. Commit the final question set with a design rationale.
 
 QUESTION DESIGN PRINCIPLES:

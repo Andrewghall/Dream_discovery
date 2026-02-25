@@ -507,19 +507,40 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     const otherLenses = phaseLenses.filter((l) => l !== qLens).slice(0, 2);
     const starterLenses = [qLens, ...otherLenses];
 
-    const starterPrompts: Record<string, (q: string) => string> = {
-      People: (q) => `From a people perspective — who is most affected and how does this shape their day-to-day?`,
-      Organisation: (q) => `What does this mean for how the organisation is structured or operates?`,
-      Customer: (q) => `How does the customer experience this? What would they notice or feel?`,
-      Technology: (q) => `What technology enablers or barriers are at play here?`,
-      Regulation: (q) => `Are there regulatory or compliance dimensions to consider?`,
-      General: (q) => `What's the first thing that comes to mind when you think about this?`,
+    // Phase-specific starter prompts — REIMAGINE = pure vision, no constraints
+    const phasePrompts: Record<string, Record<string, string>> = {
+      REIMAGINE: {
+        People: 'In the ideal world, how would people experience this? Describe the perfect day.',
+        Organisation: 'What would the ideal points of engagement look like — with no friction at all?',
+        Customer: 'Describe the perfect experience from the customer\'s perspective — what does amazing look like?',
+        Technology: 'If technology were limitless, what would this look like?',
+        Regulation: 'Imagine a world with no regulatory barriers — what becomes possible?',
+        General: 'Paint the picture — what does the ideal future state look like here?',
+      },
+      CONSTRAINTS: {
+        People: 'What people-related limitations stand between today and that vision?',
+        Organisation: 'What organisational constraints — structure, budget, politics — block progress here?',
+        Customer: 'What customer-side barriers exist? Adoption, behaviour, access?',
+        Technology: 'What technology constraints are we dealing with — legacy systems, integration, data?',
+        Regulation: 'What regulatory or compliance requirements must we work within here?',
+        General: 'What\'s the biggest blocker standing in the way?',
+      },
+      DEFINE_APPROACH: {
+        People: 'What do the people need to make this work? Skills, roles, ways of working?',
+        Organisation: 'How does the organisation need to change to deliver this?',
+        Customer: 'How do we prove the customer outcome? What does the journey look like in practice?',
+        Technology: 'What technology enables this approach? Build, buy, or integrate?',
+        Regulation: 'How do we satisfy the regulatory requirements while still delivering the vision?',
+        General: 'Who owns this and what\'s the first step?',
+      },
     };
+
+    const prompts = phasePrompts[dialoguePhase] || phasePrompts.REIMAGINE;
 
     return starterLenses.map((lens, i) => ({
       id: `auto:${question.id}:${lens.toLowerCase()}`,
       type: lensToStickyPadType(lens),
-      prompt: starterPrompts[lens]?.(question.text) || `Explore this from the ${lens} lens`,
+      prompt: prompts[lens] || `Explore this from the ${lens} lens`,
       signalStrength: 0.85 - (i * 0.05),
       provenance: {
         triggerType: 'repeated_theme' as const,
