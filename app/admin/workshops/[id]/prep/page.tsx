@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ArrowLeft,
+  ArrowRight,
   Building2,
   Globe,
   Target,
@@ -676,11 +677,12 @@ export default function PrepPage({ params }: PageProps) {
             </Button>
           </div>
 
-          {/* ── Agent Action Cards ────────────────────────── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Research */}
-            <div className="rounded-xl border bg-card p-5">
-              <div className="flex items-center gap-2 mb-3">
+          {/* ── Agent Workflow Pipeline ────────────────────── */}
+          <div className="flex flex-col md:flex-row items-stretch gap-0">
+            {/* Step 1: Research */}
+            <div className="flex-1 rounded-xl border bg-card p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-[10px] font-bold text-cyan-700 dark:text-cyan-300">1</span>
                 <Search className="h-4 w-4 text-cyan-600" />
                 <h3 className="text-sm font-semibold">Research Agent</h3>
                 {researchComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
@@ -704,49 +706,31 @@ export default function PrepPage({ params }: PageProps) {
               </Button>
             </div>
 
-            {/* Question Set */}
-            <div className="rounded-xl border bg-card p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <FileQuestion className="h-4 w-4 text-indigo-600" />
-                <h3 className="text-sm font-semibold">Workshop Questions</h3>
-                {questionsComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
-              </div>
-              <p className="text-xs text-muted-foreground mb-4">
-                Designs facilitation questions for the live workshop: Reimagine, Constraints, and Define Approach.
-              </p>
-              <Button
-                onClick={runQuestions}
-                disabled={questionsRunning || !researchComplete}
-                size="sm"
-                className="w-full"
-                variant={researchComplete ? 'default' : 'secondary'}
-              >
-                {questionsRunning ? (
-                  <><Loader2 className="h-3 w-3 animate-spin mr-2" />Generating...</>
-                ) : questionsComplete ? (
-                  'Regenerate Questions'
-                ) : (
-                  'Generate Questions'
-                )}
-              </Button>
+            {/* Arrow 1→2 */}
+            <div className="hidden md:flex items-center justify-center px-1">
+              <ArrowRight className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
+            </div>
+            <div className="flex md:hidden items-center justify-center py-1">
+              <ChevronDown className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
             </div>
 
-            {/* Discovery Intelligence */}
-            <div className="rounded-xl border bg-card p-5">
-              <div className="flex items-center gap-2 mb-3">
+            {/* Step 2: Discovery Synthesis */}
+            <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">2</span>
                 <Brain className="h-4 w-4 text-amber-600" />
-                <h3 className="text-sm font-semibold">Discovery Intelligence</h3>
+                <h3 className="text-sm font-semibold">Discovery Synthesis</h3>
                 {briefingComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                Synthesizes participant interview responses into a workshop briefing.
+                Synthesizes participant interview responses into themes, pain points, and aspirations.
               </p>
               <Button
                 onClick={runBriefing}
-                disabled={briefingRunning}
+                disabled={briefingRunning || !researchComplete}
                 size="sm"
                 className="w-full"
-                variant="secondary"
+                variant={researchComplete ? 'default' : 'secondary'}
               >
                 {briefingRunning ? (
                   <><Loader2 className="h-3 w-3 animate-spin mr-2" />Synthesizing...</>
@@ -754,6 +738,42 @@ export default function PrepPage({ params }: PageProps) {
                   'Re-synthesize'
                 ) : (
                   'Synthesize Discovery'
+                )}
+              </Button>
+            </div>
+
+            {/* Arrow 2→3 */}
+            <div className="hidden md:flex items-center justify-center px-1">
+              <ArrowRight className={`h-5 w-5 ${briefingComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
+            </div>
+            <div className="flex md:hidden items-center justify-center py-1">
+              <ChevronDown className={`h-5 w-5 ${briefingComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
+            </div>
+
+            {/* Step 3: Workshop Questions */}
+            <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!(researchComplete && briefingComplete) ? 'opacity-50' : ''}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">3</span>
+                <FileQuestion className="h-4 w-4 text-indigo-600" />
+                <h3 className="text-sm font-semibold">Workshop Questions</h3>
+                {questionsComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                Designs facilitation questions for Reimagine, Constraints, and Define Approach using research + Discovery insights.
+              </p>
+              <Button
+                onClick={runQuestions}
+                disabled={questionsRunning || !(researchComplete && briefingComplete)}
+                size="sm"
+                className="w-full"
+                variant={researchComplete && briefingComplete ? 'default' : 'secondary'}
+              >
+                {questionsRunning ? (
+                  <><Loader2 className="h-3 w-3 animate-spin mr-2" />Generating...</>
+                ) : questionsComplete ? (
+                  'Regenerate Questions'
+                ) : (
+                  'Generate Questions'
                 )}
               </Button>
             </div>
@@ -834,7 +854,143 @@ export default function PrepPage({ params }: PageProps) {
             </div>
           )}
 
-          {/* ── Workshop Facilitation Questions Output ────────── */}
+          {/* ── Briefing Output (Step 2) ─────────────────── */}
+          {briefingData && (
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <button
+                onClick={() => setBriefingCollapsed(!briefingCollapsed)}
+                className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-amber-600" />
+                  <h2 className="text-sm font-semibold">Discovery Briefing</h2>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                </div>
+                {briefingCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {!briefingCollapsed && <div className="px-6 pb-6 space-y-4">
+
+              {briefingData.briefingSummary ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Summary</h3>
+                  <p className="text-sm leading-relaxed whitespace-pre-line">{briefingData.briefingSummary}</p>
+                </div>
+              ) : null}
+
+              {briefingData.discoveryThemes && briefingData.discoveryThemes.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Key Themes ({briefingData.discoveryThemes.length})</h3>
+                  <ul className="space-y-2">
+                    {briefingData.discoveryThemes.map((t, i) => (
+                      <li key={i} className="text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="text-purple-500 flex-shrink-0">•</span>
+                          <span className="font-medium">{t.title}</span>
+                          {t.domain ? <span className="text-xs bg-muted px-1.5 py-0.5 rounded">{t.domain}</span> : null}
+                          {t.sentiment ? <span className={`text-xs ${t.sentiment === 'positive' ? 'text-green-600' : t.sentiment === 'negative' ? 'text-red-600' : 'text-amber-600'}`}>{t.sentiment}</span> : null}
+                          {t.frequency ? <span className="text-xs text-muted-foreground">({t.frequency} mentions)</span> : null}
+                        </div>
+                        {t.keyQuotes && t.keyQuotes.length > 0 ? (
+                          <div className="ml-5 mt-1 space-y-0.5">
+                            {t.keyQuotes.map((q, qi) => (
+                              <p key={qi} className="text-xs text-muted-foreground italic">&ldquo;{q}&rdquo;</p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.painPoints && briefingData.painPoints.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Pain Points ({briefingData.painPoints.length})</h3>
+                  <ul className="space-y-1">
+                    {briefingData.painPoints.map((p, i) => (
+                      <li key={i} className="text-sm flex gap-2">
+                        <span className="text-red-500 flex-shrink-0">•</span>
+                        <span>
+                          {p.description}
+                          {p.domain ? <span className="text-xs bg-muted px-1.5 py-0.5 rounded ml-1">{p.domain}</span> : null}
+                          {p.severity ? <span className={`text-xs ml-1 ${p.severity === 'critical' ? 'text-red-600 font-medium' : p.severity === 'significant' ? 'text-amber-600' : 'text-muted-foreground'}`}>{p.severity}</span> : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.consensusAreas && briefingData.consensusAreas.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Consensus Areas</h3>
+                  <ul className="space-y-1">
+                    {briefingData.consensusAreas.map((c, i) => (
+                      <li key={i} className="text-sm flex gap-2">
+                        <span className="text-green-500 flex-shrink-0">•</span>
+                        <span>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.divergenceAreas && briefingData.divergenceAreas.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Divergence Areas</h3>
+                  <ul className="space-y-2">
+                    {briefingData.divergenceAreas.map((d, i) => (
+                      <li key={i} className="text-sm">
+                        <div className="flex gap-2">
+                          <span className="text-amber-500 flex-shrink-0">•</span>
+                          <span className="font-medium">{d.topic}</span>
+                        </div>
+                        {d.perspectives && d.perspectives.length > 0 ? (
+                          <div className="ml-5 mt-1 space-y-0.5">
+                            {d.perspectives.map((p, pi) => (
+                              <p key={pi} className="text-xs text-muted-foreground">– {p}</p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.aspirations && briefingData.aspirations.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Aspirations</h3>
+                  <ul className="space-y-1">
+                    {briefingData.aspirations.map((a, i) => (
+                      <li key={i} className="text-sm flex gap-2">
+                        <span className="text-blue-500 flex-shrink-0">•</span>
+                        <span>{a}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.watchPoints && briefingData.watchPoints.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Watch Points</h3>
+                  <ul className="space-y-1">
+                    {briefingData.watchPoints.map((w, i) => (
+                      <li key={i} className="text-sm flex gap-2">
+                        <span className="text-orange-500 flex-shrink-0">⚠</span>
+                        <span>{w}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              </div>}
+            </div>
+          )}
+
+          {/* ── Workshop Facilitation Questions Output (Step 3) ──── */}
           {questionsData && (
             <div className="rounded-xl border bg-card overflow-hidden">
               <button
@@ -973,142 +1129,6 @@ export default function PrepPage({ params }: PageProps) {
                   })}
                 </div>
               )}
-
-              </div>}
-            </div>
-          )}
-
-          {/* ── Briefing Output ─────────────────────────── */}
-          {briefingData && (
-            <div className="rounded-xl border bg-card overflow-hidden">
-              <button
-                onClick={() => setBriefingCollapsed(!briefingCollapsed)}
-                className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Brain className="h-4 w-4 text-amber-600" />
-                  <h2 className="text-sm font-semibold">Discovery Briefing</h2>
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                </div>
-                {briefingCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
-              </button>
-              {!briefingCollapsed && <div className="px-6 pb-6 space-y-4">
-
-              {briefingData.briefingSummary ? (
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Summary</h3>
-                  <p className="text-sm leading-relaxed whitespace-pre-line">{briefingData.briefingSummary}</p>
-                </div>
-              ) : null}
-
-              {briefingData.discoveryThemes && briefingData.discoveryThemes.length > 0 ? (
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Key Themes ({briefingData.discoveryThemes.length})</h3>
-                  <ul className="space-y-2">
-                    {briefingData.discoveryThemes.map((t, i) => (
-                      <li key={i} className="text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="text-purple-500 flex-shrink-0">•</span>
-                          <span className="font-medium">{t.title}</span>
-                          {t.domain ? <span className="text-xs bg-muted px-1.5 py-0.5 rounded">{t.domain}</span> : null}
-                          {t.sentiment ? <span className={`text-xs ${t.sentiment === 'positive' ? 'text-green-600' : t.sentiment === 'negative' ? 'text-red-600' : 'text-amber-600'}`}>{t.sentiment}</span> : null}
-                          {t.frequency ? <span className="text-xs text-muted-foreground">({t.frequency} mentions)</span> : null}
-                        </div>
-                        {t.keyQuotes && t.keyQuotes.length > 0 ? (
-                          <div className="ml-5 mt-1 space-y-0.5">
-                            {t.keyQuotes.map((q, qi) => (
-                              <p key={qi} className="text-xs text-muted-foreground italic">&ldquo;{q}&rdquo;</p>
-                            ))}
-                          </div>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {briefingData.painPoints && briefingData.painPoints.length > 0 ? (
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Pain Points ({briefingData.painPoints.length})</h3>
-                  <ul className="space-y-1">
-                    {briefingData.painPoints.map((p, i) => (
-                      <li key={i} className="text-sm flex gap-2">
-                        <span className="text-red-500 flex-shrink-0">•</span>
-                        <span>
-                          {p.description}
-                          {p.domain ? <span className="text-xs bg-muted px-1.5 py-0.5 rounded ml-1">{p.domain}</span> : null}
-                          {p.severity ? <span className={`text-xs ml-1 ${p.severity === 'critical' ? 'text-red-600 font-medium' : p.severity === 'significant' ? 'text-amber-600' : 'text-muted-foreground'}`}>{p.severity}</span> : null}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {briefingData.consensusAreas && briefingData.consensusAreas.length > 0 ? (
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Consensus Areas</h3>
-                  <ul className="space-y-1">
-                    {briefingData.consensusAreas.map((c, i) => (
-                      <li key={i} className="text-sm flex gap-2">
-                        <span className="text-green-500 flex-shrink-0">•</span>
-                        <span>{c}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {briefingData.divergenceAreas && briefingData.divergenceAreas.length > 0 ? (
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Divergence Areas</h3>
-                  <ul className="space-y-2">
-                    {briefingData.divergenceAreas.map((d, i) => (
-                      <li key={i} className="text-sm">
-                        <div className="flex gap-2">
-                          <span className="text-amber-500 flex-shrink-0">•</span>
-                          <span className="font-medium">{d.topic}</span>
-                        </div>
-                        {d.perspectives && d.perspectives.length > 0 ? (
-                          <div className="ml-5 mt-1 space-y-0.5">
-                            {d.perspectives.map((p, pi) => (
-                              <p key={pi} className="text-xs text-muted-foreground">– {p}</p>
-                            ))}
-                          </div>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {briefingData.aspirations && briefingData.aspirations.length > 0 ? (
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Aspirations</h3>
-                  <ul className="space-y-1">
-                    {briefingData.aspirations.map((a, i) => (
-                      <li key={i} className="text-sm flex gap-2">
-                        <span className="text-blue-500 flex-shrink-0">•</span>
-                        <span>{a}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {briefingData.watchPoints && briefingData.watchPoints.length > 0 ? (
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Watch Points</h3>
-                  <ul className="space-y-1">
-                    {briefingData.watchPoints.map((w, i) => (
-                      <li key={i} className="text-sm flex gap-2">
-                        <span className="text-orange-500 flex-shrink-0">⚠</span>
-                        <span>{w}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
 
               </div>}
             </div>
