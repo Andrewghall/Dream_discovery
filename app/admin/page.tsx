@@ -6,7 +6,15 @@ import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Users, MessageSquare, TrendingUp, ShieldCheck } from 'lucide-react';
+import { Plus, Users, MessageSquare, TrendingUp, ShieldCheck, Trash2, Share2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
@@ -76,6 +84,20 @@ export default function AdminDashboard() {
     wordCloudThemes: Array<{ text: string; value: number }>;
   }>(null);
   const [demoReportLoading, setDemoReportLoading] = useState(false);
+
+  // Selection + bulk delete
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // Share dialog
+  const [shareWorkshopId, setShareWorkshopId] = useState<string | null>(null);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareSuccess, setShareSuccess] = useState<string | null>(null);
+  const [shares, setShares] = useState<Array<{ id: string; userName: string; userEmail: string; createdAt: string }>>([]);
+  const [sharesLoading, setSharesLoading] = useState(false);
 
   useEffect(() => {
     fetchWorkshops();
@@ -172,6 +194,107 @@ export default function AdminDashboard() {
     } finally {
       setDemoReportLoading(false);
     }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === workshops.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(workshops.map((w) => w.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    let failed = 0;
+    for (const wid of ids) {
+      try {
+        const res = await fetch(`/api/admin/workshops/${wid}`, { method: 'DELETE' });
+        if (!res.ok) failed++;
+      } catch {
+        failed++;
+      }
+    }
+    setShowDeleteConfirm(false);
+    setBulkDeleting(false);
+    setSelectedIds(new Set());
+    fetchWorkshops();
+    if (failed > 0) {
+      alert(`Deleted ${ids.length - failed} workshop(s). ${failed} failed.`);
+    }
+  };
+
+  const openShareDialog = async (workshopId: string) => {
+    setShareWorkshopId(workshopId);
+    setShareEmail('');
+    setShareError(null);
+    setShareSuccess(null);
+    setShares([]);
+    setSharesLoading(true);
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}/shares`);
+      if (res.ok) {
+        const data = await res.json();
+        setShares(data.shares || []);
+      }
+    } catch { /* ignore */ } finally {
+      setSharesLoading(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!shareWorkshopId || !shareEmail.trim()) return;
+    setShareLoading(true);
+    setShareError(null);
+    setShareSuccess(null);
+    try {
+      const res = await fetch(`/api/admin/workshops/${shareWorkshopId}/shares`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: shareEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setShareError(data.error || 'Failed to share');
+      } else {
+        setShareSuccess(`Shared with ${shareEmail.trim()}`);
+        setShareEmail('');
+        // Refresh shares list
+        const listRes = await fetch(`/api/admin/workshops/${shareWorkshopId}/shares`);
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          setShares(listData.shares || []);
+        }
+      }
+    } catch {
+      setShareError('Network error');
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleRemoveShare = async (shareId: string) => {
+    if (!shareWorkshopId) return;
+    try {
+      const res = await fetch(`/api/admin/workshops/${shareWorkshopId}/shares`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shareId }),
+      });
+      if (res.ok) {
+        setShares((prev) => prev.filter((s) => s.id !== shareId));
+      }
+    } catch { /* ignore */ }
   };
 
   const getStatusColor = (status: string) => {
@@ -309,8 +432,22 @@ export default function AdminDashboard() {
         {/* Workshops List */}
         <Card className="no-print">
           <CardHeader>
-            <CardTitle>Workshops</CardTitle>
-            <CardDescription>View and manage your discovery workshops</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Workshops</CardTitle>
+                <CardDescription>View and manage your discovery workshops</CardDescription>
+              </div>
+              {selectedIds.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Selected ({selectedIds.size})
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {workshopsError ? (
@@ -335,14 +472,38 @@ export default function AdminDashboard() {
                 </Link>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2">
+                {/* Select All */}
+                <div className="flex items-center gap-3 px-4 py-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300"
+                    checked={selectedIds.size === workshops.length && workshops.length > 0}
+                    onChange={toggleSelectAll}
+                  />
+                  <span>{selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select all'}</span>
+                </div>
+
                 {workshops.map((workshop) => (
-                  <Link
+                  <div
                     key={workshop.id}
-                    href={workshop.workshopType === 'SALES' ? `/sales/${workshop.id}` : `/admin/workshops/${workshop.id}`}
-                    className="block"
+                    className={`border rounded-lg p-4 hover:bg-muted/50 transition-colors flex items-center gap-3 ${
+                      selectedIds.has(workshop.id) ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-950/20' : ''
+                    }`}
                   >
-                    <div className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 flex-shrink-0"
+                      checked={selectedIds.has(workshop.id)}
+                      onChange={() => toggleSelect(workshop.id)}
+                    />
+
+                    {/* Workshop content — clickable */}
+                    <Link
+                      href={workshop.workshopType === 'SALES' ? `/sales/${workshop.id}` : `/admin/workshops/${workshop.id}`}
+                      className="flex-1 min-w-0"
+                    >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
@@ -362,9 +523,9 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                           <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                            <span>📅 {formatDate(workshop.scheduledDate)}</span>
+                            <span>{formatDate(workshop.scheduledDate)}</span>
                             <span>
-                              👥 {workshop.completedResponses}/{workshop.participantCount}{' '}
+                              {workshop.completedResponses}/{workshop.participantCount}{' '}
                               completed
                             </span>
                             <span>
@@ -378,17 +539,123 @@ export default function AdminDashboard() {
                             </span>
                           </div>
                         </div>
-                        <Button variant="ghost" size="sm">
-                          View →
+                        <Button variant="ghost" size="sm" tabIndex={-1}>
+                          View
                         </Button>
                       </div>
-                    </div>
-                  </Link>
+                    </Link>
+
+                    {/* Share button */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-shrink-0"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        openShareDialog(workshop.id);
+                      }}
+                      title="Share workshop"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* Bulk Delete Confirmation Dialog */}
+        <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <DialogContent className="bg-white dark:bg-gray-900">
+            <DialogHeader>
+              <DialogTitle>Delete {selectedIds.size} Workshop{selectedIds.size !== 1 ? 's' : ''}?</DialogTitle>
+              <DialogDescription>
+                This will permanently delete the selected workshop{selectedIds.size !== 1 ? 's' : ''} and all associated
+                participants, sessions, and data. This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-40 overflow-y-auto space-y-1 text-sm">
+              {workshops
+                .filter((w) => selectedIds.has(w.id))
+                .map((w) => (
+                  <div key={w.id} className="text-muted-foreground">&bull; {w.name}</div>
+                ))}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)} disabled={bulkDeleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
+                {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size} Workshop${selectedIds.size !== 1 ? 's' : ''}`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Share Dialog */}
+        <Dialog open={!!shareWorkshopId} onOpenChange={(open) => { if (!open) setShareWorkshopId(null); }}>
+          <DialogContent className="bg-white dark:bg-gray-900">
+            <DialogHeader>
+              <DialogTitle>Share Workshop</DialogTitle>
+              <DialogDescription>
+                Share this workshop with another user in your organisation. They&apos;ll be able to see and access it.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  className="flex-1 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="colleague@company.com"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleShare(); }}
+                />
+                <Button onClick={handleShare} disabled={shareLoading || !shareEmail.trim()} size="sm">
+                  {shareLoading ? 'Sharing...' : 'Share'}
+                </Button>
+              </div>
+
+              {shareError && (
+                <div className="text-sm text-red-600">{shareError}</div>
+              )}
+              {shareSuccess && (
+                <div className="text-sm text-green-600">{shareSuccess}</div>
+              )}
+
+              {/* Current shares */}
+              <div>
+                <h4 className="text-sm font-medium mb-2">Shared with</h4>
+                {sharesLoading ? (
+                  <div className="text-sm text-muted-foreground">Loading...</div>
+                ) : shares.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">Not shared with anyone yet</div>
+                ) : (
+                  <div className="space-y-2">
+                    {shares.map((s) => (
+                      <div key={s.id} className="flex items-center justify-between text-sm border rounded-md px-3 py-2">
+                        <div>
+                          <span className="font-medium">{s.userName}</span>
+                          <span className="text-muted-foreground ml-2">{s.userEmail}</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveShare(s.id)}
+                          className="text-red-500 hover:text-red-700 h-7 px-2"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Card className="no-print mt-8">
           <CardHeader>

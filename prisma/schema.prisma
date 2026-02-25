@@ -43,6 +43,7 @@ model User {
   updatedAt        DateTime     @updatedAt
   organization     Organization? @relation(fields: [organizationId], references: [id])
   createdWorkshops Workshop[]
+  workshopShares   WorkshopShare[]
   loginAttempts    LoginAttempt[]
   sessions         Session[]
   passwordResetTokens PasswordResetToken[]
@@ -144,6 +145,7 @@ model Workshop {
   transcriptChunks  TranscriptChunk[]
   participants      WorkshopParticipant[]
   scratchpad        WorkshopScratchpad?
+  shares            WorkshopShare[]
   createdBy         User                  @relation(fields: [createdById], references: [id])
   organization      Organization          @relation(fields: [organizationId], references: [id])
 
@@ -151,6 +153,21 @@ model Workshop {
   @@index([organizationId, status])
   @@index([createdAt])
   @@map("workshops")
+}
+
+model WorkshopShare {
+  id          String   @id @default(cuid())
+  workshopId  String
+  userId      String
+  sharedById  String
+  createdAt   DateTime @default(now())
+
+  workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workshopId, userId])
+  @@index([userId])
+  @@map("workshop_shares")
 }
 
 model TranscriptChunk {

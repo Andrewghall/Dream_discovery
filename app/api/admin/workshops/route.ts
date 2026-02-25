@@ -20,12 +20,19 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
     const skip = (page - 1) * limit;
 
-    // PLATFORM_ADMIN sees all; TENANT_ADMIN sees all in their org; TENANT_USER sees only their own
+    // PLATFORM_ADMIN sees all; TENANT_ADMIN sees all in their org;
+    // TENANT_USER sees their own + workshops shared with them
     const where = isPlatformAdmin
       ? {}
       : isTenantAdmin
         ? { organizationId: orgId! }
-        : { organizationId: orgId!, createdById: session.userId };
+        : {
+            organizationId: orgId!,
+            OR: [
+              { createdById: session.userId },
+              { shares: { some: { userId: session.userId } } },
+            ],
+          };
 
     const [totalCount, workshops] = await Promise.all([
       prisma.workshop.count({ where }),
