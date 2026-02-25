@@ -76,6 +76,42 @@ export type SignalType =
   | 'weak_enabler'
   | 'risk_cluster';
 
+// ── DREAM Dialogue Phases ────────────────────────────────
+// REIMAGINE: Pure business vision, goals, actors. NO constraints, NO technology.
+// CONSTRAINTS: Constraints, risks, regulation, technology barriers.
+// DEFINE_APPROACH: Actions, enablers, solutions, ownership.
+export type DialoguePhase = 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
+
+// Which signal types are valid in each phase
+const PHASE_ALLOWED_SIGNALS: Record<DialoguePhase, Set<SignalType>> = {
+  REIMAGINE: new Set([
+    'repeated_theme',        // themes are always relevant
+    'missing_dimension',     // but only People, Customer, Organisation lenses
+    'unanswered_question',   // questions should always be tracked
+    'contradiction',         // belief tension is phase-agnostic
+  ]),
+  CONSTRAINTS: new Set([
+    'repeated_theme',
+    'missing_dimension',
+    'contradiction',
+    'high_freq_constraint',
+    'unanswered_question',
+    'weak_enabler',
+    'risk_cluster',
+  ]),
+  DEFINE_APPROACH: new Set([
+    'repeated_theme',
+    'missing_dimension',
+    'contradiction',
+    'unanswered_question',
+    'weak_enabler',
+  ]),
+};
+
+// In REIMAGINE, only these lenses should trigger missing_dimension signals
+// (Technology and Regulation are irrelevant in the visionary phase)
+const REIMAGINE_LENSES: Set<Lens> = new Set(['People', 'Customer', 'Organisation']);
+
 export type Signal = {
   id: string;
   type: SignalType;
@@ -503,12 +539,20 @@ const MAX_ACTIVE_PADS = 8;
 /**
  * Stage 4: Generate facilitation sticky pads from detected signals.
  * Template-based string interpolation only — no LLM, no fabrication.
+ *
+ * Phase-aware: only generates pads appropriate for the current DREAM phase.
+ * - REIMAGINE: vision, goals, actors only. No constraints/technology/regulation.
+ * - CONSTRAINTS: all constraint/risk signals unlocked.
+ * - DEFINE_APPROACH: enablers, actions, ownership.
  */
 export function generateStickyPads(
   signals: Signal[],
   existingPads: StickyPad[],
   nowMs: number,
+  phase: DialoguePhase = 'REIMAGINE',
 ): StickyPad[] {
+  const allowedSignals = PHASE_ALLOWED_SIGNALS[phase];
+
   const pads = existingPads
     .filter(p => p.status !== 'dismissed')
     .filter(p => p.status !== 'snoozed' || (p.snoozedUntilMs && p.snoozedUntilMs <= nowMs))
@@ -519,6 +563,15 @@ export function generateStickyPads(
 
   for (const signal of signals) {
     if (signal.strength < 0.2) continue;
+
+    // Phase gate: skip signals not appropriate for current phase
+    if (!allowedSignals.has(signal.type)) continue;
+
+    // In REIMAGINE, missing_dimension only fires for People/Customer/Organisation
+    if (phase === 'REIMAGINE' && signal.type === 'missing_dimension') {
+      const signalLensesInPhase = signal.lenses.filter(l => REIMAGINE_LENSES.has(l));
+      if (signalLensesInPhase.length === 0) continue;
+    }
 
     const padId = `pad:${signal.type}:${signal.lenses[0] || 'general'}`;
     const existing = pads.find(p => p.id === padId);

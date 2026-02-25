@@ -17,6 +17,7 @@ import {
   type Lens,
   type ActorJourney,
   type SessionConfidence,
+  type DialoguePhase,
   ALL_LENSES,
   createInitialNode,
   categoriseNode,
@@ -110,50 +111,44 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [cogNodes, setCogNodes] = useState<Map<string, CogNode>>(new Map());
   const [hemisphereNodes, setHemisphereNodes] = useState<Record<string, HemisphereNodeDatum>>({});
   const [stickyPads, setStickyPads] = useState<StickyPad[]>(() => {
-    // Seed pads so the board is never empty — replaced by real signals once listening starts
+    // Seed pads for REIMAGINE phase — vision, goals, actors only
     const now = Date.now();
     return [
       {
-        id: 'seed-clarify', type: 'CLARIFICATION' as const, status: 'active' as const,
-        prompt: 'What is the core vision for this initiative? Has everyone aligned on the end-state?',
+        id: 'seed-vision', type: 'CLARIFICATION' as const, status: 'active' as const,
+        prompt: 'What is the ideal future state for this business? Paint the picture of success without constraints.',
         signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'repeated_theme' as const, sourceNodeIds: [], description: 'Opening prompt — establish shared vision' },
+        provenance: { triggerType: 'repeated_theme' as const, sourceNodeIds: [], description: 'Opening prompt — establish aspirational vision' },
       },
       {
-        id: 'seed-gap', type: 'GAP_PROBE' as const, status: 'active' as const,
-        prompt: 'No contributions yet in the Regulation dimension. Are there compliance or policy considerations?',
+        id: 'seed-actors', type: 'CLARIFICATION' as const, status: 'active' as const,
+        prompt: 'Who are the key actors and stakeholders in this vision? What roles do they play?',
         signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'Regulation lens has zero coverage' },
-      },
-      {
-        id: 'seed-risk', type: 'RISK_PROBE' as const, status: 'active' as const,
-        prompt: 'Several constraints have been raised around Technology. Are these blockers or conditions to manage?',
-        signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'risk_cluster' as const, sourceNodeIds: [], description: 'Technology constraints clustering' },
-      },
-      {
-        id: 'seed-enabler', type: 'ENABLER_PROBE' as const, status: 'active' as const,
-        prompt: 'People dimension has 4 constraints but only 1 enabler. What needs to change to unlock progress?',
-        signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'weak_enabler' as const, sourceNodeIds: [], description: 'Weak enabler ratio in People lens' },
+        provenance: { triggerType: 'repeated_theme' as const, sourceNodeIds: [], description: 'Identify actors and their relationships' },
       },
       {
         id: 'seed-customer', type: 'CUSTOMER_IMPACT' as const, status: 'active' as const,
-        prompt: 'How does this impact the end customer experience? We haven\'t explored the customer journey yet.',
-        signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'Customer lens underrepresented' },
-      },
-      {
-        id: 'seed-contradiction', type: 'CONTRADICTION_PROBE' as const, status: 'active' as const,
-        prompt: 'Two beliefs appear in tension: "We need to move fast" vs "Quality cannot be compromised". Can we clarify which holds?',
+        prompt: 'How does the customer experience look in this reimagined future? What changes for them?',
         signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'contradiction' as const, sourceNodeIds: [], description: 'Opposing beliefs detected' },
+        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'Customer perspective in the vision' },
       },
       {
-        id: 'seed-action', type: 'OWNERSHIP_ACTION' as const, status: 'active' as const,
-        prompt: 'Who owns the next step on the integration workstream? No clear action owner has been identified.',
-        signalStrength: 0.6, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'unanswered_question' as const, sourceNodeIds: [], description: 'Unassigned action item' },
+        id: 'seed-people', type: 'GAP_PROBE' as const, status: 'active' as const,
+        prompt: 'How do the people in the organisation fit into this future? What does their experience look like?',
+        signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'People dimension in the vision' },
+      },
+      {
+        id: 'seed-org', type: 'GAP_PROBE' as const, status: 'active' as const,
+        prompt: 'What does the organisation look like in this future state? How is it structured differently?',
+        signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'Organisation dimension in the vision' },
+      },
+      {
+        id: 'seed-goals', type: 'CLARIFICATION' as const, status: 'active' as const,
+        prompt: 'What are the top 3 business outcomes you want from this transformation?',
+        signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'unanswered_question' as const, sourceNodeIds: [], description: 'Define measurable business goals' },
       },
     ];
   });
@@ -176,6 +171,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── UI state ───────────────────────────────────────────
   const [selectedPadId, setSelectedPadId] = useState<string | null>(null);
   const [journeyExpanded, setJourneyExpanded] = useState(false);
+  const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
 
   // ── Belief tracking for Stage 3 ────────────────────────
   const contradictionsRef = useRef<Array<{ id: string; beliefA: string; beliefB: string; resolved: boolean }>>([]);
@@ -200,8 +196,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     const coverage = calculateLensCoverage(nodesArr);
     setLensCoverage(coverage);
 
-    // Stage 4: Sticky Pad Generation
-    setStickyPads(prev => generateStickyPads(detectedSignals, prev, nowMs));
+    // Stage 4: Sticky Pad Generation (phase-aware)
+    setStickyPads(prev => generateStickyPads(detectedSignals, prev, nowMs, dialoguePhase));
 
     // Stage 5: Actor Journey Construction
     const journeys = updateActorJourneys(nodesArr);
@@ -218,7 +214,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
     lastBufferedRunRef.current = nowMs;
     nodeCountSinceLastRunRef.current = 0;
-  }, []);
+  }, [dialoguePhase]);
 
   // ── Timer for buffered pipeline ────────────────────────
   useEffect(() => {
@@ -495,6 +491,23 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               </span>
             )}
           </div>
+        </div>
+
+        {/* Phase Selector */}
+        <div className="flex items-center gap-1 mt-4 p-1 bg-muted/50 rounded-lg w-fit">
+          {(['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as DialoguePhase[]).map((phase) => (
+            <button
+              key={phase}
+              onClick={() => setDialoguePhase(phase)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                dialoguePhase === phase
+                  ? 'bg-white shadow-sm text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {phase === 'REIMAGINE' ? 'Reimagine' : phase === 'CONSTRAINTS' ? 'Constraints' : 'Define Approach'}
+            </button>
+          ))}
         </div>
 
         {/* Lens Coverage Bar + Gap Indicators */}
