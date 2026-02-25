@@ -110,14 +110,18 @@ export async function uploadOrgLogo(file: File, organizationId: string): Promise
   if (!file.type.startsWith('image/')) throw new Error('File must be an image');
   if (file.size > 5 * 1024 * 1024) throw new Error('Image must be less than 5MB');
 
-  const fileExt = file.name.split('.').pop();
+  const fileExt = file.name.split('.').pop() || 'png';
   const fileName = `organizations/${organizationId}/logo-${Date.now()}.${fileExt}`;
 
   const admin = getSupabaseAdmin();
 
+  // Convert File to Buffer for server-side upload
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
   const { error } = await admin.storage
     .from(BUCKET_NAME)
-    .upload(fileName, file, { cacheControl: '3600', upsert: true });
+    .upload(fileName, buffer, { cacheControl: '3600', upsert: true, contentType: file.type });
 
   if (error) throw error;
 
