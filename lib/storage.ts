@@ -19,7 +19,7 @@ function getSupabaseAdmin() {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !anonKey) {
-    throw new Error('Supabase credentials not configured. Image upload will not work.');
+    throw new Error(`Supabase credentials not configured. URL=${url ? 'set' : 'MISSING'}, ANON_KEY=${anonKey ? 'set' : 'MISSING'}, SERVICE_KEY=${serviceRoleKey ? 'set' : 'MISSING'}`);
   }
   return createClient(url, serviceRoleKey || anonKey);
 }
