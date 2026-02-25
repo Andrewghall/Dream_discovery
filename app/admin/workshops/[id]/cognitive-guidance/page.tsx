@@ -16,20 +16,21 @@ import {
   type Signal,
   type LensCoverage,
   type Lens,
-  type ActorJourney,
-  type ActorJourneyEntry,
   type SessionConfidence,
   type DialoguePhase,
+  type LiveJourneyData,
+  type LiveJourneyInteraction,
   ALL_LENSES,
   ALL_PHASES,
   PHASE_LABELS,
+  DEFAULT_JOURNEY_STAGES,
   createInitialNode,
   categoriseNode,
   applyLensMapping,
   calculateLensCoverage,
   detectSignals,
   generateStickyPads,
-  updateActorJourneys,
+  buildLiveJourney,
   calculateSessionConfidence,
 } from '@/lib/cognitive-guidance/pipeline';
 
@@ -37,7 +38,7 @@ import { StickyPadCanvas } from '@/components/cognitive-guidance/sticky-pad-canv
 import LensCoverageBar from '@/components/cognitive-guidance/lens-coverage-bar';
 import GapIndicatorStrip from '@/components/cognitive-guidance/gap-indicator-strip';
 import SignalClusterPanel from '@/components/cognitive-guidance/signal-cluster-panel';
-import ActorJourneyPanel from '@/components/cognitive-guidance/actor-journey-panel';
+import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -344,53 +345,56 @@ const DEMO_HEMISPHERE_NODES: HemisphereNodeDatum[] = (() => {
   }));
 })();
 
-const DEMO_ACTOR_JOURNEYS: Map<string, ActorJourney> = (() => {
-  const journeys = new Map<string, ActorJourney>();
+// ══════════════════════════════════════════════════════════
+// DEMO LIVE JOURNEY DATA
+// ══════════════════════════════════════════════════════════
 
-  const makeEntry = (actor: string, phase: ActorJourneyEntry['phase'], conf: number, sentiment: ActorJourneyEntry['sentiment'], summary: string): ActorJourneyEntry => ({
-    actorName: actor, phase, nodeIds: [], confidence: conf, sentiment, summary,
+function getDemoLiveJourney(): LiveJourneyData {
+  const now = Date.now();
+  const mkI = (
+    id: string, actor: string, stage: string, action: string, context: string,
+    sentiment: LiveJourneyInteraction['sentiment'],
+    bizInt: number, custInt: number,
+    aiNow: LiveJourneyInteraction['aiAgencyNow'], aiFuture: LiveJourneyInteraction['aiAgencyFuture'],
+    painPoint = false, mot = false,
+  ): LiveJourneyInteraction => ({
+    id, actor, stage, action, context, sentiment,
+    businessIntensity: bizInt, customerIntensity: custInt,
+    aiAgencyNow: aiNow, aiAgencyFuture: aiFuture,
+    isPainPoint: painPoint, isMomentOfTruth: mot,
+    sourceNodeIds: [], addedBy: 'ai', createdAtMs: now,
   });
 
-  journeys.set('End Customer', {
-    actorName: 'End Customer',
-    role: 'Primary user of the platform',
-    mentionCount: 12,
-    phases: {
-      AWARENESS: makeEntry('End Customer', 'AWARENESS', 0.8, 'neutral', 'Customers discover through marketing and referrals'),
-      CONSIDERATION: makeEntry('End Customer', 'CONSIDERATION', 0.7, 'concerned', 'Evaluation process is too complex with 7 handoffs'),
-      ONBOARDING: makeEntry('End Customer', 'ONBOARDING', 0.6, 'critical', 'Onboarding takes 6 weeks — major dropout risk'),
-      USAGE: makeEntry('End Customer', 'USAGE', 0.75, 'positive', 'Once onboarded, satisfaction scores are strong'),
-      SUPPORT: makeEntry('End Customer', 'SUPPORT', 0.5, 'concerned', 'Support channel fragmentation causes frustration'),
-    },
-    gapPhases: ['DECISION', 'PURCHASE', 'RETENTION_EXIT'],
-  });
-
-  journeys.set('Frontline Staff', {
-    actorName: 'Frontline Staff',
-    role: 'Customer-facing team members',
-    mentionCount: 8,
-    phases: {
-      ONBOARDING: makeEntry('Frontline Staff', 'ONBOARDING', 0.65, 'concerned', 'Training programmes are outdated and lack digital skills'),
-      USAGE: makeEntry('Frontline Staff', 'USAGE', 0.7, 'neutral', 'Daily workflows are manual and time-consuming'),
-      SUPPORT: makeEntry('Frontline Staff', 'SUPPORT', 0.55, 'critical', 'Escalation paths are unclear and slow'),
-    },
-    gapPhases: ['AWARENESS', 'CONSIDERATION', 'DECISION', 'PURCHASE', 'RETENTION_EXIT'],
-  });
-
-  journeys.set('IT Team', {
-    actorName: 'IT Team',
-    role: 'Technology delivery and operations',
-    mentionCount: 6,
-    phases: {
-      CONSIDERATION: makeEntry('IT Team', 'CONSIDERATION', 0.8, 'neutral', 'Evaluating cloud migration options and vendor landscape'),
-      DECISION: makeEntry('IT Team', 'DECISION', 0.6, 'concerned', 'Board approval needed for infrastructure investment'),
-      USAGE: makeEntry('IT Team', 'USAGE', 0.5, 'critical', 'Legacy system maintenance consuming 70% of capacity'),
-    },
-    gapPhases: ['AWARENESS', 'PURCHASE', 'ONBOARDING', 'SUPPORT', 'RETENTION_EXIT'],
-  });
-
-  return journeys;
-})();
+  return {
+    stages: DEFAULT_JOURNEY_STAGES.REIMAGINE,
+    actors: [
+      { name: 'End Customer', role: 'Primary user of the platform', mentionCount: 12 },
+      { name: 'Frontline Staff', role: 'Customer-facing team members', mentionCount: 8 },
+      { name: 'Store Manager', role: 'Operations leadership', mentionCount: 5 },
+      { name: 'IT Team', role: 'Technology delivery', mentionCount: 6 },
+    ],
+    interactions: [
+      // End Customer journey
+      mkI('d1', 'End Customer', 'Discovery', 'Browses online', 'Exploring product options across channels', 'neutral', 0.25, 0.25, 'human', 'autonomous'),
+      mkI('d2', 'End Customer', 'Discovery', 'Sees advertisement', 'Notices brand through targeted marketing', 'positive', 0.5, 0.25, 'assisted', 'autonomous'),
+      mkI('d3', 'End Customer', 'Engagement', 'Visits store', 'Seeks personalised product advice', 'positive', 0.5, 0.5, 'human', 'assisted', false, true),
+      mkI('d4', 'End Customer', 'Commitment', 'Completes purchase', 'Finalises transaction', 'neutral', 0.5, 0.5, 'human', 'autonomous'),
+      mkI('d5', 'End Customer', 'Commitment', 'Experiences delay', 'Waits at checkout — friction point', 'critical', 0.75, 0.75, 'human', 'autonomous', true),
+      mkI('d6', 'End Customer', 'Fulfilment', 'Receives order', 'Waits for delivery', 'neutral', 0.5, 0.5, 'human', 'assisted'),
+      mkI('d7', 'End Customer', 'Support', 'Contacts support', 'Inquires about order status', 'concerned', 0.75, 0.75, 'human', 'autonomous', true),
+      mkI('d8', 'End Customer', 'Growth', 'Joins loyalty program', 'Engages with brand long-term', 'positive', 0.25, 0.25, 'assisted', 'autonomous'),
+      // Frontline Staff
+      mkI('d9', 'Frontline Staff', 'Engagement', 'Provides recommendations', 'Offers personalised advice to customer', 'positive', 0.75, 0.25, 'human', 'assisted', false, true),
+      mkI('d10', 'Frontline Staff', 'Engagement', 'Demonstrates product', 'Showcases features in-store', 'positive', 0.75, 0.5, 'human', 'assisted'),
+      // Store Manager
+      mkI('d11', 'Store Manager', 'Commitment', 'Handles checkout', 'Processes payment and manages queue', 'neutral', 0.75, 0.25, 'human', 'autonomous'),
+      mkI('d12', 'Store Manager', 'Support', 'Addresses complaint', 'Resolves customer issue escalation', 'concerned', 0.75, 0.5, 'human', 'assisted'),
+      // IT Team
+      mkI('d13', 'IT Team', 'Fulfilment', 'Delivers package', 'Last-mile logistics coordination', 'neutral', 0.75, 0.5, 'assisted', 'autonomous'),
+      mkI('d14', 'IT Team', 'Growth', 'Sends promotions', 'Automated engagement campaigns', 'positive', 0.5, 0.25, 'assisted', 'autonomous'),
+    ],
+  };
+}
 
 
 // ══════════════════════════════════════════════════════════
@@ -419,7 +423,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [stickyPads, setStickyPads] = useState<StickyPad[]>(() => getSeedPadsForPhase('SYNTHESIS'));
   const [signals, setSignals] = useState<Signal[]>([]);
   const [lensCoverage, setLensCoverage] = useState<Map<Lens, LensCoverage>>(new Map());
-  const [actorJourneys, setActorJourneys] = useState<Map<string, ActorJourney>>(DEMO_ACTOR_JOURNEYS);
+  const [liveJourney, setLiveJourney] = useState<LiveJourneyData>(getDemoLiveJourney);
   const [sessionConfidence, setSessionConfidence] = useState<SessionConfidence>({
     overallConfidence: 0,
     categorisedRate: 0,
@@ -457,13 +461,18 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     [workshopId]
   );
 
-  // ── Phase change → swap seed pads ──────────────────────
+  // ── Phase change → swap seed pads + journey stages ─────
   const handlePhaseChange = useCallback((phase: DialoguePhase) => {
     setDialoguePhase(phase);
     // Only replace with seed pads if not listening (no real data yet)
     if (!listening) {
       setStickyPads(getSeedPadsForPhase(phase));
       setSelectedPadId(null);
+      // Update journey stages for the new phase
+      setLiveJourney(prev => ({
+        ...prev,
+        stages: DEFAULT_JOURNEY_STAGES[phase],
+      }));
     }
   }, [listening]);
 
@@ -516,9 +525,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     // Stage 4: Sticky Pad Generation (phase-aware)
     setStickyPads(prev => generateStickyPads(detectedSignals, prev, nowMs, dialoguePhase));
 
-    // Stage 5: Actor Journey Construction
-    const journeys = updateActorJourneys(nodesArr);
-    setActorJourneys(journeys);
+    // Stage 5: Live Journey Construction (progressive, preserves facilitator edits)
+    setLiveJourney(prev => buildLiveJourney(nodesArr, prev, DEFAULT_JOURNEY_STAGES[dialoguePhase]));
 
     // Session confidence
     const confidence = calculateSessionConfidence(
@@ -941,9 +949,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             />
           </div>
 
-          {/* Actor Journey Panel */}
-          <ActorJourneyPanel
-            journeys={actorJourneys}
+          {/* Live Journey Map */}
+          <LiveJourneyMap
+            data={liveJourney}
+            onChange={setLiveJourney}
             expanded={journeyExpanded}
             onToggleExpand={() => setJourneyExpanded(e => !e)}
           />

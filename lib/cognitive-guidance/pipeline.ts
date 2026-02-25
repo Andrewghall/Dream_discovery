@@ -201,6 +201,48 @@ export type SessionConfidence = {
   stabilisedBeliefCount: number;
 };
 
+// ── Live Journey Map Types ────────────────────────────────
+
+export type AiAgencyLevel = 'human' | 'assisted' | 'autonomous';
+
+export type LiveJourneyInteraction = {
+  id: string;
+  actor: string;
+  stage: string;
+  action: string;
+  context: string;
+  sentiment: 'positive' | 'neutral' | 'concerned' | 'critical';
+  businessIntensity: number;   // 0-1: effort/resource from business side
+  customerIntensity: number;   // 0-1: friction/delight from customer side
+  aiAgencyNow: AiAgencyLevel;
+  aiAgencyFuture: AiAgencyLevel;
+  isPainPoint: boolean;
+  isMomentOfTruth: boolean;
+  sourceNodeIds: string[];
+  addedBy: 'ai' | 'facilitator';
+  createdAtMs: number;
+};
+
+export type LiveJourneyActor = {
+  name: string;
+  role: string;
+  mentionCount: number;
+};
+
+export type LiveJourneyData = {
+  stages: string[];
+  actors: LiveJourneyActor[];
+  interactions: LiveJourneyInteraction[];
+};
+
+// Default stages per DREAM phase
+export const DEFAULT_JOURNEY_STAGES: Record<DialoguePhase, string[]> = {
+  SYNTHESIS: ['Discovery', 'Engagement', 'Commitment', 'Fulfilment', 'Support', 'Growth'],
+  REIMAGINE: ['Discovery', 'Engagement', 'Commitment', 'Fulfilment', 'Support', 'Growth'],
+  CONSTRAINTS: ['Discovery', 'Engagement', 'Commitment', 'Fulfilment', 'Support', 'Growth'],
+  DEFINE_APPROACH: ['Discovery', 'Engagement', 'Commitment', 'Fulfilment', 'Support', 'Growth'],
+};
+
 // ══════════════════════════════════════════════════════════
 // STAGE 1 — DETERMINISTIC CATEGORISATION
 // ══════════════════════════════════════════════════════════
@@ -756,6 +798,123 @@ function mapSentiment(tone: string): 'positive' | 'neutral' | 'concerned' | 'cri
   if (tone === 'concerned') return 'concerned';
   if (tone === 'critical') return 'critical';
   return 'neutral';
+}
+
+// ══════════════════════════════════════════════════════════
+// STAGE 5B — LIVE JOURNEY MAP CONSTRUCTION
+// ══════════════════════════════════════════════════════════
+
+const JOURNEY_STAGE_KEYWORDS: Record<string, string[]> = {
+  Discovery:   ['discover', 'find', 'learn', 'awareness', 'search', 'browse', 'hear about', 'first time', 'initial'],
+  Engagement:  ['engage', 'interact', 'visit', 'explore', 'consider', 'evaluate', 'contact', 'try', 'demo'],
+  Commitment:  ['commit', 'decide', 'purchase', 'buy', 'sign', 'agree', 'choose', 'select', 'approve', 'order'],
+  Fulfilment:  ['deliver', 'receive', 'onboard', 'setup', 'implement', 'fulfil', 'install', 'provision', 'configure'],
+  Support:     ['support', 'help', 'assist', 'resolve', 'fix', 'service', 'maintain', 'issue', 'problem', 'ticket'],
+  Growth:      ['retain', 'loyalty', 'expand', 'recommend', 'renew', 'grow', 'upsell', 'refer', 'advocate'],
+};
+
+function inferStage(text: string, stages: string[]): string | null {
+  const lower = text.toLowerCase();
+  let bestStage: string | null = null;
+  let bestCount = 0;
+
+  for (const stage of stages) {
+    const keywords = JOURNEY_STAGE_KEYWORDS[stage];
+    if (!keywords) continue;
+    const count = keywords.filter(kw => lower.includes(kw)).length;
+    if (count > bestCount) {
+      bestCount = count;
+      bestStage = stage;
+    }
+  }
+
+  return bestCount >= 1 ? bestStage : null;
+}
+
+function inferIntensityFromSentiment(sentiment: string): { biz: number; cust: number } {
+  switch (sentiment) {
+    case 'positive': return { biz: 0.3, cust: 0.2 };
+    case 'neutral': return { biz: 0.5, cust: 0.5 };
+    case 'concerned': return { biz: 0.6, cust: 0.7 };
+    case 'critical': return { biz: 0.8, cust: 0.9 };
+    default: return { biz: 0.5, cust: 0.5 };
+  }
+}
+
+/**
+ * Stage 5B: Build live journey map from nodes with actor data.
+ * Progressive — merges with existing data, preserves facilitator edits.
+ */
+export function buildLiveJourney(
+  nodes: CogNode[],
+  existingData: LiveJourneyData,
+  defaultStages: string[],
+): LiveJourneyData {
+  const stages = existingData.stages.length > 0 ? existingData.stages : defaultStages;
+  const actorsMap = new Map<string, LiveJourneyActor>();
+  const existingInteractionIds = new Set(existingData.interactions.map(i => i.id));
+
+  // Preserve existing actors
+  for (const a of existingData.actors) {
+    actorsMap.set(a.name.toLowerCase(), { ...a });
+  }
+
+  const newInteractions: LiveJourneyInteraction[] = [];
+
+  for (const node of nodes) {
+    if (!node.sourceAgenticAnalysis?.actors) continue;
+
+    for (const actor of node.sourceAgenticAnalysis.actors) {
+      if (!actor.name || actor.name.length < 2) continue;
+
+      const actorKey = actor.name.toLowerCase();
+      if (!actorsMap.has(actorKey)) {
+        actorsMap.set(actorKey, {
+          name: actor.name,
+          role: actor.role || 'Participant',
+          mentionCount: 1,
+        });
+      } else {
+        actorsMap.get(actorKey)!.mentionCount++;
+      }
+
+      // Process each interaction the actor has
+      for (const interaction of actor.interactions) {
+        const text = `${interaction.action} ${interaction.context}`;
+        const stage = inferStage(text, stages);
+        if (!stage) continue;
+
+        const interactionId = `ai:${node.id}:${actorKey}:${stage}:${interaction.action.slice(0, 20)}`;
+        if (existingInteractionIds.has(interactionId)) continue;
+
+        const intensity = inferIntensityFromSentiment(interaction.sentiment);
+
+        newInteractions.push({
+          id: interactionId,
+          actor: actor.name,
+          stage,
+          action: interaction.action,
+          context: interaction.context || '',
+          sentiment: mapSentiment(interaction.sentiment),
+          businessIntensity: intensity.biz,
+          customerIntensity: intensity.cust,
+          aiAgencyNow: 'human',
+          aiAgencyFuture: 'assisted',
+          isPainPoint: interaction.sentiment === 'critical',
+          isMomentOfTruth: false,
+          sourceNodeIds: [node.id],
+          addedBy: 'ai',
+          createdAtMs: node.createdAtMs,
+        });
+      }
+    }
+  }
+
+  return {
+    stages,
+    actors: Array.from(actorsMap.values()),
+    interactions: [...existingData.interactions, ...newInteractions],
+  };
 }
 
 // ══════════════════════════════════════════════════════════
