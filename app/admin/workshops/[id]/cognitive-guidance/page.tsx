@@ -463,31 +463,81 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const currentMainQ = mainQuestions[mainQuestionIndex] ?? null;
 
   // ── Convert a main question's sub-questions into StickyPads ──
+  // If the question has prep-generated sub-questions, use those.
+  // Otherwise, generate starter sub-pads from the question's lens + phase lenses
+  // so there's always something on screen to kick off discussion.
   const loadPrepSubPads = useCallback((question: PrepQuestion, qIndex: number): StickyPad[] => {
-    if (!question.subQuestions?.length) return [];
     const now = Date.now();
-    return question.subQuestions.map((sq, i) => ({
-      id: `sub:${sq.id}`,
-      type: lensToStickyPadType(sq.lens),
-      prompt: sq.text,
-      signalStrength: 0.9 - (i * 0.05),
+
+    // Use prep sub-questions if they exist
+    if (question.subQuestions?.length) {
+      return question.subQuestions.map((sq, i) => ({
+        id: `sub:${sq.id}`,
+        type: lensToStickyPadType(sq.lens),
+        prompt: sq.text,
+        signalStrength: 0.9 - (i * 0.05),
+        provenance: {
+          triggerType: 'repeated_theme' as const,
+          sourceNodeIds: [] as string[],
+          description: sq.purpose,
+        },
+        createdAtMs: now,
+        status: 'active' as const,
+        snoozedUntilMs: null,
+        source: 'prep' as const,
+        questionId: question.id,
+        grounding: sq.purpose,
+        coveragePercent: 0,
+        coverageState: 'active' as StickyPad['coverageState'],
+        lens: sq.lens || null,
+        mainQuestionIndex: qIndex,
+      }));
+    }
+
+    // Fallback: generate starter sub-pads from the question itself
+    // Use the question's lens + the phase's lens order to create 2-3 probes
+    const prep = prepQuestionsRef.current;
+    const wp = dialoguePhaseToWorkshopPhase(dialoguePhase);
+    const phaseLenses = wp && prep?.phases?.[wp]?.lensOrder
+      ? prep.phases[wp].lensOrder
+      : ['People', 'Customer', 'Organisation'];
+
+    // Pick the question's own lens + 1-2 from phase lens order
+    const qLens = question.lens || 'General';
+    const otherLenses = phaseLenses.filter((l) => l !== qLens).slice(0, 2);
+    const starterLenses = [qLens, ...otherLenses];
+
+    const starterPrompts: Record<string, (q: string) => string> = {
+      People: (q) => `From a people perspective — who is most affected and how does this shape their day-to-day?`,
+      Organisation: (q) => `What does this mean for how the organisation is structured or operates?`,
+      Customer: (q) => `How does the customer experience this? What would they notice or feel?`,
+      Technology: (q) => `What technology enablers or barriers are at play here?`,
+      Regulation: (q) => `Are there regulatory or compliance dimensions to consider?`,
+      General: (q) => `What's the first thing that comes to mind when you think about this?`,
+    };
+
+    return starterLenses.map((lens, i) => ({
+      id: `auto:${question.id}:${lens.toLowerCase()}`,
+      type: lensToStickyPadType(lens),
+      prompt: starterPrompts[lens]?.(question.text) || `Explore this from the ${lens} lens`,
+      signalStrength: 0.85 - (i * 0.05),
       provenance: {
         triggerType: 'repeated_theme' as const,
         sourceNodeIds: [] as string[],
-        description: sq.purpose,
+        description: `Auto-generated starter for "${question.text}" — ${lens} lens`,
       },
       createdAtMs: now,
       status: 'active' as const,
       snoozedUntilMs: null,
       source: 'prep' as const,
       questionId: question.id,
-      grounding: sq.purpose,
+      grounding: question.purpose,
       coveragePercent: 0,
       coverageState: 'active' as StickyPad['coverageState'],
-      lens: sq.lens || null,
+      lens,
       mainQuestionIndex: qIndex,
     }));
-  }, []);
+  }, [dialoguePhase]);
 
   // (Synthesis data moved to Discovery tab)
 
@@ -565,14 +615,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         ? [...prep.phases[wp].questions].sort((a, b) => a.order - b.order)
         : [];
 
-      if (phaseQuestions.length > 0 && phaseQuestions[0].subQuestions?.length) {
-        // Load sub-pads for the first main question
+      if (phaseQuestions.length > 0) {
+        // Load sub-pads for the first main question (auto-generates starters if no prep subs)
         const subPads = loadPrepSubPads(phaseQuestions[0], 0);
-        setStickyPads(subPads);
-      } else if (phaseQuestions.length > 0) {
-        // Prep questions exist but no sub-questions yet — use old buildSessionPadsFromPrep
-        const prepPads = buildSessionPadsFromPrep(prep!, phase);
-        setStickyPads(prepPads.length > 0 ? prepPads : getSeedPadsForPhase(phase));
+        setStickyPads(subPads.length > 0 ? subPads : getSeedPadsForPhase(phase));
       } else {
         setStickyPads(getSeedPadsForPhase(phase));
       }
@@ -707,9 +753,26 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         if (data.customQuestions && typeof data.customQuestions === 'object') {
           const cq = data.customQuestions as PrepQuestionSet;
           prepQuestionsRef.current = cq;
-          const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase);
-          if (prepPads.length > 0) {
-            setStickyPads(prepPads);
+
+          // "Peeling the Onion": load sub-pads for the first main question
+          const wp = dialoguePhaseToWorkshopPhase(dialoguePhase);
+          const phaseQuestions = wp && cq.phases?.[wp]?.questions
+            ? [...cq.phases[wp].questions].sort((a, b) => a.order - b.order)
+            : [];
+
+          if (phaseQuestions.length > 0) {
+            // Load sub-pads for first main question (index 0)
+            const subPads = loadPrepSubPads(phaseQuestions[0], 0);
+            if (subPads.length > 0) {
+              setStickyPads(subPads);
+            } else {
+              // No sub-pads generated — fall back to old model
+              const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase);
+              if (prepPads.length > 0) setStickyPads(prepPads);
+            }
+          } else {
+            const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase);
+            if (prepPads.length > 0) setStickyPads(prepPads);
           }
         }
       })
