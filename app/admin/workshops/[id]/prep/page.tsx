@@ -16,6 +16,8 @@ import {
   Brain,
   Loader2,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   AgentOrchestrationPanel,
@@ -103,6 +105,21 @@ export default function PrepPage({ params }: PageProps) {
   };
   const [researchData, setResearchData] = useState<ResearchOutput | null>(null);
   const [questionsData, setQuestionsData] = useState<Record<string, unknown> | null>(null);
+  type BriefingOutput = {
+    briefingSummary?: string;
+    discoveryThemes?: Array<{ title: string; domain?: string; frequency?: number; sentiment?: string; keyQuotes?: string[] }>;
+    consensusAreas?: string[];
+    divergenceAreas?: Array<{ topic: string; perspectives?: string[] }>;
+    painPoints?: Array<{ description: string; domain?: string; frequency?: number; severity?: string }>;
+    aspirations?: string[];
+    watchPoints?: string[];
+  };
+  const [briefingData, setBriefingData] = useState<BriefingOutput | null>(null);
+
+  // Collapsible output cards
+  const [researchCollapsed, setResearchCollapsed] = useState(false);
+  const [questionsCollapsed, setQuestionsCollapsed] = useState(false);
+  const [briefingCollapsed, setBriefingCollapsed] = useState(false);
 
   // Auto-run research on first load when client details exist but research hasn't been done
   const autoRunTriggered = useRef(false);
@@ -126,6 +143,7 @@ export default function PrepPage({ params }: PageProps) {
           setQuestionsComplete(!!w.customQuestions);
           setQuestionsData(w.customQuestions as Record<string, unknown> | null);
           setBriefingComplete(!!w.discoveryBriefing);
+          setBriefingData(w.discoveryBriefing as BriefingOutput | null);
         }
       } catch {
         // fail silently
@@ -391,6 +409,9 @@ export default function PrepPage({ params }: PageProps) {
                 setAgentConversation((prev) => [...prev, data as AgentConversationEntry]);
               } else if (eventType === 'briefing.complete') {
                 setBriefingComplete(true);
+                if (data && typeof data === 'object' && 'intelligence' in data) {
+                  setBriefingData(data.intelligence as BriefingOutput);
+                }
               }
             } catch { /* ignore parse errors */ }
             eventType = '';
@@ -634,11 +655,19 @@ export default function PrepPage({ params }: PageProps) {
 
           {/* ── Research Output ─────────────────────────── */}
           {researchData && (
-            <div className="rounded-xl border bg-card p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <Search className="h-4 w-4 text-cyan-600" />
-                <h2 className="text-sm font-semibold">Research Output</h2>
-              </div>
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <button
+                onClick={() => setResearchCollapsed(!researchCollapsed)}
+                className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4 text-cyan-600" />
+                  <h2 className="text-sm font-semibold">Research Output</h2>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                </div>
+                {researchCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {!researchCollapsed && <div className="px-6 pb-6 space-y-4">
 
               {researchData.companyOverview ? (
                 <div>
@@ -695,16 +724,25 @@ export default function PrepPage({ params }: PageProps) {
                   <p className="text-sm leading-relaxed whitespace-pre-line">{researchData.domainInsights}</p>
                 </div>
               ) : null}
+              </div>}
             </div>
           )}
 
           {/* ── Questions Output ────────────────────────── */}
           {questionsData && (
-            <div className="rounded-xl border bg-card p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <FileQuestion className="h-4 w-4 text-indigo-600" />
-                <h2 className="text-sm font-semibold">Tailored Question Set</h2>
-              </div>
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <button
+                onClick={() => setQuestionsCollapsed(!questionsCollapsed)}
+                className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <FileQuestion className="h-4 w-4 text-indigo-600" />
+                  <h2 className="text-sm font-semibold">Tailored Question Set</h2>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                </div>
+                {questionsCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {!questionsCollapsed && <div className="px-6 pb-6 space-y-4">
 
               {/* Render question phases */}
               {Object.entries(questionsData).map(([phaseKey, phaseData]) => {
@@ -751,6 +789,143 @@ export default function PrepPage({ params }: PageProps) {
                   ))}
                 </ol>
               )}
+              </div>}
+            </div>
+          )}
+
+          {/* ── Briefing Output ─────────────────────────── */}
+          {briefingData && (
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <button
+                onClick={() => setBriefingCollapsed(!briefingCollapsed)}
+                className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-amber-600" />
+                  <h2 className="text-sm font-semibold">Discovery Briefing</h2>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                </div>
+                {briefingCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {!briefingCollapsed && <div className="px-6 pb-6 space-y-4">
+
+              {briefingData.briefingSummary ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Summary</h3>
+                  <p className="text-sm leading-relaxed whitespace-pre-line">{briefingData.briefingSummary}</p>
+                </div>
+              ) : null}
+
+              {briefingData.discoveryThemes && briefingData.discoveryThemes.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Key Themes ({briefingData.discoveryThemes.length})</h3>
+                  <ul className="space-y-2">
+                    {briefingData.discoveryThemes.map((t, i) => (
+                      <li key={i} className="text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="text-purple-500 flex-shrink-0">•</span>
+                          <span className="font-medium">{t.title}</span>
+                          {t.domain ? <span className="text-xs bg-muted px-1.5 py-0.5 rounded">{t.domain}</span> : null}
+                          {t.sentiment ? <span className={`text-xs ${t.sentiment === 'positive' ? 'text-green-600' : t.sentiment === 'negative' ? 'text-red-600' : 'text-amber-600'}`}>{t.sentiment}</span> : null}
+                          {t.frequency ? <span className="text-xs text-muted-foreground">({t.frequency} mentions)</span> : null}
+                        </div>
+                        {t.keyQuotes && t.keyQuotes.length > 0 ? (
+                          <div className="ml-5 mt-1 space-y-0.5">
+                            {t.keyQuotes.map((q, qi) => (
+                              <p key={qi} className="text-xs text-muted-foreground italic">&ldquo;{q}&rdquo;</p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.painPoints && briefingData.painPoints.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Pain Points ({briefingData.painPoints.length})</h3>
+                  <ul className="space-y-1">
+                    {briefingData.painPoints.map((p, i) => (
+                      <li key={i} className="text-sm flex gap-2">
+                        <span className="text-red-500 flex-shrink-0">•</span>
+                        <span>
+                          {p.description}
+                          {p.domain ? <span className="text-xs bg-muted px-1.5 py-0.5 rounded ml-1">{p.domain}</span> : null}
+                          {p.severity ? <span className={`text-xs ml-1 ${p.severity === 'critical' ? 'text-red-600 font-medium' : p.severity === 'significant' ? 'text-amber-600' : 'text-muted-foreground'}`}>{p.severity}</span> : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.consensusAreas && briefingData.consensusAreas.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Consensus Areas</h3>
+                  <ul className="space-y-1">
+                    {briefingData.consensusAreas.map((c, i) => (
+                      <li key={i} className="text-sm flex gap-2">
+                        <span className="text-green-500 flex-shrink-0">•</span>
+                        <span>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.divergenceAreas && briefingData.divergenceAreas.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Divergence Areas</h3>
+                  <ul className="space-y-2">
+                    {briefingData.divergenceAreas.map((d, i) => (
+                      <li key={i} className="text-sm">
+                        <div className="flex gap-2">
+                          <span className="text-amber-500 flex-shrink-0">•</span>
+                          <span className="font-medium">{d.topic}</span>
+                        </div>
+                        {d.perspectives && d.perspectives.length > 0 ? (
+                          <div className="ml-5 mt-1 space-y-0.5">
+                            {d.perspectives.map((p, pi) => (
+                              <p key={pi} className="text-xs text-muted-foreground">– {p}</p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.aspirations && briefingData.aspirations.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Aspirations</h3>
+                  <ul className="space-y-1">
+                    {briefingData.aspirations.map((a, i) => (
+                      <li key={i} className="text-sm flex gap-2">
+                        <span className="text-blue-500 flex-shrink-0">•</span>
+                        <span>{a}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {briefingData.watchPoints && briefingData.watchPoints.length > 0 ? (
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Watch Points</h3>
+                  <ul className="space-y-1">
+                    {briefingData.watchPoints.map((w, i) => (
+                      <li key={i} className="text-sm flex gap-2">
+                        <span className="text-orange-500 flex-shrink-0">⚠</span>
+                        <span>{w}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              </div>}
             </div>
           )}
 

@@ -367,11 +367,22 @@ export async function runQuestionSetAgent(
           const modifiedCount = Number(fnArgs.modifiedCount || 0);
           const totalCount = Number(fnArgs.totalCount || 0);
 
+          // Build full question listing grouped by phase
+          const phaseLines: string[] = [];
+          for (const [phase, questions] of tailoredPhases.entries()) {
+            const modified = questions.filter((q) => q.isModified);
+            if (modified.length === 0) continue;
+            phaseLines.push(`\n**${phase.charAt(0).toUpperCase() + phase.slice(1)} Phase** (${modified.length} modified)`);
+            for (const q of modified) {
+              phaseLines.push(`  • "${q.text}"${q.tailoringNote ? `\n    _${q.tailoringNote}_` : ''}`);
+            }
+          }
+
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'question-set-agent',
             to: 'prep-orchestrator',
-            message: `I've completed the tailored question set. ${modifiedCount} questions modified out of ${totalCount} total. ${String(fnArgs.tailoringSummary || '')}`,
+            message: `I've completed the tailored question set. **${modifiedCount} questions modified** out of ${totalCount} total.\n\n**Tailoring Summary**\n${String(fnArgs.tailoringSummary || '')}${phaseLines.length > 0 ? '\n\n**Modified Questions by Phase**' + phaseLines.join('\n') : ''}`,
             type: 'proposal',
             metadata: {
               toolsUsed: ['get_base_questions', 'get_research_context', 'tailor_phase_questions'],
@@ -386,8 +397,24 @@ export async function runQuestionSetAgent(
         } else {
           const toolResult = executeQuestionSetTool(fnName, fnArgs, research, tailoredPhases);
 
-          // Only emit tailor_phase_questions as conversation (skip internal reads)
+          // Emit tailor_phase_questions with full detail, and info reads
           if (fnName === 'tailor_phase_questions') {
+            const phase = String(fnArgs.phase || '');
+            const phaseQuestions = tailoredPhases.get(phase) || [];
+            const modified = phaseQuestions.filter((q) => q.isModified);
+            const modifiedList = modified.length > 0
+              ? modified.map((q) => `  • "${q.text}"${q.tailoringNote ? `\n    _${q.tailoringNote}_` : ''}`).join('\n')
+              : '  (no modifications)';
+
+            onConversation?.({
+              timestampMs: Date.now(),
+              agent: 'question-set-agent',
+              to: 'prep-orchestrator',
+              message: `**Tailored ${phase} phase:** ${modified.length}/${phaseQuestions.length} questions modified\n${modifiedList}`,
+              type: 'request',
+              metadata: { toolsUsed: [fnName] },
+            });
+          } else if (fnName === 'get_base_questions' || fnName === 'get_research_context') {
             onConversation?.({
               timestampMs: Date.now(),
               agent: 'question-set-agent',

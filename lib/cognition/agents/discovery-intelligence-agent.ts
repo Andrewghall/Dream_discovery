@@ -397,14 +397,37 @@ export async function runDiscoveryIntelligenceAgent(
         if (fnName === 'commit_briefing') {
           committed = true;
 
-          const themes = Array.isArray(fnArgs.discoveryThemes) ? fnArgs.discoveryThemes.length : 0;
-          const pains = Array.isArray(fnArgs.painPoints) ? fnArgs.painPoints.length : 0;
+          // Build full synthesis output — no truncation
+          const themesArr = Array.isArray(fnArgs.discoveryThemes) ? fnArgs.discoveryThemes as Array<Record<string, unknown>> : [];
+          const painsArr = Array.isArray(fnArgs.painPoints) ? fnArgs.painPoints as Array<Record<string, unknown>> : [];
+          const consensus = Array.isArray(fnArgs.consensusAreas) ? fnArgs.consensusAreas.map(String) : [];
+          const divergence = Array.isArray(fnArgs.divergenceAreas) ? fnArgs.divergenceAreas as Array<Record<string, unknown>> : [];
+          const aspirations = Array.isArray(fnArgs.aspirations) ? fnArgs.aspirations.map(String) : [];
+          const watchPoints = Array.isArray(fnArgs.watchPoints) ? fnArgs.watchPoints.map(String) : [];
+
+          const themesText = themesArr.length > 0
+            ? themesArr.map((t) => {
+                const quotes = Array.isArray(t.keyQuotes) ? t.keyQuotes.map((q: unknown) => `    _"${String(q)}"_`).join('\n') : '';
+                return `  • **${t.title}** (${t.domain || 'General'}, ${t.sentiment}, mentioned by ${t.frequency})${quotes ? '\n' + quotes : ''}`;
+              }).join('\n')
+            : '  (none identified)';
+
+          const painsText = painsArr.length > 0
+            ? painsArr.map((p) => `  • **${p.description}** — ${p.domain}, ${p.severity} severity (${p.frequency} mentions)`).join('\n')
+            : '  (none identified)';
+
+          const consensusText = consensus.length > 0 ? consensus.map((c) => `  • ${c}`).join('\n') : '  (none identified)';
+          const divergenceText = divergence.length > 0
+            ? divergence.map((d) => `  • **${d.topic}**\n${Array.isArray(d.perspectives) ? d.perspectives.map((p: unknown) => `    – ${String(p)}`).join('\n') : ''}`).join('\n')
+            : '  (none identified)';
+          const aspirationsText = aspirations.length > 0 ? aspirations.map((a) => `  • ${a}`).join('\n') : '  (none identified)';
+          const watchText = watchPoints.length > 0 ? watchPoints.map((w) => `  • ${w}`).join('\n') : '  (none identified)';
 
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'discovery-intelligence-agent',
             to: 'prep-orchestrator',
-            message: `I've completed the synthesis. Identified ${themes} key themes, ${pains} pain points, and compiled consensus/divergence areas. The workshop briefing is ready.`,
+            message: `I've completed the Discovery synthesis. Here are my full findings:\n\n**Briefing Summary**\n${String(fnArgs.briefingSummary || '')}\n\n**Key Themes** (${themesArr.length})\n${themesText}\n\n**Pain Points** (${painsArr.length})\n${painsText}\n\n**Consensus Areas**\n${consensusText}\n\n**Divergence Areas**\n${divergenceText}\n\n**Aspirations**\n${aspirationsText}\n\n**Watch Points**\n${watchText}`,
             type: 'proposal',
             metadata: {
               toolsUsed: ['get_participant_responses', 'get_spider_scores', 'get_research_context'],
