@@ -556,6 +556,11 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                   Spider
                 </Button>
               </Link>
+              <Link href={`/admin/workshops/${id}/discovery`}>
+                <Button variant="outline" size="lg">
+                  Discovery
+                </Button>
+              </Link>
               <Link href={`/admin/workshops/${id}/scratchpad`}>
                 <Button variant="outline" size="lg">
                   Scratchpad

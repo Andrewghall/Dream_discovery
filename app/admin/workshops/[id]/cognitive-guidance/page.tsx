@@ -278,8 +278,10 @@ function getSeedPadsForPhase(phase: DialoguePhase): StickyPad[] {
 }
 
 // ══════════════════════════════════════════════════════════
-// DEMO DATA — Hemisphere nodes + Actor Journeys
+// DEMO DATA — Only used for the retail reference workshop
 // ══════════════════════════════════════════════════════════
+
+const RETAIL_WORKSHOP_ID = 'retail-cx-workshop';
 
 const DEMO_HEMISPHERE_NODES: HemisphereNodeDatum[] = (() => {
   const now = Date.now();
@@ -397,18 +399,7 @@ function getDemoLiveJourney(): LiveJourneyData {
 }
 
 
-// ══════════════════════════════════════════════════════════
-// SYNTHESIS DATA TYPES
-// ══════════════════════════════════════════════════════════
-
-type SpiderAxisStat = {
-  axisId: string;
-  label: string;
-  today: { median: number | null };
-  target: { median: number | null };
-};
-
-type WordCloudItem = { text: string; value: number };
+// (Synthesis data types moved to Discovery tab)
 
 // ══════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -416,14 +407,17 @@ type WordCloudItem = { text: string; value: number };
 
 export default function CognitiveGuidancePage({ params }: PageProps) {
   const { id: workshopId } = use(params);
+  const isRetailDemo = workshopId === RETAIL_WORKSHOP_ID;
 
   // ── Core state ─────────────────────────────────────────
   const [cogNodes, setCogNodes] = useState<Map<string, CogNode>>(new Map());
   const [hemisphereNodes, setHemisphereNodes] = useState<Record<string, HemisphereNodeDatum>>({});
-  const [stickyPads, setStickyPads] = useState<StickyPad[]>(() => getSeedPadsForPhase('SYNTHESIS'));
+  const [stickyPads, setStickyPads] = useState<StickyPad[]>(() => getSeedPadsForPhase('REIMAGINE'));
   const [signals, setSignals] = useState<Signal[]>([]);
   const [lensCoverage, setLensCoverage] = useState<Map<Lens, LensCoverage>>(new Map());
-  const [liveJourney, setLiveJourney] = useState<LiveJourneyData>(getDemoLiveJourney);
+  const [liveJourney, setLiveJourney] = useState<LiveJourneyData>(() =>
+    isRetailDemo ? getDemoLiveJourney() : { stages: DEFAULT_JOURNEY_STAGES.REIMAGINE, actors: [], interactions: [] }
+  );
   const [sessionConfidence, setSessionConfidence] = useState<SessionConfidence>({
     overallConfidence: 0,
     categorisedRate: 0,
@@ -440,15 +434,11 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── UI state ───────────────────────────────────────────
   const [selectedPadId, setSelectedPadId] = useState<string | null>(null);
   const [journeyExpanded, setJourneyExpanded] = useState(true);
-  const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('SYNTHESIS');
+  const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
   const [expandedNode, setExpandedNode] = useState<HemisphereNodeDatum | null>(null);
   const [hemisphereExpanded, setHemisphereExpanded] = useState(false);
 
-  // ── Synthesis data (Phase 1) ───────────────────────────
-  const [spiderData, setSpiderData] = useState<SpiderAxisStat[] | null>(null);
-  const [wordCloudData, setWordCloudData] = useState<WordCloudItem[] | null>(null);
-  const [synthesisLoading, setSynthesisLoading] = useState(false);
-  const [participantCount, setParticipantCount] = useState(0);
+  // (Synthesis data moved to Discovery tab)
 
   // ── Belief tracking for Stage 3 ────────────────────────
   const contradictionsRef = useRef<Array<{ id: string; beliefA: string; beliefB: string; resolved: boolean }>>([]);
@@ -476,39 +466,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     }
   }, [listening]);
 
-  // ── Fetch synthesis data on mount ──────────────────────
-  useEffect(() => {
-    async function fetchSynthesisData() {
-      setSynthesisLoading(true);
-      try {
-        const [spiderRes, keywordsRes] = await Promise.all([
-          fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/spider?bust=${Date.now()}`, { cache: 'no-store' }),
-          fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/keywords?bust=${Date.now()}`, { cache: 'no-store' }),
-        ]);
-
-        if (spiderRes.ok) {
-          const data = await spiderRes.json();
-          setSpiderData(data.axisStats || null);
-          setParticipantCount(data.participantCount || 0);
-        }
-
-        if (keywordsRes.ok) {
-          const data = await keywordsRes.json();
-          if (Array.isArray(data.keywords)) {
-            setWordCloudData(data.keywords.slice(0, 60).map((k: { term: string; count: number }) => ({
-              text: k.term, value: k.count,
-            })));
-          }
-        }
-      } catch {
-        // Synthesis data is optional — fail silently
-      } finally {
-        setSynthesisLoading(false);
-      }
-    }
-
-    fetchSynthesisData();
-  }, [workshopId]);
+  // (Synthesis data fetching moved to Discovery tab)
 
   // ── Buffered pipeline (Stages 3-5) ────────────────────
   const runBufferedPipeline = useCallback((nodes: CogNode[], nowMs: number) => {
@@ -755,11 +713,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     };
   }, []);
 
-  // Use demo nodes when not listening, real nodes when live
+  // Use demo nodes only for retail workshop; otherwise real nodes or empty
   const hemisphereNodeArray = useMemo(() => {
     const realNodes = Object.values(hemisphereNodes);
-    return realNodes.length > 0 ? realNodes : DEMO_HEMISPHERE_NODES;
-  }, [hemisphereNodes]);
+    if (realNodes.length > 0) return realNodes;
+    return isRetailDemo ? DEMO_HEMISPHERE_NODES : [];
+  }, [hemisphereNodes, isRetailDemo]);
 
   // ── Sticky pad actions ─────────────────────────────────
   const handleDismissPad = useCallback((id: string) => {
@@ -774,23 +733,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     ));
   }, []);
 
-  // ── Synthesis spider chart data transform ──────────────
-  const radarChartData = useMemo(() => {
-    if (!spiderData) return null;
-    return spiderData
-      .filter(a => a.today.median !== null)
-      .slice(0, 10)
-      .map(a => ({ label: a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label, value: a.today.median ?? 0 }));
-  }, [spiderData]);
-
-  const radarTargetSeries = useMemo(() => {
-    if (!spiderData) return undefined;
-    const targetData = spiderData
-      .filter(a => a.target.median !== null)
-      .slice(0, 10)
-      .map(a => ({ label: a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label, value: a.target.median ?? 0 }));
-    return targetData.length > 0 ? [{ name: 'Target', data: targetData }] : undefined;
-  }, [spiderData]);
+  // (Radar chart / word cloud data transforms moved to Discovery tab)
 
   // ══════════════════════════════════════════════════════════
   // RENDER
@@ -816,33 +759,29 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {dialoguePhase !== 'SYNTHESIS' && (
-              <>
-                {!listening ? (
-                  <Button onClick={startListening} size="sm">
-                    <Radio className="h-4 w-4 mr-2" />
-                    Start Listening
-                  </Button>
-                ) : (
-                  <Button onClick={stopListening} variant="destructive" size="sm">
-                    <Square className="h-4 w-4 mr-2" />
-                    Stop
-                  </Button>
-                )}
-                {listening && (
-                  <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Live
-                  </span>
-                )}
-              </>
+            {!listening ? (
+              <Button onClick={startListening} size="sm">
+                <Radio className="h-4 w-4 mr-2" />
+                Start Listening
+              </Button>
+            ) : (
+              <Button onClick={stopListening} variant="destructive" size="sm">
+                <Square className="h-4 w-4 mr-2" />
+                Stop
+              </Button>
+            )}
+            {listening && (
+              <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live
+              </span>
             )}
           </div>
         </div>
 
-        {/* Phase Selector — 4 phases */}
+        {/* Phase Selector — 3 workshop phases (Discovery is its own tab) */}
         <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-lg w-fit mb-4">
-          {ALL_PHASES.map((phase) => (
+          {(['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as DialoguePhase[]).map((phase) => (
             <button
               key={phase}
               onClick={() => handlePhaseChange(phase)}
@@ -857,57 +796,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           ))}
         </div>
 
-        {/* Synthesis phase: Spider + Word Cloud above the cards */}
-        {dialoguePhase === 'SYNTHESIS' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-            {/* Spider Diagram */}
-            <div className="rounded-lg border bg-card p-4">
-              <h3 className="text-sm font-semibold mb-3">Domain Assessment</h3>
-              {synthesisLoading ? (
-                <div className="flex items-center justify-center h-[280px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-                </div>
-              ) : radarChartData && radarChartData.length > 0 ? (
-                <div className="flex justify-center">
-                  <SynthesisRadarChart data={radarChartData} series={radarTargetSeries} />
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground">
-                  No spider data yet — complete participant interviews
-                </div>
-              )}
-              {participantCount > 0 && (
-                <p className="text-xs text-muted-foreground text-center mt-2">
-                  Based on {participantCount} participant interview{participantCount !== 1 ? 's' : ''}
-                </p>
-              )}
-            </div>
-
-            {/* Word Cloud */}
-            <div className="rounded-lg border bg-card p-4">
-              <h3 className="text-sm font-semibold mb-3">Key Themes</h3>
-              {synthesisLoading ? (
-                <div className="flex items-center justify-center h-[280px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-                </div>
-              ) : wordCloudData && wordCloudData.length > 0 ? (
-                <SynthesisWordCloud words={wordCloudData} />
-              ) : (
-                <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground">
-                  No keyword data yet — complete participant interviews
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Lens Coverage Bar + Gap Indicators (for live phases) */}
-        {dialoguePhase !== 'SYNTHESIS' && (
-          <>
-            <LensCoverageBar coverage={lensCoverage} />
-            <GapIndicatorStrip signals={signals} />
-          </>
-        )}
+        {/* Lens Coverage Bar + Gap Indicators */}
+        <LensCoverageBar coverage={lensCoverage} />
+        <GapIndicatorStrip signals={signals} />
 
         {/* ═══ PRIMARY CANVAS — Sticky Pads own the screen ═══ */}
         <div className="mt-4">
@@ -1192,33 +1083,4 @@ function formatTimeMs(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-// ══════════════════════════════════════════════════════════
-// INLINE SYNTHESIS COMPONENTS (lightweight wrappers)
-// ══════════════════════════════════════════════════════════
-
-function SynthesisRadarChart({ data, series }: { data: Array<{ label: string; value: number }>; series?: Array<{ name: string; data: Array<{ label: string; value: number }> }> }) {
-  // Lazy import the RadarChart to avoid SSR issues
-  const [RadarChart, setRadarChart] = useState<React.ComponentType<{ data: Array<{ label: string; value: number }>; series?: Array<{ name: string; data: Array<{ label: string; value: number }> }>; size?: number; max?: number }> | null>(null);
-
-  useEffect(() => {
-    import('@/components/report/radar-chart').then(mod => {
-      setRadarChart(() => mod.RadarChart);
-    });
-  }, []);
-
-  if (!RadarChart) return <div className="h-[280px] flex items-center justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>;
-  return <RadarChart data={data} series={series} size={280} max={10} />;
-}
-
-function SynthesisWordCloud({ words }: { words: Array<{ text: string; value: number }> }) {
-  const [WordCloud, setWordCloud] = useState<React.ComponentType<{ words: Array<{ text: string; value: number }>; className?: string }> | null>(null);
-
-  useEffect(() => {
-    import('@/components/report/word-cloud').then(mod => {
-      setWordCloud(() => mod.WordCloud);
-    });
-  }, []);
-
-  if (!WordCloud) return <div className="h-[280px] flex items-center justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>;
-  return <WordCloud words={words} className="h-[280px]" />;
-}
+// (Synthesis components moved to Discovery tab)
