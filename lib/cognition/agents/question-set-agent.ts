@@ -134,13 +134,20 @@ function executeQuestionSetTool(
   switch (toolName) {
     case 'get_base_questions': {
       // Return the base questions in a structured format
-      const summary: Record<string, { count: number; tags: string[] }> = {};
-      for (const [phase, questions] of Object.entries(FIXED_QUESTIONS)) {
-        summary[phase] = {
-          count: questions.length,
-          tags: questions.map((q: FixedQuestion) => q.tag),
-        };
-      }
+      const totalQuestions = Object.values(FIXED_QUESTIONS).reduce(
+        (sum, qs) => sum + (qs as FixedQuestion[]).length,
+        0,
+      );
+
+      // Build full question listing for the conversation
+      const phaseListings = Object.entries(FIXED_QUESTIONS).map(([phase, questions]) => {
+        const qs = (questions as FixedQuestion[]);
+        const qLines = qs.map((q, i) => {
+          const tag = q.tag === 'triple_rating' ? ' 🔒 _[triple_rating — do not modify]_' : ` [${q.tag}]`;
+          return `  ${i + 1}. "${q.text}"${tag}`;
+        }).join('\n');
+        return `\n**${phase.charAt(0).toUpperCase() + phase.slice(1)} Phase** (${qs.length} questions)\n${qLines}`;
+      }).join('\n');
 
       return {
         result: JSON.stringify({
@@ -153,12 +160,9 @@ function executeQuestionSetTool(
               isTripleRating: q.tag === 'triple_rating',
             })),
           })),
-          totalQuestions: Object.values(FIXED_QUESTIONS).reduce(
-            (sum, qs) => sum + (qs as FixedQuestion[]).length,
-            0,
-          ),
+          totalQuestions,
         }),
-        summary: `Retrieved base question set: ${Object.keys(summary).length} phases, ${Object.values(summary).reduce((s, v) => s + v.count, 0)} total questions`,
+        summary: `**Retrieved base question set:** ${Object.keys(FIXED_QUESTIONS).length} phases, ${totalQuestions} total questions${phaseListings}`,
       };
     }
 
@@ -166,9 +170,16 @@ function executeQuestionSetTool(
       if (!research) {
         return {
           result: JSON.stringify({ error: 'No research available. Questions will be generic.' }),
-          summary: 'No research context available — will use generic questions.',
+          summary: '**Research context:** Not available — will use generic questions.',
         };
       }
+
+      const challengesList = research.keyPublicChallenges.length > 0
+        ? research.keyPublicChallenges.map((c) => `  • ${c}`).join('\n')
+        : '  (none)';
+      const devsList = research.recentDevelopments.length > 0
+        ? research.recentDevelopments.map((d) => `  • ${d}`).join('\n')
+        : '  (none)';
 
       return {
         result: JSON.stringify({
@@ -179,7 +190,7 @@ function executeQuestionSetTool(
           competitorLandscape: research.competitorLandscape,
           domainInsights: research.domainInsights,
         }),
-        summary: `Retrieved research context: ${research.keyPublicChallenges.length} challenges, ${research.recentDevelopments.length} developments`,
+        summary: `**Retrieved research context for tailoring:**\n\n**Company:** ${research.companyOverview}\n\n**Industry:** ${research.industryContext}\n\n**Key Challenges**\n${challengesList}\n\n**Recent Developments**\n${devsList}${research.domainInsights ? `\n\n**Domain Insights:** ${research.domainInsights}` : ''}`,
       };
     }
 
