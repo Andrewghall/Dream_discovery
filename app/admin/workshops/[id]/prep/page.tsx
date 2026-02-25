@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,6 +90,9 @@ export default function PrepPage({ params }: PageProps) {
   // Agent conversation
   const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
   const [conversationCollapsed, setConversationCollapsed] = useState(false);
+
+  // Auto-run research on first load when client details exist but research hasn't been done
+  const autoRunTriggered = useRef(false);
 
   // ── Fetch workshop data ───────────────────────────
   useEffect(() => {
@@ -231,6 +234,22 @@ export default function PrepPage({ params }: PageProps) {
       setResearchRunning(false);
     }
   }, [workshopId, clientName, industry, companyWebsite, dreamTrack, targetDomain]);
+
+  // ── Auto-start Research Agent if client details exist but research hasn't run ──
+  useEffect(() => {
+    if (
+      !autoRunTriggered.current &&
+      !loading &&
+      workshop &&
+      workshop.clientName &&
+      !workshop.prepResearch &&
+      !researchRunning &&
+      !researchComplete
+    ) {
+      autoRunTriggered.current = true;
+      runResearch();
+    }
+  }, [loading, workshop, researchRunning, researchComplete, runResearch]);
 
   // ── Trigger Question Set Agent via SSE ────────────
   const runQuestions = useCallback(async () => {

@@ -71,6 +71,9 @@ export default function NewWorkshopPage() {
         const data = await response.json();
         if (formData.workshopType === 'SALES') {
           router.push(`/sales/${data.workshop.id}/plan`);
+        } else if (isDream && formData.clientName) {
+          // DREAM workshop with client details → go straight to prep page
+          router.push(`/admin/workshops/${data.workshop.id}/prep`);
         } else {
           router.push(`/admin/workshops/${data.workshop.id}`);
         }
