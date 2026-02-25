@@ -29,23 +29,50 @@ export type WorkshopPrepResearch = {
 };
 
 // ══════════════════════════════════════════════════════════
-// TAILORED QUESTION SET — Output of Question Set Agent
+// WORKSHOP FACILITATION QUESTIONS — Output of Question Set Agent
 // ══════════════════════════════════════════════════════════
 
-export type TailoredQuestion = {
-  phase: string;
-  text: string;
-  tag: string;
-  maturityScale?: string[];
-  tailoringNote?: string;
-  isModified: boolean;
+export type WorkshopPhase = 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
+
+export const WORKSHOP_PHASES: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
+
+export const WORKSHOP_PHASE_LABELS: Record<WorkshopPhase, string> = {
+  REIMAGINE: 'Reimagine',
+  CONSTRAINTS: 'Constraints',
+  DEFINE_APPROACH: 'Define Approach',
 };
 
-export type TailoredQuestionSet = {
-  questions: Record<string, TailoredQuestion[]>;
-  tailoringSummary: string;
+export const WORKSHOP_PHASE_DESCRIPTIONS: Record<WorkshopPhase, string> = {
+  REIMAGINE: 'Pure vision without constraints. Get participants to dream big about the ideal future state. Focus on People → Customer → Organisation only. No technology, no regulation — just the art of the possible.',
+  CONSTRAINTS: 'Map limitations systematically, working right-to-left: Regulation → Customer → Technology → Organisation → People. Identify what stands in the way of the reimagined vision.',
+  DEFINE_APPROACH: 'Build the practical solution left-to-right: People → Organisation → Technology → Customer → Regulation. Design the approach that bridges today to the reimagined future while respecting constraints.',
+};
+
+export type FacilitationQuestion = {
+  id: string;
+  phase: WorkshopPhase;
+  lens: LensName | 'General' | null;
+  text: string;
+  purpose: string;            // Why this question matters — what it aims to surface
+  grounding: string;          // How this connects to research/Discovery data
+  order: number;
+  isEdited: boolean;          // Has the facilitator edited this?
+};
+
+export type WorkshopQuestionSet = {
+  phases: Record<WorkshopPhase, {
+    label: string;
+    description: string;
+    lensOrder: string[];
+    questions: FacilitationQuestion[];
+  }>;
+  designRationale: string;    // Agent's explanation of the overall question strategy
   generatedAtMs: number;
 };
+
+// Legacy alias for backward compatibility with existing stored data
+export type TailoredQuestion = FacilitationQuestion;
+export type TailoredQuestionSet = WorkshopQuestionSet;
 
 // ══════════════════════════════════════════════════════════
 // WORKSHOP INTELLIGENCE — Output of Discovery Intelligence Agent

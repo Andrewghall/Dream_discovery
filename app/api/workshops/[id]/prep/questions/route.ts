@@ -1,9 +1,12 @@
 /**
  * /api/workshops/[id]/prep/questions
  *
- * POST  — Triggers the Question Set Agent to generate tailored questions (SSE)
+ * POST  — Triggers the Question Set Agent to generate workshop facilitation questions (SSE)
  * GET   — Returns current custom question set
  * PUT   — Facilitator edits/saves the question set
+ *
+ * NOTE: These are WORKSHOP FACILITATION questions for REIMAGINE / CONSTRAINTS / DEFINE APPROACH,
+ * NOT Discovery interview questions. Discovery has already been completed.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -36,6 +39,7 @@ async function loadWorkshopPrep(workshopId: string) {
       targetDomain: true,
       prepResearch: true,
       customQuestions: true,
+      discoveryBriefing: true,
     },
   });
 
@@ -71,6 +75,7 @@ export async function POST(
   };
 
   const research = workshop.prepResearch as unknown as WorkshopPrepResearch | null;
+  const discoveryBriefing = workshop.discoveryBriefing as Record<string, unknown> | null;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -87,14 +92,14 @@ export async function POST(
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'question-set-agent',
-        message: `Thank you, Research Agent. Now, Question Set Agent — could you take the research context and generate a tailored Discovery question set for ${context.clientName || 'this client'}? ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}.` : 'This is an Enterprise-wide assessment.'}`,
+        message: `Thank you, Research Agent. Now, Question Set Agent — using the research context${discoveryBriefing ? ' and Discovery interview insights' : ''}, could you design a set of workshop facilitation questions for ${context.clientName || 'this client'}? These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}.` : 'This is an Enterprise-wide assessment.'} Remember — Discovery interviews are done. These questions are for the live workshop session.`,
         type: 'handoff',
       } satisfies AgentConversationEntry);
 
       try {
         const questionSet = await runQuestionSetAgent(context, research, (entry) => {
           sendEvent('agent.conversation', entry);
-        });
+        }, discoveryBriefing);
 
         // Store in workshop
         await prisma.workshop.update({
@@ -102,12 +107,17 @@ export async function POST(
           data: { customQuestions: JSON.parse(JSON.stringify(questionSet)) },
         });
 
+        // Count total questions
+        const totalQuestions = Object.values(questionSet.phases).reduce(
+          (sum, p) => sum + p.questions.length, 0
+        );
+
         // Orchestrator acknowledgement
         sendEvent('agent.conversation', {
           timestampMs: Date.now(),
           agent: 'prep-orchestrator',
           to: 'question-set-agent',
-          message: `Excellent work. The tailored question set is now stored and ready for the facilitator to review and edit. ${questionSet.tailoringSummary}`,
+          message: `Excellent work. The workshop facilitation questions are now stored and ready for the facilitator to review and edit. ${totalQuestions} questions across 3 phases. ${questionSet.designRationale}`,
           type: 'acknowledgement',
         } satisfies AgentConversationEntry);
 

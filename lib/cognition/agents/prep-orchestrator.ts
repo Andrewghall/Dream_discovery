@@ -19,7 +19,7 @@ import type {
   PrepContext,
   AgentConversationCallback,
   WorkshopPrepResearch,
-  TailoredQuestionSet,
+  WorkshopQuestionSet,
 } from './agent-types';
 
 // ══════════════════════════════════════════════════════════════
@@ -28,7 +28,7 @@ import type {
 
 export type PrepOrchestrationResult = {
   research: WorkshopPrepResearch | null;
-  questionSet: TailoredQuestionSet | null;
+  questionSet: WorkshopQuestionSet | null;
   success: boolean;
   error?: string;
 };
@@ -42,7 +42,7 @@ export async function runPrepOrchestrator(
   onConversation?: AgentConversationCallback,
 ): Promise<PrepOrchestrationResult> {
   let research: WorkshopPrepResearch | null = null;
-  let questionSet: TailoredQuestionSet | null = null;
+  let questionSet: WorkshopQuestionSet | null = null;
 
   // ── Opening message ─────────────────────────────────
 
@@ -69,7 +69,7 @@ export async function runPrepOrchestrator(
       timestampMs: Date.now(),
       agent: 'prep-orchestrator',
       to: 'question-set-agent',
-      message: `Thank you, Research Agent. The findings have been stored — ${research.keyPublicChallenges.length} key challenges and ${research.recentDevelopments.length} recent developments identified. Now, Question Set Agent — could you take this research context and generate a tailored Discovery question set? ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}, so weight the questions accordingly.` : 'This is an Enterprise-wide assessment.'}`,
+      message: `Thank you, Research Agent. The findings have been stored — ${research.keyPublicChallenges.length} key challenges and ${research.recentDevelopments.length} recent developments identified. Now, Question Set Agent — using this research context, could you design a set of workshop facilitation questions for the live session? These questions will guide the facilitator through Reimagine, Constraints, and Define Approach. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}, so weight the questions accordingly.` : 'This is an Enterprise-wide assessment.'} Discovery interviews are done — build on what participants already told us.`,
       type: 'handoff',
     });
   } catch (error) {
@@ -80,7 +80,7 @@ export async function runPrepOrchestrator(
       timestampMs: Date.now(),
       agent: 'prep-orchestrator',
       to: 'question-set-agent',
-      message: `Unfortunately the Research Agent encountered an issue: ${msg}. Question Set Agent, please proceed with generic tailoring based on the industry and client name we have.`,
+      message: `Unfortunately the Research Agent encountered an issue: ${msg}. Question Set Agent, please proceed with designing workshop facilitation questions based on the industry and client name we have.`,
       type: 'handoff',
     });
   }
@@ -96,20 +96,17 @@ export async function runPrepOrchestrator(
       data: { customQuestions: JSON.parse(JSON.stringify(questionSet)) },
     });
 
-    const modifiedCount = Object.values(questionSet.questions).reduce(
-      (sum, qs) => sum + qs.filter((q) => q.isModified).length,
+    const totalCount = Object.values(questionSet.phases).reduce(
+      (sum, phase) => sum + phase.questions.length,
       0,
     );
-    const totalCount = Object.values(questionSet.questions).reduce(
-      (sum, qs) => sum + qs.length,
-      0,
-    );
+    const phaseCount = Object.keys(questionSet.phases).length;
 
     onConversation?.({
       timestampMs: Date.now(),
       agent: 'prep-orchestrator',
       to: '',
-      message: `Excellent work, team. The tailored question set is now available for the facilitator to review and edit. ${modifiedCount} out of ${totalCount} questions were tailored to the client context. I'll notify the facilitator that the prep is complete.`,
+      message: `Excellent work, team. The workshop facilitation questions are now available for the facilitator to review and edit. ${totalCount} questions across ${phaseCount} phases (Reimagine, Constraints, Define Approach). ${questionSet.designRationale}`,
       type: 'acknowledgement',
     });
   } catch (error) {

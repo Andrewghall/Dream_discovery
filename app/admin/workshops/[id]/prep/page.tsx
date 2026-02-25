@@ -18,6 +18,9 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Pencil,
+  Save,
+  X,
 } from 'lucide-react';
 import {
   AgentOrchestrationPanel,
@@ -41,6 +44,51 @@ type WorkshopPrep = {
   prepResearch: Record<string, unknown> | null;
   customQuestions: Record<string, unknown> | null;
   discoveryBriefing: Record<string, unknown> | null;
+};
+
+type FacilitationQuestion = {
+  id: string;
+  phase: string;
+  lens: string | null;
+  text: string;
+  purpose: string;
+  grounding: string;
+  order: number;
+  isEdited: boolean;
+};
+
+type PhaseData = {
+  label: string;
+  description: string;
+  lensOrder: string[];
+  questions: FacilitationQuestion[];
+};
+
+type WorkshopQuestionSetData = {
+  phases: Record<string, PhaseData>;
+  designRationale: string;
+  generatedAtMs: number;
+};
+
+const PHASE_ICONS: Record<string, string> = {
+  REIMAGINE: '\u2728',
+  CONSTRAINTS: '\u26a0\ufe0f',
+  DEFINE_APPROACH: '\ud83d\udee0\ufe0f',
+};
+
+const PHASE_COLORS: Record<string, string> = {
+  REIMAGINE: 'text-purple-500',
+  CONSTRAINTS: 'text-amber-500',
+  DEFINE_APPROACH: 'text-blue-500',
+};
+
+const LENS_COLORS: Record<string, string> = {
+  People: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+  Organisation: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  Customer: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+  Technology: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
+  Regulation: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  General: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
 };
 
 // ══════════════════════════════════════════════════════════
@@ -92,6 +140,10 @@ export default function PrepPage({ params }: PageProps) {
   // Agent conversation
   const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
   const [conversationCollapsed, setConversationCollapsed] = useState(false);
+
+  // Question editing state
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [editingQuestionText, setEditingQuestionText] = useState('');
 
   // Stored output data
   type ResearchOutput = {
@@ -436,6 +488,60 @@ export default function PrepPage({ params }: PageProps) {
     }
   }, [workshopId]);
 
+  // ── Question editing helpers ─────────────────────────────
+  const startEditQuestion = useCallback((questionId: string, currentText: string) => {
+    setEditingQuestionId(questionId);
+    setEditingQuestionText(currentText);
+  }, []);
+
+  const cancelEditQuestion = useCallback(() => {
+    setEditingQuestionId(null);
+    setEditingQuestionText('');
+  }, []);
+
+  const saveEditQuestion = useCallback(async () => {
+    if (!editingQuestionId || !questionsData) return;
+
+    // Deep clone and update the question text
+    const updated = JSON.parse(JSON.stringify(questionsData)) as WorkshopQuestionSetData;
+
+    for (const phase of Object.values(updated.phases)) {
+      for (const q of phase.questions) {
+        if (q.id === editingQuestionId) {
+          q.text = editingQuestionText;
+          q.isEdited = true;
+          break;
+        }
+      }
+    }
+
+    setQuestionsData(updated as unknown as Record<string, unknown>);
+    setEditingQuestionId(null);
+    setEditingQuestionText('');
+
+    // Save to server
+    try {
+      await fetch(`/api/workshops/${workshopId}/prep/questions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customQuestions: updated }),
+      });
+    } catch {
+      // fail silently
+    }
+  }, [editingQuestionId, editingQuestionText, questionsData, workshopId]);
+
+  // Parse questions data into typed structure
+  const parsedQuestions: WorkshopQuestionSetData | null = (() => {
+    if (!questionsData) return null;
+    // Check if it's the new format (has .phases)
+    const d = questionsData as Record<string, unknown>;
+    if (d.phases && typeof d.phases === 'object') {
+      return d as unknown as WorkshopQuestionSetData;
+    }
+    return null;
+  })();
+
   // ══════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════
@@ -462,7 +568,7 @@ export default function PrepPage({ params }: PageProps) {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Workshop Preparation</h1>
             <p className="text-sm text-muted-foreground">
-              {workshop?.name || 'Workshop'} — Configure client intelligence and tailor Discovery questions
+              {workshop?.name || 'Workshop'} — Research context, design workshop facilitation questions, and synthesize Discovery intelligence
             </p>
           </div>
         </div>
@@ -602,11 +708,11 @@ export default function PrepPage({ params }: PageProps) {
             <div className="rounded-xl border bg-card p-5">
               <div className="flex items-center gap-2 mb-3">
                 <FileQuestion className="h-4 w-4 text-indigo-600" />
-                <h3 className="text-sm font-semibold">Question Set Agent</h3>
+                <h3 className="text-sm font-semibold">Workshop Questions</h3>
                 {questionsComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                Tailors Discovery interview questions to the client context and DREAM track.
+                Designs facilitation questions for the live workshop: Reimagine, Constraints, and Define Approach.
               </p>
               <Button
                 onClick={runQuestions}
@@ -728,7 +834,7 @@ export default function PrepPage({ params }: PageProps) {
             </div>
           )}
 
-          {/* ── Questions Output ────────────────────────── */}
+          {/* ── Workshop Facilitation Questions Output ────────── */}
           {questionsData && (
             <div className="rounded-xl border bg-card overflow-hidden">
               <button
@@ -737,58 +843,137 @@ export default function PrepPage({ params }: PageProps) {
               >
                 <div className="flex items-center gap-2">
                   <FileQuestion className="h-4 w-4 text-indigo-600" />
-                  <h2 className="text-sm font-semibold">Tailored Question Set</h2>
+                  <h2 className="text-sm font-semibold">Workshop Facilitation Questions</h2>
                   <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
                 </div>
                 {questionsCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
               </button>
-              {!questionsCollapsed && <div className="px-6 pb-6 space-y-4">
+              {!questionsCollapsed && <div className="px-6 pb-6 space-y-6">
 
-              {/* Render question phases */}
-              {Object.entries(questionsData).map(([phaseKey, phaseData]) => {
-                if (typeof phaseData !== 'object' || !phaseData) return null;
-                const phase = phaseData as Record<string, unknown>;
-                const questions = Array.isArray(phase.questions) ? phase.questions : [];
-                if (questions.length === 0) return null;
+              {/* Design rationale */}
+              {parsedQuestions?.designRationale ? (
+                <div className="bg-indigo-50/50 dark:bg-indigo-950/20 rounded-lg p-4 border border-indigo-200/50 dark:border-indigo-800/30">
+                  <h3 className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider mb-1">Design Rationale</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{parsedQuestions.designRationale}</p>
+                </div>
+              ) : null}
 
-                return (
-                  <div key={phaseKey} className="space-y-2">
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      {String(phase.label || phaseKey)}
-                    </h3>
-                    <ol className="space-y-2">
-                      {questions.map((q: unknown, qi: number) => {
-                        const question = typeof q === 'object' && q ? (q as Record<string, string>) : { text: String(q) };
-                        const text = String(question.text || question.question || q);
-                        const rationale = question.rationale ? String(question.rationale) : null;
-                        return (
-                          <li key={qi} className="text-sm flex gap-2">
-                            <span className="text-indigo-400 flex-shrink-0 font-mono text-xs mt-0.5">{qi + 1}.</span>
-                            <div>
-                              <span>{text}</span>
-                              {rationale ? (
-                                <p className="text-xs text-muted-foreground mt-0.5 italic">{rationale}</p>
-                              ) : null}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  </div>
-                );
-              })}
+              {/* Phase-based question display */}
+              {parsedQuestions ? (
+                (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).map((phaseKey) => {
+                  const phase = parsedQuestions.phases[phaseKey];
+                  if (!phase || !phase.questions || phase.questions.length === 0) return null;
 
-              {/* If it's a flat array of questions */}
-              {Array.isArray(questionsData) && (
-                <ol className="space-y-2">
-                  {(questionsData as unknown[]).map((q: unknown, qi: number) => (
-                    <li key={qi} className="text-sm flex gap-2">
-                      <span className="text-indigo-400 flex-shrink-0 font-mono text-xs mt-0.5">{qi + 1}.</span>
-                      <span>{typeof q === 'string' ? q : typeof q === 'object' && q ? String((q as Record<string, unknown>).text || (q as Record<string, unknown>).question || JSON.stringify(q)) : String(q)}</span>
-                    </li>
-                  ))}
-                </ol>
+                  return (
+                    <div key={phaseKey} className="space-y-3">
+                      {/* Phase header */}
+                      <div className="flex items-center gap-2 border-b pb-2 border-muted">
+                        <span className="text-lg">{PHASE_ICONS[phaseKey] || ''}</span>
+                        <h3 className={`text-sm font-bold ${PHASE_COLORS[phaseKey] || 'text-foreground'}`}>
+                          {phase.label || phaseKey}
+                        </h3>
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {phase.questions.length} questions &middot; {phase.lensOrder?.join(' \u2192 ')}
+                        </span>
+                      </div>
+
+                      {/* Phase description */}
+                      <p className="text-xs text-muted-foreground italic">{phase.description?.substring(0, 200)}</p>
+
+                      {/* Questions list */}
+                      <ol className="space-y-3">
+                        {phase.questions.map((q: FacilitationQuestion, qi: number) => {
+                          const isEditing = editingQuestionId === q.id;
+                          const lensColor = LENS_COLORS[q.lens || 'General'] || LENS_COLORS.General;
+
+                          return (
+                            <li key={q.id || qi} className="group rounded-lg border border-muted/50 hover:border-muted p-3 transition-colors">
+                              <div className="flex items-start gap-3">
+                                <span className="text-indigo-400 flex-shrink-0 font-mono text-xs mt-1 w-5 text-right">{qi + 1}.</span>
+                                <div className="flex-1 min-w-0">
+                                  {/* Lens badge + edit button */}
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${lensColor}`}>
+                                      {q.lens || 'General'}
+                                    </span>
+                                    {q.isEdited && (
+                                      <span className="text-[10px] text-amber-600 dark:text-amber-400">edited</span>
+                                    )}
+                                    {!isEditing && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); startEditQuestion(q.id, q.text); }}
+                                        className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                                        title="Edit question"
+                                      >
+                                        <Pencil className="h-3 w-3 text-muted-foreground" />
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Question text or edit field */}
+                                  {isEditing ? (
+                                    <div className="space-y-2">
+                                      <textarea
+                                        value={editingQuestionText}
+                                        onChange={(e) => setEditingQuestionText(e.target.value)}
+                                        className="w-full text-sm p-2 rounded border bg-background resize-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                        rows={3}
+                                        autoFocus
+                                      />
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={saveEditQuestion}
+                                          className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700"
+                                        >
+                                          <Save className="h-3 w-3" /> Save
+                                        </button>
+                                        <button
+                                          onClick={cancelEditQuestion}
+                                          className="flex items-center gap-1 text-xs px-2 py-1 rounded border hover:bg-muted"
+                                        >
+                                          <X className="h-3 w-3" /> Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm leading-relaxed">{q.text}</p>
+                                  )}
+
+                                  {/* Purpose and grounding */}
+                                  {!isEditing && (q.purpose || q.grounding) ? (
+                                    <div className="mt-1.5 space-y-0.5">
+                                      {q.purpose ? (
+                                        <p className="text-xs text-muted-foreground"><span className="font-medium">Purpose:</span> {q.purpose}</p>
+                                      ) : null}
+                                      {q.grounding ? (
+                                        <p className="text-xs text-muted-foreground"><span className="font-medium">Grounding:</span> {q.grounding}</p>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </div>
+                  );
+                })
+              ) : (
+                /* Legacy format fallback — render raw data */
+                <div className="space-y-2">
+                  {Object.entries(questionsData).map(([key, val]) => {
+                    if (key === 'generatedAtMs' || key === 'designRationale') return null;
+                    return (
+                      <div key={key}>
+                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">{key}</h3>
+                        <pre className="text-xs text-muted-foreground whitespace-pre-wrap">{typeof val === 'string' ? val : JSON.stringify(val, null, 2)}</pre>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
+
               </div>}
             </div>
           )}
