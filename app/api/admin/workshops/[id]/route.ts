@@ -179,7 +179,6 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
-    const includeRegulation = body?.includeRegulation as boolean | undefined;
 
     // Authenticate user
     const user = await getAuthenticatedUser();
@@ -202,11 +201,25 @@ export async function PATCH(
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
     }
 
+    // Build update data — only include fields that are explicitly provided
+    const updateData: Record<string, unknown> = {};
+    if (typeof body.includeRegulation === 'boolean') updateData.includeRegulation = body.includeRegulation;
+    if (typeof body.clientName === 'string') updateData.clientName = body.clientName || null;
+    if (typeof body.industry === 'string') updateData.industry = body.industry || null;
+    if (typeof body.companyWebsite === 'string') updateData.companyWebsite = body.companyWebsite || null;
+    if (typeof body.dreamTrack === 'string') updateData.dreamTrack = body.dreamTrack || null;
+    if (typeof body.targetDomain === 'string') updateData.targetDomain = body.targetDomain || null;
+    if (typeof body.name === 'string') updateData.name = body.name;
+    if (typeof body.description === 'string') updateData.description = body.description || null;
+    if (typeof body.businessContext === 'string') updateData.businessContext = body.businessContext || null;
+    // JSON fields — stored directly
+    if (body.prepResearch !== undefined) updateData.prepResearch = body.prepResearch;
+    if (body.customQuestions !== undefined) updateData.customQuestions = body.customQuestions;
+    if (body.discoveryBriefing !== undefined) updateData.discoveryBriefing = body.discoveryBriefing;
+
     const updated = await prisma.workshop.update({
       where: { id },
-      data: {
-        ...(typeof includeRegulation === 'boolean' ? { includeRegulation } : {}),
-      },
+      data: updateData,
     });
 
     return NextResponse.json({ workshop: updated });

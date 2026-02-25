@@ -241,6 +241,29 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   ],
 };
 
+/**
+ * Returns the question set for a workshop, using custom (tailored) questions
+ * when available, falling back to the standard versioned question set.
+ */
+export function getQuestionsForWorkshop(
+  workshopCustomQuestions: Record<string, { text: string; tag: string; maturityScale?: string[] }[]> | null,
+  questionSetVersion: string | null,
+): Record<ConversationPhase, FixedQuestion[]> {
+  if (workshopCustomQuestions) {
+    // Convert tailored questions back to FixedQuestion format
+    const result: Record<string, FixedQuestion[]> = {};
+    for (const [phase, questions] of Object.entries(workshopCustomQuestions)) {
+      result[phase] = questions.map((q) => ({
+        text: q.text,
+        tag: q.tag as FixedQuestionTag,
+        maturityScale: q.maturityScale,
+      }));
+    }
+    return result as Record<ConversationPhase, FixedQuestion[]>;
+  }
+  return fixedQuestionsForVersion(questionSetVersion);
+}
+
 export function fixedQuestionsForVersion(questionSetVersion: string | null | undefined): typeof FIXED_QUESTIONS {
   const v = (questionSetVersion || '').trim().toLowerCase();
   if (v === 'v2') return FIXED_QUESTIONS_V2;

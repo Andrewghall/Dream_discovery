@@ -39,6 +39,12 @@ import LensCoverageBar from '@/components/cognitive-guidance/lens-coverage-bar';
 import GapIndicatorStrip from '@/components/cognitive-guidance/gap-indicator-strip';
 import SignalClusterPanel from '@/components/cognitive-guidance/signal-cluster-panel';
 import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
+import { ThemeBanner } from '@/components/cognitive-guidance/theme-banner';
+import {
+  AgentOrchestrationPanel,
+  type AgentConversationEntry,
+} from '@/components/cognitive-guidance/agent-orchestration-panel';
+import type { GuidedTheme } from '@/lib/cognition/guidance-state';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -438,6 +444,13 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [expandedNode, setExpandedNode] = useState<HemisphereNodeDatum | null>(null);
   const [hemisphereExpanded, setHemisphereExpanded] = useState(false);
 
+  // ── Theme + Agent state ─────────────────────────────────
+  const [themes, setThemes] = useState<GuidedTheme[]>([]);
+  const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
+  const [freeflowMode, setFreeflowMode] = useState(false);
+  const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
+  const [agentPanelCollapsed, setAgentPanelCollapsed] = useState(true);
+
   // (Synthesis data moved to Discovery tab)
 
   // ── Belief tracking for Stage 3 ────────────────────────
@@ -451,20 +464,125 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     [workshopId]
   );
 
+  // ── Guidance state sync → POST to server ─────────────
+  const syncGuidanceState = useCallback(async (
+    overrides: {
+      activeThemeId?: string | null;
+      themes?: GuidedTheme[];
+      freeflowMode?: boolean;
+      dialoguePhase?: DialoguePhase;
+    } = {},
+  ) => {
+    try {
+      await fetch(`/api/workshops/${workshopId}/guidance-state`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeThemeId: overrides.activeThemeId ?? activeThemeId,
+          themes: overrides.themes ?? themes,
+          freeflowMode: overrides.freeflowMode ?? freeflowMode,
+          dialoguePhase: overrides.dialoguePhase ?? dialoguePhase,
+        }),
+      });
+    } catch { /* fail silently — non-critical */ }
+  }, [workshopId, activeThemeId, themes, freeflowMode, dialoguePhase]);
+
   // ── Phase change → swap seed pads + journey stages ─────
   const handlePhaseChange = useCallback((phase: DialoguePhase) => {
-    setDialoguePhase(phase);
+    setDialoguePhase((prevPhase) => {
+      // Phase transition snapshot: REIMAGINE → CONSTRAINTS
+      // Copy current intensity values to idealIntensity fields
+      if (prevPhase === 'REIMAGINE' && phase === 'CONSTRAINTS') {
+        setLiveJourney((prevJourney) => ({
+          ...prevJourney,
+          stages: DEFAULT_JOURNEY_STAGES[phase],
+          interactions: prevJourney.interactions.map((i) => ({
+            ...i,
+            idealBusinessIntensity: i.businessIntensity,
+            idealCustomerIntensity: i.customerIntensity,
+          })),
+        }));
+      } else if (!listening) {
+        // Only replace stages if not listening (no real data yet)
+        setLiveJourney((prevJourney) => ({
+          ...prevJourney,
+          stages: DEFAULT_JOURNEY_STAGES[phase],
+        }));
+      }
+      return phase;
+    });
+
     // Only replace with seed pads if not listening (no real data yet)
     if (!listening) {
       setStickyPads(getSeedPadsForPhase(phase));
       setSelectedPadId(null);
-      // Update journey stages for the new phase
-      setLiveJourney(prev => ({
-        ...prev,
-        stages: DEFAULT_JOURNEY_STAGES[phase],
-      }));
     }
-  }, [listening]);
+    // Sync to server
+    syncGuidanceState({ dialoguePhase: phase });
+  }, [listening, syncGuidanceState]);
+
+  // ── Theme management callbacks ──────────────────────────
+  const handleAdvanceTheme = useCallback(() => {
+    setThemes((prev) => {
+      const currentActive = prev.find((t) => t.id === activeThemeId);
+      const queued = prev.filter((t) => t.status === 'queued').sort((a, b) => a.order - b.order);
+
+      let updated = prev;
+      // Complete current active theme
+      if (currentActive) {
+        updated = updated.map((t) =>
+          t.id === currentActive.id
+            ? { ...t, status: 'completed' as const, completedAtMs: Date.now() }
+            : t,
+        );
+      }
+
+      // Activate next queued theme
+      const next = queued[0];
+      if (next) {
+        updated = updated.map((t) =>
+          t.id === next.id
+            ? { ...t, status: 'active' as const, startedAtMs: Date.now() }
+            : t,
+        );
+        setActiveThemeId(next.id);
+        syncGuidanceState({ activeThemeId: next.id, themes: updated });
+      } else {
+        setActiveThemeId(null);
+        syncGuidanceState({ activeThemeId: null, themes: updated });
+      }
+
+      return updated;
+    });
+  }, [activeThemeId, syncGuidanceState]);
+
+  const handleToggleFreeflow = useCallback(() => {
+    setFreeflowMode((prev) => {
+      const next = !prev;
+      syncGuidanceState({ freeflowMode: next });
+      return next;
+    });
+  }, [syncGuidanceState]);
+
+  const handleAddTheme = useCallback((title: string) => {
+    const newTheme: GuidedTheme = {
+      id: `theme-${Date.now()}`,
+      title,
+      description: '',
+      lens: null,
+      source: 'facilitator',
+      status: 'queued',
+      order: themes.length,
+      startedAtMs: null,
+      completedAtMs: null,
+      sourceSignalIds: [],
+    };
+    setThemes((prev) => {
+      const updated = [...prev, newTheme];
+      syncGuidanceState({ themes: updated });
+      return updated;
+    });
+  }, [themes.length, syncGuidanceState]);
 
   // (Synthesis data fetching moved to Discovery tab)
 
@@ -691,6 +809,67 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       } catch { /* ignore */ }
     });
 
+    // ── Agent conversation events ────────────────────────
+    es.addEventListener('agent.conversation', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
+        const entry = evt.payload as AgentConversationEntry;
+        if (entry?.agent && entry?.message) {
+          setAgentConversation((prev) => [...prev, entry]);
+        }
+      } catch { /* ignore */ }
+    });
+
+    // ── Theme suggested by Theme Agent → add to queue ────
+    es.addEventListener('theme.suggested', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
+        const payload = evt.payload as { theme: GuidedTheme };
+        if (payload?.theme) {
+          setThemes((prev) => {
+            // Avoid duplicates
+            if (prev.some((t) => t.id === payload.theme.id)) return prev;
+            return [...prev, payload.theme];
+          });
+        }
+      } catch { /* ignore */ }
+    });
+
+    // ── Pad generated by Facilitation Agent → add to pads ─
+    es.addEventListener('pad.generated', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
+        const payload = evt.payload as { pad: StickyPad };
+        if (payload?.pad) {
+          setStickyPads((prev) => {
+            if (prev.some((p) => p.id === payload.pad.id)) return prev;
+            return [...prev, payload.pad];
+          });
+        }
+      } catch { /* ignore */ }
+    });
+
+    // ── Constraint mapped by Constraint Agent ─────────────
+    es.addEventListener('constraint.mapped', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
+        // Constraint events are logged to agent conversation for visibility
+        const payload = evt.payload as Record<string, unknown>;
+        if (payload) {
+          setAgentConversation((prev) => [
+            ...prev,
+            {
+              timestampMs: Date.now(),
+              agent: 'constraint-agent',
+              to: 'orchestrator',
+              message: `Constraint mapped: ${payload.label || 'Unknown'} (${payload.type || 'general'})`,
+              type: 'acknowledgement',
+            },
+          ]);
+        }
+      } catch { /* ignore */ }
+    });
+
     es.onerror = () => {
       // EventSource auto-reconnects
     };
@@ -796,8 +975,20 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           ))}
         </div>
 
+        {/* Theme Banner */}
+        <ThemeBanner
+          themes={themes}
+          activeThemeId={activeThemeId}
+          freeflowMode={freeflowMode}
+          onAdvanceTheme={handleAdvanceTheme}
+          onToggleFreeflow={handleToggleFreeflow}
+          onAddTheme={handleAddTheme}
+        />
+
         {/* Lens Coverage Bar + Gap Indicators */}
-        <LensCoverageBar coverage={lensCoverage} />
+        <div className="mt-3">
+          <LensCoverageBar coverage={lensCoverage} />
+        </div>
         <GapIndicatorStrip signals={signals} />
 
         {/* ═══ PRIMARY CANVAS — Sticky Pads own the screen ═══ */}
@@ -845,6 +1036,16 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             onChange={setLiveJourney}
             expanded={journeyExpanded}
             onToggleExpand={() => setJourneyExpanded(e => !e)}
+          />
+        </div>
+
+        {/* ═══ AGENT ORCHESTRATION PANEL ═══ */}
+        <div className="mt-4">
+          <AgentOrchestrationPanel
+            entries={agentConversation}
+            collapsed={agentPanelCollapsed}
+            onToggleCollapse={() => setAgentPanelCollapsed((c) => !c)}
+            title="LIVE AGENT ORCHESTRATION"
           />
         </div>
 

@@ -11,6 +11,7 @@ import { addFragment, flushWorkshop, type FlushedUtterance } from '@/lib/worksho
 import { getOrCreateCognitiveState } from '@/lib/cognition/state-store';
 import { applyCognitiveUpdate } from '@/lib/cognition/reasoning-engine';
 import { getGPT4oMiniEngine } from '@/lib/cognition/engines/gpt4o-mini-engine';
+import { runFacilitationOrchestrator } from '@/lib/cognition/agents/facilitation-orchestrator';
 
 type IngestTranscriptChunkBody = {
   speakerId: string | null;
@@ -438,6 +439,35 @@ async function processCompleteUtterance(
             details: entry.details,
           },
         });
+      }
+
+      // ── Facilitation Orchestrator (agentic agents) ──────
+      // Runs Theme Agent, Facilitation Agent, Constraint Agent
+      // with Guardian verification. Emits theme.suggested,
+      // pad.generated, constraint.mapped, and agent.conversation.
+      try {
+        await runFacilitationOrchestrator(
+          workshopId,
+          cognitiveState,
+          (type, payload) => {
+            emitWorkshopEvent(workshopId, {
+              id: nanoid(),
+              type,
+              createdAt: Date.now(),
+              payload,
+            });
+          },
+          (entry) => {
+            emitWorkshopEvent(workshopId, {
+              id: nanoid(),
+              type: 'agent.conversation',
+              createdAt: entry.timestampMs,
+              payload: entry,
+            });
+          },
+        );
+      } catch (orchError) {
+        console.error('[Facilitation Orchestrator] Failed:', orchError);
       }
     } catch (error) {
       console.error('Cognitive analysis failed:', error);

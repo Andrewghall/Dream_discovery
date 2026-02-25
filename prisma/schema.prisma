@@ -124,6 +124,17 @@ model Workshop {
   meetingPlan       Json?
   salesReport       Json?
   salesActions      Json?
+
+  // DREAM workshop prep fields
+  clientName        String?               @map("client_name")          // e.g. "Tesco", "Barclays"
+  industry          String?                                            // e.g. "Retail", "Financial Services"
+  companyWebsite    String?               @map("company_website")      // e.g. "https://www.tesco.com"
+  dreamTrack        DreamTrack?           @map("dream_track")          // ENTERPRISE or DOMAIN
+  targetDomain      String?               @map("target_domain")        // e.g. "Customer Operations" (DOMAIN track only)
+  prepResearch      Json?                 @map("prep_research")        // Research Agent output
+  customQuestions   Json?                 @map("custom_questions")     // Tailored question set (editable)
+  discoveryBriefing Json?                 @map("discovery_briefing")   // Discovery Intelligence Agent synthesis
+
   insights          ConversationInsight[]
   sessions          ConversationSession[]
   dataPoints        DataPoint[]
@@ -468,6 +479,11 @@ enum WorkshopStatus {
   DISCOVERY_SENT
   IN_PROGRESS
   COMPLETED
+}
+
+enum DreamTrack {
+  ENTERPRISE    // Full end-to-end business assessment
+  DOMAIN        // Focused on a specific business unit or function
 }
 
 enum WorkshopType {

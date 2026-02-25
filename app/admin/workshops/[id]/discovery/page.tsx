@@ -22,6 +22,7 @@ type SpiderAxisStat = {
   label: string;
   today: { median: number | null };
   target: { median: number | null };
+  projected: { median: number | null };
 };
 
 type WordCloudItem = { text: string; value: number };
@@ -51,16 +52,11 @@ type WorkshopSummary = {
 // ══════════════════════════════════════════════════════════
 
 const DEMO_SPIDER_DATA: SpiderAxisStat[] = [
-  { axisId: 'cx-personalisation',  label: 'CX Personalisation',   today: { median: 4.2 }, target: { median: 8.5 } },
-  { axisId: 'omnichannel-maturity',label: 'Omnichannel Maturity',  today: { median: 5.1 }, target: { median: 9.0 } },
-  { axisId: 'data-driven-decisions',label: 'Data-Driven Decisions',today: { median: 3.8 }, target: { median: 8.0 } },
-  { axisId: 'ai-adoption',         label: 'AI Adoption',           today: { median: 2.9 }, target: { median: 7.5 } },
-  { axisId: 'process-automation',   label: 'Process Automation',    today: { median: 4.5 }, target: { median: 8.8 } },
-  { axisId: 'workforce-readiness',  label: 'Workforce Readiness',   today: { median: 5.3 }, target: { median: 7.8 } },
-  { axisId: 'supply-chain-agility', label: 'Supply Chain Agility',  today: { median: 4.0 }, target: { median: 8.2 } },
-  { axisId: 'digital-commerce',     label: 'Digital Commerce',      today: { median: 6.1 }, target: { median: 9.2 } },
-  { axisId: 'regulatory-compliance',label: 'Regulatory Compliance', today: { median: 6.8 }, target: { median: 8.0 } },
-  { axisId: 'innovation-culture',   label: 'Innovation Culture',    today: { median: 3.5 }, target: { median: 8.4 } },
+  { axisId: 'people',       label: 'People',       today: { median: 5.3 }, target: { median: 8.2 }, projected: { median: 4.5 } },
+  { axisId: 'organisation', label: 'Organisation',  today: { median: 4.1 }, target: { median: 8.0 }, projected: { median: 3.8 } },
+  { axisId: 'customer',     label: 'Customer',      today: { median: 4.8 }, target: { median: 9.0 }, projected: { median: 4.0 } },
+  { axisId: 'technology',   label: 'Technology',    today: { median: 3.5 }, target: { median: 8.5 }, projected: { median: 3.0 } },
+  { axisId: 'regulation',   label: 'Regulation',    today: { median: 6.2 }, target: { median: 8.0 }, projected: { median: 5.8 } },
 ];
 
 const DEMO_WORD_CLOUD: WordCloudItem[] = [
@@ -233,28 +229,43 @@ export default function DiscoveryPage({ params }: PageProps) {
     fetchSummary();
   }, [workshopId, isRetailDemo]);
 
-  // ── Radar chart data transform ──────────────────────────
+  // ── Radar chart data transform — 3 series: Today, Target, Projected ──
   const radarChartData = useMemo(() => {
     if (!spiderData) return null;
     return spiderData
       .filter((a) => a.today.median !== null)
-      .slice(0, 10)
       .map((a) => ({
         label: a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label,
         value: a.today.median ?? 0,
       }));
   }, [spiderData]);
 
-  const radarTargetSeries = useMemo(() => {
+  const radarSeries = useMemo(() => {
     if (!spiderData) return undefined;
-    const targetData = spiderData
-      .filter((a) => a.target.median !== null)
-      .slice(0, 10)
-      .map((a) => ({
-        label: a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label,
-        value: a.target.median ?? 0,
-      }));
-    return targetData.length > 0 ? [{ name: 'Target', data: targetData }] : undefined;
+
+    const axes = spiderData.filter((a) => a.today.median !== null);
+    const fmt = (a: SpiderAxisStat) =>
+      a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label;
+
+    const todaySeries = {
+      name: 'Today',
+      data: axes.map((a) => ({ label: fmt(a), value: a.today.median ?? 0 })),
+    };
+    const targetSeries = {
+      name: 'Target',
+      data: axes.map((a) => ({ label: fmt(a), value: a.target.median ?? 0 })),
+    };
+    const projectedSeries = {
+      name: 'Projected (do nothing)',
+      data: axes.map((a) => ({ label: fmt(a), value: a.projected?.median ?? a.today.median ?? 0 })),
+    };
+
+    // Only include series that have data
+    const series = [todaySeries];
+    if (targetSeries.data.some((d) => d.value > 0)) series.push(targetSeries);
+    if (projectedSeries.data.some((d) => d.value > 0)) series.push(projectedSeries);
+
+    return series.length > 1 ? series : undefined;
   }, [spiderData]);
 
   // ══════════════════════════════════════════════════════════
@@ -337,7 +348,7 @@ export default function DiscoveryPage({ params }: PageProps) {
               </div>
             ) : radarChartData && radarChartData.length > 0 ? (
               <div className="flex justify-center">
-                <LazyRadarChart data={radarChartData} series={radarTargetSeries} />
+                <LazyRadarChart data={radarChartData} series={radarSeries} />
               </div>
             ) : (
               <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">

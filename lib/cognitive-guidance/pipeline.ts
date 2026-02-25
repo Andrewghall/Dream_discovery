@@ -205,6 +205,15 @@ export type SessionConfidence = {
 
 export type AiAgencyLevel = 'human' | 'assisted' | 'autonomous';
 
+export type JourneyConstraintFlag = {
+  id: string;
+  type: 'regulatory' | 'technical' | 'organisational' | 'people' | 'customer' | 'budget';
+  label: string;
+  severity: 'blocking' | 'significant' | 'manageable';
+  sourceNodeIds: string[];
+  addedBy: 'ai' | 'facilitator';
+};
+
 export type LiveJourneyInteraction = {
   id: string;
   actor: string;
@@ -221,6 +230,11 @@ export type LiveJourneyInteraction = {
   sourceNodeIds: string[];
   addedBy: 'ai' | 'facilitator';
   createdAtMs: number;
+  // Constraint overlay fields
+  constraintFlags?: JourneyConstraintFlag[];
+  idealBusinessIntensity?: number | null;   // Snapshot from Reimagine phase
+  idealCustomerIntensity?: number | null;   // Snapshot from Reimagine phase
+  phaseAdded?: DialoguePhase;               // Which phase this was added in
 };
 
 export type LiveJourneyActor = {

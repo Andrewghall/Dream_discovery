@@ -93,7 +93,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, businessContext, workshopType, scheduledDate, responseDeadline, includeRegulation } = body;
+    const {
+      name, description, businessContext, workshopType,
+      scheduledDate, responseDeadline, includeRegulation,
+      clientName, industry, companyWebsite, dreamTrack, targetDomain,
+    } = body;
 
     // Determine which org this workshop belongs to
     const organizationId = session.role === 'PLATFORM_ADMIN'
@@ -115,6 +119,12 @@ export async function POST(request: NextRequest) {
         responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,
         organizationId,
         createdById: session.userId,
+        // DREAM prep fields
+        clientName: clientName || undefined,
+        industry: industry || undefined,
+        companyWebsite: companyWebsite || undefined,
+        dreamTrack: dreamTrack || undefined,
+        targetDomain: targetDomain || undefined,
       },
     });
 

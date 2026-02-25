@@ -1,0 +1,498 @@
+/**
+ * DREAM Discovery Intelligence Agent
+ *
+ * A GPT-4o-mini tool-calling agent that synthesizes all completed
+ * Discovery interview responses into a structured workshop briefing.
+ *
+ * This is the bridge between Discovery and the Live Workshop —
+ * it converts participant voices into seed knowledge.
+ *
+ * Runs after participants complete their interviews, before the workshop.
+ */
+
+import OpenAI from 'openai';
+import { env } from '@/lib/env';
+import { prisma } from '@/lib/prisma';
+import type {
+  WorkshopIntelligence,
+  WorkshopPrepResearch,
+  PrepContext,
+  AgentConversationCallback,
+  LensName,
+} from './agent-types';
+
+// ── Constants ───────────────────────────────────────────────
+
+const MAX_ITERATIONS = 5;
+const LOOP_TIMEOUT_MS = 40_000; // 40s — synthesis is thorough
+const MODEL = 'gpt-4o-mini';
+
+// ══════════════════════════════════════════════════════════════
+// TOOL DEFINITIONS
+// ══════════════════════════════════════════════════════════════
+
+const DISCOVERY_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_participant_responses',
+      description:
+        'Retrieve all participant Discovery interview data for this workshop. Returns data points grouped by participant with their classifications.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_spider_scores',
+      description:
+        'Retrieve aggregated triple_rating spider scores for all lenses (Today, Target, Projected).',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_research_context',
+      description: 'Retrieve the pre-workshop Research Agent findings about the company.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'commit_briefing',
+      description: 'Commit the synthesized workshop briefing. Call when synthesis is complete.',
+      parameters: {
+        type: 'object',
+        properties: {
+          briefingSummary: {
+            type: 'string',
+            description: '2-3 paragraph overview for the facilitator.',
+          },
+          discoveryThemes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                domain: { type: 'string', enum: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'] },
+                frequency: { type: 'number', description: 'How many participants mentioned this.' },
+                sentiment: { type: 'string', enum: ['positive', 'negative', 'mixed'] },
+                keyQuotes: { type: 'array', items: { type: 'string' }, description: '2-3 representative quotes.' },
+              },
+              required: ['title', 'frequency', 'sentiment'],
+            },
+          },
+          consensusAreas: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Things most participants agree on.',
+          },
+          divergenceAreas: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                topic: { type: 'string' },
+                perspectives: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['topic', 'perspectives'],
+            },
+          },
+          painPoints: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                description: { type: 'string' },
+                domain: { type: 'string', enum: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'] },
+                frequency: { type: 'number' },
+                severity: { type: 'string', enum: ['critical', 'significant', 'moderate'] },
+              },
+              required: ['description', 'domain', 'frequency', 'severity'],
+            },
+          },
+          aspirations: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'What participants aspire to for the future.',
+          },
+          watchPoints: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Sensitive topics, contradictions, or areas where participants seemed guarded.',
+          },
+        },
+        required: ['briefingSummary', 'discoveryThemes', 'consensusAreas', 'painPoints', 'aspirations', 'watchPoints'],
+      },
+    },
+  },
+];
+
+// ══════════════════════════════════════════════════════════════
+// TOOL EXECUTION
+// ══════════════════════════════════════════════════════════════
+
+async function executeDiscoveryTool(
+  toolName: string,
+  _args: Record<string, unknown>,
+  workshopId: string,
+  research: WorkshopPrepResearch | null,
+): Promise<{ result: string; summary: string }> {
+  switch (toolName) {
+    case 'get_participant_responses': {
+      // Fetch completed sessions' data points
+      const sessions = await prisma.conversationSession.findMany({
+        where: {
+          workshopId,
+          completedAt: { not: null },
+        },
+        include: {
+          participant: { select: { name: true, role: true, department: true } },
+          dataPoints: {
+            select: {
+              rawText: true,
+              source: true,
+              questionKey: true,
+              classification: {
+                select: { primaryType: true, keywords: true },
+              },
+              annotation: {
+                select: { dialoguePhase: true },
+              },
+              agenticAnalysis: {
+                select: {
+                  semanticMeaning: true,
+                  sentimentTone: true,
+                  themes: true,
+                  domains: true,
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+
+      const participantData = sessions.map((s) => ({
+        name: s.participant.name || 'Anonymous',
+        role: s.participant.role || 'Unknown',
+        department: s.participant.department || 'Unknown',
+        responseCount: s.dataPoints.length,
+        keyPoints: s.dataPoints
+          .filter((dp) => dp.source === 'SPEECH')
+          .slice(0, 10) // Limit per participant to fit context
+          .map((dp) => ({
+            text: dp.rawText.substring(0, 300),
+            phase: dp.annotation?.dialoguePhase || dp.questionKey,
+            type: dp.classification?.primaryType,
+            meaning: dp.agenticAnalysis?.semanticMeaning?.substring(0, 150),
+            sentiment: dp.agenticAnalysis?.sentimentTone,
+          })),
+      }));
+
+      return {
+        result: JSON.stringify({
+          completedCount: sessions.length,
+          participants: participantData,
+        }),
+        summary: `${sessions.length} completed sessions, ${participantData.reduce((s, p) => s + p.responseCount, 0)} total data points`,
+      };
+    }
+
+    case 'get_spider_scores': {
+      // Fetch triple_rating data points — questionKey format: "v1:phase:triple_rating:index"
+      const tripleRatings = await prisma.dataPoint.findMany({
+        where: {
+          workshopId,
+          session: {
+            completedAt: { not: null },
+          },
+          questionKey: { contains: 'triple_rating' },
+        },
+        select: {
+          rawText: true,
+          questionKey: true,
+        },
+      });
+
+      // Parse scores from raw text (format: "current: X, target: Y, projected: Z")
+      const phaseToLens: Record<string, LensName> = {
+        people: 'People',
+        corporate: 'Organisation',
+        customer: 'Customer',
+        technology: 'Technology',
+        regulation: 'Regulation',
+      };
+
+      const scores: Record<string, { today: number[]; target: number[]; projected: number[] }> = {};
+
+      for (const dp of tripleRatings) {
+        // questionKey format: "v1:phase:triple_rating:index" or "phase:triple_rating:index"
+        const parts = (dp.questionKey || '').split(':');
+        // Find the phase part (comes before 'triple_rating')
+        const tripleIdx = parts.indexOf('triple_rating');
+        const phaseKey = tripleIdx > 0 ? parts[tripleIdx - 1] : '';
+        const lens = phaseToLens[phaseKey];
+        if (!lens) continue;
+        if (!scores[lens]) scores[lens] = { today: [], target: [], projected: [] };
+
+        // Extract labelled ratings (format: "current: 5, target: 8, projected: 4")
+        const currentMatch = dp.rawText.match(/\bcurrent\b\s*[:=-]?\s*(10|[1-9])\b/i);
+        const targetMatch = dp.rawText.match(/\btarget\b\s*[:=-]?\s*(10|[1-9])\b/i);
+        const projectedMatch = dp.rawText.match(/\bprojected\b\s*[:=-]?\s*(10|[1-9])\b/i);
+        if (currentMatch) scores[lens].today.push(Number(currentMatch[1]));
+        if (targetMatch) scores[lens].target.push(Number(targetMatch[1]));
+        if (projectedMatch) scores[lens].projected.push(Number(projectedMatch[1]));
+      }
+
+      // Calculate medians
+      const median = (arr: number[]) => {
+        if (arr.length === 0) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      };
+
+      const spiderData = Object.entries(scores).map(([lens, vals]) => ({
+        domain: lens,
+        todayMedian: +median(vals.today).toFixed(1),
+        targetMedian: +median(vals.target).toFixed(1),
+        projectedMedian: +median(vals.projected).toFixed(1),
+        spread: +(Math.max(...vals.today) - Math.min(...vals.today)).toFixed(1),
+        responseCount: vals.today.length,
+      }));
+
+      return {
+        result: JSON.stringify({ spiderData, totalRatings: tripleRatings.length }),
+        summary: `Spider scores: ${spiderData.length} lenses, ${tripleRatings.length} total ratings`,
+      };
+    }
+
+    case 'get_research_context': {
+      if (!research) {
+        return {
+          result: JSON.stringify({ available: false }),
+          summary: 'No research context available',
+        };
+      }
+      return {
+        result: JSON.stringify({
+          companyOverview: research.companyOverview.substring(0, 500),
+          keyPublicChallenges: research.keyPublicChallenges,
+          domainInsights: research.domainInsights?.substring(0, 300),
+        }),
+        summary: `Research context: ${research.keyPublicChallenges.length} challenges`,
+      };
+    }
+
+    default:
+      return { result: JSON.stringify({ error: 'Unknown tool' }), summary: `Unknown tool: ${toolName}` };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// SYSTEM PROMPT
+// ══════════════════════════════════════════════════════════════
+
+function buildDiscoverySystemPrompt(context: PrepContext): string {
+  return `You are the DREAM Discovery Intelligence Agent. Participants have completed their Discovery interviews for ${context.clientName || 'the client'}. Your job is to synthesize their responses into a workshop briefing that will inform the live facilitation.
+
+${context.industry ? `Industry: ${context.industry}` : ''}
+${context.dreamTrack ? `DREAM Track: ${context.dreamTrack}${context.targetDomain ? ' — Focus: ' + context.targetDomain : ''}` : ''}
+
+Synthesize the Discovery data into:
+1. BRIEFING SUMMARY — 2-3 paragraph overview for the facilitator
+2. KEY THEMES — Topics that came up repeatedly across interviews
+3. CONSENSUS & DIVERGENCE — What people agree on vs where they disagree
+4. PAIN POINTS — What frustrates people most, ranked by frequency + severity
+5. ASPIRATIONS — What does the ideal future look like in participants' words
+6. WATCH POINTS — Contradictions, sensitive topics, areas of guardedness
+
+IMPORTANT:
+- Ground everything in actual participant responses
+- Quote where helpful (short quotes)
+- Be precise and structured — this briefing will be used by AI agents during the live workshop
+- If participants disagree strongly on something, highlight it as a divergence area
+- If many participants raise the same issue, give it higher frequency
+
+Start by fetching participant responses and spider scores.`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// MAIN AGENT FUNCTION
+// ══════════════════════════════════════════════════════════════
+
+export async function runDiscoveryIntelligenceAgent(
+  context: PrepContext,
+  research: WorkshopPrepResearch | null,
+  onConversation?: AgentConversationCallback,
+): Promise<WorkshopIntelligence> {
+  if (!env.OPENAI_API_KEY) {
+    throw new Error('OpenAI API key not configured');
+  }
+
+  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const systemPrompt = buildDiscoverySystemPrompt(context);
+  const startMs = Date.now();
+
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: 'Please synthesize the Discovery interview data into a workshop briefing.' },
+  ];
+
+  try {
+    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+      if (Date.now() - startMs > LOOP_TIMEOUT_MS) break;
+
+      const isLastIteration = iteration === MAX_ITERATIONS - 1;
+      const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption = isLastIteration
+        ? { type: 'function', function: { name: 'commit_briefing' } }
+        : 'auto';
+
+      const completion = await openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.3,
+        messages,
+        tools: DISCOVERY_TOOLS,
+        tool_choice: toolChoice,
+      });
+
+      const assistantMessage = completion.choices[0].message;
+      messages.push(assistantMessage);
+
+      if (assistantMessage.content?.trim()) {
+        onConversation?.({
+          timestampMs: Date.now(),
+          agent: 'discovery-intelligence-agent',
+          to: 'prep-orchestrator',
+          message: assistantMessage.content.trim(),
+          type: 'info',
+        });
+      }
+
+      if (!assistantMessage.tool_calls?.length) break;
+
+      let committed = false;
+
+      for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.type !== 'function') continue;
+        const fnName = toolCall.function.name;
+        let fnArgs: Record<string, unknown>;
+        try { fnArgs = JSON.parse(toolCall.function.arguments); } catch { fnArgs = {}; }
+
+        if (fnName === 'commit_briefing') {
+          committed = true;
+
+          const themes = Array.isArray(fnArgs.discoveryThemes) ? fnArgs.discoveryThemes.length : 0;
+          const pains = Array.isArray(fnArgs.painPoints) ? fnArgs.painPoints.length : 0;
+
+          onConversation?.({
+            timestampMs: Date.now(),
+            agent: 'discovery-intelligence-agent',
+            to: 'prep-orchestrator',
+            message: `I've completed the synthesis. Identified ${themes} key themes, ${pains} pain points, and compiled consensus/divergence areas. The workshop briefing is ready.`,
+            type: 'proposal',
+            metadata: {
+              toolsUsed: ['get_participant_responses', 'get_spider_scores', 'get_research_context'],
+            },
+          });
+
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '{"status":"committed"}' });
+
+          return normaliseIntelligence(fnArgs);
+        } else {
+          const toolResult = await executeDiscoveryTool(fnName, fnArgs, context.workshopId, research);
+
+          onConversation?.({
+            timestampMs: Date.now(),
+            agent: 'discovery-intelligence-agent',
+            to: 'prep-orchestrator',
+            message: toolResult.summary,
+            type: 'request',
+            metadata: { toolsUsed: [fnName] },
+          });
+
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: toolResult.result });
+        }
+      }
+
+      if (committed) {
+        console.log(`[Discovery Intelligence] Committed after ${iteration + 1} iterations`);
+        break;
+      }
+    }
+  } catch (error) {
+    console.error('[Discovery Intelligence] Failed:', error instanceof Error ? error.message : error);
+    throw error;
+  }
+
+  return fallbackIntelligence();
+}
+
+// ══════════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════════
+
+function normaliseIntelligence(args: Record<string, unknown>): WorkshopIntelligence {
+  return {
+    maturitySnapshot: [], // Will be populated from actual spider scores
+    discoveryThemes: Array.isArray(args.discoveryThemes)
+      ? (args.discoveryThemes as Array<Record<string, unknown>>).map((t) => ({
+          title: String(t.title || ''),
+          domain: (t.domain as LensName) || null,
+          frequency: Number(t.frequency || 0),
+          sentiment: (t.sentiment as 'positive' | 'negative' | 'mixed') || 'mixed',
+          keyQuotes: Array.isArray(t.keyQuotes) ? t.keyQuotes.map(String) : [],
+        }))
+      : [],
+    consensusAreas: Array.isArray(args.consensusAreas) ? args.consensusAreas.map(String) : [],
+    divergenceAreas: Array.isArray(args.divergenceAreas)
+      ? (args.divergenceAreas as Array<Record<string, unknown>>).map((d) => ({
+          topic: String(d.topic || ''),
+          perspectives: Array.isArray(d.perspectives) ? d.perspectives.map(String) : [],
+        }))
+      : [],
+    painPoints: Array.isArray(args.painPoints)
+      ? (args.painPoints as Array<Record<string, unknown>>).map((p) => ({
+          description: String(p.description || ''),
+          domain: (p.domain as LensName) || 'People',
+          frequency: Number(p.frequency || 0),
+          severity: (p.severity as 'critical' | 'significant' | 'moderate') || 'moderate',
+        }))
+      : [],
+    aspirations: Array.isArray(args.aspirations) ? args.aspirations.map(String) : [],
+    watchPoints: Array.isArray(args.watchPoints) ? args.watchPoints.map(String) : [],
+    participantCount: 0, // Set by caller
+    synthesizedAtMs: Date.now(),
+    briefingSummary: String(args.briefingSummary || ''),
+  };
+}
+
+function fallbackIntelligence(): WorkshopIntelligence {
+  return {
+    maturitySnapshot: [],
+    discoveryThemes: [],
+    consensusAreas: [],
+    divergenceAreas: [],
+    painPoints: [],
+    aspirations: [],
+    watchPoints: [],
+    participantCount: 0,
+    synthesizedAtMs: Date.now(),
+    briefingSummary: 'Discovery intelligence synthesis was not completed. Please review participant responses manually.',
+  };
+}

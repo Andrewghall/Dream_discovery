@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AiInsightCard } from './AiInsightCard';
+import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
+import type { LiveJourneyData, LiveJourneyInteraction } from '@/lib/cognitive-guidance/pipeline';
 
 interface Interaction {
   actor: string;
@@ -65,6 +67,30 @@ export function CustomerJourneyTab({ data, onChange }: CustomerJourneyTabProps) 
     painPointSummary: data.painPointSummary || '',
     momentOfTruthSummary: data.momentOfTruthSummary || '',
   };
+
+  // Adapter: convert scratchpad JourneyData → LiveJourneyData for the output map
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const liveJourneyData: LiveJourneyData = useMemo(() => ({
+    stages: journey.stages,
+    actors: journey.actors.map((a) => ({ name: a.name, role: a.role, mentionCount: 0 })),
+    interactions: journey.interactions.map((i, idx): LiveJourneyInteraction => ({
+      id: `scratchpad-${idx}`,
+      actor: i.actor,
+      stage: i.stage,
+      action: i.action,
+      context: i.context || '',
+      sentiment: i.sentiment,
+      businessIntensity: 0.5,
+      customerIntensity: 0.5,
+      aiAgencyNow: 'human',
+      aiAgencyFuture: 'assisted',
+      isPainPoint: !!i.isPainPoint,
+      isMomentOfTruth: !!i.isMomentOfTruth,
+      sourceNodeIds: [],
+      addedBy: 'ai',
+      createdAtMs: Date.now(),
+    })),
+  }), [journey.stages, journey.actors, journey.interactions]);
 
   // Get interactions for a specific actor+stage cell
   const getInteractions = (actorName: string, stageName: string): Interaction[] => {
@@ -172,6 +198,16 @@ export function CustomerJourneyTab({ data, onChange }: CustomerJourneyTabProps) 
           </div>
         </div>
       </div>
+
+      {/* Live Journey Map (output mode) */}
+      {liveJourneyData.interactions.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-black/5 overflow-hidden">
+          <LiveJourneyMap
+            data={liveJourneyData}
+            mode="output"
+          />
+        </div>
+      )}
 
       {/* Sentiment Legend */}
       <div className="flex items-center gap-6">
