@@ -2,6 +2,8 @@
  * /api/workshops/[id]/guidance-state
  *
  * GET  — Returns current guidance state for the workshop
+ *        With ?init=true: also loads prep data (customQuestions, research, briefing)
+ *        from the DB and populates prepContext in the in-memory guidance state.
  * POST — Updates guidance state (facilitator actions)
  *
  * This endpoint syncs facilitator-side state to the server so agents
@@ -10,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import {
@@ -19,6 +22,7 @@ import {
   type GuidedTheme,
 } from '@/lib/cognition/guidance-state';
 import type { DialoguePhase } from '@/lib/cognitive-guidance/pipeline';
+import type { WorkshopPrepResearch, WorkshopIntelligence } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,15 +50,59 @@ export async function GET(
   const { error, status } = await authenticateWorkshop(workshopId);
   if (error) return NextResponse.json({ error }, { status });
 
+  const { searchParams } = new URL(request.url);
+  const isInit = searchParams.get('init') === 'true';
+
+  // ── Init mode: load prep data from DB and populate guidance state ──
+  if (isInit) {
+    const workshop = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: {
+        clientName: true,
+        industry: true,
+        dreamTrack: true,
+        targetDomain: true,
+        prepResearch: true,
+        customQuestions: true,
+        discoveryBriefing: true,
+      },
+    });
+
+    if (workshop) {
+      // Ensure guidance state exists
+      const state = getOrCreateGuidanceState(workshopId);
+
+      // Populate prepContext if not already set
+      if (!state.prepContext) {
+        updateGuidanceState(workshopId, {
+          prepContext: {
+            clientName: workshop.clientName,
+            industry: workshop.industry,
+            dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
+            targetDomain: workshop.targetDomain,
+            research: workshop.prepResearch as unknown as WorkshopPrepResearch | null,
+            discoveryIntelligence: workshop.discoveryBriefing as unknown as WorkshopIntelligence | null,
+          },
+        });
+      }
+
+      return NextResponse.json({
+        guidanceState: getGuidanceState(workshopId),
+        customQuestions: workshop.customQuestions || null,
+      });
+    }
+  }
+
   const state = getGuidanceState(workshopId);
   if (!state) {
     return NextResponse.json({
       guidanceState: null,
+      customQuestions: null,
       message: 'No guidance state exists for this workshop yet.',
     });
   }
 
-  return NextResponse.json({ guidanceState: state });
+  return NextResponse.json({ guidanceState: state, customQuestions: null });
 }
 
 // ══════════════════════════════════════════════════════════════

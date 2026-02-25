@@ -173,11 +173,17 @@ export async function runFacilitationOrchestrator(
     guidanceState.lastPadGenerationAtMs = now;
     guidanceState.utterancesSinceLastPad = 0;
 
+    // Include prep context in the handoff message
+    const prepInfo = guidanceState.prepContext?.clientName
+      ? ` We're working with ${guidanceState.prepContext.clientName}${guidanceState.prepContext.industry ? ` in ${guidanceState.prepContext.industry}` : ''}.`
+      : '';
+    const beliefCount = cogState.beliefs.size;
+
     onConversation?.({
       timestampMs: Date.now(),
       agent: 'orchestrator',
       to: 'facilitation-agent',
-      message: `Please generate relevant facilitation prompts based on the accumulated beliefs${guidanceState.activeThemeId ? ' and current active theme' : ''}.`,
+      message: `${beliefCount} beliefs accumulated.${prepInfo} Please generate relevant facilitation prompts based on the accumulated beliefs${guidanceState.activeThemeId ? ' and current active theme' : ''}. Consider what topics are well-covered and what gaps remain.`,
       type: 'handoff',
     });
 

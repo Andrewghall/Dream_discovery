@@ -146,6 +146,9 @@ export type StickyPadType =
   | 'CUSTOMER_IMPACT'
   | 'OWNERSHIP_ACTION';
 
+export type StickyPadSource = 'seed' | 'prep' | 'agent' | 'signal';
+export type CoverageState = 'active' | 'covered' | 'queued';
+
 export type StickyPad = {
   id: string;
   type: StickyPadType;
@@ -159,6 +162,13 @@ export type StickyPad = {
   createdAtMs: number;
   status: 'active' | 'snoozed' | 'dismissed';
   snoozedUntilMs: number | null;
+
+  // Question-driven fields (new)
+  source: StickyPadSource;               // Where this pad came from
+  questionId: string | null;              // Links to FacilitationQuestion.id (from prep)
+  grounding: string | null;               // Why this question matters (from FacilitationQuestion.purpose)
+  coveragePercent: number;                // 0-100: how well the team is covering this question
+  coverageState: CoverageState;           // Lifecycle: queued → active → covered
 };
 
 export type JourneyPhase =
@@ -401,7 +411,7 @@ export function calculateLensCoverage(nodes: CogNode[]): Map<Lens, LensCoverage>
 /**
  * Extract content words for keyword overlap (Jaccard similarity).
  */
-function contentWords(text: string): Set<string> {
+export function contentWords(text: string): Set<string> {
   const STOP = new Set([
     'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
     'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
@@ -420,7 +430,7 @@ function contentWords(text: string): Set<string> {
   return new Set(words.filter(w => w.length > 2 && !STOP.has(w)));
 }
 
-function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+export function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
   if (a.size === 0 && b.size === 0) return 0;
   let intersection = 0;
   for (const w of a) if (b.has(w)) intersection++;
@@ -671,6 +681,12 @@ export function generateStickyPads(
       createdAtMs: nowMs,
       status: 'active',
       snoozedUntilMs: null,
+      // Question-driven defaults for signal-generated pads
+      source: 'signal',
+      questionId: null,
+      grounding: null,
+      coveragePercent: 0,
+      coverageState: 'active',
     });
   }
 
@@ -727,6 +743,64 @@ function buildPromptFromSignal(signal: Signal): string {
     default:
       return signal.description;
   }
+}
+
+// ══════════════════════════════════════════════════════════
+// STAGE 4B — QUESTION COVERAGE CALCULATION
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Calculate how well the conversation has covered a specific facilitation question.
+ * Uses keyword overlap between the question prompt and accumulated beliefs,
+ * plus lens matching. Returns 0-100 percentage.
+ *
+ * ~5 relevant beliefs = ~40%, ~10 = ~80%, ~15+ = 100%
+ */
+export function calculateQuestionCoverage(
+  pad: StickyPad,
+  nodes: CogNode[],
+): number {
+  if (nodes.length === 0) return 0;
+
+  const questionWords = contentWords(pad.prompt);
+  if (questionWords.size === 0) return 0;
+
+  // Also extract keywords from grounding if available
+  const groundingWords = pad.grounding ? contentWords(pad.grounding) : new Set<string>();
+  const combinedWords = new Set([...questionWords, ...groundingWords]);
+
+  let relevantScore = 0;
+
+  for (const node of nodes) {
+    if (node.nodeType === 'UNCLASSIFIED') continue;
+
+    const nodeWords = contentWords(node.rawText);
+
+    // Check keyword overlap between question and belief
+    const similarity = jaccardSimilarity(combinedWords, nodeWords);
+    if (similarity > 0.12) {
+      relevantScore += 1;
+    }
+
+    // Bonus for lens match — if the question mentions a lens and the node is tagged with it
+    for (const nodeLens of node.lenses) {
+      if (pad.prompt.toLowerCase().includes(nodeLens.lens.toLowerCase())) {
+        relevantScore += 0.3;
+        break;
+      }
+    }
+
+    // Bonus for keyword match from the question
+    for (const kw of node.keywords) {
+      if (questionWords.has(kw.toLowerCase())) {
+        relevantScore += 0.2;
+        break;
+      }
+    }
+  }
+
+  // Normalize: ~5 relevant = 40%, ~10 = 80%, ~15+ = 100%
+  return Math.min(100, Math.round((relevantScore / 12.5) * 100));
 }
 
 // ══════════════════════════════════════════════════════════

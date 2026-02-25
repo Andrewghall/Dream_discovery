@@ -332,6 +332,12 @@ export async function runFacilitationAgent(
               createdAtMs: Date.now(),
               status: 'active',
               snoozedUntilMs: null,
+              // Question-driven defaults for agent-generated pads
+              source: 'agent',
+              questionId: null,
+              grounding: String(raw.reasoning || ''),
+              coveragePercent: 0,
+              coverageState: 'queued',
             };
 
             proposals.push({

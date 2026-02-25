@@ -3,7 +3,7 @@
 import React, { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Radio, Square, X, Maximize2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Radio, Square, X, Maximize2, Zap } from 'lucide-react';
 import {
   HemisphereNodes,
   type HemisphereNodeDatum,
@@ -13,6 +13,7 @@ import {
 import {
   type CogNode,
   type StickyPad,
+  type StickyPadType,
   type Signal,
   type LensCoverage,
   type Lens,
@@ -32,9 +33,12 @@ import {
   generateStickyPads,
   buildLiveJourney,
   calculateSessionConfidence,
+  calculateQuestionCoverage,
 } from '@/lib/cognitive-guidance/pipeline';
 
 import { StickyPadCanvas } from '@/components/cognitive-guidance/sticky-pad-canvas';
+import { FeaturedQuestionCard } from '@/components/cognitive-guidance/featured-question-card';
+import { QuestionTray } from '@/components/cognitive-guidance/question-tray';
 import LensCoverageBar from '@/components/cognitive-guidance/lens-coverage-bar';
 import GapIndicatorStrip from '@/components/cognitive-guidance/gap-indicator-strip';
 import SignalClusterPanel from '@/components/cognitive-guidance/signal-cluster-panel';
@@ -45,6 +49,7 @@ import {
   type AgentConversationEntry,
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
 import type { GuidedTheme } from '@/lib/cognition/guidance-state';
+import type { WorkshopPhase } from '@/lib/cognition/agents/agent-types';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -112,8 +117,112 @@ type AgenticAnalyzedPayload = {
 };
 
 // ══════════════════════════════════════════════════════════
+// PREP QUESTION HELPERS
+// ══════════════════════════════════════════════════════════
+
+type PrepQuestion = {
+  id: string;
+  phase: string;
+  lens: string | null;
+  text: string;
+  purpose: string;
+  grounding: string;
+  order: number;
+  isEdited: boolean;
+};
+
+type PrepPhaseData = {
+  label: string;
+  description: string;
+  lensOrder: string[];
+  questions: PrepQuestion[];
+};
+
+type PrepQuestionSet = {
+  phases: Record<string, PrepPhaseData>;
+  designRationale: string;
+  generatedAtMs: number;
+};
+
+const COVERAGE_THRESHOLD = 70;
+
+function dialoguePhaseToWorkshopPhase(phase: DialoguePhase): WorkshopPhase | null {
+  switch (phase) {
+    case 'REIMAGINE': return 'REIMAGINE';
+    case 'CONSTRAINTS': return 'CONSTRAINTS';
+    case 'DEFINE_APPROACH': return 'DEFINE_APPROACH';
+    default: return null;
+  }
+}
+
+function lensToStickyPadType(lens: string | null): StickyPadType {
+  switch (lens) {
+    case 'People': return 'GAP_PROBE';
+    case 'Organisation': return 'ENABLER_PROBE';
+    case 'Customer': return 'CUSTOMER_IMPACT';
+    case 'Technology': return 'RISK_PROBE';
+    case 'Regulation': return 'RISK_PROBE';
+    case 'General': return 'CLARIFICATION';
+    default: return 'CLARIFICATION';
+  }
+}
+
+/**
+ * Convert prep-generated questions into StickyPads for a specific phase.
+ * First question is active, rest are queued.
+ */
+function buildSessionPadsFromPrep(
+  customQuestions: PrepQuestionSet,
+  phase: DialoguePhase,
+): StickyPad[] {
+  const workshopPhase = dialoguePhaseToWorkshopPhase(phase);
+  if (!workshopPhase) return [];
+
+  const phaseData = customQuestions.phases?.[workshopPhase];
+  if (!phaseData?.questions?.length) return [];
+
+  const now = Date.now();
+  return phaseData.questions
+    .sort((a, b) => a.order - b.order)
+    .map((q, i) => ({
+      id: `prep:${q.id}`,
+      type: lensToStickyPadType(q.lens),
+      prompt: q.text,
+      signalStrength: 1.0 - (i * 0.05),
+      provenance: {
+        triggerType: 'repeated_theme' as const,
+        sourceNodeIds: [] as string[],
+        description: q.grounding || q.purpose,
+      },
+      createdAtMs: now,
+      status: 'active' as const,
+      snoozedUntilMs: null,
+      source: 'prep' as const,
+      questionId: q.id,
+      grounding: q.purpose,
+      coveragePercent: 0,
+      coverageState: (i === 0 ? 'active' : 'queued') as StickyPad['coverageState'],
+    }));
+}
+
+// ══════════════════════════════════════════════════════════
 // SEED PADS PER PHASE
 // ══════════════════════════════════════════════════════════
+
+/** Helper to create a seed pad with default question-driven fields */
+function seedPad(
+  id: string, type: StickyPad['type'], prompt: string,
+  strength: number, triggerType: StickyPad['provenance']['triggerType'],
+  description: string, now: number,
+): StickyPad {
+  return {
+    id, type, prompt, signalStrength: strength,
+    provenance: { triggerType, sourceNodeIds: [], description },
+    createdAtMs: now, status: 'active', snoozedUntilMs: null,
+    source: 'seed', questionId: null, grounding: null,
+    coveragePercent: 0, coverageState: 'active',
+  };
+}
 
 function getSeedPadsForPhase(phase: DialoguePhase): StickyPad[] {
   const now = Date.now();
@@ -121,164 +230,42 @@ function getSeedPadsForPhase(phase: DialoguePhase): StickyPad[] {
   switch (phase) {
     case 'SYNTHESIS':
       return [
-        {
-          id: 'synth-themes', type: 'CLARIFICATION', status: 'active',
-          prompt: 'What were the most common themes across all participant interviews? Where is there strong consensus?',
-          signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Identify shared themes from discovery' },
-        },
-        {
-          id: 'synth-diverge', type: 'CONTRADICTION_PROBE', status: 'active',
-          prompt: 'Where did participants disagree or have strongly different perspectives? What drove the divergence?',
-          signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'contradiction', sourceNodeIds: [], description: 'Surface divergent views across interviews' },
-        },
-        {
-          id: 'synth-gaps', type: 'GAP_PROBE', status: 'active',
-          prompt: 'Which domains or topics were barely discussed in the interviews? Are there blind spots the group should address?',
-          signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Identify coverage gaps from interviews' },
-        },
-        {
-          id: 'synth-customer', type: 'CUSTOMER_IMPACT', status: 'active',
-          prompt: 'What did participants say about the customer experience? Was there a shared view of customer needs?',
-          signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Collective customer perspective' },
-        },
-        {
-          id: 'synth-pain', type: 'CLARIFICATION', status: 'active',
-          prompt: 'What were the top pain points and challenges raised across all interviews? Which are most urgent?',
-          signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Aggregate pain points from discovery' },
-        },
-        {
-          id: 'synth-surprise', type: 'CLARIFICATION', status: 'active',
-          prompt: 'Were there any surprising or unexpected insights from the interviews that the group should discuss?',
-          signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Surface unexpected findings' },
-        },
+        seedPad('synth-themes', 'CLARIFICATION', 'What were the most common themes across all participant interviews? Where is there strong consensus?', 0.9, 'repeated_theme', 'Identify shared themes from discovery', now),
+        seedPad('synth-diverge', 'CONTRADICTION_PROBE', 'Where did participants disagree or have strongly different perspectives? What drove the divergence?', 0.85, 'contradiction', 'Surface divergent views across interviews', now),
+        seedPad('synth-gaps', 'GAP_PROBE', 'Which domains or topics were barely discussed in the interviews? Are there blind spots the group should address?', 0.8, 'missing_dimension', 'Identify coverage gaps from interviews', now),
+        seedPad('synth-customer', 'CUSTOMER_IMPACT', 'What did participants say about the customer experience? Was there a shared view of customer needs?', 0.75, 'repeated_theme', 'Collective customer perspective', now),
+        seedPad('synth-pain', 'CLARIFICATION', 'What were the top pain points and challenges raised across all interviews? Which are most urgent?', 0.7, 'repeated_theme', 'Aggregate pain points from discovery', now),
+        seedPad('synth-surprise', 'CLARIFICATION', 'Were there any surprising or unexpected insights from the interviews that the group should discuss?', 0.65, 'repeated_theme', 'Surface unexpected findings', now),
       ];
 
     case 'REIMAGINE':
       return [
-        {
-          id: 'reimag-vision', type: 'CLARIFICATION', status: 'active',
-          prompt: 'What is the ideal future state for this business? Paint the picture of success without constraints.',
-          signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Opening prompt — establish aspirational vision' },
-        },
-        {
-          id: 'reimag-actors', type: 'CLARIFICATION', status: 'active',
-          prompt: 'Who are the key actors and stakeholders in this vision? What roles do they play?',
-          signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Identify actors and their relationships' },
-        },
-        {
-          id: 'reimag-customer', type: 'CUSTOMER_IMPACT', status: 'active',
-          prompt: 'How does the customer experience look in this reimagined future? What changes for them?',
-          signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Customer perspective in the vision' },
-        },
-        {
-          id: 'reimag-people', type: 'GAP_PROBE', status: 'active',
-          prompt: 'How do the people in the organisation fit into this future? What does their experience look like?',
-          signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'People dimension in the vision' },
-        },
-        {
-          id: 'reimag-org', type: 'GAP_PROBE', status: 'active',
-          prompt: 'What does the organisation look like in this future state? How is it structured differently?',
-          signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Organisation dimension in the vision' },
-        },
-        {
-          id: 'reimag-goals', type: 'CLARIFICATION', status: 'active',
-          prompt: 'What are the top 3 business outcomes you want from this transformation?',
-          signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'unanswered_question', sourceNodeIds: [], description: 'Define measurable business goals' },
-        },
+        seedPad('reimag-vision', 'CLARIFICATION', 'What is the ideal future state for this business? Paint the picture of success without constraints.', 0.9, 'repeated_theme', 'Opening prompt — establish aspirational vision', now),
+        seedPad('reimag-actors', 'CLARIFICATION', 'Who are the key actors and stakeholders in this vision? What roles do they play?', 0.85, 'repeated_theme', 'Identify actors and their relationships', now),
+        seedPad('reimag-customer', 'CUSTOMER_IMPACT', 'How does the customer experience look in this reimagined future? What changes for them?', 0.8, 'missing_dimension', 'Customer perspective in the vision', now),
+        seedPad('reimag-people', 'GAP_PROBE', 'How do the people in the organisation fit into this future? What does their experience look like?', 0.75, 'missing_dimension', 'People dimension in the vision', now),
+        seedPad('reimag-org', 'GAP_PROBE', 'What does the organisation look like in this future state? How is it structured differently?', 0.7, 'missing_dimension', 'Organisation dimension in the vision', now),
+        seedPad('reimag-goals', 'CLARIFICATION', 'What are the top 3 business outcomes you want from this transformation?', 0.65, 'unanswered_question', 'Define measurable business goals', now),
       ];
 
     case 'CONSTRAINTS':
-      // Right-to-left: Regulation → Customer → Technology → Organisation → People
       return [
-        {
-          id: 'con-regulation', type: 'RISK_PROBE', status: 'active',
-          prompt: 'What regulatory, compliance, or legal constraints apply to this vision? What must we comply with?',
-          signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Regulation lens — start from hard external constraints' },
-        },
-        {
-          id: 'con-customer', type: 'CUSTOMER_IMPACT', status: 'active',
-          prompt: 'What customer-side constraints exist? Budget limits, adoption barriers, switching costs, expectations?',
-          signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Customer constraints and realities' },
-        },
-        {
-          id: 'con-technology', type: 'RISK_PROBE', status: 'active',
-          prompt: 'What technology constraints are we dealing with? Legacy systems, integration challenges, technical debt?',
-          signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'high_freq_constraint', sourceNodeIds: [], description: 'Technology barriers and limitations' },
-        },
-        {
-          id: 'con-org', type: 'RISK_PROBE', status: 'active',
-          prompt: 'What organisational constraints exist? Budget, structure, politics, competing priorities, change fatigue?',
-          signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'high_freq_constraint', sourceNodeIds: [], description: 'Organisational barriers' },
-        },
-        {
-          id: 'con-people', type: 'RISK_PROBE', status: 'active',
-          prompt: 'What people constraints apply? Skills gaps, capacity, resistance to change, key-person dependencies?',
-          signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'high_freq_constraint', sourceNodeIds: [], description: 'People barriers and limitations' },
-        },
-        {
-          id: 'con-blockers', type: 'CONTRADICTION_PROBE', status: 'active',
-          prompt: 'Which constraints are absolute blockers vs conditions to manage? Can we rank them by severity?',
-          signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'risk_cluster', sourceNodeIds: [], description: 'Prioritise constraints by impact' },
-        },
+        seedPad('con-regulation', 'RISK_PROBE', 'What regulatory, compliance, or legal constraints apply to this vision? What must we comply with?', 0.9, 'missing_dimension', 'Regulation lens — start from hard external constraints', now),
+        seedPad('con-customer', 'CUSTOMER_IMPACT', 'What customer-side constraints exist? Budget limits, adoption barriers, switching costs, expectations?', 0.85, 'missing_dimension', 'Customer constraints and realities', now),
+        seedPad('con-technology', 'RISK_PROBE', 'What technology constraints are we dealing with? Legacy systems, integration challenges, technical debt?', 0.8, 'high_freq_constraint', 'Technology barriers and limitations', now),
+        seedPad('con-org', 'RISK_PROBE', 'What organisational constraints exist? Budget, structure, politics, competing priorities, change fatigue?', 0.75, 'high_freq_constraint', 'Organisational barriers', now),
+        seedPad('con-people', 'RISK_PROBE', 'What people constraints apply? Skills gaps, capacity, resistance to change, key-person dependencies?', 0.7, 'high_freq_constraint', 'People barriers and limitations', now),
+        seedPad('con-blockers', 'CONTRADICTION_PROBE', 'Which constraints are absolute blockers vs conditions to manage? Can we rank them by severity?', 0.65, 'risk_cluster', 'Prioritise constraints by impact', now),
       ];
 
     case 'DEFINE_APPROACH':
-      // Left-to-right: People → Organisation → Technology → Customer → Regulation
       return [
-        {
-          id: 'def-people', type: 'ENABLER_PROBE', status: 'active',
-          prompt: 'What do the people need to make this work? Training, new roles, culture change, leadership support?',
-          signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'weak_enabler', sourceNodeIds: [], description: 'People enablers — start from human needs' },
-        },
-        {
-          id: 'def-org', type: 'ENABLER_PROBE', status: 'active',
-          prompt: 'How does the organisation need to change? New processes, governance, reporting lines, partnerships?',
-          signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'weak_enabler', sourceNodeIds: [], description: 'Organisation design for the solution' },
-        },
-        {
-          id: 'def-tech', type: 'ENABLER_PROBE', status: 'active',
-          prompt: 'What technology is needed to enable this? Build, buy, or integrate? What\'s the platform strategy?',
-          signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'weak_enabler', sourceNodeIds: [], description: 'Technology enablers and choices' },
-        },
-        {
-          id: 'def-customer', type: 'CUSTOMER_IMPACT', status: 'active',
-          prompt: 'How do we prove the customer outcome? What does the customer journey look like in the new approach?',
-          signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Customer validation of approach' },
-        },
-        {
-          id: 'def-regulation', type: 'OWNERSHIP_ACTION', status: 'active',
-          prompt: 'How do we satisfy the regulatory requirements identified? What compliance steps are needed?',
-          signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Regulation compliance in the approach' },
-        },
-        {
-          id: 'def-ownership', type: 'OWNERSHIP_ACTION', status: 'active',
-          prompt: 'Who owns each workstream? What are the immediate next steps and who is accountable?',
-          signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
-          provenance: { triggerType: 'unanswered_question', sourceNodeIds: [], description: 'Assign ownership and next steps' },
-        },
+        seedPad('def-people', 'ENABLER_PROBE', 'What do the people need to make this work? Training, new roles, culture change, leadership support?', 0.9, 'weak_enabler', 'People enablers — start from human needs', now),
+        seedPad('def-org', 'ENABLER_PROBE', 'How does the organisation need to change? New processes, governance, reporting lines, partnerships?', 0.85, 'weak_enabler', 'Organisation design for the solution', now),
+        seedPad('def-tech', 'ENABLER_PROBE', 'What technology is needed to enable this? Build, buy, or integrate? What\'s the platform strategy?', 0.8, 'weak_enabler', 'Technology enablers and choices', now),
+        seedPad('def-customer', 'CUSTOMER_IMPACT', 'How do we prove the customer outcome? What does the customer journey look like in the new approach?', 0.75, 'missing_dimension', 'Customer validation of approach', now),
+        seedPad('def-regulation', 'OWNERSHIP_ACTION', 'How do we satisfy the regulatory requirements identified? What compliance steps are needed?', 0.7, 'missing_dimension', 'Regulation compliance in the approach', now),
+        seedPad('def-ownership', 'OWNERSHIP_ACTION', 'Who owns each workstream? What are the immediate next steps and who is accountable?', 0.65, 'unanswered_question', 'Assign ownership and next steps', now),
       ];
   }
 }
@@ -449,7 +436,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
   const [freeflowMode, setFreeflowMode] = useState(false);
   const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
-  const [agentPanelCollapsed, setAgentPanelCollapsed] = useState(true);
+  const [agentPanelCollapsed, setAgentPanelCollapsed] = useState(false);
+
+  // ── Prep question set (loaded from DB on mount) ────────
+  const prepQuestionsRef = useRef<PrepQuestionSet | null>(null);
 
   // (Synthesis data moved to Discovery tab)
 
@@ -512,9 +502,13 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       return phase;
     });
 
-    // Only replace with seed pads if not listening (no real data yet)
+    // Only replace with seed/prep pads if not listening (no real data yet)
     if (!listening) {
-      setStickyPads(getSeedPadsForPhase(phase));
+      // Try prep questions first, fall back to seed pads
+      const prepPads = prepQuestionsRef.current
+        ? buildSessionPadsFromPrep(prepQuestionsRef.current, phase)
+        : [];
+      setStickyPads(prepPads.length > 0 ? prepPads : getSeedPadsForPhase(phase));
       setSelectedPadId(null);
     }
     // Sync to server
@@ -586,6 +580,50 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // (Synthesis data fetching moved to Discovery tab)
 
+  // ── Init: load prep questions from DB on mount ─────────
+  useEffect(() => {
+    fetch(`/api/workshops/${workshopId}/guidance-state?init=true`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.customQuestions && typeof data.customQuestions === 'object') {
+          const cq = data.customQuestions as PrepQuestionSet;
+          prepQuestionsRef.current = cq;
+          const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase);
+          if (prepPads.length > 0) {
+            setStickyPads(prepPads);
+          }
+        }
+      })
+      .catch(() => { /* fall back to seed pads — already set */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workshopId]); // Only on mount
+
+  // ── Auto-advance: move to next question when coverage threshold reached ──
+  useEffect(() => {
+    const activePad = stickyPads.find((p) => p.coverageState === 'active' && p.source === 'prep');
+    if (!activePad || activePad.coveragePercent < COVERAGE_THRESHOLD) return;
+
+    setStickyPads((prev) => {
+      // Mark current active as covered
+      const updated = prev.map((p) =>
+        p.id === activePad.id ? { ...p, coverageState: 'covered' as const } : p,
+      );
+
+      // Find next queued pad and activate it
+      const nextQueued = updated
+        .filter((p) => p.coverageState === 'queued')
+        .sort((a, b) => b.signalStrength - a.signalStrength)[0];
+
+      if (nextQueued) {
+        return updated.map((p) =>
+          p.id === nextQueued.id ? { ...p, coverageState: 'active' as const } : p,
+        );
+      }
+
+      return updated;
+    });
+  }, [stickyPads]);
+
   // ── Buffered pipeline (Stages 3-5) ────────────────────
   const runBufferedPipeline = useCallback((nodes: CogNode[], nowMs: number) => {
     const nodesArr = nodes;
@@ -598,8 +636,18 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     const coverage = calculateLensCoverage(nodesArr);
     setLensCoverage(coverage);
 
-    // Stage 4: Sticky Pad Generation (phase-aware)
-    setStickyPads(prev => generateStickyPads(detectedSignals, prev, nowMs, dialoguePhase));
+    // Stage 4: Sticky Pad Generation (phase-aware) — only for signal-generated pads
+    setStickyPads(prev => {
+      // Generate new signal pads
+      const withSignals = generateStickyPads(detectedSignals, prev, nowMs, dialoguePhase);
+
+      // Calculate coverage for prep-sourced pads
+      return withSignals.map((pad) => {
+        if (pad.source !== 'prep' || !pad.questionId) return pad;
+        const newCoverage = calculateQuestionCoverage(pad, nodesArr);
+        return { ...pad, coveragePercent: Math.max(pad.coveragePercent, newCoverage) };
+      });
+    });
 
     // Stage 5: Live Journey Construction (progressive, preserves facilitator edits)
     setLiveJourney(prev => buildLiveJourney(nodesArr, prev, DEFAULT_JOURNEY_STAGES[dialoguePhase]));
@@ -835,7 +883,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       } catch { /* ignore */ }
     });
 
-    // ── Pad generated by Facilitation Agent → add to pads ─
+    // ── Pad generated by Facilitation Agent → add to queue ─
     es.addEventListener('pad.generated', (e) => {
       try {
         const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
@@ -843,8 +891,34 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         if (payload?.pad) {
           setStickyPads((prev) => {
             if (prev.some((p) => p.id === payload.pad.id)) return prev;
-            return [...prev, payload.pad];
+            // Agent-generated pads enter the queue with proper defaults
+            const agentPad: StickyPad = {
+              ...payload.pad,
+              source: payload.pad.source || 'agent',
+              questionId: payload.pad.questionId || null,
+              grounding: payload.pad.grounding || payload.pad.provenance?.description || null,
+              coveragePercent: payload.pad.coveragePercent || 0,
+              coverageState: payload.pad.coverageState || 'queued',
+            };
+            return [...prev, agentPad];
           });
+        }
+      } catch { /* ignore */ }
+    });
+
+    // ── Question coverage assessed by agent → update percentage ─
+    es.addEventListener('question.coverage', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
+        const payload = evt.payload as { questionId: string; coveragePercent: number };
+        if (payload?.questionId && typeof payload.coveragePercent === 'number') {
+          setStickyPads((prev) =>
+            prev.map((p) =>
+              p.questionId === payload.questionId
+                ? { ...p, coveragePercent: Math.max(p.coveragePercent, payload.coveragePercent) }
+                : p,
+            ),
+          );
         }
       } catch { /* ignore */ }
     });
@@ -912,6 +986,77 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     ));
   }, []);
 
+  // ── Question-driven pad actions ─────────────────────────
+  const handleSkipQuestion = useCallback(() => {
+    setStickyPads((prev) => {
+      const activePad = prev.find((p) => p.coverageState === 'active' && p.source !== 'seed');
+      if (!activePad) return prev;
+
+      const updated = prev.map((p) =>
+        p.id === activePad.id ? { ...p, coverageState: 'covered' as const } : p,
+      );
+
+      const nextQueued = updated
+        .filter((p) => p.coverageState === 'queued')
+        .sort((a, b) => b.signalStrength - a.signalStrength)[0];
+
+      if (nextQueued) {
+        return updated.map((p) =>
+          p.id === nextQueued.id ? { ...p, coverageState: 'active' as const } : p,
+        );
+      }
+      return updated;
+    });
+  }, []);
+
+  const handleRevisitQuestion = useCallback((padId: string) => {
+    setStickyPads((prev) => {
+      // Mark current active as covered
+      const updated = prev.map((p) =>
+        p.coverageState === 'active' && p.source !== 'seed'
+          ? { ...p, coverageState: 'covered' as const }
+          : p,
+      );
+      // Bring the selected pad back as active
+      return updated.map((p) =>
+        p.id === padId ? { ...p, coverageState: 'active' as const } : p,
+      );
+    });
+  }, []);
+
+  // ── Computed: split pads by role ──────────────────────────
+  const featuredPad = useMemo(
+    () => stickyPads.find((p) => p.coverageState === 'active' && (p.source === 'prep' || p.source === 'agent')),
+    [stickyPads],
+  );
+
+  const coveredPads = useMemo(
+    () => stickyPads.filter((p) => p.coverageState === 'covered' && (p.source === 'prep' || p.source === 'agent')),
+    [stickyPads],
+  );
+
+  const queuedPads = useMemo(
+    () => stickyPads.filter((p) => p.coverageState === 'queued' && (p.source === 'prep' || p.source === 'agent')),
+    [stickyPads],
+  );
+
+  // Signal-generated + seed pads for the secondary grid
+  const signalPads = useMemo(
+    () => stickyPads.filter((p) => p.source === 'signal' || (p.source === 'seed' && !featuredPad)),
+    [stickyPads, featuredPad],
+  );
+
+  // For the featured card counter
+  const totalPrepPads = useMemo(
+    () => stickyPads.filter((p) => p.source === 'prep' || p.source === 'agent').length,
+    [stickyPads],
+  );
+
+  const currentQuestionIndex = useMemo(() => {
+    if (!featuredPad) return 0;
+    return coveredPads.length + 1;
+  }, [featuredPad, coveredPads.length]);
+
   // (Radar chart / word cloud data transforms moved to Discovery tab)
 
   // ══════════════════════════════════════════════════════════
@@ -921,27 +1066,43 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-transparent">
       <div className="container mx-auto px-4 py-6">
+        {/* ── Workflow breadcrumb ─────────────────────── */}
+        <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+          <Link href={`/admin/workshops/${workshopId}`} className="hover:text-foreground transition-colors">
+            Workshop
+          </Link>
+          <ArrowRight className="h-3 w-3" />
+          <Link href={`/admin/workshops/${workshopId}/prep`} className="hover:text-foreground transition-colors">
+            Prep
+          </Link>
+          <ArrowRight className="h-3 w-3" />
+          <span className="font-semibold text-foreground flex items-center gap-1">
+            <Zap className="h-3 w-3 text-amber-500" />
+            Live Workshop
+          </span>
+        </div>
+
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
-            <Link href={`/admin/workshops/${workshopId}`}>
+            <Link href={`/admin/workshops/${workshopId}/prep`}>
               <Button variant="outline" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+                Back to Prep
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Cognitive Guidance</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Live Workshop</h1>
               <p className="text-sm text-muted-foreground">
-                {PHASE_LABELS[dialoguePhase]} — {listening ? `${nodeCount} contributions captured` : 'Ready'}
+                {PHASE_LABELS[dialoguePhase]} — {listening ? `${nodeCount} contributions captured` : 'Ready to go live'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {!listening ? (
-              <Button onClick={startListening} size="sm">
+              <Button onClick={startListening} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
                 <Radio className="h-4 w-4 mr-2" />
-                Start Listening
+                Go Live
               </Button>
             ) : (
               <Button onClick={stopListening} variant="destructive" size="sm">
@@ -991,15 +1152,55 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         </div>
         <GapIndicatorStrip signals={signals} />
 
-        {/* ═══ PRIMARY CANVAS — Sticky Pads own the screen ═══ */}
+        {/* ═══ PRIMARY CANVAS — Featured Question + Question Tray ═══ */}
         <div className="mt-4">
-          <StickyPadCanvas
-            pads={stickyPads}
-            selectedPadId={selectedPadId}
-            onSelectPad={setSelectedPadId}
-            onDismissPad={handleDismissPad}
-            onSnoozePad={handleSnoozePad}
-          />
+          {featuredPad ? (
+            /* Question-driven layout: featured card left + tray right */
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-4">
+              <div className="space-y-4">
+                {/* Featured Question Card */}
+                <FeaturedQuestionCard
+                  pad={featuredPad}
+                  questionIndex={currentQuestionIndex}
+                  totalQuestions={totalPrepPads}
+                  onDismiss={() => handleDismissPad(featuredPad.id)}
+                  onSkip={handleSkipQuestion}
+                />
+
+                {/* Signal-generated pads in a secondary grid */}
+                {signalPads.length > 0 && (
+                  <StickyPadCanvas
+                    pads={signalPads}
+                    selectedPadId={selectedPadId}
+                    onSelectPad={setSelectedPadId}
+                    onDismissPad={handleDismissPad}
+                    onSnoozePad={handleSnoozePad}
+                  />
+                )}
+              </div>
+
+              {/* Question Tray sidebar */}
+              <div className="rounded-lg border bg-card/50 p-3">
+                <h3 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+                  Questions
+                </h3>
+                <QuestionTray
+                  coveredPads={coveredPads}
+                  queuedPads={queuedPads}
+                  onRevisit={handleRevisitQuestion}
+                />
+              </div>
+            </div>
+          ) : (
+            /* Fallback: seed pads in the original grid layout */
+            <StickyPadCanvas
+              pads={stickyPads}
+              selectedPadId={selectedPadId}
+              onSelectPad={setSelectedPadId}
+              onDismissPad={handleDismissPad}
+              onSnoozePad={handleSnoozePad}
+            />
+          )}
         </div>
 
         {/* ═══ CONTEXT STRIP — Hemisphere + Signals side by side ═══ */}

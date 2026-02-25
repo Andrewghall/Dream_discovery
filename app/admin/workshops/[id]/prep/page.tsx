@@ -558,20 +558,41 @@ export default function PrepPage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-transparent">
       <div className="container mx-auto px-4 py-6 max-w-5xl">
+        {/* Workflow breadcrumb */}
+        <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+          <Link href={`/admin/workshops/${workshopId}`} className="hover:text-foreground transition-colors">
+            Workshop
+          </Link>
+          <ArrowRight className="h-3 w-3" />
+          <span className="font-semibold text-foreground">Prep</span>
+          <ArrowRight className="h-3 w-3" />
+          <Link href={`/admin/workshops/${workshopId}/cognitive-guidance`} className="hover:text-foreground transition-colors">
+            Live Workshop
+          </Link>
+        </div>
+
         {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Link href={`/admin/workshops/${workshopId}`}>
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <Link href={`/admin/workshops/${workshopId}`}>
+              <Button variant="outline" size="sm">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+            </Link>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Workshop Preparation</h1>
+              <p className="text-sm text-muted-foreground">
+                {workshop?.name || 'Workshop'} — Research context, design workshop facilitation questions, and synthesize Discovery intelligence
+              </p>
+            </div>
+          </div>
+          <Link href={`/admin/workshops/${workshopId}/cognitive-guidance`}>
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+              Enter Live Workshop
+              <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </Link>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Workshop Preparation</h1>
-            <p className="text-sm text-muted-foreground">
-              {workshop?.name || 'Workshop'} — Research context, design workshop facilitation questions, and synthesize Discovery intelligence
-            </p>
-          </div>
         </div>
 
         <div className="space-y-6">
