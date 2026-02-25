@@ -1,45 +1,35 @@
 'use client';
 
 import { X, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import type { StickyPad as StickyPadType, StickyPadType as PadType } from '@/lib/cognitive-guidance/pipeline';
 
-const BORDER_COLORS: Record<PadType, string> = {
-  CLARIFICATION: '#60a5fa',
-  GAP_PROBE: '#f59e0b',
-  CONTRADICTION_PROBE: '#ef4444',
-  RISK_PROBE: '#f97316',
-  ENABLER_PROBE: '#34d399',
-  CUSTOMER_IMPACT: '#a78bfa',
-  OWNERSHIP_ACTION: '#64748b',
+// ── Post-it note colours — each type gets its own distinct sticky note ──
+const PAD_COLORS: Record<PadType, { bg: string; text: string; accent: string; label: string }> = {
+  CLARIFICATION:       { bg: '#bfdbfe', text: '#1e3a5f', accent: '#93c5fd', label: 'Clarify' },
+  GAP_PROBE:           { bg: '#fef08a', text: '#713f12', accent: '#fde047', label: 'Gap' },
+  CONTRADICTION_PROBE: { bg: '#fecaca', text: '#7f1d1d', accent: '#fca5a5', label: 'Contradiction' },
+  RISK_PROBE:          { bg: '#fed7aa', text: '#7c2d12', accent: '#fdba74', label: 'Risk' },
+  ENABLER_PROBE:       { bg: '#a7f3d0', text: '#064e3b', accent: '#6ee7b7', label: 'Enabler' },
+  CUSTOMER_IMPACT:     { bg: '#ddd6fe', text: '#3b0764', accent: '#c4b5fd', label: 'Customer' },
+  OWNERSHIP_ACTION:    { bg: '#e2e8f0', text: '#1e293b', accent: '#cbd5e1', label: 'Action' },
 };
 
-const BADGE_CLASSES: Record<PadType, string> = {
-  CLARIFICATION: 'bg-blue-100 text-blue-700 border-blue-200',
-  GAP_PROBE: 'bg-amber-100 text-amber-700 border-amber-200',
-  CONTRADICTION_PROBE: 'bg-red-100 text-red-700 border-red-200',
-  RISK_PROBE: 'bg-orange-100 text-orange-700 border-orange-200',
-  ENABLER_PROBE: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  CUSTOMER_IMPACT: 'bg-purple-100 text-purple-700 border-purple-200',
-  OWNERSHIP_ACTION: 'bg-slate-100 text-slate-700 border-slate-200',
-};
+// Subtle rotation for each pad index so they look like real post-its on a board
+const ROTATIONS = [-1.5, 0.8, -0.5, 1.2, -1, 0.3, 1.5, -0.8];
 
 interface StickyPadProps {
   pad: StickyPadType;
+  index: number;
   onDismiss: (id: string) => void;
   onSnooze: (id: string) => void;
   isSelected: boolean;
   onClick: (id: string) => void;
 }
 
-function formatPadType(type: PadType): string {
-  return type.replace(/_/g, ' ');
-}
-
-export function StickyPad({ pad, onDismiss, onSnooze, isSelected, onClick }: StickyPadProps) {
-  const borderColor = BORDER_COLORS[pad.type];
+export function StickyPad({ pad, index, onDismiss, onSnooze, isSelected, onClick }: StickyPadProps) {
+  const colors = PAD_COLORS[pad.type];
   const isSnoozed = pad.status === 'snoozed';
+  const rotation = ROTATIONS[index % ROTATIONS.length];
 
   return (
     <div
@@ -53,74 +43,76 @@ export function StickyPad({ pad, onDismiss, onSnooze, isSelected, onClick }: Sti
         }
       }}
       className={`
-        relative rounded-lg border bg-white p-3 shadow-sm transition-all cursor-pointer
-        ${isSelected ? 'ring-2 ring-blue-400 ring-offset-1' : 'hover:shadow-md'}
-        ${isSnoozed ? 'opacity-50' : ''}
+        relative aspect-square p-4 cursor-pointer transition-all duration-200
+        ${isSelected ? 'scale-105 z-10' : 'hover:scale-[1.03] hover:z-10'}
+        ${isSnoozed ? 'opacity-40' : ''}
       `}
-      style={{ borderLeftWidth: '4px', borderLeftColor: borderColor }}
+      style={{
+        backgroundColor: colors.bg,
+        color: colors.text,
+        transform: `rotate(${isSelected ? 0 : rotation}deg)`,
+        boxShadow: isSelected
+          ? '0 8px 25px rgba(0,0,0,0.2), 0 0 0 3px rgba(59,130,246,0.5)'
+          : '2px 3px 8px rgba(0,0,0,0.12), 1px 1px 3px rgba(0,0,0,0.08)',
+        borderRadius: '2px',
+      }}
     >
-      {/* Top row: type badge + signal strength */}
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <Badge
-          variant="outline"
-          className={`text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0 ${BADGE_CLASSES[pad.type]}`}
-        >
-          {formatPadType(pad.type)}
-        </Badge>
+      {/* Folded corner effect */}
+      <div
+        className="absolute top-0 right-0 w-6 h-6"
+        style={{
+          background: `linear-gradient(135deg, transparent 50%, ${colors.accent} 50%)`,
+          opacity: 0.6,
+        }}
+      />
 
-        {/* Signal strength bar */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground">
-            {Math.round(pad.signalStrength * 100)}%
-          </span>
-          <div className="h-1.5 w-12 rounded-full bg-gray-200 overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${pad.signalStrength * 100}%`,
-                backgroundColor: borderColor,
-              }}
-            />
-          </div>
-        </div>
+      {/* Type label — small tag at top */}
+      <div
+        className="inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-sm mb-2"
+        style={{ backgroundColor: colors.accent, color: colors.text }}
+      >
+        {colors.label}
       </div>
 
-      {/* Body: prompt text */}
-      <p className="text-sm text-gray-800 leading-relaxed mb-3">
+      {/* Prompt text — the main content, large and readable */}
+      <p className="text-sm font-medium leading-snug mb-auto" style={{ color: colors.text }}>
         {pad.prompt}
       </p>
 
-      {/* Bottom row: provenance + actions */}
-      <div className="flex items-end justify-between gap-2">
-        <p className="text-[11px] text-muted-foreground leading-snug flex-1 min-w-0">
-          {pad.provenance.description}
-        </p>
+      {/* Bottom: signal strength dot + provenance hint */}
+      <div className="absolute bottom-3 left-4 right-4">
+        <div className="flex items-end justify-between gap-2">
+          <p className="text-[10px] leading-tight opacity-60 flex-1 min-w-0 line-clamp-2">
+            {pad.provenance.description}
+          </p>
 
-        <div className="flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-6 w-6 text-muted-foreground hover:text-amber-600"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSnooze(pad.id);
-            }}
-            title="Snooze"
-          >
-            <Clock className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-6 w-6 text-muted-foreground hover:text-red-600"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDismiss(pad.id);
-            }}
-            title="Dismiss"
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
+          {/* Actions — snooze / dismiss */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              className="p-1 rounded-full opacity-40 hover:opacity-100 transition-opacity"
+              style={{ color: colors.text }}
+              onClick={(e) => { e.stopPropagation(); onSnooze(pad.id); }}
+              title="Snooze 60s"
+            >
+              <Clock className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className="p-1 rounded-full opacity-40 hover:opacity-100 transition-opacity"
+              style={{ color: colors.text }}
+              onClick={(e) => { e.stopPropagation(); onDismiss(pad.id); }}
+              title="Dismiss"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Signal strength as a thin bar along the bottom */}
+        <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ backgroundColor: colors.accent }}>
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${pad.signalStrength * 100}%`, backgroundColor: colors.text, opacity: 0.3 }}
+          />
         </div>
       </div>
     </div>
