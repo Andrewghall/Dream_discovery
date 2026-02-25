@@ -314,7 +314,7 @@ export default function OrganizationsPage() {
                   <div className="mt-1 flex items-center gap-2 text-sm text-gray-600">
                     <span>Selected:</span>
                     <img src={formData.logoUrl} alt="Selected logo" className="h-6 w-auto" />
-                    <code className="text-xs bg-gray-100 px-1 rounded">{formData.logoUrl}</code>
+                    <code className="text-xs bg-gray-100 px-1 rounded">{formData.logoUrl.startsWith('http') ? formData.logoUrl.split('/').pop() : formData.logoUrl}</code>
                   </div>
                 )}
               </div>
