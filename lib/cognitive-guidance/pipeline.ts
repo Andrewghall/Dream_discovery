@@ -76,14 +76,30 @@ export type SignalType =
   | 'weak_enabler'
   | 'risk_cluster';
 
-// ── DREAM Dialogue Phases ────────────────────────────────
+// ── DREAM Workshop Phases ────────────────────────────────
+// SYNTHESIS: Collective viewpoint from individual AI discovery interviews.
+//            Pre-populated from stored reports — no live audio needed.
 // REIMAGINE: Pure business vision, goals, actors. NO constraints, NO technology.
-// CONSTRAINTS: Constraints, risks, regulation, technology barriers.
-// DEFINE_APPROACH: Actions, enablers, solutions, ownership.
-export type DialoguePhase = 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
+// CONSTRAINTS: Right-to-left across lenses — Regulation → Customer → Technology → Organisation → People.
+// DEFINE_APPROACH: Left-to-right solution design — People → Organisation → Technology → Customer → Regulation.
+export type DialoguePhase = 'SYNTHESIS' | 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
+
+export const ALL_PHASES: DialoguePhase[] = ['SYNTHESIS', 'REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
+
+export const PHASE_LABELS: Record<DialoguePhase, string> = {
+  SYNTHESIS: 'Synthesis of Discovery',
+  REIMAGINE: 'Reimagine',
+  CONSTRAINTS: 'Constraints',
+  DEFINE_APPROACH: 'Define Approach',
+};
 
 // Which signal types are valid in each phase
 const PHASE_ALLOWED_SIGNALS: Record<DialoguePhase, Set<SignalType>> = {
+  SYNTHESIS: new Set([
+    'repeated_theme',        // common themes across participants
+    'missing_dimension',     // gaps in coverage from interviews
+    'contradiction',         // divergent views between participants
+  ]),
   REIMAGINE: new Set([
     'repeated_theme',        // themes are always relevant
     'missing_dimension',     // but only People, Customer, Organisation lenses

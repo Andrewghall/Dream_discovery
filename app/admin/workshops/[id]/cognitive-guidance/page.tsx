@@ -7,6 +7,7 @@ import { ArrowLeft, Radio, Square } from 'lucide-react';
 import {
   HemisphereNodes,
   type HemisphereNodeDatum,
+  type HemispherePrimaryType,
 } from '@/components/live/hemisphere-nodes';
 
 import {
@@ -16,9 +17,12 @@ import {
   type LensCoverage,
   type Lens,
   type ActorJourney,
+  type ActorJourneyEntry,
   type SessionConfidence,
   type DialoguePhase,
   ALL_LENSES,
+  ALL_PHASES,
+  PHASE_LABELS,
   createInitialNode,
   categoriseNode,
   applyLensMapping,
@@ -101,6 +105,308 @@ type AgenticAnalyzedPayload = {
 };
 
 // ══════════════════════════════════════════════════════════
+// SEED PADS PER PHASE
+// ══════════════════════════════════════════════════════════
+
+function getSeedPadsForPhase(phase: DialoguePhase): StickyPad[] {
+  const now = Date.now();
+
+  switch (phase) {
+    case 'SYNTHESIS':
+      return [
+        {
+          id: 'synth-themes', type: 'CLARIFICATION', status: 'active',
+          prompt: 'What were the most common themes across all participant interviews? Where is there strong consensus?',
+          signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Identify shared themes from discovery' },
+        },
+        {
+          id: 'synth-diverge', type: 'CONTRADICTION_PROBE', status: 'active',
+          prompt: 'Where did participants disagree or have strongly different perspectives? What drove the divergence?',
+          signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'contradiction', sourceNodeIds: [], description: 'Surface divergent views across interviews' },
+        },
+        {
+          id: 'synth-gaps', type: 'GAP_PROBE', status: 'active',
+          prompt: 'Which domains or topics were barely discussed in the interviews? Are there blind spots the group should address?',
+          signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Identify coverage gaps from interviews' },
+        },
+        {
+          id: 'synth-customer', type: 'CUSTOMER_IMPACT', status: 'active',
+          prompt: 'What did participants say about the customer experience? Was there a shared view of customer needs?',
+          signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Collective customer perspective' },
+        },
+        {
+          id: 'synth-pain', type: 'CLARIFICATION', status: 'active',
+          prompt: 'What were the top pain points and challenges raised across all interviews? Which are most urgent?',
+          signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Aggregate pain points from discovery' },
+        },
+        {
+          id: 'synth-surprise', type: 'CLARIFICATION', status: 'active',
+          prompt: 'Were there any surprising or unexpected insights from the interviews that the group should discuss?',
+          signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Surface unexpected findings' },
+        },
+      ];
+
+    case 'REIMAGINE':
+      return [
+        {
+          id: 'reimag-vision', type: 'CLARIFICATION', status: 'active',
+          prompt: 'What is the ideal future state for this business? Paint the picture of success without constraints.',
+          signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Opening prompt — establish aspirational vision' },
+        },
+        {
+          id: 'reimag-actors', type: 'CLARIFICATION', status: 'active',
+          prompt: 'Who are the key actors and stakeholders in this vision? What roles do they play?',
+          signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'repeated_theme', sourceNodeIds: [], description: 'Identify actors and their relationships' },
+        },
+        {
+          id: 'reimag-customer', type: 'CUSTOMER_IMPACT', status: 'active',
+          prompt: 'How does the customer experience look in this reimagined future? What changes for them?',
+          signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Customer perspective in the vision' },
+        },
+        {
+          id: 'reimag-people', type: 'GAP_PROBE', status: 'active',
+          prompt: 'How do the people in the organisation fit into this future? What does their experience look like?',
+          signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'People dimension in the vision' },
+        },
+        {
+          id: 'reimag-org', type: 'GAP_PROBE', status: 'active',
+          prompt: 'What does the organisation look like in this future state? How is it structured differently?',
+          signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Organisation dimension in the vision' },
+        },
+        {
+          id: 'reimag-goals', type: 'CLARIFICATION', status: 'active',
+          prompt: 'What are the top 3 business outcomes you want from this transformation?',
+          signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'unanswered_question', sourceNodeIds: [], description: 'Define measurable business goals' },
+        },
+      ];
+
+    case 'CONSTRAINTS':
+      // Right-to-left: Regulation → Customer → Technology → Organisation → People
+      return [
+        {
+          id: 'con-regulation', type: 'RISK_PROBE', status: 'active',
+          prompt: 'What regulatory, compliance, or legal constraints apply to this vision? What must we comply with?',
+          signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Regulation lens — start from hard external constraints' },
+        },
+        {
+          id: 'con-customer', type: 'CUSTOMER_IMPACT', status: 'active',
+          prompt: 'What customer-side constraints exist? Budget limits, adoption barriers, switching costs, expectations?',
+          signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Customer constraints and realities' },
+        },
+        {
+          id: 'con-technology', type: 'RISK_PROBE', status: 'active',
+          prompt: 'What technology constraints are we dealing with? Legacy systems, integration challenges, technical debt?',
+          signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'high_freq_constraint', sourceNodeIds: [], description: 'Technology barriers and limitations' },
+        },
+        {
+          id: 'con-org', type: 'RISK_PROBE', status: 'active',
+          prompt: 'What organisational constraints exist? Budget, structure, politics, competing priorities, change fatigue?',
+          signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'high_freq_constraint', sourceNodeIds: [], description: 'Organisational barriers' },
+        },
+        {
+          id: 'con-people', type: 'RISK_PROBE', status: 'active',
+          prompt: 'What people constraints apply? Skills gaps, capacity, resistance to change, key-person dependencies?',
+          signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'high_freq_constraint', sourceNodeIds: [], description: 'People barriers and limitations' },
+        },
+        {
+          id: 'con-blockers', type: 'CONTRADICTION_PROBE', status: 'active',
+          prompt: 'Which constraints are absolute blockers vs conditions to manage? Can we rank them by severity?',
+          signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'risk_cluster', sourceNodeIds: [], description: 'Prioritise constraints by impact' },
+        },
+      ];
+
+    case 'DEFINE_APPROACH':
+      // Left-to-right: People → Organisation → Technology → Customer → Regulation
+      return [
+        {
+          id: 'def-people', type: 'ENABLER_PROBE', status: 'active',
+          prompt: 'What do the people need to make this work? Training, new roles, culture change, leadership support?',
+          signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'weak_enabler', sourceNodeIds: [], description: 'People enablers — start from human needs' },
+        },
+        {
+          id: 'def-org', type: 'ENABLER_PROBE', status: 'active',
+          prompt: 'How does the organisation need to change? New processes, governance, reporting lines, partnerships?',
+          signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'weak_enabler', sourceNodeIds: [], description: 'Organisation design for the solution' },
+        },
+        {
+          id: 'def-tech', type: 'ENABLER_PROBE', status: 'active',
+          prompt: 'What technology is needed to enable this? Build, buy, or integrate? What\'s the platform strategy?',
+          signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'weak_enabler', sourceNodeIds: [], description: 'Technology enablers and choices' },
+        },
+        {
+          id: 'def-customer', type: 'CUSTOMER_IMPACT', status: 'active',
+          prompt: 'How do we prove the customer outcome? What does the customer journey look like in the new approach?',
+          signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Customer validation of approach' },
+        },
+        {
+          id: 'def-regulation', type: 'OWNERSHIP_ACTION', status: 'active',
+          prompt: 'How do we satisfy the regulatory requirements identified? What compliance steps are needed?',
+          signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'missing_dimension', sourceNodeIds: [], description: 'Regulation compliance in the approach' },
+        },
+        {
+          id: 'def-ownership', type: 'OWNERSHIP_ACTION', status: 'active',
+          prompt: 'Who owns each workstream? What are the immediate next steps and who is accountable?',
+          signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
+          provenance: { triggerType: 'unanswered_question', sourceNodeIds: [], description: 'Assign ownership and next steps' },
+        },
+      ];
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// DEMO DATA — Hemisphere nodes + Actor Journeys
+// ══════════════════════════════════════════════════════════
+
+const DEMO_HEMISPHERE_NODES: HemisphereNodeDatum[] = (() => {
+  const now = Date.now();
+  const types: HemispherePrimaryType[] = ['VISIONARY', 'INSIGHT', 'CONSTRAINT', 'RISK', 'ENABLER', 'ACTION', 'QUESTION', 'OPPORTUNITY'];
+  const phrases = [
+    'We need a unified customer platform that brings everything together',
+    'The current onboarding process takes 6 weeks — far too long',
+    'Regulatory compliance is non-negotiable for any solution',
+    'Our people are our biggest asset but they lack digital skills',
+    'The legacy CRM cannot scale to handle our growth targets',
+    'AI-driven personalisation could transform customer retention',
+    'Who owns the data governance framework going forward?',
+    'We should partner with fintech providers rather than build',
+    'The customer expects a seamless omnichannel experience',
+    'Budget constraints mean we need a phased approach',
+    'Employee engagement scores have dropped 15% this year',
+    'Cloud migration would unlock agility but needs board approval',
+    'Our competitors are already 2 years ahead on digital',
+    'The customer journey has 7 handoffs — each is a dropout risk',
+    'We need clearer KPIs tied to business outcomes not activity',
+  ];
+  const domains = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+  const keywords = [
+    ['platform', 'unified', 'customer'], ['onboarding', 'process', 'time'], ['regulation', 'compliance'],
+    ['people', 'skills', 'digital'], ['CRM', 'legacy', 'scale'], ['AI', 'personalisation', 'retention'],
+    ['data', 'governance'], ['partner', 'fintech', 'build'], ['customer', 'omnichannel', 'seamless'],
+    ['budget', 'phased', 'approach'], ['engagement', 'employee', 'scores'], ['cloud', 'migration', 'agility'],
+    ['competitors', 'digital', 'ahead'], ['journey', 'handoffs', 'dropout'], ['KPIs', 'outcomes', 'business'],
+  ];
+
+  return phrases.map((text, i) => ({
+    dataPointId: `demo-node-${i}`,
+    createdAtMs: now - (phrases.length - i) * 30_000,
+    rawText: text,
+    dataPointSource: 'live_transcript',
+    speakerId: `speaker-${(i % 4) + 1}`,
+    dialoguePhase: null,
+    intent: null,
+    themeId: null,
+    themeLabel: null,
+    transcriptChunk: {
+      speakerId: `speaker-${(i % 4) + 1}`,
+      startTimeMs: i * 30_000,
+      endTimeMs: (i + 1) * 30_000,
+      confidence: 0.85 + Math.random() * 0.15,
+      source: 'deepgram',
+    },
+    classification: {
+      primaryType: types[i % types.length],
+      confidence: 0.6 + Math.random() * 0.35,
+      keywords: keywords[i],
+      suggestedArea: domains[i % domains.length],
+      updatedAt: new Date().toISOString(),
+    },
+    agenticAnalysis: {
+      domains: [{ domain: domains[i % domains.length], relevance: 0.7 + Math.random() * 0.3, reasoning: 'Primary domain' }],
+      themes: [{ label: keywords[i][0], category: 'theme', confidence: 0.8, reasoning: 'Key topic' }],
+      actors: [],
+      semanticMeaning: text,
+      sentimentTone: ['positive', 'neutral', 'concerned'][i % 3],
+      overallConfidence: 0.7 + Math.random() * 0.25,
+    },
+  }));
+})();
+
+const DEMO_ACTOR_JOURNEYS: Map<string, ActorJourney> = (() => {
+  const journeys = new Map<string, ActorJourney>();
+
+  const makeEntry = (actor: string, phase: ActorJourneyEntry['phase'], conf: number, sentiment: ActorJourneyEntry['sentiment'], summary: string): ActorJourneyEntry => ({
+    actorName: actor, phase, nodeIds: [], confidence: conf, sentiment, summary,
+  });
+
+  journeys.set('End Customer', {
+    actorName: 'End Customer',
+    role: 'Primary user of the platform',
+    mentionCount: 12,
+    phases: {
+      AWARENESS: makeEntry('End Customer', 'AWARENESS', 0.8, 'neutral', 'Customers discover through marketing and referrals'),
+      CONSIDERATION: makeEntry('End Customer', 'CONSIDERATION', 0.7, 'concerned', 'Evaluation process is too complex with 7 handoffs'),
+      ONBOARDING: makeEntry('End Customer', 'ONBOARDING', 0.6, 'critical', 'Onboarding takes 6 weeks — major dropout risk'),
+      USAGE: makeEntry('End Customer', 'USAGE', 0.75, 'positive', 'Once onboarded, satisfaction scores are strong'),
+      SUPPORT: makeEntry('End Customer', 'SUPPORT', 0.5, 'concerned', 'Support channel fragmentation causes frustration'),
+    },
+    gapPhases: ['DECISION', 'PURCHASE', 'RETENTION_EXIT'],
+  });
+
+  journeys.set('Frontline Staff', {
+    actorName: 'Frontline Staff',
+    role: 'Customer-facing team members',
+    mentionCount: 8,
+    phases: {
+      ONBOARDING: makeEntry('Frontline Staff', 'ONBOARDING', 0.65, 'concerned', 'Training programmes are outdated and lack digital skills'),
+      USAGE: makeEntry('Frontline Staff', 'USAGE', 0.7, 'neutral', 'Daily workflows are manual and time-consuming'),
+      SUPPORT: makeEntry('Frontline Staff', 'SUPPORT', 0.55, 'critical', 'Escalation paths are unclear and slow'),
+    },
+    gapPhases: ['AWARENESS', 'CONSIDERATION', 'DECISION', 'PURCHASE', 'RETENTION_EXIT'],
+  });
+
+  journeys.set('IT Team', {
+    actorName: 'IT Team',
+    role: 'Technology delivery and operations',
+    mentionCount: 6,
+    phases: {
+      CONSIDERATION: makeEntry('IT Team', 'CONSIDERATION', 0.8, 'neutral', 'Evaluating cloud migration options and vendor landscape'),
+      DECISION: makeEntry('IT Team', 'DECISION', 0.6, 'concerned', 'Board approval needed for infrastructure investment'),
+      USAGE: makeEntry('IT Team', 'USAGE', 0.5, 'critical', 'Legacy system maintenance consuming 70% of capacity'),
+    },
+    gapPhases: ['AWARENESS', 'PURCHASE', 'ONBOARDING', 'SUPPORT', 'RETENTION_EXIT'],
+  });
+
+  return journeys;
+})();
+
+
+// ══════════════════════════════════════════════════════════
+// SYNTHESIS DATA TYPES
+// ══════════════════════════════════════════════════════════
+
+type SpiderAxisStat = {
+  axisId: string;
+  label: string;
+  today: { median: number | null };
+  target: { median: number | null };
+};
+
+type WordCloudItem = { text: string; value: number };
+
+// ══════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════
 
@@ -110,51 +416,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Core state ─────────────────────────────────────────
   const [cogNodes, setCogNodes] = useState<Map<string, CogNode>>(new Map());
   const [hemisphereNodes, setHemisphereNodes] = useState<Record<string, HemisphereNodeDatum>>({});
-  const [stickyPads, setStickyPads] = useState<StickyPad[]>(() => {
-    // Seed pads for REIMAGINE phase — vision, goals, actors only
-    const now = Date.now();
-    return [
-      {
-        id: 'seed-vision', type: 'CLARIFICATION' as const, status: 'active' as const,
-        prompt: 'What is the ideal future state for this business? Paint the picture of success without constraints.',
-        signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'repeated_theme' as const, sourceNodeIds: [], description: 'Opening prompt — establish aspirational vision' },
-      },
-      {
-        id: 'seed-actors', type: 'CLARIFICATION' as const, status: 'active' as const,
-        prompt: 'Who are the key actors and stakeholders in this vision? What roles do they play?',
-        signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'repeated_theme' as const, sourceNodeIds: [], description: 'Identify actors and their relationships' },
-      },
-      {
-        id: 'seed-customer', type: 'CUSTOMER_IMPACT' as const, status: 'active' as const,
-        prompt: 'How does the customer experience look in this reimagined future? What changes for them?',
-        signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'Customer perspective in the vision' },
-      },
-      {
-        id: 'seed-people', type: 'GAP_PROBE' as const, status: 'active' as const,
-        prompt: 'How do the people in the organisation fit into this future? What does their experience look like?',
-        signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'People dimension in the vision' },
-      },
-      {
-        id: 'seed-org', type: 'GAP_PROBE' as const, status: 'active' as const,
-        prompt: 'What does the organisation look like in this future state? How is it structured differently?',
-        signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'Organisation dimension in the vision' },
-      },
-      {
-        id: 'seed-goals', type: 'CLARIFICATION' as const, status: 'active' as const,
-        prompt: 'What are the top 3 business outcomes you want from this transformation?',
-        signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
-        provenance: { triggerType: 'unanswered_question' as const, sourceNodeIds: [], description: 'Define measurable business goals' },
-      },
-    ];
-  });
+  const [stickyPads, setStickyPads] = useState<StickyPad[]>(() => getSeedPadsForPhase('SYNTHESIS'));
   const [signals, setSignals] = useState<Signal[]>([]);
   const [lensCoverage, setLensCoverage] = useState<Map<Lens, LensCoverage>>(new Map());
-  const [actorJourneys, setActorJourneys] = useState<Map<string, ActorJourney>>(new Map());
+  const [actorJourneys, setActorJourneys] = useState<Map<string, ActorJourney>>(DEMO_ACTOR_JOURNEYS);
   const [sessionConfidence, setSessionConfidence] = useState<SessionConfidence>({
     overallConfidence: 0,
     categorisedRate: 0,
@@ -170,8 +435,14 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── UI state ───────────────────────────────────────────
   const [selectedPadId, setSelectedPadId] = useState<string | null>(null);
-  const [journeyExpanded, setJourneyExpanded] = useState(false);
-  const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
+  const [journeyExpanded, setJourneyExpanded] = useState(true);
+  const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('SYNTHESIS');
+
+  // ── Synthesis data (Phase 1) ───────────────────────────
+  const [spiderData, setSpiderData] = useState<SpiderAxisStat[] | null>(null);
+  const [wordCloudData, setWordCloudData] = useState<WordCloudItem[] | null>(null);
+  const [synthesisLoading, setSynthesisLoading] = useState(false);
+  const [participantCount, setParticipantCount] = useState(0);
 
   // ── Belief tracking for Stage 3 ────────────────────────
   const contradictionsRef = useRef<Array<{ id: string; beliefA: string; beliefB: string; resolved: boolean }>>([]);
@@ -183,6 +454,50 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     () => `/api/workshops/${encodeURIComponent(workshopId)}/events`,
     [workshopId]
   );
+
+  // ── Phase change → swap seed pads ──────────────────────
+  const handlePhaseChange = useCallback((phase: DialoguePhase) => {
+    setDialoguePhase(phase);
+    // Only replace with seed pads if not listening (no real data yet)
+    if (!listening) {
+      setStickyPads(getSeedPadsForPhase(phase));
+      setSelectedPadId(null);
+    }
+  }, [listening]);
+
+  // ── Fetch synthesis data on mount ──────────────────────
+  useEffect(() => {
+    async function fetchSynthesisData() {
+      setSynthesisLoading(true);
+      try {
+        const [spiderRes, keywordsRes] = await Promise.all([
+          fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/spider?bust=${Date.now()}`, { cache: 'no-store' }),
+          fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/keywords?bust=${Date.now()}`, { cache: 'no-store' }),
+        ]);
+
+        if (spiderRes.ok) {
+          const data = await spiderRes.json();
+          setSpiderData(data.axisStats || null);
+          setParticipantCount(data.participantCount || 0);
+        }
+
+        if (keywordsRes.ok) {
+          const data = await keywordsRes.json();
+          if (Array.isArray(data.keywords)) {
+            setWordCloudData(data.keywords.slice(0, 60).map((k: { term: string; count: number }) => ({
+              text: k.term, value: k.count,
+            })));
+          }
+        }
+      } catch {
+        // Synthesis data is optional — fail silently
+      } finally {
+        setSynthesisLoading(false);
+      }
+    }
+
+    fetchSynthesisData();
+  }, [workshopId]);
 
   // ── Buffered pipeline (Stages 3-5) ────────────────────
   const runBufferedPipeline = useCallback((nodes: CogNode[], nowMs: number) => {
@@ -430,11 +745,11 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     };
   }, []);
 
-  // Convert hemisphere nodes to array for the mini widget
-  const hemisphereNodeArray = useMemo(
-    () => Object.values(hemisphereNodes),
-    [hemisphereNodes]
-  );
+  // Use demo nodes when not listening, real nodes when live
+  const hemisphereNodeArray = useMemo(() => {
+    const realNodes = Object.values(hemisphereNodes);
+    return realNodes.length > 0 ? realNodes : DEMO_HEMISPHERE_NODES;
+  }, [hemisphereNodes]);
 
   // ── Sticky pad actions ─────────────────────────────────
   const handleDismissPad = useCallback((id: string) => {
@@ -449,6 +764,24 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     ));
   }, []);
 
+  // ── Synthesis spider chart data transform ──────────────
+  const radarChartData = useMemo(() => {
+    if (!spiderData) return null;
+    return spiderData
+      .filter(a => a.today.median !== null)
+      .slice(0, 10)
+      .map(a => ({ label: a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label, value: a.today.median ?? 0 }));
+  }, [spiderData]);
+
+  const radarTargetSeries = useMemo(() => {
+    if (!spiderData) return undefined;
+    const targetData = spiderData
+      .filter(a => a.target.median !== null)
+      .slice(0, 10)
+      .map(a => ({ label: a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label, value: a.target.median ?? 0 }));
+    return targetData.length > 0 ? [{ name: 'Target', data: targetData }] : undefined;
+  }, [spiderData]);
+
   // ══════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════
@@ -457,7 +790,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     <div className="min-h-screen bg-transparent">
       <div className="container mx-auto px-4 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
             <Link href={`/admin/workshops/${workshopId}`}>
               <Button variant="outline" size="sm">
@@ -468,51 +801,103 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Cognitive Guidance</h1>
               <p className="text-sm text-muted-foreground">
-                Facilitation intelligence layer — {nodeCount} contributions captured
+                {PHASE_LABELS[dialoguePhase]} — {listening ? `${nodeCount} contributions captured` : 'Ready'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!listening ? (
-              <Button onClick={startListening} size="sm">
-                <Radio className="h-4 w-4 mr-2" />
-                Start Listening
-              </Button>
-            ) : (
-              <Button onClick={stopListening} variant="destructive" size="sm">
-                <Square className="h-4 w-4 mr-2" />
-                Stop
-              </Button>
-            )}
-            {listening && (
-              <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live
-              </span>
+            {dialoguePhase !== 'SYNTHESIS' && (
+              <>
+                {!listening ? (
+                  <Button onClick={startListening} size="sm">
+                    <Radio className="h-4 w-4 mr-2" />
+                    Start Listening
+                  </Button>
+                ) : (
+                  <Button onClick={stopListening} variant="destructive" size="sm">
+                    <Square className="h-4 w-4 mr-2" />
+                    Stop
+                  </Button>
+                )}
+                {listening && (
+                  <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Live
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
 
-        {/* Phase Selector */}
-        <div className="flex items-center gap-1 mt-4 p-1 bg-muted/50 rounded-lg w-fit">
-          {(['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as DialoguePhase[]).map((phase) => (
+        {/* Phase Selector — 4 phases */}
+        <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-lg w-fit mb-4">
+          {ALL_PHASES.map((phase) => (
             <button
               key={phase}
-              onClick={() => setDialoguePhase(phase)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+              onClick={() => handlePhaseChange(phase)}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 dialoguePhase === phase
                   ? 'bg-white shadow-sm text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {phase === 'REIMAGINE' ? 'Reimagine' : phase === 'CONSTRAINTS' ? 'Constraints' : 'Define Approach'}
+              {PHASE_LABELS[phase]}
             </button>
           ))}
         </div>
 
-        {/* Lens Coverage Bar + Gap Indicators */}
-        <LensCoverageBar coverage={lensCoverage} />
-        <GapIndicatorStrip signals={signals} />
+        {/* Synthesis phase: Spider + Word Cloud above the cards */}
+        {dialoguePhase === 'SYNTHESIS' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            {/* Spider Diagram */}
+            <div className="rounded-lg border bg-card p-4">
+              <h3 className="text-sm font-semibold mb-3">Domain Assessment</h3>
+              {synthesisLoading ? (
+                <div className="flex items-center justify-center h-[280px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                </div>
+              ) : radarChartData && radarChartData.length > 0 ? (
+                <div className="flex justify-center">
+                  <SynthesisRadarChart data={radarChartData} series={radarTargetSeries} />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground">
+                  No spider data yet — complete participant interviews
+                </div>
+              )}
+              {participantCount > 0 && (
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Based on {participantCount} participant interview{participantCount !== 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
+
+            {/* Word Cloud */}
+            <div className="rounded-lg border bg-card p-4">
+              <h3 className="text-sm font-semibold mb-3">Key Themes</h3>
+              {synthesisLoading ? (
+                <div className="flex items-center justify-center h-[280px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                </div>
+              ) : wordCloudData && wordCloudData.length > 0 ? (
+                <SynthesisWordCloud words={wordCloudData} />
+              ) : (
+                <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground">
+                  No keyword data yet — complete participant interviews
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Lens Coverage Bar + Gap Indicators (for live phases) */}
+        {dialoguePhase !== 'SYNTHESIS' && (
+          <>
+            <LensCoverageBar coverage={lensCoverage} />
+            <GapIndicatorStrip signals={signals} />
+          </>
+        )}
 
         {/* ═══ PRIMARY CANVAS — Sticky Pads own the screen ═══ */}
         <div className="mt-4">
@@ -525,7 +910,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           />
         </div>
 
-        {/* ═══ BOTTOM STRIP — Context panels (collapsible) ═══ */}
+        {/* ═══ BOTTOM STRIP — Context panels ═══ */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
           {/* Compact Hemisphere + Signals */}
           <div className="space-y-3">
@@ -554,4 +939,35 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       </div>
     </div>
   );
+}
+
+// ══════════════════════════════════════════════════════════
+// INLINE SYNTHESIS COMPONENTS (lightweight wrappers)
+// ══════════════════════════════════════════════════════════
+
+function SynthesisRadarChart({ data, series }: { data: Array<{ label: string; value: number }>; series?: Array<{ name: string; data: Array<{ label: string; value: number }> }> }) {
+  // Lazy import the RadarChart to avoid SSR issues
+  const [RadarChart, setRadarChart] = useState<React.ComponentType<{ data: Array<{ label: string; value: number }>; series?: Array<{ name: string; data: Array<{ label: string; value: number }> }>; size?: number; max?: number }> | null>(null);
+
+  useEffect(() => {
+    import('@/components/report/radar-chart').then(mod => {
+      setRadarChart(() => mod.RadarChart);
+    });
+  }, []);
+
+  if (!RadarChart) return <div className="h-[280px] flex items-center justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>;
+  return <RadarChart data={data} series={series} size={280} max={10} />;
+}
+
+function SynthesisWordCloud({ words }: { words: Array<{ text: string; value: number }> }) {
+  const [WordCloud, setWordCloud] = useState<React.ComponentType<{ words: Array<{ text: string; value: number }>; className?: string }> | null>(null);
+
+  useEffect(() => {
+    import('@/components/report/word-cloud').then(mod => {
+      setWordCloud(() => mod.WordCloud);
+    });
+  }, []);
+
+  if (!WordCloud) return <div className="h-[280px] flex items-center justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>;
+  return <WordCloud words={words} className="h-[280px]" />;
 }
