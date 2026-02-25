@@ -920,36 +920,35 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           />
         </div>
 
-        {/* ═══ BOTTOM STRIP — Context panels ═══ */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
-          {/* Compact Hemisphere + Signals */}
-          <div className="space-y-3">
-            <div className="rounded-lg border bg-card p-2 relative group">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-xs font-medium text-muted-foreground">Hemisphere</h3>
-                <button
-                  onClick={() => setHemisphereExpanded(true)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
-                  title="Expand hemisphere"
-                >
-                  <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />
-                </button>
-              </div>
-              <div className="h-[160px]">
-                <HemisphereNodes
-                  nodes={hemisphereNodeArray}
-                  originTimeMs={null}
-                  onNodeClick={(node) => setExpandedNode(node)}
-                />
-              </div>
+        {/* ═══ CONTEXT STRIP — Hemisphere + Signals side by side ═══ */}
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3">
+          <div className="rounded-lg border bg-card p-2 relative group">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-xs font-medium text-muted-foreground">Hemisphere</h3>
+              <button
+                onClick={() => setHemisphereExpanded(true)}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                title="Expand hemisphere"
+              >
+                <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
             </div>
-            <SignalClusterPanel
-              signals={signals}
-              sessionConfidence={sessionConfidence}
-            />
+            <div className="h-[140px]">
+              <HemisphereNodes
+                nodes={hemisphereNodeArray}
+                originTimeMs={null}
+                onNodeClick={(node) => setExpandedNode(node)}
+              />
+            </div>
           </div>
+          <SignalClusterPanel
+            signals={signals}
+            sessionConfidence={sessionConfidence}
+          />
+        </div>
 
-          {/* Live Journey Map */}
+        {/* ═══ LIVE JOURNEY MAP — Full width ═══ */}
+        <div className="mt-4">
           <LiveJourneyMap
             data={liveJourney}
             onChange={setLiveJourney}

@@ -264,9 +264,9 @@ export default function LiveJourneyMap({ data, onChange, expanded, onToggleExpan
           {stages.length > 0 && (
             <div className="overflow-x-auto">
               <div
-                className="grid min-w-[900px]"
+                className="grid min-w-[1000px]"
                 style={{
-                  gridTemplateColumns: `180px repeat(${stages.length}, minmax(170px, 1fr))`,
+                  gridTemplateColumns: `160px repeat(${stages.length}, minmax(180px, 1fr))`,
                 }}
               >
                 {/* Header row — stages */}
@@ -430,11 +430,11 @@ function InteractionCard({
       </button>
 
       {/* Action + context */}
-      <div className={`text-[11px] font-medium ${style.text} leading-tight pr-4`}>
+      <div className={`text-xs font-semibold ${style.text} leading-snug pr-4`}>
         {interaction.action}
       </div>
       {interaction.context && (
-        <div className="text-[9px] text-muted-foreground mt-0.5 line-clamp-2">{interaction.context}</div>
+        <div className="text-[10px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">{interaction.context}</div>
       )}
 
       {/* Dual intensity bars */}
@@ -495,8 +495,8 @@ function IntensityBar({
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-[8px] font-medium text-muted-foreground w-6 text-right">{label}</span>
+    <div className="flex items-center gap-0.5">
+      <span className="text-[7px] font-bold text-muted-foreground/70 w-5 text-right uppercase">{label}</span>
       <div className="flex gap-px flex-1">
         {INTENSITY_LEVELS.map((level) => (
           <button
