@@ -1,148 +1,142 @@
 'use client';
 
-import { SkipForward, X } from 'lucide-react';
-import type { StickyPad, StickyPadType } from '@/lib/cognitive-guidance/pipeline';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import type { FacilitationQuestion, LensName } from '@/lib/cognition/agents/agent-types';
 
-// ── Colours matching the sticky-pad component ────────────────
-
-const PAD_COLORS: Record<StickyPadType, { bg: string; text: string; accent: string; label: string }> = {
-  CLARIFICATION:       { bg: '#bfdbfe', text: '#1e3a5f', accent: '#93c5fd', label: 'Clarify' },
-  GAP_PROBE:           { bg: '#fef08a', text: '#713f12', accent: '#fde047', label: 'Gap' },
-  CONTRADICTION_PROBE: { bg: '#fecaca', text: '#7f1d1d', accent: '#fca5a5', label: 'Contradiction' },
-  RISK_PROBE:          { bg: '#fed7aa', text: '#7c2d12', accent: '#fdba74', label: 'Risk' },
-  ENABLER_PROBE:       { bg: '#a7f3d0', text: '#064e3b', accent: '#6ee7b7', label: 'Enabler' },
-  CUSTOMER_IMPACT:     { bg: '#ddd6fe', text: '#3b0764', accent: '#c4b5fd', label: 'Customer' },
-  OWNERSHIP_ACTION:    { bg: '#e2e8f0', text: '#1e293b', accent: '#cbd5e1', label: 'Action' },
+// ── Lens colour dots for the main question card ──────────────
+const LENS_DOT_COLORS: Record<string, string> = {
+  People: '#3b82f6',
+  Organisation: '#10b981',
+  Customer: '#8b5cf6',
+  Technology: '#f97316',
+  Regulation: '#ef4444',
+  General: '#94a3b8',
 };
 
-// ── Progress bar colour based on percentage ─────────────────
-
-function progressColor(percent: number): string {
-  if (percent >= 70) return '#22c55e'; // green-500
-  if (percent >= 40) return '#3b82f6'; // blue-500
-  return '#6366f1';                     // indigo-500
-}
-
 // ══════════════════════════════════════════════════════════════
-// FEATURED QUESTION CARD
+// MAIN QUESTION CARD — warm amber, shows the overarching question
 // ══════════════════════════════════════════════════════════════
 
-interface FeaturedQuestionCardProps {
-  pad: StickyPad;
-  questionIndex: number;   // 1-based: which question we're on
-  totalQuestions: number;   // total in this phase
-  onDismiss: () => void;
-  onSkip: () => void;       // Manually advance to next question
+interface MainQuestionCardProps {
+  question: FacilitationQuestion;
+  questionIndex: number;       // 0-based
+  totalQuestions: number;
+  phaseLabel: string;          // e.g. "Reimagine"
+  onPrevious: () => void;
+  onNext: () => void;
 }
 
-export function FeaturedQuestionCard({
-  pad,
+export function MainQuestionCard({
+  question,
   questionIndex,
   totalQuestions,
-  onDismiss,
-  onSkip,
-}: FeaturedQuestionCardProps) {
-  const colors = PAD_COLORS[pad.type];
-  const coverage = pad.coveragePercent;
-  const barColor = progressColor(coverage);
+  phaseLabel,
+  onPrevious,
+  onNext,
+}: MainQuestionCardProps) {
+  const isFirst = questionIndex === 0;
+  const isLast = questionIndex === totalQuestions - 1;
+
+  // Determine which lenses this question targets
+  const lenses: string[] = [];
+  if (question.lens) {
+    lenses.push(question.lens);
+  }
+  // Also gather lenses from sub-questions
+  if (question.subQuestions?.length) {
+    for (const sq of question.subQuestions) {
+      if (sq.lens && !lenses.includes(sq.lens)) {
+        lenses.push(sq.lens);
+      }
+    }
+  }
 
   return (
     <div
-      className="relative rounded-lg p-6 transition-all duration-300"
+      className="relative rounded-xl p-6 transition-all duration-300"
       style={{
-        backgroundColor: colors.bg,
-        color: colors.text,
-        boxShadow: '0 4px 15px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.08)',
+        backgroundColor: '#fef3c7',
+        color: '#78350f',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)',
       }}
     >
-      {/* Header row: type badge + counter + actions */}
+      {/* Header: phase label + counter */}
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {/* Type badge */}
-          <span
-            className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-sm"
-            style={{ backgroundColor: colors.accent, color: colors.text }}
-          >
-            {colors.label}
-          </span>
-
-          {/* Source badge */}
-          {pad.source === 'prep' && (
-            <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/40 font-medium">
-              Prep
-            </span>
-          )}
-          {pad.source === 'agent' && (
-            <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/40 font-medium">
-              Agent
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Counter */}
-          <span className="text-xs font-medium opacity-60">
-            {questionIndex} / {totalQuestions}
-          </span>
-
-          {/* Skip button */}
-          <button
-            onClick={onSkip}
-            className="p-1.5 rounded-md opacity-40 hover:opacity-100 transition-opacity"
-            style={{ color: colors.text }}
-            title="Skip to next question"
-          >
-            <SkipForward className="h-4 w-4" />
-          </button>
-
-          {/* Dismiss button */}
-          <button
-            onClick={onDismiss}
-            className="p-1.5 rounded-md opacity-40 hover:opacity-100 transition-opacity"
-            style={{ color: colors.text }}
-            title="Dismiss"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <span
+          className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-sm"
+          style={{ backgroundColor: '#fde68a', color: '#92400e' }}
+        >
+          {phaseLabel}
+        </span>
+        <span className="text-xs font-medium" style={{ color: '#92400e', opacity: 0.7 }}>
+          Question {questionIndex + 1} of {totalQuestions}
+        </span>
       </div>
 
-      {/* Question text — large and prominent */}
-      <p className="text-lg font-semibold leading-relaxed mb-3" style={{ color: colors.text }}>
-        {pad.prompt}
+      {/* Main question text — large and prominent */}
+      <p className="text-xl font-semibold leading-relaxed mb-3" style={{ color: '#78350f' }}>
+        {question.text}
       </p>
 
-      {/* Purpose / Grounding — smaller context */}
-      {(pad.grounding || pad.provenance.description) && (
-        <p className="text-xs leading-relaxed opacity-60 mb-4">
-          {pad.grounding || pad.provenance.description}
+      {/* Purpose / Grounding */}
+      {(question.purpose || question.grounding) && (
+        <p className="text-sm leading-relaxed mb-4" style={{ color: '#92400e', opacity: 0.7 }}>
+          {question.purpose}
+          {question.grounding && question.purpose && ' — '}
+          {question.grounding && (
+            <span className="italic">{question.grounding}</span>
+          )}
         </p>
       )}
 
-      {/* ── Coverage progress bar ── */}
-      <div className="mt-auto">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wider opacity-50">
-            Coverage
+      {/* Lens indicators + Navigation */}
+      <div className="flex items-center justify-between mt-4">
+        {/* Lens dots */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#92400e', opacity: 0.5 }}>
+            Lenses
           </span>
-          <span
-            className="text-xs font-bold tabular-nums"
-            style={{ color: barColor }}
-          >
-            {coverage}%
-          </span>
+          {lenses.map((lens) => (
+            <div key={lens} className="flex items-center gap-1">
+              <div
+                className="w-2.5 h-2.5 rounded-full"
+                style={{ backgroundColor: LENS_DOT_COLORS[lens] || '#94a3b8' }}
+              />
+              <span className="text-[10px] font-medium" style={{ color: '#92400e', opacity: 0.6 }}>
+                {lens}
+              </span>
+            </div>
+          ))}
         </div>
-        <div
-          className="h-1.5 rounded-full overflow-hidden"
-          style={{ backgroundColor: colors.accent }}
-        >
-          <div
-            className="h-full rounded-full transition-all duration-700 ease-out"
+
+        {/* Navigation buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onPrevious}
+            disabled={isFirst}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
             style={{
-              width: `${coverage}%`,
-              backgroundColor: barColor,
+              backgroundColor: isFirst ? '#fde68a44' : '#fde68a',
+              color: isFirst ? '#92400e66' : '#92400e',
+              cursor: isFirst ? 'not-allowed' : 'pointer',
             }}
-          />
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Previous
+          </button>
+          <button
+            onClick={onNext}
+            disabled={isLast}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+            style={{
+              backgroundColor: isLast ? '#fde68a44' : '#fde68a',
+              color: isLast ? '#92400e66' : '#92400e',
+              cursor: isLast ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Next Question
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
     </div>

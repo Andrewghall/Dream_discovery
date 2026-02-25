@@ -48,6 +48,13 @@ export const WORKSHOP_PHASE_DESCRIPTIONS: Record<WorkshopPhase, string> = {
   DEFINE_APPROACH: 'Build the practical solution left-to-right: People → Organisation → Technology → Customer → Regulation. Design the approach that bridges today to the reimagined future while respecting constraints.',
 };
 
+export type SubQuestion = {
+  id: string;
+  lens: LensName | 'General';
+  text: string;
+  purpose: string;
+};
+
 export type FacilitationQuestion = {
   id: string;
   phase: WorkshopPhase;
@@ -57,6 +64,7 @@ export type FacilitationQuestion = {
   grounding: string;          // How this connects to research/Discovery data
   order: number;
   isEdited: boolean;          // Has the facilitator edited this?
+  subQuestions: SubQuestion[]; // 2-3 starter sub-questions for live session post-its
 };
 
 export type WorkshopQuestionSet = {

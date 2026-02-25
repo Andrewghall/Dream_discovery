@@ -66,6 +66,15 @@ export type GuidanceState = {
     discoveryIntelligence: WorkshopIntelligence | null;
   } | null;
 
+  // Current main question for "Peeling the Onion" model
+  currentMainQuestion: {
+    text: string;
+    lens: string | null;
+    purpose: string;
+    grounding: string;
+    phase: string;
+  } | null;
+
   // Agent orchestration tracking
   lastThemeCheckAtMs: number;
   lastPadGenerationAtMs: number;
@@ -114,6 +123,7 @@ export function getOrCreateGuidanceState(
     dialoguePhase,
     lastUpdatedAtMs: Date.now(),
     prepContext: null,
+    currentMainQuestion: null,
     lastThemeCheckAtMs: 0,
     lastPadGenerationAtMs: 0,
     utterancesSinceLastPad: 0,
@@ -127,7 +137,7 @@ export function updateGuidanceState(
   workshopId: string,
   updates: Partial<Pick<
     GuidanceState,
-    'activeThemeId' | 'themes' | 'freeflowMode' | 'dialoguePhase' | 'prepContext'
+    'activeThemeId' | 'themes' | 'freeflowMode' | 'dialoguePhase' | 'prepContext' | 'currentMainQuestion'
   >>,
 ): GuidanceState {
   const state = getOrCreateGuidanceState(workshopId);
@@ -137,6 +147,7 @@ export function updateGuidanceState(
   if (updates.freeflowMode !== undefined) state.freeflowMode = updates.freeflowMode;
   if (updates.dialoguePhase !== undefined) state.dialoguePhase = updates.dialoguePhase;
   if (updates.prepContext !== undefined) state.prepContext = updates.prepContext;
+  if (updates.currentMainQuestion !== undefined) state.currentMainQuestion = updates.currentMainQuestion;
 
   state.lastUpdatedAtMs = Date.now();
   return state;

@@ -145,6 +145,10 @@ export async function POST(
     updates.prepContext = body.prepContext;
   }
 
+  if (body.currentMainQuestion !== undefined) {
+    updates.currentMainQuestion = body.currentMainQuestion;
+  }
+
   const updated = updateGuidanceState(workshopId, updates);
 
   return NextResponse.json({ guidanceState: updated });

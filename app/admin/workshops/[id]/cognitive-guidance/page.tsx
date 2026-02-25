@@ -3,7 +3,7 @@
 import React, { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ArrowRight, Radio, Square, X, Maximize2, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronRight, Radio, Square, X, Maximize2, Zap } from 'lucide-react';
 import {
   HemisphereNodes,
   type HemisphereNodeDatum,
@@ -37,8 +37,7 @@ import {
 } from '@/lib/cognitive-guidance/pipeline';
 
 import { StickyPadCanvas } from '@/components/cognitive-guidance/sticky-pad-canvas';
-import { FeaturedQuestionCard } from '@/components/cognitive-guidance/featured-question-card';
-import { QuestionTray } from '@/components/cognitive-guidance/question-tray';
+import { MainQuestionCard } from '@/components/cognitive-guidance/featured-question-card';
 import LensCoverageBar from '@/components/cognitive-guidance/lens-coverage-bar';
 import GapIndicatorStrip from '@/components/cognitive-guidance/gap-indicator-strip';
 import SignalClusterPanel from '@/components/cognitive-guidance/signal-cluster-panel';
@@ -49,7 +48,7 @@ import {
   type AgentConversationEntry,
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
 import type { GuidedTheme } from '@/lib/cognition/guidance-state';
-import type { WorkshopPhase } from '@/lib/cognition/agents/agent-types';
+import type { WorkshopPhase, FacilitationQuestion, SubQuestion } from '@/lib/cognition/agents/agent-types';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -129,6 +128,7 @@ type PrepQuestion = {
   grounding: string;
   order: number;
   isEdited: boolean;
+  subQuestions?: SubQuestion[];
 };
 
 type PrepPhaseData = {
@@ -202,6 +202,8 @@ function buildSessionPadsFromPrep(
       grounding: q.purpose,
       coveragePercent: 0,
       coverageState: (i === 0 ? 'active' : 'queued') as StickyPad['coverageState'],
+      lens: q.lens || null,
+      mainQuestionIndex: null,
     }));
 }
 
@@ -221,6 +223,7 @@ function seedPad(
     createdAtMs: now, status: 'active', snoozedUntilMs: null,
     source: 'seed', questionId: null, grounding: null,
     coveragePercent: 0, coverageState: 'active',
+    lens: null, mainQuestionIndex: null,
   };
 }
 
@@ -441,6 +444,51 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Prep question set (loaded from DB on mount) ────────
   const prepQuestionsRef = useRef<PrepQuestionSet | null>(null);
 
+  // ── "Peeling the Onion" — main question navigation ─────
+  const [mainQuestionIndex, setMainQuestionIndex] = useState(0);
+  const [completedByQuestion, setCompletedByQuestion] = useState<Map<number, StickyPad[]>>(new Map());
+  const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
+
+  // ── Main questions for current phase (derived from prep data) ──
+  const mainQuestions = useMemo(() => {
+    const prep = prepQuestionsRef.current;
+    if (!prep) return [];
+    const wp = dialoguePhaseToWorkshopPhase(dialoguePhase);
+    if (!wp) return [];
+    const phaseData = prep.phases?.[wp];
+    if (!phaseData?.questions?.length) return [];
+    return [...phaseData.questions].sort((a, b) => a.order - b.order);
+  }, [dialoguePhase, prepQuestionsRef.current]);
+
+  const currentMainQ = mainQuestions[mainQuestionIndex] ?? null;
+
+  // ── Convert a main question's sub-questions into StickyPads ──
+  const loadPrepSubPads = useCallback((question: PrepQuestion, qIndex: number): StickyPad[] => {
+    if (!question.subQuestions?.length) return [];
+    const now = Date.now();
+    return question.subQuestions.map((sq, i) => ({
+      id: `sub:${sq.id}`,
+      type: lensToStickyPadType(sq.lens),
+      prompt: sq.text,
+      signalStrength: 0.9 - (i * 0.05),
+      provenance: {
+        triggerType: 'repeated_theme' as const,
+        sourceNodeIds: [] as string[],
+        description: sq.purpose,
+      },
+      createdAtMs: now,
+      status: 'active' as const,
+      snoozedUntilMs: null,
+      source: 'prep' as const,
+      questionId: question.id,
+      grounding: sq.purpose,
+      coveragePercent: 0,
+      coverageState: 'active' as StickyPad['coverageState'],
+      lens: sq.lens || null,
+      mainQuestionIndex: qIndex,
+    }));
+  }, []);
+
   // (Synthesis data moved to Discovery tab)
 
   // ── Belief tracking for Stage 3 ────────────────────────
@@ -461,6 +509,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       themes?: GuidedTheme[];
       freeflowMode?: boolean;
       dialoguePhase?: DialoguePhase;
+      currentMainQuestion?: { text: string; lens: string | null; purpose: string; grounding: string; phase: string } | null;
     } = {},
   ) => {
     try {
@@ -472,6 +521,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           themes: overrides.themes ?? themes,
           freeflowMode: overrides.freeflowMode ?? freeflowMode,
           dialoguePhase: overrides.dialoguePhase ?? dialoguePhase,
+          ...(overrides.currentMainQuestion !== undefined && { currentMainQuestion: overrides.currentMainQuestion }),
         }),
       });
     } catch { /* fail silently — non-critical */ }
@@ -502,18 +552,87 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       return phase;
     });
 
+    // Reset main question navigation for new phase
+    setMainQuestionIndex(0);
+    setCompletedByQuestion(new Map());
+
     // Only replace with seed/prep pads if not listening (no real data yet)
     if (!listening) {
-      // Try prep questions first, fall back to seed pads
-      const prepPads = prepQuestionsRef.current
-        ? buildSessionPadsFromPrep(prepQuestionsRef.current, phase)
+      // Load first main question's sub-pads, or fall back to seed pads
+      const prep = prepQuestionsRef.current;
+      const wp = dialoguePhaseToWorkshopPhase(phase);
+      const phaseQuestions = wp && prep?.phases?.[wp]?.questions
+        ? [...prep.phases[wp].questions].sort((a, b) => a.order - b.order)
         : [];
-      setStickyPads(prepPads.length > 0 ? prepPads : getSeedPadsForPhase(phase));
+
+      if (phaseQuestions.length > 0 && phaseQuestions[0].subQuestions?.length) {
+        // Load sub-pads for the first main question
+        const subPads = loadPrepSubPads(phaseQuestions[0], 0);
+        setStickyPads(subPads);
+      } else if (phaseQuestions.length > 0) {
+        // Prep questions exist but no sub-questions yet — use old buildSessionPadsFromPrep
+        const prepPads = buildSessionPadsFromPrep(prep!, phase);
+        setStickyPads(prepPads.length > 0 ? prepPads : getSeedPadsForPhase(phase));
+      } else {
+        setStickyPads(getSeedPadsForPhase(phase));
+      }
       setSelectedPadId(null);
     }
     // Sync to server
     syncGuidanceState({ dialoguePhase: phase });
-  }, [listening, syncGuidanceState]);
+  }, [listening, syncGuidanceState, loadPrepSubPads]);
+
+  // ── "Peeling the Onion" question navigation ─────────────
+  const handleNextQuestion = useCallback(() => {
+    // Archive current sub-pads into completedByQuestion
+    const activeSubs = stickyPads.filter(
+      (p) => p.mainQuestionIndex === mainQuestionIndex && p.source !== 'seed',
+    );
+    if (activeSubs.length > 0) {
+      setCompletedByQuestion((prev) => {
+        const next = new Map(prev);
+        next.set(mainQuestionIndex, [...(prev.get(mainQuestionIndex) || []), ...activeSubs]);
+        return next;
+      });
+    }
+
+    const nextIdx = mainQuestionIndex + 1;
+    if (nextIdx >= mainQuestions.length) return; // already at last question
+
+    setMainQuestionIndex(nextIdx);
+
+    // Load prep sub-pads for the next main question
+    const nextQ = mainQuestions[nextIdx];
+    if (nextQ) {
+      const subPads = loadPrepSubPads(nextQ, nextIdx);
+      // Keep signal/seed pads, remove old main-question sub-pads, add new ones
+      setStickyPads((prev) => {
+        const kept = prev.filter(
+          (p) => p.source === 'signal' || p.source === 'seed' || p.mainQuestionIndex !== mainQuestionIndex,
+        );
+        return [...kept, ...subPads];
+      });
+    }
+  }, [mainQuestionIndex, mainQuestions, stickyPads, loadPrepSubPads]);
+
+  const handlePrevQuestion = useCallback(() => {
+    if (mainQuestionIndex <= 0) return;
+    const prevIdx = mainQuestionIndex - 1;
+    setMainQuestionIndex(prevIdx);
+
+    // Restore completed sub-pads from history
+    const restored = completedByQuestion.get(prevIdx) || [];
+    const prevQ = mainQuestions[prevIdx];
+    const freshSubs = prevQ ? loadPrepSubPads(prevQ, prevIdx) : [];
+    const subsToUse = restored.length > 0 ? restored : freshSubs;
+
+    setStickyPads((prev) => {
+      const kept = prev.filter(
+        (p) => p.source === 'signal' || p.source === 'seed' || p.mainQuestionIndex !== mainQuestionIndex,
+      );
+      return [...kept, ...subsToUse];
+    });
+  }, [mainQuestionIndex, mainQuestions, completedByQuestion, stickyPads, loadPrepSubPads]);
 
   // ── Theme management callbacks ──────────────────────────
   const handleAdvanceTheme = useCallback(() => {
@@ -891,14 +1010,16 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         if (payload?.pad) {
           setStickyPads((prev) => {
             if (prev.some((p) => p.id === payload.pad.id)) return prev;
-            // Agent-generated pads enter the queue with proper defaults
+            // Agent-generated pads enter as active sub-pads for the current main question
             const agentPad: StickyPad = {
               ...payload.pad,
               source: payload.pad.source || 'agent',
               questionId: payload.pad.questionId || null,
               grounding: payload.pad.grounding || payload.pad.provenance?.description || null,
               coveragePercent: payload.pad.coveragePercent || 0,
-              coverageState: payload.pad.coverageState || 'queued',
+              coverageState: payload.pad.coverageState || 'active',
+              lens: payload.pad.lens || null,
+              mainQuestionIndex: payload.pad.mainQuestionIndex ?? mainQuestionIndex,
             };
             return [...prev, agentPad];
           });
@@ -986,76 +1107,28 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     ));
   }, []);
 
-  // ── Question-driven pad actions ─────────────────────────
-  const handleSkipQuestion = useCallback(() => {
-    setStickyPads((prev) => {
-      const activePad = prev.find((p) => p.coverageState === 'active' && p.source !== 'seed');
-      if (!activePad) return prev;
+  // (Old handleSkipQuestion / handleRevisitQuestion removed — replaced by handleNextQuestion / handlePrevQuestion)
 
-      const updated = prev.map((p) =>
-        p.id === activePad.id ? { ...p, coverageState: 'covered' as const } : p,
-      );
-
-      const nextQueued = updated
-        .filter((p) => p.coverageState === 'queued')
-        .sort((a, b) => b.signalStrength - a.signalStrength)[0];
-
-      if (nextQueued) {
-        return updated.map((p) =>
-          p.id === nextQueued.id ? { ...p, coverageState: 'active' as const } : p,
-        );
-      }
-      return updated;
-    });
-  }, []);
-
-  const handleRevisitQuestion = useCallback((padId: string) => {
-    setStickyPads((prev) => {
-      // Mark current active as covered
-      const updated = prev.map((p) =>
-        p.coverageState === 'active' && p.source !== 'seed'
-          ? { ...p, coverageState: 'covered' as const }
-          : p,
-      );
-      // Bring the selected pad back as active
-      return updated.map((p) =>
-        p.id === padId ? { ...p, coverageState: 'active' as const } : p,
-      );
-    });
-  }, []);
-
-  // ── Computed: split pads by role ──────────────────────────
-  const featuredPad = useMemo(
-    () => stickyPads.find((p) => p.coverageState === 'active' && (p.source === 'prep' || p.source === 'agent')),
-    [stickyPads],
+  // ── Computed: sub-pads for current main question ──────────
+  const activeSubPads = useMemo(
+    () => stickyPads.filter(
+      (p) => p.mainQuestionIndex === mainQuestionIndex && p.source !== 'seed' && p.status === 'active',
+    ),
+    [stickyPads, mainQuestionIndex],
   );
 
-  const coveredPads = useMemo(
-    () => stickyPads.filter((p) => p.coverageState === 'covered' && (p.source === 'prep' || p.source === 'agent')),
-    [stickyPads],
+  const coveredSubPads = useMemo(
+    () => stickyPads.filter(
+      (p) => p.mainQuestionIndex === mainQuestionIndex && p.coverageState === 'covered',
+    ),
+    [stickyPads, mainQuestionIndex],
   );
 
-  const queuedPads = useMemo(
-    () => stickyPads.filter((p) => p.coverageState === 'queued' && (p.source === 'prep' || p.source === 'agent')),
-    [stickyPads],
-  );
-
-  // Signal-generated + seed pads for the secondary grid
+  // Signal-generated + seed pads (shown below main question area)
   const signalPads = useMemo(
-    () => stickyPads.filter((p) => p.source === 'signal' || (p.source === 'seed' && !featuredPad)),
-    [stickyPads, featuredPad],
-  );
-
-  // For the featured card counter
-  const totalPrepPads = useMemo(
-    () => stickyPads.filter((p) => p.source === 'prep' || p.source === 'agent').length,
+    () => stickyPads.filter((p) => p.source === 'signal' || p.source === 'seed'),
     [stickyPads],
   );
-
-  const currentQuestionIndex = useMemo(() => {
-    if (!featuredPad) return 0;
-    return coveredPads.length + 1;
-  }, [featuredPad, coveredPads.length]);
 
   // (Radar chart / word cloud data transforms moved to Discovery tab)
 
@@ -1152,47 +1225,119 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         </div>
         <GapIndicatorStrip signals={signals} />
 
-        {/* ═══ PRIMARY CANVAS — Featured Question + Question Tray ═══ */}
-        <div className="mt-4">
-          {featuredPad ? (
-            /* Question-driven layout: featured card left + tray right */
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-4">
-              <div className="space-y-4">
-                {/* Featured Question Card */}
-                <FeaturedQuestionCard
-                  pad={featuredPad}
-                  questionIndex={currentQuestionIndex}
-                  totalQuestions={totalPrepPads}
-                  onDismiss={() => handleDismissPad(featuredPad.id)}
-                  onSkip={handleSkipQuestion}
-                />
+        {/* ═══ PRIMARY CANVAS — Main Question + Sub-Pads Grid ═══ */}
+        <div className="mt-4 space-y-4">
+          {/* Main Question Card (full width, amber) */}
+          {currentMainQ && mainQuestions.length > 0 ? (
+            <>
+              <MainQuestionCard
+                question={{
+                  id: currentMainQ.id,
+                  phase: currentMainQ.phase as FacilitationQuestion['phase'],
+                  lens: (currentMainQ.lens as FacilitationQuestion['lens']) ?? null,
+                  text: currentMainQ.text,
+                  purpose: currentMainQ.purpose,
+                  grounding: currentMainQ.grounding,
+                  order: currentMainQ.order,
+                  isEdited: currentMainQ.isEdited,
+                  subQuestions: currentMainQ.subQuestions || [],
+                }}
+                questionIndex={mainQuestionIndex}
+                totalQuestions={mainQuestions.length}
+                phaseLabel={PHASE_LABELS[dialoguePhase]}
+                onPrevious={handlePrevQuestion}
+                onNext={handleNextQuestion}
+              />
 
-                {/* Signal-generated pads in a secondary grid */}
-                {signalPads.length > 0 && (
-                  <StickyPadCanvas
-                    pads={signalPads}
-                    selectedPadId={selectedPadId}
-                    onSelectPad={setSelectedPadId}
-                    onDismissPad={handleDismissPad}
-                    onSnoozePad={handleSnoozePad}
-                  />
-                )}
-              </div>
+              {/* Sub-pads grid (left ~75%) + Covered strip (right ~25%) */}
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-4">
+                {/* Active sub-pads */}
+                <div>
+                  {activeSubPads.length > 0 ? (
+                    <StickyPadCanvas
+                      pads={activeSubPads}
+                      selectedPadId={selectedPadId}
+                      onSelectPad={setSelectedPadId}
+                      onDismissPad={handleDismissPad}
+                      onSnoozePad={handleSnoozePad}
+                    />
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/30 p-8 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        Sub-questions will appear here as the dialogue progresses
+                      </p>
+                    </div>
+                  )}
 
-              {/* Question Tray sidebar */}
-              <div className="rounded-lg border bg-card/50 p-3">
-                <h3 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
-                  Questions
-                </h3>
-                <QuestionTray
-                  coveredPads={coveredPads}
-                  queuedPads={queuedPads}
-                  onRevisit={handleRevisitQuestion}
-                />
+                  {/* Signal-generated pads below */}
+                  {signalPads.length > 0 && (
+                    <div className="mt-4">
+                      <StickyPadCanvas
+                        pads={signalPads}
+                        selectedPadId={selectedPadId}
+                        onSelectPad={setSelectedPadId}
+                        onDismissPad={handleDismissPad}
+                        onSnoozePad={handleSnoozePad}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Covered strip — collapsible accordion by main question */}
+                <div className="rounded-lg border bg-card/50 p-3">
+                  <h3 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+                    Covered
+                  </h3>
+                  {/* Current question's covered sub-pads */}
+                  {coveredSubPads.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">
+                        Q{mainQuestionIndex + 1} — Current
+                      </p>
+                      <div className="space-y-1">
+                        {coveredSubPads.map((pad) => (
+                          <div key={pad.id} className="text-xs p-1.5 rounded bg-muted/50 text-muted-foreground truncate">
+                            {pad.prompt}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Previous questions' completed sub-pads (accordion) */}
+                  {Array.from(completedByQuestion.entries())
+                    .sort(([a], [b]) => b - a)
+                    .map(([qIdx, pads]) => (
+                      <div key={qIdx} className="mb-2">
+                        <button
+                          onClick={() => setCollapsedSections((prev) => {
+                            const next = new Set(prev);
+                            next.has(qIdx) ? next.delete(qIdx) : next.add(qIdx);
+                            return next;
+                          })}
+                          className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground w-full text-left"
+                        >
+                          <ChevronRight className={`h-3 w-3 transition-transform ${!collapsedSections.has(qIdx) ? 'rotate-90' : ''}`} />
+                          Q{qIdx + 1} ({pads.length} subs)
+                        </button>
+                        {!collapsedSections.has(qIdx) && (
+                          <div className="ml-4 mt-1 space-y-1">
+                            {pads.map((pad) => (
+                              <div key={pad.id} className="text-xs p-1.5 rounded bg-muted/50 text-muted-foreground truncate">
+                                {pad.prompt}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  {coveredSubPads.length === 0 && completedByQuestion.size === 0 && (
+                    <p className="text-xs text-muted-foreground/60 italic">No covered sub-questions yet</p>
+                  )}
+                </div>
               </div>
-            </div>
+            </>
           ) : (
-            /* Fallback: seed pads in the original grid layout */
+            /* Fallback: seed pads when no main questions available */
             <StickyPadCanvas
               pads={stickyPads}
               selectedPadId={selectedPadId}

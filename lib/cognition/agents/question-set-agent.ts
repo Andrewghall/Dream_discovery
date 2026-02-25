@@ -129,6 +129,28 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                   type: 'string',
                   description: 'How this question connects to research findings or Discovery interview data.',
                 },
+                subQuestions: {
+                  type: 'array',
+                  description: '2-3 starter sub-questions that explore specific angles within this main question. These become the initial post-it notes when the facilitator activates this question in the live session.',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      lens: {
+                        type: 'string',
+                        description: 'The DREAM lens this sub-question explores.',
+                      },
+                      text: {
+                        type: 'string',
+                        description: 'The sub-question text — a specific angle or probe.',
+                      },
+                      purpose: {
+                        type: 'string',
+                        description: 'What this sub-question aims to surface.',
+                      },
+                    },
+                    required: ['lens', 'text', 'purpose'],
+                  },
+                },
               },
               required: ['lens', 'text', 'purpose', 'grounding'],
             },
@@ -296,7 +318,7 @@ function executeQuestionSetTool(
         };
       }
 
-      // Build facilitation questions
+      // Build facilitation questions with starter sub-questions
       const facilitation: FacilitationQuestion[] = questions.map((q, i) => ({
         id: nanoid(8),
         phase,
@@ -306,6 +328,14 @@ function executeQuestionSetTool(
         grounding: String(q.grounding || ''),
         order: i + 1,
         isEdited: false,
+        subQuestions: Array.isArray(q.subQuestions)
+          ? q.subQuestions.map((sq: Record<string, unknown>) => ({
+              id: nanoid(8),
+              lens: String(sq.lens || 'General') as LensName | 'General',
+              text: String(sq.text || ''),
+              purpose: String(sq.purpose || ''),
+            }))
+          : [],
       }));
 
       designedPhases.set(phase, facilitation);
@@ -390,6 +420,13 @@ YOUR APPROACH:
    - Questions should BUILD ON Discovery insights, not repeat them
    - If Discovery revealed a pain point, ask "how does this play into the
      constraints?" \u2014 don't ask "what are your pain points?" again
+   - For EACH main question, generate 2-3 starter sub-questions. These are
+     specific angles or probes that immediately trigger dialogue when the
+     facilitator activates the main question. Sub-questions should:
+     * Each target a specific lens (People, Organisation, Customer, etc.)
+     * Be directly scoped to the parent main question's topic
+     * Reference concrete research/Discovery findings where possible
+     * Give the room something tangible to discuss immediately
 5. Commit the final question set with a design rationale.
 
 QUESTION DESIGN PRINCIPLES:
@@ -700,6 +737,7 @@ function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuest
     grounding: 'Generic facilitation question — not tailored to specific client context.',
     order: i + 1,
     isEdited: false,
+    subQuestions: [],
   }));
 }
 

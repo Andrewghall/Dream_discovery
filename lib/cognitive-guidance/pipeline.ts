@@ -163,12 +163,14 @@ export type StickyPad = {
   status: 'active' | 'snoozed' | 'dismissed';
   snoozedUntilMs: number | null;
 
-  // Question-driven fields (new)
+  // Question-driven fields
   source: StickyPadSource;               // Where this pad came from
   questionId: string | null;              // Links to FacilitationQuestion.id (from prep)
   grounding: string | null;               // Why this question matters (from FacilitationQuestion.purpose)
   coveragePercent: number;                // 0-100: how well the team is covering this question
   coverageState: CoverageState;           // Lifecycle: queued → active → covered
+  lens: string | null;                    // Lens name for colouring (People, Organisation, etc.)
+  mainQuestionIndex: number | null;       // Which main question this sub-pad belongs to
 };
 
 export type JourneyPhase =
@@ -687,6 +689,8 @@ export function generateStickyPads(
       grounding: null,
       coveragePercent: 0,
       coverageState: 'active',
+      lens: signal.lenses[0] || null,
+      mainQuestionIndex: null,
     });
   }
 

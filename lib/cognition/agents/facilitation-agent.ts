@@ -225,11 +225,23 @@ Current phase: ${guidanceState.dialoguePhase}
 Active theme: ${activeTheme ? `"${activeTheme.title}" (${activeTheme.lens || 'cross-cutting'})` : 'None'}
 Total beliefs: ${cogState.beliefs.size}
 
-Your job: Generate 1-3 facilitation prompts that:
+Your job: Generate 1-3 facilitation prompts (sub-questions) that:
 1. Are grounded in actual beliefs from the workshop
 2. Reference Discovery intelligence when relevant
 3. Probe deeper into themes, contradictions, or gaps
 4. Help the facilitator ask the RIGHT question at the RIGHT time
+5. MUST serve the current main question goal (see below)
+
+${guidanceState.currentMainQuestion
+  ? `CURRENT MAIN QUESTION (YOUR GOAL):
+"${guidanceState.currentMainQuestion.text}"
+Purpose: ${guidanceState.currentMainQuestion.purpose}
+Grounding: ${guidanceState.currentMainQuestion.grounding}
+
+CRITICAL: Every sub-question you generate must help explore or answer this main question.
+Stay scoped — do not wander into topics outside this question's domain. Follow the
+breadcrumbs of the conversation but always keep this goal in mind.`
+  : 'No main question is currently set — generate broadly relevant facilitation prompts.'}
 
 RULES:
 - Every pad MUST cite sourceBeliefIds — beliefs that actually exist
@@ -253,10 +265,18 @@ export type PadProposal = {
   reasoning: string;
 };
 
+export type DeliberationContext = {
+  themeRecommendation?: string | null;
+  constraintGaps?: string | null;
+  researchHighlights?: string | null;
+  discoveryInsights?: string | null;
+};
+
 export async function runFacilitationAgent(
   cogState: CognitiveState,
   guidanceState: GuidanceState,
   onConversation?: AgentConversationCallback,
+  deliberation?: DeliberationContext,
 ): Promise<PadProposal[]> {
   if (!env.OPENAI_API_KEY) return [];
 
@@ -264,12 +284,21 @@ export async function runFacilitationAgent(
   const systemPrompt = buildFacilitationSystemPrompt(cogState, guidanceState);
   const startMs = Date.now();
 
+  // Build the user message with deliberation context from other agents
+  const deliberationBrief = [
+    deliberation?.themeRecommendation ? `THEME AGENT ASSESSMENT: ${deliberation.themeRecommendation}` : null,
+    deliberation?.constraintGaps ? `CONSTRAINT AGENT GAPS: ${deliberation.constraintGaps}` : null,
+    deliberation?.researchHighlights ? `RESEARCH CONTEXT: ${deliberation.researchHighlights}` : null,
+    deliberation?.discoveryInsights ? `DISCOVERY INSIGHTS: ${deliberation.discoveryInsights}` : null,
+  ].filter(Boolean).join('\n\n');
+
+  const userContent = deliberationBrief
+    ? `The team has assessed the current state:\n\n${deliberationBrief}\n\nBased on this collective assessment and the current beliefs, generate facilitation prompts that follow the breadcrumbs of the conversation toward the main question goal.`
+    : 'Generate facilitation prompts based on the current beliefs and active theme.';
+
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
-    {
-      role: 'user',
-      content: 'Generate facilitation prompts based on the current beliefs and active theme.',
-    },
+    { role: 'user', content: userContent },
   ];
 
   try {
@@ -337,7 +366,9 @@ export async function runFacilitationAgent(
               questionId: null,
               grounding: String(raw.reasoning || ''),
               coveragePercent: 0,
-              coverageState: 'queued',
+              coverageState: 'active',
+              lens: String(raw.lens || raw.type || 'General'),
+              mainQuestionIndex: null, // Set by the client when received via SSE
             };
 
             proposals.push({
