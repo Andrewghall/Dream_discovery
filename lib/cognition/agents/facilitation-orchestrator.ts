@@ -8,12 +8,14 @@
  * Every agent in this system is a genuine LLM with its own system prompt,
  * tools, and multi-turn agentic reasoning loop.
  *
- * Agents:
+ * Agents (7 real LLMs, each with own system prompt, tools, and reasoning loop):
  * 1. ORCHESTRATOR — reasons about the session, decides actions (this file)
- * 2. THEME AGENT — assesses conversational flow, proposes themes
- * 3. CONSTRAINT AGENT — maps limitations, reviews phase-appropriateness
- * 4. FACILITATION AGENT — proposes sub-questions for the main question
- * 5. GUARDIAN AGENT — validates grounding against cited beliefs
+ * 2. THEME AGENT — assesses conversational flow, reviews proposals
+ * 3. RESEARCH AGENT — reviews proposals against company/industry knowledge
+ * 4. DISCOVERY AGENT — reviews proposals against participant interview data
+ * 5. CONSTRAINT AGENT — maps limitations, reviews phase-appropriateness
+ * 6. FACILITATION AGENT — proposes sub-questions for the main question
+ * 7. GUARDIAN AGENT — validates grounding against cited beliefs
  *
  * The Orchestrator has tools to:
  * - Assess the session state
@@ -38,6 +40,8 @@ import { runThemeAgent, reviewWithThemeAgent } from './theme-agent';
 import { runFacilitationAgent, type DeliberationContext, type PadProposal } from './facilitation-agent';
 import { runConstraintAgent, reviewWithConstraintAgent } from './constraint-agent';
 import { runGuardianAgent, validateReferences } from './guardian-agent';
+import { reviewWithResearchAgent } from './research-agent';
+import { reviewWithDiscoveryAgent } from './discovery-intelligence-agent';
 import type { AgentConversationCallback, AgentReview } from './agent-types';
 
 // ── Constants ───────────────────────────────────────────────
@@ -126,7 +130,7 @@ const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'send_proposals_for_review',
-      description: 'Send the Facilitation Agent\'s proposals to the Theme Agent and Constraint Agent for review. Each agent runs as itself with its own tools and reasoning — real agentic calls, not summaries. Returns each agent\'s verdict (agree/challenge/build) and feedback.',
+      description: 'Send the Facilitation Agent\'s proposals to ALL specialist agents for review: Theme Agent (conversational flow), Research Agent (company/industry grounding), Discovery Agent (participant interview alignment), and Constraint Agent (phase appropriateness). Each agent runs as itself with its own tools and reasoning — 4 real agentic calls in parallel. Returns each agent\'s verdict.',
       parameters: {
         type: 'object',
         properties: {
@@ -442,17 +446,19 @@ async function executeOrchestratorTool(
         timestampMs: Date.now(),
         agent: 'orchestrator',
         to: '',
-        message: `Sending proposals to team for review. Each agent will assess from their domain using their full tools.`,
+        message: `Sending proposals to all 4 specialist agents for review. Each will reason from their domain using their own tools.`,
         type: 'info',
       });
 
-      // Run both reviews in parallel — real agentic calls
-      const [themeReview, constraintReview] = await Promise.all([
+      // Run ALL 4 reviews in parallel — real agentic calls, each with own tools
+      const [themeReview, researchReview, discoveryReview, constraintReview] = await Promise.all([
         reviewWithThemeAgent(proposalSummary, cogState, guidanceState, onConversation),
+        reviewWithResearchAgent(proposalSummary, guidanceState, onConversation),
+        reviewWithDiscoveryAgent(proposalSummary, guidanceState, onConversation),
         reviewWithConstraintAgent(proposalSummary, guidanceState.dialoguePhase, cogState, guidanceState, onConversation),
       ]);
 
-      const reviews = [themeReview, constraintReview];
+      const reviews = [themeReview, researchReview, discoveryReview, constraintReview];
       const challenges = reviews.filter((r) => r.stance === 'challenge');
       const builds = reviews.filter((r) => r.stance === 'build');
 

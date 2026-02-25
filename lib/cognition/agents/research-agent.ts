@@ -14,7 +14,8 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
-import type { WorkshopPrepResearch, PrepContext, AgentConversationCallback } from './agent-types';
+import type { WorkshopPrepResearch, PrepContext, AgentConversationCallback, AgentReview } from './agent-types';
+import type { GuidanceState } from '../guidance-state';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -519,4 +520,219 @@ function fallbackResearch(context: PrepContext): WorkshopPrepResearch {
     researchedAtMs: Date.now(),
     sourceUrls: [],
   };
+}
+
+// ══════════════════════════════════════════════════════════════
+// LIVE REVIEW MODE — Research Agent reviews proposals
+// Has tools to query its own research findings and reason about
+// whether proposals are grounded in company/industry knowledge.
+// ══════════════════════════════════════════════════════════════
+
+const LIVE_REVIEW_TIMEOUT_MS = 8_000;
+const LIVE_REVIEW_ITERATIONS = 3;
+
+const RESEARCH_REVIEW_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_research_findings',
+      description: 'Retrieve your earlier research findings about this company and industry. Use this to check whether proposals reference real dynamics.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_industry_relevance',
+      description: 'Query your industry knowledge to assess whether a specific claim or direction is grounded in reality for this company.',
+      parameters: {
+        type: 'object',
+        properties: {
+          claim: { type: 'string', description: 'The specific claim or direction to check.' },
+        },
+        required: ['claim'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'submit_review',
+      description: 'Submit your review of the proposals. This is your commit tool.',
+      parameters: {
+        type: 'object',
+        properties: {
+          stance: {
+            type: 'string',
+            enum: ['agree', 'challenge', 'build'],
+            description: 'agree = proposals are grounded in company/industry reality, challenge = proposals are generic or miss key dynamics, build = agree but could be more specific',
+          },
+          feedback: {
+            type: 'string',
+            description: 'Your specific assessment from the research perspective. Reference what you know about the company and industry.',
+          },
+          suggestedChanges: {
+            type: 'string',
+            description: 'If challenging or building, how could these be more specific to this client?',
+          },
+        },
+        required: ['stance', 'feedback'],
+      },
+    },
+  },
+];
+
+function executeResearchReviewTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  guidanceState: GuidanceState,
+): string {
+  const prep = guidanceState.prepContext;
+  const research = prep?.research;
+
+  switch (toolName) {
+    case 'get_research_findings': {
+      if (!research) {
+        return JSON.stringify({ available: false, message: 'No research data available — flag this gap.' });
+      }
+      return JSON.stringify({
+        available: true,
+        companyOverview: research.companyOverview,
+        industryContext: research.industryContext,
+        keyPublicChallenges: research.keyPublicChallenges,
+        recentDevelopments: research.recentDevelopments,
+        competitorLandscape: research.competitorLandscape,
+        domainInsights: research.domainInsights,
+      });
+    }
+
+    case 'check_industry_relevance': {
+      const claim = String(args.claim || '');
+      if (!research) {
+        return JSON.stringify({ relevant: 'unknown', reason: 'No research data to check against.' });
+      }
+      // Check if the claim relates to known challenges or industry dynamics
+      const allText = [
+        research.companyOverview,
+        research.industryContext,
+        ...research.keyPublicChallenges,
+        research.competitorLandscape,
+        research.domainInsights || '',
+      ].join(' ').toLowerCase();
+
+      const claimWords = claim.toLowerCase().split(/\s+/).filter((w) => w.length > 4);
+      const matchCount = claimWords.filter((w) => allText.includes(w)).length;
+      const relevance = matchCount > 3 ? 'high' : matchCount > 1 ? 'moderate' : 'low';
+
+      return JSON.stringify({
+        claim,
+        relevance,
+        matchingKeywords: matchCount,
+        note: relevance === 'low'
+          ? 'This claim doesn\'t strongly connect to known company/industry dynamics. Could be generic.'
+          : 'This appears grounded in what we know about the company.',
+      });
+    }
+
+    default:
+      return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+  }
+}
+
+export async function reviewWithResearchAgent(
+  proposals: string,
+  guidanceState: GuidanceState,
+  onConversation?: AgentConversationCallback,
+): Promise<AgentReview> {
+  if (!env.OPENAI_API_KEY) {
+    return { agent: 'Research Agent', stance: 'agree', feedback: 'Research Agent unavailable.' };
+  }
+
+  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const prep = guidanceState.prepContext;
+  const startMs = Date.now();
+
+  const systemPrompt = `You are the DREAM Research Agent reviewing proposals from a colleague. Your domain is company and industry knowledge.
+
+${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : ''}
+
+You researched this company before the workshop. You know their challenges, their industry, their competitive landscape. Now you're reviewing whether the Facilitation Agent's proposals are grounded in that reality or whether they're generic questions that could apply to any company.
+
+REVIEW MODE: Use get_research_findings to recall what you know, then use check_industry_relevance to verify specific claims. Are the proposals specific to THIS client? Do they reference real dynamics? Could they be sharper?
+
+Submit your review with submit_review when you've assessed the proposals.`;
+
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `Review these proposals from the Facilitation Agent:\n\n${proposals}\n\nAre these grounded in what you know about the company and industry? Use your tools to check.` },
+  ];
+
+  try {
+    for (let iteration = 0; iteration < LIVE_REVIEW_ITERATIONS; iteration++) {
+      if (Date.now() - startMs > LIVE_REVIEW_TIMEOUT_MS) break;
+
+      const isLastIteration = iteration === LIVE_REVIEW_ITERATIONS - 1;
+      const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption = isLastIteration
+        ? { type: 'function', function: { name: 'submit_review' } }
+        : 'auto';
+
+      const completion = await openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.3,
+        messages,
+        tools: RESEARCH_REVIEW_TOOLS,
+        tool_choice: toolChoice,
+      });
+
+      const assistantMessage = completion.choices[0].message;
+      messages.push(assistantMessage);
+
+      if (assistantMessage.content?.trim()) {
+        onConversation?.({
+          timestampMs: Date.now(),
+          agent: 'research-agent',
+          to: 'orchestrator',
+          message: `[REVIEWING] ${assistantMessage.content.trim()}`,
+          type: 'info',
+        });
+      }
+
+      if (!assistantMessage.tool_calls?.length) break;
+
+      for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.type !== 'function') continue;
+        const fnName = toolCall.function.name;
+        let fnArgs: Record<string, unknown>;
+        try { fnArgs = JSON.parse(toolCall.function.arguments); } catch { fnArgs = {}; }
+
+        if (fnName === 'submit_review') {
+          const review: AgentReview = {
+            agent: 'Research Agent',
+            stance: (['agree', 'challenge', 'build'].includes(String(fnArgs.stance))
+              ? String(fnArgs.stance) : 'agree') as AgentReview['stance'],
+            feedback: String(fnArgs.feedback || 'No feedback provided.'),
+            suggestedChanges: fnArgs.suggestedChanges ? String(fnArgs.suggestedChanges) : undefined,
+          };
+
+          onConversation?.({
+            timestampMs: Date.now(),
+            agent: 'research-agent',
+            to: 'facilitation-agent',
+            message: `[${review.stance.toUpperCase()}] ${review.feedback}${review.suggestedChanges ? `\nSuggestion: ${review.suggestedChanges}` : ''}`,
+            type: review.stance === 'challenge' ? 'challenge' : 'proposal',
+          });
+
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '{"status":"submitted"}' });
+          return review;
+        } else {
+          const result = executeResearchReviewTool(fnName, fnArgs, guidanceState);
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: result });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Research Agent Review] Failed:', error instanceof Error ? error.message : error);
+  }
+
+  return { agent: 'Research Agent', stance: 'agree', feedback: 'Review timed out — no objections raised.' };
 }

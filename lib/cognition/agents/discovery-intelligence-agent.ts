@@ -18,8 +18,10 @@ import type {
   WorkshopPrepResearch,
   PrepContext,
   AgentConversationCallback,
+  AgentReview,
   LensName,
 } from './agent-types';
+import type { GuidanceState } from '../guidance-state';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -518,4 +520,258 @@ function fallbackIntelligence(): WorkshopIntelligence {
     synthesizedAtMs: Date.now(),
     briefingSummary: 'Discovery intelligence synthesis was not completed. Please review participant responses manually.',
   };
+}
+
+// ══════════════════════════════════════════════════════════════
+// LIVE REVIEW MODE — Discovery Agent reviews proposals
+// Has tools to query participant interview data and reason about
+// whether proposals build on what participants told us.
+// ══════════════════════════════════════════════════════════════
+
+const LIVE_REVIEW_TIMEOUT_MS = 8_000;
+const LIVE_REVIEW_ITERATIONS = 3;
+
+const DISCOVERY_REVIEW_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_discovery_briefing',
+      description: 'Retrieve the full Discovery briefing: themes, pain points, aspirations, consensus, divergence, and watch points from participant interviews.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_maturity_scores',
+      description: 'Retrieve the maturity spider scores across all lenses (Today, Target, Projected medians and spread).',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_participant_coverage',
+      description: 'Check whether a specific topic was mentioned in participant interviews. Returns matching themes and pain points.',
+      parameters: {
+        type: 'object',
+        properties: {
+          topic: { type: 'string', description: 'The topic or theme to check against participant data.' },
+        },
+        required: ['topic'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'submit_review',
+      description: 'Submit your review of the proposals. This is your commit tool.',
+      parameters: {
+        type: 'object',
+        properties: {
+          stance: {
+            type: 'string',
+            enum: ['agree', 'challenge', 'build'],
+            description: 'agree = proposals build on participant data, challenge = proposals ignore or retread what participants said, build = agree but participants also mentioned angles worth exploring',
+          },
+          feedback: {
+            type: 'string',
+            description: 'Your specific assessment from the Discovery perspective. Reference what participants actually said.',
+          },
+          suggestedChanges: {
+            type: 'string',
+            description: 'If challenging or building, what participant insights should these proposals incorporate?',
+          },
+        },
+        required: ['stance', 'feedback'],
+      },
+    },
+  },
+];
+
+function executeDiscoveryReviewTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  guidanceState: GuidanceState,
+): string {
+  const di = guidanceState.prepContext?.discoveryIntelligence;
+
+  switch (toolName) {
+    case 'get_discovery_briefing': {
+      if (!di) {
+        return JSON.stringify({ available: false, message: 'No Discovery data available — flag this gap. Participants were not interviewed or data was not synthesized.' });
+      }
+      return JSON.stringify({
+        available: true,
+        participantCount: di.participantCount || 0,
+        briefingSummary: di.briefingSummary,
+        themes: di.discoveryThemes?.slice(0, 8).map((t) => ({
+          title: t.title,
+          domain: t.domain,
+          frequency: t.frequency,
+          sentiment: t.sentiment,
+          keyQuotes: t.keyQuotes?.slice(0, 2),
+        })),
+        painPoints: di.painPoints?.slice(0, 6).map((p) => ({
+          description: p.description,
+          domain: p.domain,
+          severity: p.severity,
+        })),
+        aspirations: di.aspirations?.slice(0, 5),
+        consensusAreas: di.consensusAreas?.slice(0, 4),
+        divergenceAreas: di.divergenceAreas?.slice(0, 3),
+        watchPoints: di.watchPoints?.slice(0, 3),
+      });
+    }
+
+    case 'get_maturity_scores': {
+      if (!di?.maturitySnapshot?.length) {
+        return JSON.stringify({ available: false, message: 'No maturity data available.' });
+      }
+      return JSON.stringify({
+        available: true,
+        scores: di.maturitySnapshot.map((s) => ({
+          domain: s.domain,
+          todayMedian: s.todayMedian,
+          targetMedian: s.targetMedian,
+          projectedMedian: s.projectedMedian,
+          gap: (s.targetMedian || 0) - (s.todayMedian || 0),
+          spread: s.spread,
+        })),
+      });
+    }
+
+    case 'check_participant_coverage': {
+      const topic = String(args.topic || '').toLowerCase();
+      if (!di) {
+        return JSON.stringify({ covered: false, message: 'No Discovery data to check.' });
+      }
+
+      const matchingThemes = (di.discoveryThemes || []).filter(
+        (t) => t.title.toLowerCase().includes(topic),
+      );
+      const matchingPains = (di.painPoints || []).filter(
+        (p) => p.description.toLowerCase().includes(topic),
+      );
+      const matchingAspirations = (di.aspirations || []).filter(
+        (a) => a.toLowerCase().includes(topic),
+      );
+
+      const covered = matchingThemes.length > 0 || matchingPains.length > 0 || matchingAspirations.length > 0;
+
+      return JSON.stringify({
+        topic,
+        covered,
+        matchingThemes: matchingThemes.map((t) => t.title),
+        matchingPainPoints: matchingPains.map((p) => p.description),
+        matchingAspirations: matchingAspirations,
+        note: covered
+          ? 'Participants mentioned this — proposals should go DEEPER, not retread.'
+          : 'Participants did NOT mention this — this could be a fresh angle OR a gap to flag.',
+      });
+    }
+
+    default:
+      return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+  }
+}
+
+export async function reviewWithDiscoveryAgent(
+  proposals: string,
+  guidanceState: GuidanceState,
+  onConversation?: AgentConversationCallback,
+): Promise<AgentReview> {
+  if (!env.OPENAI_API_KEY) {
+    return { agent: 'Discovery Agent', stance: 'agree', feedback: 'Discovery Agent unavailable.' };
+  }
+
+  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const prep = guidanceState.prepContext;
+  const startMs = Date.now();
+
+  const systemPrompt = `You are the DREAM Discovery Agent reviewing proposals from a colleague. Your domain is what participants told us in pre-workshop interviews.
+
+${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : ''}
+${prep?.discoveryIntelligence?.participantCount ? `${prep.discoveryIntelligence.participantCount} participants were interviewed before this workshop.` : 'No participant interviews available.'}
+
+You synthesized participant interviews before the workshop. You know their pain points, aspirations, where they agree, where they disagree, and what sensitive topics came up. Now you're reviewing whether the Facilitation Agent's proposals build on that — or whether we're asking participants to repeat themselves.
+
+REVIEW MODE: Use get_discovery_briefing to recall what participants said. Use check_participant_coverage to verify specific topics. Are these proposals pushing into new territory or retreading ground? Do they connect to real pain points and aspirations?
+
+Submit your review with submit_review when you've assessed the proposals.`;
+
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `Review these proposals from the Facilitation Agent:\n\n${proposals}\n\nDo these build on what participants told us, or are we retreading? Use your tools to check.` },
+  ];
+
+  try {
+    for (let iteration = 0; iteration < LIVE_REVIEW_ITERATIONS; iteration++) {
+      if (Date.now() - startMs > LIVE_REVIEW_TIMEOUT_MS) break;
+
+      const isLastIteration = iteration === LIVE_REVIEW_ITERATIONS - 1;
+      const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption = isLastIteration
+        ? { type: 'function', function: { name: 'submit_review' } }
+        : 'auto';
+
+      const completion = await openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.3,
+        messages,
+        tools: DISCOVERY_REVIEW_TOOLS,
+        tool_choice: toolChoice,
+      });
+
+      const assistantMessage = completion.choices[0].message;
+      messages.push(assistantMessage);
+
+      if (assistantMessage.content?.trim()) {
+        onConversation?.({
+          timestampMs: Date.now(),
+          agent: 'discovery-agent',
+          to: 'orchestrator',
+          message: `[REVIEWING] ${assistantMessage.content.trim()}`,
+          type: 'info',
+        });
+      }
+
+      if (!assistantMessage.tool_calls?.length) break;
+
+      for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.type !== 'function') continue;
+        const fnName = toolCall.function.name;
+        let fnArgs: Record<string, unknown>;
+        try { fnArgs = JSON.parse(toolCall.function.arguments); } catch { fnArgs = {}; }
+
+        if (fnName === 'submit_review') {
+          const review: AgentReview = {
+            agent: 'Discovery Agent',
+            stance: (['agree', 'challenge', 'build'].includes(String(fnArgs.stance))
+              ? String(fnArgs.stance) : 'agree') as AgentReview['stance'],
+            feedback: String(fnArgs.feedback || 'No feedback provided.'),
+            suggestedChanges: fnArgs.suggestedChanges ? String(fnArgs.suggestedChanges) : undefined,
+          };
+
+          onConversation?.({
+            timestampMs: Date.now(),
+            agent: 'discovery-agent',
+            to: 'facilitation-agent',
+            message: `[${review.stance.toUpperCase()}] ${review.feedback}${review.suggestedChanges ? `\nSuggestion: ${review.suggestedChanges}` : ''}`,
+            type: review.stance === 'challenge' ? 'challenge' : 'proposal',
+          });
+
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '{"status":"submitted"}' });
+          return review;
+        } else {
+          const result = executeDiscoveryReviewTool(fnName, fnArgs, guidanceState);
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: result });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Discovery Agent Review] Failed:', error instanceof Error ? error.message : error);
+  }
+
+  return { agent: 'Discovery Agent', stance: 'agree', feedback: 'Review timed out — no objections raised.' };
 }
