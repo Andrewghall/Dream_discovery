@@ -109,7 +109,54 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Core state ─────────────────────────────────────────
   const [cogNodes, setCogNodes] = useState<Map<string, CogNode>>(new Map());
   const [hemisphereNodes, setHemisphereNodes] = useState<Record<string, HemisphereNodeDatum>>({});
-  const [stickyPads, setStickyPads] = useState<StickyPad[]>([]);
+  const [stickyPads, setStickyPads] = useState<StickyPad[]>(() => {
+    // Seed pads so the board is never empty — replaced by real signals once listening starts
+    const now = Date.now();
+    return [
+      {
+        id: 'seed-clarify', type: 'CLARIFICATION' as const, status: 'active' as const,
+        prompt: 'What is the core vision for this initiative? Has everyone aligned on the end-state?',
+        signalStrength: 0.9, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'repeated_theme' as const, sourceNodeIds: [], description: 'Opening prompt — establish shared vision' },
+      },
+      {
+        id: 'seed-gap', type: 'GAP_PROBE' as const, status: 'active' as const,
+        prompt: 'No contributions yet in the Regulation dimension. Are there compliance or policy considerations?',
+        signalStrength: 0.85, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'Regulation lens has zero coverage' },
+      },
+      {
+        id: 'seed-risk', type: 'RISK_PROBE' as const, status: 'active' as const,
+        prompt: 'Several constraints have been raised around Technology. Are these blockers or conditions to manage?',
+        signalStrength: 0.75, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'risk_cluster' as const, sourceNodeIds: [], description: 'Technology constraints clustering' },
+      },
+      {
+        id: 'seed-enabler', type: 'ENABLER_PROBE' as const, status: 'active' as const,
+        prompt: 'People dimension has 4 constraints but only 1 enabler. What needs to change to unlock progress?',
+        signalStrength: 0.7, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'weak_enabler' as const, sourceNodeIds: [], description: 'Weak enabler ratio in People lens' },
+      },
+      {
+        id: 'seed-customer', type: 'CUSTOMER_IMPACT' as const, status: 'active' as const,
+        prompt: 'How does this impact the end customer experience? We haven\'t explored the customer journey yet.',
+        signalStrength: 0.65, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'missing_dimension' as const, sourceNodeIds: [], description: 'Customer lens underrepresented' },
+      },
+      {
+        id: 'seed-contradiction', type: 'CONTRADICTION_PROBE' as const, status: 'active' as const,
+        prompt: 'Two beliefs appear in tension: "We need to move fast" vs "Quality cannot be compromised". Can we clarify which holds?',
+        signalStrength: 0.8, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'contradiction' as const, sourceNodeIds: [], description: 'Opposing beliefs detected' },
+      },
+      {
+        id: 'seed-action', type: 'OWNERSHIP_ACTION' as const, status: 'active' as const,
+        prompt: 'Who owns the next step on the integration workstream? No clear action owner has been identified.',
+        signalStrength: 0.6, createdAtMs: now, snoozedUntilMs: null,
+        provenance: { triggerType: 'unanswered_question' as const, sourceNodeIds: [], description: 'Unassigned action item' },
+      },
+    ];
+  });
   const [signals, setSignals] = useState<Signal[]>([]);
   const [lensCoverage, setLensCoverage] = useState<Map<Lens, LensCoverage>>(new Map());
   const [actorJourneys, setActorJourneys] = useState<Map<string, ActorJourney>>(new Map());
