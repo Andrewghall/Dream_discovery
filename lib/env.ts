@@ -21,6 +21,7 @@ const envSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
   ZOOM_VIDEO_SDK_KEY: z.string().optional(),
   ZOOM_VIDEO_SDK_SECRET: z.string().optional(),
+  TAVILY_API_KEY: z.string().optional(),
 });
 
 type Env = z.infer<typeof envSchema>;

@@ -540,7 +540,7 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                 <Badge>{workshop.status.replace('_', ' ')}</Badge>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Link href={`/admin/workshops/${id}/prep`}>
                 <Button variant="outline" size="lg">
                   Prep

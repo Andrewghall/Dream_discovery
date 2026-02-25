@@ -18,6 +18,8 @@ export type AgentConversationEntry = {
     toolsUsed?: string[];
     verdict?: 'approve' | 'reject' | 'modify';
     reasoning?: string;
+    searchMode?: 'tavily_web_search' | 'parametric_fallback';
+    sourceCount?: number;
   };
 };
 

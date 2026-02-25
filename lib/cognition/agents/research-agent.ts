@@ -2,14 +2,14 @@
  * DREAM Research Agent
  *
  * A GPT-4o-mini tool-calling agent that researches the client company
- * using public knowledge. Runs during workshop prep, NOT during the live session.
+ * using real web search. Runs during workshop prep, NOT during the live session.
  *
  * Agentic loop pattern: builds system prompt → enters tool-calling loop →
  * autonomously decides what to research → commits findings.
  *
- * When a real web search API (Tavily/Serper) is configured, the
- * search tools will hit external APIs. For now, they use GPT-4o-mini's
- * parametric knowledge to produce research.
+ * When TAVILY_API_KEY is configured, search tools hit the Tavily Search API
+ * for real, current web results. Without it, falls back to GPT-4o-mini's
+ * parametric knowledge (clearly labelled as such).
  */
 
 import OpenAI from 'openai';
@@ -33,7 +33,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: 'search_company_info',
       description:
-        'Search for public information about the company. Returns structured company data based on publicly available knowledge. Use different queries to explore different aspects: overview, financials, strategy, digital transformation, etc.',
+        'Search the web for public information about the company. Returns real web results with source URLs. Use different queries to explore different aspects: overview, financials, strategy, digital transformation, etc.',
       parameters: {
         type: 'object',
         properties: {
@@ -57,7 +57,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: 'search_industry_trends',
       description:
-        'Search for industry trends and challenges relevant to the client. Returns analysis of industry dynamics, common pain points, and strategic shifts.',
+        'Search the web for industry trends and challenges relevant to the client. Returns real web results about industry dynamics, common pain points, and strategic shifts.',
       parameters: {
         type: 'object',
         properties: {
@@ -80,7 +80,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: 'search_domain_challenges',
       description:
-        'Search for specific challenges and best practices in a business domain. Only use when DREAM track is Domain.',
+        'Search the web for specific challenges and best practices in a business domain. Returns real web results. Only use when DREAM track is Domain.',
       parameters: {
         type: 'object',
         properties: {
@@ -159,13 +159,64 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 ];
 
 // ══════════════════════════════════════════════════════════════
+// TAVILY WEB SEARCH
+// ══════════════════════════════════════════════════════════════
+
+type TavilyResult = {
+  title: string;
+  url: string;
+  content: string;
+  score: number;
+};
+
+type TavilyResponse = {
+  answer?: string;
+  results: TavilyResult[];
+  query: string;
+};
+
+/**
+ * Call Tavily Search API for real web results.
+ * Returns structured results with titles, URLs, and content snippets.
+ */
+async function tavilySearch(
+  query: string,
+  options: { searchDepth?: 'basic' | 'advanced'; maxResults?: number; includeAnswer?: boolean } = {},
+): Promise<TavilyResponse> {
+  const apiKey = env.TAVILY_API_KEY;
+  if (!apiKey) throw new Error('TAVILY_API_KEY not configured');
+
+  const response = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: apiKey,
+      query,
+      search_depth: options.searchDepth || 'advanced',
+      include_answer: options.includeAnswer ?? true,
+      max_results: options.maxResults || 5,
+      include_raw_content: false,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`Tavily API error ${response.status}: ${errorText}`);
+  }
+
+  return response.json() as Promise<TavilyResponse>;
+}
+
+const useTavily = () => Boolean(env.TAVILY_API_KEY);
+
+// ══════════════════════════════════════════════════════════════
 // TOOL EXECUTION
 // ══════════════════════════════════════════════════════════════
 
 /**
- * Execute a research tool. Currently uses GPT-4o-mini's parametric knowledge.
- * When a web search API is configured, search_company_info and search_industry_trends
- * will be upgraded to call external APIs (Tavily/Serper).
+ * Execute a research tool.
+ * - With TAVILY_API_KEY: real web search via Tavily API
+ * - Without: falls back to GPT-4o-mini parametric knowledge (labelled)
  */
 async function executeResearchTool(
   openai: OpenAI,
@@ -178,7 +229,32 @@ async function executeResearchTool(
       const query = String(args.query || '');
       const focus = String(args.focus || 'overview');
 
-      // Use a focused GPT-4o-mini call to generate research from parametric knowledge
+      if (useTavily()) {
+        // ── REAL WEB SEARCH ──
+        try {
+          const searchQuery = `${query} ${context.clientName || ''} ${context.industry || ''}`.trim();
+          const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
+
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const answer = tavily.answer || 'No synthesised answer available.';
+          const urls = tavily.results.map((r) => r.url);
+
+          return {
+            result: JSON.stringify({
+              query, focus, source: 'tavily_web_search',
+              answer,
+              resultCount: tavily.results.length,
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+            }),
+            summary: `**🔍 Web Search: ${focus}** (${tavily.results.length} results)\n${answer}\n\nSources:\n${sources}\n\nURLs: ${urls.join(', ')}`,
+          };
+        } catch (err) {
+          console.error('[Research Agent] Tavily search failed, falling back:', err instanceof Error ? err.message : err);
+          // Fall through to parametric
+        }
+      }
+
+      // ── PARAMETRIC FALLBACK ──
       const res = await openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
@@ -186,7 +262,7 @@ async function executeResearchTool(
         messages: [
           {
             role: 'system',
-            content: `You are a business research analyst. Provide factual, publicly available information about companies. If you're not confident about specific facts, say "based on publicly available information" or "this may need verification". Be specific with numbers, dates, and facts where you can. Do NOT invent or fabricate data.`,
+            content: `You are a business research analyst. Provide factual, publicly available information about companies. If you're not confident about specific facts, say "based on publicly available information" or "this may need verification". Be specific with numbers, dates, and facts where you can. Do NOT invent or fabricate data. NOTE: You are working from training knowledge, not live web search.`,
           },
           {
             role: 'user',
@@ -197,8 +273,8 @@ async function executeResearchTool(
 
       const content = res.choices[0]?.message?.content || 'No information found.';
       return {
-        result: JSON.stringify({ query, focus, findings: content }),
-        summary: `**Researched: ${focus}**\n${content}`,
+        result: JSON.stringify({ query, focus, source: 'parametric_knowledge', findings: content }),
+        summary: `**Researched: ${focus}** ⚠️ (parametric knowledge — no web search API configured)\n${content}`,
       };
     }
 
@@ -206,6 +282,30 @@ async function executeResearchTool(
       const industry = String(args.industry || context.industry || 'general');
       const focus = String(args.focus || 'key trends');
 
+      if (useTavily()) {
+        // ── REAL WEB SEARCH ──
+        try {
+          const searchQuery = `${industry} industry trends ${focus} ${new Date().getFullYear()}`;
+          const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
+
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const answer = tavily.answer || 'No synthesised answer available.';
+
+          return {
+            result: JSON.stringify({
+              industry, focus, source: 'tavily_web_search',
+              answer,
+              resultCount: tavily.results.length,
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+            }),
+            summary: `**🔍 Industry Trends: ${industry}** (${tavily.results.length} web results)\n${answer}\n\nSources:\n${sources}`,
+          };
+        } catch (err) {
+          console.error('[Research Agent] Tavily industry search failed, falling back:', err instanceof Error ? err.message : err);
+        }
+      }
+
+      // ── PARAMETRIC FALLBACK ──
       const res = await openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
@@ -213,7 +313,7 @@ async function executeResearchTool(
         messages: [
           {
             role: 'system',
-            content: `You are an industry analyst. Provide factual analysis of industry trends, challenges, and dynamics. Focus on recent developments and forward-looking challenges. Be specific where possible.`,
+            content: `You are an industry analyst. Provide factual analysis of industry trends, challenges, and dynamics. Focus on recent developments and forward-looking challenges. Be specific where possible. NOTE: You are working from training knowledge, not live web search.`,
           },
           {
             role: 'user',
@@ -224,8 +324,8 @@ async function executeResearchTool(
 
       const content = res.choices[0]?.message?.content || 'No trends data available.';
       return {
-        result: JSON.stringify({ industry, focus, analysis: content }),
-        summary: `**Industry Trends: ${industry}**\n${content}`,
+        result: JSON.stringify({ industry, focus, source: 'parametric_knowledge', analysis: content }),
+        summary: `**Industry Trends: ${industry}** ⚠️ (parametric knowledge — no web search API configured)\n${content}`,
       };
     }
 
@@ -234,6 +334,30 @@ async function executeResearchTool(
       const industry = String(args.industry || context.industry || '');
       const question = String(args.question || `challenges in ${domain}`);
 
+      if (useTavily()) {
+        // ── REAL WEB SEARCH ──
+        try {
+          const searchQuery = `${domain} ${industry} ${question} challenges best practices ${new Date().getFullYear()}`;
+          const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
+
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const answer = tavily.answer || 'No synthesised answer available.';
+
+          return {
+            result: JSON.stringify({
+              domain, industry, source: 'tavily_web_search',
+              answer,
+              resultCount: tavily.results.length,
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+            }),
+            summary: `**🔍 Domain Deep-Dive: ${domain} in ${industry}** (${tavily.results.length} web results)\n${answer}\n\nSources:\n${sources}`,
+          };
+        } catch (err) {
+          console.error('[Research Agent] Tavily domain search failed, falling back:', err instanceof Error ? err.message : err);
+        }
+      }
+
+      // ── PARAMETRIC FALLBACK ──
       const res = await openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
@@ -241,7 +365,7 @@ async function executeResearchTool(
         messages: [
           {
             role: 'system',
-            content: `You are a business operations consultant specialising in specific business domains. Provide practical insights about domain-specific challenges and best practices within industry contexts.`,
+            content: `You are a business operations consultant specialising in specific business domains. Provide practical insights about domain-specific challenges and best practices within industry contexts. NOTE: You are working from training knowledge, not live web search.`,
           },
           {
             role: 'user',
@@ -252,8 +376,8 @@ async function executeResearchTool(
 
       const content = res.choices[0]?.message?.content || 'No domain insights available.';
       return {
-        result: JSON.stringify({ domain, industry, insights: content }),
-        summary: `**Domain Deep-Dive: ${domain} in ${industry}**\n${content}`,
+        result: JSON.stringify({ domain, industry, source: 'parametric_knowledge', insights: content }),
+        summary: `**Domain Deep-Dive: ${domain} in ${industry}** ⚠️ (parametric knowledge — no web search API configured)\n${content}`,
       };
     }
 
@@ -272,12 +396,18 @@ function buildResearchSystemPrompt(context: PrepContext): string {
       ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}. Research both the company broadly AND this specific domain in depth.`
       : 'The DREAM track is Enterprise — full end-to-end assessment. Research the company holistically across all business functions.';
 
+  const searchMode = useTavily()
+    ? 'You have LIVE WEB SEARCH via Tavily. Your search tools return real, current web results with source URLs. Use multiple queries to build a thorough, evidence-based picture.'
+    : '⚠️ No web search API configured. Your search tools use parametric knowledge only. Results should be treated as general knowledge that needs verification.';
+
   return `You are the DREAM Research Agent. Your job is to build a comprehensive understanding of a client company before their workshop begins.
 
 Client: ${context.clientName || 'Unknown'}
 Industry: ${context.industry || 'Unknown'}
 Website: ${context.companyWebsite || 'Not provided'}
 ${trackDesc}
+
+SEARCH CAPABILITY: ${searchMode}
 
 Research the company thoroughly:
 1. What does this company do? Size, market position, recent performance.
@@ -287,14 +417,16 @@ Research the company thoroughly:
 5. Who are the key competitors and how do they compare?
 
 IMPORTANT INSTRUCTIONS:
-- Be factual. Only report what you can verify from public knowledge.
+- Be factual. Only report what you can verify from search results.
 - Do NOT invent or speculate — if you can't find something, say so.
-- Use multiple search queries to build a complete picture.
+- Use multiple search queries to build a complete picture — at least 3 different searches.
+- Include source URLs in your commit_research call for every finding.
+- Prefer recent sources (2024-2025). Flag anything that might be outdated.
 - Call commit_research when you have a comprehensive understanding.
 
 When communicating your findings, speak naturally as a colleague would.
-Be professional but warm. Explain your reasoning clearly, cite your evidence,
-and thank others for their contributions.`;
+Be professional but warm. Explain your reasoning clearly, cite your sources,
+and note confidence level for each finding.`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -392,14 +524,22 @@ export async function runResearchAgent(
             ? (fnArgs.recentDevelopments as string[]).map((d) => `  • ${d}`).join('\n')
             : '  (none identified)';
 
+          const searchLabel = useTavily() ? '🔍 Web-Researched' : '⚠️ Parametric Knowledge';
+          const sourceUrls = Array.isArray(fnArgs.sourceUrls) ? (fnArgs.sourceUrls as string[]) : [];
+          const sourcesSection = sourceUrls.length > 0
+            ? `\n\n**Sources** (${sourceUrls.length})\n${sourceUrls.map((u) => `  • ${u}`).join('\n')}`
+            : '';
+
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'research-agent',
             to: 'prep-orchestrator',
-            message: `I've completed my research on ${context.clientName || 'the company'}. Here are my full findings:\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}`,
+            message: `${searchLabel} — I've completed my research on ${context.clientName || 'the company'}. Here are my full findings:\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}${sourcesSection}`,
             type: 'proposal',
             metadata: {
               toolsUsed: ['search_company_info', 'search_industry_trends', 'search_domain_challenges'],
+              searchMode: useTavily() ? 'tavily_web_search' : 'parametric_fallback',
+              sourceCount: sourceUrls.length,
             },
           });
 
