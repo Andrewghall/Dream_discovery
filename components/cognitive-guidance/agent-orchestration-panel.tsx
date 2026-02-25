@@ -12,7 +12,7 @@ export type AgentConversationEntry = {
   agent: string;
   to: string;
   message: string;
-  type: 'handoff' | 'request' | 'proposal' | 'verification' | 'verdict' | 'acknowledgement' | 'info';
+  type: 'handoff' | 'request' | 'proposal' | 'verification' | 'verdict' | 'acknowledgement' | 'info' | 'challenge';
   metadata?: {
     beliefsCited?: number;
     toolsUsed?: string[];
@@ -45,6 +45,8 @@ const AGENT_STYLES: Record<string, { color: string; bg: string; darkBg: string; 
   'facilitation-agent':           { color: '#2563eb', bg: '#eff6ff', darkBg: '#1e3a5f', icon: '💬', label: 'Facilitation Agent' },
   'constraint-agent':             { color: '#ea580c', bg: '#fff7ed', darkBg: '#7c2d12', icon: '⚠️', label: 'Constraint Agent' },
   'guardian':                     { color: '#059669', bg: '#ecfdf5', darkBg: '#064e3b', icon: '🛡️', label: 'Guardian' },
+  // Review panel agents (deliberation)
+  'discovery-agent':              { color: '#d97706', bg: '#fffbeb', darkBg: '#78350f', icon: '🔬', label: 'Discovery Agent' },
 };
 
 function getAgentStyle(agent: string) {
@@ -66,8 +68,8 @@ function formatAgentName(agent: string): string {
 
 /** Curated mode hides internal tool queries, shows only agent-to-agent messages */
 function isCuratedEntry(entry: AgentConversationEntry): boolean {
-  // Always show handoffs, proposals, verdicts, acknowledgements
-  if (['handoff', 'proposal', 'verdict', 'acknowledgement'].includes(entry.type)) return true;
+  // Always show handoffs, proposals, verdicts, acknowledgements, and challenges
+  if (['handoff', 'proposal', 'verdict', 'acknowledgement', 'challenge'].includes(entry.type)) return true;
   // Show verification only if it contains a verdict
   if (entry.type === 'verification' && entry.metadata?.verdict) return true;
   // Show info messages that are substantive
@@ -204,7 +206,7 @@ export function AgentOrchestrationPanel({
                   </div>
 
                   {/* Message content */}
-                  <div className="flex-1 min-w-0">
+                  <div className={`flex-1 min-w-0 ${entry.type === 'challenge' ? 'border-l-2 border-amber-500 pl-2' : ''}`}>
                     {/* Agent name + arrow + target + timestamp */}
                     <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                       <span className="text-xs font-semibold" style={{ color: style.color }}>
@@ -217,6 +219,12 @@ export function AgentOrchestrationPanel({
                             {formatAgentName(entry.to)}
                           </span>
                         </>
+                      )}
+                      {/* Challenge badge */}
+                      {entry.type === 'challenge' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-900/40 text-amber-400 border-amber-700">
+                          ⚡ CHALLENGE
+                        </span>
                       )}
                       {/* Verdict badge */}
                       {entry.metadata?.verdict && (
