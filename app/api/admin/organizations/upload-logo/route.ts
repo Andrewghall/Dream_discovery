@@ -22,8 +22,9 @@ export async function POST(request: NextRequest) {
 
     const logoUrl = await uploadOrgLogo(file, organizationId);
     return NextResponse.json({ logoUrl });
-  } catch (error) {
-    console.error('Logo upload error:', error);
-    return NextResponse.json({ error: 'Failed to upload logo' }, { status: 500 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('Logo upload error:', msg, error);
+    return NextResponse.json({ error: `Failed to upload logo: ${msg}` }, { status: 500 });
   }
 }
