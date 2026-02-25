@@ -561,6 +561,11 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                   Scratchpad
                 </Button>
               </Link>
+              <Link href={`/admin/workshops/${id}/cognitive-guidance`}>
+                <Button variant="outline" size="lg">
+                  Cognitive Guidance
+                </Button>
+              </Link>
               <Button onClick={handleClearEmailStatus} variant="outline" size="lg">
                 Clear Email Status
               </Button>
