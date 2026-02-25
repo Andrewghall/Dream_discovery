@@ -450,49 +450,41 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* Lens Coverage Bar */}
+        {/* Lens Coverage Bar + Gap Indicators */}
         <LensCoverageBar coverage={lensCoverage} />
+        <GapIndicatorStrip signals={signals} />
 
-        {/* Main Layout: Two columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 mt-4">
-          {/* LEFT COLUMN — Primary Canvas */}
-          <div className="space-y-4">
-            {/* Gap indicators */}
-            <GapIndicatorStrip signals={signals} />
+        {/* ═══ PRIMARY CANVAS — Sticky Pads own the screen ═══ */}
+        <div className="mt-4">
+          <StickyPadCanvas
+            pads={stickyPads}
+            selectedPadId={selectedPadId}
+            onSelectPad={setSelectedPadId}
+            onDismissPad={handleDismissPad}
+            onSnoozePad={handleSnoozePad}
+          />
+        </div>
 
-            {/* Sticky Pad Workspace */}
-            <StickyPadCanvas
-              pads={stickyPads}
-              selectedPadId={selectedPadId}
-              onSelectPad={setSelectedPadId}
-              onDismissPad={handleDismissPad}
-              onSnoozePad={handleSnoozePad}
-            />
-          </div>
-
-          {/* RIGHT COLUMN — Context Sidebar */}
-          <div className="space-y-4">
-            {/* Mini Hemisphere */}
-            <div className="rounded-lg border bg-card p-3">
-              <h3 className="text-sm font-medium mb-2 text-muted-foreground">Hemisphere Context</h3>
-              <div className="h-[280px] pointer-events-none">
+        {/* ═══ BOTTOM STRIP — Context panels (collapsible) ═══ */}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+          {/* Compact Hemisphere + Signals */}
+          <div className="space-y-3">
+            <div className="rounded-lg border bg-card p-2">
+              <h3 className="text-xs font-medium mb-1 text-muted-foreground">Hemisphere</h3>
+              <div className="h-[160px] pointer-events-none">
                 <HemisphereNodes
                   nodes={hemisphereNodeArray}
                   originTimeMs={null}
                 />
               </div>
             </div>
-
-            {/* Signal Cluster Panel */}
             <SignalClusterPanel
               signals={signals}
               sessionConfidence={sessionConfidence}
             />
           </div>
-        </div>
 
-        {/* Actor Journey Panel — Full Width Bottom */}
-        <div className="mt-6">
+          {/* Actor Journey Panel */}
           <ActorJourneyPanel
             journeys={actorJourneys}
             expanded={journeyExpanded}

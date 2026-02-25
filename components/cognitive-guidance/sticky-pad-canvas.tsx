@@ -25,7 +25,7 @@ export function StickyPadCanvas({
 
   if (visiblePads.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="flex flex-col items-center justify-center py-24 text-center rounded-lg border-2 border-dashed border-muted-foreground/20">
         <AlertTriangle className="h-8 w-8 text-muted-foreground/40 mb-3" />
         <p className="text-sm text-muted-foreground">
           Listening... guidance will appear as patterns emerge
@@ -35,7 +35,7 @@ export function StickyPadCanvas({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {visiblePads.map((pad) => (
         <StickyPad
           key={pad.id}
