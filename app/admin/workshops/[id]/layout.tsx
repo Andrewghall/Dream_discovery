@@ -17,7 +17,7 @@ export default async function WorkshopLayout({
   });
 
   return (
-    <div className="flex min-h-[calc(100vh-64px)]">
+    <div className="flex min-h-screen">
       <WorkshopSidebar workshopId={id} workshopName={workshop?.name || 'Workshop'} />
       <main className="flex-1 min-w-0">
         {children}

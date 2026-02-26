@@ -101,6 +101,10 @@ export function AdminHeader({ section }: AdminHeaderProps) {
   const dashboardHref = section === 'admin' ? '/admin' : '/tenant/dashboard';
   const src = logoUrl || process.env.NEXT_PUBLIC_PLATFORM_LOGO || null;
 
+  // Hide header on workshop sub-pages — sidebar handles navigation there
+  const isWorkshopPage = /^\/admin\/workshops\/[^/]+\/.+/.test(pathname) || /^\/admin\/workshops\/[^/]+$/.test(pathname);
+  if (isWorkshopPage) return null;
+
   const visibleNavItems = role
     ? navItems.filter(item => item.roles.includes(role))
     : [];
