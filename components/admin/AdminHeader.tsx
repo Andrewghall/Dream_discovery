@@ -120,7 +120,7 @@ export function AdminHeader({ section }: AdminHeaderProps) {
   return (
     <header
       className="no-print sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
-      style={section === 'tenant' && orgPrimaryColor
+      style={orgPrimaryColor
         ? { borderBottomColor: orgPrimaryColor, borderBottomWidth: '3px' }
         : undefined}
     >

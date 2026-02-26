@@ -4,6 +4,8 @@ import { AdminHeader } from '@/components/admin/AdminHeader';
 import { getSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 export default async function TenantLayout({
   children,
 }: {

@@ -334,7 +334,7 @@ export default function AdminDashboard() {
           </div>
           <div className="flex gap-2">
             <Link href="/admin/workshops/new">
-              <Button size="lg">
+              <Button size="lg" style={{ backgroundColor: 'var(--org-primary)', color: 'white' }} className="hover:opacity-90">
                 <Plus className="h-4 w-4 mr-2" />
                 New Workshop
               </Button>
