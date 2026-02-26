@@ -179,7 +179,6 @@ async function handleExport(
    ================================================================ */
 
 type SectionSummaries = {
-  discoveryPhaseSummary: string;
   discoverySummary: string;
   reimagineSummary: string;
   constraintsSummary: string;
@@ -260,8 +259,7 @@ ${JSON.stringify(trimForPrompt(summaryContent))}
 
 Return ONLY valid JSON with this exact structure:
 {
-  "discoveryPhaseSummary": "2-3 paragraphs (separated by \\n\\n) providing a profound synthesis of the entire discovery phase. This is the flagship insight block that opens the Discovery tab. Weave together the key themes across all domains, identify the underlying tensions and opportunities, and articulate what the discovery data collectively reveals about the organisation's strategic position. Write as if presenting the 'aha moment' to a board.",
-  "discoverySummary": "3-5 sentences. Sharp executive summary of the discovery findings that highlights the most significant patterns, consensus levels, and what the evidence points to.",
+  "discoverySummary": "3-5 sentences. Sharp executive summary of the discovery findings that highlights the most significant patterns, consensus levels, and what the evidence points to. Weave together the key themes across domains, identify underlying tensions and opportunities, and articulate what the discovery data reveals about the organisation's strategic position.",
   "reimagineSummary": "3-5 sentences. Capture the transformational vision that emerged, the key strategic shifts identified, and why they matter for the organisation's future.",
   "constraintsSummary": "3-5 sentences. Synthesise the constraint landscape — which constraints are truly blocking vs manageable, and what the mitigation picture looks like.",
   "solutionSummary": "3-5 sentences. Articulate the solution thesis — what makes this approach compelling, how it addresses the core constraints, and the implementation logic.",
@@ -1047,28 +1045,9 @@ blockquote cite { display: block; font-size: 0.8rem; color: #6b7280; margin-top:
 
 function renderExecutiveInsightCard(
   summary: string,
-  options?: { isHero?: boolean; title?: string }
+  options?: { title?: string }
 ): string {
   const title = options?.title || 'Executive Insight';
-  const isHero = options?.isHero || false;
-
-  if (isHero) {
-    const paragraphs = summary.split(/\n\n+/).filter(Boolean);
-    return `
-    <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);
-      color:white;padding:2.5rem;border-radius:16px;margin-bottom:2rem;
-      border-left:6px solid #f59e0b">
-      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem">
-        <span style="font-size:1.5rem">&#9733;</span>
-        <h3 style="font-size:1.2rem;font-weight:700;letter-spacing:0.02em;
-          text-transform:uppercase;color:#fbbf24;margin:0">${esc(title)}</h3>
-      </div>
-      ${paragraphs.map(p =>
-        `<p style="font-size:1rem;line-height:1.8;opacity:0.95;
-          margin-bottom:1rem;max-width:900px">${esc(p)}</p>`
-      ).join('')}
-    </div>`;
-  }
 
   return `
   <div style="background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%);
@@ -1327,18 +1306,10 @@ function renderDiscoveryOutput(data: any, summaries: SectionSummaries | null): s
 
   let html = '';
 
-  // Discovery Phase Summary — the flagship "wow" hero block
-  if (summaries?.discoveryPhaseSummary) {
-    html += renderExecutiveInsightCard(summaries.discoveryPhaseSummary, {
-      isHero: true,
-      title: 'Discovery Phase Synthesis',
-    });
-  }
-
-  // Per-section executive insight
+  // Executive Insight (matches in-app AiInsightCard style)
   if (summaries?.discoverySummary) {
     html += renderExecutiveInsightCard(summaries.discoverySummary, {
-      title: 'Executive Insight',
+      title: 'Executive Insight: Discovery',
     });
   }
 
