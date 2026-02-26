@@ -301,13 +301,6 @@ export default function ScratchpadPage({ params }: PageProps) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
-          <Link href={`/admin/workshops/${workshopId}`}>
-            <Button variant="ghost" className="mb-6">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Workshop
-            </Button>
-          </Link>
-
           <Card className="p-8 text-center">
             <h2 className="text-2xl font-bold mb-4">No Scratchpad Found</h2>
             <p className="text-muted-foreground mb-6">
@@ -356,12 +349,6 @@ export default function ScratchpadPage({ params }: PageProps) {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-6">
-            <Link href={`/admin/workshops/${workshopId}`}>
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </Link>
             {(scratchpad?.clientLogoUrl || workshop?.organization?.logoUrl) ? (
               <img
                 src={scratchpad?.clientLogoUrl || workshop?.organization?.logoUrl || ''}

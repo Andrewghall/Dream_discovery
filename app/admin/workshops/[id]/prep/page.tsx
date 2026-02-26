@@ -574,12 +574,6 @@ export default function PrepPage({ params }: PageProps) {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <Link href={`/admin/workshops/${workshopId}`}>
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </Link>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Workshop Preparation</h1>
               <p className="text-sm text-muted-foreground">

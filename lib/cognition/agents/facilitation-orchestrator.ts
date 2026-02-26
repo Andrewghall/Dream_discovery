@@ -298,7 +298,7 @@ async function executeOrchestratorTool(
         timestampMs: Date.now(),
         agent: 'orchestrator',
         to: 'theme-agent',
-        message: `${cogState.beliefs.size} beliefs accumulated.${mainQ ? ` Exploring: "${mainQ.text}".` : ''} Assess the conversational direction.`,
+        message: `${cogState.beliefs.size} beliefs accumulated.${mainQ ? ` GOAL — Main question: "${mainQ.text}" (Purpose: ${mainQ.purpose}). Assess conversational direction relative to this goal.` : ''} Assess the conversational direction.`,
         type: 'handoff',
       });
 
@@ -357,7 +357,7 @@ async function executeOrchestratorTool(
         timestampMs: Date.now(),
         agent: 'orchestrator',
         to: 'constraint-agent',
-        message: `Map constraints and identify coverage gaps.${mainQ ? ` We're exploring: "${mainQ.text}".` : ''}`,
+        message: `Map constraints and identify coverage gaps.${mainQ ? ` GOAL — Main question: "${mainQ.text}" (Purpose: ${mainQ.purpose}). Focus on constraints relevant to this question.` : ''}`,
         type: 'handoff',
       });
 
@@ -414,7 +414,7 @@ async function executeOrchestratorTool(
         timestampMs: Date.now(),
         agent: 'orchestrator',
         to: 'facilitation-agent',
-        message: `Generate sub-questions.${mainQ ? ` Goal: "${mainQ.text}".` : ''} Passing deliberation context from team assessment.`,
+        message: `Generate sub-questions.${mainQ ? ` GOAL — Main question: "${mainQ.text}" (Purpose: ${mainQ.purpose}). Every sub-question must serve this goal.` : ''} Passing deliberation context from team assessment.`,
         type: 'handoff',
       });
 

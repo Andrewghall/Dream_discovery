@@ -627,15 +627,15 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     setMainQuestionIndex(0);
     setCompletedByQuestion(new Map());
 
+    // Derive phase questions for the new phase
+    const prep = prepQuestionsRef.current;
+    const wp = dialoguePhaseToWorkshopPhase(phase);
+    const phaseQuestions = wp && prep?.phases?.[wp]?.questions
+      ? [...prep.phases[wp].questions].sort((a, b) => a.order - b.order)
+      : [];
+
     // Only replace with seed/prep pads if not listening (no real data yet)
     if (!listening) {
-      // Load first main question's sub-pads, or fall back to seed pads
-      const prep = prepQuestionsRef.current;
-      const wp = dialoguePhaseToWorkshopPhase(phase);
-      const phaseQuestions = wp && prep?.phases?.[wp]?.questions
-        ? [...prep.phases[wp].questions].sort((a, b) => a.order - b.order)
-        : [];
-
       if (phaseQuestions.length > 0) {
         // Load sub-pads for the first main question (auto-generates starters if no prep subs)
         const subPads = loadPrepSubPads(phaseQuestions[0], 0);
@@ -645,8 +645,15 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       }
       setSelectedPadId(null);
     }
-    // Sync to server
-    syncGuidanceState({ dialoguePhase: phase });
+
+    // Sync to server — include the first main question as the new goal
+    const firstQ = phaseQuestions[0];
+    syncGuidanceState({
+      dialoguePhase: phase,
+      currentMainQuestion: firstQ
+        ? { text: firstQ.text, lens: firstQ.lens || null, purpose: firstQ.purpose, grounding: firstQ.grounding, phase: firstQ.phase }
+        : null,
+    });
   }, [listening, syncGuidanceState, loadPrepSubPads]);
 
   // ── "Peeling the Onion" question navigation ─────────────
@@ -679,8 +686,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         );
         return [...kept, ...subPads];
       });
+      // Sync new main question goal to server so agents target it
+      syncGuidanceState({
+        currentMainQuestion: { text: nextQ.text, lens: nextQ.lens || null, purpose: nextQ.purpose, grounding: nextQ.grounding, phase: nextQ.phase },
+      });
     }
-  }, [mainQuestionIndex, mainQuestions, stickyPads, loadPrepSubPads]);
+  }, [mainQuestionIndex, mainQuestions, stickyPads, loadPrepSubPads, syncGuidanceState]);
 
   const handlePrevQuestion = useCallback(() => {
     if (mainQuestionIndex <= 0) return;
@@ -699,7 +710,14 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       );
       return [...kept, ...subsToUse];
     });
-  }, [mainQuestionIndex, mainQuestions, completedByQuestion, stickyPads, loadPrepSubPads]);
+
+    // Sync previous main question goal to server
+    if (prevQ) {
+      syncGuidanceState({
+        currentMainQuestion: { text: prevQ.text, lens: prevQ.lens || null, purpose: prevQ.purpose, grounding: prevQ.grounding, phase: prevQ.phase },
+      });
+    }
+  }, [mainQuestionIndex, mainQuestions, completedByQuestion, stickyPads, loadPrepSubPads, syncGuidanceState]);
 
   // ── Theme management callbacks ──────────────────────────
   const handleAdvanceTheme = useCallback(() => {
@@ -791,6 +809,11 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase);
               if (prepPads.length > 0) setStickyPads(prepPads);
             }
+            // Sync first main question as the goal for agents
+            const firstQ = phaseQuestions[0];
+            syncGuidanceState({
+              currentMainQuestion: { text: firstQ.text, lens: firstQ.lens || null, purpose: firstQ.purpose, grounding: firstQ.grounding, phase: firstQ.phase },
+            });
           } else {
             const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase);
             if (prepPads.length > 0) setStickyPads(prepPads);
@@ -1242,12 +1265,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
-            <Link href={`/admin/workshops/${workshopId}/prep`}>
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Prep
-              </Button>
-            </Link>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Live Workshop</h1>
               <p className="text-sm text-muted-foreground">

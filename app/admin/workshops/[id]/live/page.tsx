@@ -3345,9 +3345,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 Split
               </Button>
             </div>
-            <Link href={`/admin/workshops/${workshopId}`}>
-              <Button variant="outline">Back to Workshop</Button>
-            </Link>
+            {/* Navigation handled by sidebar */}
           </div>
         </div>
 

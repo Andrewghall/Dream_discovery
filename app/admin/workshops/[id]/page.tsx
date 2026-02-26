@@ -521,13 +521,6 @@ export default function WorkshopDetailPage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-transparent">
       <div className="container mx-auto px-4 py-8">
-        <Link href="/admin">
-          <Button variant="ghost" className="mb-6">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
-          </Button>
-        </Link>
-
         {/* Workshop Header */}
         <div className="mb-8">
           <div className="flex items-start justify-between mb-4">
@@ -541,49 +534,14 @@ export default function WorkshopDetailPage({ params }: PageProps) {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href={`/admin/workshops/${id}/prep`}>
-                <Button variant="outline" size="lg">
-                  Prep
-                </Button>
-              </Link>
-              <Link href={`/admin/workshops/${id}/live`}>
-                <Button variant="outline" size="lg">
-                  Live
-                </Button>
-              </Link>
-              <Link href={`/admin/workshops/${id}/hemisphere`}>
-                <Button variant="outline" size="lg">
-                  Hemisphere
-                </Button>
-              </Link>
-              <Link href={`/admin/workshops/${id}/spider`}>
-                <Button variant="outline" size="lg">
-                  Spider
-                </Button>
-              </Link>
-              <Link href={`/admin/workshops/${id}/discovery`}>
-                <Button variant="outline" size="lg">
-                  Discovery
-                </Button>
-              </Link>
-              <Link href={`/admin/workshops/${id}/scratchpad`}>
-                <Button variant="outline" size="lg">
-                  Scratchpad
-                </Button>
-              </Link>
-              <Link href={`/admin/workshops/${id}/cognitive-guidance`}>
-                <Button variant="outline" size="lg">
-                  Cognitive Guidance
-                </Button>
-              </Link>
-              <Button onClick={handleClearEmailStatus} variant="outline" size="lg">
+              <Button onClick={handleClearEmailStatus} variant="outline" size="sm">
                 Clear Email Status
               </Button>
-              <Button onClick={handleSendInvitations} size="lg">
+              <Button onClick={handleSendInvitations} size="sm">
                 <Send className="h-4 w-4 mr-2" />
                 Send Invitations
               </Button>
-              <Button onClick={handleDeleteWorkshop} variant="destructive" size="lg">
+              <Button onClick={handleDeleteWorkshop} variant="destructive" size="sm">
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete Workshop
               </Button>
