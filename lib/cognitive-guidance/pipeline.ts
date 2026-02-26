@@ -357,11 +357,11 @@ const LENS_RELEVANCE_THRESHOLD = 0.3;
 
 /** Keyword patterns per lens — used as fallback when CaptureAPI under-classifies */
 const KEYWORD_LENS_MAP: [Lens, RegExp][] = [
-  ['Customer', /\b(customer|client|user|consumer|buyer|shopper|subscriber|member|patient|end.?user)\b/i],
-  ['Technology', /\b(technolog|AI|machine.?learning|system|platform|software|digital|automat|data|cloud|infra|app|algorithm|API)\b/i],
-  ['Regulation', /\b(regulat|complian|legal|GDPR|FCA|licen[cs]|governance|audit|polic[iy]|legislat|mandate|standard)\b/i],
-  ['Organisation', /\b(organi[sz]ation|department|team|structure|process|workflow|operat|management|staff|employ|HR|budget|resource)\b/i],
-  ['People', /\b(people|person|human|culture|skill|training|talent|recruit|wellbeing|engagement|stakeholder|leader)\b/i],
+  ['Customer', /\b(customer\w*|client\w*|consumer\w*|buyer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*)\b/i],
+  ['Technology', /\b(technolog\w*|AI|machine.?learning|system\w*|platform\w*|software|digital\w*|automat\w*|data\b|cloud|infra\w*|algorithm\w*|API)\b/i],
+  ['Regulation', /\b(regulat\w*|complian\w*|legal\w*|GDPR|FCA|licen[cs]\w*|governance|audit\w*|polic[iy]\w*|legislat\w*|mandate\w*|standard\w*)\b/i],
+  ['Organisation', /\b(organi[sz]\w*|department\w*|team\w*|structure\w*|process\w*|workflow\w*|operat\w*|management|staff\w*|employ\w*|HR|budget\w*|resource\w*)\b/i],
+  ['People', /\b(people|person\w*|human\w*|culture\w*|skill\w*|training|talent\w*|recruit\w*|wellbeing|engagement|stakeholder\w*|leader\w*)\b/i],
 ];
 
 /**
