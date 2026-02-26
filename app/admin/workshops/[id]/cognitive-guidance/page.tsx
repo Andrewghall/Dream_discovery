@@ -996,13 +996,20 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         // Run keyword inference immediately so dots position correctly
         // (CaptureAPI doesn't do domain classification on its own)
         const nodeRawText = String(p.dataPoint.rawText ?? '');
-        const kwDomains = nodeRawText.length >= 20
-          ? inferKeywordLenses(nodeRawText).map(kw => ({
+        const kwLensResults = nodeRawText.length >= 20 ? inferKeywordLenses(nodeRawText) : [];
+        const kwDomains = kwLensResults.map(kw => ({
               domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
               relevance: 0.7,
               reasoning: kw.evidence,
-            })).filter(d => !!d.domain)
-          : [];
+            })).filter(d => !!d.domain);
+
+        // Debug: show what keyword domains are detected for each datapoint
+        console.log('[Hemisphere] Node created:', {
+          id: dataPointId.slice(0, 8),
+          rawText: nodeRawText.slice(0, 80),
+          kwDomains: kwDomains.map(d => d.domain),
+          phase: dialoguePhaseRef.current,
+        });
 
         const hNode: HemisphereNodeDatum = {
           dataPointId,

@@ -134,7 +134,7 @@ export function AgentOrchestrationPanel({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
       <button
         onClick={onToggleCollapse}
