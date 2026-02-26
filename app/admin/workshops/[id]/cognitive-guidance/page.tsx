@@ -1125,7 +1125,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           const existing = prev[dataPointId];
           if (!existing) return prev;
 
-          // Always run keyword enrichment — CaptureAPI under-classifies domains
+          // Merge CaptureAPI domains with keyword-inferred domains
+          // Keyword domains get max CaptureAPI relevance so they can compete
+          const maxApiRelevance = analysis.domains.reduce((m, d) => Math.max(m, d.relevance), 0.5);
           const enrichedDomains = [...analysis.domains];
           if (existing.rawText && existing.rawText.length >= 20) {
             const kwLenses = inferKeywordLenses(existing.rawText);
@@ -1134,14 +1136,14 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               const domain = LENS_TO_DOMAIN[kw.lens];
               if (!domain) continue;
               if (existingDomains.has(domain)) {
-                // Boost existing weak domain with keyword evidence
+                // Boost existing domain to at least match CaptureAPI max
                 const idx = enrichedDomains.findIndex(d => d.domain === domain);
-                if (idx >= 0 && enrichedDomains[idx].relevance < 0.6) {
-                  enrichedDomains[idx] = { ...enrichedDomains[idx], relevance: Math.max(enrichedDomains[idx].relevance, 0.7) };
+                if (idx >= 0) {
+                  enrichedDomains[idx] = { ...enrichedDomains[idx], relevance: Math.max(enrichedDomains[idx].relevance, maxApiRelevance) };
                 }
               } else {
-                // Add new domain with strong relevance so it moves the dot
-                enrichedDomains.push({ domain, relevance: 0.7, reasoning: kw.evidence });
+                // Add keyword domain at same relevance as CaptureAPI's best
+                enrichedDomains.push({ domain, relevance: maxApiRelevance, reasoning: kw.evidence });
               }
             }
           }

@@ -225,8 +225,11 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       const clsConf = typeof n.classification?.confidence === 'number' ? n.classification.confidence : null;
       const radialConf = clamp01(clsConf ?? 0.35);
 
-      const jitter = (hash01(n.dataPointId) - 0.5) * 18;
-      const radial = rMin + radialConf * (R - rMin) + jitter;
+      // Clamp theta to valid semicircle range [0.05, π-0.05] to prevent dots escaping
+      theta = Math.max(0.05, Math.min(Math.PI - 0.05, theta));
+
+      const jitter = (hash01(n.dataPointId) - 0.5) * 12;
+      const radial = Math.min(R, rMin + radialConf * (R - rMin) + jitter);
 
       const baseX = cx + radial * Math.cos(theta);
       const baseY = cy - radial * Math.sin(theta);
@@ -234,8 +237,11 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       const attractor = n.themeId && themeAttractors ? themeAttractors[n.themeId] : null;
       const pull = attractor ? clamp01(0.08 + 0.12 * Math.log1p(Math.max(0, attractor.strength))) : 0;
       const microJitter = (hash01(`theme:${n.dataPointId}`) - 0.5) * 10;
-      const x = attractor ? lerp(baseX, attractor.x, pull) + microJitter : baseX;
-      const y = attractor ? lerp(baseY, attractor.y, pull) + microJitter : baseY;
+      const rawX = attractor ? lerp(baseX, attractor.x, pull) + microJitter : baseX;
+      const rawY = attractor ? lerp(baseY, attractor.y, pull) + microJitter : baseY;
+      // Clamp to SVG viewport bounds
+      const x = Math.max(pad, Math.min(W - pad, rawX));
+      const y = Math.max(pad, Math.min(H - pad, rawY));
 
       const fill = clsType ? primaryColor(clsType) : n.intent ? intentColor(n.intent) : primaryColor(null);
       const stroke = 'rgba(15,23,42,0.22)';
