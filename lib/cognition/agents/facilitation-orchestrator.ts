@@ -26,7 +26,7 @@ import {
   type GuidanceState,
 } from '../guidance-state';
 import { runFacilitationAgent, type DeliberationContext, type PadProposal } from './facilitation-agent';
-import { runGuardianAgent, validateReferences } from './guardian-agent';
+import { validateReferences } from './guardian-agent';
 import { runJourneyCompletionAgent } from './journey-completion-agent';
 import {
   mergeAgentAssessment,
@@ -240,7 +240,7 @@ const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'verify_and_emit',
-      description: 'Send proposals to the Guardian Agent for grounding verification, then emit approved pads to the facilitator screen.',
+      description: 'Verify proposals have valid belief references and emit approved pads to the facilitator screen.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -270,7 +270,7 @@ YOUR PROCESS:
 1. assess_session — read the room: beliefs, signals, gaps, recent participant speech
 2. consult_journey_completion_agent — check journey map gaps (only if actors detected)
 3. request_facilitation_proposals — generate sub-questions with signal + speech + journey context
-4. verify_and_emit — Guardian checks grounding, approved pads go to facilitator
+4. verify_and_emit — verify belief references, emit approved pads to facilitator
 
 RULES:
 - Four tool calls max, done. No deliberation loops.
@@ -477,52 +477,30 @@ async function executeOrchestratorTool(
       const results: string[] = [];
 
       for (const proposal of toVerify) {
+        // Deterministic safety filter — no LLM needed
         if (!validateReferences(proposal.sourceBeliefIds, cogState)) {
           results.push(`REJECTED (invalid refs): "${proposal.pad.prompt.substring(0, 60)}"`);
           continue;
         }
+        if (proposal.sourceBeliefIds.length === 0) {
+          results.push(`REJECTED (no citations): "${proposal.pad.prompt.substring(0, 60)}"`);
+          continue;
+        }
+
+        // Approved — emit directly
+        emitEvent('pad.generated', { pad: proposal.pad });
+        guidanceState.surfacedPadPrompts.push(proposal.pad.prompt);
+        emitted++;
 
         onConversation?.({
           timestampMs: Date.now(),
           agent: 'orchestrator',
-          to: 'guardian',
-          message: `Grounding check: "${proposal.pad.prompt.substring(0, 80)}..."`,
-          type: 'handoff',
+          to: '',
+          message: `Emitted: "${proposal.pad.prompt.substring(0, 60)}..."`,
+          type: 'acknowledgement',
         });
 
-        const verdict = await runGuardianAgent(
-          {
-            proposedOutput: { prompt: proposal.pad.prompt, type: proposal.pad.type },
-            outputDescription: `Facilitation pad: "${proposal.pad.prompt.substring(0, 100)}"`,
-            sourceBeliefIds: proposal.sourceBeliefIds,
-            agentName: 'Facilitation Agent',
-            currentPhase: guidanceState.dialoguePhase,
-          },
-          cogState,
-          onConversation,
-        );
-
-        if (verdict.verdict !== 'reject') {
-          const pad = verdict.verdict === 'modify' && typeof verdict.modifiedOutput === 'string'
-            ? { ...proposal.pad, prompt: verdict.modifiedOutput }
-            : proposal.pad;
-
-          emitEvent('pad.generated', { pad });
-          guidanceState.surfacedPadPrompts.push(pad.prompt);
-          emitted++;
-
-          onConversation?.({
-            timestampMs: Date.now(),
-            agent: 'orchestrator',
-            to: '',
-            message: `Approved: "${pad.prompt.substring(0, 60)}..."`,
-            type: 'acknowledgement',
-          });
-
-          results.push(`APPROVED: "${pad.prompt.substring(0, 60)}"`);
-        } else {
-          results.push(`REJECTED by Guardian: "${proposal.pad.prompt.substring(0, 60)}" — ${verdict.reasoning}`);
-        }
+        results.push(`EMITTED: "${proposal.pad.prompt.substring(0, 60)}"`);
       }
 
       // Post-emission: reset tracking + clear proposals so loop terminates
