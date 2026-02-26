@@ -217,7 +217,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         }
         if (totalWeight > 0) {
           const domainTarget = weightedAngle / totalWeight;
-          theta = lerp(thetaAfterPhase, domainTarget, 0.5);
+          theta = lerp(thetaAfterPhase, domainTarget, 0.75);
         }
       }
 

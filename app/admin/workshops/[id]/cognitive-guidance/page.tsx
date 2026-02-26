@@ -993,13 +993,26 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         });
 
         // Also maintain hemisphere nodes for the mini widget
+        // Run keyword inference immediately so dots position correctly
+        // (CaptureAPI doesn't do domain classification on its own)
+        const nodeRawText = String(p.dataPoint.rawText ?? '');
+        const kwDomains = nodeRawText.length >= 20
+          ? inferKeywordLenses(nodeRawText).map(kw => ({
+              domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
+              relevance: 0.7,
+              reasoning: kw.evidence,
+            })).filter(d => !!d.domain)
+          : [];
+
         const hNode: HemisphereNodeDatum = {
           dataPointId,
           createdAtMs,
-          rawText: String(p.dataPoint.rawText ?? ''),
+          rawText: nodeRawText,
           dataPointSource: String(p.dataPoint.source ?? ''),
           speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
-          dialoguePhase: null,
+          dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
+            ? (dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
+            : null,
           transcriptChunk: p.transcriptChunk
             ? {
                 speakerId: p.transcriptChunk.speakerId || null,
@@ -1010,6 +1023,14 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               }
             : null,
           classification: null,
+          agenticAnalysis: kwDomains.length > 0 ? {
+            domains: kwDomains,
+            themes: [],
+            actors: [],
+            semanticMeaning: '',
+            sentimentTone: 'neutral',
+            overallConfidence: 0.5,
+          } : null,
         };
         setHemisphereNodes(prev => {
           if (prev[dataPointId]) return prev;
@@ -1095,14 +1116,23 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           const existing = prev[dataPointId];
           if (!existing) return prev;
 
+          // Always run keyword enrichment — CaptureAPI under-classifies domains
           const enrichedDomains = [...analysis.domains];
-          if (enrichedDomains.length <= 1 && existing.rawText?.length >= 20) {
+          if (existing.rawText && existing.rawText.length >= 20) {
             const kwLenses = inferKeywordLenses(existing.rawText);
             const existingDomains = new Set(enrichedDomains.map(d => d.domain));
             for (const kw of kwLenses) {
               const domain = LENS_TO_DOMAIN[kw.lens];
-              if (domain && !existingDomains.has(domain)) {
-                enrichedDomains.push({ domain, relevance: kw.relevance, reasoning: kw.evidence });
+              if (!domain) continue;
+              if (existingDomains.has(domain)) {
+                // Boost existing weak domain with keyword evidence
+                const idx = enrichedDomains.findIndex(d => d.domain === domain);
+                if (idx >= 0 && enrichedDomains[idx].relevance < 0.6) {
+                  enrichedDomains[idx] = { ...enrichedDomains[idx], relevance: Math.max(enrichedDomains[idx].relevance, 0.7) };
+                }
+              } else {
+                // Add new domain with strong relevance so it moves the dot
+                enrichedDomains.push({ domain, relevance: 0.7, reasoning: kw.evidence });
               }
             }
           }
