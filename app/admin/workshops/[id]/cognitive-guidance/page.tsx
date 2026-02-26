@@ -28,6 +28,8 @@ import {
   createInitialNode,
   categoriseNode,
   applyLensMapping,
+  inferKeywordLenses,
+  LENS_TO_DOMAIN,
   calculateLensCoverage,
   detectSignals,
   generateStickyPads,
@@ -1089,15 +1091,28 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           return next;
         });
 
-        // Update hemisphere node
+        // Update hemisphere node — enrich domains with keyword inference
         setHemisphereNodes(prev => {
           const existing = prev[dataPointId];
           if (!existing) return prev;
+
+          const enrichedDomains = [...analysis.domains];
+          if (enrichedDomains.length <= 1 && existing.rawText?.length >= 20) {
+            const kwLenses = inferKeywordLenses(existing.rawText);
+            const existingDomains = new Set(enrichedDomains.map(d => d.domain));
+            for (const kw of kwLenses) {
+              const domain = LENS_TO_DOMAIN[kw.lens];
+              if (domain && !existingDomains.has(domain)) {
+                enrichedDomains.push({ domain, relevance: kw.relevance, reasoning: kw.evidence });
+              }
+            }
+          }
+
           return {
             ...prev,
             [dataPointId]: {
               ...existing,
-              agenticAnalysis: analysis,
+              agenticAnalysis: { ...analysis, domains: enrichedDomains },
             },
           };
         });

@@ -202,13 +202,24 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
               : baseTheta;
       const thetaAfterPhase = lerp(baseTheta, phaseTarget, phaseStrength);
 
-      // Layer 2: Domain bias — pull node toward its classified domain zone
-      const primaryDomain = n.agenticAnalysis?.domains?.[0]?.domain ?? null;
-      const domainTarget = primaryDomain ? domainAngles[primaryDomain] ?? null : null;
-      const domainStrength = domainTarget != null ? 0.5 : 0;
-      const theta = domainTarget != null
-        ? lerp(thetaAfterPhase, domainTarget, domainStrength)
-        : thetaAfterPhase;
+      // Layer 2: Domain bias — weighted average across all classified domains
+      const allDomains = n.agenticAnalysis?.domains ?? [];
+      let theta = thetaAfterPhase;
+      if (allDomains.length > 0) {
+        let totalWeight = 0;
+        let weightedAngle = 0;
+        for (const d of allDomains) {
+          const angle = domainAngles[d.domain];
+          if (angle != null) {
+            weightedAngle += angle * d.relevance;
+            totalWeight += d.relevance;
+          }
+        }
+        if (totalWeight > 0) {
+          const domainTarget = weightedAngle / totalWeight;
+          theta = lerp(thetaAfterPhase, domainTarget, 0.5);
+        }
+      }
 
       const clsType = n.classification?.primaryType ?? null;
       const clsConf = typeof n.classification?.confidence === 'number' ? n.classification.confidence : null;

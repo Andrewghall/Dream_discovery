@@ -1,6 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import type { Signal, SignalType, SessionConfidence } from '@/lib/cognitive-guidance/pipeline';
+
+const MAX_VISIBLE_SIGNALS = 5;
 
 const DOT_COLORS: Record<SignalType, string> = {
   contradiction: 'bg-red-500',
@@ -40,7 +43,10 @@ function formatPercent(value: number): string {
 }
 
 export default function SignalClusterPanel({ signals, sessionConfidence }: Props) {
+  const [showAll, setShowAll] = useState(false);
   const sorted = [...signals].sort((a, b) => b.strength - a.strength);
+  const visible = showAll ? sorted : sorted.slice(0, MAX_VISIBLE_SIGNALS);
+  const hiddenCount = sorted.length - MAX_VISIBLE_SIGNALS;
 
   return (
     <div className="w-80 flex flex-col gap-4 bg-white border-l border-gray-200 p-4 overflow-y-auto">
@@ -56,52 +62,62 @@ export default function SignalClusterPanel({ signals, sessionConfidence }: Props
         {sorted.length === 0 ? (
           <p className="text-xs text-gray-400 italic">No signals detected yet</p>
         ) : (
-          <ul className="flex flex-col gap-3">
-            {sorted.map((signal) => (
-              <li key={signal.id} className="flex flex-col gap-1">
-                {/* Type dot + label */}
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`inline-block w-2 h-2 rounded-full shrink-0 ${DOT_COLORS[signal.type]}`}
-                  />
-                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                    {SIGNAL_LABELS[signal.type]}
-                  </span>
-                </div>
-
-                {/* Description */}
-                <p className="text-xs text-gray-700 leading-snug pl-3.5">
-                  {signal.description}
-                </p>
-
-                {/* Strength bar */}
-                <div className="pl-3.5">
-                  <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gray-400 transition-all duration-300"
-                      style={{ width: `${signal.strength * 100}%` }}
+          <>
+            <ul className="flex flex-col gap-3">
+              {visible.map((signal) => (
+                <li key={signal.id} className="flex flex-col gap-1">
+                  {/* Type dot + label */}
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full shrink-0 ${DOT_COLORS[signal.type]}`}
                     />
+                    <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+                      {SIGNAL_LABELS[signal.type]}
+                    </span>
                   </div>
-                </div>
 
-                {/* Lens tags */}
-                {signal.lenses.length > 0 && (
-                  <div className="flex gap-1 pl-3.5 flex-wrap">
-                    {signal.lenses.map((lens) => (
-                      <span
-                        key={lens}
-                        className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          LENS_BADGE_COLORS[lens] ?? 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {lens}
-                      </span>
-                    ))}
+                  {/* Description */}
+                  <p className="text-xs text-gray-700 leading-snug pl-3.5">
+                    {signal.description}
+                  </p>
+
+                  {/* Strength bar */}
+                  <div className="pl-3.5">
+                    <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gray-400 transition-all duration-300"
+                        style={{ width: `${signal.strength * 100}%` }}
+                      />
+                    </div>
                   </div>
-                )}
-              </li>
-            ))}
-          </ul>
+
+                  {/* Lens tags */}
+                  {signal.lenses.length > 0 && (
+                    <div className="flex gap-1 pl-3.5 flex-wrap">
+                      {signal.lenses.map((lens) => (
+                        <span
+                          key={lens}
+                          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            LENS_BADGE_COLORS[lens] ?? 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {lens}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {hiddenCount > 0 && (
+              <button
+                onClick={() => setShowAll(s => !s)}
+                className="text-xs text-blue-600 hover:underline mt-2 pl-3.5"
+              >
+                {showAll ? 'Show fewer' : `+${hiddenCount} more`}
+              </button>
+            )}
+          </>
         )}
       </div>
 

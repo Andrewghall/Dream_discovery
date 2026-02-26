@@ -344,11 +344,49 @@ const DOMAIN_TO_LENS: Record<string, Lens> = {
   Regulation: 'Regulation',
 };
 
+/** Reverse map: lens name → CaptureAPI domain name (for hemisphere positioning) */
+export const LENS_TO_DOMAIN: Record<string, string> = {
+  People: 'People',
+  Organisation: 'Operations',
+  Customer: 'Customer',
+  Technology: 'Technology',
+  Regulation: 'Regulation',
+};
+
 const LENS_RELEVANCE_THRESHOLD = 0.3;
+
+/** Keyword patterns per lens — used as fallback when CaptureAPI under-classifies */
+const KEYWORD_LENS_MAP: [Lens, RegExp][] = [
+  ['Customer', /\b(customer|client|user|consumer|buyer|shopper|subscriber|member|patient|end.?user)\b/i],
+  ['Technology', /\b(technolog|AI|machine.?learning|system|platform|software|digital|automat|data|cloud|infra|app|algorithm|API)\b/i],
+  ['Regulation', /\b(regulat|complian|legal|GDPR|FCA|licen[cs]|governance|audit|polic[iy]|legislat|mandate|standard)\b/i],
+  ['Organisation', /\b(organi[sz]ation|department|team|structure|process|workflow|operat|management|staff|employ|HR|budget|resource)\b/i],
+  ['People', /\b(people|person|human|culture|skill|training|talent|recruit|wellbeing|engagement|stakeholder|leader)\b/i],
+];
+
+/**
+ * Keyword-based lens inference — supplements CaptureAPI when it returns weak
+ * or missing domain classifications. Returns lenses at 0.3-0.5 relevance.
+ */
+export function inferKeywordLenses(text: string): Array<{ lens: Lens; relevance: number; evidence: string }> {
+  const results: Array<{ lens: Lens; relevance: number; evidence: string }> = [];
+  for (const [lens, pattern] of KEYWORD_LENS_MAP) {
+    const matches = text.match(new RegExp(pattern, 'gi'));
+    if (matches && matches.length > 0) {
+      results.push({
+        lens,
+        relevance: Math.min(0.5, 0.3 + matches.length * 0.05),
+        evidence: `Keyword: ${[...new Set(matches)].slice(0, 3).join(', ')}`,
+      });
+    }
+  }
+  return results;
+}
 
 /**
  * Stage 2: Apply lens mapping when agentic.analyzed arrives.
- * Only maps lenses with relevance ≥ 0.3 AND with reasoning evidence.
+ * Maps CaptureAPI domains to lenses (≥0.3 relevance with evidence).
+ * Falls back to keyword inference when CaptureAPI gives ≤1 lens.
  */
 export function applyLensMapping(
   node: CogNode,
@@ -356,7 +394,7 @@ export function applyLensMapping(
 ): CogNode {
   if (!agenticAnalysis) return node;
 
-  const lenses = agenticAnalysis.domains
+  const apiLenses = agenticAnalysis.domains
     .filter(d => d.relevance >= LENS_RELEVANCE_THRESHOLD && d.reasoning)
     .map(d => ({
       lens: DOMAIN_TO_LENS[d.domain] || d.domain as Lens,
@@ -364,6 +402,15 @@ export function applyLensMapping(
       evidence: d.reasoning,
     }))
     .filter(l => ALL_LENSES.includes(l.lens));
+
+  // Keyword fallback: if CaptureAPI gave ≤1 lens, supplement from text
+  let lenses = apiLenses;
+  if (apiLenses.length <= 1 && node.rawText.length >= 20) {
+    const kwLenses = inferKeywordLenses(node.rawText);
+    const existing = new Set(apiLenses.map(l => l.lens));
+    const extra = kwLenses.filter(kw => !existing.has(kw.lens));
+    lenses = [...apiLenses, ...extra];
+  }
 
   return {
     ...node,
@@ -527,8 +574,8 @@ export function detectSignals(
     }
   }
 
-  // --- Unanswered questions ---
-  const questionNodes = nodes.filter(n => n.nodeType === 'QUESTION');
+  // --- Unanswered questions (skip very short fragments) ---
+  const questionNodes = nodes.filter(n => n.nodeType === 'QUESTION' && n.rawText.length >= 30);
   const enablerActionNodes = nodes.filter(n => n.nodeType === 'ENABLER' || n.nodeType === 'ACTION');
   for (const q of questionNodes) {
     const qWords = contentWords(q.rawText);
@@ -539,10 +586,16 @@ export function detectSignals(
     if (!answered) {
       const ageMs = nowMs - q.createdAtMs;
       if (ageMs > 30_000) {
+        // Use keywords or lenses for a clean description instead of raw speech
+        const kwSummary = q.keywords.length > 0
+          ? q.keywords.slice(0, 3).join(', ')
+          : q.lenses.length > 0
+            ? q.lenses.map(l => l.lens).join(', ')
+            : 'general topic';
         signals.push({
           id: `unanswered_question:${q.id}`,
           type: 'unanswered_question',
-          description: `Question unanswered: "${q.rawText.slice(0, 60)}..."`,
+          description: `Unanswered question about ${kwSummary}`,
           strength: Math.min(1.0, ageMs / 300_000),
           nodeIds: [q.id],
           lenses: q.lenses.map(l => l.lens),
