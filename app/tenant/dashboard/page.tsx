@@ -21,7 +21,7 @@ export default async function TenantDashboardPage() {
   const [org, workshops] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: session.organizationId },
-      select: { name: true, logoUrl: true, primaryColor: true },
+      select: { name: true, logoUrl: true },
     }),
     prisma.workshop.findMany({
       where: isTenantAdmin
@@ -77,7 +77,7 @@ export default async function TenantDashboardPage() {
           </div>
           <div className="flex gap-2">
             <Link href="/tenant/workshops/new">
-              <Button size="lg">
+              <Button size="lg" className="btn-org-primary">
                 <Plus className="h-4 w-4 mr-2" />
                 New Workshop
               </Button>

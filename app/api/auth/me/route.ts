@@ -17,7 +17,7 @@ export async function GET() {
     select: {
       name: true,
       organization: {
-        select: { name: true, logoUrl: true },
+        select: { name: true, logoUrl: true, primaryColor: true },
       },
     },
   });
@@ -30,6 +30,7 @@ export async function GET() {
     name: user?.name || null,
     orgName: user?.organization?.name || null,
     orgLogoUrl: user?.organization?.logoUrl || null,
+    orgPrimaryColor: user?.organization?.primaryColor || null,
     isDeveloper: isDeveloperEmail(session.email),
   });
 }

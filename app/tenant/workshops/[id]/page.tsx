@@ -149,13 +149,13 @@ export default async function TenantWorkshopDetailPage({
                 </h2>
                 <div className="flex gap-4">
                   <Link href={`/admin/workshops/${workshop.id}/scratchpad`}>
-                    <Button className="bg-indigo-600 hover:bg-indigo-700">
+                    <Button className="btn-org-primary">
                       <Eye className="h-4 w-4 mr-2" />
                       View Scratchpad
                     </Button>
                   </Link>
                   <a href={`/api/admin/workshops/${workshop.id}/export-html`} download>
-                    <Button variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
+                    <Button variant="outline" className="btn-org-secondary-outline">
                       <Download className="h-4 w-4 mr-2" />
                       Download for Client
                     </Button>

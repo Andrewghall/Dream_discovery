@@ -70,6 +70,7 @@ export function AdminHeader({ section }: AdminHeaderProps) {
   const router = useRouter();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string | null>(null);
+  const [orgPrimaryColor, setOrgPrimaryColor] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
@@ -82,6 +83,7 @@ export function AdminHeader({ section }: AdminHeaderProps) {
         if (!data) return;
         setLogoUrl(data.orgLogoUrl || null);
         setOrgName(data.orgName || null);
+        setOrgPrimaryColor(data.orgPrimaryColor || null);
         setRole(data.role || null);
       })
       .catch(() => null);
@@ -116,7 +118,12 @@ export function AdminHeader({ section }: AdminHeaderProps) {
   };
 
   return (
-    <header className="no-print sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header
+      className="no-print sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+      style={section === 'tenant' && orgPrimaryColor
+        ? { borderBottomColor: orgPrimaryColor, borderBottomWidth: '3px' }
+        : undefined}
+    >
       <div className="container mx-auto flex items-center justify-between px-4">
         {/* Left: Logo */}
         <Link

@@ -150,6 +150,18 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setIsPdfMode(false);
   }, [workshopId, token]);
 
+  // Fetch org branding on mount so landing page shows branded colours before "Begin"
+  useEffect(() => {
+    fetch('/api/discovery/branding', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workshopId, token }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setOrganization(data); })
+      .catch(() => {});
+  }, [workshopId, token]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setIsPdfMode(params.get('pdf') === '1');
@@ -501,7 +513,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
         <div className="container max-w-2xl mx-auto px-4 py-10">
           <h1 className="text-3xl font-semibold text-[#1a1a2e]">DREAM Discovery</h1>
-          <h2 className="text-lg font-medium text-[#4a90a4] mt-1">Diagnostic Questionnaire</h2>
+          <h2 className="text-lg font-medium mt-1" style={{ color: organization?.primaryColor || '#4a90a4' }}>Diagnostic Questionnaire</h2>
 
           <div className="mt-6 whitespace-pre-wrap text-base text-foreground">
             {"Welcome to the DREAM Discovery questionnaire.\n\nI'm going to ask you about your experience working here - what's going well, what's frustrating, and where you see opportunities for improvement.\n\nThis takes about 15-20 minutes. Your responses are confidential and will help shape the upcoming DREAM session.\n\nReady to begin?"}
@@ -510,7 +522,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
           <div className="mt-8">
             <button
               type="button"
-              className="bg-[#4a90a4] text-white px-8 py-3 rounded-lg shadow-sm"
+              className="text-white px-8 py-3 rounded-lg shadow-sm hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: organization?.primaryColor || '#4a90a4' }}
               onClick={async () => {
                 setHasStarted(true);
                 await initializeSession();

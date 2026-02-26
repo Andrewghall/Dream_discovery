@@ -79,6 +79,27 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Tenant brand colour fallbacks (overridden by tenant layout inline style) */
+  --org-primary: #1E40AF;
+  --org-secondary: #3B82F6;
+}
+
+/* ── Tenant brand utility classes ── */
+.btn-org-primary {
+  background-color: var(--org-primary);
+  color: white;
+}
+.btn-org-primary:hover {
+  filter: brightness(0.9);
+}
+.btn-org-secondary-outline {
+  border: 1px solid var(--org-secondary);
+  color: var(--org-secondary);
+}
+.btn-org-secondary-outline:hover {
+  background-color: var(--org-secondary);
+  color: white;
 }
 
 .dark {
