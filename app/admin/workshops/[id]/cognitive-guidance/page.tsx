@@ -44,7 +44,6 @@ import LensCoverageBar from '@/components/cognitive-guidance/lens-coverage-bar';
 import GapIndicatorStrip from '@/components/cognitive-guidance/gap-indicator-strip';
 import SignalClusterPanel from '@/components/cognitive-guidance/signal-cluster-panel';
 import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
-import { ThemeBanner } from '@/components/cognitive-guidance/theme-banner';
 import {
   AgentOrchestrationPanel,
   type AgentConversationEntry,
@@ -1432,16 +1431,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             </button>
           ))}
         </div>
-
-        {/* Theme Banner */}
-        <ThemeBanner
-          themes={themes}
-          activeThemeId={activeThemeId}
-          freeflowMode={freeflowMode}
-          onAdvanceTheme={handleAdvanceTheme}
-          onToggleFreeflow={handleToggleFreeflow}
-          onAddTheme={handleAddTheme}
-        />
 
         {/* Lens Coverage Bar + Gap Indicators */}
         <div className="mt-3">

@@ -89,11 +89,11 @@ function isCuratedEntry(entry: AgentConversationEntry): boolean {
 
 function VerdictBadge({ verdict }: { verdict: string }) {
   const styles = {
-    approve: 'bg-green-900/40 text-green-400 border-green-700',
-    reject:  'bg-red-900/40 text-red-400 border-red-700',
-    modify:  'bg-amber-900/40 text-amber-400 border-amber-700',
+    approve: 'bg-green-50 text-green-700 border-green-300',
+    reject:  'bg-red-50 text-red-700 border-red-300',
+    modify:  'bg-amber-50 text-amber-700 border-amber-300',
   };
-  const s = styles[verdict as keyof typeof styles] || 'bg-gray-800 text-gray-400 border-gray-600';
+  const s = styles[verdict as keyof typeof styles] || 'bg-gray-100 text-gray-600 border-gray-300';
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${s}`}>
       {verdict === 'approve' ? '✓' : verdict === 'reject' ? '✗' : '~'} {verdict.toUpperCase()}
@@ -134,21 +134,21 @@ export function AgentOrchestrationPanel({
   };
 
   return (
-    <div className="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden">
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
       {/* Header */}
       <button
         onClick={onToggleCollapse}
-        className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-900 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <span className="text-xs font-mono text-gray-400 tracking-wider">{title}</span>
+          <span className="text-xs font-mono text-gray-500 tracking-wider">{title}</span>
           {isLive && (
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-xs text-green-400">Live</span>
+              <span className="text-xs text-green-600">Live</span>
             </span>
           )}
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-gray-400">
             {verbose ? `${entries.length} total` : `${displayEntries.length} message${displayEntries.length !== 1 ? 's' : ''}`}
           </span>
           {/* Curated/All toggle */}
@@ -156,8 +156,8 @@ export function AgentOrchestrationPanel({
             onClick={(e) => { e.stopPropagation(); setVerbose(!verbose); }}
             className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full transition-colors ${
               verbose
-                ? 'bg-purple-600/30 text-purple-300 border border-purple-700'
-                : 'bg-gray-800 text-gray-400 hover:text-gray-300 border border-gray-700'
+                ? 'bg-purple-100 text-purple-600 border border-purple-300'
+                : 'bg-gray-100 text-gray-500 hover:text-gray-700 border border-gray-300'
             }`}
             title={verbose ? 'Showing all entries (debug)' : 'Showing curated conversation'}
           >
@@ -166,9 +166,9 @@ export function AgentOrchestrationPanel({
           </button>
         </div>
         {collapsed ? (
-          <ChevronDown className="w-4 h-4 text-gray-500" />
+          <ChevronDown className="w-4 h-4 text-gray-400" />
         ) : (
-          <ChevronUp className="w-4 h-4 text-gray-500" />
+          <ChevronUp className="w-4 h-4 text-gray-400" />
         )}
       </button>
 
@@ -187,7 +187,7 @@ export function AgentOrchestrationPanel({
           className="max-h-[80vh] overflow-y-auto px-5 pb-5 space-y-4"
         >
           {displayEntries.length === 0 ? (
-            <p className="text-xs text-gray-600 py-12 text-center">
+            <p className="text-xs text-gray-400 py-12 text-center">
               Agent conversations will appear here as the system processes information...
             </p>
           ) : (
@@ -204,7 +204,7 @@ export function AgentOrchestrationPanel({
                   {/* Agent avatar */}
                   <div
                     className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-sm"
-                    style={{ backgroundColor: style.darkBg }}
+                    style={{ backgroundColor: style.bg }}
                   >
                     {style.icon}
                   </div>
@@ -218,15 +218,15 @@ export function AgentOrchestrationPanel({
                       </span>
                       {entry.to && (
                         <>
-                          <span className="text-xs text-gray-600">→</span>
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-gray-400">→</span>
+                          <span className="text-xs text-gray-500">
                             {formatAgentName(entry.to)}
                           </span>
                         </>
                       )}
                       {/* Challenge badge */}
                       {entry.type === 'challenge' && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-900/40 text-amber-400 border-amber-700">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-300">
                           ⚡ CHALLENGE
                         </span>
                       )}
@@ -234,19 +234,19 @@ export function AgentOrchestrationPanel({
                       {entry.metadata?.verdict && (
                         <VerdictBadge verdict={entry.metadata.verdict} />
                       )}
-                      <span className="text-[10px] text-gray-600 ml-auto shrink-0">
+                      <span className="text-[10px] text-gray-400 ml-auto shrink-0">
                         {formatTime(entry.timestampMs)}
                       </span>
                     </div>
 
                     {/* Message text — with basic markdown rendering */}
-                    <div className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">
+                    <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
                       {entry.message.split('\n').map((line, li) => {
                         // Bold: **text**
                         const parts = line.split(/\*\*(.+?)\*\*/g);
                         const rendered = parts.map((part, pi) =>
                           pi % 2 === 1 ? (
-                            <strong key={pi} className="text-gray-100 font-semibold">{part}</strong>
+                            <strong key={pi} className="text-gray-900 font-semibold">{part}</strong>
                           ) : (
                             <span key={pi}>{part}</span>
                           )
@@ -262,15 +262,15 @@ export function AgentOrchestrationPanel({
 
                     {/* Expandable metadata */}
                     {isExpanded && entry.metadata && (
-                      <div className="mt-2 p-2 rounded bg-gray-900 border border-gray-800 text-[10px] text-gray-500 space-y-1">
+                      <div className="mt-2 p-2 rounded bg-gray-50 border border-gray-200 text-[10px] text-gray-500 space-y-1">
                         {entry.metadata.beliefsCited !== undefined && (
-                          <div>Beliefs cited: <span className="text-gray-400">{entry.metadata.beliefsCited}</span></div>
+                          <div>Beliefs cited: <span className="text-gray-600">{entry.metadata.beliefsCited}</span></div>
                         )}
                         {entry.metadata.toolsUsed && entry.metadata.toolsUsed.length > 0 && (
-                          <div>Tools used: <span className="text-gray-400">{entry.metadata.toolsUsed.join(', ')}</span></div>
+                          <div>Tools used: <span className="text-gray-600">{entry.metadata.toolsUsed.join(', ')}</span></div>
                         )}
                         {entry.metadata.reasoning && (
-                          <div>Reasoning: <span className="text-gray-400">{entry.metadata.reasoning}</span></div>
+                          <div>Reasoning: <span className="text-gray-600">{entry.metadata.reasoning}</span></div>
                         )}
                       </div>
                     )}
