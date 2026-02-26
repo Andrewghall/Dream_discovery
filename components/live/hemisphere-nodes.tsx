@@ -202,22 +202,22 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
               : baseTheta;
       const thetaAfterPhase = lerp(baseTheta, phaseTarget, phaseStrength);
 
-      // Layer 2: Domain bias — weighted average across all classified domains
+      // Layer 2: Domain bias — use STRONGEST domain to prevent multi-domain dilution
+      // (e.g. "regulator" + "team" would average toward center instead of Regulation)
       const allDomains = n.agenticAnalysis?.domains ?? [];
       let theta = thetaAfterPhase;
       if (allDomains.length > 0) {
-        let totalWeight = 0;
-        let weightedAngle = 0;
+        let bestAngle: number | null = null;
+        let bestRelevance = -1;
         for (const d of allDomains) {
           const angle = domainAngles[d.domain];
-          if (angle != null) {
-            weightedAngle += angle * d.relevance;
-            totalWeight += d.relevance;
+          if (angle != null && d.relevance > bestRelevance) {
+            bestAngle = angle;
+            bestRelevance = d.relevance;
           }
         }
-        if (totalWeight > 0) {
-          const domainTarget = weightedAngle / totalWeight;
-          theta = lerp(thetaAfterPhase, domainTarget, 0.75);
+        if (bestAngle != null) {
+          theta = lerp(thetaAfterPhase, bestAngle, 0.9);
         }
       }
 

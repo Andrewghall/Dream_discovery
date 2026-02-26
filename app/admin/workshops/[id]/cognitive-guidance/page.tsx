@@ -997,9 +997,11 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         // (CaptureAPI doesn't do domain classification on its own)
         const nodeRawText = String(p.dataPoint.rawText ?? '');
         const kwLensResults = nodeRawText.length >= 20 ? inferKeywordLenses(nodeRawText) : [];
+        // Use actual keyword relevance (based on match count) — not flat 0.7
+        // Scale up so domains with more keyword hits dominate positioning
         const kwDomains = kwLensResults.map(kw => ({
               domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
-              relevance: 0.7,
+              relevance: Math.min(0.95, kw.relevance + 0.4),
               reasoning: kw.evidence,
             })).filter(d => !!d.domain);
 
