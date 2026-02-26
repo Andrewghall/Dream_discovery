@@ -166,6 +166,14 @@ export type CognitiveState = {
   processedUtteranceCount: number;
   lastProcessedAtMs: number | null;
 
+  // Recent utterance text for agent grounding
+  recentUtterances: Array<{
+    id: string;
+    text: string;
+    speaker: string | null;
+    timestampMs: number;
+  }>;
+
   // Session lifecycle
   createdAtMs: number;
   lastActivityMs: number;
@@ -206,9 +214,30 @@ export function createCognitiveState(
     reasoningLog: [],
     processedUtteranceCount: 0,
     lastProcessedAtMs: null,
+    recentUtterances: [],
     createdAtMs: now,
     lastActivityMs: now,
   };
+}
+
+// ══════════════════════════════════════════════════════════════
+// UTTERANCE TRACKING — rolling window for agent grounding
+// ══════════════════════════════════════════════════════════════
+
+const MAX_RECENT_UTTERANCES = 30;
+
+/**
+ * Push a new utterance into the rolling window.
+ * Capped at MAX_RECENT_UTTERANCES — oldest dropped first.
+ */
+export function pushUtterance(
+  state: CognitiveState,
+  utterance: { id: string; text: string; speaker: string | null; timestampMs: number },
+): void {
+  state.recentUtterances.push(utterance);
+  if (state.recentUtterances.length > MAX_RECENT_UTTERANCES) {
+    state.recentUtterances = state.recentUtterances.slice(-MAX_RECENT_UTTERANCES);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════

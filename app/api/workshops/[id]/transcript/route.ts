@@ -12,6 +12,7 @@ import { getOrCreateCognitiveState } from '@/lib/cognition/state-store';
 import { applyCognitiveUpdate } from '@/lib/cognition/reasoning-engine';
 import { getGPT4oMiniEngine } from '@/lib/cognition/engines/gpt4o-mini-engine';
 import { runFacilitationOrchestrator } from '@/lib/cognition/agents/facilitation-orchestrator';
+import { pushUtterance } from '@/lib/cognition/cognitive-state';
 
 type IngestTranscriptChunkBody = {
   speakerId: string | null;
@@ -277,6 +278,14 @@ async function processCompleteUtterance(
 
       // Apply the update to the cognitive state (state engine owns dynamics)
       const events = applyCognitiveUpdate(cognitiveState, stateUpdate, dataPoint.id);
+
+      // Store raw utterance text for agent grounding
+      pushUtterance(cognitiveState, {
+        id: dataPoint.id,
+        text,
+        speaker: bodySpeakerId,
+        timestampMs: utterance.startTimeMs,
+      });
 
       console.log('[Cognitive] Result:', {
         primaryType: stateUpdate.primaryType,

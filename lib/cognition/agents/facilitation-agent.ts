@@ -82,6 +82,14 @@ const FACILITATION_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'get_recent_speech',
+      description: 'Get the last 10 things participants actually said (verbatim utterances). Ground your questions in their exact words.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'generate_pads',
       description: 'Generate 1-3 facilitation sticky pads. Each pad is a contextual prompt for the facilitator.',
       parameters: {
@@ -228,6 +236,26 @@ function executeFacilitationTool(
       };
     }
 
+    case 'get_recent_speech': {
+      const recent = cogState.recentUtterances.slice(-10);
+      if (recent.length === 0) {
+        return {
+          result: JSON.stringify({ utterances: [], note: 'No speech captured yet.' }),
+          summary: 'No recent utterances',
+        };
+      }
+      return {
+        result: JSON.stringify({
+          count: recent.length,
+          utterances: recent.map((u) => ({
+            speaker: u.speaker || 'Unknown',
+            text: u.text,
+          })),
+        }),
+        summary: `${recent.length} recent utterances`,
+      };
+    }
+
     default:
       return { result: JSON.stringify({ error: 'Unknown tool' }), summary: `Unknown tool: ${toolName}` };
   }
@@ -244,20 +272,12 @@ function buildFacilitationSystemPrompt(
   const prep = guidanceState.prepContext;
   const activeTheme = guidanceState.themes.find((t) => t.id === guidanceState.activeThemeId);
 
-  return `You are the DREAM Facilitation Agent. You generate contextual facilitation prompts (sticky post-its) that help the workshop facilitator guide the conversation.
+  return `You are a skilled workshop facilitator's intelligent assistant. Your job is to suggest follow-up questions that a facilitator would naturally ask — grounded in what participants have ACTUALLY SAID.
 
 ${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : ''}
-${prep?.dreamTrack ? `DREAM Track: ${prep.dreamTrack}${prep.targetDomain ? ' — Focus: ' + prep.targetDomain : ''}` : ''}
-Current phase: ${guidanceState.dialoguePhase}
-Active theme: ${activeTheme ? `"${activeTheme.title}" (${activeTheme.lens || 'cross-cutting'})` : 'None'}
-Total beliefs: ${cogState.beliefs.size}
-
-Your job: Generate 1-3 facilitation prompts (sub-questions) that:
-1. Are grounded in actual beliefs from the workshop
-2. Reference Discovery intelligence when relevant
-3. Probe deeper into themes, contradictions, or gaps
-4. Help the facilitator ask the RIGHT question at the RIGHT time
-5. MUST serve the current main question goal (see below)
+Phase: ${guidanceState.dialoguePhase}
+Active theme: ${activeTheme ? `"${activeTheme.title}"` : 'None'}
+Beliefs accumulated: ${cogState.beliefs.size}
 
 ${guidanceState.currentMainQuestion
   ? `CURRENT MAIN QUESTION (YOUR GOAL):
@@ -265,38 +285,40 @@ ${guidanceState.currentMainQuestion
 Purpose: ${guidanceState.currentMainQuestion.purpose}
 Grounding: ${guidanceState.currentMainQuestion.grounding}
 
-CRITICAL: Every sub-question you generate must help explore or answer this main question.
-Stay scoped — do not wander into topics outside this question's domain. Follow the
-breadcrumbs of the conversation but always keep this goal in mind.`
-  : 'No main question is currently set — generate broadly relevant facilitation prompts.'}
+Every sub-question you generate MUST help explore this main question. Stay scoped.`
+  : 'No main question active — generate broadly relevant prompts.'}
 
-JOURNEY GAP CONTEXT:
-When JOURNEY AGENT GAPS context is provided in the deliberation brief, generate sub-questions that fill those specific gaps.
-Use domain-specific actor names (e.g., "student" for education, "patient" for healthcare — check the journey context for the domain actor name).
-For journey gap pads, set padLabel to "Journey Mapping" (general) or "Journey: {stage name}" (stage-specific).
-Set journeyGapId to reference the gap being addressed.
+YOUR APPROACH:
+1. Call get_recent_speech to see what participants have actually been saying
+2. Call list_all_beliefs to see what's been extracted so far
+3. Look at the SIGNALS and GAPS in the deliberation brief (missing dimensions, repeated themes, imbalances)
+4. Generate 1-3 questions that a facilitator would naturally ask NEXT
 
-TIMING AWARENESS:
-If there is productive conversational flow in the room, defer journey gap questions.
-Prioritise completing the current discussion thread before introducing new journey probes.
-Mix journey gap questions with regular facilitation questions — don't overload with only journey pads.
+STYLE RULES — THIS IS CRITICAL:
+- ALWAYS reference something specific a participant said: "You mentioned X — can you tell me more about..."
+- NEVER use consultant language: NO "innovative strategies", NO "enhance", NO "implement", NO "leverage", NO "How might we"
+- Write as a curious colleague: "What does that actually look like day to day?", "Who's affected most by that?"
+- Keep questions SHORT — one sentence, conversational, warm
+- If a signal shows a MISSING DIMENSION, ask about it naturally: "We've heard a lot about Operations — has anyone thought about how Regulation fits in?"
+- If a signal shows a REPEATED THEME, go deeper: "X keeps coming up — what's driving that?"
+- If a signal shows CATEGORY IMBALANCE (lots of constraints, few enablers), flip it: "We've identified several blockers in Y — who's working on solutions?"
+
+PHASE TONE:
+${guidanceState.dialoguePhase === 'REIMAGINE'
+  ? `REIMAGINE: Pure aspiration. "Describe the ideal...", "What does perfect look like...", "If there were no barriers...". NEVER mention constraints, blockers, or limitations.`
+  : guidanceState.dialoguePhase === 'CONSTRAINTS'
+  ? `CONSTRAINTS: Practical, specific, challenging. "What stands in the way of...", "Where does this break down?", "What's the biggest blocker?"`
+  : `DEFINE APPROACH: Solution-oriented, concrete. "Who owns this?", "What's the first step?", "How do we actually make this happen?"`}
 
 ${guidanceState.surfacedPadPrompts.length > 0
-  ? `ALREADY SURFACED (do NOT repeat these or variations of them):
+  ? `ALREADY ASKED (do NOT repeat or paraphrase):
 ${guidanceState.surfacedPadPrompts.map((p, i) => `${i + 1}. "${p}"`).join('\n')}
-
-` : ''}RULES:
-- Every pad MUST cite sourceBeliefIds — beliefs that actually exist
-- Never fabricate questions about topics not in the beliefs
-- Connect live discussion to pre-workshop Discovery insights when possible
-- Match the prompt tone to the current phase:
-  REIMAGINE → PURELY visionary, aspirational, zero-constraint. Ask "describe the ideal...",
-    "what does perfect look like...", "imagine no barriers". NEVER mention limitations,
-    blockers, constraints, changes needed, or friction. This is the dream state.
-  CONSTRAINTS → practical, specific, challenging. Probe what stands in the way.
-  DEFINE_APPROACH → solution-oriented, concrete, actionable. Who owns it, what's step one.
-
-When communicating, speak naturally as a colleague would.`;
+` : ''}
+RULES:
+- Every pad MUST cite sourceBeliefIds from beliefs that actually exist
+- NEVER fabricate — only ask about things grounded in actual beliefs or signals
+- If you can't find enough grounding, generate fewer pads (1 is fine)
+- Quality over quantity — one brilliant probe beats three generic questions`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -315,6 +337,8 @@ export type DeliberationContext = {
   researchHighlights?: string | null;
   discoveryInsights?: string | null;
   journeyGaps?: string | null;
+  signals?: string | null;
+  recentUtterances?: string | null;
 };
 
 export async function runFacilitationAgent(
@@ -329,18 +353,17 @@ export async function runFacilitationAgent(
   const systemPrompt = buildFacilitationSystemPrompt(cogState, guidanceState);
   const startMs = Date.now();
 
-  // Build the user message with deliberation context from other agents
+  // Build the user message with signals + speech context
   const deliberationBrief = [
-    deliberation?.themeRecommendation ? `THEME AGENT ASSESSMENT: ${deliberation.themeRecommendation}` : null,
-    deliberation?.constraintGaps ? `CONSTRAINT AGENT GAPS: ${deliberation.constraintGaps}` : null,
+    deliberation?.signals ? `SIGNALS & GAPS:\n${deliberation.signals}` : null,
+    deliberation?.recentUtterances ? `RECENT PARTICIPANT SPEECH:\n${deliberation.recentUtterances}` : null,
     deliberation?.researchHighlights ? `RESEARCH CONTEXT: ${deliberation.researchHighlights}` : null,
     deliberation?.discoveryInsights ? `DISCOVERY INSIGHTS: ${deliberation.discoveryInsights}` : null,
-    deliberation?.journeyGaps ? `JOURNEY AGENT GAPS:\n${deliberation.journeyGaps}\n\nWhen generating pads to fill journey gaps, use domain-specific actor names and set padLabel to "Journey Mapping" or "Journey: {stage name}". Set journeyGapId to the gap ID if known. TIMING: If there is productive conversational flow, defer journey gap questions — prioritise completing the current discussion thread first.` : null,
   ].filter(Boolean).join('\n\n');
 
   const userContent = deliberationBrief
-    ? `The team has assessed the current state:\n\n${deliberationBrief}\n\nBased on this collective assessment and the current beliefs, generate facilitation prompts that follow the breadcrumbs of the conversation toward the main question goal.`
-    : 'Generate facilitation prompts based on the current beliefs and active theme.';
+    ? `Here's what's happening in the room:\n\n${deliberationBrief}\n\nGenerate facilitation questions that follow the conversation's breadcrumbs. Reference specific things participants said. Address any signal gaps.`
+    : 'Generate facilitation prompts based on the current beliefs. Call get_recent_speech first to see what participants said.';
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
