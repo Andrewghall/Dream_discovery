@@ -297,6 +297,7 @@ YOUR APPROACH:
 STYLE RULES — THIS IS CRITICAL:
 - ALWAYS reference something specific a participant said: "You mentioned X — can you tell me more about..."
 - NEVER use consultant language: NO "innovative strategies", NO "enhance", NO "implement", NO "leverage", NO "How might we"
+- NEVER repeat the main question's aspirational framing in sub-questions. The main question already sets the vision. NO "In your ideal...", NO "In the ideal world...", NO "Imagine a future where...", NO "Describe the perfect...", NO "Paint the picture of...", NO "What does the ideal future state look like...". Your job is to probe SPECIFIC aspects with SPECIFIC follow-ups grounded in what participants actually said.
 - Write as a curious colleague: "What does that actually look like day to day?", "Who's affected most by that?"
 - Keep questions SHORT — one sentence, conversational, warm
 - If a signal shows a MISSING DIMENSION, ask about it naturally: "We've heard a lot about Operations — has anyone thought about how Regulation fits in?"
@@ -353,10 +354,11 @@ export async function runFacilitationAgent(
   const systemPrompt = buildFacilitationSystemPrompt(cogState, guidanceState);
   const startMs = Date.now();
 
-  // Build the user message with signals + speech context
+  // Build the user message with signals + speech + journey context
   const deliberationBrief = [
     deliberation?.signals ? `SIGNALS & GAPS:\n${deliberation.signals}` : null,
     deliberation?.recentUtterances ? `RECENT PARTICIPANT SPEECH:\n${deliberation.recentUtterances}` : null,
+    deliberation?.journeyGaps ? `JOURNEY MAP GAPS:\n${deliberation.journeyGaps}` : null,
     deliberation?.researchHighlights ? `RESEARCH CONTEXT: ${deliberation.researchHighlights}` : null,
     deliberation?.discoveryInsights ? `DISCOVERY INSIGHTS: ${deliberation.discoveryInsights}` : null,
   ].filter(Boolean).join('\n\n');

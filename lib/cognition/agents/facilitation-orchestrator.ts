@@ -1,14 +1,14 @@
 /**
  * DREAM Facilitation Orchestrator — Live Facilitation Mode
  *
- * 3-agent architecture optimised for live workshop dynamics:
+ * 4-agent architecture optimised for live workshop dynamics:
  * 1. ORCHESTRATOR — reads the room, coordinates the cycle (this file)
  * 2. FACILITATION AGENT — generates participant-anchored sub-questions
  * 3. GUARDIAN AGENT — validates grounding against cited beliefs
+ * 4. JOURNEY COMPLETION AGENT — detects journey gaps, feeds to Facilitation Agent
  *
- * Theme, Research, Discovery, Constraint, and Journey agents are
- * SUSPENDED from real-time cycles. Their code is preserved but not
- * invoked during live facilitation.
+ * Theme, Research, Discovery, and Constraint agents are SUSPENDED
+ * from real-time cycles. Their code is preserved but not invoked.
  *
  * Design principles:
  * - Stability, pace, cognitive clarity
@@ -27,17 +27,23 @@ import {
 } from '../guidance-state';
 import { runFacilitationAgent, type DeliberationContext, type PadProposal } from './facilitation-agent';
 import { runGuardianAgent, validateReferences } from './guardian-agent';
+import { runJourneyCompletionAgent } from './journey-completion-agent';
+import {
+  mergeAgentAssessment,
+  buildJourneyContextString,
+} from '../journey-completion-state';
+import type { LiveJourneyData, LiveJourneyInteraction, AiAgencyLevel } from '@/lib/cognitive-guidance/pipeline';
 import type { AgentConversationCallback } from './agent-types';
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_VISIBLE_PADS = 3;                  // Max pads emitted per cycle
+const MAX_VISIBLE_PADS = 4;                  // Max pads on screen per cycle
 const MIN_EMISSION_INTERVAL_MS = 120_000;    // 2 min hard minimum between emissions
 const PAD_GENERATION_INTERVAL_MS = 45_000;   // 45s between generation triggers
 const PAD_UTTERANCE_THRESHOLD = 6;           // 6 utterances trigger
 const ORCHESTRATOR_MODEL = 'gpt-4o-mini';
-const MAX_ORCHESTRATOR_ITERATIONS = 3;       // assess → facilitation → emit
-const ORCHESTRATOR_TIMEOUT_MS = 20_000;      // 20s hard cap
+const MAX_ORCHESTRATOR_ITERATIONS = 4;       // assess → journey → facilitation → emit
+const ORCHESTRATOR_TIMEOUT_MS = 25_000;      // 25s hard cap (allows journey agent call)
 
 // ══════════════════════════════════════════════════════════════
 // PACING GOVERNANCE (pre-LLM gating — saves cost)
@@ -144,7 +150,65 @@ function detectBeliefSignals(cogState: CognitiveState): SessionSignal[] {
 }
 
 // ══════════════════════════════════════════════════════════════
-// ORCHESTRATOR TOOL DEFINITIONS — exactly 3 tools
+// JOURNEY DATA BUILDER — lightweight, from cognitive state actors
+// ══════════════════════════════════════════════════════════════
+
+function buildJourneyFromCogState(
+  cogState: CognitiveState,
+): LiveJourneyData {
+  const stages = ['Discovery', 'Engagement', 'Commitment', 'Fulfilment', 'Support', 'Growth'];
+  const actors: LiveJourneyData['actors'] = [];
+  const interactions: LiveJourneyInteraction[] = [];
+
+  const stageKeywords: Record<string, string[]> = {
+    Discovery: ['discover', 'find', 'learn', 'awareness', 'search', 'browse', 'hear about'],
+    Engagement: ['engage', 'interact', 'visit', 'explore', 'consider', 'evaluate', 'contact'],
+    Commitment: ['commit', 'decide', 'purchase', 'buy', 'sign', 'agree', 'choose', 'select'],
+    Fulfilment: ['deliver', 'receive', 'onboard', 'setup', 'implement', 'fulfil'],
+    Support: ['support', 'help', 'assist', 'resolve', 'fix', 'service', 'issue'],
+    Growth: ['retain', 'loyalty', 'expand', 'recommend', 'renew', 'grow'],
+  };
+
+  function inferStage(text: string): string {
+    const lower = text.toLowerCase();
+    let bestStage = stages[0];
+    let bestCount = 0;
+    for (const stage of stages) {
+      const kws = stageKeywords[stage] || [];
+      const count = kws.filter(kw => lower.includes(kw)).length;
+      if (count > bestCount) { bestCount = count; bestStage = stage; }
+    }
+    return bestStage;
+  }
+
+  for (const actor of cogState.actors.values()) {
+    actors.push({ name: actor.name, role: actor.role, mentionCount: actor.mentionCount });
+    for (const interaction of actor.interactions) {
+      interactions.push({
+        id: `cog:${actor.name}:${interaction.utteranceId}`,
+        actor: actor.name,
+        stage: inferStage(interaction.action + ' ' + interaction.context),
+        action: interaction.action,
+        context: interaction.context,
+        sentiment: (interaction.sentiment as LiveJourneyInteraction['sentiment']) || 'neutral',
+        businessIntensity: 0.5,
+        customerIntensity: 0.5,
+        aiAgencyNow: 'human' as AiAgencyLevel,
+        aiAgencyFuture: 'human' as AiAgencyLevel,
+        isPainPoint: interaction.sentiment === 'critical',
+        isMomentOfTruth: false,
+        sourceNodeIds: [interaction.utteranceId],
+        addedBy: 'ai',
+        createdAtMs: Date.now(),
+      });
+    }
+  }
+
+  return { stages, actors, interactions };
+}
+
+// ══════════════════════════════════════════════════════════════
+// ORCHESTRATOR TOOL DEFINITIONS — 4 tools
 // ══════════════════════════════════════════════════════════════
 
 const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -159,8 +223,16 @@ const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'consult_journey_completion_agent',
+      description: 'Ask the Journey Completion Agent to assess the customer journey map and identify gaps. Emits journey data to the UI and feeds gap context to the Facilitation Agent. Only useful when actors exist in the session.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'request_facilitation_proposals',
-      description: 'Ask the Facilitation Agent to generate 1-3 sub-questions grounded in participant speech and signal gaps.',
+      description: 'Ask the Facilitation Agent to generate 1-3 sub-questions grounded in participant speech, signal gaps, and journey gaps.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -194,13 +266,15 @@ Phase: ${guidanceState.dialoguePhase}
 Beliefs: ${cogState.beliefs.size}
 ${mainQ ? `CURRENT MAIN QUESTION: "${mainQ.text}" (Purpose: ${mainQ.purpose})` : 'No main question active'}
 
-YOUR PROCESS (exactly 3 steps):
+YOUR PROCESS:
 1. assess_session — read the room: beliefs, signals, gaps, recent participant speech
-2. request_facilitation_proposals — generate sub-questions with signal + speech context
-3. verify_and_emit — Guardian checks grounding, approved pads go to facilitator
+2. consult_journey_completion_agent — check journey map gaps (only if actors detected)
+3. request_facilitation_proposals — generate sub-questions with signal + speech + journey context
+4. verify_and_emit — Guardian checks grounding, approved pads go to facilitator
 
 RULES:
-- Three tool calls, done. No deliberation loops.
+- Four tool calls max, done. No deliberation loops.
+- Skip step 2 if assess_session shows no actors detected yet.
 - NEVER skip assess_session — signals and speech are essential input.
 - ${guidanceState.dialoguePhase === 'REIMAGINE' ? 'REIMAGINE PHASE: Everything must be aspirational. Zero constraints.' : guidanceState.dialoguePhase === 'CONSTRAINTS' ? 'CONSTRAINTS PHASE: Map real limitations. Be thorough and specific.' : 'DEFINE APPROACH PHASE: Solutions must be actionable and account for known constraints.'}
 ${guidanceState.surfacedPadPrompts.length > 0
@@ -294,6 +368,68 @@ async function executeOrchestratorTool(
       });
     }
 
+    // ── CONSULT JOURNEY COMPLETION AGENT ─────────────────────
+    case 'consult_journey_completion_agent': {
+      const liveJourney = buildJourneyFromCogState(cogState);
+
+      if (liveJourney.actors.length === 0) {
+        return JSON.stringify({ skipped: true, reason: 'No actors detected yet.' });
+      }
+
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'orchestrator',
+        to: 'journey-completion-agent',
+        message: `Assess journey map: ${liveJourney.actors.length} actors, ${liveJourney.interactions.length} interactions.`,
+        type: 'handoff',
+      });
+
+      try {
+        const assessment = await runJourneyCompletionAgent(guidanceState, liveJourney, onConversation);
+
+        if (assessment) {
+          // Merge into guidance state
+          const currentJourneyState = guidanceState.journeyCompletionState || {
+            overallCompletionPercent: 0,
+            stageCompletionPercents: {},
+            actorCompletionPercents: {},
+            gaps: [],
+            domainActorName: null,
+            lastAssessedAtMs: 0,
+            assessmentCount: 0,
+          };
+
+          guidanceState.journeyCompletionState = mergeAgentAssessment(currentJourneyState, assessment);
+
+          // Build journey context for Facilitation Agent
+          const journeyContext = buildJourneyContextString(guidanceState.journeyCompletionState);
+          state.deliberation.journeyGaps = journeyContext;
+
+          // Emit SSE event — updates journey visualization on the UI
+          emitEvent('journey.completion', {
+            journeyCompletionState: guidanceState.journeyCompletionState,
+          });
+
+          const topGaps = assessment.gaps.filter(g => g.priority >= 0.5).slice(0, 3);
+          return JSON.stringify({
+            assessed: true,
+            overallCompletion: assessment.overallCompletionPercent,
+            gapCount: assessment.gaps.length,
+            domainActor: assessment.domainActorName,
+            topGaps: topGaps.map(g => ({
+              type: g.gapType,
+              stage: g.stage,
+              description: g.description,
+            })),
+          });
+        }
+
+        return JSON.stringify({ assessed: false, reason: 'Journey Agent returned no assessment.' });
+      } catch (error) {
+        return JSON.stringify({ error: error instanceof Error ? error.message : 'Journey assessment failed' });
+      }
+    }
+
     // ── REQUEST FACILITATION PROPOSALS ──────────────────────
     case 'request_facilitation_proposals': {
       const deliberation: DeliberationContext = {
@@ -301,6 +437,7 @@ async function executeOrchestratorTool(
         discoveryInsights: state.deliberation.discoveryInsights || null,
         signals: state.deliberation.signals || null,
         recentUtterances: state.deliberation.recentUtterances || null,
+        journeyGaps: state.deliberation.journeyGaps || null,
       };
 
       onConversation?.({
