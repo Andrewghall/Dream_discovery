@@ -992,62 +992,72 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           return next;
         });
 
-        // Also maintain hemisphere nodes for the mini widget
-        // Run keyword inference immediately so dots position correctly
-        // (CaptureAPI doesn't do domain classification on its own)
+        // ── Hemisphere node — only for meaningful phrases ──
+        // Short fragments ("Just see.", "the", "in particular") are noise.
+        // Require at least 4 words to appear as a dot on the hemisphere.
         const nodeRawText = String(p.dataPoint.rawText ?? '');
-        const kwLensResults = nodeRawText.length >= 3 ? inferKeywordLenses(nodeRawText) : [];
-        // Use actual keyword relevance (based on match count) — not flat 0.7
-        // Scale up so domains with more keyword hits dominate positioning
-        const kwDomains = kwLensResults.map(kw => ({
-              domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
-              relevance: Math.min(0.95, kw.relevance + 0.4),
-              reasoning: kw.evidence,
-            })).filter(d => !!d.domain);
+        const wordCount = nodeRawText.trim().split(/\s+/).filter(w => w.length > 0).length;
 
-        // Debug: show what keyword domains are detected for each datapoint
-        console.log('[Hemisphere] Node created:', {
-          id: dataPointId.slice(0, 8),
-          rawText: nodeRawText.slice(0, 80),
-          kwDomains: kwDomains.map(d => d.domain),
-          phase: dialoguePhaseRef.current,
-        });
+        if (wordCount >= 4) {
+          // Run keyword inference so dots position correctly
+          // (CaptureAPI sends raw transcripts with no domain classification)
+          const kwLensResults = nodeRawText.length >= 3 ? inferKeywordLenses(nodeRawText) : [];
+          const kwDomains = kwLensResults.map(kw => ({
+                domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
+                relevance: Math.min(0.95, kw.relevance + 0.4),
+                reasoning: kw.evidence,
+              })).filter(d => !!d.domain);
 
-        const hNode: HemisphereNodeDatum = {
-          dataPointId,
-          createdAtMs,
-          rawText: nodeRawText,
-          dataPointSource: String(p.dataPoint.source ?? ''),
-          speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
-          dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
-            ? (dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
-            : null,
-          transcriptChunk: p.transcriptChunk
-            ? {
-                speakerId: p.transcriptChunk.speakerId || null,
-                startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
-                endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
-                confidence: typeof p.transcriptChunk.confidence === 'number' ? p.transcriptChunk.confidence : null,
-                source: String(p.transcriptChunk.source ?? ''),
-              }
-            : null,
-          classification: null,
-          agenticAnalysis: kwDomains.length > 0 ? {
-            domains: kwDomains,
-            themes: [],
-            actors: [],
-            semanticMeaning: '',
-            sentimentTone: 'neutral',
-            overallConfidence: 0.5,
-          } : null,
-        };
-        setHemisphereNodes(prev => {
-          if (prev[dataPointId]) return prev;
-          return { ...prev, [dataPointId]: hNode };
-        });
+          console.log('[Hemisphere] Node created:', {
+            id: dataPointId.slice(0, 8),
+            words: wordCount,
+            rawText: nodeRawText.slice(0, 80),
+            kwDomains: kwDomains.map(d => d.domain),
+            phase: dialoguePhaseRef.current,
+          });
 
-        setNodeCount(c => c + 1);
-        nodeCountSinceLastRunRef.current++;
+          const hNode: HemisphereNodeDatum = {
+            dataPointId,
+            createdAtMs,
+            rawText: nodeRawText,
+            dataPointSource: String(p.dataPoint.source ?? ''),
+            speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
+            dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
+              ? (dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
+              : null,
+            transcriptChunk: p.transcriptChunk
+              ? {
+                  speakerId: p.transcriptChunk.speakerId || null,
+                  startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+                  endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+                  confidence: typeof p.transcriptChunk.confidence === 'number' ? p.transcriptChunk.confidence : null,
+                  source: String(p.transcriptChunk.source ?? ''),
+                }
+              : null,
+            classification: null,
+            agenticAnalysis: kwDomains.length > 0 ? {
+              domains: kwDomains,
+              themes: [],
+              actors: [],
+              semanticMeaning: '',
+              sentimentTone: 'neutral',
+              overallConfidence: 0.5,
+            } : null,
+          };
+          setHemisphereNodes(prev => {
+            if (prev[dataPointId]) return prev;
+            return { ...prev, [dataPointId]: hNode };
+          });
+
+          setNodeCount(c => c + 1);
+          nodeCountSinceLastRunRef.current++;
+        } else {
+          console.log('[Hemisphere] Skipped (too short):', {
+            id: dataPointId.slice(0, 8),
+            words: wordCount,
+            rawText: nodeRawText.slice(0, 40),
+          });
+        }
       } catch { /* ignore */ }
     });
 
