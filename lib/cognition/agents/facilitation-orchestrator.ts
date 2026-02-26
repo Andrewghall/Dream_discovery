@@ -525,13 +525,14 @@ async function executeOrchestratorTool(
         }
       }
 
-      // Post-emission: reset tracking
+      // Post-emission: reset tracking + clear proposals so loop terminates
       if (emitted > 0) {
         guidanceState.lastPadGenerationAtMs = Date.now();
         guidanceState.utterancesSinceLastPad = 0;
       }
+      state.proposals = []; // Prevent re-verification on next iteration
 
-      return JSON.stringify({ emitted, total: toVerify.length, results });
+      return JSON.stringify({ emitted, total: toVerify.length, results, done: true });
     }
 
     default:
@@ -638,6 +639,7 @@ export async function runFacilitationOrchestrator(
         break;
       }
 
+      let cycleComplete = false;
       for (const toolCall of assistantMessage.tool_calls) {
         if (toolCall.type !== 'function') continue;
         const fnName = toolCall.function.name;
@@ -656,7 +658,11 @@ export async function runFacilitationOrchestrator(
           tool_call_id: toolCall.id,
           content: result,
         });
+
+        // verify_and_emit is terminal — stop the entire cycle
+        if (fnName === 'verify_and_emit') { cycleComplete = true; break; }
       }
+      if (cycleComplete) break;
     }
   } catch (error) {
     console.error('[Orchestrator] Failed:', error instanceof Error ? error.message : error);

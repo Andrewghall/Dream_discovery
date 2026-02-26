@@ -427,12 +427,17 @@ YOUR APPROACH:
      * Be directly scoped to the parent main question's topic
      * Reference concrete research/Discovery findings where possible
      * Give the room something tangible to discuss immediately
-     * CRITICAL — match the phase tone:
-       REIMAGINE subs must be purely aspirational, creative, zero-constraint.
-         Ask "describe the ideal...", "what does perfect look like...",
-         "imagine there are no barriers — what becomes possible?"
-         NEVER mention limitations, barriers, constraints, or changes needed.
-         The creative lens with NO friction is essential.
+     * CRITICAL — sub-questions must NOT repeat the main question's framing.
+       The main question already sets the aspirational/constraint/action frame.
+       Sub-questions drill into SPECIFIC angles:
+       REIMAGINE subs: The main question handles the "imagine the ideal" framing.
+         Subs must probe SPECIFIC aspects — name a real finding from Discovery
+         or research and ask about it. NEVER use generic patterns like
+         "In your ideal...", "Describe the perfect...", "Paint the picture...",
+         "What does the ideal future look like...", "Imagine a world where...".
+         Instead: "Discovery flagged X as a pain point — in this reimagined
+         future, how does that change?", "8 participants mentioned Y — what
+         does Y look like when it's working brilliantly?"
        CONSTRAINTS subs should be specific, probing, grounded in the vision.
          Ask "what stands in the way?", "what limitations exist?"
        DEFINE_APPROACH subs should be actionable and ownership-focused.
