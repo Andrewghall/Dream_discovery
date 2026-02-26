@@ -122,6 +122,9 @@ export type GuidanceState = {
   lastThemeCheckAtMs: number;
   lastPadGenerationAtMs: number;
   utterancesSinceLastPad: number;
+
+  // Surfaced pad tracking — prevents duplicate proposals
+  surfacedPadPrompts: string[];
 };
 
 // ══════════════════════════════════════════════════════════
@@ -171,6 +174,7 @@ export function getOrCreateGuidanceState(
     lastThemeCheckAtMs: 0,
     lastPadGenerationAtMs: 0,
     utterancesSinceLastPad: 0,
+    surfacedPadPrompts: [],
   };
 
   store.stateByWorkshop.set(workshopId, state);

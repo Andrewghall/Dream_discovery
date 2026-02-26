@@ -137,15 +137,31 @@ function scoreDomains(t: string): Array<{ d: LiveDomain; score: number }> {
       d: 'Regulation',
       score: countMatches(t, [
         /\bregulation(s)?\b/i,
-        /\bregulatory\b/i,
+        /\bregulat(e|ed|ing|ory)\b/i,
+        /\bregulator\b/i,
         /\bcompliance\b/i,
+        /\bcompliant\b/i,
         /\blegal\b/i,
         /\bpolicy\b/i,
-        /\baudit\b/i,
-        /\brisk\b/i,
-        /\bcontrol(s)?\b/i,
+        /\bpolicies\b/i,
+        /\baudit(s|ing|ed)?\b/i,
+        /\brisk\s+(management|assessment|framework|register)\b/i,
+        /\bcontrol(s)?\s+(framework|environment)\b/i,
+        /\bgovernance\b/i,
+        /\bdata\s+protection\b/i,
+        /\bgdpr\b/i,
+        /\bsox\b/i,
+        /\bfca\b/i,
+        /\banti[- ]money\s+laundering\b/i,
+        /\bkyc\b/i,
+        /\bprudential\b/i,
+        /\bsanctions\b/i,
+        /\breporting\s+requirements?\b/i,
         /\bevidence\b/i,
         /\bpreventative\b/i,
+        /\blicen[sc](e|ing)\b/i,
+        /\bstatutory\b/i,
+        /\bobligation(s)?\b/i,
       ]),
     },
   ];
@@ -153,7 +169,7 @@ function scoreDomains(t: string): Array<{ d: LiveDomain; score: number }> {
 
 function pickBestDomain(scores: Array<{ d: LiveDomain; score: number }>): LiveDomain {
   let best: LiveDomain = 'Operations';
-  let bestS = scores.find((x) => x.d === 'Operations')?.score ?? -1;
+  let bestS = -1; // Neutral — no domain gets a free head start
   for (const s of scores) {
     if (s.score > bestS) {
       bestS = s.score;

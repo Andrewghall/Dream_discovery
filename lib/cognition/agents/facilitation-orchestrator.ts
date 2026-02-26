@@ -56,6 +56,7 @@ const THEME_CHECK_INTERVAL_MS = 60_000;
 const THEME_STALE_MS = 15 * 60_000;
 const PAD_GENERATION_INTERVAL_MS = 30_000;
 const PAD_UTTERANCE_THRESHOLD = 5;
+const POST_EMISSION_COOLDOWN_MS = 90_000; // 90s cooldown after successful pad emission
 const ORCHESTRATOR_MODEL = 'gpt-4o-mini';
 const MAX_ORCHESTRATOR_ITERATIONS = 6;
 const ORCHESTRATOR_TIMEOUT_MS = 45_000;
@@ -227,14 +228,17 @@ YOUR PROCESS:
 4. consult_journey_completion_agent — what journey gaps need filling? (when actors exist)
 5. request_facilitation_proposals — get sub-question proposals with ALL deliberation context
 6. send_proposals_for_review — ALL 5 agents review in parallel (real agentic calls)
-7. If challenged: request_refinement — send feedback back for a second pass
+7. If challenged: request_refinement — send feedback back for a second pass. After refinement, go DIRECTLY to verify_and_emit. Do NOT re-review refined proposals — that wastes time and the facilitator is waiting.
 8. verify_and_emit — Guardian checks grounding, approved pads go to screen
 
 RULES:
 - You are a REASONING agent. Think about what you learn from each tool call before deciding next steps.
 - Do NOT rubber-stamp — if something doesn't feel right, investigate.
 - ${guidanceState.dialoguePhase === 'REIMAGINE' ? 'REIMAGINE PHASE: Everything must be aspirational. Zero constraints. If any agent or proposal mentions limitations, challenge it.' : guidanceState.dialoguePhase === 'CONSTRAINTS' ? 'CONSTRAINTS PHASE: Map real limitations. Be thorough and specific.' : 'DEFINE APPROACH PHASE: Solutions must be actionable and account for known constraints.'}
-- Be decisive. The facilitator is waiting. Complete your deliberation and call verify_and_emit.`;
+- Be decisive. The facilitator is waiting. Complete your deliberation and call verify_and_emit.
+${guidanceState.surfacedPadPrompts.length > 0
+  ? `\nPads already surfaced this session (${guidanceState.surfacedPadPrompts.length}). Ensure new proposals cover DIFFERENT ground:\n${guidanceState.surfacedPadPrompts.map((p, i) => `  ${i + 1}. "${p.substring(0, 80)}"`).join('\n')}`
+  : ''}`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -320,6 +324,7 @@ async function executeOrchestratorTool(
     deliberation: DeliberationContext;
     proposals: PadProposal[];
     themeUpdated: boolean;
+    reviewRoundDone: boolean;
   },
   emitEvent: (type: string, payload: unknown) => void,
 ): Promise<string> {
@@ -594,27 +599,33 @@ async function executeOrchestratorTool(
     // each run their full reasoning loops to review proposals
     // ────────────────────────────────────────────────────────
     case 'send_proposals_for_review': {
+      // Guard: only allow one review round per cycle
+      if (state.reviewRoundDone) {
+        return JSON.stringify({
+          skipped: true,
+          reason: 'Review already completed this cycle. Proceed to verify_and_emit.',
+        });
+      }
+
       const proposalSummary = String(args.proposalSummary || '');
 
       // Build journey data for the Journey Agent's review
       const reviewJourney = buildJourneyFromCogState(cogState, guidanceState);
       const hasJourneyData = reviewJourney.actors.length > 0;
 
-      onConversation?.({
-        timestampMs: Date.now(),
-        agent: 'orchestrator',
-        to: '',
-        message: `Sending proposals to all ${hasJourneyData ? '5' : '4'} specialist agents for review. Each will reason from their domain using their own tools.`,
-        type: 'info',
-      });
-
-      // Run ALL reviews in parallel — real agentic calls, each with own tools
+      // Run reviews in parallel — only include agents with relevant data
       const reviewPromises: Promise<AgentReview>[] = [
         reviewWithThemeAgent(proposalSummary, cogState, guidanceState, onConversation),
         reviewWithResearchAgent(proposalSummary, guidanceState, onConversation),
-        reviewWithDiscoveryAgent(proposalSummary, guidanceState, onConversation),
         reviewWithConstraintAgent(proposalSummary, guidanceState.dialoguePhase, cogState, guidanceState, onConversation),
       ];
+
+      // Only run Discovery review when interview data exists
+      if (guidanceState.prepContext?.discoveryIntelligence) {
+        reviewPromises.push(
+          reviewWithDiscoveryAgent(proposalSummary, guidanceState, onConversation),
+        );
+      }
 
       // Journey Agent only reviews when there's journey data to assess against
       if (hasJourneyData) {
@@ -623,7 +634,16 @@ async function executeOrchestratorTool(
         );
       }
 
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'orchestrator',
+        to: '',
+        message: `Sending proposals to ${reviewPromises.length} specialist agents for review. Each will reason from their domain using their own tools.`,
+        type: 'info',
+      });
+
       const reviews = await Promise.all(reviewPromises);
+      state.reviewRoundDone = true;
       const challenges = reviews.filter((r) => r.stance === 'challenge');
       const builds = reviews.filter((r) => r.stance === 'build');
 
@@ -737,6 +757,7 @@ async function executeOrchestratorTool(
             : proposal.pad;
 
           emitEvent('pad.generated', { pad });
+          guidanceState.surfacedPadPrompts.push(pad.prompt);
           emitted++;
 
           onConversation?.({
@@ -751,6 +772,12 @@ async function executeOrchestratorTool(
         } else {
           results.push(`REJECTED by Guardian: "${proposal.pad.prompt.substring(0, 60)}" — ${verdict.reasoning}`);
         }
+      }
+
+      // Post-emission cooldown — push next pad generation further out
+      if (emitted > 0) {
+        guidanceState.lastPadGenerationAtMs = Date.now() + (POST_EMISSION_COOLDOWN_MS - PAD_GENERATION_INTERVAL_MS);
+        guidanceState.utterancesSinceLastPad = 0;
       }
 
       return JSON.stringify({ emitted, total: state.proposals.length, results });
@@ -801,6 +828,7 @@ export async function runFacilitationOrchestrator(
     deliberation: {} as DeliberationContext,
     proposals: [] as PadProposal[],
     themeUpdated: false,
+    reviewRoundDone: false,
   };
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [

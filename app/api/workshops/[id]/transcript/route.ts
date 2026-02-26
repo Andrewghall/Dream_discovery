@@ -320,6 +320,39 @@ async function processCompleteUtterance(
         },
       });
 
+      // Emit agentic analysis SSE event (hemisphere domain distribution + lens mapping)
+      emitWorkshopEvent(workshopId, {
+        id: nanoid(),
+        type: 'agentic.analyzed',
+        createdAt: Date.now(),
+        payload: {
+          dataPointId: dataPoint.id,
+          analysis: {
+            interpretation: {
+              semanticMeaning: stateUpdate.classification.semanticMeaning,
+              sentimentTone: stateUpdate.classification.sentimentTone,
+            },
+            domains: stateUpdate.beliefUpdates.flatMap(b => b.domains.map(d => ({
+              domain: d.domain,
+              relevance: d.relevance,
+              reasoning: b.reasoning,
+            }))),
+            themes: stateUpdate.beliefUpdates.map(b => ({
+              label: b.label,
+              category: b.category,
+              confidence: b.confidence,
+              reasoning: b.reasoning,
+            })),
+            actors: stateUpdate.actorUpdates.map(a => ({
+              name: a.name,
+              role: a.role,
+              interactions: a.interactions,
+            })),
+            overallConfidence: stateUpdate.overallConfidence,
+          },
+        },
+      });
+
       // Create classification from cognitive analysis
       const primaryDomain = stateUpdate.beliefUpdates[0]?.domains[0]?.domain || null;
       const keywords = stateUpdate.beliefUpdates.map(b => b.label).slice(0, 8);

@@ -58,6 +58,14 @@ const FACILITATION_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'list_all_beliefs',
+      description: 'Get ALL beliefs accumulated in this session. Use this first to see what exists before targeted queries.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_contradictions',
       description: 'Get unresolved belief contradictions.',
       parameters: { type: 'object', properties: {}, required: [] },
@@ -149,6 +157,23 @@ function executeFacilitationTool(
           })),
         }),
         summary: `Found ${matches.length} beliefs matching "${pattern}"`,
+      };
+    }
+
+    case 'list_all_beliefs': {
+      const all = Array.from(cogState.beliefs.values()).slice(0, 20);
+      return {
+        result: JSON.stringify({
+          totalCount: cogState.beliefs.size,
+          beliefs: all.map((b) => ({
+            id: b.id,
+            label: b.label,
+            category: b.category,
+            domains: b.domains.map((d) => d.domain),
+            confidence: b.confidence,
+          })),
+        }),
+        summary: `Listed all ${all.length} beliefs`,
       };
     }
 
@@ -256,7 +281,11 @@ If there is productive conversational flow in the room, defer journey gap questi
 Prioritise completing the current discussion thread before introducing new journey probes.
 Mix journey gap questions with regular facilitation questions — don't overload with only journey pads.
 
-RULES:
+${guidanceState.surfacedPadPrompts.length > 0
+  ? `ALREADY SURFACED (do NOT repeat these or variations of them):
+${guidanceState.surfacedPadPrompts.map((p, i) => `${i + 1}. "${p}"`).join('\n')}
+
+` : ''}RULES:
 - Every pad MUST cite sourceBeliefIds — beliefs that actually exist
 - Never fabricate questions about topics not in the beliefs
 - Connect live discussion to pre-workshop Discovery insights when possible
