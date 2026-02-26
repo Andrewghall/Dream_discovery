@@ -6,6 +6,10 @@ import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  AgentOrchestrationPanel,
+  type AgentConversationEntry,
+} from '@/components/cognitive-guidance/agent-orchestration-panel';
 
 /* ─────────────────────────── Types ─────────────────────────── */
 
@@ -743,6 +747,10 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const [generating, setGenerating] = useState(false);
   const [hasScratchpad, setHasScratchpad] = useState(false);
 
+  // Agent orchestration panel for synthesis
+  const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
+  const [agentPanelCollapsed, setAgentPanelCollapsed] = useState(false);
+
   // Domain tabs
   const [activeDomain, setActiveDomain] = useState<DomainTab>('all');
   const [rightTab, setRightTab] = useState<'synthesis' | 'actors'>('synthesis');
@@ -847,30 +855,84 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     void checkScratchpad();
   }, [workshopId]);
 
-  // Generate report handler
+  // Generate report handler — streams agent conversation via SSE
   const handleGenerateReport = async () => {
     if (generating) return;
     setGenerating(true);
+    setAgentConversation([]);
+    setAgentPanelCollapsed(false);
+
     try {
-      const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere/synthesise`, {
+      const res = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere/synthesise`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ snapshotId: selectedSnapshotId }),
       });
-      const json = await r.json().catch(() => null);
-      if (r.ok && json?.ok) {
-        setHasScratchpad(true);
-        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
-      } else {
-        // If synthesis failed but scratchpad already exists, just open it
+
+      if (!res.ok || !res.body) {
+        // Non-streaming error — try parse JSON
+        const json = await res.json().catch(() => null);
         if (hasScratchpad) {
           window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
         } else {
           alert(json?.error || 'Failed to generate report');
         }
+        setGenerating(false);
+        return;
+      }
+
+      // Read SSE stream
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let synthesisResult: { ok?: boolean; error?: string } | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        let eventType = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ') && eventType) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (eventType === 'agent.conversation') {
+                setAgentConversation((prev) => [...prev, data as AgentConversationEntry]);
+              } else if (eventType === 'synthesis.complete') {
+                synthesisResult = data;
+              } else if (eventType === 'synthesis.error') {
+                synthesisResult = { ok: false, error: data?.error || 'Synthesis failed' };
+              }
+            } catch {
+              // Ignore parse errors
+            }
+            eventType = '';
+          } else if (line === '') {
+            eventType = '';
+          }
+        }
+      }
+
+      // Handle result
+      if (synthesisResult && synthesisResult.ok) {
+        setHasScratchpad(true);
+        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
+      } else if (synthesisResult?.error) {
+        if (hasScratchpad) {
+          window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
+        } else {
+          alert(synthesisResult.error);
+        }
       }
     } catch (e) {
-      // If network error but scratchpad exists, open it
       if (hasScratchpad) {
         window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
       } else {
@@ -1428,6 +1490,19 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
           )}
         </div>
       </div>
+
+      {/* ─── Agent Orchestration Panel (appears during report generation) ─── */}
+      {(generating || agentConversation.length > 0) && (
+        <div className="flex-shrink-0 border-b border-white/10 max-h-[40vh]">
+          <AgentOrchestrationPanel
+            entries={agentConversation}
+            collapsed={agentPanelCollapsed}
+            onToggleCollapse={() => setAgentPanelCollapsed(!agentPanelCollapsed)}
+            isLive={generating}
+            title="REPORT SYNTHESIS"
+          />
+        </div>
+      )}
 
       {/* ─── Main content (two columns) ─── */}
       <div className="flex flex-1 overflow-hidden">
