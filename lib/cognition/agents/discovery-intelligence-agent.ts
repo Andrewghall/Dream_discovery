@@ -347,6 +347,26 @@ export async function runDiscoveryIntelligenceAgent(
     throw new Error('OpenAI API key not configured');
   }
 
+  // ── Early exit: no Discovery interviews → nothing to synthesize ──
+  const completedSessionCount = await prisma.conversationSession.count({
+    where: { workshopId: context.workshopId, completedAt: { not: null } },
+  });
+
+  if (completedSessionCount === 0) {
+    console.log('[Discovery Intelligence] No completed sessions — skipping synthesis');
+    onConversation?.({
+      timestampMs: Date.now(),
+      agent: 'discovery-intelligence-agent',
+      to: 'prep-orchestrator',
+      message: 'No completed Discovery interviews found. Skipping synthesis — there is no participant data to analyse.',
+      type: 'info',
+    });
+    return {
+      ...fallbackIntelligence(),
+      briefingSummary: 'No Discovery interviews have been completed. The workshop will proceed without participant interview data.',
+    };
+  }
+
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const systemPrompt = buildDiscoverySystemPrompt(context);
   const startMs = Date.now();
