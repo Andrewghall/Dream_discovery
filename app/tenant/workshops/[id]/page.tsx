@@ -149,13 +149,13 @@ export default async function TenantWorkshopDetailPage({
                 </h2>
                 <div className="flex gap-4">
                   <Link href={`/admin/workshops/${workshop.id}/scratchpad`}>
-                    <Button className="btn-org-primary">
+                    <Button style={{ backgroundColor: 'var(--org-primary)', color: 'white' }} className="hover:opacity-90">
                       <Eye className="h-4 w-4 mr-2" />
                       View Scratchpad
                     </Button>
                   </Link>
                   <a href={`/api/admin/workshops/${workshop.id}/export-html`} download>
-                    <Button variant="outline" className="btn-org-secondary-outline">
+                    <Button variant="outline" style={{ borderColor: 'var(--org-secondary, var(--org-primary))', color: 'var(--org-secondary, var(--org-primary))' }}>
                       <Download className="h-4 w-4 mr-2" />
                       Download for Client
                     </Button>

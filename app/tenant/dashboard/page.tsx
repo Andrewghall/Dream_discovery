@@ -77,7 +77,7 @@ export default async function TenantDashboardPage() {
           </div>
           <div className="flex gap-2">
             <Link href="/tenant/workshops/new">
-              <Button size="lg" className="btn-org-primary">
+              <Button size="lg" style={{ backgroundColor: 'var(--org-primary)', color: 'white' }} className="hover:opacity-90">
                 <Plus className="h-4 w-4 mr-2" />
                 New Workshop
               </Button>
