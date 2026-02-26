@@ -11,10 +11,11 @@ import {
   Globe,
   BarChart3,
   BookOpen,
-  LayoutDashboard,
   Menu,
   X,
   ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   LogOut,
 } from 'lucide-react';
 
@@ -52,6 +53,7 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
   const pathname = usePathname();
   const basePath = `/admin/workshops/${workshopId}`;
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   const isActive = (itemPath: string) => {
     const fullPath = `${basePath}${itemPath}`;
@@ -62,7 +64,8 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
     return pathname.startsWith(fullPath);
   };
 
-  const sidebar = (
+  // ── Full (expanded) sidebar content ────────────────────
+  const expandedSidebar = (
     <nav className="flex flex-col h-full bg-card border-r">
       {/* Back + Workshop name header */}
       <div className="p-4 border-b">
@@ -111,8 +114,16 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
         ))}
       </div>
 
-      {/* Logout */}
-      <div className="p-3 border-t">
+      {/* Bottom: collapse toggle + logout */}
+      <div className="p-3 border-t space-y-1">
+        <button
+          onClick={() => setCollapsed(true)}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+          title="Collapse sidebar"
+        >
+          <ChevronsLeft className="h-4 w-4" />
+          Collapse
+        </button>
         <Link
           href="/login"
           onClick={async (e) => {
@@ -124,6 +135,69 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
         >
           <LogOut className="h-4 w-4" />
           Logout
+        </Link>
+      </div>
+    </nav>
+  );
+
+  // ── Collapsed sidebar — icons only with tooltips ───────
+  const collapsedSidebar = (
+    <nav className="flex flex-col h-full bg-card border-r items-center">
+      {/* Back arrow */}
+      <div className="py-4 border-b w-full flex justify-center">
+        <Link
+          href="/admin"
+          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+          title="All Workshops"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Link>
+      </div>
+
+      {/* Nav icons */}
+      <div className="flex-1 overflow-y-auto py-3 px-1.5 space-y-1 w-full">
+        {NAV_SECTIONS.flatMap((section) =>
+          section.items.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.path);
+            return (
+              <Link
+                key={item.path}
+                href={`${basePath}${item.path}`}
+                className={`flex items-center justify-center p-2 rounded-md transition-colors ${
+                  active
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                }`}
+                title={item.label}
+              >
+                <Icon className="h-4 w-4" />
+              </Link>
+            );
+          }),
+        )}
+      </div>
+
+      {/* Bottom: expand toggle + logout */}
+      <div className="py-3 px-1.5 border-t space-y-1 w-full">
+        <button
+          onClick={() => setCollapsed(false)}
+          className="flex items-center justify-center w-full p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+          title="Expand sidebar"
+        >
+          <ChevronsRight className="h-4 w-4" />
+        </button>
+        <Link
+          href="/login"
+          onClick={async (e) => {
+            e.preventDefault();
+            await fetch('/api/auth/logout');
+            window.location.href = '/login';
+          }}
+          className="flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+          title="Logout"
+        >
+          <LogOut className="h-4 w-4" />
         </Link>
       </div>
     </nav>
@@ -148,18 +222,22 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
         />
       )}
 
-      {/* Mobile sidebar (slide-over) */}
+      {/* Mobile sidebar (slide-over — always expanded) */}
       <aside
         className={`lg:hidden fixed inset-y-0 left-0 z-40 w-56 transform transition-transform duration-200 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {sidebar}
+        {expandedSidebar}
       </aside>
 
-      {/* Desktop sidebar (persistent) */}
-      <aside className="hidden lg:block w-56 shrink-0">
-        {sidebar}
+      {/* Desktop sidebar — collapsible */}
+      <aside
+        className={`hidden lg:block shrink-0 transition-all duration-200 ${
+          collapsed ? 'w-12' : 'w-56'
+        }`}
+      >
+        {collapsed ? collapsedSidebar : expandedSidebar}
       </aside>
     </>
   );
