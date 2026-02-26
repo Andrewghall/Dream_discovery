@@ -49,6 +49,8 @@ const AGENT_STYLES: Record<string, { color: string; bg: string; darkBg: string; 
   'guardian':                     { color: '#059669', bg: '#ecfdf5', darkBg: '#064e3b', icon: '🛡️', label: 'Guardian' },
   // Review panel agents (deliberation)
   'discovery-agent':              { color: '#d97706', bg: '#fffbeb', darkBg: '#78350f', icon: '🔬', label: 'Discovery Agent' },
+  // Journey completion agent
+  'journey-completion-agent':     { color: '#0d9488', bg: '#f0fdfa', darkBg: '#134e4a', icon: '🗺️', label: 'Journey Agent' },
 };
 
 function getAgentStyle(agent: string) {

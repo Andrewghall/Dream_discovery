@@ -22,6 +22,7 @@ import type {
   LensName,
 } from './agent-types';
 import type { GuidanceState } from '../guidance-state';
+import { buildJourneyContextString } from '../journey-completion-state';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -710,6 +711,8 @@ export async function reviewWithDiscoveryAgent(
   const prep = guidanceState.prepContext;
   const startMs = Date.now();
 
+  const journeyCtx = buildJourneyContextString(guidanceState.journeyCompletionState);
+
   const systemPrompt = `You are the DREAM Discovery Agent reviewing proposals from a colleague. Your domain is what participants told us in pre-workshop interviews.
 
 ${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : ''}
@@ -717,6 +720,7 @@ ${prep?.discoveryIntelligence?.participantCount ? `${prep.discoveryIntelligence.
 
 You synthesized participant interviews before the workshop. You know their pain points, aspirations, where they agree, where they disagree, and what sensitive topics came up. Now you're reviewing whether the Facilitation Agent's proposals build on that — or whether we're asking participants to repeat themselves.
 
+${journeyCtx ? `JOURNEY CONTEXT:\n${journeyCtx}\nWhen reviewing proposals, connect journey stages to what participants said in interviews. If a proposal targets a stage where participants cited specific pain points or aspirations, flag it as a "build" with the participant insight. If participants mentioned something relevant to a gap that's not being addressed, challenge the proposal.\n` : ''}
 REVIEW MODE: Use get_discovery_briefing to recall what participants said. Use check_participant_coverage to verify specific topics. Are these proposals pushing into new territory or retreading ground? Do they connect to real pain points and aspirations?
 
 Submit your review with submit_review when you've assessed the proposals.`;

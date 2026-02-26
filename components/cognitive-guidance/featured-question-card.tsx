@@ -24,6 +24,14 @@ interface MainQuestionCardProps {
   phaseLabel: string;          // e.g. "Reimagine"
   onPrevious: () => void;
   onNext: () => void;
+  completionPercent?: number;  // 0-100 blended completion
+}
+
+// ── Progress bar colour — matches sticky pad coverage bar logic ──
+function completionBarColor(percent: number): string {
+  if (percent >= 70) return '#22c55e'; // green-500
+  if (percent >= 40) return '#3b82f6'; // blue-500
+  return '#6366f1';                     // indigo-500
 }
 
 export function MainQuestionCard({
@@ -33,6 +41,7 @@ export function MainQuestionCard({
   phaseLabel,
   onPrevious,
   onNext,
+  completionPercent,
 }: MainQuestionCardProps) {
   const isFirst = questionIndex === 0;
   const isLast = questionIndex === totalQuestions - 1;
@@ -70,8 +79,26 @@ export function MainQuestionCard({
         </span>
         <span className="text-xs font-medium" style={{ color: '#92400e', opacity: 0.7 }}>
           Question {questionIndex + 1} of {totalQuestions}
+          {completionPercent !== undefined && (
+            <span className="ml-1.5 font-bold" style={{ color: completionBarColor(completionPercent) }}>
+              · {completionPercent}% complete
+            </span>
+          )}
         </span>
       </div>
+
+      {/* Thin completion progress bar */}
+      {completionPercent !== undefined && (
+        <div className="h-1 rounded-full overflow-hidden mb-3" style={{ backgroundColor: '#fde68a' }}>
+          <div
+            className="h-full rounded-full transition-all duration-700 ease-out"
+            style={{
+              width: `${completionPercent}%`,
+              backgroundColor: completionBarColor(completionPercent),
+            }}
+          />
+        </div>
+      )}
 
       {/* Main question text — large and prominent */}
       <p className="text-xl font-semibold leading-relaxed mb-3" style={{ color: '#78350f' }}>

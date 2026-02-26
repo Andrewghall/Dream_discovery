@@ -45,6 +45,46 @@ export type ConstraintFlag = {
 };
 
 // ══════════════════════════════════════════════════════════
+// JOURNEY COMPLETION — tracks journey map completeness
+// ══════════════════════════════════════════════════════════
+
+export type JourneyGapType =
+  | 'missing_stage'
+  | 'missing_channel'
+  | 'missing_actor_at_stage'
+  | 'missing_ai_agency'
+  | 'missing_automation_level'
+  | 'missing_sentiment'
+  | 'missing_pain_points'
+  | 'missing_day1_vs_future'
+  | 'missing_eq'
+  | 'missing_urgency'
+  | 'missing_proactive_reactive'
+  | 'sparse_interactions'
+  | 'missing_moments_of_truth';
+
+export type JourneyGap = {
+  id: string;
+  gapType: JourneyGapType;
+  stage: string | null;
+  actor: string | null;
+  description: string;
+  suggestedQuestion: string;
+  priority: number;           // 0-1
+  resolved: boolean;
+};
+
+export type JourneyCompletionState = {
+  overallCompletionPercent: number;
+  stageCompletionPercents: Record<string, number>;
+  actorCompletionPercents: Record<string, number>;
+  gaps: JourneyGap[];
+  domainActorName: string | null;   // "student", "patient", etc.
+  lastAssessedAtMs: number;
+  assessmentCount: number;
+};
+
+// ══════════════════════════════════════════════════════════
 // GUIDANCE STATE — facilitator-side state that agents read
 // ══════════════════════════════════════════════════════════
 
@@ -74,6 +114,9 @@ export type GuidanceState = {
     grounding: string;
     phase: string;
   } | null;
+
+  // Journey completion tracking
+  journeyCompletionState: JourneyCompletionState | null;
 
   // Agent orchestration tracking
   lastThemeCheckAtMs: number;
@@ -124,6 +167,7 @@ export function getOrCreateGuidanceState(
     lastUpdatedAtMs: Date.now(),
     prepContext: null,
     currentMainQuestion: null,
+    journeyCompletionState: null,
     lastThemeCheckAtMs: 0,
     lastPadGenerationAtMs: 0,
     utterancesSinceLastPad: 0,
@@ -137,7 +181,7 @@ export function updateGuidanceState(
   workshopId: string,
   updates: Partial<Pick<
     GuidanceState,
-    'activeThemeId' | 'themes' | 'freeflowMode' | 'dialoguePhase' | 'prepContext' | 'currentMainQuestion'
+    'activeThemeId' | 'themes' | 'freeflowMode' | 'dialoguePhase' | 'prepContext' | 'currentMainQuestion' | 'journeyCompletionState'
   >>,
 ): GuidanceState {
   const state = getOrCreateGuidanceState(workshopId);
@@ -148,6 +192,7 @@ export function updateGuidanceState(
   if (updates.dialoguePhase !== undefined) state.dialoguePhase = updates.dialoguePhase;
   if (updates.prepContext !== undefined) state.prepContext = updates.prepContext;
   if (updates.currentMainQuestion !== undefined) state.currentMainQuestion = updates.currentMainQuestion;
+  if (updates.journeyCompletionState !== undefined) state.journeyCompletionState = updates.journeyCompletionState;
 
   state.lastUpdatedAtMs = Date.now();
   return state;

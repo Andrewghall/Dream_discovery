@@ -14,6 +14,7 @@ import { env } from '@/lib/env';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, ConstraintFlag } from '../guidance-state';
 import type { AgentConversationCallback, AgentReview } from './agent-types';
+import { buildJourneyContextString } from '../journey-completion-state';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -311,6 +312,8 @@ export async function reviewWithConstraintAgent(
       ? `We are in CONSTRAINTS phase. Your home turf. Do these proposals help map real, specific limitations? Are they grounded in beliefs? Are they missing any known constraint domains?`
       : `We are in DEFINE APPROACH. Do these proposals account for the constraints we've mapped while still being actionable and forward-looking?`;
 
+  const journeyCtx = buildJourneyContextString(guidanceState.journeyCompletionState);
+
   const systemPrompt = `You are the DREAM Constraint Agent reviewing proposals from a colleague.
 
 ${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : ''}
@@ -321,6 +324,7 @@ Your domain expertise is limitations, risks, and blockers. You know what stands 
 
 ${phaseInstruction}
 
+${journeyCtx ? `JOURNEY CONTEXT:\n${journeyCtx}\nWhen reviewing proposals, check if specific journey stages have regulatory, technical, or organisational constraints that haven't been captured. If you spot a constraint at a journey stage, flag it as a "build" with the specific stage and constraint type.\n` : ''}
 REVIEW MODE: Use query_constraint_beliefs to check what constraints exist in the conversation, then assess whether the proposals are appropriate for this phase. Submit your review with submit_review.`;
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [

@@ -16,6 +16,7 @@ import OpenAI from 'openai';
 import { env } from '@/lib/env';
 import type { WorkshopPrepResearch, PrepContext, AgentConversationCallback, AgentReview } from './agent-types';
 import type { GuidanceState } from '../guidance-state';
+import { buildJourneyContextString } from '../journey-completion-state';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -792,12 +793,15 @@ export async function reviewWithResearchAgent(
   const prep = guidanceState.prepContext;
   const startMs = Date.now();
 
+  const journeyCtx = buildJourneyContextString(guidanceState.journeyCompletionState);
+
   const systemPrompt = `You are the DREAM Research Agent reviewing proposals from a colleague. Your domain is company and industry knowledge.
 
 ${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : ''}
 
 You researched this company before the workshop. You know their challenges, their industry, their competitive landscape. Now you're reviewing whether the Facilitation Agent's proposals are grounded in that reality or whether they're generic questions that could apply to any company.
 
+${journeyCtx ? `JOURNEY CONTEXT:\n${journeyCtx}\nWhen reviewing proposals, cross-reference journey stages with industry benchmarks you know about. If a proposal targets a journey stage where you have relevant industry data (e.g., "78% of education portals use AI chat at onboarding"), flag it as a "build" with the benchmark.\n` : ''}
 REVIEW MODE: Use get_research_findings to recall what you know, then use check_industry_relevance to verify specific claims. Are the proposals specific to THIS client? Do they reference real dynamics? Could they be sharper?
 
 Submit your review with submit_review when you've assessed the proposals.`;

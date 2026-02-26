@@ -47,7 +47,8 @@ import {
   AgentOrchestrationPanel,
   type AgentConversationEntry,
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
-import type { GuidedTheme } from '@/lib/cognition/guidance-state';
+import type { GuidedTheme, JourneyCompletionState } from '@/lib/cognition/guidance-state';
+import { calculateDeterministicCompletion } from '@/lib/cognition/journey-completion-state';
 import type { WorkshopPhase, FacilitationQuestion, SubQuestion } from '@/lib/cognition/agents/agent-types';
 
 type PageProps = {
@@ -204,6 +205,8 @@ function buildSessionPadsFromPrep(
       coverageState: (i === 0 ? 'active' : 'queued') as StickyPad['coverageState'],
       lens: q.lens || null,
       mainQuestionIndex: null,
+      journeyGapId: null,
+      padLabel: null,
     }));
 }
 
@@ -224,6 +227,7 @@ function seedPad(
     source: 'seed', questionId: null, grounding: null,
     coveragePercent: 0, coverageState: 'active',
     lens: null, mainQuestionIndex: null,
+    journeyGapId: null, padLabel: null,
   };
 }
 
@@ -449,6 +453,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [completedByQuestion, setCompletedByQuestion] = useState<Map<number, StickyPad[]>>(new Map());
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
 
+  // ── Journey completion tracking ──
+  const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
+
   // ── Main questions for current phase (derived from prep data) ──
   const mainQuestions = useMemo(() => {
     const prep = prepQuestionsRef.current;
@@ -491,6 +498,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         coverageState: 'active' as StickyPad['coverageState'],
         lens: sq.lens || null,
         mainQuestionIndex: qIndex,
+        journeyGapId: null,
+        padLabel: null,
       }));
     }
 
@@ -557,6 +566,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       coverageState: 'active' as StickyPad['coverageState'],
       lens,
       mainQuestionIndex: qIndex,
+      journeyGapId: null,
+      padLabel: null,
     }));
   }, [dialoguePhase]);
 
@@ -1127,6 +1138,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               coverageState: payload.pad.coverageState || 'active',
               lens: payload.pad.lens || null,
               mainQuestionIndex: payload.pad.mainQuestionIndex ?? mainQuestionIndex,
+              journeyGapId: payload.pad.journeyGapId || null,
+              padLabel: payload.pad.padLabel || null,
             };
             return [...prev, agentPad];
           });
@@ -1168,6 +1181,17 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               type: 'acknowledgement',
             },
           ]);
+        }
+      } catch { /* ignore */ }
+    });
+
+    // ── Journey completion assessed by Journey Agent ────────
+    es.addEventListener('journey.completion', (e) => {
+      try {
+        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
+        const payload = evt.payload as { journeyCompletionState: JourneyCompletionState };
+        if (payload?.journeyCompletionState) {
+          setJourneyCompletionState(payload.journeyCompletionState);
         }
       } catch { /* ignore */ }
     });
@@ -1214,6 +1238,13 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     ));
   }, []);
 
+  // Auto-move overflow pads to covered when >maxVisible active
+  const handleOverflowPads = useCallback((padIds: string[]) => {
+    setStickyPads(prev => prev.map(p =>
+      padIds.includes(p.id) ? { ...p, coverageState: 'covered' as const } : p
+    ));
+  }, []);
+
   // (Old handleSkipQuestion / handleRevisitQuestion removed — replaced by handleNextQuestion / handlePrevQuestion)
 
   // ── Computed: sub-pads for current main question ──────────
@@ -1230,6 +1261,18 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     ),
     [stickyPads, mainQuestionIndex],
   );
+
+  // Main question completion percent (blended sub-pad coverage + journey completion)
+  const mainQuestionCompletionPercent = useMemo(() => {
+    if (activeSubPads.length === 0 && coveredSubPads.length === 0) return 0;
+    const allSubPads = [...activeSubPads, ...coveredSubPads];
+    const avgSubCoverage = allSubPads.length > 0
+      ? allSubPads.reduce((s, p) => s + p.coveragePercent, 0) / allSubPads.length
+      : 0;
+    const journeyFactor = journeyCompletionState?.overallCompletionPercent ?? 0;
+    // Blend: 70% sub-question coverage + 30% journey completion
+    return Math.round(journeyFactor > 0 ? avgSubCoverage * 0.7 + journeyFactor * 0.3 : avgSubCoverage);
+  }, [activeSubPads, coveredSubPads, journeyCompletionState]);
 
   // Signal-generated + seed pads (shown below main question area)
   const signalPads = useMemo(
@@ -1346,6 +1389,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 questionIndex={mainQuestionIndex}
                 totalQuestions={mainQuestions.length}
                 phaseLabel={PHASE_LABELS[dialoguePhase]}
+                completionPercent={mainQuestionCompletionPercent}
                 onPrevious={handlePrevQuestion}
                 onNext={handleNextQuestion}
               />
@@ -1361,6 +1405,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                       onSelectPad={setSelectedPadId}
                       onDismissPad={handleDismissPad}
                       onSnoozePad={handleSnoozePad}
+                      maxVisible={4}
+                      onOverflow={handleOverflowPads}
                     />
                   ) : (
                     <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/30 p-8 text-center">

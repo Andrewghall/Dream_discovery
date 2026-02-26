@@ -10,6 +10,8 @@ interface StickyPadCanvasProps {
   onSelectPad: (id: string | null) => void;
   onDismissPad: (id: string) => void;
   onSnoozePad: (id: string) => void;
+  maxVisible?: number;              // Limit visible pads (e.g. 4)
+  onOverflow?: (padIds: string[]) => void;  // Called with IDs of pads that exceed maxVisible
 }
 
 export function StickyPadCanvas({
@@ -18,10 +20,27 @@ export function StickyPadCanvas({
   onSelectPad,
   onDismissPad,
   onSnoozePad,
+  maxVisible,
+  onOverflow,
 }: StickyPadCanvasProps) {
-  const visiblePads = pads
+  const allActivePads = pads
     .filter((pad) => pad.status === 'active')
     .sort((a, b) => b.signalStrength - a.signalStrength);
+
+  // When maxVisible is set, only show the top N pads.
+  // Overflow pads (those beyond maxVisible) are reported via onOverflow callback
+  // so the parent can auto-move them to the covered strip.
+  const visiblePads = maxVisible ? allActivePads.slice(0, maxVisible) : allActivePads;
+
+  // Report overflow pads to parent (sorted by highest coverage first — most "done")
+  if (maxVisible && allActivePads.length > maxVisible && onOverflow) {
+    const overflowPads = allActivePads
+      .slice(maxVisible)
+      .sort((a, b) => b.coveragePercent - a.coveragePercent)
+      .map((p) => p.id);
+    // Use setTimeout to avoid calling setState during render
+    setTimeout(() => onOverflow(overflowPads), 0);
+  }
 
   if (visiblePads.length === 0) {
     return (

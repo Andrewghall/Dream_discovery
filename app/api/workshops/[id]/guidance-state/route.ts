@@ -149,6 +149,10 @@ export async function POST(
     updates.currentMainQuestion = body.currentMainQuestion;
   }
 
+  if (body.journeyCompletionState !== undefined) {
+    updates.journeyCompletionState = body.journeyCompletionState;
+  }
+
   const updated = updateGuidanceState(workshopId, updates);
 
   return NextResponse.json({ guidanceState: updated });

@@ -16,6 +16,7 @@ import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, GuidedTheme } from '../guidance-state';
 import type { AgentConversationCallback, AgentReview } from './agent-types';
 import type { Lens } from '@/lib/cognitive-guidance/pipeline';
+import { buildJourneyContextString } from '../journey-completion-state';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -394,10 +395,13 @@ export async function reviewWithThemeAgent(
   const basePrompt = buildThemeSystemPrompt(cogState, guidanceState);
   const startMs = Date.now();
 
+  const journeyCtx = buildJourneyContextString(guidanceState.journeyCompletionState);
+
   const systemPrompt = `${basePrompt}
 
 REVIEW MODE: You are being asked to review proposals from the Facilitation Agent. Use your tools to check whether these proposals align with the current conversational flow and thematic direction. Do they follow the thread the room is exploring, or do they pull in a different direction?
 
+${journeyCtx ? `JOURNEY CONTEXT:\n${journeyCtx}\nWhen reviewing proposals, notice if journey stages cluster into themes. If you see emerging thematic patterns across journey stages (e.g., "digital self-service" across multiple stages), flag them as a "build" suggestion.\n` : ''}
 Use query_beliefs and get_coverage_summary to ground your assessment, then submit_review with your verdict.`;
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [

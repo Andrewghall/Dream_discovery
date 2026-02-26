@@ -171,6 +171,8 @@ export type StickyPad = {
   coverageState: CoverageState;           // Lifecycle: queued → active → covered
   lens: string | null;                    // Lens name for colouring (People, Organisation, etc.)
   mainQuestionIndex: number | null;       // Which main question this sub-pad belongs to
+  journeyGapId: string | null;           // Links to a JourneyGap.id for gap-driven coverage tracking
+  padLabel: string | null;               // Display label e.g. "Journey Mapping" or "Journey: Registration"
 };
 
 export type JourneyPhase =
@@ -691,6 +693,8 @@ export function generateStickyPads(
       coverageState: 'active',
       lens: signal.lenses[0] || null,
       mainQuestionIndex: null,
+      journeyGapId: null,
+      padLabel: null,
     });
   }
 

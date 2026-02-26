@@ -100,6 +100,8 @@ const FACILITATION_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                   description: 'Belief IDs that ground this pad.',
                 },
                 reasoning: { type: 'string', description: 'Why this pad is relevant now.' },
+                journeyGapId: { type: 'string', description: 'ID of the journey gap this pad addresses (if filling a journey gap).' },
+                padLabel: { type: 'string', description: 'Display label. Use "Journey Mapping" for general journey pads or "Journey: {stage name}" for stage-specific journey pads. Leave empty for non-journey pads.' },
               },
               required: ['type', 'prompt', 'sourceBeliefIds', 'reasoning'],
             },
@@ -243,6 +245,17 @@ Stay scoped — do not wander into topics outside this question's domain. Follow
 breadcrumbs of the conversation but always keep this goal in mind.`
   : 'No main question is currently set — generate broadly relevant facilitation prompts.'}
 
+JOURNEY GAP CONTEXT:
+When JOURNEY AGENT GAPS context is provided in the deliberation brief, generate sub-questions that fill those specific gaps.
+Use domain-specific actor names (e.g., "student" for education, "patient" for healthcare — check the journey context for the domain actor name).
+For journey gap pads, set padLabel to "Journey Mapping" (general) or "Journey: {stage name}" (stage-specific).
+Set journeyGapId to reference the gap being addressed.
+
+TIMING AWARENESS:
+If there is productive conversational flow in the room, defer journey gap questions.
+Prioritise completing the current discussion thread before introducing new journey probes.
+Mix journey gap questions with regular facilitation questions — don't overload with only journey pads.
+
 RULES:
 - Every pad MUST cite sourceBeliefIds — beliefs that actually exist
 - Never fabricate questions about topics not in the beliefs
@@ -272,6 +285,7 @@ export type DeliberationContext = {
   constraintGaps?: string | null;
   researchHighlights?: string | null;
   discoveryInsights?: string | null;
+  journeyGaps?: string | null;
 };
 
 export async function runFacilitationAgent(
@@ -292,6 +306,7 @@ export async function runFacilitationAgent(
     deliberation?.constraintGaps ? `CONSTRAINT AGENT GAPS: ${deliberation.constraintGaps}` : null,
     deliberation?.researchHighlights ? `RESEARCH CONTEXT: ${deliberation.researchHighlights}` : null,
     deliberation?.discoveryInsights ? `DISCOVERY INSIGHTS: ${deliberation.discoveryInsights}` : null,
+    deliberation?.journeyGaps ? `JOURNEY AGENT GAPS:\n${deliberation.journeyGaps}\n\nWhen generating pads to fill journey gaps, use domain-specific actor names and set padLabel to "Journey Mapping" or "Journey: {stage name}". Set journeyGapId to the gap ID if known. TIMING: If there is productive conversational flow, defer journey gap questions — prioritise completing the current discussion thread first.` : null,
   ].filter(Boolean).join('\n\n');
 
   const userContent = deliberationBrief
@@ -371,6 +386,8 @@ export async function runFacilitationAgent(
               coverageState: 'active',
               lens: String(raw.lens || raw.type || 'General'),
               mainQuestionIndex: null, // Set by the client when received via SSE
+              journeyGapId: raw.journeyGapId ? String(raw.journeyGapId) : null,
+              padLabel: raw.padLabel ? String(raw.padLabel) : null,
             };
 
             proposals.push({

@@ -93,11 +93,22 @@ export function StickyPad({ pad, index, onDismiss, onSnooze, isSelected, onClick
       />
 
       {/* Lens/type label — small tag at top */}
-      <div
-        className="inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-sm mb-2"
-        style={{ backgroundColor: colors.accent, color: colors.text }}
-      >
-        {colors.label}
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+        <div
+          className="inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-sm"
+          style={{ backgroundColor: colors.accent, color: colors.text }}
+        >
+          {colors.label}
+        </div>
+        {/* Journey Mapping label — shown when pad targets a journey gap */}
+        {pad.padLabel && (
+          <div
+            className="inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-sm"
+            style={{ backgroundColor: '#ccfbf1', color: '#134e4a' }}
+          >
+            {pad.padLabel}
+          </div>
+        )}
       </div>
 
       {/* Prompt text — the main content, large and readable */}

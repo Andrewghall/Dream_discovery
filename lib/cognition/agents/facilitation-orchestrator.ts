@@ -42,6 +42,12 @@ import { runConstraintAgent, reviewWithConstraintAgent } from './constraint-agen
 import { runGuardianAgent, validateReferences } from './guardian-agent';
 import { reviewWithResearchAgent } from './research-agent';
 import { reviewWithDiscoveryAgent } from './discovery-intelligence-agent';
+import { runJourneyCompletionAgent, reviewWithJourneyAgent } from './journey-completion-agent';
+import {
+  mergeAgentAssessment,
+  buildJourneyContextString,
+} from '../journey-completion-state';
+import type { LiveJourneyData, LiveJourneyInteraction, AiAgencyLevel } from '@/lib/cognitive-guidance/pipeline';
 import type { AgentConversationCallback, AgentReview } from './agent-types';
 
 // ── Constants ───────────────────────────────────────────────
@@ -112,6 +118,14 @@ const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'consult_journey_completion_agent',
+      description: 'Ask the Journey Completion Agent to assess the customer journey map completeness and identify gaps. The agent will analyze what journey data has been captured and what is missing (automation level, Day 1 vs end state, customer EQ, urgency, proactive/reactive, pain points, moments of truth). Only useful when there are actors and interactions in the session.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'request_facilitation_proposals',
       description: 'Ask the Facilitation Agent to generate sub-question proposals for the current main question. Pass it the deliberation context you have gathered from other agents.',
       parameters: {
@@ -130,7 +144,7 @@ const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'send_proposals_for_review',
-      description: 'Send the Facilitation Agent\'s proposals to ALL specialist agents for review: Theme Agent (conversational flow), Research Agent (company/industry grounding), Discovery Agent (participant interview alignment), and Constraint Agent (phase appropriateness). Each agent runs as itself with its own tools and reasoning — 4 real agentic calls in parallel. Returns each agent\'s verdict.',
+      description: 'Send the Facilitation Agent\'s proposals to ALL specialist agents for review: Theme Agent (conversational flow), Research Agent (company/industry grounding), Discovery Agent (participant interview alignment), Constraint Agent (phase appropriateness), and Journey Agent (journey map completeness). Each agent runs as itself with its own tools and reasoning — 5 real agentic calls in parallel. Returns each agent\'s verdict.',
       parameters: {
         type: 'object',
         properties: {
@@ -197,17 +211,24 @@ ${checkTheme ? 'Theme check is DUE — consider consulting Theme Agent.' : 'Them
 YOUR TEAM:
 - Theme Agent: Understands conversational flow. Can query beliefs and assess thematic direction.
 - Constraint Agent: Knows limitations and risks. Can query constraint beliefs and map gaps.
-- Facilitation Agent: Generates sub-question proposals aligned to the main question.
+- Journey Completion Agent: Tracks customer journey map completeness. Identifies missing data (automation level, Day 1 vs end state, customer EQ, urgency, proactive/reactive, pain points, moments of truth). Uses domain-specific actor naming.
+- Facilitation Agent: Generates sub-question proposals aligned to the main question. Can generate "Journey Mapping" pads to fill journey gaps.
 - Guardian Agent: Validates that outputs are grounded in real beliefs (final verification).
+
+JOURNEY AWARENESS:
+When the Journey Agent identifies gaps, pass them to the Facilitation Agent — but TIME IT RIGHT.
+If there's productive conversational flow in the room, let it complete before injecting journey gap questions.
+Journey gap pads should be labeled "Journey Mapping" or "Journey: {stage name}".
 
 YOUR PROCESS:
 1. assess_session — understand the current landscape
 2. consult_theme_agent — is the conversational direction right? (if theme check is due)
 3. consult_constraint_agent — what constraints exist? (CONSTRAINTS phase only)
-4. request_facilitation_proposals — get sub-question proposals with deliberation context
-5. send_proposals_for_review — let Theme Agent and Constraint Agent review (real agentic calls)
-6. If challenged: request_refinement — send feedback back for a second pass
-7. verify_and_emit — Guardian checks grounding, approved pads go to screen
+4. consult_journey_completion_agent — what journey gaps need filling? (when actors exist)
+5. request_facilitation_proposals — get sub-question proposals with ALL deliberation context
+6. send_proposals_for_review — ALL 5 agents review in parallel (real agentic calls)
+7. If challenged: request_refinement — send feedback back for a second pass
+8. verify_and_emit — Guardian checks grounding, approved pads go to screen
 
 RULES:
 - You are a REASONING agent. Think about what you learn from each tool call before deciding next steps.
@@ -219,6 +240,74 @@ RULES:
 // ══════════════════════════════════════════════════════════════
 // TOOL EXECUTION — each tool invokes real agents
 // ══════════════════════════════════════════════════════════════
+
+/**
+ * Build a lightweight LiveJourneyData from CognitiveState actors.
+ * Used when the orchestrator needs to pass journey data to the Journey Agent.
+ */
+function buildJourneyFromCogState(
+  cogState: CognitiveState,
+  guidanceState: GuidanceState,
+): LiveJourneyData {
+  const stages = ['Discovery', 'Engagement', 'Commitment', 'Fulfilment', 'Support', 'Growth'];
+  const actors: LiveJourneyData['actors'] = [];
+  const interactions: LiveJourneyInteraction[] = [];
+
+  for (const actor of cogState.actors.values()) {
+    actors.push({
+      name: actor.name,
+      role: actor.role,
+      mentionCount: actor.mentionCount,
+    });
+
+    for (const interaction of actor.interactions) {
+      interactions.push({
+        id: `cog:${actor.name}:${interaction.utteranceId}`,
+        actor: actor.name,
+        stage: inferStageFromText(interaction.action + ' ' + interaction.context, stages),
+        action: interaction.action,
+        context: interaction.context,
+        sentiment: (interaction.sentiment as LiveJourneyInteraction['sentiment']) || 'neutral',
+        businessIntensity: 0.5,
+        customerIntensity: 0.5,
+        aiAgencyNow: 'human' as AiAgencyLevel,
+        aiAgencyFuture: 'human' as AiAgencyLevel,
+        isPainPoint: interaction.sentiment === 'critical',
+        isMomentOfTruth: false,
+        sourceNodeIds: [interaction.utteranceId],
+        addedBy: 'ai',
+        createdAtMs: Date.now(),
+      });
+    }
+  }
+
+  return { stages, actors, interactions };
+}
+
+/** Simple stage inference for journey building */
+function inferStageFromText(text: string, stages: string[]): string {
+  const lower = text.toLowerCase();
+  const stageKeywords: Record<string, string[]> = {
+    Discovery: ['discover', 'find', 'learn', 'awareness', 'search', 'browse', 'hear about'],
+    Engagement: ['engage', 'interact', 'visit', 'explore', 'consider', 'evaluate', 'contact'],
+    Commitment: ['commit', 'decide', 'purchase', 'buy', 'sign', 'agree', 'choose', 'select'],
+    Fulfilment: ['deliver', 'receive', 'onboard', 'setup', 'implement', 'fulfil'],
+    Support: ['support', 'help', 'assist', 'resolve', 'fix', 'service', 'issue'],
+    Growth: ['retain', 'loyalty', 'expand', 'recommend', 'renew', 'grow'],
+  };
+
+  let bestStage = stages[0];
+  let bestCount = 0;
+  for (const stage of stages) {
+    const keywords = stageKeywords[stage] || [];
+    const count = keywords.filter(kw => lower.includes(kw)).length;
+    if (count > bestCount) {
+      bestCount = count;
+      bestStage = stage;
+    }
+  }
+  return bestStage;
+}
 
 async function executeOrchestratorTool(
   toolName: string,
@@ -400,6 +489,70 @@ async function executeOrchestratorTool(
       }
     }
 
+    // ── CONSULT JOURNEY COMPLETION AGENT ─────────────────────
+    case 'consult_journey_completion_agent': {
+      // Build journey data from cognitive state actors
+      const liveJourney = buildJourneyFromCogState(cogState, guidanceState);
+
+      if (liveJourney.actors.length === 0) {
+        return JSON.stringify({ skipped: true, reason: 'No actors detected yet — journey assessment not possible.' });
+      }
+
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'orchestrator',
+        to: 'journey-completion-agent',
+        message: `Assess journey map completeness. ${liveJourney.actors.length} actors, ${liveJourney.interactions.length} interactions detected.${mainQ ? ` GOAL — Main question: "${mainQ.text}" (Purpose: ${mainQ.purpose}). Identify gaps relevant to this goal.` : ''}`,
+        type: 'handoff',
+      });
+
+      try {
+        const assessment = await runJourneyCompletionAgent(guidanceState, liveJourney, onConversation);
+
+        if (assessment) {
+          // Merge into guidance state
+          const currentJourneyState = guidanceState.journeyCompletionState || {
+            overallCompletionPercent: 0,
+            stageCompletionPercents: {},
+            actorCompletionPercents: {},
+            gaps: [],
+            domainActorName: null,
+            lastAssessedAtMs: 0,
+            assessmentCount: 0,
+          };
+
+          guidanceState.journeyCompletionState = mergeAgentAssessment(currentJourneyState, assessment);
+
+          // Build journey context for other agents
+          const journeyContext = buildJourneyContextString(guidanceState.journeyCompletionState);
+          state.deliberation.journeyGaps = journeyContext;
+
+          // Emit SSE event for the UI
+          emitEvent('journey.completion', {
+            journeyCompletionState: guidanceState.journeyCompletionState,
+          });
+
+          const topGaps = assessment.gaps.filter(g => g.priority >= 0.5).slice(0, 3);
+          return JSON.stringify({
+            assessed: true,
+            overallCompletion: assessment.overallCompletionPercent,
+            gapCount: assessment.gaps.length,
+            domainActor: assessment.domainActorName,
+            topGaps: topGaps.map(g => ({
+              type: g.gapType,
+              stage: g.stage,
+              description: g.description,
+            })),
+            suggestedPadPrompts: assessment.suggestedPadPrompts?.length || 0,
+          });
+        }
+
+        return JSON.stringify({ assessed: false, reason: 'Journey Agent returned no assessment.' });
+      } catch (error) {
+        return JSON.stringify({ error: error instanceof Error ? error.message : 'Journey assessment failed' });
+      }
+    }
+
     // ── REQUEST FACILITATION PROPOSALS ──────────────────────
     case 'request_facilitation_proposals': {
       // Build deliberation context from orchestrator's gathered intelligence
@@ -408,6 +561,7 @@ async function executeOrchestratorTool(
         constraintGaps: args.constraintContext ? String(args.constraintContext) : state.deliberation.constraintGaps,
         researchHighlights: args.researchContext ? String(args.researchContext) : state.deliberation.researchHighlights,
         discoveryInsights: args.discoveryContext ? String(args.discoveryContext) : state.deliberation.discoveryInsights,
+        journeyGaps: state.deliberation.journeyGaps || null,
       };
 
       onConversation?.({
@@ -442,23 +596,34 @@ async function executeOrchestratorTool(
     case 'send_proposals_for_review': {
       const proposalSummary = String(args.proposalSummary || '');
 
+      // Build journey data for the Journey Agent's review
+      const reviewJourney = buildJourneyFromCogState(cogState, guidanceState);
+      const hasJourneyData = reviewJourney.actors.length > 0;
+
       onConversation?.({
         timestampMs: Date.now(),
         agent: 'orchestrator',
         to: '',
-        message: `Sending proposals to all 4 specialist agents for review. Each will reason from their domain using their own tools.`,
+        message: `Sending proposals to all ${hasJourneyData ? '5' : '4'} specialist agents for review. Each will reason from their domain using their own tools.`,
         type: 'info',
       });
 
-      // Run ALL 4 reviews in parallel — real agentic calls, each with own tools
-      const [themeReview, researchReview, discoveryReview, constraintReview] = await Promise.all([
+      // Run ALL reviews in parallel — real agentic calls, each with own tools
+      const reviewPromises: Promise<AgentReview>[] = [
         reviewWithThemeAgent(proposalSummary, cogState, guidanceState, onConversation),
         reviewWithResearchAgent(proposalSummary, guidanceState, onConversation),
         reviewWithDiscoveryAgent(proposalSummary, guidanceState, onConversation),
         reviewWithConstraintAgent(proposalSummary, guidanceState.dialoguePhase, cogState, guidanceState, onConversation),
-      ]);
+      ];
 
-      const reviews = [themeReview, researchReview, discoveryReview, constraintReview];
+      // Journey Agent only reviews when there's journey data to assess against
+      if (hasJourneyData) {
+        reviewPromises.push(
+          reviewWithJourneyAgent(proposalSummary, guidanceState, reviewJourney, onConversation),
+        );
+      }
+
+      const reviews = await Promise.all(reviewPromises);
       const challenges = reviews.filter((r) => r.stance === 'challenge');
       const builds = reviews.filter((r) => r.stance === 'build');
 
@@ -497,6 +662,10 @@ async function executeOrchestratorTool(
         constraintGaps: [
           state.deliberation.constraintGaps,
           feedback.includes('Constraint Agent') ? `CHALLENGE FROM CONSTRAINT AGENT: ${feedback}` : null,
+        ].filter(Boolean).join(' ') || null,
+        journeyGaps: [
+          state.deliberation.journeyGaps,
+          feedback.includes('Journey Agent') ? `CHALLENGE FROM JOURNEY AGENT: ${feedback}` : null,
         ].filter(Boolean).join(' ') || null,
       };
 
