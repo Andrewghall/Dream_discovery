@@ -9,7 +9,7 @@ export default function AdminLayout({
 }) {
   return (
     <div className="relative min-h-screen bg-background">
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-20">
+      <div className="fixed inset-0 top-48 pointer-events-none z-0 opacity-20">
         <div className="relative w-full h-full flex items-center justify-center">
           <Image
             src="/Dream.PNG"
