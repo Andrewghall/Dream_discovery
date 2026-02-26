@@ -50,6 +50,8 @@ import {
 import type { GuidedTheme, JourneyCompletionState } from '@/lib/cognition/guidance-state';
 import { calculateDeterministicCompletion } from '@/lib/cognition/journey-completion-state';
 import type { WorkshopPhase, FacilitationQuestion, SubQuestion } from '@/lib/cognition/agents/agent-types';
+import { useAudioCapture } from '@/hooks/use-audio-capture';
+import { MicSetupDialog } from '@/components/cognitive-guidance/mic-setup-dialog';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -283,7 +285,10 @@ function getSeedPadsForPhase(phase: DialoguePhase): StickyPad[] {
 
 const RETAIL_WORKSHOP_ID = 'retail-cx-workshop';
 
-const DEMO_HEMISPHERE_NODES: HemisphereNodeDatum[] = (() => {
+// Lazy — only evaluated on first client-side access (avoids SSR hydration mismatch)
+let _demoHemisphereNodes: HemisphereNodeDatum[] | null = null;
+function getDemoHemisphereNodes(): HemisphereNodeDatum[] {
+  if (_demoHemisphereNodes) return _demoHemisphereNodes;
   const now = Date.now();
   const types: HemispherePrimaryType[] = ['VISIONARY', 'INSIGHT', 'CONSTRAINT', 'RISK', 'ENABLER', 'ACTION', 'QUESTION', 'OPPORTUNITY'];
   const phrases = [
@@ -312,7 +317,7 @@ const DEMO_HEMISPHERE_NODES: HemisphereNodeDatum[] = (() => {
     ['competitors', 'digital', 'ahead'], ['journey', 'handoffs', 'dropout'], ['KPIs', 'outcomes', 'business'],
   ];
 
-  return phrases.map((text, i) => ({
+  _demoHemisphereNodes = phrases.map((text, i) => ({
     dataPointId: `demo-node-${i}`,
     createdAtMs: now - (phrases.length - i) * 30_000,
     rawText: text,
@@ -345,7 +350,8 @@ const DEMO_HEMISPHERE_NODES: HemisphereNodeDatum[] = (() => {
       overallConfidence: 0.7 + Math.random() * 0.25,
     },
   }));
-})();
+  return _demoHemisphereNodes;
+}
 
 // ══════════════════════════════════════════════════════════
 // DEMO LIVE JOURNEY DATA
@@ -412,11 +418,14 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Core state ─────────────────────────────────────────
   const [cogNodes, setCogNodes] = useState<Map<string, CogNode>>(new Map());
   const [hemisphereNodes, setHemisphereNodes] = useState<Record<string, HemisphereNodeDatum>>({});
-  const [stickyPads, setStickyPads] = useState<StickyPad[]>(() => getSeedPadsForPhase('REIMAGINE'));
+  // NOTE: Do NOT use Date.now() or Math.random() in useState initialisers —
+  // they cause React hydration mismatch (#418) because server and client get different values.
+  // Seed data is populated in a client-only useEffect below.
+  const [stickyPads, setStickyPads] = useState<StickyPad[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [lensCoverage, setLensCoverage] = useState<Map<Lens, LensCoverage>>(new Map());
-  const [liveJourney, setLiveJourney] = useState<LiveJourneyData>(() =>
-    isRetailDemo ? getDemoLiveJourney() : { stages: DEFAULT_JOURNEY_STAGES.REIMAGINE, actors: [], interactions: [] }
+  const [liveJourney, setLiveJourney] = useState<LiveJourneyData>(
+    { stages: DEFAULT_JOURNEY_STAGES.REIMAGINE, actors: [], interactions: [] }
   );
   const [sessionConfidence, setSessionConfidence] = useState<SessionConfidence>({
     overallConfidence: 0,
@@ -431,10 +440,20 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [nodeCount, setNodeCount] = useState(0);
   const esRef = useRef<EventSource | null>(null);
 
+  // ── Audio capture + mic setup ─────────────────────────
+  const dialoguePhaseRef = useRef<DialoguePhase>('REIMAGINE');
+  const audio = useAudioCapture({
+    workshopId,
+    getDialoguePhase: () => dialoguePhaseRef.current,
+  });
+  const [micDialogOpen, setMicDialogOpen] = useState(false);
+
   // ── UI state ───────────────────────────────────────────
   const [selectedPadId, setSelectedPadId] = useState<string | null>(null);
   const [journeyExpanded, setJourneyExpanded] = useState(true);
   const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
+  // Keep ref in sync for the audio capture hook (avoids stale closure)
+  useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
   const [expandedNode, setExpandedNode] = useState<HemisphereNodeDatum | null>(null);
   const [hemisphereExpanded, setHemisphereExpanded] = useState(false);
 
@@ -456,6 +475,15 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── Journey completion tracking ──
   const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
+
+  // ── Client-only: populate seed data after hydration (avoids React #418) ──
+  useEffect(() => {
+    setStickyPads(prev => prev.length === 0 ? getSeedPadsForPhase('REIMAGINE') : prev);
+    if (isRetailDemo) {
+      setLiveJourney(getDemoLiveJourney());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Main questions for current phase (derived from prep data) ──
   const mainQuestions = useMemo(() => {
@@ -1224,7 +1252,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const hemisphereNodeArray = useMemo(() => {
     const realNodes = Object.values(hemisphereNodes);
     if (realNodes.length > 0) return realNodes;
-    return isRetailDemo ? DEMO_HEMISPHERE_NODES : [];
+    return isRetailDemo ? getDemoHemisphereNodes() : [];
   }, [hemisphereNodes, isRetailDemo]);
 
   // ── Sticky pad actions ─────────────────────────────────
@@ -1319,12 +1347,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           </div>
           <div className="flex items-center gap-2">
             {!listening ? (
-              <Button onClick={startListening} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+              <Button onClick={() => setMicDialogOpen(true)} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
                 <Radio className="h-4 w-4 mr-2" />
                 Go Live
               </Button>
             ) : (
-              <Button onClick={stopListening} variant="destructive" size="sm">
+              <Button onClick={() => { audio.stopCapture(); stopListening(); }} variant="destructive" size="sm">
                 <Square className="h-4 w-4 mr-2" />
                 Stop
               </Button>
@@ -1335,7 +1363,42 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 Live
               </span>
             )}
+            {/* Audio level sound bar — 5 animated bars */}
+            {audio.capturing && (
+              <div className="flex items-end gap-0.5 h-5 ml-1">
+                {[0.6, 0.3, 0.8, 0.4, 0.7].map((sensitivity, i) => (
+                  <div
+                    key={i}
+                    className="w-1 rounded-full bg-emerald-500 transition-all duration-75"
+                    style={{
+                      height: `${Math.max(3, Math.min(20, audio.audioLevel * sensitivity * 0.6))}px`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* Mic Setup Dialog */}
+          <MicSetupDialog
+            open={micDialogOpen}
+            onOpenChange={setMicDialogOpen}
+            micPermission={audio.micPermission}
+            micDevices={audio.micDevices}
+            selectedMicId={audio.selectedMicId}
+            onSelectMic={audio.setSelectedMicId}
+            micLevel={audio.micLevel}
+            micTesting={audio.micTesting}
+            captureError={audio.captureError}
+            onStartTest={() => void audio.startMicTest()}
+            onStopTest={() => void audio.stopMicTest()}
+            onRefreshDevices={() => void audio.refreshMicDevices()}
+            onGoLive={async () => {
+              setMicDialogOpen(false);
+              await audio.startCapture();
+              startListening();
+            }}
+          />
         </div>
 
         {/* Phase Selector — 3 workshop phases (Discovery is its own tab) */}
