@@ -447,6 +447,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── Prep question set (loaded from DB on mount) ────────
   const prepQuestionsRef = useRef<PrepQuestionSet | null>(null);
+  const [prepLoaded, setPrepLoaded] = useState(false);
 
   // ── "Peeling the Onion" — main question navigation ─────
   const [mainQuestionIndex, setMainQuestionIndex] = useState(0);
@@ -830,8 +831,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             if (prepPads.length > 0) setStickyPads(prepPads);
           }
         }
+        setPrepLoaded(true);
       })
-      .catch(() => { /* fall back to seed pads — already set */ });
+      .catch(() => { setPrepLoaded(true); /* fall back to seed pads — already set */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workshopId]); // Only on mount
 
@@ -1483,8 +1485,15 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 </div>
               </div>
             </>
+          ) : !prepLoaded ? (
+            /* Still loading prep questions — show placeholder instead of seed pads */
+            <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/30 p-12 text-center">
+              <p className="text-sm text-muted-foreground animate-pulse">
+                Loading session questions…
+              </p>
+            </div>
           ) : (
-            /* Fallback: seed pads when no main questions available */
+            /* Fallback: seed pads when no main questions available (prep loaded but had none) */
             <StickyPadCanvas
               pads={stickyPads}
               selectedPadId={selectedPadId}
