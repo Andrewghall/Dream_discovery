@@ -996,7 +996,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         // Run keyword inference immediately so dots position correctly
         // (CaptureAPI doesn't do domain classification on its own)
         const nodeRawText = String(p.dataPoint.rawText ?? '');
-        const kwLensResults = nodeRawText.length >= 20 ? inferKeywordLenses(nodeRawText) : [];
+        const kwLensResults = nodeRawText.length >= 3 ? inferKeywordLenses(nodeRawText) : [];
         // Use actual keyword relevance (based on match count) — not flat 0.7
         // Scale up so domains with more keyword hits dominate positioning
         const kwDomains = kwLensResults.map(kw => ({
@@ -1129,7 +1129,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           // Keyword domains get max CaptureAPI relevance so they can compete
           const maxApiRelevance = analysis.domains.reduce((m, d) => Math.max(m, d.relevance), 0.5);
           const enrichedDomains = [...analysis.domains];
-          if (existing.rawText && existing.rawText.length >= 20) {
+          if (existing.rawText && existing.rawText.length >= 3) {
             const kwLenses = inferKeywordLenses(existing.rawText);
             const existingDomains = new Set(enrichedDomains.map(d => d.domain));
             for (const kw of kwLenses) {
