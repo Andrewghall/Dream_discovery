@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   ChevronLeft,
+  LogOut,
 } from 'lucide-react';
 
 interface WorkshopSidebarProps {
@@ -63,10 +64,17 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
 
   const sidebar = (
     <nav className="flex flex-col h-full bg-card border-r">
-      {/* Workshop name header */}
+      {/* Back + Workshop name header */}
       <div className="p-4 border-b">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Workshop</p>
-        <h2 className="text-sm font-semibold truncate mt-0.5" title={workshopName}>
+        <Link
+          href="/admin"
+          onClick={() => setMobileOpen(false)}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2"
+        >
+          <ChevronLeft className="h-3 w-3" />
+          All Workshops
+        </Link>
+        <h2 className="text-sm font-semibold truncate" title={workshopName}>
           {workshopName}
         </h2>
       </div>
@@ -103,14 +111,19 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
         ))}
       </div>
 
-      {/* Back to dashboard */}
+      {/* Logout */}
       <div className="p-3 border-t">
         <Link
-          href="/admin"
+          href="/login"
+          onClick={async (e) => {
+            e.preventDefault();
+            await fetch('/api/auth/logout');
+            window.location.href = '/login';
+          }}
           className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
         >
-          <ChevronLeft className="h-4 w-4" />
-          Dashboard
+          <LogOut className="h-4 w-4" />
+          Logout
         </Link>
       </div>
     </nav>
