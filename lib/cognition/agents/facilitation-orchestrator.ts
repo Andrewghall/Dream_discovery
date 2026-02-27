@@ -296,7 +296,7 @@ async function executeOrchestratorTool(
     deliberation: DeliberationContext;
     proposals: PadProposal[];
   },
-  emitEvent: (type: string, payload: unknown) => void,
+  emitEvent: (type: string, payload: unknown) => void | Promise<void>,
 ): Promise<string> {
   const mainQ = guidanceState.currentMainQuestion;
   const prep = guidanceState.prepContext;
@@ -376,7 +376,7 @@ async function executeOrchestratorTool(
         return JSON.stringify({ skipped: true, reason: 'No actors detected yet.' });
       }
 
-      onConversation?.({
+      await onConversation?.({
         timestampMs: Date.now(),
         agent: 'orchestrator',
         to: 'journey-completion-agent',
@@ -405,8 +405,8 @@ async function executeOrchestratorTool(
           const journeyContext = buildJourneyContextString(guidanceState.journeyCompletionState);
           state.deliberation.journeyGaps = journeyContext;
 
-          // Emit SSE event — updates journey visualization on the UI
-          emitEvent('journey.completion', {
+          // Persist journey completion to outbox — updates journey visualization on the UI
+          await emitEvent('journey.completion', {
             journeyCompletionState: guidanceState.journeyCompletionState,
           });
 
@@ -440,7 +440,7 @@ async function executeOrchestratorTool(
         journeyGaps: state.deliberation.journeyGaps || null,
       };
 
-      onConversation?.({
+      await onConversation?.({
         timestampMs: Date.now(),
         agent: 'orchestrator',
         to: 'facilitation-agent',
@@ -487,12 +487,12 @@ async function executeOrchestratorTool(
           continue;
         }
 
-        // Approved — emit directly
-        emitEvent('pad.generated', { pad: proposal.pad });
+        // Approved — persist to outbox + emit
+        await emitEvent('pad.generated', { pad: proposal.pad });
         guidanceState.surfacedPadPrompts.push(proposal.pad.prompt);
         emitted++;
 
-        onConversation?.({
+        await onConversation?.({
           timestampMs: Date.now(),
           agent: 'orchestrator',
           to: '',
@@ -525,7 +525,7 @@ async function executeOrchestratorTool(
 export async function runFacilitationOrchestrator(
   workshopId: string,
   cogState: CognitiveState,
-  emitEvent: (type: string, payload: unknown) => void,
+  emitEvent: (type: string, payload: unknown) => void | Promise<void>,
   onConversation?: AgentConversationCallback,
 ): Promise<void> {
   const guidanceState = getOrCreateGuidanceState(workshopId);
@@ -563,7 +563,7 @@ export async function runFacilitationOrchestrator(
     },
   ];
 
-  onConversation?.({
+  await onConversation?.({
     timestampMs: Date.now(),
     agent: 'orchestrator',
     to: '',
@@ -603,7 +603,7 @@ export async function runFacilitationOrchestrator(
       messages.push(assistantMessage);
 
       if (assistantMessage.content?.trim()) {
-        onConversation?.({
+        await onConversation?.({
           timestampMs: Date.now(),
           agent: 'orchestrator',
           to: '',
@@ -645,7 +645,7 @@ export async function runFacilitationOrchestrator(
   } catch (error) {
     console.error('[Orchestrator] Failed:', error instanceof Error ? error.message : error);
 
-    onConversation?.({
+    await onConversation?.({
       timestampMs: Date.now(),
       agent: 'orchestrator',
       to: '',

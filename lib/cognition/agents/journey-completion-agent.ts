@@ -294,7 +294,7 @@ export async function runJourneyCompletionAgent(
       messages.push(assistantMessage);
 
       if (assistantMessage.content?.trim()) {
-        onConversation?.({
+        await onConversation?.({
           timestampMs: Date.now(),
           agent: 'journey-completion-agent',
           to: 'orchestrator',
@@ -350,7 +350,7 @@ export async function runJourneyCompletionAgent(
             ? `Top gaps: ${topGaps.map(g => `${g.stage || 'General'}: ${g.description}`).join('; ')}`
             : 'No critical gaps found.';
 
-          onConversation?.({
+          await onConversation?.({
             timestampMs: Date.now(),
             agent: 'journey-completion-agent',
             to: 'orchestrator',
@@ -367,7 +367,7 @@ export async function runJourneyCompletionAgent(
           const toolResult = executeJourneyTool(fnName, fnArgs, liveJourney, existingGaps);
           messages.push({ role: 'tool', tool_call_id: toolCall.id, content: toolResult.result });
 
-          onConversation?.({
+          await onConversation?.({
             timestampMs: Date.now(),
             agent: 'journey-completion-agent',
             to: 'journey-completion-agent',
@@ -472,7 +472,7 @@ Always suggest the most impactful journey data to collect next.`;
       messages.push(assistantMessage);
 
       if (assistantMessage.content?.trim()) {
-        onConversation?.({
+        await onConversation?.({
           timestampMs: Date.now(),
           agent: 'journey-completion-agent',
           to: 'orchestrator',
@@ -498,7 +498,7 @@ Always suggest the most impactful journey data to collect next.`;
             suggestedChanges: fnArgs.suggestedChanges ? String(fnArgs.suggestedChanges) : undefined,
           };
 
-          onConversation?.({
+          await onConversation?.({
             timestampMs: Date.now(),
             agent: 'journey-completion-agent',
             to: 'facilitation-agent',

@@ -134,7 +134,7 @@ export type WorkshopIntelligence = {
 // AGENT CALLBACK — for emitting conversation entries
 // ══════════════════════════════════════════════════════════
 
-export type AgentConversationCallback = (entry: AgentConversationEntry) => void;
+export type AgentConversationCallback = (entry: AgentConversationEntry) => void | Promise<void>;
 
 // ══════════════════════════════════════════════════════════
 // AGENT REVIEW — returned by any agent reviewing proposals

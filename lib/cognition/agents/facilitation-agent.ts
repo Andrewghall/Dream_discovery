@@ -393,7 +393,7 @@ export async function runFacilitationAgent(
       messages.push(assistantMessage);
 
       if (assistantMessage.content?.trim()) {
-        onConversation?.({
+        await onConversation?.({
           timestampMs: Date.now(),
           agent: 'facilitation-agent',
           to: 'orchestrator',
@@ -451,7 +451,7 @@ export async function runFacilitationAgent(
             });
           }
 
-          onConversation?.({
+          await onConversation?.({
             timestampMs: Date.now(),
             agent: 'facilitation-agent',
             to: 'orchestrator',

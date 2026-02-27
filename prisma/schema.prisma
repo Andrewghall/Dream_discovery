@@ -142,6 +142,7 @@ model Workshop {
   reports           ConversationReport[]
   themes            DiscoveryTheme[]
   liveSnapshots     LiveWorkshopSnapshot[]
+  eventOutbox       WorkshopEventOutbox[]
   transcriptChunks  TranscriptChunk[]
   participants      WorkshopParticipant[]
   scratchpad        WorkshopScratchpad?
@@ -437,6 +438,20 @@ model LiveWorkshopSnapshot {
 
   @@index([workshopId, createdAt])
   @@map("live_workshop_snapshots")
+}
+
+model WorkshopEventOutbox {
+  id         String   @id @default(cuid())
+  workshopId String
+  type       String
+  payload    Json
+  createdAt  DateTime @default(now())
+
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId, createdAt])
+  @@index([workshopId, type, createdAt])
+  @@map("workshop_event_outbox")
 }
 
 model WorkshopScratchpad {
