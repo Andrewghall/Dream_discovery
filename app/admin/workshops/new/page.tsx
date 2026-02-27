@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,9 +27,14 @@ const INDUSTRY_OPTIONS = [
   'Other',
 ];
 
+type OrgOption = { id: string; name: string };
+
 export default function NewWorkshopPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [orgs, setOrgs] = useState<OrgOption[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -47,6 +52,28 @@ export default function NewWorkshopPage() {
   });
 
   const isDream = formData.workshopType !== 'SALES';
+  const isPlatformAdmin = userRole === 'PLATFORM_ADMIN';
+
+  // Fetch user role + available orgs for PLATFORM_ADMIN
+  useEffect(() => {
+    (async () => {
+      try {
+        const meRes = await fetch('/api/auth/me');
+        if (!meRes.ok) return;
+        const me = await meRes.json();
+        setUserRole(me.role || null);
+        if (me.role === 'PLATFORM_ADMIN') {
+          const orgRes = await fetch('/api/admin/organizations');
+          if (orgRes.ok) {
+            const orgData = await orgRes.json();
+            const orgList = (orgData.organizations || orgData || []) as OrgOption[];
+            setOrgs(orgList);
+            if (orgList.length === 1) setSelectedOrgId(orgList[0].id);
+          }
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +85,8 @@ export default function NewWorkshopPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          // PLATFORM_ADMIN must select an org for the workshop
+          ...(isPlatformAdmin && selectedOrgId ? { organizationId: selectedOrgId } : {}),
           // Only send DREAM fields for DREAM workshops
           clientName: isDream ? formData.clientName || undefined : undefined,
           industry: isDream ? formData.industry || undefined : undefined,
@@ -139,6 +168,29 @@ export default function NewWorkshopPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* ── Organization selector (PLATFORM_ADMIN only) ──── */}
+              {isPlatformAdmin && orgs.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="organizationId">Organization *</Label>
+                  <Select
+                    value={selectedOrgId}
+                    onValueChange={(value) => setSelectedOrgId(value)}
+                  >
+                    <SelectTrigger id="organizationId">
+                      <SelectValue placeholder="Select organization..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orgs.map((org) => (
+                        <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Which organization should own this workshop?
+                  </p>
+                </div>
+              )}
 
               {/* ── DREAM-specific prep fields ───────────────────── */}
               {isDream && (

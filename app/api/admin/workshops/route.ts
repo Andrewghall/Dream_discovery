@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
           _count: {
             select: {
               participants: true,
+              liveSnapshots: true,
             },
           },
         },
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest) {
       scheduledDate: workshop.scheduledDate,
       participantCount: workshop._count.participants,
       completedResponses: workshop.participants.filter((p: WorkshopParticipantRow) => p.responseCompletedAt).length,
+      snapshotCount: workshop._count.liveSnapshots,
     }));
 
     return NextResponse.json(
