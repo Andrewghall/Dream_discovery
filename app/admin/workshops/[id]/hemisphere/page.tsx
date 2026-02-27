@@ -800,6 +800,15 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     }
   }, [searchParams, snapshots]);
 
+  // Auto-select most recent snapshot when no URL param specified
+  useEffect(() => {
+    if (searchParams.get('snapshotId')) return;  // URL param takes priority
+    if (selectedSnapshotId) return;               // Already selected
+    if (snapshots.length === 0) return;           // No snapshots yet
+    // snapshots are ordered by createdAt desc from the API
+    setSelectedSnapshotId(snapshots[0].id);
+  }, [snapshots, searchParams, selectedSnapshotId]);
+
   // Fetch hemisphere data
   useEffect(() => {
     const fetchData = async () => {

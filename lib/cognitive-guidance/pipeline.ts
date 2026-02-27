@@ -357,11 +357,11 @@ const LENS_RELEVANCE_THRESHOLD = 0.3;
 
 /** Keyword patterns per lens — used as fallback when CaptureAPI under-classifies */
 const KEYWORD_LENS_MAP: [Lens, RegExp][] = [
-  ['Customer', /\b(customer\w*|client\w*|consumer\w*|buyer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*)\b/i],
-  ['Technology', /\b(technolog\w*|AI|machine.?learning|system\w*|platform\w*|software|digital\w*|automat\w*|data\b|cloud|infra\w*|algorithm\w*|API)\b/i],
-  ['Regulation', /\b(regulat\w*|complian\w*|legal\w*|GDPR|FCA|licen[cs]\w*|governance|audit\w*|polic[iy]\w*|legislat\w*|mandate\w*|standard\w*)\b/i],
-  ['Organisation', /\b(organi[sz]\w*|department\w*|team\w*|structure\w*|process\w*|workflow\w*|operat\w*|management|staff\w*|employ\w*|HR|budget\w*|resource\w*)\b/i],
-  ['People', /\b(people|person\w*|human\w*|culture\w*|skill\w*|training|talent\w*|recruit\w*|wellbeing|engagement|stakeholder\w*|leader\w*)\b/i],
+  ['Customer', /\b(customer\w*|client\w*|consumer\w*|buyer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*|user\w*|experience\w*|journey\w*|satisfaction|retention|churn|onboard\w*|loyalt\w*|feedback)\b/i],
+  ['Technology', /\b(technolog\w*|AI|machine.?learning|system\w*|platform\w*|software|digital\w*|automat\w*|data\b|cloud|infra\w*|algorithm\w*|API|integrat\w*|cyber\w*|server\w*|database\w*|scal\w*|architect\w*|deploy\w*|devops|pipeline\w*)\b/i],
+  ['Regulation', /\b(regulat\w*|complian\w*|legal\w*|GDPR|FCA|licen[cs]\w*|governance|audit\w*|polic[iy]\w*|legislat\w*|mandate\w*|standard\w*|accredit\w*|certif\w*|oversight|enforce\w*|statute\w*|jurisdict\w*|scrutin\w*)\b/i],
+  ['Organisation', /\b(organi[sz]\w*|department\w*|team\w*|structure\w*|process\w*|workflow\w*|operat\w*|management|staff\w*|employ\w*|HR|budget\w*|resource\w*|efficien\w*|productiv\w*|strategy\w*|decision\w*|cost\w*|revenue\w*|resilien\w*|rigid\w*|agil\w*)\b/i],
+  ['People', /\b(people|person\w*|human\w*|culture\w*|skill\w*|training|talent\w*|recruit\w*|wellbeing|engagement|stakeholder\w*|leader\w*|stress\w*|burnout|morale|empower\w*|collaborat\w*|mentor\w*|divers\w*|inclusi\w*)\b/i],
 ];
 
 /**
@@ -405,7 +405,7 @@ export function applyLensMapping(
 
   // Keyword fallback: if CaptureAPI gave ≤1 lens, supplement from text
   let lenses = apiLenses;
-  if (apiLenses.length <= 1 && node.rawText.length >= 20) {
+  if (apiLenses.length <= 1 && node.rawText.length >= 3) {
     const kwLenses = inferKeywordLenses(node.rawText);
     const existing = new Set(apiLenses.map(l => l.lens));
     const extra = kwLenses.filter(kw => !existing.has(kw.lens));

@@ -442,6 +442,17 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [nodeCount, setNodeCount] = useState(0);
   const esRef = useRef<EventSource | null>(null);
 
+  // ── Auto-save to LiveWorkshopSnapshot ─────────────────
+  const [workshopName, setWorkshopName] = useState<string>('');
+  const [cgSnapshots, setCgSnapshots] = useState<Array<{ id: string; name: string; dialoguePhase: string }>>([]);
+  const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
+  const [lastSavedSnapshotId, setLastSavedSnapshotId] = useState<string | null>(null);
+
+  const snapshotUrl = useMemo(
+    () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/snapshots`,
+    [workshopId]
+  );
+
   // ── Audio capture + mic setup ─────────────────────────
   const dialoguePhaseRef = useRef<DialoguePhase>('REIMAGINE');
 
@@ -1074,13 +1085,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 reasoning: kw.evidence,
               })).filter(d => !!d.domain);
 
-          console.log('[Hemisphere] Node created:', {
-            id: dataPointId.slice(0, 8),
-            words: wordCount,
-            rawText: nodeRawText.slice(0, 80),
-            kwDomains: kwDomains.map(d => d.domain),
-            phase: dialoguePhaseRef.current,
-          });
 
           const hNode: HemisphereNodeDatum = {
             dataPointId,
@@ -1117,12 +1121,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
           setNodeCount(c => c + 1);
           nodeCountSinceLastRunRef.current++;
-        } else {
-          console.log('[Hemisphere] Skipped (too short):', {
-            id: dataPointId.slice(0, 8),
-            words: wordCount,
-            rawText: nodeRawText.slice(0, 40),
-          });
         }
       } catch { /* ignore */ }
     });
@@ -1379,99 +1377,292 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     };
   }, []);
 
-  // ── Poll for agentic analyses from DB (journey map data source) ──
-  // The GPT-4o-mini cognitive engine writes results to the database, but
-  // the in-memory SSE doesn't reliably deliver them on Vercel serverless.
-  // Poll every 5s to pick up new analyses and feed buildLiveJourney().
-  const lastAnalysisPollRef = useRef<string>(new Date().toISOString());
+  // ── Auto-save: fetch workshop name + snapshot list ────
+  useEffect(() => {
+    fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data?.workshop?.name) setWorkshopName(data.workshop.name); })
+      .catch(() => {});
+  }, [workshopId]);
+
+  const fetchCgSnapshots = useCallback(async () => {
+    try {
+      const r = await fetch(snapshotUrl);
+      const json = await r.json().catch(() => null);
+      if (json?.ok && Array.isArray(json.snapshots)) setCgSnapshots(json.snapshots);
+    } catch { /* ignore */ }
+  }, [snapshotUrl]);
+
+  useEffect(() => { void fetchCgSnapshots(); }, [fetchCgSnapshots]);
+
+  // ── Auto-save function: persist hemisphereNodes to LiveWorkshopSnapshot ──
+  const autoSave = useCallback(async (): Promise<string | null> => {
+    const nodeKeys = Object.keys(hemisphereNodes);
+    // Filter out live: streaming nodes — only save permanent nodes
+    const permanentNodes: Record<string, HemisphereNodeDatum> = {};
+    for (const key of nodeKeys) {
+      if (!key.startsWith('live:')) permanentNodes[key] = hemisphereNodes[key];
+    }
+    if (Object.keys(permanentNodes).length === 0) return null;
+
+    const now = new Date();
+    const datePart = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const timePart = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const autoSaveName = workshopName
+      ? `${workshopName} — ${datePart} ${timePart}`
+      : `Auto-save ${now.toISOString().slice(0, 19).replace('T', ' ')}`;
+
+    const payload = {
+      v: 1,
+      source: 'cognitive-guidance',
+      dialoguePhase,
+      nodesById: permanentNodes,
+    };
+
+    try {
+      const existing = cgSnapshots.find(s => s.dialoguePhase === dialoguePhase);
+      let r;
+      if (existing) {
+        r = await fetch(`${snapshotUrl}/${existing.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payload }),
+        });
+      } else {
+        r = await fetch(snapshotUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: autoSaveName, dialoguePhase, payload }),
+        });
+      }
+      const json = (await r.json().catch(() => null)) as
+        | { ok?: boolean; snapshot?: { id: string }; error?: string }
+        | null;
+      if (r.ok && json?.ok) {
+        setLastAutoSaveTime(new Date());
+        const savedId = existing ? existing.id : (json?.snapshot?.id ?? null);
+        if (!existing) void fetchCgSnapshots();
+        setLastSavedSnapshotId(savedId);
+        return savedId;
+      }
+      return null;
+    } catch { return null; }
+  }, [hemisphereNodes, workshopName, dialoguePhase, cgSnapshots, snapshotUrl, fetchCgSnapshots]);
+
+  // Auto-save every 3 minutes while listening
+  useEffect(() => {
+    if (!listening) return;
+    // Save immediately when listening starts (may be empty, that's fine)
+    const timeout = setTimeout(() => { void autoSave(); }, 5000); // 5s delay for initial nodes
+    const interval = setInterval(() => { void autoSave(); }, 3 * 60_000);
+    return () => { clearTimeout(timeout); clearInterval(interval); };
+  }, [listening, autoSave]);
+
+  // ── Poll event outbox for all derived events (durable cross-isolate delivery) ──
+  // Events emitted inside after() callbacks don't reach the SSE endpoint on Vercel
+  // serverless (different isolates). The outbox table is the source of truth.
+  // SSE listeners above are kept as best-effort bonus (work in local dev).
+  const lastOutboxCursorRef = useRef<string>(new Date().toISOString());
+  const seenEventIdsRef = useRef<Set<string>>(new Set());
+  const mainQuestionIndexRef = useRef(mainQuestionIndex);
+  useEffect(() => { mainQuestionIndexRef.current = mainQuestionIndex; }, [mainQuestionIndex]);
 
   useEffect(() => {
     if (!listening) return;
 
+    const POLL_TYPES = [
+      'pad.generated',
+      'agent.conversation',
+      'classification.updated',
+      'belief.created',
+      'belief.reinforced',
+      'belief.stabilised',
+      'contradiction.detected',
+      'journey.completion',
+      'agentic.analyzed',
+    ].join(',');
+
+    const dispatchOutboxEvent = (type: string, payload: any) => {
+      try {
+        switch (type) {
+          case 'classification.updated': {
+            const p = payload as ClassificationUpdatedPayload;
+            const dataPointId = p?.dataPointId;
+            if (!dataPointId) return;
+            const cls = p.classification;
+            setCogNodes(prev => {
+              const existing = prev.get(dataPointId);
+              if (!existing) return prev;
+              const updated = categoriseNode(existing, {
+                primaryType: cls.primaryType,
+                confidence: cls.confidence,
+                keywords: Array.isArray(cls.keywords) ? cls.keywords : [],
+              });
+              const next = new Map(prev);
+              next.set(dataPointId, updated);
+              return next;
+            });
+            setHemisphereNodes(prev => {
+              const existing = prev[dataPointId];
+              if (!existing) return prev;
+              return {
+                ...prev,
+                [dataPointId]: {
+                  ...existing,
+                  classification: {
+                    primaryType: cls.primaryType as HemisphereNodeDatum['classification'] extends null ? never : NonNullable<HemisphereNodeDatum['classification']>['primaryType'],
+                    confidence: cls.confidence,
+                    keywords: Array.isArray(cls.keywords) ? cls.keywords : [],
+                    suggestedArea: cls.suggestedArea ?? null,
+                    updatedAt: cls.updatedAt,
+                  },
+                },
+              };
+            });
+            break;
+          }
+
+          case 'agentic.analyzed': {
+            const p = payload as AgenticAnalyzedPayload;
+            const dataPointId = p?.dataPointId;
+            if (!dataPointId) return;
+            const analysis = {
+              domains: p.analysis.domains,
+              themes: p.analysis.themes,
+              actors: Array.isArray(p.analysis.actors) ? p.analysis.actors : [],
+              semanticMeaning: p.analysis.interpretation.semanticMeaning,
+              sentimentTone: p.analysis.interpretation.sentimentTone,
+              overallConfidence: p.analysis.overallConfidence,
+            };
+            setCogNodes(prev => {
+              const existing = prev.get(dataPointId);
+              if (!existing) return prev;
+              const updated = applyLensMapping(existing, analysis);
+              const next = new Map(prev);
+              next.set(dataPointId, updated);
+              return next;
+            });
+            setHemisphereNodes(prev => {
+              const existing = prev[dataPointId];
+              if (!existing) return prev;
+              const maxApiRelevance = analysis.domains.reduce((m: number, d: any) => Math.max(m, d.relevance), 0.5);
+              const enrichedDomains = [...analysis.domains];
+              if (existing.rawText && existing.rawText.length >= 3) {
+                const kwLenses = inferKeywordLenses(existing.rawText);
+                const existingDomains = new Set(enrichedDomains.map(d => d.domain));
+                for (const kw of kwLenses) {
+                  const domain = LENS_TO_DOMAIN[kw.lens];
+                  if (!domain) continue;
+                  if (existingDomains.has(domain)) {
+                    const idx = enrichedDomains.findIndex(d => d.domain === domain);
+                    if (idx >= 0) {
+                      enrichedDomains[idx] = { ...enrichedDomains[idx], relevance: Math.max(enrichedDomains[idx].relevance, maxApiRelevance) };
+                    }
+                  } else {
+                    enrichedDomains.push({ domain, relevance: maxApiRelevance, reasoning: kw.evidence });
+                  }
+                }
+              }
+              return {
+                ...prev,
+                [dataPointId]: {
+                  ...existing,
+                  agenticAnalysis: { ...analysis, domains: enrichedDomains },
+                },
+              };
+            });
+            break;
+          }
+
+          case 'belief.stabilised': {
+            stabilisedCountRef.current++;
+            break;
+          }
+
+          case 'contradiction.detected': {
+            const c = payload?.contradiction;
+            if (c) {
+              contradictionsRef.current.push({
+                id: c.id || `c_${Date.now()}`,
+                beliefA: c.beliefA?.label || '',
+                beliefB: c.beliefB?.label || '',
+                resolved: false,
+              });
+            }
+            break;
+          }
+
+          case 'agent.conversation': {
+            const entry = payload as AgentConversationEntry;
+            if (entry?.agent && entry?.message) {
+              setAgentConversation(prev => [...prev, entry]);
+            }
+            break;
+          }
+
+          case 'pad.generated': {
+            const pad = payload?.pad;
+            if (pad) {
+              setStickyPads(prev => {
+                if (prev.some(p => p.id === pad.id)) return prev;
+                const agentPad: StickyPad = {
+                  ...pad,
+                  source: pad.source || 'agent',
+                  questionId: pad.questionId || null,
+                  grounding: pad.grounding || pad.provenance?.description || null,
+                  coveragePercent: pad.coveragePercent || 0,
+                  coverageState: pad.coverageState || 'active',
+                  lens: pad.lens || null,
+                  mainQuestionIndex: pad.mainQuestionIndex ?? mainQuestionIndexRef.current,
+                  journeyGapId: pad.journeyGapId || null,
+                  padLabel: pad.padLabel || null,
+                };
+                return [...prev, agentPad];
+              });
+            }
+            break;
+          }
+
+          case 'journey.completion': {
+            if (payload?.journeyCompletionState) {
+              setJourneyCompletionState(payload.journeyCompletionState);
+            }
+            break;
+          }
+
+          // belief.created and belief.reinforced — no UI handler currently
+          default:
+            break;
+        }
+      } catch { /* ignore dispatch errors */ }
+    };
+
     const poll = async () => {
       try {
         const res = await fetch(
-          `/api/workshops/${encodeURIComponent(workshopId)}/agentic-analyses?since=${encodeURIComponent(lastAnalysisPollRef.current)}`
+          `/api/workshops/${encodeURIComponent(workshopId)}/events/poll?after=${encodeURIComponent(lastOutboxCursorRef.current)}&types=${POLL_TYPES}`
         );
         if (!res.ok) return;
         const data = await res.json();
-        const analyses = data.analyses as Array<{
-          dataPointId: string;
-          domains: Array<{ domain: string; relevance: number; reasoning: string }>;
-          themes: Array<{ label: string; category: string; confidence: number; reasoning: string }>;
-          actors: Array<{ name: string; role: string; interactions: Array<{ withActor: string; action: string; context: string; sentiment: string }> }> | null;
-          semanticMeaning: string;
-          sentimentTone: string;
-          overallConfidence: number;
-          createdAt: string;
+        const events = data.events as Array<{
+          id: string; type: string; payload: any; createdAt: string;
         }>;
+        if (!events || events.length === 0) return;
 
-        if (!analyses || analyses.length === 0) return;
-        console.log(`[Poll] Found ${analyses.length} new agentic analyses`);
-        lastAnalysisPollRef.current = new Date().toISOString();
+        // Advance cursor to latest event
+        lastOutboxCursorRef.current = events[events.length - 1].createdAt;
 
-        for (const analysis of analyses) {
-          // Update CogNode with sourceAgenticAnalysis (same as agentic.analyzed SSE handler)
-          const mappedAnalysis = {
-            domains: analysis.domains || [],
-            themes: analysis.themes || [],
-            actors: analysis.actors || [],
-            semanticMeaning: analysis.semanticMeaning || '',
-            sentimentTone: analysis.sentimentTone || 'neutral',
-            overallConfidence: analysis.overallConfidence || 0.5,
-          };
-
-          setCogNodes(prev => {
-            const existing = prev.get(analysis.dataPointId);
-            if (!existing) return prev;
-            const updated = applyLensMapping(existing, mappedAnalysis);
-            const next = new Map(prev);
-            next.set(analysis.dataPointId, updated);
-            return next;
-          });
-
-          // Enrich hemisphere node with cognitive engine domains
-          setHemisphereNodes(prev => {
-            const existing = prev[analysis.dataPointId];
-            if (!existing) return prev;
-
-            const enrichedDomains = [...(analysis.domains || [])];
-            // Also merge keyword-inferred domains
-            if (existing.rawText && existing.rawText.length >= 3) {
-              const kwLenses = inferKeywordLenses(existing.rawText);
-              const existingDomainSet = new Set(enrichedDomains.map(d => d.domain));
-              for (const kw of kwLenses) {
-                const domain = LENS_TO_DOMAIN[kw.lens];
-                if (domain && !existingDomainSet.has(domain)) {
-                  enrichedDomains.push({ domain, relevance: kw.relevance + 0.4, reasoning: kw.evidence });
-                }
-              }
-            }
-
-            return {
-              ...prev,
-              [analysis.dataPointId]: {
-                ...existing,
-                agenticAnalysis: {
-                  domains: enrichedDomains,
-                  themes: analysis.themes || [],
-                  actors: analysis.actors || [],
-                  semanticMeaning: analysis.semanticMeaning || '',
-                  sentimentTone: analysis.sentimentTone || 'neutral',
-                  overallConfidence: analysis.overallConfidence || 0.5,
-                },
-              },
-            };
-          });
+        // Dispatch each event with dedup (SSE may also deliver these — idempotent)
+        for (const evt of events) {
+          if (seenEventIdsRef.current.has(evt.id)) continue;
+          seenEventIdsRef.current.add(evt.id);
+          dispatchOutboxEvent(evt.type, evt.payload);
         }
-      } catch {
-        // Polling errors are non-fatal
-      }
+      } catch { /* polling errors are non-fatal */ }
     };
 
-    const interval = setInterval(poll, 5000);
-    // Run immediately on first listen
-    poll();
+    const interval = setInterval(poll, 3000);
+    poll(); // Immediate first poll
     return () => clearInterval(interval);
   }, [listening, workshopId]);
 
@@ -1579,7 +1770,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 Go Live
               </Button>
             ) : (
-              <Button onClick={() => { audio.stopCapture(); stopListening(); }} variant="destructive" size="sm">
+              <Button onClick={async () => {
+                audio.stopCapture();
+                stopListening();
+                const savedId = await autoSave();
+                if (savedId) { setLastSavedSnapshotId(savedId); await fetchCgSnapshots(); }
+              }} variant="destructive" size="sm">
                 <Square className="h-4 w-4 mr-2" />
                 Stop
               </Button>
@@ -1588,7 +1784,20 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               <span className="flex items-center gap-1.5 text-xs text-emerald-600">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Live
+                {lastAutoSaveTime && (
+                  <span className="text-muted-foreground ml-1">
+                    · saved {lastAutoSaveTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
               </span>
+            )}
+            {/* Review in Hemisphere button (shown after stopping with data) */}
+            {!listening && lastSavedSnapshotId && Object.keys(hemisphereNodes).length > 0 && (
+              <Link href={`/admin/workshops/${workshopId}/hemisphere?snapshotId=${lastSavedSnapshotId}`}>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                  Review in Hemisphere →
+                </Button>
+              </Link>
             )}
             {/* Audio level sound bar — 5 animated bars */}
             {audio.capturing && (

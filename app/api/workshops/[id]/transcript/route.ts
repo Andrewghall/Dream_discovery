@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
-import { emitWorkshopEvent } from '@/lib/realtime/workshop-events';
+import { emitWorkshopEvent, persistAndEmit } from '@/lib/realtime/workshop-events';
 import { deriveIntent } from '@/lib/workshop/derive-intent';
 import { addFragment, flushWorkshop, type FlushedUtterance } from '@/lib/workshop/utterance-buffer';
 import { getOrCreateCognitiveState } from '@/lib/cognition/state-store';
@@ -234,6 +234,14 @@ async function processCompleteUtterance(
   // full cognitive state — beliefs, contradictions, entities, momentum.
   after(async () => {
     try {
+      // Outbox cleanup — delete events older than 24 hours to prevent unbounded growth
+      await (prisma as any).workshopEventOutbox.deleteMany({
+        where: {
+          workshopId,
+          createdAt: { lt: new Date(Date.now() - 24 * 60 * 60_000) },
+        },
+      }).catch(() => {}); // non-fatal
+
       const workshop = await prisma.workshop.findUnique({
         where: { id: workshopId },
         select: { name: true, description: true, businessContext: true },
@@ -329,9 +337,8 @@ async function processCompleteUtterance(
         },
       });
 
-      // Emit agentic analysis SSE event (hemisphere domain distribution + lens mapping)
-      emitWorkshopEvent(workshopId, {
-        id: nanoid(),
+      // Persist agentic analysis to outbox (hemisphere domain distribution + lens mapping)
+      await persistAndEmit(workshopId, {
         type: 'agentic.analyzed',
         createdAt: Date.now(),
         payload: {
@@ -376,9 +383,8 @@ async function processCompleteUtterance(
         },
       });
 
-      // Emit classification SSE event (hemisphere node update)
-      emitWorkshopEvent(workshopId, {
-        id: nanoid(),
+      // Persist classification to outbox (hemisphere node update)
+      await persistAndEmit(workshopId, {
         type: 'classification.updated',
         createdAt: Date.now(),
         payload: {
@@ -394,10 +400,9 @@ async function processCompleteUtterance(
         },
       });
 
-      // Emit cognitive state events for live UI
+      // Persist cognitive state events to outbox for live UI
       for (const belief of events.newBeliefs) {
-        emitWorkshopEvent(workshopId, {
-          id: nanoid(),
+        await persistAndEmit(workshopId, {
           type: 'belief.created',
           createdAt: Date.now(),
           payload: {
@@ -416,8 +421,7 @@ async function processCompleteUtterance(
       }
 
       for (const belief of events.reinforcedBeliefs) {
-        emitWorkshopEvent(workshopId, {
-          id: nanoid(),
+        await persistAndEmit(workshopId, {
           type: 'belief.reinforced',
           createdAt: Date.now(),
           payload: {
@@ -433,8 +437,7 @@ async function processCompleteUtterance(
       }
 
       for (const belief of events.stabilisedBeliefs) {
-        emitWorkshopEvent(workshopId, {
-          id: nanoid(),
+        await persistAndEmit(workshopId, {
           type: 'belief.stabilised',
           createdAt: Date.now(),
           payload: {
@@ -454,8 +457,7 @@ async function processCompleteUtterance(
       for (const contradiction of events.newContradictions) {
         const beliefA = cognitiveState.beliefs.get(contradiction.beliefAId);
         const beliefB = cognitiveState.beliefs.get(contradiction.beliefBId);
-        emitWorkshopEvent(workshopId, {
-          id: nanoid(),
+        await persistAndEmit(workshopId, {
           type: 'contradiction.detected',
           createdAt: Date.now(),
           payload: {
@@ -491,17 +493,15 @@ async function processCompleteUtterance(
         await runFacilitationOrchestrator(
           workshopId,
           cognitiveState,
-          (type, payload) => {
-            emitWorkshopEvent(workshopId, {
-              id: nanoid(),
+          async (type, payload) => {
+            await persistAndEmit(workshopId, {
               type,
               createdAt: Date.now(),
               payload,
             });
           },
-          (entry) => {
-            emitWorkshopEvent(workshopId, {
-              id: nanoid(),
+          async (entry) => {
+            await persistAndEmit(workshopId, {
               type: 'agent.conversation',
               createdAt: entry.timestampMs,
               payload: entry,
