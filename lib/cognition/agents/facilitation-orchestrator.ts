@@ -405,9 +405,10 @@ async function executeOrchestratorTool(
           const journeyContext = buildJourneyContextString(guidanceState.journeyCompletionState);
           state.deliberation.journeyGaps = journeyContext;
 
-          // Persist journey completion to outbox — updates journey visualization on the UI
+          // Persist journey completion + live journey data to outbox
           await emitEvent('journey.completion', {
             journeyCompletionState: guidanceState.journeyCompletionState,
+            liveJourney,  // Full actor + interaction data from cogState
           });
 
           const topGaps = assessment.gaps.filter(g => g.priority >= 0.5).slice(0, 3);
