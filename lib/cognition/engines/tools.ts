@@ -137,7 +137,7 @@ export const COGNITIVE_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             type: 'string',
             enum: ['VISIONARY', 'OPPORTUNITY', 'CONSTRAINT', 'RISK', 'ENABLER', 'ACTION', 'QUESTION', 'INSIGHT'],
           },
-          semanticMeaning: { type: 'string', description: 'What the speaker means (1-2 sentences)' },
+          semanticMeaning: { type: 'string', description: 'What the speaker means (1-2 sentences). CRITICAL: Preserve the speaker\'s framing — if they are questioning, hypothesising, warning, or suggesting consideration of something, reflect that in the meaning. Never extract an embedded clause as a standalone assertion. E.g. "we should consider if AI takes control" → "Speaker raises the question of whether AI taking control is acceptable", NOT "AI should take control".' },
           speakerIntent: { type: 'string', description: 'Why they are saying this' },
           temporalFocus: { type: 'string', enum: ['past', 'present', 'future', 'timeless'] },
           sentimentTone: { type: 'string', enum: ['positive', 'neutral', 'concerned', 'critical'] },

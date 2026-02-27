@@ -50,6 +50,16 @@ function bufferKey(workshopId: string, speakerId: string | null): string {
 }
 
 /**
+ * Minimum word count before sentence-boundary flushing is allowed.
+ * CaptureAPI's SLM adds punctuation at speech pauses that don't correspond
+ * to thought completion. Short clauses like "we need to consider." (4 words)
+ * are often followed by a dependent clause ("if you're happy for AI to...").
+ * Requiring ≥10 words prevents premature flush of conditional/introductory
+ * phrases, avoiding dangerous out-of-context fragments.
+ */
+const MIN_SENTENCE_BOUNDARY_WORDS = 10;
+
+/**
  * Check if text ends at a natural sentence boundary
  */
 function endsAtSentenceBoundary(text: string): boolean {
@@ -140,9 +150,11 @@ export function addFragment(
       existing.fragments = [];
     }
 
-    // Check if accumulated text already ends at a sentence boundary
+    // Check if accumulated text already ends at a sentence boundary.
+    // Require MIN_SENTENCE_BOUNDARY_WORDS to avoid flushing short conditional
+    // phrases like "we need to consider." before their dependent clause arrives.
     const accumulatedText = existing.fragments.map((f) => f.text).join(' ');
-    if (endsAtSentenceBoundary(accumulatedText) && accumulatedText.split(/\s+/).length >= 4) {
+    if (endsAtSentenceBoundary(accumulatedText) && accumulatedText.split(/\s+/).length >= MIN_SENTENCE_BOUNDARY_WORDS) {
       results.push(mergeFragments(existing.fragments));
       existing.fragments = [];
     }
@@ -171,7 +183,8 @@ export function addFragment(
     buffer.fragments = [];
   }
   // Flush if: current fragment ends at sentence boundary and we have enough words
-  else if (endsAtSentenceBoundary(combinedText) && wordCount >= 4) {
+  // (MIN_SENTENCE_BOUNDARY_WORDS prevents premature flush of short clauses)
+  else if (endsAtSentenceBoundary(combinedText) && wordCount >= MIN_SENTENCE_BOUNDARY_WORDS) {
     results.push(mergeFragments(buffer.fragments));
     buffer.fragments = [];
   }
