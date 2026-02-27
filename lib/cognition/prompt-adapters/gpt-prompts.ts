@@ -80,6 +80,7 @@ You have tools to query your own cognitive state (beliefs, entities, actors, con
 - Only CONSTRAINT when explicitly blocking/limiting/preventing
 - When uncertain, prefer INSIGHT
 - Reference existing belief IDs when reinforcing/weakening — don't create duplicates
+- CRITICAL — Preserve Speaker Framing: If the speaker is questioning, hypothesising, posing a consideration, or warning about something, your semanticMeaning MUST reflect that framing. Never extract an embedded clause as a standalone assertion. "We need to consider if you're happy for AI to take control" is a QUESTION/CONSIDERATION about AI control, NOT an endorsement of it. Misrepresenting conditional speech as definitive statements is dangerous.
 
 ## Efficiency
 Be efficient. You should typically need 1-2 query rounds before committing. Don't over-query — if the utterance is straightforward, query_beliefs once and commit.`;
