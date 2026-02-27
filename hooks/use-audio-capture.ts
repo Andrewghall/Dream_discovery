@@ -15,6 +15,10 @@ export interface AudioCaptureOptions {
   workshopId: string;
   /** Current dialogue phase — included in ingest POST so the server can tag the DataPoint */
   getDialoguePhase: () => string;
+  /** Called on EVERY progressive transcript update (including partials).
+   *  Enables the page to create/update live hemisphere nodes in real-time
+   *  as CaptureAPI streams growing text. */
+  onTranscriptStream?: (msg: StreamTranscript) => void;
 }
 
 export interface AudioCaptureReturn {
@@ -38,7 +42,7 @@ export interface AudioCaptureReturn {
 }
 
 // ── Hook ─────────────────────────────────────────────────
-export function useAudioCapture({ workshopId, getDialoguePhase }: AudioCaptureOptions): AudioCaptureReturn {
+export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStream }: AudioCaptureOptions): AudioCaptureReturn {
   // ── State ──
   const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [micDevices, setMicDevices] = useState<{ deviceId: string; label: string }[]>([]);
@@ -169,7 +173,12 @@ export function useAudioCapture({ workshopId, getDialoguePhase }: AudioCaptureOp
         onTranscript: async (msg: StreamTranscript) => {
           const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
           if (!text) return;
-          // Only ingest FINAL transcripts
+
+          // Stream ALL updates to the page for live hemisphere positioning
+          // (CaptureAPI sends growing text: "Okay" → "Okay. Let's have a test" → etc.)
+          onTranscriptStream?.(msg);
+
+          // Only ingest FINAL transcripts to backend
           if (msg.isFinal === false) return;
 
           const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : null;

@@ -52,6 +52,7 @@ import type { GuidedTheme, JourneyCompletionState } from '@/lib/cognition/guidan
 import { calculateDeterministicCompletion } from '@/lib/cognition/journey-completion-state';
 import type { WorkshopPhase, FacilitationQuestion, SubQuestion } from '@/lib/cognition/agents/agent-types';
 import { useAudioCapture } from '@/hooks/use-audio-capture';
+import type { StreamTranscript } from '@/lib/captureapi/client';
 import { MicSetupDialog } from '@/components/cognitive-guidance/mic-setup-dialog';
 
 type PageProps = {
@@ -443,9 +444,74 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── Audio capture + mic setup ─────────────────────────
   const dialoguePhaseRef = useRef<DialoguePhase>('REIMAGINE');
+
+  // Live hemisphere nodes — updated in real-time from CaptureAPI token stream.
+  // One "live" node per speaker that updates as words stream in, then removed
+  // when speechFinal fires (permanent node arrives from backend SSE/polling).
+  const liveNodesBySpeaker = useRef<Map<string, string>>(new Map()); // speakerId → liveId
+
+  const handleTranscriptStream = useCallback((msg: StreamTranscript) => {
+    const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
+    if (!text) return;
+    const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : 'speaker_0';
+    const liveId = `live:${speakerId}`;
+
+    if (msg.speechFinal) {
+      // Utterance complete — remove live node.
+      // The permanent node will arrive via datapoint.created SSE from the backend POST.
+      liveNodesBySpeaker.current.delete(speakerId);
+      setHemisphereNodes(prev => {
+        if (!prev[liveId]) return prev;
+        const next = { ...prev };
+        delete next[liveId];
+        return next;
+      });
+      return;
+    }
+
+    // Only show on hemisphere if 4+ words (filter noise fragments)
+    const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+    if (wordCount < 4) return;
+
+    // Run keyword inference on the growing text
+    const kwLensResults = text.length >= 3 ? inferKeywordLenses(text) : [];
+    const kwDomains = kwLensResults.map(kw => ({
+      domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
+      relevance: Math.min(0.95, kw.relevance + 0.4),
+      reasoning: kw.evidence,
+    })).filter(d => !!d.domain);
+
+    const hNode: HemisphereNodeDatum = {
+      dataPointId: liveId,
+      createdAtMs: Date.now(),
+      rawText: text,
+      dataPointSource: 'SPEECH',
+      speakerId,
+      dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(
+        dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH'
+      )
+        ? (dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
+        : null,
+      transcriptChunk: null,
+      classification: null,
+      agenticAnalysis: kwDomains.length > 0 ? {
+        domains: kwDomains,
+        themes: [],
+        actors: [],
+        semanticMeaning: '',
+        sentimentTone: 'neutral',
+        overallConfidence: 0.5,
+      } : null,
+    };
+
+    liveNodesBySpeaker.current.set(speakerId, liveId);
+    setHemisphereNodes(prev => ({ ...prev, [liveId]: hNode }));
+  }, []);
+
   const audio = useAudioCapture({
     workshopId,
     getDialoguePhase: () => dialoguePhaseRef.current,
+    onTranscriptStream: handleTranscriptStream,
   });
   const [micDialogOpen, setMicDialogOpen] = useState(false);
 
@@ -1312,6 +1378,102 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       try { esRef.current?.close(); } catch { /* ignore */ }
     };
   }, []);
+
+  // ── Poll for agentic analyses from DB (journey map data source) ──
+  // The GPT-4o-mini cognitive engine writes results to the database, but
+  // the in-memory SSE doesn't reliably deliver them on Vercel serverless.
+  // Poll every 5s to pick up new analyses and feed buildLiveJourney().
+  const lastAnalysisPollRef = useRef<string>(new Date().toISOString());
+
+  useEffect(() => {
+    if (!listening) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/workshops/${encodeURIComponent(workshopId)}/agentic-analyses?since=${encodeURIComponent(lastAnalysisPollRef.current)}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const analyses = data.analyses as Array<{
+          dataPointId: string;
+          domains: Array<{ domain: string; relevance: number; reasoning: string }>;
+          themes: Array<{ label: string; category: string; confidence: number; reasoning: string }>;
+          actors: Array<{ name: string; role: string; interactions: Array<{ withActor: string; action: string; context: string; sentiment: string }> }> | null;
+          semanticMeaning: string;
+          sentimentTone: string;
+          overallConfidence: number;
+          createdAt: string;
+        }>;
+
+        if (!analyses || analyses.length === 0) return;
+        console.log(`[Poll] Found ${analyses.length} new agentic analyses`);
+        lastAnalysisPollRef.current = new Date().toISOString();
+
+        for (const analysis of analyses) {
+          // Update CogNode with sourceAgenticAnalysis (same as agentic.analyzed SSE handler)
+          const mappedAnalysis = {
+            domains: analysis.domains || [],
+            themes: analysis.themes || [],
+            actors: analysis.actors || [],
+            semanticMeaning: analysis.semanticMeaning || '',
+            sentimentTone: analysis.sentimentTone || 'neutral',
+            overallConfidence: analysis.overallConfidence || 0.5,
+          };
+
+          setCogNodes(prev => {
+            const existing = prev.get(analysis.dataPointId);
+            if (!existing) return prev;
+            const updated = applyLensMapping(existing, mappedAnalysis);
+            const next = new Map(prev);
+            next.set(analysis.dataPointId, updated);
+            return next;
+          });
+
+          // Enrich hemisphere node with cognitive engine domains
+          setHemisphereNodes(prev => {
+            const existing = prev[analysis.dataPointId];
+            if (!existing) return prev;
+
+            const enrichedDomains = [...(analysis.domains || [])];
+            // Also merge keyword-inferred domains
+            if (existing.rawText && existing.rawText.length >= 3) {
+              const kwLenses = inferKeywordLenses(existing.rawText);
+              const existingDomainSet = new Set(enrichedDomains.map(d => d.domain));
+              for (const kw of kwLenses) {
+                const domain = LENS_TO_DOMAIN[kw.lens];
+                if (domain && !existingDomainSet.has(domain)) {
+                  enrichedDomains.push({ domain, relevance: kw.relevance + 0.4, reasoning: kw.evidence });
+                }
+              }
+            }
+
+            return {
+              ...prev,
+              [analysis.dataPointId]: {
+                ...existing,
+                agenticAnalysis: {
+                  domains: enrichedDomains,
+                  themes: analysis.themes || [],
+                  actors: analysis.actors || [],
+                  semanticMeaning: analysis.semanticMeaning || '',
+                  sentimentTone: analysis.sentimentTone || 'neutral',
+                  overallConfidence: analysis.overallConfidence || 0.5,
+                },
+              },
+            };
+          });
+        }
+      } catch {
+        // Polling errors are non-fatal
+      }
+    };
+
+    const interval = setInterval(poll, 5000);
+    // Run immediately on first listen
+    poll();
+    return () => clearInterval(interval);
+  }, [listening, workshopId]);
 
   // Use demo nodes only for retail workshop; otherwise real nodes or empty
   const hemisphereNodeArray = useMemo(() => {

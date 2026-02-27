@@ -239,9 +239,23 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       const microJitter = (hash01(`theme:${n.dataPointId}`) - 0.5) * 10;
       const rawX = attractor ? lerp(baseX, attractor.x, pull) + microJitter : baseX;
       const rawY = attractor ? lerp(baseY, attractor.y, pull) + microJitter : baseY;
-      // Clamp to SVG viewport bounds
-      const x = Math.max(pad, Math.min(W - pad, rawX));
-      const y = Math.max(pad, Math.min(H - pad, rawY));
+      // Clamp to semicircle boundary (not just rectangular viewport)
+      let x = rawX;
+      let y = rawY;
+      // Ensure dot is above the baseline (in the hemisphere, not below)
+      y = Math.min(y, cy);
+      // Radial clamp — dot must not exceed hemisphere radius from center
+      const dx = x - cx;
+      const dy = cy - y; // y increases downward, hemisphere extends upward
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > R - 4) { // 4px margin inside the arc
+        const scale = (R - 4) / dist;
+        x = cx + dx * scale;
+        y = cy - dy * scale;
+      }
+      // Final rectangular safety clamp
+      x = Math.max(pad, Math.min(W - pad, x));
+      y = Math.max(pad, Math.min(H - pad, y));
 
       const fill = clsType ? primaryColor(clsType) : n.intent ? intentColor(n.intent) : primaryColor(null);
       const stroke = 'rgba(15,23,42,0.22)';
@@ -371,6 +385,15 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   return (
     <div ref={containerRef} className={className} style={{ position: 'relative' }}>
       <svg viewBox={`0 0 ${backdrop.W} ${backdrop.H}`} className="w-full h-full">
+        <defs>
+          <style>{`
+            @keyframes hemispherePulse {
+              0%, 100% { opacity: 0.85; r: 8; }
+              50% { opacity: 0.5; r: 12; }
+            }
+            .hemisphere-live-dot { animation: hemispherePulse 1.5s ease-in-out infinite; }
+          `}</style>
+        </defs>
         <path d={backdrop.arc} fill="none" stroke="rgba(148,163,184,0.6)" strokeWidth={2} />
         {backdrop.rings.map((d) => (
           <path key={d} d={d} fill="none" stroke="rgba(148,163,184,0.25)" strokeWidth={1} />
@@ -511,21 +534,24 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
             ))
           : null}
 
-        {positioned.map((n) => (
+        {positioned.map((n) => {
+          const isLive = n.dataPointId.startsWith('live:');
+          return (
           <circle
             key={n.dataPointId}
             cx={n.x}
             cy={n.y}
-            r={n.r}
+            r={isLive ? 8 : n.r}
             fill={n.fill}
-            stroke={n.stroke}
-            strokeWidth={1}
+            stroke={isLive ? 'rgba(59,130,246,0.7)' : n.stroke}
+            strokeWidth={isLive ? 2 : 1}
+            opacity={isLive ? 0.85 : 1}
             onMouseEnter={(e) => {
               const rect = containerRef.current?.getBoundingClientRect();
               if (!rect) return;
               tooltipPosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
               scheduleTooltipPositionUpdate();
-              setTooltip({ label: n.label, conf: n.conf });
+              setTooltip({ label: isLive ? 'STREAMING...' : n.label, conf: n.conf });
             }}
             onMouseMove={(e) => {
               const rect = containerRef.current?.getBoundingClientRect();
@@ -534,10 +560,12 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
               scheduleTooltipPositionUpdate();
             }}
             onMouseLeave={() => setTooltip(null)}
-            onClick={() => onNodeClick?.(n)}
-            style={{ cursor: 'pointer' }}
+            onClick={() => !isLive && onNodeClick?.(n)}
+            className={isLive ? 'hemisphere-live-dot' : undefined}
+            style={{ cursor: isLive ? 'default' : 'pointer', transition: 'cx 0.3s ease, cy 0.3s ease' }}
           />
-        ))}
+          );
+        })}
       </svg>
 
       {tooltip ? (
