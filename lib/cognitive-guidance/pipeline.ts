@@ -1067,6 +1067,54 @@ export function buildLiveJourney(
 }
 
 // ══════════════════════════════════════════════════════════
+// STAGE 5C — MERGE BACKEND JOURNEY DATA
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Merge journey data sent from the backend orchestrator (via journey.completion event)
+ * into the frontend's existing liveJourney state.
+ * Backend actors/interactions come from cogState.actors (accumulated across utterances).
+ * Deduplicates by actor name (case-insensitive) and interaction id.
+ */
+export function mergeBackendJourney(
+  existing: LiveJourneyData,
+  backend: LiveJourneyData,
+): LiveJourneyData {
+  const stages = existing.stages.length > 0 ? existing.stages : backend.stages;
+  const actorsMap = new Map<string, LiveJourneyActor>();
+
+  // Preserve existing actors
+  for (const a of existing.actors) {
+    actorsMap.set(a.name.toLowerCase(), { ...a });
+  }
+
+  // Merge backend actors — update mention counts if higher
+  for (const a of backend.actors) {
+    const key = a.name.toLowerCase();
+    const ex = actorsMap.get(key);
+    if (ex) {
+      actorsMap.set(key, {
+        ...ex,
+        mentionCount: Math.max(ex.mentionCount, a.mentionCount),
+        role: a.role || ex.role,
+      });
+    } else {
+      actorsMap.set(key, { ...a });
+    }
+  }
+
+  // Merge interactions — dedup by id
+  const existingIds = new Set(existing.interactions.map(i => i.id));
+  const newInteractions = backend.interactions.filter(i => !existingIds.has(i.id));
+
+  return {
+    stages,
+    actors: Array.from(actorsMap.values()),
+    interactions: [...existing.interactions, ...newInteractions],
+  };
+}
+
+// ══════════════════════════════════════════════════════════
 // SESSION CONFIDENCE
 // ══════════════════════════════════════════════════════════
 

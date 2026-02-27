@@ -36,6 +36,7 @@ import {
   buildLiveJourney,
   calculateSessionConfidence,
   calculateQuestionCoverage,
+  mergeBackendJourney,
 } from '@/lib/cognitive-guidance/pipeline';
 
 import { StickyPadCanvas } from '@/components/cognitive-guidance/sticky-pad-canvas';
@@ -986,9 +987,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       // Generate new signal pads
       const withSignals = generateStickyPads(detectedSignals, prev, nowMs, dialoguePhase);
 
-      // Calculate coverage for prep-sourced pads
+      // Calculate coverage for all sub-pads (prep, agent, signal — not seeds)
       return withSignals.map((pad) => {
-        if (pad.source !== 'prep' || !pad.questionId) return pad;
+        if (!pad.prompt || pad.source === 'seed') return pad;
         const newCoverage = calculateQuestionCoverage(pad, nodesArr);
         return { ...pad, coveragePercent: Math.max(pad.coveragePercent, newCoverage) };
       });
@@ -1348,9 +1349,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     es.addEventListener('journey.completion', (e) => {
       try {
         const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        const payload = evt.payload as { journeyCompletionState: JourneyCompletionState };
+        const payload = evt.payload as { journeyCompletionState: JourneyCompletionState; liveJourney?: LiveJourneyData };
         if (payload?.journeyCompletionState) {
           setJourneyCompletionState(payload.journeyCompletionState);
+        }
+        if (payload?.liveJourney) {
+          setLiveJourney(prev => mergeBackendJourney(prev, payload.liveJourney!));
         }
       } catch { /* ignore */ }
     });
@@ -1626,6 +1630,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           case 'journey.completion': {
             if (payload?.journeyCompletionState) {
               setJourneyCompletionState(payload.journeyCompletionState);
+            }
+            if (payload?.liveJourney) {
+              setLiveJourney(prev => mergeBackendJourney(prev, payload.liveJourney));
             }
             break;
           }
