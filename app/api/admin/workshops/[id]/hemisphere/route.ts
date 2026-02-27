@@ -285,7 +285,20 @@ export async function GET(
     }
     const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
     if (!access.valid) {
-      return NextResponse.json({ error: access.error }, { status: 403 });
+      // Enrich 403 so the frontend can show a helpful workshop picker
+      let workshopOrgName: string | null = null;
+      try {
+        const ws = await prisma.workshop.findUnique({
+          where: { id: workshopId },
+          select: { organizationId: true, organization: { select: { name: true } } },
+        });
+        workshopOrgName = ws?.organization?.name || null;
+      } catch { /* ignore */ }
+      return NextResponse.json({
+        error: access.error,
+        workshopOrgName,
+        userOrgId: user.organizationId,
+      }, { status: 403 });
     }
     const source = request.nextUrl.searchParams.get('source');
     const snapshotIdParam = request.nextUrl.searchParams.get('snapshotId');

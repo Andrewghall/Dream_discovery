@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -730,13 +730,27 @@ function ActorJourneyPanel({ workshopId, snapshotId }: { workshopId: string; sna
 
 /* ─────────────────────────── Main Page Component ─────────────────────────── */
 
+type AccessibleWorkshop = {
+  id: string;
+  name: string;
+  status: string;
+  scheduledDate: string | null;
+  snapshotCount: number;
+};
+
 export default function WorkshopHemispherePage({ params }: PageProps) {
   const { id: workshopId } = use(params);
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [runType, setRunType] = useState<'BASELINE' | 'FOLLOWUP'>('BASELINE');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<HemisphereResponse | null>(null);
+
+  // Access denial state — when 403, show workshop picker instead of error
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [accessDeniedOrgName, setAccessDeniedOrgName] = useState<string | null>(null);
+  const [accessibleWorkshops, setAccessibleWorkshops] = useState<AccessibleWorkshop[]>([]);
 
   // Snapshot management
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -822,12 +836,26 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
           url = `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?runType=${encodeURIComponent(runType)}&bust=${Date.now()}`;
         }
         const r = await fetch(url, { cache: 'no-store' });
-        const json = (await r.json().catch(() => null)) as HemisphereResponse | null;
+        const json = (await r.json().catch(() => null)) as (HemisphereResponse & { workshopOrgName?: string }) | null;
         if (!r.ok || !json || !json.ok) {
+          // On 403, fetch accessible workshops and show picker instead of error
+          if (r.status === 403) {
+            setAccessDenied(true);
+            setAccessDeniedOrgName(json?.workshopOrgName || null);
+            try {
+              const wRes = await fetch('/api/admin/workshops?limit=100', { cache: 'no-store' });
+              const wJson = await wRes.json().catch(() => null);
+              if (wJson?.workshops) {
+                setAccessibleWorkshops(wJson.workshops as AccessibleWorkshop[]);
+              }
+            } catch { /* ignore */ }
+            return;
+          }
           setData(null);
           setError(json && typeof json.error === 'string' ? json.error : 'Failed to load hemisphere');
           return;
         }
+        setAccessDenied(false);
         setData(json);
       } catch (e) {
         setData(null);
@@ -1387,6 +1415,81 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   }, [visibleNodes, visibleEdges, positions, activeNodeSet, activeEdgeSet, clusterCenters, zoomClusterId, graph?.coreTruthNodeId, hoveredNodeId, nodeById, clusterByNodeId, nodeSizeScale]);
 
   /* ─── Render ─── */
+  // ── Access Denied: Show accessible workshop picker ──
+  if (accessDenied) {
+    const workshopsWithSnapshots = accessibleWorkshops.filter(w => w.snapshotCount > 0);
+    const workshopsWithoutSnapshots = accessibleWorkshops.filter(w => w.snapshotCount === 0);
+    return (
+      <div className="fixed inset-0 bg-black flex flex-col">
+        <div className="flex items-center border-b border-white/10 bg-black/80 px-4 py-2.5 flex-shrink-0">
+          <Link href="/admin">
+            <Button variant="ghost" size="sm" className="text-slate-200 hover:text-white hover:bg-white/10">
+              ← Dashboard
+            </Button>
+          </Link>
+          <h1 className="ml-4 text-sm font-medium text-white">Hemisphere</h1>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="max-w-lg w-full mx-4">
+            <div className="rounded-xl border border-white/10 bg-[#0f172a] p-8">
+              <h2 className="text-xl font-semibold text-white mb-2">Select a Workshop</h2>
+              <p className="text-sm text-slate-400 mb-1">
+                {accessDeniedOrgName
+                  ? `This workshop belongs to "${accessDeniedOrgName}" — you don't have access to it.`
+                  : "You don't have access to this workshop."}
+              </p>
+              <p className="text-sm text-slate-500 mb-6">Choose one of your accessible workshops below:</p>
+
+              {accessibleWorkshops.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-slate-400 text-sm">No workshops available.</p>
+                  <p className="text-slate-500 text-xs mt-1">Create a workshop from the dashboard to get started.</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-auto">
+                  {workshopsWithSnapshots.map(w => (
+                    <button
+                      key={w.id}
+                      onClick={() => router.push(`/admin/workshops/${encodeURIComponent(w.id)}/hemisphere`)}
+                      className="w-full rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-3 text-left transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-white">{w.name}</span>
+                        <span className="text-[10px] text-emerald-400 bg-emerald-500/10 rounded-full px-2 py-0.5">
+                          {w.snapshotCount} snapshot{w.snapshotCount !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      {w.scheduledDate && (
+                        <div className="text-[11px] text-slate-500 mt-1">
+                          {new Date(w.scheduledDate).toLocaleDateString()}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                  {workshopsWithoutSnapshots.length > 0 && workshopsWithSnapshots.length > 0 && (
+                    <div className="text-[10px] text-slate-600 uppercase tracking-wider px-2 pt-3 pb-1">Other workshops (no hemisphere data yet)</div>
+                  )}
+                  {workshopsWithoutSnapshots.map(w => (
+                    <button
+                      key={w.id}
+                      onClick={() => router.push(`/admin/workshops/${encodeURIComponent(w.id)}/hemisphere`)}
+                      className="w-full rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/5 px-4 py-3 text-left transition-colors opacity-60"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-400">{w.name}</span>
+                        <span className="text-[10px] text-slate-600">No snapshots</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black flex flex-col">
       {/* ─── Header ─── */}
