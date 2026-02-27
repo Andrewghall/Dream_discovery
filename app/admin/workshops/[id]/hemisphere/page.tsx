@@ -1607,6 +1607,15 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
               </div>
             )}
 
+            {/* Snapshot info banner — confirms what data the user is viewing */}
+            {!loading && !error && selectedSnapshotId && data?.snapshotName && (
+              <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2">
+                <div className="rounded-md px-3 py-1.5 text-xs bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+                  Viewing: {data.snapshotName} · {nodes.length} node{nodes.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            )}
+
             {/* Zoom reset */}
             {zoomClusterId && (
               <div className="pointer-events-auto absolute left-3 top-3">

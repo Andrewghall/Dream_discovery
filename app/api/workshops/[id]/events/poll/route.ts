@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 /**
  * GET /api/workshops/[id]/events/poll?after=<ISO>&types=pad.generated,agent.conversation&limit=100
@@ -17,6 +19,17 @@ export async function GET(
 ) {
   try {
     const { id: workshopId } = await params;
+
+    // ── Auth: prevent unauthenticated access to workshop events ──
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
+    if (!access.valid) {
+      return NextResponse.json({ error: access.error }, { status: 403 });
+    }
+
     const after = request.nextUrl.searchParams.get('after') || new Date(0).toISOString();
     const typesParam = request.nextUrl.searchParams.get('types') || '';
     const limit = Math.min(200, parseInt(request.nextUrl.searchParams.get('limit') || '100', 10));
