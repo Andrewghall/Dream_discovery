@@ -135,6 +135,7 @@ model Workshop {
   prepResearch      Json?                 @map("prep_research")        // Research Agent output
   customQuestions   Json?                 @map("custom_questions")     // Tailored question set (editable)
   discoveryBriefing Json?                 @map("discovery_briefing")   // Discovery Intelligence Agent synthesis
+  discoverAnalysis  Json?                 @map("discover_analysis")    // Organisational Analysis dashboard data
 
   insights          ConversationInsight[]
   sessions          ConversationSession[]

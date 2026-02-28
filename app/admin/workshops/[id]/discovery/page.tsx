@@ -1,9 +1,16 @@
 'use client';
 
-import React, { use, useEffect, useMemo, useState } from 'react';
+import React, { use, useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Users, BookOpen, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, TrendingUp, Layers, Loader2, RefreshCw } from 'lucide-react';
+import { AlignmentHeatmap } from '@/components/discover-analysis/alignment-heatmap';
+import { TensionSurface } from '@/components/discover-analysis/tension-surface';
+import { NarrativeDivergence } from '@/components/discover-analysis/narrative-divergence';
+import { ConstraintMap } from '@/components/discover-analysis/constraint-map';
+import { ConfidenceIndex } from '@/components/discover-analysis/confidence-index';
+import { GptInquiryBar } from '@/components/discover-analysis/gpt-inquiry-bar';
+import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 
 // ══════════════════════════════════════════════════════════
 // CONSTANTS
@@ -141,6 +148,257 @@ const DEMO_SUMMARY: WorkshopSummary = {
 const DEMO_PARTICIPANT_COUNT = 12;
 
 // ══════════════════════════════════════════════════════════
+// DEMO DATA — Discover Analysis (organisational truth engine)
+// ══════════════════════════════════════════════════════════
+
+const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
+  workshopId: RETAIL_WORKSHOP_ID,
+  generatedAt: new Date().toISOString(),
+  participantCount: 12,
+  alignment: {
+    themes: ['Customer Experience', 'Personalisation', 'Omnichannel', 'Workforce Readiness', 'Data Strategy', 'Legacy Systems', 'Compliance', 'AI Adoption'],
+    actors: ['Customer', 'Store Staff', 'Leadership', 'Technology', 'Operations', 'Marketing', 'Regulation'],
+    cells: [
+      { theme: 'Customer Experience', actor: 'Customer', alignmentScore: 0.82, sentimentBalance: { positive: 8, negative: 1, neutral: 2 }, utteranceCount: 11, sampleQuotes: ['Customers expect seamless transitions', 'Biggest pain is inconsistent pricing'] },
+      { theme: 'Customer Experience', actor: 'Store Staff', alignmentScore: 0.45, sentimentBalance: { positive: 4, negative: 3, neutral: 2 }, utteranceCount: 9, sampleQuotes: ['We want to help but systems slow us down'] },
+      { theme: 'Customer Experience', actor: 'Leadership', alignmentScore: 0.71, sentimentBalance: { positive: 6, negative: 1, neutral: 3 }, utteranceCount: 10, sampleQuotes: ['CX is our number one priority'] },
+      { theme: 'Personalisation', actor: 'Customer', alignmentScore: 0.65, sentimentBalance: { positive: 5, negative: 2, neutral: 1 }, utteranceCount: 8, sampleQuotes: ['Want recognition that transcends transactions'] },
+      { theme: 'Personalisation', actor: 'Marketing', alignmentScore: 0.78, sentimentBalance: { positive: 7, negative: 1, neutral: 2 }, utteranceCount: 10, sampleQuotes: ['Predictive engagement is the future'] },
+      { theme: 'Personalisation', actor: 'Technology', alignmentScore: 0.35, sentimentBalance: { positive: 3, negative: 3, neutral: 2 }, utteranceCount: 8, sampleQuotes: ['Current data infrastructure cannot support it'] },
+      { theme: 'Omnichannel', actor: 'Operations', alignmentScore: -0.22, sentimentBalance: { positive: 2, negative: 5, neutral: 3 }, utteranceCount: 10, sampleQuotes: ['Channel silos create competing priorities'] },
+      { theme: 'Omnichannel', actor: 'Store Staff', alignmentScore: -0.35, sentimentBalance: { positive: 1, negative: 4, neutral: 1 }, utteranceCount: 6, sampleQuotes: ['No visibility on online stock'] },
+      { theme: 'Omnichannel', actor: 'Leadership', alignmentScore: 0.55, sentimentBalance: { positive: 5, negative: 2, neutral: 2 }, utteranceCount: 9, sampleQuotes: ['We need cross-functional squads'] },
+      { theme: 'Workforce Readiness', actor: 'Store Staff', alignmentScore: -0.48, sentimentBalance: { positive: 1, negative: 5, neutral: 1 }, utteranceCount: 7, sampleQuotes: ['Technology imposed rather than co-designed'] },
+      { theme: 'Workforce Readiness', actor: 'Leadership', alignmentScore: 0.62, sentimentBalance: { positive: 5, negative: 1, neutral: 2 }, utteranceCount: 8, sampleQuotes: ['Phased adoption is key'] },
+      { theme: 'Workforce Readiness', actor: 'Operations', alignmentScore: 0.15, sentimentBalance: { positive: 3, negative: 2, neutral: 3 }, utteranceCount: 8, sampleQuotes: ['Middle management needs most support'] },
+      { theme: 'Data Strategy', actor: 'Technology', alignmentScore: 0.72, sentimentBalance: { positive: 6, negative: 1, neutral: 1 }, utteranceCount: 8, sampleQuotes: ['Unified customer data platform is the foundation'] },
+      { theme: 'Data Strategy', actor: 'Marketing', alignmentScore: 0.55, sentimentBalance: { positive: 4, negative: 1, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['We need real-time customer insight'] },
+      { theme: 'Data Strategy', actor: 'Regulation', alignmentScore: -0.40, sentimentBalance: { positive: 1, negative: 4, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['GDPR compliance gaps in marketing automation'] },
+      { theme: 'Legacy Systems', actor: 'Technology', alignmentScore: -0.65, sentimentBalance: { positive: 0, negative: 6, neutral: 1 }, utteranceCount: 7, sampleQuotes: ['Legacy POS, separate e-commerce, disconnected CRM'] },
+      { theme: 'Legacy Systems', actor: 'Store Staff', alignmentScore: -0.55, sentimentBalance: { positive: 0, negative: 4, neutral: 1 }, utteranceCount: 5, sampleQuotes: ['Systems slow everything down'] },
+      { theme: 'Legacy Systems', actor: 'Operations', alignmentScore: -0.30, sentimentBalance: { positive: 1, negative: 3, neutral: 2 }, utteranceCount: 6, sampleQuotes: ['Integration is the biggest barrier'] },
+      { theme: 'Compliance', actor: 'Regulation', alignmentScore: 0.80, sentimentBalance: { positive: 5, negative: 0, neutral: 1 }, utteranceCount: 6, sampleQuotes: ['Privacy-by-design from day one'] },
+      { theme: 'Compliance', actor: 'Leadership', alignmentScore: 0.30, sentimentBalance: { positive: 3, negative: 2, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['Must not slow us down'] },
+      { theme: 'AI Adoption', actor: 'Technology', alignmentScore: 0.68, sentimentBalance: { positive: 5, negative: 1, neutral: 1 }, utteranceCount: 7, sampleQuotes: ['Start with demand forecasting, lower risk'] },
+      { theme: 'AI Adoption', actor: 'Store Staff', alignmentScore: 0.25, sentimentBalance: { positive: 3, negative: 2, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['Open to AI tools that remove admin burden'] },
+      { theme: 'AI Adoption', actor: 'Leadership', alignmentScore: 0.58, sentimentBalance: { positive: 4, negative: 1, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['Phased approach maintains workforce confidence'] },
+    ],
+  },
+  tensions: {
+    tensions: [
+      {
+        id: 'tension-1',
+        topic: 'Speed of AI adoption vs workforce readiness',
+        rank: 1,
+        severity: 'critical',
+        viewpoints: [
+          { actor: 'Leadership', position: 'Need to accelerate AI to stay competitive', sentiment: 'positive', evidenceQuote: 'We cannot afford to wait while competitors automate' },
+          { actor: 'Store Staff', position: 'Feel technology is imposed without co-design', sentiment: 'negative', evidenceQuote: 'Nobody asked us what tools we actually need' },
+          { actor: 'Operations', position: 'Middle management lacks skills to bridge the gap', sentiment: 'neutral', evidenceQuote: 'Training programmes are not keeping pace with rollouts' },
+        ],
+        affectedActors: ['Store Staff', 'Leadership', 'Operations', 'Customer'],
+        relatedConstraints: ['constraint-1', 'constraint-3'],
+        domain: 'People',
+      },
+      {
+        id: 'tension-2',
+        topic: 'Data-driven personalisation vs privacy compliance',
+        rank: 2,
+        severity: 'critical',
+        viewpoints: [
+          { actor: 'Marketing', position: 'Predictive engagement requires deep customer data', sentiment: 'positive', evidenceQuote: 'We need to move from segments to individual profiles' },
+          { actor: 'Regulation', position: 'Current data practices have GDPR compliance gaps', sentiment: 'negative', evidenceQuote: 'Opt-in mechanisms are not transparent enough' },
+          { actor: 'Customer', position: 'Want personalisation but expect transparent data use', sentiment: 'mixed', evidenceQuote: 'I want relevant offers but not to feel surveilled' },
+        ],
+        affectedActors: ['Customer', 'Marketing', 'Regulation', 'Technology'],
+        relatedConstraints: ['constraint-2', 'constraint-5'],
+        domain: 'Customer',
+      },
+      {
+        id: 'tension-3',
+        topic: 'Channel-centric structure vs omnichannel aspiration',
+        rank: 3,
+        severity: 'significant',
+        viewpoints: [
+          { actor: 'Leadership', position: 'Advocate cross-functional journey squads', sentiment: 'positive', evidenceQuote: 'We need to organise around customer journeys not channels' },
+          { actor: 'Operations', position: 'Channel silos create competing priorities and metrics', sentiment: 'negative', evidenceQuote: 'Online and stores still fight over the same customers' },
+          { actor: 'Store Staff', position: 'No visibility on online stock or customer history', sentiment: 'negative', evidenceQuote: 'Customer walks in expecting us to know their online basket' },
+        ],
+        affectedActors: ['Operations', 'Store Staff', 'Customer', 'Leadership'],
+        relatedConstraints: ['constraint-4', 'constraint-6'],
+        domain: 'Organisation',
+      },
+      {
+        id: 'tension-4',
+        topic: 'Decision-making speed vs governance layers',
+        rank: 4,
+        severity: 'significant',
+        viewpoints: [
+          { actor: 'Operations', position: 'Too many approval layers delay market responsiveness', sentiment: 'negative', evidenceQuote: 'By the time we get sign-off, the opportunity has passed' },
+          { actor: 'Leadership', position: 'Governance protects from costly mistakes', sentiment: 'neutral', evidenceQuote: 'We have accountability structures for a reason' },
+        ],
+        affectedActors: ['Operations', 'Leadership', 'Marketing'],
+        relatedConstraints: ['constraint-6'],
+        domain: 'Organisation',
+      },
+      {
+        id: 'tension-5',
+        topic: 'Investment in technology modernisation vs budget constraints',
+        rank: 5,
+        severity: 'moderate',
+        viewpoints: [
+          { actor: 'Technology', position: 'Composable architecture is the only viable path', sentiment: 'positive', evidenceQuote: 'We must replace legacy POS and build a unified platform' },
+          { actor: 'Leadership', position: 'Significant capital required with uncertain ROI timeline', sentiment: 'mixed', evidenceQuote: 'The board needs to see returns within 18 months' },
+        ],
+        affectedActors: ['Technology', 'Leadership', 'Operations'],
+        relatedConstraints: ['constraint-1', 'constraint-4'],
+        domain: 'Technology',
+      },
+    ],
+  },
+  narrative: {
+    layerAssignments: [
+      { participantId: 'p1', name: 'Sarah Chen', role: 'Chief Customer Officer', department: 'Executive', layer: 'executive', confidence: 0.95, aiReason: 'C-suite role with strategic authority', isOverridden: false },
+      { participantId: 'p2', name: 'James Wright', role: 'VP Technology', department: 'IT', layer: 'executive', confidence: 0.92, aiReason: 'VP-level technology leadership', isOverridden: false },
+      { participantId: 'p3', name: 'Maria Lopez', role: 'Head of Stores', department: 'Retail Operations', layer: 'executive', confidence: 0.88, aiReason: 'Head of department with strategic scope', isOverridden: false },
+      { participantId: 'p4', name: 'David Kim', role: 'Operations Manager', department: 'Supply Chain', layer: 'operational', confidence: 0.90, aiReason: 'Manager-level operational role', isOverridden: false },
+      { participantId: 'p5', name: 'Emma Taylor', role: 'Marketing Lead', department: 'Marketing', layer: 'operational', confidence: 0.85, aiReason: 'Team lead in marketing function', isOverridden: false },
+      { participantId: 'p6', name: 'Tom Richards', role: 'Digital Analyst', department: 'E-commerce', layer: 'operational', confidence: 0.82, aiReason: 'Analyst role in digital function', isOverridden: false },
+      { participantId: 'p7', name: 'Lisa Patel', role: 'Compliance Coordinator', department: 'Legal', layer: 'operational', confidence: 0.80, aiReason: 'Coordinator role in compliance', isOverridden: false },
+      { participantId: 'p8', name: 'Ryan O\'Brien', role: 'Store Team Leader', department: 'Retail', layer: 'frontline', confidence: 0.88, aiReason: 'Team leader in store operations', isOverridden: false },
+      { participantId: 'p9', name: 'Amy Zhang', role: 'Customer Service Rep', department: 'Contact Centre', layer: 'frontline', confidence: 0.95, aiReason: 'Frontline customer-facing role', isOverridden: false },
+      { participantId: 'p10', name: 'Chris Murphy', role: 'Stock Associate', department: 'Warehouse', layer: 'frontline', confidence: 0.92, aiReason: 'Operational execution role', isOverridden: false },
+      { participantId: 'p11', name: 'Priya Sharma', role: 'Visual Merchandiser', department: 'Retail', layer: 'frontline', confidence: 0.85, aiReason: 'Execution-focused retail role', isOverridden: false },
+      { participantId: 'p12', name: 'Alex Turner', role: 'Delivery Driver', department: 'Logistics', layer: 'frontline', confidence: 0.95, aiReason: 'Frontline delivery role', isOverridden: false },
+    ],
+    layers: [
+      {
+        layer: 'executive',
+        participantCount: 3,
+        topTerms: [
+          { term: 'transformation', count: 18, normalised: 1.0 },
+          { term: 'personalisation', count: 15, normalised: 0.83 },
+          { term: 'competitive', count: 12, normalised: 0.67 },
+          { term: 'strategy', count: 11, normalised: 0.61 },
+          { term: 'investment', count: 10, normalised: 0.56 },
+          { term: 'platform', count: 9, normalised: 0.50 },
+          { term: 'governance', count: 8, normalised: 0.44 },
+          { term: 'capability', count: 7, normalised: 0.39 },
+        ],
+        dominantSentiment: 'positive',
+        temporalFocus: { past: 0.10, present: 0.30, future: 0.60 },
+        samplePhrases: ['We need to transform the entire customer journey', 'Competitive pressure demands acceleration'],
+      },
+      {
+        layer: 'operational',
+        participantCount: 4,
+        topTerms: [
+          { term: 'process', count: 16, normalised: 1.0 },
+          { term: 'integration', count: 14, normalised: 0.88 },
+          { term: 'compliance', count: 12, normalised: 0.75 },
+          { term: 'workflow', count: 10, normalised: 0.63 },
+          { term: 'data', count: 9, normalised: 0.56 },
+          { term: 'coordination', count: 8, normalised: 0.50 },
+          { term: 'bottleneck', count: 7, normalised: 0.44 },
+          { term: 'approval', count: 6, normalised: 0.38 },
+        ],
+        dominantSentiment: 'neutral',
+        temporalFocus: { past: 0.25, present: 0.50, future: 0.25 },
+        samplePhrases: ['Integration between systems is the biggest barrier', 'Approval layers delay everything'],
+      },
+      {
+        layer: 'frontline',
+        participantCount: 5,
+        topTerms: [
+          { term: 'customer', count: 22, normalised: 1.0 },
+          { term: 'frustration', count: 14, normalised: 0.64 },
+          { term: 'workload', count: 12, normalised: 0.55 },
+          { term: 'systems', count: 11, normalised: 0.50 },
+          { term: 'training', count: 9, normalised: 0.41 },
+          { term: 'pressure', count: 8, normalised: 0.36 },
+          { term: 'support', count: 7, normalised: 0.32 },
+          { term: 'recognition', count: 6, normalised: 0.27 },
+        ],
+        dominantSentiment: 'negative',
+        temporalFocus: { past: 0.35, present: 0.50, future: 0.15 },
+        samplePhrases: ['Systems slow us down every day', 'Nobody asked us what tools we need'],
+      },
+    ],
+    divergencePoints: [
+      {
+        topic: 'AI Adoption',
+        layerPositions: [
+          { layer: 'executive', language: 'Competitive necessity', sentiment: 'positive' },
+          { layer: 'operational', language: 'Skills gap concern', sentiment: 'neutral' },
+          { layer: 'frontline', language: 'Workload threat', sentiment: 'negative' },
+        ],
+      },
+      {
+        topic: 'Omnichannel Strategy',
+        layerPositions: [
+          { layer: 'executive', language: 'Journey-centric transformation', sentiment: 'positive' },
+          { layer: 'frontline', language: 'No stock visibility, frustrated customers', sentiment: 'negative' },
+        ],
+      },
+      {
+        topic: 'Decision Speed',
+        layerPositions: [
+          { layer: 'executive', language: 'Governance protects quality', sentiment: 'neutral' },
+          { layer: 'operational', language: 'Approval delays cost opportunities', sentiment: 'negative' },
+        ],
+      },
+      {
+        topic: 'Technology Change',
+        layerPositions: [
+          { layer: 'executive', language: 'Strategic investment priority', sentiment: 'positive' },
+          { layer: 'operational', language: 'Integration complexity', sentiment: 'neutral' },
+          { layer: 'frontline', language: 'Tools imposed without input', sentiment: 'negative' },
+        ],
+      },
+    ],
+  },
+  constraints: {
+    constraints: [
+      { id: 'constraint-1', description: 'Skill gaps in AI/digital across middle management', domain: 'People', frequency: 8, severity: 'critical', weight: 24, dependsOn: [], blocks: ['constraint-3'] },
+      { id: 'constraint-2', description: 'GDPR compliance gaps in marketing automation', domain: 'Regulation', frequency: 6, severity: 'critical', weight: 18, dependsOn: [], blocks: ['constraint-5'] },
+      { id: 'constraint-3', description: 'Workforce resistance to technology change', domain: 'People', frequency: 7, severity: 'significant', weight: 14, dependsOn: ['constraint-1'], blocks: [] },
+      { id: 'constraint-4', description: 'Legacy POS and siloed e-commerce platform', domain: 'Technology', frequency: 9, severity: 'critical', weight: 27, dependsOn: [], blocks: ['constraint-5', 'constraint-6'] },
+      { id: 'constraint-5', description: 'No unified customer data platform', domain: 'Technology', frequency: 7, severity: 'significant', weight: 14, dependsOn: ['constraint-4'], blocks: [] },
+      { id: 'constraint-6', description: 'Channel-siloed organisational structure', domain: 'Organisation', frequency: 6, severity: 'significant', weight: 12, dependsOn: ['constraint-4'], blocks: [] },
+      { id: 'constraint-7', description: 'Budget uncertainty for technology modernisation', domain: 'Organisation', frequency: 4, severity: 'moderate', weight: 4, dependsOn: [], blocks: ['constraint-4'] },
+      { id: 'constraint-8', description: 'Cultural resistance to data-driven decisions', domain: 'People', frequency: 3, severity: 'moderate', weight: 3, dependsOn: ['constraint-1'], blocks: [] },
+    ],
+    relationships: [
+      { source: 'constraint-1', target: 'constraint-3', type: 'blocks' },
+      { source: 'constraint-4', target: 'constraint-5', type: 'blocks' },
+      { source: 'constraint-4', target: 'constraint-6', type: 'blocks' },
+      { source: 'constraint-7', target: 'constraint-4', type: 'blocks' },
+      { source: 'constraint-2', target: 'constraint-5', type: 'blocks' },
+      { source: 'constraint-1', target: 'constraint-8', type: 'amplifies' },
+      { source: 'constraint-3', target: 'constraint-1', type: 'depends_on' },
+      { source: 'constraint-5', target: 'constraint-4', type: 'depends_on' },
+      { source: 'constraint-6', target: 'constraint-4', type: 'depends_on' },
+      { source: 'constraint-8', target: 'constraint-1', type: 'depends_on' },
+    ],
+  },
+  confidence: {
+    overall: { certain: 45, hedging: 28, uncertain: 12 },
+    byDomain: [
+      { domain: 'Customer', distribution: { certain: 12, hedging: 5, uncertain: 2 }, hedgingPhrases: ['It seems like customers want...', 'We think the trend is...'] },
+      { domain: 'Technology', distribution: { certain: 10, hedging: 8, uncertain: 4 }, hedgingPhrases: ['The platform might support...', 'Integration could be challenging'] },
+      { domain: 'People', distribution: { certain: 8, hedging: 7, uncertain: 3 }, hedgingPhrases: ['Staff seem open to change...', 'Training may not be sufficient'] },
+      { domain: 'Organisation', distribution: { certain: 9, hedging: 5, uncertain: 2 }, hedgingPhrases: ['Structure probably needs to change'] },
+      { domain: 'Regulation', distribution: { certain: 6, hedging: 3, uncertain: 1 }, hedgingPhrases: ['Regulations are likely to tighten'] },
+    ],
+    byLayer: [
+      { layer: 'executive', distribution: { certain: 18, hedging: 8, uncertain: 2 } },
+      { layer: 'operational', distribution: { certain: 15, hedging: 12, uncertain: 5 } },
+      { layer: 'frontline', distribution: { certain: 12, hedging: 8, uncertain: 5 } },
+    ],
+  },
+};
+
+// ══════════════════════════════════════════════════════════
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════
 
@@ -162,6 +420,86 @@ export default function DiscoveryPage({ params }: PageProps) {
   );
   const [loading, setLoading] = useState(!isRetailDemo);
   const [summaryLoading, setSummaryLoading] = useState(!isRetailDemo);
+
+  // ── Discover Analysis state ──────────────────────────────
+  const [analysis, setAnalysis] = useState<DiscoverAnalysis | null>(
+    isRetailDemo ? DEMO_DISCOVER_ANALYSIS : null
+  );
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<string | null>(null);
+
+  // ── Generate analysis (SSE) ──────────────────────────────
+  const generateAnalysis = useCallback(async () => {
+    setAnalysisLoading(true);
+    setAnalysisProgress('Starting...');
+
+    try {
+      const res = await fetch(
+        `/api/admin/workshops/${encodeURIComponent(workshopId)}/discover-analysis`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+      );
+
+      if (!res.ok) throw new Error(`Failed: ${res.status}`);
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No stream');
+
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            const event = line.slice(7).trim();
+            // Read next data line
+            const nextIdx = lines.indexOf(line) + 1;
+            if (nextIdx < lines.length && lines[nextIdx].startsWith('data: ')) {
+              try {
+                const data = JSON.parse(lines[nextIdx].slice(6));
+                if (event === 'progress') {
+                  setAnalysisProgress(data.message || 'Processing...');
+                } else if (event === 'analysis.complete') {
+                  setAnalysis(data.analysis);
+                } else if (event === 'error') {
+                  console.error('Analysis error:', data.message);
+                  setAnalysisProgress(`Error: ${data.message}`);
+                }
+              } catch { /* skip */ }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to generate analysis:', error);
+      setAnalysisProgress('Failed to generate analysis');
+    } finally {
+      setAnalysisLoading(false);
+      setAnalysisProgress(null);
+    }
+  }, [workshopId]);
+
+  // ── Fetch cached analysis (skip for retail demo) ─────────
+  useEffect(() => {
+    if (isRetailDemo) return;
+
+    async function fetchAnalysis() {
+      try {
+        const res = await fetch(
+          `/api/admin/workshops/${encodeURIComponent(workshopId)}/discover-analysis`,
+          { cache: 'no-store' },
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.analysis) setAnalysis(data.analysis);
+        }
+      } catch { /* fail silently */ }
+    }
+
+    fetchAnalysis();
+  }, [workshopId, isRetailDemo]);
 
   // ── Fetch spider + keywords (skip for retail demo) ─────
   useEffect(() => {
@@ -395,7 +733,141 @@ export default function DiscoveryPage({ params }: PageProps) {
             </div>
           </div>
         )}
+
+        {/* ══════════════════════════════════════════════════════════ */}
+        {/* ORGANISATIONAL ANALYSIS — Discover Analysis Dashboard    */}
+        {/* ══════════════════════════════════════════════════════════ */}
+
+        <div className="mt-12 pt-8 border-t-2 border-slate-200">
+          {/* Section header */}
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <Layers className="h-5 w-5 text-slate-500" />
+              <div>
+                <h2 className="text-xl font-bold tracking-tight">Organisational Analysis</h2>
+                <p className="text-sm text-muted-foreground">
+                  {analysis
+                    ? `${analysis.participantCount} participants analysed`
+                    : 'Structural insight from collective viewpoints'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {analysis && (
+                <span className="text-xs text-muted-foreground/50">
+                  Generated {new Date(analysis.generatedAt).toLocaleDateString()}
+                </span>
+              )}
+              {!isRetailDemo && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={generateAnalysis}
+                  disabled={analysisLoading}
+                >
+                  {analysisLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                      Generating...
+                    </>
+                  ) : analysis ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      Regenerate
+                    </>
+                  ) : (
+                    <>
+                      <Layers className="h-3.5 w-3.5 mr-1.5" />
+                      Generate Analysis
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Progress indicator */}
+          {analysisLoading && analysisProgress && (
+            <div className="rounded-xl border bg-card p-6 mb-6 flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+              <span className="text-sm text-muted-foreground">{analysisProgress}</span>
+            </div>
+          )}
+
+          {/* Analysis content OR empty state */}
+          {analysis ? (
+            <div className="space-y-8">
+              {/* Section 1: Alignment Heatmap */}
+              <div className="rounded-xl border bg-card p-6">
+                <h3 className="text-sm font-semibold mb-1">Alignment Heatmap</h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Where do actors and themes align &mdash; or fracture?
+                </p>
+                <AlignmentHeatmap data={analysis.alignment} />
+              </div>
+
+              {/* Section 2: Tension Surface */}
+              <div className="rounded-xl border bg-card p-6">
+                <h3 className="text-sm font-semibold mb-1">Tension Surface</h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Unresolved tensions ranked by severity
+                </p>
+                <TensionSurface data={analysis.tensions} />
+              </div>
+
+              {/* Section 3: Two-column — Narrative Divergence + Confidence */}
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                <div className="lg:col-span-3 rounded-xl border bg-card p-6">
+                  <h3 className="text-sm font-semibold mb-1">Narrative Divergence</h3>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    How language and perception differ across organisational layers
+                  </p>
+                  <NarrativeDivergence data={analysis.narrative} />
+                </div>
+                <div className="lg:col-span-2 rounded-xl border bg-card p-6">
+                  <h3 className="text-sm font-semibold mb-1">Confidence Index</h3>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Certainty, hedging, and uncertainty distribution
+                  </p>
+                  <ConfidenceIndex data={analysis.confidence} />
+                </div>
+              </div>
+
+              {/* Section 4: Constraint Map */}
+              <div className="rounded-xl border bg-card p-6">
+                <h3 className="text-sm font-semibold mb-1">Constraint Map</h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Weighted constraints and their dependencies
+                </p>
+                <ConstraintMap data={analysis.constraints} />
+              </div>
+            </div>
+          ) : !analysisLoading ? (
+            <div className="rounded-xl border bg-card p-12 flex flex-col items-center justify-center text-center">
+              <Layers className="h-10 w-10 text-muted-foreground/20 mb-4" />
+              <h3 className="text-lg font-medium text-muted-foreground/60 mb-2">
+                No organisational analysis yet
+              </h3>
+              <p className="text-sm text-muted-foreground/40 max-w-md mb-6">
+                Generate an analysis to surface alignment, tensions, narrative divergence,
+                constraints, and confidence levels across your workshop data.
+              </p>
+              {!isRetailDemo && (
+                <Button onClick={generateAnalysis} disabled={analysisLoading}>
+                  <Layers className="h-4 w-4 mr-2" />
+                  Generate Organisational Analysis
+                </Button>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Bottom padding for inquiry bar */}
+        <div className="h-20" />
       </div>
+
+      {/* GPT Inquiry Bar */}
+      <GptInquiryBar workshopId={workshopId} hasAnalysis={!!analysis} />
     </div>
   );
 }
