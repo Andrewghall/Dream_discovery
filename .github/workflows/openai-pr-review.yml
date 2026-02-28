@@ -1,7 +1,9 @@
-name: Claude PR Review
+name: OpenAI PR Review
 
 on:
   pull_request:
+    branches:
+      - pre-live
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -11,8 +13,10 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Get PR diff
         env:
@@ -27,13 +31,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install deps
-        run: npm i @anthropic-ai/sdk
+      - name: Install dependencies
+        run: npm install openai
 
-      - name: Run Claude review
+      - name: Run OpenAI review
         env:
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-        run: node .github/scripts/claude_review.js pr.diff > review.md
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: node .github/scripts/openai_review.js pr.diff > review.md
 
       - name: Comment on PR
         env:
