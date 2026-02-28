@@ -126,9 +126,9 @@ export function GptInquiryBar({ workshopId, hasAnalysis }: GptInquiryBarProps) {
   }, [input, isStreaming, hasAnalysis, messages, workshopId]);
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 pointer-events-none">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pointer-events-auto">
-        <div className="bg-white border border-slate-200 rounded-t-xl shadow-lg">
+    <div className="w-full mb-6">
+      <div>
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
           {/* Expanded message thread */}
           {isExpanded && messages.length > 0 && (
             <div className="border-b border-slate-100">

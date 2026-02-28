@@ -786,6 +786,9 @@ export default function DiscoveryPage({ params }: PageProps) {
             </div>
           </div>
 
+          {/* GPT Inquiry Bar — ask about the analysis */}
+          <GptInquiryBar workshopId={workshopId} hasAnalysis={!!analysis} />
+
           {/* Progress indicator */}
           {analysisLoading && analysisProgress && (
             <div className="rounded-xl border bg-card p-6 mb-6 flex items-center gap-3">
@@ -862,12 +865,7 @@ export default function DiscoveryPage({ params }: PageProps) {
           ) : null}
         </div>
 
-        {/* Bottom padding for inquiry bar */}
-        <div className="h-20" />
       </div>
-
-      {/* GPT Inquiry Bar */}
-      <GptInquiryBar workshopId={workshopId} hasAnalysis={!!analysis} />
     </div>
   );
 }
