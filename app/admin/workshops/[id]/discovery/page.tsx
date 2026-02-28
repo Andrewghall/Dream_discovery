@@ -632,7 +632,7 @@ export default function DiscoveryPage({ params }: PageProps) {
         </div>
 
         {/* GPT Inquiry Bar — ask about the analysis */}
-        <GptInquiryBar workshopId={workshopId} hasAnalysis={!!analysis} />
+        <GptInquiryBar workshopId={workshopId} hasAnalysis={!!analysis} analysis={analysis} />
 
         {/* Executive Summary */}
         {summaryLoading ? (

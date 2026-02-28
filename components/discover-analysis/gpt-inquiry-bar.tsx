@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Send, ChevronDown, ChevronUp, Loader2, MessageSquare } from 'lucide-react';
+import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 
 interface InquiryMessage {
   role: 'user' | 'assistant';
@@ -12,6 +13,8 @@ interface GptInquiryBarProps {
   workshopId: string;
   /** Whether analysis data exists (bar is disabled without it) */
   hasAnalysis: boolean;
+  /** Pass analysis data so the API can use it as fallback (e.g. for demo workshops) */
+  analysis?: DiscoverAnalysis | null;
 }
 
 /**
@@ -19,7 +22,7 @@ interface GptInquiryBarProps {
  *
  * Streams AI responses grounded in the Discover Analysis data.
  */
-export function GptInquiryBar({ workshopId, hasAnalysis }: GptInquiryBarProps) {
+export function GptInquiryBar({ workshopId, hasAnalysis, analysis }: GptInquiryBarProps) {
   const [messages, setMessages] = useState<InquiryMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -59,6 +62,7 @@ export function GptInquiryBar({ workshopId, hasAnalysis }: GptInquiryBarProps) {
           body: JSON.stringify({
             question,
             history: newMessages.slice(-10),
+            ...(analysis ? { analysis } : {}),
           }),
         },
       );
