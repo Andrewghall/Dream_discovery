@@ -16,7 +16,7 @@ import { runResearchAgent } from '@/lib/cognition/agents/research-agent';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Allow up to 60s for research
+export const maxDuration = 180; // 3 minutes for deep research with gpt-4o
 
 export async function POST(
   request: NextRequest,

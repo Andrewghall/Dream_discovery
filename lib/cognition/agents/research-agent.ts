@@ -20,9 +20,12 @@ import { buildJourneyContextString } from '../journey-completion-state';
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 8;        // More iterations — journey + dimension research needs extra calls
-const LOOP_TIMEOUT_MS = 45_000;  // 45s — journey + dimension research takes longer
-const MODEL = 'gpt-4o-mini';
+const MAX_ITERATIONS = 15;        // More iterations for deep, multi-phase research
+const LOOP_TIMEOUT_MS = 150_000;  // 2.5 minutes — gpt-4o is slower but much deeper
+const MODEL = 'gpt-4o';           // Better depth, judgment, and longer outputs for prep research
+const LIVE_REVIEW_MODEL = 'gpt-4o-mini';  // Keep fast for latency-sensitive live reviews
+const MIN_SEARCHES_BEFORE_COMMIT = 6;
+const MIN_SEARCHES_DOMAIN_TRACK = 8;
 
 // ══════════════════════════════════════════════════════════════
 // TOOL DEFINITIONS
@@ -155,43 +158,43 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: 'commit_research',
       description:
-        'Commit your research findings. Call this when you have gathered enough information. This ends your research loop.',
+        'Commit your research findings. Call this ONLY after you have conducted thorough multi-phase research (minimum 6 searches). Each field must contain substantive, multi-paragraph content — not brief summaries. This ends your research loop.',
       parameters: {
         type: 'object',
         properties: {
           companyOverview: {
             type: 'string',
             description:
-              'Comprehensive overview: what the company does, size, market position, key products/services, recent performance.',
+              '3-4 detailed paragraphs covering: company history and founding, what they do today in detail, market position and size (revenue, employees, customers if available), key products/services and business lines, recent strategic direction and major initiatives, leadership and organisational structure. A facilitator should be able to read this and deeply understand the company.',
           },
           industryContext: {
             type: 'string',
             description:
-              'Industry landscape: trends, challenges, outlook, transformation drivers relevant to this company.',
+              '2-3 detailed paragraphs covering: macro trends reshaping the industry, disruption forces (technology, regulation, competition, demographics), specific challenges facing organisations like this client, and a forward-looking 2-5 year outlook. Include specific evidence and data points — not generic statements like "the industry is evolving".',
           },
           keyPublicChallenges: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Known challenges facing the company from public information.',
+            description: '5-8 specific, detailed challenges. Each item should be a full sentence with context and evidence — not a bullet fragment. Example: "Declining law school enrollment (down 28% from peak in 2010) is putting revenue pressure on member institutions and reducing demand for LSAC services."',
           },
           recentDevelopments: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Recent news, initiatives, strategic changes.',
+            description: '4-6 recent developments, each with date/timeframe, description, and strategic implications. Example: "In January 2025, LSAC launched a new digital assessment platform, signalling a shift toward technology-enabled testing."',
           },
           competitorLandscape: {
             type: 'string',
-            description: 'Key competitors and how the company positions against them.',
+            description: '2-3 detailed paragraphs: name specific competitors, explain how they differ in approach and positioning, what competitive advantages and disadvantages the client has, market share dynamics, and how the competitive landscape is evolving.',
           },
           domainInsights: {
             type: 'string',
             description:
-              'Domain-specific insights if DREAM track is Domain. Null if Enterprise track.',
+              '3-4 detailed paragraphs covering: current state of the domain in this industry, emerging trends and innovations, common pain points and failure modes, best practices from leading organisations, and transformation opportunities. This is the centrepiece of a Domain track workshop. Set to null for Enterprise track.',
           },
           sourceUrls: {
             type: 'array',
             items: { type: 'string' },
-            description: 'URLs or references used (public knowledge sources).',
+            description: 'All URLs and references used in your research. Include every source that informed your findings.',
           },
           journeyStages: {
             type: 'array',
@@ -199,17 +202,17 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               type: 'object',
               properties: {
                 name: { type: 'string', description: 'Stage name — e.g. "Account & Identity", "LSAT Registration"' },
-                description: { type: 'string', description: 'What happens at this stage' },
+                description: { type: 'string', description: 'Detailed description of what happens at this stage (2-3 sentences)' },
                 typicalTouchpoints: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: 'Key interaction points at this stage',
+                  description: '3-5 specific interaction points at this stage',
                 },
               },
               required: ['name', 'description'],
             },
             description:
-              'Typical customer/user journey stages for this industry, in chronological order. 6-12 stages covering the full lifecycle from first awareness through ongoing relationship.',
+              'Industry-specific customer/user journey stages in chronological order. 6-12 stages covering the full lifecycle. Each stage needs a detailed description and 3-5 touchpoints. Be specific to this industry.',
           },
           industryDimensions: {
             type: 'array',
@@ -222,7 +225,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                 },
                 description: {
                   type: 'string',
-                  description: 'What this dimension covers in this industry',
+                  description: 'Detailed description of what this dimension covers in this industry and why it matters (2-3 sentences)',
                 },
                 keywords: {
                   type: 'array',
@@ -237,7 +240,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               required: ['name', 'description', 'keywords', 'color'],
             },
             description:
-              '4-6 industry-specific strategic dimensions. These replace generic categories with dimensions that matter for THIS industry. Each should have a distinct, accessible hex color.',
+              '4-6 industry-specific strategic dimensions. These replace generic categories with dimensions that matter for THIS industry. Each should have a distinct, accessible hex color and detailed descriptions.',
           },
         },
         required: [
@@ -263,6 +266,7 @@ type TavilyResult = {
   title: string;
   url: string;
   content: string;
+  raw_content?: string;  // Full page text when include_raw_content=true
   score: number;
 };
 
@@ -291,8 +295,8 @@ async function tavilySearch(
       query,
       search_depth: options.searchDepth || 'advanced',
       include_answer: options.includeAnswer ?? true,
-      max_results: options.maxResults || 5,
-      include_raw_content: false,
+      max_results: options.maxResults || 7,
+      include_raw_content: true,
     }),
   });
 
@@ -332,7 +336,7 @@ async function executeResearchTool(
           const searchQuery = `${query} ${context.clientName || ''} ${context.industry || ''}`.trim();
           const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
 
-          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 800)}`).join('\n\n');
           const answer = tavily.answer || 'No synthesised answer available.';
           const urls = tavily.results.map((r) => r.url);
 
@@ -341,7 +345,7 @@ async function executeResearchTool(
               query, focus, source: 'tavily_web_search',
               answer,
               resultCount: tavily.results.length,
-              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 2000), fullContent: r.raw_content?.slice(0, 3000) || null })),
             }),
             summary: `**🔍 Web Search: ${focus}** (${tavily.results.length} results)\n${answer}\n\nSources:\n${sources}\n\nURLs: ${urls.join(', ')}`,
           };
@@ -355,15 +359,15 @@ async function executeResearchTool(
       const res = await openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
-        max_tokens: 800,
+        max_tokens: 2000,
         messages: [
           {
             role: 'system',
-            content: `You are a business research analyst. Provide factual, publicly available information about companies. If you're not confident about specific facts, say "based on publicly available information" or "this may need verification". Be specific with numbers, dates, and facts where you can. Do NOT invent or fabricate data. NOTE: You are working from training knowledge, not live web search.`,
+            content: `You are a business research analyst. Provide detailed, factual, publicly available information about companies. If you're not confident about specific facts, say "based on publicly available information" or "this may need verification". Be specific with numbers, dates, and facts where you can. Provide thorough, multi-paragraph responses — do NOT be brief. Do NOT invent or fabricate data. NOTE: You are working from training knowledge, not live web search.`,
           },
           {
             role: 'user',
-            content: `Research query about ${context.clientName || 'the company'} (${context.industry || 'unknown industry'}${context.companyWebsite ? `, website: ${context.companyWebsite}` : ''}):\n\nQuery: ${query}\nFocus: ${focus}\n\nProvide a concise, factual response. If this is a well-known company, provide specific details. If not well-known, provide general industry context and note what would need further investigation.`,
+            content: `Research query about ${context.clientName || 'the company'} (${context.industry || 'unknown industry'}${context.companyWebsite ? `, website: ${context.companyWebsite}` : ''}):\n\nQuery: ${query}\nFocus: ${focus}\n\nProvide a detailed, thorough response with specific facts, numbers, and evidence. If this is a well-known company, provide comprehensive details. If not well-known, provide detailed industry context and note what would need further investigation.`,
           },
         ],
       });
@@ -385,7 +389,7 @@ async function executeResearchTool(
           const searchQuery = `${industry} industry trends ${focus} ${new Date().getFullYear()}`;
           const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
 
-          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 800)}`).join('\n\n');
           const answer = tavily.answer || 'No synthesised answer available.';
 
           return {
@@ -393,7 +397,7 @@ async function executeResearchTool(
               industry, focus, source: 'tavily_web_search',
               answer,
               resultCount: tavily.results.length,
-              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 2000), fullContent: r.raw_content?.slice(0, 3000) || null })),
             }),
             summary: `**🔍 Industry Trends: ${industry}** (${tavily.results.length} web results)\n${answer}\n\nSources:\n${sources}`,
           };
@@ -406,15 +410,15 @@ async function executeResearchTool(
       const res = await openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
-        max_tokens: 600,
+        max_tokens: 1500,
         messages: [
           {
             role: 'system',
-            content: `You are an industry analyst. Provide factual analysis of industry trends, challenges, and dynamics. Focus on recent developments and forward-looking challenges. Be specific where possible. NOTE: You are working from training knowledge, not live web search.`,
+            content: `You are an industry analyst. Provide detailed, thorough analysis of industry trends, challenges, and dynamics. Focus on recent developments and forward-looking challenges. Be specific with data, examples, and evidence. Provide multi-paragraph responses. NOTE: You are working from training knowledge, not live web search.`,
           },
           {
             role: 'user',
-            content: `Industry analysis for: ${industry}\nFocus area: ${focus}\n\nProvide a concise analysis of current trends, challenges, and outlook.`,
+            content: `Industry analysis for: ${industry}\nFocus area: ${focus}\n\nProvide a detailed, multi-paragraph analysis of current trends, challenges, disruption forces, and outlook. Include specific examples and evidence.`,
           },
         ],
       });
@@ -437,7 +441,7 @@ async function executeResearchTool(
           const searchQuery = `${domain} ${industry} ${question} challenges best practices ${new Date().getFullYear()}`;
           const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
 
-          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 800)}`).join('\n\n');
           const answer = tavily.answer || 'No synthesised answer available.';
 
           return {
@@ -445,7 +449,7 @@ async function executeResearchTool(
               domain, industry, source: 'tavily_web_search',
               answer,
               resultCount: tavily.results.length,
-              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 2000), fullContent: r.raw_content?.slice(0, 3000) || null })),
             }),
             summary: `**🔍 Domain Deep-Dive: ${domain} in ${industry}** (${tavily.results.length} web results)\n${answer}\n\nSources:\n${sources}`,
           };
@@ -458,15 +462,15 @@ async function executeResearchTool(
       const res = await openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
-        max_tokens: 600,
+        max_tokens: 1500,
         messages: [
           {
             role: 'system',
-            content: `You are a business operations consultant specialising in specific business domains. Provide practical insights about domain-specific challenges and best practices within industry contexts. NOTE: You are working from training knowledge, not live web search.`,
+            content: `You are a business operations consultant specialising in specific business domains. Provide detailed, thorough insights about domain-specific challenges, best practices, transformation opportunities, and emerging trends within industry contexts. Give multi-paragraph responses with specific examples. NOTE: You are working from training knowledge, not live web search.`,
           },
           {
             role: 'user',
-            content: `Domain: ${domain}\nIndustry: ${industry}\nQuestion: ${question}\n\nProvide specific challenges, common pain points, and strategic considerations for this domain within this industry.`,
+            content: `Domain: ${domain}\nIndustry: ${industry}\nQuestion: ${question}\n\nProvide a detailed, multi-paragraph analysis covering: specific challenges, common pain points, best practices from leading organisations, emerging trends, and strategic considerations for this domain within this industry.`,
           },
         ],
       });
@@ -488,7 +492,7 @@ async function executeResearchTool(
           const searchQuery = `${industry} ${clientType} journey stages lifecycle touchpoints ${focus} ${new Date().getFullYear()}`;
           const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
 
-          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 800)}`).join('\n\n');
           const answer = tavily.answer || 'No synthesised answer available.';
 
           return {
@@ -496,7 +500,7 @@ async function executeResearchTool(
               industry, clientType, focus, source: 'tavily_web_search',
               answer,
               resultCount: tavily.results.length,
-              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 2000), fullContent: r.raw_content?.slice(0, 3000) || null })),
             }),
             summary: `**🔍 Customer Journey: ${clientType} in ${industry}** (${tavily.results.length} web results)\n${answer}\n\nSources:\n${sources}`,
           };
@@ -509,15 +513,15 @@ async function executeResearchTool(
       const res = await openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
-        max_tokens: 800,
+        max_tokens: 2000,
         messages: [
           {
             role: 'system',
-            content: `You are a customer experience analyst specialising in mapping customer journeys. Provide detailed, industry-specific lifecycle stages with key touchpoints at each stage. Be specific to the industry — a law school applicant journey is very different from a retail shopper journey. NOTE: You are working from training knowledge, not live web search.`,
+            content: `You are a customer experience analyst specialising in mapping customer journeys. Provide detailed, industry-specific lifecycle stages with key touchpoints at each stage. Be specific to the industry — a law school applicant journey is very different from a retail shopper journey. Provide thorough descriptions with 3-5 touchpoints per stage. NOTE: You are working from training knowledge, not live web search.`,
           },
           {
             role: 'user',
-            content: `Map the typical ${clientType} journey in ${industry}.\nFocus: ${focus}\n\nProvide the key lifecycle stages in chronological order, with descriptions and touchpoints for each stage. Be industry-specific, not generic.`,
+            content: `Map the typical ${clientType} journey in ${industry}.\nFocus: ${focus}\n\nProvide 6-12 key lifecycle stages in chronological order. For each stage provide a detailed description and 3-5 specific touchpoints. Be industry-specific, not generic.`,
           },
         ],
       });
@@ -538,7 +542,7 @@ async function executeResearchTool(
           const searchQuery = `${industry} strategic dimensions key success factors transformation pillars ${focus} ${new Date().getFullYear()}`;
           const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
 
-          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 800)}`).join('\n\n');
           const answer = tavily.answer || 'No synthesised answer available.';
 
           return {
@@ -546,7 +550,7 @@ async function executeResearchTool(
               industry, focus, source: 'tavily_web_search',
               answer,
               resultCount: tavily.results.length,
-              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 2000), fullContent: r.raw_content?.slice(0, 3000) || null })),
             }),
             summary: `**🔍 Industry Dimensions: ${industry}** (${tavily.results.length} web results)\n${answer}\n\nSources:\n${sources}`,
           };
@@ -559,7 +563,7 @@ async function executeResearchTool(
       const res = await openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
-        max_tokens: 800,
+        max_tokens: 2000,
         messages: [
           {
             role: 'system',
@@ -567,7 +571,7 @@ async function executeResearchTool(
           },
           {
             role: 'user',
-            content: `Identify the 4-6 most important strategic dimensions for the ${industry} industry.\nFocus: ${focus}\n\nFor each dimension, provide:\n- A clear name\n- A description of what it covers\n- 10-20 keywords that would indicate someone is talking about this dimension\n\nBe specific to this industry — generic dimensions like "People" or "Technology" are too broad.`,
+            content: `Identify the 4-6 most important strategic dimensions for the ${industry} industry.\nFocus: ${focus}\n\nFor each dimension, provide:\n- A clear name\n- A detailed description of what it covers and why it matters\n- 10-20 keywords that would indicate someone is talking about this dimension\n\nBe specific to this industry — generic dimensions like "People" or "Technology" are too broad.`,
           },
         ],
       });
@@ -589,16 +593,22 @@ async function executeResearchTool(
 // ══════════════════════════════════════════════════════════════
 
 function buildResearchSystemPrompt(context: PrepContext): string {
-  const trackDesc =
-    context.dreamTrack === 'DOMAIN'
-      ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}. Research both the company broadly AND this specific domain in depth.`
-      : 'The DREAM track is Enterprise — full end-to-end assessment. Research the company holistically across all business functions.';
+  const isDomain = context.dreamTrack === 'DOMAIN';
+  const minSearches = isDomain ? MIN_SEARCHES_DOMAIN_TRACK : MIN_SEARCHES_BEFORE_COMMIT;
+
+  const trackDesc = isDomain
+    ? `The DREAM track is Domain, focused on "${context.targetDomain || 'a specific area'}". You MUST research both the company broadly AND this specific domain in substantial depth — the domain is the centrepiece of this workshop.`
+    : 'The DREAM track is Enterprise — full end-to-end assessment. Research the company holistically across all business functions.';
 
   const searchMode = useTavily()
-    ? 'You have LIVE WEB SEARCH via Tavily. Your search tools return real, current web results with source URLs. Use multiple queries to build a thorough, evidence-based picture.'
-    : '⚠️ No web search API configured. Your search tools use parametric knowledge only. Results should be treated as general knowledge that needs verification.';
+    ? 'You have LIVE WEB SEARCH via Tavily. Your search tools return real, current web results with full page content and source URLs. Use many different queries to build a thorough, evidence-based picture. Each search gives you fresh material — use it extensively.'
+    : '⚠️ No web search API configured. Your search tools use parametric knowledge only. Results should be treated as general knowledge that needs verification. Even so, provide thorough, detailed multi-paragraph responses.';
 
-  return `You are the DREAM Research Agent. Your job is to build a comprehensive understanding of a client company before their workshop begins.
+  return `You are the DREAM Research Agent. Your job is to build a DEEP, COMPREHENSIVE research briefing on a client company before their full-day strategic workshop.
+
+This research will brief facilitators who spend an ENTIRE DAY guiding strategic discussions with senior stakeholders. Surface-level summaries are NOT sufficient. Your output must be detailed enough that a facilitator who knows nothing about this company or industry could walk in and lead informed, insightful strategic conversations.
+
+A good research briefing has MULTIPLE PARAGRAPHS per section, specific facts, evidence, and real insight — not generic statements. Think "analyst research report", not "Wikipedia introduction".
 
 Client: ${context.clientName || 'Unknown'}
 Industry: ${context.industry || 'Unknown'}
@@ -607,29 +617,72 @@ ${trackDesc}
 
 SEARCH CAPABILITY: ${searchMode}
 
-Research the company thoroughly:
-1. What does this company do? Size, market position, recent performance.
-2. What are the major challenges facing this industry right now?
-3. What is this company's public reputation — recent news, initiatives?
-4. ${context.dreamTrack === 'DOMAIN' ? `What specific challenges exist in ${context.targetDomain || 'the target domain'} for companies in ${context.industry || 'this industry'}?` : 'What are the cross-functional challenges facing the business?'}
-5. Who are the key competitors and how do they compare?
-6. What does the typical customer/user journey look like in this industry? What are the standard lifecycle stages from first awareness through ongoing relationship?
-7. What are the most important strategic dimensions for this industry? (Instead of generic "People, Technology, Customer, Operations, Regulation" — what dimensions actually matter for ${context.clientName || 'this company'} in ${context.industry || 'this industry'}?)
+═══ RESEARCH STRATEGY — PHASED APPROACH ═══
 
-IMPORTANT INSTRUCTIONS:
+Follow this phased research strategy. Do NOT skip phases or rush to commit.
+
+PHASE 1: Company Foundation (3-4 searches)
+- Company history, founding story, mission, and what they actually do today
+- Market position, size (revenue, employees, customers/members), key products/services
+- Recent strategic direction, leadership team, organisational structure
+- Current performance, financial health, growth trajectory
+
+PHASE 2: Industry and Competitive Landscape (3-4 searches)
+- Macro trends reshaping this industry (technology, regulation, demographics, economics)
+- Disruption forces and transformation pressures specific to this sector
+- Key competitors: who they are, how they differ, competitive advantages/disadvantages
+- Forward-looking industry outlook — what's coming in the next 2-5 years
+- Recent news, strategic moves, partnerships, acquisitions
+
+PHASE 3: Deep Domain Research (${isDomain ? '3-4 searches — THIS IS THE MOST IMPORTANT PHASE for Domain track' : '1-2 searches'})
+${isDomain
+    ? `- Current state of "${context.targetDomain}" in ${context.industry || 'this industry'} — how is it typically structured?
+- Best practices and what leading organisations are doing differently
+- Common failure modes, pain points, and transformation challenges
+- Emerging trends, technology enablers, and innovation opportunities
+- Regulatory and compliance considerations specific to this domain
+- How ${context.clientName || 'the company'} specifically approaches this domain vs industry norms`
+    : `- Cross-functional challenges facing the business
+- Digital transformation status, strategic initiatives, and major programmes`}
+
+PHASE 4: Journey and Dimensions Research (2-3 searches)
+- Customer/user lifecycle stages specific to this industry — NOT generic stages
+- Key strategic dimensions that matter for workshop analysis in this sector
+
+═══ MINIMUM SEARCH REQUIREMENTS ═══
+
+You MUST conduct at least ${minSearches} different searches before calling commit_research. Do NOT commit after 2-3 searches — that produces thin, surface-level output that is useless for workshop facilitation. Use different queries for each search to explore different angles and build a truly comprehensive picture.
+
+═══ OUTPUT DEPTH REQUIREMENTS ═══
+
+When you call commit_research, EACH field must be SUBSTANTIVE:
+
+- companyOverview: 3-4 detailed paragraphs minimum. Cover history and founding, what they do today in detail, market position and size, key products/services and business lines, recent strategic direction, leadership and organisational structure. A facilitator should be able to read this and deeply understand the company.
+
+- industryContext: 2-3 paragraphs minimum. Cover macro trends reshaping the industry, specific disruption forces (technology, regulation, competition, demographics), challenges facing organisations like this client, and a forward-looking 2-5 year outlook. Include specific data points and evidence — NOT "the industry is evolving".
+
+- keyPublicChallenges: 5-8 specific, detailed challenges. Each challenge should be a full sentence with context and evidence — not a bullet fragment. For example: "Declining law school enrollment (down 28% from peak in 2010) is putting revenue pressure on member institutions and reducing demand for LSAC services."
+
+- recentDevelopments: 4-6 developments with dates/timeframes, descriptions, and strategic implications. Not just "they launched X" but "In [date], they launched X, which signals Y because Z."
+
+- competitorLandscape: 2-3 paragraphs. Name specific competitors, explain how they differ in approach and positioning, what competitive advantages/disadvantages the client has, and how the competitive landscape is evolving.
+
+${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${context.targetDomain || 'the domain'} in this industry, emerging trends and innovations, common pain points and failure modes, best practices from leading organisations, and transformation opportunities. This is the CENTREPIECE of a Domain track workshop — it must be the most thorough section.` : '- domainInsights: null for Enterprise track.'}
+
+- journeyStages: 6-12 industry-specific stages with detailed descriptions (2-3 sentences each) and 3-5 specific touchpoints per stage.
+
+- industryDimensions: 4-6 dimensions with descriptive names, detailed descriptions (what it covers and why it matters), and 10-20 classification keywords each. Choose dimensions that matter for THIS industry.
+
+═══ QUALITY STANDARDS ═══
+
 - Be factual. Only report what you can verify from search results.
 - Do NOT invent or speculate — if you can't find something, say so.
-- Use multiple search queries to build a complete picture — at least 3 different searches.
 - Include source URLs in your commit_research call for every finding.
-- Prefer recent sources (2024-2025). Flag anything that might be outdated.
-- For journey stages: Research the actual industry-specific customer lifecycle (not generic). A law school admissions body has very different stages to a retail bank. Include 6-12 stages with descriptions and touchpoints.
-- For industry dimensions: Choose 4-6 dimensions that matter MOST for this industry. Examples: "Student Experience", "Institutional Trust", "Assessment Integrity" for education. "Supply Chain Resilience", "Omnichannel Integration", "Sustainability" for retail. Include 10-20 keywords for each dimension to enable automatic classification of workshop utterances.
+- Prefer recent sources (2024-2026). Flag anything that might be outdated.
+- Each paragraph should contain SPECIFIC facts, numbers, or evidence — not just generalities.
 - Assign each dimension a distinct, accessible hex color for UI rendering (blues, greens, purples, oranges, teals — avoid red which is reserved for alerts).
-- Call commit_research when you have a comprehensive understanding including journey stages and industry dimensions.
-
-When communicating your findings, speak naturally as a colleague would.
-Be professional but warm. Explain your reasoning clearly, cite your sources,
-and note confidence level for each finding.`;
+- Write as a colleague would brief another colleague — professional, thorough, and insightful.
+- Note confidence level for each finding and cite your sources.`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -652,11 +705,21 @@ export async function runResearchAgent(
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: `Please begin your research on ${context.clientName || 'the company'}. Start by understanding the company overview, then explore the industry landscape and competitive positioning${context.dreamTrack === 'DOMAIN' ? `, then investigate the ${context.targetDomain || 'target domain'} specifically` : ''}. Also research the typical customer/user journey stages for this industry, and identify the most important strategic dimensions that should frame our workshop analysis (instead of generic categories).`,
+      content: `Begin your comprehensive, multi-phase research on ${context.clientName || 'the company'}. This research will brief a facilitator for a full-day strategic workshop with senior stakeholders — surface-level summaries will NOT be sufficient.
+
+Follow the phased approach:
+1. Phase 1: Company foundation — history, what they do, size, market position, strategic direction (3-4 searches)
+2. Phase 2: Industry and competitive landscape — macro trends, disruption forces, competitors (3-4 searches)
+${context.dreamTrack === 'DOMAIN' ? `3. Phase 3: Deep domain research — drill deep into "${context.targetDomain || 'the target domain'}" from multiple angles: current state, best practices, pain points, emerging trends, transformation opportunities (3-4 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)` : '3. Phase 3: Cross-functional challenges and digital transformation (1-2 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)'}
+
+You must conduct at least ${context.dreamTrack === 'DOMAIN' ? '8' : '6'} different searches before committing. Each section of your final commit should be multiple detailed paragraphs with specific facts and evidence.`,
     },
   ];
 
   try {
+    let searchCount = 0;
+    const minSearches = context.dreamTrack === 'DOMAIN' ? MIN_SEARCHES_DOMAIN_TRACK : MIN_SEARCHES_BEFORE_COMMIT;
+
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
       if (Date.now() - startMs > LOOP_TIMEOUT_MS) {
         console.log(`[Research Agent] Timeout after ${iteration} iterations`);
@@ -717,6 +780,27 @@ export async function runResearchAgent(
         }
 
         if (fnName === 'commit_research') {
+          // ── Commit gate: reject premature commits ──
+          if (searchCount < minSearches && iteration < MAX_ITERATIONS - 1) {
+            console.log(`[Research Agent] Commit attempted after only ${searchCount}/${minSearches} searches — nudging to continue`);
+            onConversation?.({
+              timestampMs: Date.now(),
+              agent: 'research-agent',
+              to: 'prep-orchestrator',
+              message: `Deepening research (${searchCount}/${minSearches} searches completed so far)…`,
+              type: 'info',
+            });
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({
+                status: 'rejected',
+                reason: `You have only conducted ${searchCount} searches so far. The minimum for a thorough research briefing is ${minSearches}. Please continue researching — explore more angles before committing. Your current findings would produce a surface-level brief. Have you covered: company foundation, industry/competitive landscape, ${context.dreamTrack === 'DOMAIN' ? 'domain deep-dive, ' : ''}customer journey, and strategic dimensions?`,
+              }),
+            });
+            continue;
+          }
+
           commitArgs = fnArgs;
 
           // Build full research summary — no truncation
@@ -767,6 +851,7 @@ export async function runResearchAgent(
           });
         } else {
           // Execute research tool
+          searchCount++;
           const toolResult = await executeResearchTool(openai, fnName, fnArgs, context);
 
           onConversation?.({
@@ -1041,7 +1126,7 @@ Submit your review with submit_review when you've assessed the proposals.`;
         : 'auto';
 
       const completion = await openai.chat.completions.create({
-        model: MODEL,
+        model: LIVE_REVIEW_MODEL,
         temperature: 0.3,
         messages,
         tools: RESEARCH_REVIEW_TOOLS,

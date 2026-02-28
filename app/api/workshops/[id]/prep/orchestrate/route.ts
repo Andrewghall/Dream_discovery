@@ -16,7 +16,7 @@ import { runPrepOrchestrator } from '@/lib/cognition/agents/prep-orchestrator';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120; // Full prep can take up to 2 minutes
+export const maxDuration = 300; // 5 minutes: deep research (gpt-4o) + question set generation
 
 export async function POST(
   request: NextRequest,
