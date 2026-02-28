@@ -18,7 +18,7 @@ interface GptInquiryBarProps {
 }
 
 /**
- * GPT Inquiry Bar — Fixed bottom bar for facilitator questions
+ * GPT Inquiry Bar — inline bar for facilitator questions
  *
  * Streams AI responses grounded in the Discover Analysis data.
  */
@@ -27,13 +27,14 @@ export function GptInquiryBar({ workshopId, hasAnalysis, analysis }: GptInquiryB
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll when new messages arrive
+  // Auto-scroll the messages container internally (without moving the page)
   useEffect(() => {
-    if (isExpanded) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isExpanded && scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
   }, [messages, isExpanded]);
 
@@ -43,6 +44,11 @@ export function GptInquiryBar({ workshopId, hasAnalysis, analysis }: GptInquiryB
 
     setInput('');
     setIsExpanded(true);
+
+    // Pin the page scroll so the inquiry bar stays in view
+    requestAnimationFrame(() => {
+      containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
 
     // Add user message
     const userMsg: InquiryMessage = { role: 'user', content: question };
@@ -127,10 +133,10 @@ export function GptInquiryBar({ workshopId, hasAnalysis, analysis }: GptInquiryB
     } finally {
       setIsStreaming(false);
     }
-  }, [input, isStreaming, hasAnalysis, messages, workshopId]);
+  }, [input, isStreaming, hasAnalysis, messages, workshopId, analysis]);
 
   return (
-    <div className="w-full mb-6">
+    <div ref={containerRef} className="w-full mb-6 scroll-mt-4">
       <div>
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
           {/* Expanded message thread */}
@@ -147,7 +153,10 @@ export function GptInquiryBar({ workshopId, hasAnalysis, analysis }: GptInquiryB
                   <ChevronDown className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <div className="max-h-72 overflow-y-auto px-4 pb-3 space-y-3">
+              <div
+                ref={scrollAreaRef}
+                className="max-h-72 overflow-y-auto px-4 pb-3 space-y-3"
+              >
                 {messages.map((msg, i) => (
                   <div
                     key={i}
@@ -164,7 +173,6 @@ export function GptInquiryBar({ workshopId, hasAnalysis, analysis }: GptInquiryB
                     </div>
                   </div>
                 ))}
-                <div ref={messagesEndRef} />
               </div>
             </div>
           )}
