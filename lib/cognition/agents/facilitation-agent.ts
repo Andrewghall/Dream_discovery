@@ -32,7 +32,14 @@ const MODEL = 'gpt-4o-mini';
 // TOOL DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 
-const FACILITATION_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+const DEFAULT_FACILITATION_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+const DEFAULT_FACILITATION_LENSES = ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'];
+
+function buildFacilitationTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  const domainEnum = dimensions?.length ? dimensions : DEFAULT_FACILITATION_DOMAINS;
+  const lensEnum = dimensions?.length ? dimensions : DEFAULT_FACILITATION_LENSES;
+
+  return [
   {
     type: 'function',
     function: {
@@ -48,7 +55,7 @@ const FACILITATION_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
           domain: {
             type: 'string',
-            enum: ['People', 'Operations', 'Customer', 'Technology', 'Regulation'],
+            enum: domainEnum,
           },
         },
         required: ['pattern'],
@@ -107,7 +114,7 @@ const FACILITATION_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                 prompt: { type: 'string', description: 'The facilitation question/prompt text.' },
                 lens: {
                   type: 'string',
-                  enum: ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'],
+                  enum: lensEnum,
                   description: 'Primary lens (or null for cross-cutting).',
                 },
                 sourceBeliefIds: {
@@ -128,7 +135,10 @@ const FACILITATION_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
-];
+  ];
+}
+
+const FACILITATION_TOOLS = buildFacilitationTools();
 
 // ══════════════════════════════════════════════════════════════
 // TOOL EXECUTION

@@ -349,7 +349,7 @@ ${domainNames.map((dn, i) => {
   },
   "customerJourney": {
     "_aiSummary": "string — 3-5 sentence executive synthesis of customer journey insights. Where do the critical pain points cluster? What are the moments of truth? What does this mean for transformation priorities?",
-    "stages": ["6-8 journey stage names in order"],
+    "stages": ["6-8 journey stage names in order — use researched stages if available in research context, otherwise infer from data"],
     "actors": [{"name": "string", "role": "string"}],
     "interactions": [
       {"actor": "string (must match an actor name)", "stage": "string (must match a stage name)", "action": "string", "sentiment": "positive or neutral or concerned or critical", "context": "string", "isPainPoint": false, "isMomentOfTruth": false}
@@ -525,12 +525,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Snapshot has no node data' }, { status: 400 });
   }
 
-  // Extract any research context from prep phase
-  const researchContext = workshop.prepResearch
-    ? (typeof workshop.prepResearch === 'object' && workshop.prepResearch !== null
-      ? (workshop.prepResearch as Record<string, unknown>).summary as string || null
-      : null)
-    : null;
+  // Extract research context from prep phase (including journey + dimensions)
+  let researchContext: string | null = null;
+  if (workshop.prepResearch && typeof workshop.prepResearch === 'object' && workshop.prepResearch !== null) {
+    const research = workshop.prepResearch as Record<string, unknown>;
+    const parts: string[] = [];
+
+    if (research.companyOverview) parts.push(`Company: ${String(research.companyOverview).slice(0, 400)}`);
+    if (research.industryContext) parts.push(`Industry: ${String(research.industryContext).slice(0, 400)}`);
+    if (Array.isArray(research.keyPublicChallenges) && research.keyPublicChallenges.length > 0) {
+      parts.push(`Key Challenges: ${research.keyPublicChallenges.map(String).join('; ')}`);
+    }
+
+    // Include researched journey stages
+    if (Array.isArray(research.journeyStages) && research.journeyStages.length > 0) {
+      const stages = research.journeyStages as Array<{ name: string; description?: string }>;
+      parts.push(`\n─── RESEARCHED JOURNEY STAGES ───\n${stages.map((s, i) => `${i + 1}. ${s.name}${s.description ? ': ' + s.description : ''}`).join('\n')}\nUse these as the baseline for customerJourney.stages.`);
+    }
+
+    // Include researched industry dimensions
+    if (Array.isArray(research.industryDimensions) && research.industryDimensions.length > 0) {
+      const dims = research.industryDimensions as Array<{ name: string; description?: string }>;
+      parts.push(`\n─── INDUSTRY DIMENSIONS ───\n${dims.map(d => `• ${d.name}: ${d.description || ''}`).join('\n')}\nUse these dimensions instead of generic "People/Operations/Customer/Technology/Regulation" when categorising findings.`);
+    }
+
+    researchContext = parts.length > 0 ? parts.join('\n\n') : null;
+  }
 
   // ── SSE stream ──────────────────────────────────────
   const encoder = new TextEncoder();

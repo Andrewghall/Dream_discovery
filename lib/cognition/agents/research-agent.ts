@@ -20,8 +20,8 @@ import { buildJourneyContextString } from '../journey-completion-state';
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 6;        // More iterations than live — research is thorough
-const LOOP_TIMEOUT_MS = 30_000;  // 30s — research takes longer
+const MAX_ITERATIONS = 8;        // More iterations — journey + dimension research needs extra calls
+const LOOP_TIMEOUT_MS = 45_000;  // 45s — journey + dimension research takes longer
 const MODEL = 'gpt-4o-mini';
 
 // ══════════════════════════════════════════════════════════════
@@ -105,6 +105,54 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'search_customer_journey',
+      description:
+        'Research the typical customer/user journey for this industry and client. Find the standard lifecycle stages, key touchpoints, and common pain points at each stage.',
+      parameters: {
+        type: 'object',
+        properties: {
+          industry: {
+            type: 'string',
+            description: 'The industry context — e.g. "legal education admissions", "UK retail grocery"',
+          },
+          clientType: {
+            type: 'string',
+            description: 'Type of client/customer — e.g. "law school applicant", "retail shopper", "insurance policyholder"',
+          },
+          focus: {
+            type: 'string',
+            description: 'Specific journey aspect — e.g. "end-to-end lifecycle", "onboarding experience", "renewal journey"',
+          },
+        },
+        required: ['industry'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_industry_dimensions',
+      description:
+        'Research the key strategic dimensions/lenses that matter most for this industry. These replace generic categories (People/Tech/etc.) with industry-specific axes that the workshop should explore.',
+      parameters: {
+        type: 'object',
+        properties: {
+          industry: {
+            type: 'string',
+            description: 'The industry to research — e.g. "legal education", "retail banking"',
+          },
+          focus: {
+            type: 'string',
+            description: 'Specific dimension area — e.g. "digital maturity", "regulatory landscape", "student experience"',
+          },
+        },
+        required: ['industry'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'commit_research',
       description:
         'Commit your research findings. Call this when you have gathered enough information. This ends your research loop.',
@@ -145,6 +193,52 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             items: { type: 'string' },
             description: 'URLs or references used (public knowledge sources).',
           },
+          journeyStages: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Stage name — e.g. "Account & Identity", "LSAT Registration"' },
+                description: { type: 'string', description: 'What happens at this stage' },
+                typicalTouchpoints: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Key interaction points at this stage',
+                },
+              },
+              required: ['name', 'description'],
+            },
+            description:
+              'Typical customer/user journey stages for this industry, in chronological order. 6-12 stages covering the full lifecycle from first awareness through ongoing relationship.',
+          },
+          industryDimensions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: 'Dimension name — e.g. "Student Experience", "Regulatory Compliance", "Supply Chain Resilience"',
+                },
+                description: {
+                  type: 'string',
+                  description: 'What this dimension covers in this industry',
+                },
+                keywords: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: '10-20 keywords for automatic classification of workshop utterances into this dimension',
+                },
+                color: {
+                  type: 'string',
+                  description: 'Hex color for UI rendering — e.g. "#60a5fa" (blue), "#34d399" (green), "#a78bfa" (purple), "#fb923c" (orange), "#2dd4bf" (teal)',
+                },
+              },
+              required: ['name', 'description', 'keywords', 'color'],
+            },
+            description:
+              '4-6 industry-specific strategic dimensions. These replace generic categories with dimensions that matter for THIS industry. Each should have a distinct, accessible hex color.',
+          },
         },
         required: [
           'companyOverview',
@@ -153,6 +247,8 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           'recentDevelopments',
           'competitorLandscape',
           'sourceUrls',
+          'journeyStages',
+          'industryDimensions',
         ],
       },
     },
@@ -382,6 +478,107 @@ async function executeResearchTool(
       };
     }
 
+    case 'search_customer_journey': {
+      const industry = String(args.industry || context.industry || 'general');
+      const clientType = String(args.clientType || 'customer');
+      const focus = String(args.focus || 'end-to-end lifecycle');
+
+      if (useTavily()) {
+        try {
+          const searchQuery = `${industry} ${clientType} journey stages lifecycle touchpoints ${focus} ${new Date().getFullYear()}`;
+          const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
+
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const answer = tavily.answer || 'No synthesised answer available.';
+
+          return {
+            result: JSON.stringify({
+              industry, clientType, focus, source: 'tavily_web_search',
+              answer,
+              resultCount: tavily.results.length,
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+            }),
+            summary: `**🔍 Customer Journey: ${clientType} in ${industry}** (${tavily.results.length} web results)\n${answer}\n\nSources:\n${sources}`,
+          };
+        } catch (err) {
+          console.error('[Research Agent] Tavily journey search failed, falling back:', err instanceof Error ? err.message : err);
+        }
+      }
+
+      // ── PARAMETRIC FALLBACK ──
+      const res = await openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.3,
+        max_tokens: 800,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a customer experience analyst specialising in mapping customer journeys. Provide detailed, industry-specific lifecycle stages with key touchpoints at each stage. Be specific to the industry — a law school applicant journey is very different from a retail shopper journey. NOTE: You are working from training knowledge, not live web search.`,
+          },
+          {
+            role: 'user',
+            content: `Map the typical ${clientType} journey in ${industry}.\nFocus: ${focus}\n\nProvide the key lifecycle stages in chronological order, with descriptions and touchpoints for each stage. Be industry-specific, not generic.`,
+          },
+        ],
+      });
+
+      const content = res.choices[0]?.message?.content || 'No journey data available.';
+      return {
+        result: JSON.stringify({ industry, clientType, focus, source: 'parametric_knowledge', analysis: content }),
+        summary: `**Customer Journey: ${clientType} in ${industry}** ⚠️ (parametric knowledge — no web search API configured)\n${content}`,
+      };
+    }
+
+    case 'search_industry_dimensions': {
+      const industry = String(args.industry || context.industry || 'general');
+      const focus = String(args.focus || 'key strategic dimensions');
+
+      if (useTavily()) {
+        try {
+          const searchQuery = `${industry} strategic dimensions key success factors transformation pillars ${focus} ${new Date().getFullYear()}`;
+          const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
+
+          const sources = tavily.results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+          const answer = tavily.answer || 'No synthesised answer available.';
+
+          return {
+            result: JSON.stringify({
+              industry, focus, source: 'tavily_web_search',
+              answer,
+              resultCount: tavily.results.length,
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 500) })),
+            }),
+            summary: `**🔍 Industry Dimensions: ${industry}** (${tavily.results.length} web results)\n${answer}\n\nSources:\n${sources}`,
+          };
+        } catch (err) {
+          console.error('[Research Agent] Tavily dimensions search failed, falling back:', err instanceof Error ? err.message : err);
+        }
+      }
+
+      // ── PARAMETRIC FALLBACK ──
+      const res = await openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.3,
+        max_tokens: 800,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a strategic consultant who identifies the key dimensions that matter most for specific industries. Instead of generic categories like "People, Technology, Operations", identify the dimensions that are truly important for the given industry. For example, education might need "Student Experience", "Institutional Trust", "Assessment Integrity". Retail might need "Supply Chain Resilience", "Omnichannel Integration", "Sustainability". NOTE: You are working from training knowledge, not live web search.`,
+          },
+          {
+            role: 'user',
+            content: `Identify the 4-6 most important strategic dimensions for the ${industry} industry.\nFocus: ${focus}\n\nFor each dimension, provide:\n- A clear name\n- A description of what it covers\n- 10-20 keywords that would indicate someone is talking about this dimension\n\nBe specific to this industry — generic dimensions like "People" or "Technology" are too broad.`,
+          },
+        ],
+      });
+
+      const content = res.choices[0]?.message?.content || 'No dimension data available.';
+      return {
+        result: JSON.stringify({ industry, focus, source: 'parametric_knowledge', analysis: content }),
+        summary: `**Industry Dimensions: ${industry}** ⚠️ (parametric knowledge — no web search API configured)\n${content}`,
+      };
+    }
+
     default:
       return { result: JSON.stringify({ error: 'Unknown tool' }), summary: `Unknown tool: ${toolName}` };
   }
@@ -416,6 +613,8 @@ Research the company thoroughly:
 3. What is this company's public reputation — recent news, initiatives?
 4. ${context.dreamTrack === 'DOMAIN' ? `What specific challenges exist in ${context.targetDomain || 'the target domain'} for companies in ${context.industry || 'this industry'}?` : 'What are the cross-functional challenges facing the business?'}
 5. Who are the key competitors and how do they compare?
+6. What does the typical customer/user journey look like in this industry? What are the standard lifecycle stages from first awareness through ongoing relationship?
+7. What are the most important strategic dimensions for this industry? (Instead of generic "People, Technology, Customer, Operations, Regulation" — what dimensions actually matter for ${context.clientName || 'this company'} in ${context.industry || 'this industry'}?)
 
 IMPORTANT INSTRUCTIONS:
 - Be factual. Only report what you can verify from search results.
@@ -423,7 +622,10 @@ IMPORTANT INSTRUCTIONS:
 - Use multiple search queries to build a complete picture — at least 3 different searches.
 - Include source URLs in your commit_research call for every finding.
 - Prefer recent sources (2024-2025). Flag anything that might be outdated.
-- Call commit_research when you have a comprehensive understanding.
+- For journey stages: Research the actual industry-specific customer lifecycle (not generic). A law school admissions body has very different stages to a retail bank. Include 6-12 stages with descriptions and touchpoints.
+- For industry dimensions: Choose 4-6 dimensions that matter MOST for this industry. Examples: "Student Experience", "Institutional Trust", "Assessment Integrity" for education. "Supply Chain Resilience", "Omnichannel Integration", "Sustainability" for retail. Include 10-20 keywords for each dimension to enable automatic classification of workshop utterances.
+- Assign each dimension a distinct, accessible hex color for UI rendering (blues, greens, purples, oranges, teals — avoid red which is reserved for alerts).
+- Call commit_research when you have a comprehensive understanding including journey stages and industry dimensions.
 
 When communicating your findings, speak naturally as a colleague would.
 Be professional but warm. Explain your reasoning clearly, cite your sources,
@@ -450,7 +652,7 @@ export async function runResearchAgent(
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: `Please begin your research on ${context.clientName || 'the company'}. Start by understanding the company overview, then explore the industry landscape, and finally investigate ${context.dreamTrack === 'DOMAIN' ? `the ${context.targetDomain || 'target domain'} specifically` : 'the competitive landscape'}.`,
+      content: `Please begin your research on ${context.clientName || 'the company'}. Start by understanding the company overview, then explore the industry landscape and competitive positioning${context.dreamTrack === 'DOMAIN' ? `, then investigate the ${context.targetDomain || 'target domain'} specifically` : ''}. Also research the typical customer/user journey stages for this industry, and identify the most important strategic dimensions that should frame our workshop analysis (instead of generic categories).`,
     },
   ];
 
@@ -531,16 +733,30 @@ export async function runResearchAgent(
             ? `\n\n**Sources** (${sourceUrls.length})\n${sourceUrls.map((u) => `  • ${u}`).join('\n')}`
             : '';
 
+          // Journey stages summary
+          const journeyStages = Array.isArray(fnArgs.journeyStages) ? (fnArgs.journeyStages as Array<{ name: string; description?: string }>) : [];
+          const journeySection = journeyStages.length > 0
+            ? `\n\n**Customer Journey** (${journeyStages.length} stages)\n${journeyStages.map((s, i) => `  ${i + 1}. ${s.name}${s.description ? ` — ${s.description}` : ''}`).join('\n')}`
+            : '';
+
+          // Industry dimensions summary
+          const industryDims = Array.isArray(fnArgs.industryDimensions) ? (fnArgs.industryDimensions as Array<{ name: string; description?: string; keywords?: string[] }>) : [];
+          const dimensionsSection = industryDims.length > 0
+            ? `\n\n**Industry Dimensions** (${industryDims.length} axes — replacing generic categories)\n${industryDims.map((d) => `  • ${d.name}: ${d.description || 'No description'}${d.keywords?.length ? ` (${d.keywords.length} keywords)` : ''}`).join('\n')}`
+            : '';
+
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'research-agent',
             to: 'prep-orchestrator',
-            message: `${searchLabel} — I've completed my research on ${context.clientName || 'the company'}. Here are my full findings:\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}${sourcesSection}`,
+            message: `${searchLabel} — I've completed my research on ${context.clientName || 'the company'}. Here are my full findings:\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}${journeySection}${dimensionsSection}${sourcesSection}`,
             type: 'proposal',
             metadata: {
-              toolsUsed: ['search_company_info', 'search_industry_trends', 'search_domain_challenges'],
+              toolsUsed: ['search_company_info', 'search_industry_trends', 'search_domain_challenges', 'search_customer_journey', 'search_industry_dimensions'],
               searchMode: useTavily() ? 'tavily_web_search' : 'parametric_fallback',
               sourceCount: sourceUrls.length,
+              journeyStageCount: journeyStages.length,
+              dimensionCount: industryDims.length,
             },
           });
 
@@ -616,6 +832,8 @@ function normaliseResearchOutput(args: Record<string, unknown>): WorkshopPrepRes
     domainInsights: args.domainInsights ? String(args.domainInsights) : null,
     researchedAtMs: Date.now(),
     sourceUrls: Array.isArray(args.sourceUrls) ? args.sourceUrls.map(String) : [],
+    journeyStages: Array.isArray(args.journeyStages) ? args.journeyStages as WorkshopPrepResearch['journeyStages'] : null,
+    industryDimensions: Array.isArray(args.industryDimensions) ? args.industryDimensions as WorkshopPrepResearch['industryDimensions'] : null,
   };
 }
 
@@ -660,6 +878,8 @@ function fallbackResearch(context: PrepContext): WorkshopPrepResearch {
       : null,
     researchedAtMs: Date.now(),
     sourceUrls: [],
+    journeyStages: null,
+    industryDimensions: null,
   };
 }
 

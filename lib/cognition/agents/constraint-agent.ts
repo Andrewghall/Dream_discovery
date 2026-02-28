@@ -26,7 +26,12 @@ const MODEL = 'gpt-4o-mini';
 // TOOL DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 
-const CONSTRAINT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+const DEFAULT_CONSTRAINT_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+
+function buildConstraintTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  const domainEnum = dimensions?.length ? dimensions : DEFAULT_CONSTRAINT_DOMAINS;
+
+  return [
   {
     type: 'function',
     function: {
@@ -37,7 +42,7 @@ const CONSTRAINT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         properties: {
           domain: {
             type: 'string',
-            enum: ['People', 'Operations', 'Customer', 'Technology', 'Regulation'],
+            enum: domainEnum,
             description: 'Optional: filter by domain.',
           },
         },
@@ -82,7 +87,10 @@ const CONSTRAINT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
-];
+  ];
+}
+
+const CONSTRAINT_TOOLS = buildConstraintTools();
 
 // ══════════════════════════════════════════════════════════════
 // TOOL EXECUTION

@@ -20,6 +20,8 @@ export type AgentConversationEntry = {
     reasoning?: string;
     searchMode?: 'tavily_web_search' | 'parametric_fallback';
     sourceCount?: number;
+    journeyStageCount?: number;
+    dimensionCount?: number;
   };
 };
 

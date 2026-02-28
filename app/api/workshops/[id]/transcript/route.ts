@@ -244,7 +244,7 @@ async function processCompleteUtterance(
 
       const workshop = await prisma.workshop.findUnique({
         where: { id: workshopId },
-        select: { name: true, description: true, businessContext: true },
+        select: { name: true, description: true, businessContext: true, prepResearch: true },
       });
       if (!workshop) return;
 
@@ -254,6 +254,14 @@ async function processCompleteUtterance(
         workshop.businessContext || workshop.description || workshop.name,
         (dialoguePhase as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH') || 'REIMAGINE',
       );
+
+      // Populate custom dimensions from research (if available and not already set)
+      if (!cognitiveState.customDimensions && workshop.prepResearch) {
+        const research = workshop.prepResearch as Record<string, unknown>;
+        if (Array.isArray(research.industryDimensions) && research.industryDimensions.length > 0) {
+          cognitiveState.customDimensions = research.industryDimensions as unknown as typeof cognitiveState.customDimensions;
+        }
+      }
 
       // Run the cognitive reasoning engine
       const engine = getGPT4oMiniEngine();

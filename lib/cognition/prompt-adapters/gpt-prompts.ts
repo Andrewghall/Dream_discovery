@@ -67,12 +67,14 @@ You have tools to query your own cognitive state (beliefs, entities, actors, con
 - insight: Observations, knowledge, understanding
 - action: Specific steps, commitments, plans
 
-## Domains
+${state.customDimensions?.length
+    ? '## Dimensions\n' + state.customDimensions.map(d => `- ${d.name}: ${d.description}`).join('\n')
+    : `## Domains
 - People: Human capability, culture, skills, team dynamics
 - Operations: Processes, workflows, decision-making, governance
 - Customer: Experience, needs, journeys, value delivery
 - Technology: Systems, data, platforms, automation, tools
-- Regulation: Compliance, risk management, controls, legal
+- Regulation: Compliance, risk management, controls, legal`}
 
 ## Rules
 - Describing past experience or how things work = INSIGHT, not CONSTRAINT
