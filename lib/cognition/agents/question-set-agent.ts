@@ -36,11 +36,25 @@ const MODEL = 'gpt-4o-mini';
 
 // ── Phase context: what lenses apply and in what order ──────
 
-const PHASE_LENS_ORDER: Record<WorkshopPhase, string[]> = {
+const DEFAULT_PHASE_LENS_ORDER: Record<WorkshopPhase, string[]> = {
   REIMAGINE: ['People', 'Customer', 'Organisation'],
   CONSTRAINTS: ['Regulation', 'Customer', 'Technology', 'Organisation', 'People'],
   DEFINE_APPROACH: ['People', 'Organisation', 'Technology', 'Customer', 'Regulation'],
 };
+
+/**
+ * Get lens order for a phase — uses research dimensions when available.
+ * With custom dimensions, all phases use all dimensions.
+ */
+function getPhaseLensOrder(phase: WorkshopPhase, research?: WorkshopPrepResearch | null): string[] {
+  if (research?.industryDimensions?.length) {
+    return research.industryDimensions.map(d => d.name);
+  }
+  return DEFAULT_PHASE_LENS_ORDER[phase];
+}
+
+/** @deprecated Use getPhaseLensOrder — kept for backward compat */
+const PHASE_LENS_ORDER = DEFAULT_PHASE_LENS_ORDER;
 
 const PHASE_GUIDANCE: Record<WorkshopPhase, string> = {
   REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers — just pure aspiration. The facilitator guides them through People, Customer, and Organisation lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
@@ -210,6 +224,14 @@ function executeQuestionSetTool(
         ? research.recentDevelopments.map((d) => `  \u2022 ${d}`).join('\n')
         : '  (none identified)';
 
+      // Include journey stages and industry dimensions if available
+      const journeySection = research.journeyStages?.length
+        ? `\n\n**Customer Journey** (${research.journeyStages.length} stages)\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}`
+        : '';
+      const dimensionSection = research.industryDimensions?.length
+        ? `\n\n**Industry Dimensions** (${research.industryDimensions.length} axes)\n${research.industryDimensions.map(d => `  • ${d.name}: ${d.description}`).join('\n')}`
+        : '';
+
       return {
         result: JSON.stringify({
           available: true,
@@ -219,8 +241,10 @@ function executeQuestionSetTool(
           recentDevelopments: research.recentDevelopments,
           competitorLandscape: research.competitorLandscape,
           domainInsights: research.domainInsights,
+          journeyStages: research.journeyStages || null,
+          industryDimensions: research.industryDimensions?.map(d => ({ name: d.name, description: d.description })) || null,
         }),
-        summary: `**Retrieved research context:**\n\n**Company:** ${research.companyOverview}\n\n**Industry:** ${research.industryContext}\n\n**Key Challenges**\n${challengesList}\n\n**Recent Developments**\n${devsList}${research.domainInsights ? `\n\n**Domain Insights:** ${research.domainInsights}` : ''}`,
+        summary: `**Retrieved research context:**\n\n**Company:** ${research.companyOverview}\n\n**Industry:** ${research.industryContext}\n\n**Key Challenges**\n${challengesList}\n\n**Recent Developments**\n${devsList}${research.domainInsights ? `\n\n**Domain Insights:** ${research.domainInsights}` : ''}${journeySection}${dimensionSection}`,
       };
     }
 
@@ -274,36 +298,41 @@ function executeQuestionSetTool(
         ? `This is a **Domain-focused** workshop targeting **${context.targetDomain || 'a specific business area'}**. Questions should be weighted toward this domain while still covering all relevant lenses.`
         : 'This is an **Enterprise-wide** assessment. Questions should cover all lenses equally.';
 
+      const reimagineLenses = getPhaseLensOrder('REIMAGINE', research);
+      const constraintLenses = getPhaseLensOrder('CONSTRAINTS', research);
+      const defineLenses = getPhaseLensOrder('DEFINE_APPROACH', research);
+
       return {
         result: JSON.stringify({
           dreamTrack: context.dreamTrack,
           targetDomain: context.targetDomain,
           trackGuidance: trackContext,
+          hasResearchedDimensions: !!research?.industryDimensions?.length,
           phases: {
             REIMAGINE: {
               label: 'Reimagine',
               purpose: PHASE_GUIDANCE.REIMAGINE,
-              lensOrder: PHASE_LENS_ORDER.REIMAGINE,
+              lensOrder: reimagineLenses,
               questionCount: '5-8 questions',
               keyPrinciple: 'NO constraints. Pure vision. Dream big.',
             },
             CONSTRAINTS: {
               label: 'Constraints',
               purpose: PHASE_GUIDANCE.CONSTRAINTS,
-              lensOrder: PHASE_LENS_ORDER.CONSTRAINTS,
+              lensOrder: constraintLenses,
               questionCount: '6-10 questions',
               keyPrinciple: 'Map what stands in the way. Right-to-left through lenses.',
             },
             DEFINE_APPROACH: {
               label: 'Define Approach',
               purpose: PHASE_GUIDANCE.DEFINE_APPROACH,
-              lensOrder: PHASE_LENS_ORDER.DEFINE_APPROACH,
+              lensOrder: defineLenses,
               questionCount: '6-10 questions',
               keyPrinciple: 'Build the practical path forward. Left-to-right through lenses.',
             },
           },
         }),
-        summary: `**Workshop Phase Structure:**\n\n${trackContext}\n\n**Phase 1 — REIMAGINE** (Pure Vision)\nLens order: ${PHASE_LENS_ORDER.REIMAGINE.join(' \u2192 ')}\n${PHASE_GUIDANCE.REIMAGINE}\n\n**Phase 2 — CONSTRAINTS** (Map Limitations, Right-to-Left)\nLens order: ${PHASE_LENS_ORDER.CONSTRAINTS.join(' \u2192 ')}\n${PHASE_GUIDANCE.CONSTRAINTS}\n\n**Phase 3 — DEFINE APPROACH** (Build Solution, Left-to-Right)\nLens order: ${PHASE_LENS_ORDER.DEFINE_APPROACH.join(' \u2192 ')}\n${PHASE_GUIDANCE.DEFINE_APPROACH}`,
+        summary: `**Workshop Phase Structure:**\n\n${trackContext}\n\n**Phase 1 \u2014 REIMAGINE** (Pure Vision)\nLens order: ${reimagineLenses.join(' \u2192 ')}\n${PHASE_GUIDANCE.REIMAGINE}\n\n**Phase 2 \u2014 CONSTRAINTS** (Map Limitations, Right-to-Left)\nLens order: ${constraintLenses.join(' \u2192 ')}\n${PHASE_GUIDANCE.CONSTRAINTS}\n\n**Phase 3 \u2014 DEFINE APPROACH** (Build Solution, Left-to-Right)\nLens order: ${defineLenses.join(' \u2192 ')}\n${PHASE_GUIDANCE.DEFINE_APPROACH}`,
       };
     }
 
@@ -370,7 +399,7 @@ function executeQuestionSetTool(
 // SYSTEM PROMPT
 // ══════════════════════════════════════════════════════════════
 
-function buildQuestionSetSystemPrompt(context: PrepContext): string {
+function buildQuestionSetSystemPrompt(context: PrepContext, research?: WorkshopPrepResearch | null): string {
   const trackDesc = context.dreamTrack === 'DOMAIN'
     ? `The DREAM track is **Domain**, focused on **${context.targetDomain || 'a specific area'}**. Weight questions toward this domain while still covering all relevant lenses in each phase.`
     : 'The DREAM track is **Enterprise** \u2014 a full end-to-end assessment across the entire business.';
@@ -409,6 +438,7 @@ THE THREE WORKSHOP PHASES:
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
 
+${research?.industryDimensions?.length ? `\nIMPORTANT — INDUSTRY DIMENSIONS:\nThis workshop uses research-derived dimensions specific to ${context.industry || 'this industry'}, NOT generic lenses.\nThe dimensions are: ${research.industryDimensions.map(d => d.name).join(', ')}\n${research.industryDimensions.map(d => `  • ${d.name}: ${d.description}`).join('\n')}\nUse THESE dimension names in your question lens assignments, NOT the generic People/Organisation/Technology/etc.\n` : ''}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}
 YOUR APPROACH:
 1. First, get the research context (company, industry, challenges).
 2. Get Discovery insights if available (what participants already told us).
@@ -493,7 +523,7 @@ export async function runQuestionSetAgent(
   }
 
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const systemPrompt = buildQuestionSetSystemPrompt(context);
+  const systemPrompt = buildQuestionSetSystemPrompt(context, research);
   const startMs = Date.now();
 
   // Track designed phases as they come in

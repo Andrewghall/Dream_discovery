@@ -25,7 +25,12 @@ export type ToolResult = {
 // TOOL DEFINITIONS (OpenAI function-calling format)
 // ══════════════════════════════════════════════════════════════
 
-export const COGNITIVE_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+const DEFAULT_COGNITIVE_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+
+export function buildCognitiveTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  const domainEnum = dimensions?.length ? dimensions : DEFAULT_COGNITIVE_DOMAINS;
+
+  return [
   {
     type: 'function',
     function: {
@@ -45,7 +50,7 @@ export const COGNITIVE_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
           domain: {
             type: 'string',
-            enum: ['People', 'Operations', 'Customer', 'Technology', 'Regulation'],
+            enum: domainEnum,
             description: 'Optional: filter by domain relevance',
           },
         },
@@ -156,7 +161,7 @@ export const COGNITIVE_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                   items: {
                     type: 'object',
                     properties: {
-                      domain: { type: 'string', enum: ['People', 'Operations', 'Customer', 'Technology', 'Regulation'] },
+                      domain: { type: 'string', enum: domainEnum },
                       relevance: { type: 'number' },
                     },
                     required: ['domain', 'relevance'],
@@ -222,7 +227,7 @@ export const COGNITIVE_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           domainShift: {
             type: 'object',
             properties: {
-              newFocus: { type: 'string', enum: ['People', 'Operations', 'Customer', 'Technology', 'Regulation'] },
+              newFocus: { type: 'string', enum: domainEnum },
               reasoning: { type: 'string' },
             },
             description: 'Set if conversation domain focus has shifted. Omit if no shift.',
@@ -242,7 +247,11 @@ export const COGNITIVE_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
-];
+  ];
+}
+
+// Backward-compatible export for consumers that don't have dimensions
+export const COGNITIVE_TOOLS = buildCognitiveTools();
 
 // ══════════════════════════════════════════════════════════════
 // TOOL EXECUTION — All run in-process against CognitiveState
