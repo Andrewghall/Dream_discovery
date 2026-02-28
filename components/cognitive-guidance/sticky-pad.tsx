@@ -24,10 +24,11 @@ const PAD_TYPE_COLORS: Record<PadType, { bg: string; text: string; accent: strin
   OWNERSHIP_ACTION:    { bg: '#e2e8f0', text: '#1e293b', accent: '#cbd5e1', label: 'Action' },
 };
 
-/** Get colour scheme for a pad — prefer lens-based, fall back to type-based */
-function getPadColors(pad: StickyPadType) {
-  if (pad.lens && LENS_COLORS[pad.lens]) {
-    return LENS_COLORS[pad.lens];
+/** Get colour scheme for a pad — prefer custom lens colors, then default lens, then type-based */
+function getPadColors(pad: StickyPadType, customLensColors?: Record<string, { bg: string; text: string; accent: string; label: string }>) {
+  if (pad.lens) {
+    if (customLensColors?.[pad.lens]) return customLensColors[pad.lens];
+    if (LENS_COLORS[pad.lens]) return LENS_COLORS[pad.lens];
   }
   return PAD_TYPE_COLORS[pad.type];
 }
@@ -49,10 +50,11 @@ interface StickyPadProps {
   onSnooze: (id: string) => void;
   isSelected: boolean;
   onClick: (id: string) => void;
+  customLensColors?: Record<string, { bg: string; text: string; accent: string; label: string }>;
 }
 
-export function StickyPad({ pad, index, onDismiss, onSnooze, isSelected, onClick }: StickyPadProps) {
-  const colors = getPadColors(pad);
+export function StickyPad({ pad, index, onDismiss, onSnooze, isSelected, onClick, customLensColors }: StickyPadProps) {
+  const colors = getPadColors(pad, customLensColors);
   const isSnoozed = pad.status === 'snoozed';
   const rotation = ROTATIONS[index % ROTATIONS.length];
   const hasCoverage = pad.coveragePercent > 0;

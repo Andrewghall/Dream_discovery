@@ -14,9 +14,10 @@ import OpenAI from 'openai';
 import { env } from '@/lib/env';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, GuidedTheme } from '../guidance-state';
-import type { AgentConversationCallback, AgentReview } from './agent-types';
+import type { AgentConversationCallback, AgentReview, WorkshopPrepResearch } from './agent-types';
 import type { Lens } from '@/lib/cognitive-guidance/pipeline';
 import { buildJourneyContextString } from '../journey-completion-state';
+import { getDimensionNames } from '../workshop-dimensions';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -269,6 +270,11 @@ export async function runThemeAgent(
   const systemPrompt = buildThemeSystemPrompt(cogState, guidanceState);
   const startMs = Date.now();
 
+  // Build dynamic tools using research dimensions
+  const research = guidanceState.prepContext?.research as WorkshopPrepResearch | null | undefined;
+  const dims = getDimensionNames(research);
+  const tools = buildThemeTools(dims);
+
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
     {
@@ -290,7 +296,7 @@ export async function runThemeAgent(
         model: MODEL,
         temperature: 0.3,
         messages,
-        tools: THEME_TOOLS,
+        tools,
         tool_choice: toolChoice,
       });
 
@@ -384,12 +390,7 @@ export async function runThemeAgent(
 // Same tools, same reasoning, same agentic loop.
 // ══════════════════════════════════════════════════════════════
 
-const THEME_REVIEW_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-  // Same belief query and coverage tools
-  THEME_TOOLS[0], // query_beliefs
-  THEME_TOOLS[1], // get_coverage_summary
-  // Review commit tool
-  {
+const SUBMIT_REVIEW_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
     type: 'function',
     function: {
       name: 'submit_review',
@@ -414,8 +415,12 @@ const THEME_REVIEW_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         required: ['stance', 'feedback'],
       },
     },
-  },
-];
+  };
+
+function buildThemeReviewTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  const baseTools = buildThemeTools(dimensions);
+  return [baseTools[0], baseTools[1], SUBMIT_REVIEW_TOOL]; // query_beliefs, list_all_beliefs, submit_review
+}
 
 export async function reviewWithThemeAgent(
   proposals: string,
@@ -430,6 +435,11 @@ export async function reviewWithThemeAgent(
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const basePrompt = buildThemeSystemPrompt(cogState, guidanceState);
   const startMs = Date.now();
+
+  // Build dynamic review tools using research dimensions
+  const research = guidanceState.prepContext?.research as WorkshopPrepResearch | null | undefined;
+  const dims = getDimensionNames(research);
+  const reviewTools = buildThemeReviewTools(dims);
 
   const journeyCtx = buildJourneyContextString(guidanceState.journeyCompletionState);
 
@@ -458,7 +468,7 @@ Use query_beliefs and get_coverage_summary to ground your assessment, then submi
         model: MODEL,
         temperature: 0.3,
         messages,
-        tools: THEME_REVIEW_TOOLS,
+        tools: reviewTools,
         tool_choice: toolChoice,
       });
 

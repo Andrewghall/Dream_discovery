@@ -44,6 +44,13 @@ type HemisphereGraph = {
   coreTruthNodeId: string;
 };
 
+type IndustryDimension = {
+  name: string;
+  description: string;
+  keywords: string[];
+  color: string;
+};
+
 type HemisphereResponse = {
   ok: boolean;
   workshopId: string;
@@ -55,6 +62,7 @@ type HemisphereResponse = {
   snapshotId?: string;
   snapshotName?: string;
   error?: string;
+  industryDimensions?: IndustryDimension[] | null;
 };
 
 type Snapshot = { id: string; name: string; dialoguePhase: string; createdAt: string };
@@ -85,13 +93,11 @@ type ActorJourneyResponse = {
   generatedAt: string;
 };
 
-type DomainTab = 'all' | 'people' | 'corporate' | 'customer' | 'technology' | 'regulation';
-
 type PageProps = { params: Promise<{ id: string }> };
 
 /* ─────────────────────────── Constants ─────────────────────────── */
 
-const DOMAIN_TABS: { key: DomainTab; label: string; color: string }[] = [
+const DEFAULT_DOMAIN_TABS: { key: string; label: string; color: string }[] = [
   { key: 'all', label: 'All Domains', color: '#94a3b8' },
   { key: 'people', label: 'People', color: '#a78bfa' },
   { key: 'corporate', label: 'Operations', color: '#f97316' },
@@ -100,7 +106,7 @@ const DOMAIN_TABS: { key: DomainTab; label: string; color: string }[] = [
   { key: 'regulation', label: 'Regulation', color: '#fb7185' },
 ];
 
-const ALL_PHASES = ['people', 'corporate', 'customer', 'technology', 'regulation'] as const;
+const DEFAULT_ALL_PHASES = ['people', 'corporate', 'customer', 'technology', 'regulation'];
 const ALL_TYPES: NodeType[] = ['VISION', 'BELIEF', 'CHALLENGE', 'FRICTION', 'CONSTRAINT', 'ENABLER'];
 
 const STOPWORDS = new Set([
@@ -313,13 +319,15 @@ function DomainSynthesisCard({
   nodes,
   edges,
   allNodes,
+  domainTabs,
 }: {
-  domain: DomainTab;
+  domain: string;
   nodes: HemisphereNode[];
   edges: HemisphereEdge[];
   allNodes: HemisphereNode[];
+  domainTabs: { key: string; label: string; color: string }[];
 }) {
-  const domainLabel = DOMAIN_TABS.find((d) => d.key === domain)?.label || 'All Domains';
+  const domainLabel = domainTabs.find((d) => d.key === domain)?.label || 'All Domains';
   const nonEvidence = nodes.filter((n) => n.type !== 'EVIDENCE');
 
   // Group by type for breakdown
@@ -530,7 +538,7 @@ function DomainSynthesisCard({
           <div className="mb-2 text-[11px] font-medium text-slate-300">Cross-Domain Connections</div>
           <div className="space-y-1">
             {crossDomainLinks.map(([otherDomain, count]) => {
-              const tab = DOMAIN_TABS.find((d) => d.key === otherDomain);
+              const tab = domainTabs.find((d) => d.key === otherDomain);
               return (
                 <div key={otherDomain} className="flex items-center gap-2 text-xs">
                   <span className="inline-block h-1.5 w-8 rounded-full" style={{ backgroundColor: tab?.color || '#94a3b8', opacity: 0.6 }} />
@@ -672,7 +680,7 @@ function ActorJourneyPanel({ workshopId, snapshotId }: { workshopId: string; sna
               {actor.domains.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2">
                   {actor.domains.map((d) => {
-                    const tab = DOMAIN_TABS.find((t) => t.key === d);
+                    const tab = DEFAULT_DOMAIN_TABS.find((t) => t.key === d);
                     return (
                       <span key={d} className="rounded-full px-1.5 py-0.5 text-[10px] text-slate-300 capitalize" style={{ backgroundColor: `${tab?.color || '#94a3b8'}20`, border: `1px solid ${tab?.color || '#94a3b8'}40` }}>
                         {tab?.label || d}
@@ -765,8 +773,8 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
   const [agentPanelCollapsed, setAgentPanelCollapsed] = useState(false);
 
-  // Domain tabs
-  const [activeDomain, setActiveDomain] = useState<DomainTab>('all');
+  // Domain tabs — dynamic from research dimensions
+  const [activeDomain, setActiveDomain] = useState<string>('all');
   const [rightTab, setRightTab] = useState<'synthesis' | 'actors'>('synthesis');
 
   // Canvas & interaction
@@ -783,7 +791,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const transitionRef = useRef<{ startMs: number; from: Map<string, NodePose> } | null>(null);
   const prevPositionsRef = useRef<Map<string, NodePose>>(new Map());
 
-  const [phaseFilter, setPhaseFilter] = useState<Record<(typeof ALL_PHASES)[number], boolean>>({
+  const [phaseFilter, setPhaseFilter] = useState<Record<string, boolean>>({
     people: true, corporate: true, customer: true, technology: true, regulation: true,
   });
   const [typeFilter, setTypeFilter] = useState<Record<NodeType, boolean>>({
@@ -986,6 +994,23 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const maxWeight = useMemo(() => nodes.reduce((m, n) => Math.max(m, n.weight || 0), 1), [nodes]);
 
+  // Dynamic domain tabs from research dimensions (falls back to defaults)
+  const domainTabs = useMemo(() => {
+    if (data?.industryDimensions?.length) {
+      return [
+        { key: 'all', label: 'All Dimensions', color: '#94a3b8' },
+        ...data.industryDimensions.map(d => ({
+          key: d.name.toLowerCase().replace(/\s+/g, '_'),
+          label: d.name,
+          color: d.color,
+        })),
+      ];
+    }
+    return DEFAULT_DOMAIN_TABS;
+  }, [data?.industryDimensions]);
+
+  const allPhases = useMemo(() => domainTabs.filter(t => t.key !== 'all').map(t => t.key), [domainTabs]);
+
   // Filter nodes for active domain
   const domainFilteredNodes = useMemo(() => {
     if (activeDomain === 'all') return nodes;
@@ -998,7 +1023,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   // Nodes per domain for mini-hemispheres
   const nodesPerDomain = useMemo(() => {
     const map: Record<string, HemisphereNode[]> = {};
-    for (const domain of ALL_PHASES) {
+    for (const domain of allPhases) {
       map[domain] = nodes.filter((n) => {
         const tags = (n.phaseTags || []).map((t) => String(t).toLowerCase());
         return tags.includes(domain);
@@ -1782,7 +1807,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         <div className="w-[420px] flex-shrink-0 border-l border-white/10 bg-[#0a0f1a] flex flex-col overflow-hidden">
           {/* Domain tabs */}
           <div className="flex flex-wrap gap-1 border-b border-white/10 px-3 py-2">
-            {DOMAIN_TABS.map((tab) => (
+            {domainTabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveDomain(tab.key)}
@@ -1831,6 +1856,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                 nodes={activeDomain === 'all' ? nodes.filter((n) => n.type !== 'EVIDENCE') : (nodesPerDomain[activeDomain] || []).filter((n) => n.type !== 'EVIDENCE')}
                 edges={edges}
                 allNodes={nodes}
+                domainTabs={domainTabs}
               />
             ) : (
               <ActorJourneyPanel
@@ -1845,7 +1871,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       {/* ─── Domain Lens Strip (bottom) ─── */}
       <div className="flex-shrink-0 border-t border-white/10 bg-[#060a14] px-4 py-3">
         <div className="flex items-center gap-3 overflow-x-auto">
-          {DOMAIN_TABS.filter((d) => d.key !== 'all').map((tab) => {
+          {domainTabs.filter((d) => d.key !== 'all').map((tab) => {
             const domainNodes = nodesPerDomain[tab.key] || [];
             return (
               <MiniHemisphere

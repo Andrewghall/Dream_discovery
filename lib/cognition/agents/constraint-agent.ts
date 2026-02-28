@@ -13,8 +13,9 @@ import OpenAI from 'openai';
 import { env } from '@/lib/env';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, ConstraintFlag } from '../guidance-state';
-import type { AgentConversationCallback, AgentReview } from './agent-types';
+import type { AgentConversationCallback, AgentReview, WorkshopPrepResearch } from './agent-types';
 import { buildJourneyContextString } from '../journey-completion-state';
+import { getDimensionNames } from '../workshop-dimensions';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -154,6 +155,11 @@ export async function runConstraintAgent(
 
   const prep = guidanceState.prepContext;
 
+  // Build dynamic tools using research dimensions
+  const research = prep?.research as WorkshopPrepResearch | null | undefined;
+  const dims = getDimensionNames(research);
+  const tools = buildConstraintTools(dims);
+
   const systemPrompt = `You are the DREAM Constraint Agent. You identify and categorise constraints that affect the journey map.
 
 ${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : ''}
@@ -188,7 +194,7 @@ Call map_constraints when ready. Cite sourceBeliefIds for every constraint.`;
         model: MODEL,
         temperature: 0.3,
         messages,
-        tools: CONSTRAINT_TOOLS,
+        tools,
         tool_choice: toolChoice,
       });
 
@@ -269,35 +275,37 @@ Call map_constraints when ready. Cite sourceBeliefIds for every constraint.`;
 // Same tools, same reasoning, same agentic loop.
 // ══════════════════════════════════════════════════════════════
 
-const CONSTRAINT_REVIEW_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-  CONSTRAINT_TOOLS[0], // query_constraint_beliefs
-  {
-    type: 'function',
-    function: {
-      name: 'submit_review',
-      description: 'Submit your review of the proposals. This is your commit tool.',
-      parameters: {
-        type: 'object',
-        properties: {
-          stance: {
-            type: 'string',
-            enum: ['agree', 'challenge', 'build'],
-            description: 'agree = proposals are phase-appropriate, challenge = proposals violate phase rules or miss known constraints, build = agree but see additional constraint angles',
-          },
-          feedback: {
-            type: 'string',
-            description: 'Your specific assessment from the constraints perspective. Reference known constraints and explain your reasoning.',
-          },
-          suggestedChanges: {
-            type: 'string',
-            description: 'If challenging or building, what specifically should change?',
-          },
+const CONSTRAINT_SUBMIT_REVIEW_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'submit_review',
+    description: 'Submit your review of the proposals. This is your commit tool.',
+    parameters: {
+      type: 'object',
+      properties: {
+        stance: {
+          type: 'string',
+          enum: ['agree', 'challenge', 'build'],
+          description: 'agree = proposals are phase-appropriate, challenge = proposals violate phase rules or miss known constraints, build = agree but see additional constraint angles',
         },
-        required: ['stance', 'feedback'],
+        feedback: {
+          type: 'string',
+          description: 'Your specific assessment from the constraints perspective. Reference known constraints and explain your reasoning.',
+        },
+        suggestedChanges: {
+          type: 'string',
+          description: 'If challenging or building, what specifically should change?',
+        },
       },
+      required: ['stance', 'feedback'],
     },
   },
-];
+};
+
+function buildConstraintReviewTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  const baseTools = buildConstraintTools(dimensions);
+  return [baseTools[0], CONSTRAINT_SUBMIT_REVIEW_TOOL]; // query_constraint_beliefs, submit_review
+}
 
 export async function reviewWithConstraintAgent(
   proposals: string,
@@ -313,6 +321,11 @@ export async function reviewWithConstraintAgent(
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const prep = guidanceState.prepContext;
   const startMs = Date.now();
+
+  // Build dynamic review tools using research dimensions
+  const research = prep?.research as WorkshopPrepResearch | null | undefined;
+  const reviewDims = getDimensionNames(research);
+  const reviewTools = buildConstraintReviewTools(reviewDims);
 
   const phaseInstruction = phase === 'REIMAGINE'
     ? `CRITICAL: We are in REIMAGINE phase. This is PURE VISION — zero constraints, zero friction, zero barriers. If ANY proposal mentions constraints, limitations, barriers, changes needed, or practical concerns — you MUST CHALLENGE it immediately. REIMAGINE asks "what does perfect look like?" not "what's stopping us?".`
@@ -353,7 +366,7 @@ REVIEW MODE: Use query_constraint_beliefs to check what constraints exist in the
         model: MODEL,
         temperature: 0.3,
         messages,
-        tools: CONSTRAINT_REVIEW_TOOLS,
+        tools: reviewTools,
         tool_choice: toolChoice,
       });
 

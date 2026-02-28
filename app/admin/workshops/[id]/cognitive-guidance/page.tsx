@@ -51,7 +51,8 @@ import {
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
 import type { GuidedTheme, JourneyCompletionState } from '@/lib/cognition/guidance-state';
 import { calculateDeterministicCompletion } from '@/lib/cognition/journey-completion-state';
-import type { WorkshopPhase, FacilitationQuestion, SubQuestion } from '@/lib/cognition/agents/agent-types';
+import type { WorkshopPhase, FacilitationQuestion, SubQuestion, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
+import { getDimensionColors } from '@/lib/cognition/workshop-dimensions';
 import { useAudioCapture } from '@/hooks/use-audio-capture';
 import type { StreamTranscript } from '@/lib/captureapi/client';
 import { MicSetupDialog } from '@/components/cognitive-guidance/mic-setup-dialog';
@@ -553,6 +554,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [completedByQuestion, setCompletedByQuestion] = useState<Map<number, StickyPad[]>>(new Map());
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
 
+  // ── Dynamic lens colors from research dimensions ──
+  const [customLensColors, setCustomLensColors] = useState<Record<string, { bg: string; text: string; accent: string; label: string }> | undefined>(undefined);
+
   // ── Journey completion tracking ──
   const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
 
@@ -909,6 +913,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     fetch(`/api/workshops/${workshopId}/guidance-state?init=true`)
       .then((r) => r.json())
       .then((data) => {
+        // Build dynamic lens colors from research dimensions
+        const research = data.guidanceState?.prepContext?.research as WorkshopPrepResearch | null | undefined;
+        if (research?.industryDimensions?.length) {
+          setCustomLensColors(getDimensionColors(research));
+        }
+
         if (data.customQuestions && typeof data.customQuestions === 'object') {
           const cq = data.customQuestions as PrepQuestionSet;
           prepQuestionsRef.current = cq;
@@ -1923,6 +1933,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                       onDismissPad={handleDismissPad}
                       onSnoozePad={handleSnoozePad}
                       maxVisible={4}
+                      customLensColors={customLensColors}
                       onOverflow={handleOverflowPads}
                     />
                   ) : (
@@ -1942,6 +1953,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                         onSelectPad={setSelectedPadId}
                         onDismissPad={handleDismissPad}
                         onSnoozePad={handleSnoozePad}
+                        customLensColors={customLensColors}
                       />
                     </div>
                   )}
@@ -2015,6 +2027,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               onSelectPad={setSelectedPadId}
               onDismissPad={handleDismissPad}
               onSnoozePad={handleSnoozePad}
+              customLensColors={customLensColors}
             />
           )}
         </div>
