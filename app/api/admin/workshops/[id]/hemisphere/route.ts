@@ -181,22 +181,34 @@ function mapLivePrimaryTypeToNodeType(primary: LivePrimaryType): Exclude<NodeTyp
   }
 }
 
-function domainToPhaseTag(domain: string): string | null {
-  const d = (domain || '').trim().toLowerCase();
-  if (d.includes('people') || d.includes('human') || d.includes('talent') || d.includes('workforce') || d.includes('hr')) return 'people';
-  if (d.includes('corporate') || d.includes('business') || d.includes('enterprise') || d.includes('organization') || d.includes('organisation') || d.includes('strategy') || d.includes('operation')) return 'corporate';
-  if (d.includes('customer') || d.includes('client') || d.includes('user') || d.includes('consumer') || d.includes('market')) return 'customer';
-  if (d.includes('tech') || d.includes('digital') || d.includes('software') || d.includes('data') || d.includes('infrastructure') || d.includes('system')) return 'technology';
-  if (d.includes('regulat') || d.includes('compliance') || d.includes('legal') || d.includes('governance') || d.includes('policy')) return 'regulation';
+function domainToPhaseTag(domain: string, customDimensionNames?: string[] | null): string | null {
+  const d = (domain || '').trim();
+  // When research dimensions exist, use identity mapping (dimension name lowercased)
+  if (customDimensionNames?.length) {
+    const match = customDimensionNames.find(n => n.toLowerCase() === d.toLowerCase());
+    if (match) return match.toLowerCase().replace(/\s+/g, '_');
+    // Fuzzy match: check if the domain contains a dimension name
+    for (const dimName of customDimensionNames) {
+      if (d.toLowerCase().includes(dimName.toLowerCase())) return dimName.toLowerCase().replace(/\s+/g, '_');
+    }
+    return null;
+  }
+  // Legacy fallback
+  const dl = d.toLowerCase();
+  if (dl.includes('people') || dl.includes('human') || dl.includes('talent') || dl.includes('workforce') || dl.includes('hr')) return 'people';
+  if (dl.includes('corporate') || dl.includes('business') || dl.includes('enterprise') || dl.includes('organization') || dl.includes('organisation') || dl.includes('strategy') || dl.includes('operation')) return 'corporate';
+  if (dl.includes('customer') || dl.includes('client') || dl.includes('user') || dl.includes('consumer') || dl.includes('market')) return 'customer';
+  if (dl.includes('tech') || dl.includes('digital') || dl.includes('software') || dl.includes('data') || dl.includes('infrastructure') || dl.includes('system')) return 'technology';
+  if (dl.includes('regulat') || dl.includes('compliance') || dl.includes('legal') || dl.includes('governance') || dl.includes('policy')) return 'regulation';
   return null;
 }
 
-function phaseTagsFromDomains(domains: Array<{ domain: string; relevance: number; reasoning: string }> | undefined | null): string[] {
+function phaseTagsFromDomains(domains: Array<{ domain: string; relevance: number; reasoning: string }> | undefined | null, customDimensionNames?: string[] | null): string[] {
   if (!Array.isArray(domains)) return [];
   const tags: string[] = [];
   for (const d of domains) {
     if (!d || typeof d.domain !== 'string') continue;
-    const tag = domainToPhaseTag(d.domain);
+    const tag = domainToPhaseTag(d.domain, customDimensionNames);
     if (tag) tags.push(tag);
   }
   return uniq(tags);
@@ -300,6 +312,16 @@ export async function GET(
         userOrgId: user.organizationId,
       }, { status: 403 });
     }
+    // Fetch prepResearch for dynamic industry dimensions
+    const workshopMeta = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: { prepResearch: true },
+    });
+    const prepResearch = workshopMeta?.prepResearch as Record<string, unknown> | null;
+    const industryDimensions = Array.isArray(prepResearch?.industryDimensions)
+      ? (prepResearch.industryDimensions as Array<{ name: string; color: string; description: string; keywords: string[] }>)
+      : null;
+
     const source = request.nextUrl.searchParams.get('source');
     const snapshotIdParam = request.nextUrl.searchParams.get('snapshotId');
 
@@ -340,7 +362,8 @@ export async function GET(
           : 'INSIGHT';
         const mappedType = mapLivePrimaryTypeToNodeType(primaryType);
 
-        const phaseTags = phaseTagsFromDomains(agenticAnalysis?.domains);
+        const customDimNames = industryDimensions?.map(d => d.name) || null;
+        const phaseTags = phaseTagsFromDomains(agenticAnalysis?.domains, customDimNames);
 
         const confidence = (agenticAnalysis && typeof agenticAnalysis.overallConfidence === 'number')
           ? clamp01(agenticAnalysis.overallConfidence)
@@ -603,6 +626,7 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
         sessionCount: 0,
         participantCount: 0,
         hemisphereGraph,
+        industryDimensions,
       });
     }
 
@@ -1432,6 +1456,7 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
       sessionCount: sessions.length,
       participantCount: uniq(sessions.map((s) => s.participantId)).length,
       hemisphereGraph,
+      industryDimensions,
     });
   } catch (error) {
     console.error('Error building hemisphere snapshot:', error);

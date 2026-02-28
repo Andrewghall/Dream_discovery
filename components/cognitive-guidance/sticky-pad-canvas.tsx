@@ -12,6 +12,7 @@ interface StickyPadCanvasProps {
   onSnoozePad: (id: string) => void;
   maxVisible?: number;              // Limit visible pads (e.g. 4)
   onOverflow?: (padIds: string[]) => void;  // Called with IDs of pads that exceed maxVisible
+  customLensColors?: Record<string, { bg: string; text: string; accent: string; label: string }>;
 }
 
 export function StickyPadCanvas({
@@ -22,6 +23,7 @@ export function StickyPadCanvas({
   onSnoozePad,
   maxVisible,
   onOverflow,
+  customLensColors,
 }: StickyPadCanvasProps) {
   const allActivePads = pads
     .filter((pad) => pad.status === 'active')
@@ -80,6 +82,7 @@ export function StickyPadCanvas({
             onClick={(id) => onSelectPad(selectedPadId === id ? null : id)}
             onDismiss={onDismissPad}
             onSnooze={onSnoozePad}
+            customLensColors={customLensColors}
           />
         ))}
       </div>

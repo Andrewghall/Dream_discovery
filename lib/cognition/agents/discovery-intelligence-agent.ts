@@ -23,6 +23,7 @@ import type {
 } from './agent-types';
 import type { GuidanceState } from '../guidance-state';
 import { buildJourneyContextString } from '../journey-completion-state';
+import { getDimensionNames } from '../workshop-dimensions';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -380,6 +381,10 @@ export async function runDiscoveryIntelligenceAgent(
   const systemPrompt = buildDiscoverySystemPrompt(context);
   const startMs = Date.now();
 
+  // Build dynamic tools using research dimensions
+  const dims = getDimensionNames(research);
+  const tools = buildDiscoveryTools(dims);
+
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: 'Please synthesize the Discovery interview data into a workshop briefing.' },
@@ -398,7 +403,7 @@ export async function runDiscoveryIntelligenceAgent(
         model: MODEL,
         temperature: 0.3,
         messages,
-        tools: DISCOVERY_TOOLS,
+        tools,
         tool_choice: toolChoice,
       });
 

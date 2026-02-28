@@ -19,8 +19,9 @@ import OpenAI from 'openai';
 import { env } from '@/lib/env';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState } from '../guidance-state';
-import type { AgentConversationCallback } from './agent-types';
+import type { AgentConversationCallback, WorkshopPrepResearch } from './agent-types';
 import type { StickyPad, StickyPadType, Lens } from '@/lib/cognitive-guidance/pipeline';
+import { getDimensionNames } from '../workshop-dimensions';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -364,6 +365,11 @@ export async function runFacilitationAgent(
   const systemPrompt = buildFacilitationSystemPrompt(cogState, guidanceState);
   const startMs = Date.now();
 
+  // Build dynamic tools using research dimensions (falls back to defaults)
+  const research = guidanceState.prepContext?.research as WorkshopPrepResearch | null | undefined;
+  const dims = getDimensionNames(research);
+  const tools = buildFacilitationTools(dims);
+
   // Build the user message with signals + speech + journey context
   const deliberationBrief = [
     deliberation?.signals ? `SIGNALS & GAPS:\n${deliberation.signals}` : null,
@@ -395,7 +401,7 @@ export async function runFacilitationAgent(
         model: MODEL,
         temperature: 0.4,
         messages,
-        tools: FACILITATION_TOOLS,
+        tools,
         tool_choice: toolChoice,
       });
 
