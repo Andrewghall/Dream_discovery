@@ -50,7 +50,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (!workshop) return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
 
-    const analysis = workshop.discoverAnalysis as DiscoverAnalysis | null;
+    // Use stored analysis, or fall back to client-provided analysis (e.g. demo workshops)
+    const analysis = (workshop.discoverAnalysis as DiscoverAnalysis | null)
+      ?? (body.analysis as DiscoverAnalysis | null);
     if (!analysis) {
       return NextResponse.json({ error: 'No analysis available. Generate the analysis first.' }, { status: 400 });
     }
