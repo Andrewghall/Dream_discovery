@@ -22,7 +22,7 @@ import type {
   ActorUpdate,
 } from '../reasoning-engine';
 import { buildAgenticSystemPrompt, buildAgenticUserMessage } from '../prompt-adapters/gpt-prompts';
-import { COGNITIVE_TOOLS, executeTool } from './tools';
+import { COGNITIVE_TOOLS, buildCognitiveTools, executeTool } from './tools';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -34,14 +34,14 @@ const MODEL = 'gpt-4o-mini';
 
 type ValidPrimaryType = CognitiveStateUpdate['primaryType'];
 type ValidCategory = BeliefUpdate['category'];
-type ValidDomain = 'People' | 'Operations' | 'Customer' | 'Technology' | 'Regulation';
+type ValidDomain = string;
 type ValidTemporal = 'past' | 'present' | 'future' | 'timeless';
 type ValidSentiment = 'positive' | 'neutral' | 'concerned' | 'critical';
 type ValidTrajectory = 'improving' | 'stable' | 'declining';
 
 const VALID_PRIMARY_TYPES = new Set(['VISIONARY', 'OPPORTUNITY', 'CONSTRAINT', 'RISK', 'ENABLER', 'ACTION', 'QUESTION', 'INSIGHT']);
 const VALID_CATEGORIES = new Set(['aspiration', 'constraint', 'enabler', 'opportunity', 'risk', 'insight', 'action']);
-const VALID_DOMAINS = new Set(['People', 'Operations', 'Customer', 'Technology', 'Regulation']);
+const DEFAULT_VALID_DOMAINS = new Set(['People', 'Operations', 'Customer', 'Technology', 'Regulation']);
 
 function safePrimaryType(v: unknown): ValidPrimaryType {
   const s = String(v || '').toUpperCase();
@@ -53,11 +53,19 @@ function safeCategory(v: unknown): ValidCategory {
   return VALID_CATEGORIES.has(s) ? s as ValidCategory : 'insight';
 }
 
-function safeDomain(v: unknown): ValidDomain {
+function safeDomain(v: unknown, customDimensions?: string[]): ValidDomain {
   const s = String(v || '');
-  if (VALID_DOMAINS.has(s)) return s as ValidDomain;
-  for (const d of VALID_DOMAINS) {
-    if (d.toLowerCase() === s.toLowerCase()) return d as ValidDomain;
+  // When custom dimensions exist, accept them (case-insensitive)
+  if (customDimensions?.length) {
+    const match = customDimensions.find(d => d.toLowerCase() === s.toLowerCase());
+    if (match) return match;
+    // Fallback to first custom dimension
+    return customDimensions[0];
+  }
+  // Default domain validation
+  if (DEFAULT_VALID_DOMAINS.has(s)) return s;
+  for (const d of DEFAULT_VALID_DOMAINS) {
+    if (d.toLowerCase() === s.toLowerCase()) return d;
   }
   return 'Operations';
 }
@@ -127,11 +135,15 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
 
         console.log(`[Agentic Engine] Iteration ${iteration}${isLastIteration ? ' (forced commit)' : ''}`);
 
+        // Use dynamic tools when custom dimensions are set
+        const dimensionNames = state.customDimensions?.map(d => d.name);
+        const tools = dimensionNames?.length ? buildCognitiveTools(dimensionNames) : COGNITIVE_TOOLS;
+
         const completion = await this.openai.chat.completions.create({
           model: MODEL,
           temperature: 0.3,
           messages,
-          tools: COGNITIVE_TOOLS,
+          tools,
           tool_choice: toolChoice,
           parallel_tool_calls: true,
         });
@@ -242,14 +254,14 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
         if (commitArgs) {
           const elapsed = Date.now() - startMs;
           console.log(`[Agentic Engine] Committed after ${iteration + 1} iterations, ${elapsed}ms`);
-          return this.normaliseCommitArgs(commitArgs, deliberation);
+          return this.normaliseCommitArgs(commitArgs, deliberation, dimensionNames);
         }
       }
 
       // If we exited the loop without committing (timeout or model stopped),
       // force one final commit call
       console.log('[Agentic Engine] Loop ended without commit — forcing final commit');
-      return await this.forceCommit(messages, deliberation);
+      return await this.forceCommit(messages, deliberation, state.customDimensions?.map(d => d.name));
 
     } catch (error) {
       console.error('[Agentic Engine] Failed:', error instanceof Error ? error.message : error);
@@ -262,13 +274,16 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
   private async forceCommit(
     messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     deliberation: string[],
+    customDimensionNames?: string[],
   ): Promise<CognitiveStateUpdate> {
     try {
+      const tools = customDimensionNames?.length ? buildCognitiveTools(customDimensionNames) : COGNITIVE_TOOLS;
+
       const completion = await this.openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
-        tools: COGNITIVE_TOOLS,
+        tools,
         tool_choice: { type: 'function', function: { name: 'commit_analysis' } },
       });
 
@@ -277,7 +292,7 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
       if (firstFnCall && firstFnCall.type === 'function') {
         const args = JSON.parse(firstFnCall.function.arguments);
         deliberation.push('Forced commit after loop exhaustion');
-        return this.normaliseCommitArgs(args, deliberation);
+        return this.normaliseCommitArgs(args, deliberation, customDimensionNames);
       }
     } catch (error) {
       console.error('[Agentic Engine] Force commit failed:', error instanceof Error ? error.message : error);
@@ -292,6 +307,7 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
   private normaliseCommitArgs(
     args: Record<string, unknown>,
     deliberation: string[],
+    customDimensionNames?: string[],
   ): CognitiveStateUpdate {
     return {
       primaryType: safePrimaryType(args.primaryType),
@@ -301,11 +317,11 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
         temporalFocus: safeTemporal(args.temporalFocus),
         sentimentTone: safeSentiment(args.sentimentTone),
       },
-      beliefUpdates: this.normaliseBeliefUpdates(args.beliefUpdates),
+      beliefUpdates: this.normaliseBeliefUpdates(args.beliefUpdates, customDimensionNames),
       contradictionUpdates: this.normaliseContradictionUpdates(args.contradictionUpdates),
       entityUpdates: this.normaliseEntityUpdates(args.entityUpdates),
       actorUpdates: this.normaliseActorUpdates(args.actorUpdates),
-      domainShift: this.normaliseDomainShift(args.domainShift),
+      domainShift: this.normaliseDomainShift(args.domainShift, customDimensionNames),
       sentimentShift: this.normaliseSentimentShift(args.sentimentShift),
       deliberation,
       overallConfidence: typeof args.overallConfidence === 'number'
@@ -316,7 +332,7 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
 
   // ── Normalisation helpers (reused from original) ──────────
 
-  private normaliseBeliefUpdates(raw: unknown): BeliefUpdate[] {
+  private normaliseBeliefUpdates(raw: unknown, customDimensionNames?: string[]): BeliefUpdate[] {
     if (!Array.isArray(raw)) return [];
     return raw.map((b: Record<string, unknown>) => ({
       action: (['create', 'reinforce', 'revise', 'weaken'].includes(String(b.action))
@@ -327,7 +343,7 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
       primaryType: safePrimaryType(b.primaryType),
       domains: Array.isArray(b.domains)
         ? b.domains.map((d: Record<string, unknown>) => ({
-            domain: safeDomain(d.domain),
+            domain: safeDomain(d.domain, customDimensionNames),
             relevance: typeof d.relevance === 'number' ? Math.max(0, Math.min(1, d.relevance)) : 0.5,
           }))
         : [],
@@ -375,12 +391,12 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
     })).filter((a) => a.name !== 'Unknown');
   }
 
-  private normaliseDomainShift(raw: unknown): CognitiveStateUpdate['domainShift'] {
+  private normaliseDomainShift(raw: unknown, customDimensionNames?: string[]): CognitiveStateUpdate['domainShift'] {
     if (!raw || typeof raw !== 'object') return null;
     const d = raw as Record<string, unknown>;
     if (!d.newFocus) return null;
     return {
-      newFocus: safeDomain(d.newFocus),
+      newFocus: safeDomain(d.newFocus, customDimensionNames),
       reasoning: String(d.reasoning || ''),
     };
   }

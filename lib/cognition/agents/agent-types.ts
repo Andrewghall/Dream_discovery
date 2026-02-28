@@ -17,6 +17,21 @@ export type { AgentConversationEntry };
 // WORKSHOP PREP RESEARCH — Output of Research Agent
 // ══════════════════════════════════════════════════════════
 
+// ── Research-driven workshop configuration types ────────────
+
+export type JourneyStageResearch = {
+  name: string;              // "Account & Identity", "LSAT Registration", etc.
+  description: string;       // What happens at this stage
+  typicalTouchpoints: string[];  // Key interaction points at this stage
+};
+
+export type IndustryDimension = {
+  name: string;              // "Student Experience", "Institutional Trust", etc.
+  description: string;       // What this dimension covers in this industry
+  keywords: string[];        // For automatic utterance classification
+  color: string;             // Hex color for UI rendering (e.g. "#60a5fa")
+};
+
 export type WorkshopPrepResearch = {
   companyOverview: string;
   industryContext: string;
@@ -26,6 +41,10 @@ export type WorkshopPrepResearch = {
   domainInsights: string | null;
   researchedAtMs: number;
   sourceUrls: string[];
+
+  // Research-driven workshop configuration (null for legacy workshops)
+  journeyStages: JourneyStageResearch[] | null;    // Typical customer journey for this industry
+  industryDimensions: IndustryDimension[] | null;   // Industry-specific axes (replaces hardcoded 5)
 };
 
 // ══════════════════════════════════════════════════════════

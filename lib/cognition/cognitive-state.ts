@@ -9,8 +9,12 @@
  */
 
 // ── Domains ─────────────────────────────────────────────────
-export type Domain = 'People' | 'Operations' | 'Customer' | 'Technology' | 'Regulation';
-export const ALL_DOMAINS: Domain[] = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+// Widened to string to support research-driven dynamic dimensions.
+// Default dimensions: People, Operations, Customer, Technology, Regulation
+export type Domain = string;
+export const DEFAULT_DOMAINS: Domain[] = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+/** @deprecated Use DEFAULT_DOMAINS — kept for backward compatibility */
+export const ALL_DOMAINS: Domain[] = DEFAULT_DOMAINS;
 
 // ── Belief Categories ───────────────────────────────────────
 export type BeliefCategory =
@@ -174,6 +178,9 @@ export type CognitiveState = {
     timestampMs: number;
   }>;
 
+  // Research-driven custom dimensions (null = use defaults)
+  customDimensions: import('./agents/agent-types').IndustryDimension[] | null;
+
   // Session lifecycle
   createdAtMs: number;
   lastActivityMs: number;
@@ -215,6 +222,7 @@ export function createCognitiveState(
     processedUtteranceCount: 0,
     lastProcessedAtMs: null,
     recentUtterances: [],
+    customDimensions: null,
     createdAtMs: now,
     lastActivityMs: now,
   };

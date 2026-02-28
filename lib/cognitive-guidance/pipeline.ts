@@ -21,9 +21,22 @@ export type CogNodeType =
   | 'QUESTION'
   | 'UNCLASSIFIED';
 
-export type Lens = 'People' | 'Organisation' | 'Technology' | 'Regulation' | 'Customer';
+// Widened to string to support research-driven dynamic dimensions.
+// Default lenses: People, Organisation, Technology, Regulation, Customer
+export type Lens = string;
 
-export const ALL_LENSES: Lens[] = ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'];
+export const DEFAULT_LENSES: Lens[] = ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'];
+
+/** @deprecated Use DEFAULT_LENSES or getAllLenses(research) — kept for backward compatibility */
+export const ALL_LENSES: Lens[] = DEFAULT_LENSES;
+
+/**
+ * Get effective lenses — from research dimensions or defaults.
+ */
+export function getAllLenses(customDimensionNames?: string[] | null): string[] {
+  if (customDimensionNames?.length) return customDimensionNames;
+  return DEFAULT_LENSES;
+}
 
 export type CogNode = {
   id: string;
@@ -336,7 +349,7 @@ export function categoriseNode(
 // STAGE 2 — LENS APPLICATION
 // ══════════════════════════════════════════════════════════
 
-const DOMAIN_TO_LENS: Record<string, Lens> = {
+const DEFAULT_DOMAIN_TO_LENS: Record<string, Lens> = {
   People: 'People',
   Operations: 'Organisation',
   Customer: 'Customer',
@@ -345,7 +358,7 @@ const DOMAIN_TO_LENS: Record<string, Lens> = {
 };
 
 /** Reverse map: lens name → CaptureAPI domain name (for hemisphere positioning) */
-export const LENS_TO_DOMAIN: Record<string, string> = {
+export const DEFAULT_LENS_TO_DOMAIN: Record<string, string> = {
   People: 'People',
   Organisation: 'Operations',
   Customer: 'Customer',
@@ -353,10 +366,34 @@ export const LENS_TO_DOMAIN: Record<string, string> = {
   Regulation: 'Regulation',
 };
 
+/** @deprecated Use DEFAULT_LENS_TO_DOMAIN or buildLensToDomain() */
+export const LENS_TO_DOMAIN = DEFAULT_LENS_TO_DOMAIN;
+
+/**
+ * Build domain→lens mapping. With research dimensions, it's identity
+ * (no Operations↔Organisation mismatch — dimension names are consistent).
+ */
+export function buildDomainToLens(customDimensionNames?: string[] | null): Record<string, string> {
+  if (customDimensionNames?.length) {
+    return Object.fromEntries(customDimensionNames.map(d => [d, d]));
+  }
+  return DEFAULT_DOMAIN_TO_LENS;
+}
+
+/**
+ * Build lens→domain mapping. With research dimensions, it's identity.
+ */
+export function buildLensToDomain(customDimensionNames?: string[] | null): Record<string, string> {
+  if (customDimensionNames?.length) {
+    return Object.fromEntries(customDimensionNames.map(d => [d, d]));
+  }
+  return DEFAULT_LENS_TO_DOMAIN;
+}
+
 const LENS_RELEVANCE_THRESHOLD = 0.3;
 
-/** Keyword patterns per lens — used as fallback when CaptureAPI under-classifies */
-const KEYWORD_LENS_MAP: [Lens, RegExp][] = [
+/** Default keyword patterns per lens — used as fallback when CaptureAPI under-classifies */
+const DEFAULT_KEYWORD_LENS_MAP: [string, RegExp][] = [
   ['Customer', /\b(customer\w*|client\w*|consumer\w*|buyer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*|user\w*|experience\w*|journey\w*|satisfaction|retention|churn|onboard\w*|loyalt\w*|feedback)\b/i],
   ['Technology', /\b(technolog\w*|AI|machine.?learning|system\w*|platform\w*|software|digital\w*|automat\w*|data\b|cloud|infra\w*|algorithm\w*|API|integrat\w*|cyber\w*|server\w*|database\w*|scal\w*|architect\w*|deploy\w*|devops|pipeline\w*)\b/i],
   ['Regulation', /\b(regulat\w*|complian\w*|legal\w*|GDPR|FCA|licen[cs]\w*|governance|audit\w*|polic[iy]\w*|legislat\w*|mandate\w*|standard\w*|accredit\w*|certif\w*|oversight|enforce\w*|statute\w*|jurisdict\w*|scrutin\w*)\b/i],
@@ -365,12 +402,33 @@ const KEYWORD_LENS_MAP: [Lens, RegExp][] = [
 ];
 
 /**
+ * Build keyword→lens map from research dimensions (using their keywords field)
+ * or fall back to hardcoded defaults.
+ */
+export function buildKeywordLensMap(
+  customDimensions?: Array<{ name: string; keywords: string[] }> | null,
+): [string, RegExp][] {
+  if (customDimensions?.length) {
+    return customDimensions.map(d => {
+      const escaped = d.keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      return [d.name, new RegExp(`\\b(${escaped.join('|')})\\b`, 'i')] as [string, RegExp];
+    });
+  }
+  return DEFAULT_KEYWORD_LENS_MAP;
+}
+
+/**
  * Keyword-based lens inference — supplements CaptureAPI when it returns weak
  * or missing domain classifications. Returns lenses at 0.3-0.5 relevance.
+ * Accepts optional custom keyword map from research dimensions.
  */
-export function inferKeywordLenses(text: string): Array<{ lens: Lens; relevance: number; evidence: string }> {
+export function inferKeywordLenses(
+  text: string,
+  customKeywordMap?: [string, RegExp][] | null,
+): Array<{ lens: Lens; relevance: number; evidence: string }> {
+  const keywordMap = customKeywordMap || DEFAULT_KEYWORD_LENS_MAP;
   const results: Array<{ lens: Lens; relevance: number; evidence: string }> = [];
-  for (const [lens, pattern] of KEYWORD_LENS_MAP) {
+  for (const [lens, pattern] of keywordMap) {
     const matches = text.match(new RegExp(pattern, 'gi'));
     if (matches && matches.length > 0) {
       results.push({
@@ -391,22 +449,30 @@ export function inferKeywordLenses(text: string): Array<{ lens: Lens; relevance:
 export function applyLensMapping(
   node: CogNode,
   agenticAnalysis: CogNode['sourceAgenticAnalysis'],
+  options?: {
+    domainToLens?: Record<string, string>;
+    effectiveLenses?: string[];
+    keywordMap?: [string, RegExp][];
+  },
 ): CogNode {
   if (!agenticAnalysis) return node;
+
+  const domainToLens = options?.domainToLens || DEFAULT_DOMAIN_TO_LENS;
+  const effectiveLenses = options?.effectiveLenses || DEFAULT_LENSES;
 
   const apiLenses = agenticAnalysis.domains
     .filter(d => d.relevance >= LENS_RELEVANCE_THRESHOLD && d.reasoning)
     .map(d => ({
-      lens: DOMAIN_TO_LENS[d.domain] || d.domain as Lens,
+      lens: domainToLens[d.domain] || d.domain as Lens,
       relevance: d.relevance,
       evidence: d.reasoning,
     }))
-    .filter(l => ALL_LENSES.includes(l.lens));
+    .filter(l => effectiveLenses.includes(l.lens));
 
   // Keyword fallback: if CaptureAPI gave ≤1 lens, supplement from text
   let lenses = apiLenses;
   if (apiLenses.length <= 1 && node.rawText.length >= 3) {
-    const kwLenses = inferKeywordLenses(node.rawText);
+    const kwLenses = inferKeywordLenses(node.rawText, options?.keywordMap);
     const existing = new Set(apiLenses.map(l => l.lens));
     const extra = kwLenses.filter(kw => !existing.has(kw.lens));
     lenses = [...apiLenses, ...extra];
