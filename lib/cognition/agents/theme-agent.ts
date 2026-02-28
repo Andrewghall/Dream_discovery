@@ -28,7 +28,14 @@ const MODEL = 'gpt-4o-mini';
 // TOOL DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 
-const THEME_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+const DEFAULT_THEME_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+const DEFAULT_THEME_LENSES = ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'];
+
+function buildThemeTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  const domainEnum = dimensions?.length ? dimensions : DEFAULT_THEME_DOMAINS;
+  const lensEnum = dimensions?.length ? dimensions : DEFAULT_THEME_LENSES;
+
+  return [
   {
     type: 'function',
     function: {
@@ -44,7 +51,7 @@ const THEME_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
           domain: {
             type: 'string',
-            enum: ['People', 'Operations', 'Customer', 'Technology', 'Regulation'],
+            enum: domainEnum,
           },
         },
         required: ['pattern'],
@@ -83,7 +90,7 @@ const THEME_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           description: { type: 'string', description: 'Brief description of the theme.' },
           lens: {
             type: 'string',
-            enum: ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'],
+            enum: lensEnum,
             description: 'Primary lens for this theme (or null for cross-cutting).',
           },
           reasoning: { type: 'string', description: 'Why this theme should be surfaced now.' },
@@ -97,7 +104,10 @@ const THEME_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
-];
+  ];
+}
+
+const THEME_TOOLS = buildThemeTools();
 
 // ══════════════════════════════════════════════════════════════
 // TOOL EXECUTION

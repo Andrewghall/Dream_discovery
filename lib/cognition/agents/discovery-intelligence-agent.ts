@@ -34,7 +34,12 @@ const MODEL = 'gpt-4o-mini';
 // TOOL DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 
-const DISCOVERY_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+const DEFAULT_DISCOVERY_LENSES = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+
+function buildDiscoveryTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  const lensEnum = dimensions?.length ? dimensions : DEFAULT_DISCOVERY_LENSES;
+
+  return [
   {
     type: 'function',
     function: {
@@ -91,7 +96,7 @@ const DISCOVERY_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               type: 'object',
               properties: {
                 title: { type: 'string' },
-                domain: { type: 'string', enum: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'] },
+                domain: { type: 'string', enum: lensEnum },
                 frequency: { type: 'number', description: 'How many participants mentioned this.' },
                 sentiment: { type: 'string', enum: ['positive', 'negative', 'mixed'] },
                 keyQuotes: { type: 'array', items: { type: 'string' }, description: '2-3 representative quotes.' },
@@ -121,7 +126,7 @@ const DISCOVERY_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               type: 'object',
               properties: {
                 description: { type: 'string' },
-                domain: { type: 'string', enum: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'] },
+                domain: { type: 'string', enum: lensEnum },
                 frequency: { type: 'number' },
                 severity: { type: 'string', enum: ['critical', 'significant', 'moderate'] },
               },
@@ -143,7 +148,10 @@ const DISCOVERY_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
-];
+  ];
+}
+
+const DISCOVERY_TOOLS = buildDiscoveryTools();
 
 // ══════════════════════════════════════════════════════════════
 // TOOL EXECUTION
