@@ -20,7 +20,7 @@ import { RadarChart } from './radar-chart';
 import { CalendlyButton } from './calendly-button';
 
 /* ────────────────────────────────────────────────────────────
-   POCTR Capability Maturity Model — Data & Types
+   POCTR Capability Maturity Model  -  Data & Types
    ──────────────────────────────────────────────────────────── */
 
 const MATURITY_LEVELS = [
@@ -35,7 +35,7 @@ interface MaturityQuestion {
   id: string;
   dimension: string;
   question: string;
-  descriptors: [string, string, string, string, string]; // L1–L5
+  descriptors: [string, string, string, string, string]; // L1-L5
 }
 
 interface Domain {
@@ -45,7 +45,7 @@ interface Domain {
   icon: typeof Users;
   colour: string;
   colourHex: string;
-  levelDescriptors: [string, string, string, string, string]; // Domain-level L1–L5
+  levelDescriptors: [string, string, string, string, string]; // Domain-level L1-L5
   questions: [MaturityQuestion, MaturityQuestion, MaturityQuestion];
 }
 
@@ -70,7 +70,7 @@ const DOMAINS: Domain[] = [
         dimension: 'Talent Development & Skills Capability',
         question: 'How does your organisation develop the skills and capabilities it needs?',
         descriptors: [
-          'Skills development is informal — individuals seek out their own training with no organisational strategy.',
+          'Skills development is informal  -  individuals seek out their own training with no organisational strategy.',
           'Some training programmes exist, but they are not connected to strategic priorities or future needs.',
           'A structured skills framework exists with development paths aligned to organisational strategy.',
           'Skills gaps are systematically identified, measured, and addressed through targeted investment.',
@@ -86,7 +86,7 @@ const DOMAINS: Domain[] = [
           'Leadership communicates a vision, but translation into team-level action is inconsistent.',
           'Leaders actively align teams around shared objectives with regular cadence and feedback loops.',
           'Strategic alignment is measured and tracked; leaders use data to identify and resolve misalignment.',
-          'Alignment is cultural — teams self-organise around strategic priorities; leadership enables rather than directs.',
+          'Alignment is cultural  -  teams self-organise around strategic priorities; leadership enables rather than directs.',
         ],
       },
       {
@@ -139,7 +139,7 @@ const DOMAINS: Domain[] = [
           'Cross-functional projects exist but coordination is manual. Partner engagement is ad hoc with no structured alignment.',
           'Cross-functional teams have clear mandates and shared objectives. Key partnerships have structured collaboration and shared goals.',
           'Collaboration is embedded in operating models with shared metrics. Strategic partners are integrated into planning and delivery cycles.',
-          'Functional boundaries are fluid; teams self-form around opportunities. The ecosystem is an extension of the organisation — partners co-create and co-innovate seamlessly.',
+          'Functional boundaries are fluid; teams self-form around opportunities. The ecosystem is an extension of the organisation  -  partners co-create and co-innovate seamlessly.',
         ],
       },
       {
@@ -377,8 +377,8 @@ function getRecommendation(
 
   const bodies: Record<string, string> = {
     Foundation: `Your organisation assessed at maturity level ${overallLevelName}. The biggest opportunity lies in ${advice}. A DREAM Foundation workshop would help you build the shared understanding and strategic clarity needed to move forward with confidence.`,
-    Acceleration: `Your organisation assessed at maturity level ${overallLevelName} — a solid base, but significant gaps remain, particularly in ${advice}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation.`,
-    Optimisation: `Your organisation assessed at maturity level ${overallLevelName}. There are still meaningful opportunities — especially in ${advice}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward.`,
+    Acceleration: `Your organisation assessed at maturity level ${overallLevelName}  -  a solid base, but significant gaps remain, particularly in ${advice}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation.`,
+    Optimisation: `Your organisation assessed at maturity level ${overallLevelName}. There are still meaningful opportunities  -  especially in ${advice}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward.`,
   };
 
   return { headline: headlines[focus], body: bodies[focus], focus };
@@ -468,7 +468,7 @@ function MaturityLevelSelector({
    ──────────────────────────────────────────────────────────── */
 
 export function AssessmentSection() {
-  // step: 0 = intro, 1–5 = domain, 6 = results
+  // step: 0 = intro, 1-5 = domain, 6 = results
   const [step, setStep] = useState(0);
   const [scores, setScores] = useState<Scores>({ ...DEFAULT_SCORES });
 
@@ -619,13 +619,13 @@ export function AssessmentSection() {
                 </h2>
                 <p className="text-white/60 leading-relaxed mb-4">
                   Whether you&apos;re deploying agentic AI, rethinking your operating model,
-                  aligning partner ecosystems, or driving a new strategy &mdash; transformation
+                  aligning partner ecosystems, or driving a new strategy  -  transformation
                   success depends on the same five dimensions. Rate your organisation across
                   People, Organisation, Customer, Technology, and Regulation to see where
                   you&apos;re strong and where the gaps will stall your programmes.
                 </p>
                 <p className="text-white/40 text-xs leading-relaxed mb-6">
-                  The POCTR model measures your readiness to execute strategic change &mdash; from
+                  The POCTR model measures your readiness to execute strategic change  -  from
                   enterprise AI adoption and partner alignment to operating model redesign. Used
                   by DREAM workshops to ground transformation in what your people actually think.
                 </p>
@@ -668,7 +668,7 @@ export function AssessmentSection() {
     );
   }
 
-  // ── Render domain questions (steps 1–5) ─────────────────────
+  // ── Render domain questions (steps 1-5) ─────────────────────
 
   if (step >= 1 && step <= 5) {
     const domain = DOMAINS[step - 1];
@@ -794,7 +794,7 @@ export function AssessmentSection() {
             Transformation Readiness Profile
           </h2>
           <p className="text-slate-500 text-sm">
-            POCTR Capability Maturity Model &mdash; measuring readiness to execute strategic change
+            POCTR Capability Maturity Model  -  measuring readiness to execute strategic change
           </p>
         </div>
 
@@ -840,7 +840,7 @@ export function AssessmentSection() {
 
           {/* ── Right: Domain breakdown + recommendation + email ── */}
           <div className="space-y-6">
-            {/* Domain breakdown — sorted by priority (lowest first) */}
+            {/* Domain breakdown  -  sorted by priority (lowest first) */}
             <div>
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-3">
                 Priority Development Areas
@@ -915,7 +915,7 @@ export function AssessmentSection() {
                 <p className="text-xs text-slate-500 mb-4">
                   We&apos;ll send you a detailed PDF with your transformation readiness profile,
                   domain breakdown, next-level recommendations, and personalised guidance
-                  on where to focus &mdash; from AI adoption and partner ecosystem alignment
+                  on where to focus  -  from AI adoption and partner ecosystem alignment
                   to operating model change.
                 </p>
                 <div className="space-y-3">
@@ -966,7 +966,7 @@ export function AssessmentSection() {
                 <CheckCircle2 className="h-10 w-10 text-[#5cf28e] mx-auto mb-3" />
                 <h4 className="text-lg font-bold text-slate-900 mb-1">Report Sent!</h4>
                 <p className="text-sm text-slate-500 mb-4">
-                  Check your inbox &mdash; your Transformation Readiness Report is on its way.
+                  Check your inbox  -  your Transformation Readiness Report is on its way.
                 </p>
                 <CalendlyButton
                   className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all cursor-pointer"

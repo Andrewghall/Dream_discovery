@@ -4,12 +4,12 @@ import { ScrollReveal } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
 
 export const metadata: Metadata = {
-  title: 'Analytical Intelligence — 7 Views That Reveal the Truth',
+  title: 'Analytical Intelligence  -  7 Views That Reveal the Truth',
   description:
     'Seven analytical views including the 360° Hemisphere, Sentiment Index, Bias Detection, and Multi-Lens Analysis. See what traditional workshops miss.',
   alternates: { canonical: '/dream/insights' },
   openGraph: {
-    title: 'Analytical Intelligence — 7 Views That Reveal the Truth',
+    title: 'Analytical Intelligence  -  7 Views That Reveal the Truth',
     description: 'Seven analytical views that reveal the true state of your organisation.',
     url: '/dream/insights',
   },
@@ -31,7 +31,7 @@ const PRIMARY_VIEWS = [
   {
     title: 'Sentiment Index',
     description:
-      'Measures creative density versus constraint density across every domain. Reveals whether your organisation is expansive, defensive, or fragmented — and where the energy concentrates.',
+      'Measures creative density versus constraint density across every domain. Reveals whether your organisation is expansive, defensive, or fragmented  -  and where the energy concentrates.',
     details: [
       'Creative density: volume and intensity of forward-looking contributions',
       'Constraint density: volume and intensity of barrier-focused contributions',
@@ -80,7 +80,7 @@ const SECONDARY_VIEWS = [
   },
   {
     title: 'Narrative Divergence',
-    description: 'Compares language and sentiment across organisational layers. Where leadership and frontline perspectives align — and where they diverge.',
+    description: 'Compares language and sentiment across organisational layers. Where leadership and frontline perspectives align  -  and where they diverge.',
     details: [
       'Leadership vs frontline language comparison',
       'Semantic similarity scoring across participant groups',
@@ -108,7 +108,7 @@ const EXAMPLE_INSIGHTS = [
     interpretation: 'The perception gap. When leaders and teams disagree on readiness, transformation programmes stall before they start.',
   },
   {
-    insight: '12 unresolved tensions surfaced — top 3 between Customer and Organisation domains',
+    insight: '12 unresolved tensions surfaced  -  top 3 between Customer and Organisation domains',
     interpretation: 'Structural friction between what customers need and how the organisation operates.',
   },
   {
@@ -128,7 +128,7 @@ export default function InsightsPage() {
         eyebrow="Analytical Intelligence"
         headline="See What Others"
         highlightText="Miss"
-        subheadline="Seven distinct analytical views that reveal the true state of your organisation. Not what people present in meetings — what they actually think."
+        subheadline="Seven distinct analytical views that reveal the true state of your organisation. Not what people present in meetings  -  what they actually think."
         stats={[
           { target: 7, label: 'Analytical views' },
           { target: 1000, suffix: '+', label: 'Data points per workshop' },

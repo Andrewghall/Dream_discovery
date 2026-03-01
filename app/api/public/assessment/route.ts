@@ -1,8 +1,8 @@
 /**
- * DREAM POCTR Capability Maturity Assessment — Public API
+ * DREAM POCTR Capability Maturity Assessment  -  Public API
  *
  * POST: Validate submission, generate PDF via Puppeteer, email via Resend.
- * Public endpoint — rate-limited by IP (5 per hour).
+ * Public endpoint  -  rate-limited by IP (5 per hour).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -93,7 +93,7 @@ function validatePayload(body: unknown): SubmissionPayload | string {
     return { domain, score, levelName, levelDescriptor, nextLevelName, nextLevelDescriptor };
   });
 
-  if (scores.some((s) => s === null)) return 'Invalid domain scores (must be 1–5 with valid maturity level)';
+  if (scores.some((s) => s === null)) return 'Invalid domain scores (must be 1-5 with valid maturity level)';
 
   const overallScore = Number(b.overallScore);
   if (overallScore < 1 || overallScore > 5) return 'Invalid overall score';
@@ -271,7 +271,7 @@ function buildConfirmationEmail(name: string, focus: string, levelName: string):
       </a>
     </div>
     <p style="text-align: center; font-size: 11px; color: #94a3b8; margin-top: 24px;">
-      Ethenta &mdash; Decision Intelligence for Transformation
+      Ethenta  -  Decision Intelligence for Transformation
     </p>
   </div>
 </body>

@@ -146,7 +146,7 @@ export function RevealsSection() {
           </p>
         </ScrollReveal>
 
-        {/* Primary features — 3 large cards */}
+        {/* Primary features  -  3 large cards */}
         <div className="grid md:grid-cols-3 gap-6 mb-6">
           {PRIMARY_FEATURES.map((feat, i) => {
             const Visual =
@@ -167,7 +167,7 @@ export function RevealsSection() {
           })}
         </div>
 
-        {/* Secondary features — 4 smaller cards */}
+        {/* Secondary features  -  4 smaller cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {SECONDARY_FEATURES.map((feat, i) => (
             <ScrollReveal key={feat.title} delay={500 + i * 80}>

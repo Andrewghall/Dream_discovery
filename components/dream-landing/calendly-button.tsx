@@ -6,7 +6,7 @@ import { useCallback } from 'react';
  * Calendly Popup Button
  *
  * Renders a `<button>` that opens the Calendly popup widget on click.
- * URL comes from `NEXT_PUBLIC_CALENDLY_URL` env var — nothing hard-coded.
+ * URL comes from `NEXT_PUBLIC_CALENDLY_URL` env var  -  nothing hard-coded.
  *
  * Gracefully degrades:
  *  1. If env var is empty → falls back to mailto:hello@ethenta.com
@@ -87,7 +87,7 @@ export function CalendlyButton({ className, children }: CalendlyButtonProps) {
     if (window.Calendly) {
       window.Calendly.initPopupWidget({ url: CALENDLY_URL });
     } else {
-      // Widget failed to load — open in new tab as fallback
+      // Widget failed to load  -  open in new tab as fallback
       window.open(CALENDLY_URL, '_blank', 'noopener,noreferrer');
     }
   }, []);

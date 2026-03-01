@@ -30,7 +30,7 @@ export function HeroSection() {
           <div className="dream-banner-glow mx-auto mb-10">
             <Image
               src="/Dream.PNG"
-              alt="DREAM — Discover, Reimagine, Educate, Apply, Mobilise"
+              alt="DREAM  -  Discover, Reimagine, Educate, Apply, Mobilise"
               width={700}
               height={253}
               priority
@@ -55,7 +55,7 @@ export function HeroSection() {
             Built for leadership teams who must align strategy, cut through conflicting
             priorities, and produce decisions executives can defend. DREAM captures how your
             organisation really thinks and turns it into measurable strategic direction
-            &mdash; with AI that augments human judgment, not replaces it.
+             -  with AI that augments human judgment, not replaces it.
           </p>
         </ScrollReveal>
 

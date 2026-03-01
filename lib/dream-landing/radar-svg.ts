@@ -1,5 +1,5 @@
 /**
- * Static SVG radar chart generator — server-safe (no React, no 'use client')
+ * Static SVG radar chart generator  -  server-safe (no React, no 'use client')
  *
  * Used by the PDF report generator. Kept separate from the React RadarChart
  * component which lives in a 'use client' file.

@@ -4,12 +4,12 @@ import { ScrollReveal } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
 
 export const metadata: Metadata = {
-  title: 'The DREAM Methodology — Five Phases of Transformation',
+  title: 'The DREAM Methodology  -  Five Phases of Transformation',
   description:
-    'Discover, Reimagine, Educate, Apply, Mobilise — the five-phase methodology that turns organisational noise into structured strategic clarity.',
+    'Discover, Reimagine, Educate, Apply, Mobilise  -  the five-phase methodology that turns organisational noise into structured strategic clarity.',
   alternates: { canonical: '/dream/methodology' },
   openGraph: {
-    title: 'The DREAM Methodology — Five Phases of Transformation',
+    title: 'The DREAM Methodology  -  Five Phases of Transformation',
     description: 'Five structured phases that turn organisational noise into strategic clarity.',
     url: '/dream/methodology',
   },
@@ -23,9 +23,9 @@ const PHASES = [
     bg: 'bg-white',
     tagline: 'AI-Powered Discovery',
     paragraphs: [
-      'Before the workshop begins, every participant engages in a structured 15-minute AI conversation. This isn\'t a survey or a questionnaire — it\'s a genuine dialogue, guided by Agentic AI, that explores what each person really thinks about the organisation\'s current state and future potential.',
-      'The conversation covers five organisational domains: People, Organisation, Customer, Technology, and Regulation. For each domain, participants provide maturity ratings — current state, target state, and projected trajectory — along with free-form insights, constraints, and visions.',
-      'Every response is scored for confidence. The AI detects certainty vs hedging automatically, building a map of where the organisation is confident and where it is guessing. Insights are extracted, themes detected, and constraints identified — all before anyone enters the workshop room.',
+      'Before the workshop begins, every participant engages in a structured 15-minute AI conversation. This isn\'t a survey or a questionnaire  -  it\'s a genuine dialogue, guided by Agentic AI, that explores what each person really thinks about the organisation\'s current state and future potential.',
+      'The conversation covers five organisational domains: People, Organisation, Customer, Technology, and Regulation. For each domain, participants provide maturity ratings  -  current state, target state, and projected trajectory  -  along with free-form insights, constraints, and visions.',
+      'Every response is scored for confidence. The AI detects certainty vs hedging automatically, building a map of where the organisation is confident and where it is guessing. Insights are extracted, themes detected, and constraints identified  -  all before anyone enters the workshop room.',
     ],
     bullets: [
       'Structured 15-minute AI-guided conversations with each participant',
@@ -44,11 +44,11 @@ const PHASES = [
     tagline: 'Collective Future-State Visioning',
     paragraphs: [
       'Reimagine is pure creative energy. No constraints allowed. No budgets discussed. The question is simple: what does the ideal future look like?',
-      'Participants collectively envision the future state of the organisation. AI facilitation ensures every voice is heard — not just the loudest. Themes emerge from the group\'s collective vision, and the 360° Hemisphere begins to build live on-screen as creative nodes populate the upper hemisphere.',
-      'This phase deliberately separates vision from execution. By capturing what people genuinely believe the future should look like — before constraints are introduced — DREAM reveals the organisation\'s true ambition. The gap between reimagined future and current reality becomes the transformation distance.',
+      'Participants collectively envision the future state of the organisation. AI facilitation ensures every voice is heard  -  not just the loudest. Themes emerge from the group\'s collective vision, and the 360° Hemisphere begins to build live on-screen as creative nodes populate the upper hemisphere.',
+      'This phase deliberately separates vision from execution. By capturing what people genuinely believe the future should look like  -  before constraints are introduced  -  DREAM reveals the organisation\'s true ambition. The gap between reimagined future and current reality becomes the transformation distance.',
     ],
     bullets: [
-      'Pure vision generation — no constraints, no budgets, no limitations',
+      'Pure vision generation  -  no constraints, no budgets, no limitations',
       'AI-powered facilitation ensures all perspectives are heard',
       'Real-time theme clustering across participant contributions',
       'Live 360° Hemisphere builds on-screen',
@@ -81,7 +81,7 @@ const PHASES = [
     bg: 'bg-gradient-to-b from-slate-50 to-white',
     tagline: 'Constraint-Aware Transformation Design',
     paragraphs: [
-      'Apply bridges the gap between the reimagined future and today\'s reality. But it does so directionally — constraints are identified right-to-left (from future back to present: what blocks us from getting there?) while the transformation plan is built left-to-right (from present toward the future).',
+      'Apply bridges the gap between the reimagined future and today\'s reality. But it does so directionally  -  constraints are identified right-to-left (from future back to present: what blocks us from getting there?) while the transformation plan is built left-to-right (from present toward the future).',
       'This directional thinking is what makes DREAM different. Instead of asking "what problems do we have?" it asks "what specific things would prevent us from reaching that future?" Every constraint is weighted, categorised by domain, and linked to the vision it blocks.',
       'The result is a transformation plan that accounts for every barrier identified, scored across six practical dimensions: cost, risk, experience impact, regulatory compliance, workforce readiness, and operational complexity.',
     ],
@@ -101,8 +101,8 @@ const PHASES = [
     tagline: 'From Insight to Action',
     paragraphs: [
       'Mobilise transforms workshop intelligence into actionable deliverables. The executive scratchpad produces editable strategic output that can be taken directly into board rooms, steering committees, and programme kick-offs.',
-      'Every recommendation is grounded in data — not opinion. The Hemisphere Psyche Diagnostic compares the organisation\'s state before and after the workshop, revealing where minds have shifted and where resistance persists.',
-      'Exportable reports package the full analytical output for presentation. Seven analytical views, the Hemisphere diagnostic, and the executive scratchpad — all delivered immediately after the workshop.',
+      'Every recommendation is grounded in data  -  not opinion. The Hemisphere Psyche Diagnostic compares the organisation\'s state before and after the workshop, revealing where minds have shifted and where resistance persists.',
+      'Exportable reports package the full analytical output for presentation. Seven analytical views, the Hemisphere diagnostic, and the executive scratchpad  -  all delivered immediately after the workshop.',
     ],
     bullets: [
       'Executive scratchpad with editable strategic deliverables',
@@ -178,7 +178,7 @@ export default function MethodologyPage() {
               The Directional Flow
             </h2>
             <p className="text-lg text-white/60 text-center max-w-2xl mx-auto mb-12">
-              DREAM creates directional clarity — constraints are mapped right-to-left from the future, then transformation is planned left-to-right from the present.
+              DREAM creates directional clarity  -  constraints are mapped right-to-left from the future, then transformation is planned left-to-right from the present.
             </p>
           </ScrollReveal>
           <ScrollReveal delay={200}>
@@ -187,7 +187,7 @@ export default function MethodologyPage() {
                 {
                   phase: 'Reimagine',
                   direction: 'Envision the future',
-                  description: 'Start with the end state. What does the ideal organisation look like? No constraints, no budgets — pure vision.',
+                  description: 'Start with the end state. What does the ideal organisation look like? No constraints, no budgets  -  pure vision.',
                   colour: 'border-purple-500/30',
                   textColour: 'text-purple-400',
                 },

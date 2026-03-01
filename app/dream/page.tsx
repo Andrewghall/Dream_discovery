@@ -14,12 +14,12 @@ const AssessmentSection = dynamic(
 );
 
 export const metadata: Metadata = {
-  title: 'Ethenta DREAM \u2014 AI-Guided Decision Intelligence Platform',
+  title: 'Ethenta DREAM  -  AI-Guided Decision Intelligence Platform',
   description:
-    'Stop guessing. DREAM captures how your organisation really thinks and turns collective insight into measurable strategic direction \u2014 with AI that augments human judgment, not replaces it.',
+    'Stop guessing. DREAM captures how your organisation really thinks and turns collective insight into measurable strategic direction  -  with AI that augments human judgment, not replaces it.',
   alternates: { canonical: '/dream' },
   openGraph: {
-    title: 'Ethenta DREAM \u2014 AI-Guided Decision Intelligence Platform',
+    title: 'Ethenta DREAM  -  AI-Guided Decision Intelligence Platform',
     description:
       'Built for leadership teams who must align strategy and produce decisions they can defend. AI-guided decision intelligence.',
     url: '/dream',
@@ -31,7 +31,7 @@ const PERSONAS = [
     title: 'Enterprise AI Adoption',
     href: '/dream/use-cases/enterprise-ai-adoption',
     description:
-      'Every enterprise wants AI. Few know where to start. DREAM surfaces tensions, misaligned priorities, and hidden constraints \u2014 then builds a transformation roadmap grounded in what people actually think.',
+      'Every enterprise wants AI. Few know where to start. DREAM surfaces tensions, misaligned priorities, and hidden constraints  -  then builds a transformation roadmap grounded in what people actually think.',
   },
   {
     title: 'Strategy & Innovation',
@@ -57,7 +57,7 @@ const VALUE_PROPS = [
   {
     icon: Zap,
     title: 'Enterprise 360\u00B0',
-    description: 'Capture what your entire organisation and partner ecosystem really thinks — in a fraction of the time surveys take.',
+    description: 'Capture what your entire organisation and partner ecosystem really thinks  -  in a fraction of the time surveys take.',
   },
   {
     icon: Users,
@@ -104,7 +104,7 @@ export default function DreamLandingPage() {
         </div>
       </section>
 
-      {/* ═══ 4. WHAT MAKES DREAM DIFFERENT — collapsible cards ═══ */}
+      {/* ═══ 4. WHAT MAKES DREAM DIFFERENT  -  collapsible cards ═══ */}
       <DifferentiatorsSection />
 
       {/* ═══ 5. ACTOR JOURNEY SHOWCASE ═══ */}
@@ -129,8 +129,8 @@ export default function DreamLandingPage() {
                   Enterprise AI Adoption
                 </h2>
                 <p className="text-white/60 max-w-2xl mb-6 leading-relaxed">
-                  Every enterprise wants to adopt AI. Few know how. DREAM cuts through the noise &mdash;
-                  conflicting priorities, siloed thinking, misaligned maturity perceptions &mdash; and builds
+                  Every enterprise wants to adopt AI. Few know how. DREAM cuts through the noise  - 
+                  conflicting priorities, siloed thinking, misaligned maturity perceptions  -  and builds
                   a transformation roadmap grounded in what people actually think.
                 </p>
                 <div className="flex flex-wrap gap-3 mb-8">

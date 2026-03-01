@@ -5,7 +5,7 @@ import { ArrowRight } from 'lucide-react';
 import { ScrollReveal } from './scroll-reveal';
 
 /* ────────────────────────────────────────────────────────────
-   Sample Journey Data — curated example for marketing showcase.
+   Sample Journey Data  -  curated example for marketing showcase.
    Represents a realistic enterprise transformation journey.
    ──────────────────────────────────────────────────────────── */
 
@@ -135,7 +135,7 @@ export function JourneyShowcase() {
         <ScrollReveal delay={150}>
           <p className="text-lg text-white/50 max-w-2xl mx-auto text-center mb-12">
             DREAM maps every actor&apos;s journey, showing exactly where AI augments
-            human decision-making &mdash; and where humans must lead.
+            human decision-making  -  and where humans must lead.
           </p>
         </ScrollReveal>
 

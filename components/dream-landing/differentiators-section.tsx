@@ -5,7 +5,7 @@ import { Brain, Sparkles, BarChart3, ArrowRight, Layers, Eye, Clock } from 'luci
 import { ScrollReveal } from './scroll-reveal';
 
 /* ────────────────────────────────────────────────────────────
-   Data — each card becomes a collapsible <details> element
+   Data  -  each card becomes a collapsible <details> element
    so all content stays in the DOM for SEO crawlers.
    ──────────────────────────────────────────────────────────── */
 
@@ -16,9 +16,9 @@ const DIFFERENTIATORS = [
     tagline: 'Specialist SLMs and deterministic analytics. Not a chatbot wrapper.',
     colour: 'from-[#5cf28e] to-[#50c878]',
     details: [
-      'Agentic capture — AI-guided conversations explore five organisational domains in 15 minutes per participant',
-      'Real-time synthesis — specialist small language models cluster themes, score confidence, and surface patterns as the session unfolds',
-      'Deterministic intelligence — sentiment, bias, and balance scores are computed reproducibly, not hallucinated by an LLM',
+      'Agentic capture  -  AI-guided conversations explore five organisational domains in 15 minutes per participant',
+      'Real-time synthesis  -  specialist small language models cluster themes, score confidence, and surface patterns as the session unfolds',
+      'Deterministic intelligence  -  sentiment, bias, and balance scores are computed reproducibly, not hallucinated by an LLM',
     ],
     href: '/dream/technology',
     linkLabel: 'Explore EthentaFlow',
@@ -29,9 +29,9 @@ const DIFFERENTIATORS = [
     tagline: 'Five phases. From discovery to mobilisation.',
     colour: 'from-purple-500 to-pink-500',
     details: [
-      'Discover — AI-powered conversations capture every perspective across People, Organisation, Customer, Technology, and Regulation',
-      'Reimagine — collective vision-building guided by agentic AI, grounded in real discovery data',
-      'Educate, Apply, Mobilise — structured phases that turn insight into constraint-aware, board-ready transformation plans',
+      'Discover  -  AI-powered conversations capture every perspective across People, Organisation, Customer, Technology, and Regulation',
+      'Reimagine  -  collective vision-building guided by agentic AI, grounded in real discovery data',
+      'Educate, Apply, Mobilise  -  structured phases that turn insight into constraint-aware, board-ready transformation plans',
     ],
     href: '/dream/methodology',
     linkLabel: 'See the methodology',
@@ -39,12 +39,12 @@ const DIFFERENTIATORS = [
   {
     icon: Eye,
     title: '7 Analytical Views',
-    tagline: 'Hemisphere, sentiment, bias, balance — and more.',
+    tagline: 'Hemisphere, sentiment, bias, balance  -  and more.',
     colour: 'from-blue-500 to-cyan-500',
     details: [
-      '360° Hemisphere — visual map of collective organisational thinking',
-      'Sentiment Index + Bias Detection — deterministic scoring of confidence, hedging, and group-think',
-      'Balance Safeguards, Multi-Lens Analysis, Executive Scratchpad, Psyche Diagnostic — seven views that reveal what surveys and workshops miss',
+      '360° Hemisphere  -  visual map of collective organisational thinking',
+      'Sentiment Index + Bias Detection  -  deterministic scoring of confidence, hedging, and group-think',
+      'Balance Safeguards, Multi-Lens Analysis, Executive Scratchpad, Psyche Diagnostic  -  seven views that reveal what surveys and workshops miss',
     ],
     href: '/dream/insights',
     linkLabel: 'Explore all 7 views',
@@ -55,9 +55,9 @@ const DIFFERENTIATORS = [
     tagline: 'AI Discovery, live cognitive guidance, instant intelligence.',
     colour: 'from-amber-500 to-orange-500',
     details: [
-      'Before — each participant has a 15-minute AI-guided conversation; insights, themes, and a facilitator briefing are ready before anyone enters the room',
-      'During — agentic AI generates live questions grounded in discovery data while the 360° Hemisphere builds on-screen in real-time',
-      'After — the full analytical dashboard with seven deep views is available immediately. No waiting for consultants to write reports.',
+      'Before  -  each participant has a 15-minute AI-guided conversation; insights, themes, and a facilitator briefing are ready before anyone enters the room',
+      'During  -  agentic AI generates live questions grounded in discovery data while the 360° Hemisphere builds on-screen in real-time',
+      'After  -  the full analytical dashboard with seven deep views is available immediately. No waiting for consultants to write reports.',
     ],
     href: '/dream/how-it-works',
     linkLabel: 'See the full journey',
