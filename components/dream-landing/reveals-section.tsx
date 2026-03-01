@@ -46,15 +46,15 @@ function HemisphereVisual() {
   return (
     <div className="relative w-full h-32 flex items-center justify-center">
       {/* Outer ring */}
-      <div className="absolute w-28 h-28 rounded-full border border-teal-400/30" />
+      <div className="absolute w-28 h-28 rounded-full border border-[#5cf28e]/30" />
       {/* Middle ring */}
       <div className="absolute w-20 h-20 rounded-full border border-indigo-400/30" />
       {/* Core */}
-      <div className="absolute w-12 h-12 rounded-full bg-gradient-to-br from-teal-400/20 to-indigo-400/20" />
+      <div className="absolute w-12 h-12 rounded-full bg-gradient-to-br from-[#5cf28e]/20 to-indigo-400/20" />
       {/* Equator line */}
-      <div className="absolute w-28 h-[1px] bg-gradient-to-r from-transparent via-teal-400/40 to-transparent" />
+      <div className="absolute w-28 h-[1px] bg-gradient-to-r from-transparent via-[#5cf28e]/40 to-transparent" />
       {/* Nodes */}
-      <div className="absolute w-2 h-2 rounded-full bg-teal-400 top-6 left-1/2 -translate-x-2" />
+      <div className="absolute w-2 h-2 rounded-full bg-[#5cf28e] top-6 left-1/2 -translate-x-2" />
       <div className="absolute w-2 h-2 rounded-full bg-emerald-400 top-10 right-1/3" />
       <div className="absolute w-1.5 h-1.5 rounded-full bg-purple-400 bottom-10 left-1/3" />
       <div className="absolute w-2 h-2 rounded-full bg-blue-400 bottom-8 right-1/4" />
@@ -109,7 +109,7 @@ function BiasVisual() {
           />
           <defs>
             <linearGradient id="biasGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#2dd4bf" />
+              <stop offset="0%" stopColor="#5cf28e" />
               <stop offset="100%" stopColor="#818cf8" />
             </linearGradient>
           </defs>
@@ -131,7 +131,7 @@ export function RevealsSection() {
       <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <ScrollReveal>
-          <p className="text-teal-400 text-sm font-semibold tracking-[0.15em] uppercase mb-3">
+          <p className="text-[#5cf28e] text-sm font-semibold tracking-[0.15em] uppercase mb-3">
             Analytical Intelligence
           </p>
         </ScrollReveal>

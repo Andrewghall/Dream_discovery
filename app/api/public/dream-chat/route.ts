@@ -11,7 +11,7 @@ import { buildDreamChatSystemPrompt } from '@/lib/dream-landing/knowledge-base';
 
 export const maxDuration = 60;
 
-const MODEL = 'gpt-4o';
+const MODEL = 'gpt-4o-mini';
 const MAX_QUESTION_LENGTH = 500;
 const MAX_HISTORY = 6;
 

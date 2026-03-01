@@ -102,7 +102,7 @@ export default function DreamLandingPage() {
               <div className="mt-6">
                 <a
                   href="mailto:hello@ethenta.com?subject=DREAM%20Demo%20Request"
-                  className="inline-block px-5 py-2.5 text-sm font-semibold rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-white hover:from-teal-400 hover:to-cyan-400 transition-all shadow-sm"
+                  className="inline-block px-5 py-2.5 text-sm font-semibold rounded-lg bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all shadow-sm"
                 >
                   Book a Demo
                 </a>

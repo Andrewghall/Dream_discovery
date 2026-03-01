@@ -20,7 +20,7 @@ const PERSONAS = [
   },
   {
     icon: Briefcase,
-    iconBg: 'bg-teal-100 text-teal-600',
+    iconBg: 'bg-emerald-100 text-emerald-600',
     title: 'Consultancies & Advisory Firms',
     description:
       'Deliver deeper client insight in less time. DREAM replaces weeks of interviews with structured AI-powered intelligence that clients have never seen before.',
@@ -40,7 +40,7 @@ export function WhoItsForSection() {
       <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <ScrollReveal>
-          <p className="text-teal-500 text-sm font-semibold tracking-[0.15em] uppercase mb-3 text-center">
+          <p className="text-[#50c878] text-sm font-semibold tracking-[0.15em] uppercase mb-3 text-center">
             Who It&apos;s For
           </p>
         </ScrollReveal>

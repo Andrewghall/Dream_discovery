@@ -39,7 +39,7 @@ const PHASES = [
   {
     letter: 'A',
     name: 'Apply',
-    gradient: 'from-emerald-500 to-teal-500',
+    gradient: 'from-emerald-500 to-[#50c878]',
     description: 'Bridge from today to the reimagined future while respecting real constraints.',
     bullets: [
       'Practical approach definition',
@@ -66,7 +66,7 @@ export function MethodologySection() {
       <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <ScrollReveal>
-          <p className="text-teal-500 text-sm font-semibold tracking-[0.15em] uppercase mb-3">
+          <p className="text-[#50c878] text-sm font-semibold tracking-[0.15em] uppercase mb-3">
             The Methodology
           </p>
         </ScrollReveal>

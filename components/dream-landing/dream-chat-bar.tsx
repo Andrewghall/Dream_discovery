@@ -144,7 +144,7 @@ export function DreamChatBar() {
             {/* Thread header */}
             <div className="flex items-center justify-between px-6 py-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-teal-500" />
+                <Sparkles className="h-4 w-4 text-[#50c878]" />
                 <span className="text-xs text-slate-500 font-medium">DREAM AI</span>
               </div>
               <div className="flex items-center gap-1">
@@ -177,7 +177,7 @@ export function DreamChatBar() {
                     className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                       msg.role === 'user'
                         ? 'bg-slate-100 text-slate-700'
-                        : 'bg-teal-50 text-slate-700 border border-teal-100'
+                        : 'bg-[#5cf28e]/10 text-slate-700 border border-[#50c878]/20'
                     }`}
                   >
                     <div className="whitespace-pre-wrap">{msg.content || '...'}</div>
@@ -199,7 +199,7 @@ export function DreamChatBar() {
                 <button
                   key={suggestion}
                   onClick={() => handleSuggestionClick(suggestion)}
-                  className="px-3 py-1 text-xs text-teal-600 bg-teal-50 border border-teal-200 rounded-full hover:bg-teal-100 transition-colors"
+                  className="px-3 py-1 text-xs text-[#33824d] bg-[#5cf28e]/10 border border-[#50c878]/30 rounded-full hover:bg-[#5cf28e]/20 transition-colors"
                 >
                   {suggestion}
                 </button>
@@ -217,7 +217,7 @@ export function DreamChatBar() {
               </button>
             )}
 
-            <Sparkles className="h-5 w-5 text-teal-400 flex-shrink-0" />
+            <Sparkles className="h-5 w-5 text-[#50c878] flex-shrink-0" />
 
             <input
               ref={inputRef}
@@ -238,7 +238,7 @@ export function DreamChatBar() {
             <button
               onClick={handleSubmit}
               disabled={!input.trim() || isStreaming}
-              className="flex-shrink-0 p-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 text-white hover:from-teal-400 hover:to-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+              className="flex-shrink-0 p-2.5 rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
             >
               {isStreaming ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

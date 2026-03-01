@@ -1,7 +1,7 @@
 /**
  * DREAM Landing Page — Comprehensive Knowledge Base
  *
- * System prompt for the public-facing GPT Q&A chat bar.
+ * System prompt for the public-facing AI Q&A chat bar.
  * Contains everything a potential customer could ask about Ethenta DREAM.
  */
 
@@ -28,7 +28,7 @@ DREAM is both a product and a methodology:
 EthentaFlow is Ethenta's proprietary capture-and-synthesise technology. It is the AI engine that powers every phase of DREAM:
 
 1. **Capture**: Every conversation, insight, constraint, and vision is captured through structured AI dialogue across 5 organisational domains
-2. **Synthesise**: Real-time synthesis during live workshops using GPT-4o facilitation agents that analyse, correlate, and surface patterns as dialogue unfolds
+2. **Synthesise**: Real-time synthesis during live workshops using Agentic AI and specialist Small Language Models (SLMs) that analyse, correlate, and surface patterns as dialogue unfolds
 3. **Deliver**: Intelligence is delivered through 7 distinct analytical views and a post-session diagnostic dashboard
 
 EthentaFlow uses a **deterministic diagnostic engine** for sentiment, bias, and balance computation — not just LLM outputs. This means the analytics are reproducible, auditable, and grounded in actual data patterns.
@@ -64,7 +64,7 @@ The discovery data is then processed through 5 analytical components:
 The live workshop is facilitated by AI cognitive guidance:
 - AI-generated facilitation questions grounded in Discovery data
 - Real-time theme detection and signal analysis
-- GPT-4o facilitation agents that suggest probing sub-questions
+- Agentic AI facilitation that suggests probing sub-questions
 - Dynamic sticky-pad canvas for capturing workshop dialogue
 - Lens-based colouring: People (blue), Organisation (green), Customer (purple), Technology (orange), Regulation (red)
 - Coverage tracking ensures all domains and perspectives are explored
@@ -88,7 +88,7 @@ The Hemisphere is DREAM's signature visualisation — a 3D sphere that maps the 
 After the workshop, DREAM produces a comprehensive analytical dashboard:
 
 1. **Workshop Overview** — Key metrics, domain energy, mindset shift gauge (before vs after)
-2. **Discovery Insights** — The 5 analytical components (alignment, tensions, narrative, constraints, confidence) plus a GPT-powered inquiry bar
+2. **Discovery Insights** — The 5 analytical components (alignment, tensions, narrative, constraints, confidence) plus an AI-powered inquiry bar
 3. **Reimagine** — Creative energy by domain, vision density, sentiment labels
 4. **Constraints & Risks** — Safeguard flags, constraint density, risk weights by domain
 5. **Approach & Solutions** — Multi-lens confidence scoring, enabler analysis, vision-to-enabler gap

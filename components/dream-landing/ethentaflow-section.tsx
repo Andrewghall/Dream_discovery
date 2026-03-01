@@ -6,7 +6,7 @@ import { ScrollReveal } from './scroll-reveal';
 const CAPABILITIES = [
   {
     icon: Brain,
-    iconBg: 'bg-teal-100 text-teal-600',
+    iconBg: 'bg-emerald-100 text-emerald-700',
     title: 'Capture Everything',
     description:
       'Every insight, constraint, and vision is captured through AI-guided conversations across five organisational domains. No signal is lost.',
@@ -16,7 +16,7 @@ const CAPABILITIES = [
     iconBg: 'bg-indigo-100 text-indigo-600',
     title: 'Synthesise in Real-Time',
     description:
-      'GPT-4o facilitation agents analyse, correlate, and surface patterns as the workshop unfolds. Themes emerge. Tensions surface. Insights compound.',
+      'Agentic AI and specialist Small Language Models analyse, correlate, and surface patterns as the workshop unfolds. Themes emerge. Tensions surface. Insights compound.',
   },
   {
     icon: BarChart3,
@@ -33,14 +33,14 @@ export function EthentaFlowSection() {
       <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <ScrollReveal>
-          <p className="text-teal-500 text-sm font-semibold tracking-[0.15em] uppercase mb-3">
+          <p className="text-[#50c878] text-sm font-semibold tracking-[0.15em] uppercase mb-3">
             The Technology
           </p>
         </ScrollReveal>
         <ScrollReveal delay={100}>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-slate-900 mb-4">
             Powered by{' '}
-            <span className="bg-gradient-to-r from-teal-500 to-cyan-500 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#5cf28e] to-[#50c878] bg-clip-text text-transparent">
               EthentaFlow&trade;
             </span>
           </h2>
@@ -73,7 +73,7 @@ export function EthentaFlowSection() {
         <ScrollReveal delay={500}>
           <div className="max-w-3xl mx-auto text-center">
             <div className="relative px-8 py-6">
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-teal-500/10 via-indigo-500/10 to-purple-500/10" />
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-[#5cf28e]/10 via-[#50c878]/10 to-[#33824d]/10" />
               <p className="relative text-xl md:text-2xl text-slate-700 italic font-medium leading-relaxed">
                 &ldquo;EthentaFlow doesn&rsquo;t summarise what was said. It reveals what the organisation actually thinks.&rdquo;
               </p>

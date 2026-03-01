@@ -176,8 +176,8 @@
 }
 
 @keyframes banner-glow {
-  0%, 100% { filter: drop-shadow(0 0 40px rgba(45, 212, 191, 0.15)); }
-  50% { filter: drop-shadow(0 0 60px rgba(45, 212, 191, 0.25)); }
+  0%, 100% { filter: drop-shadow(0 0 40px rgba(92, 242, 142, 0.15)); }
+  50% { filter: drop-shadow(0 0 60px rgba(92, 242, 142, 0.25)); }
 }
 .dream-banner-glow {
   animation: banner-glow 4s ease-in-out infinite;

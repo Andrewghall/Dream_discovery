@@ -23,7 +23,7 @@ const STEPS = [
     subtitle: 'Live Cognitive Guidance',
     points: [
       'AI-powered facilitation through Reimagine, Constraints, and Apply phases',
-      'Real-time synthesis using GPT-4o facilitation agents',
+      'Real-time synthesis using Agentic AI facilitation',
       'Dynamic question generation grounded in Discovery data',
       '360\u00B0 Hemisphere builds live on-screen',
     ],
@@ -48,7 +48,7 @@ export function HowItWorksSection() {
       <div className="max-w-6xl mx-auto px-6">
         {/* Header */}
         <ScrollReveal>
-          <p className="text-teal-500 text-sm font-semibold tracking-[0.15em] uppercase mb-3 text-center">
+          <p className="text-[#50c878] text-sm font-semibold tracking-[0.15em] uppercase mb-3 text-center">
             The Journey
           </p>
         </ScrollReveal>
@@ -61,7 +61,7 @@ export function HowItWorksSection() {
         {/* Timeline */}
         <div className="relative">
           {/* Connector line — desktop only */}
-          <div className="hidden md:block absolute top-12 left-[16.67%] right-[16.67%] h-0.5 border-t-2 border-dashed border-teal-300" />
+          <div className="hidden md:block absolute top-12 left-[16.67%] right-[16.67%] h-0.5 border-t-2 border-dashed border-[#50c878]/40" />
 
           <div className="grid md:grid-cols-3 gap-10 md:gap-8">
             {STEPS.map((step, i) => {
@@ -70,22 +70,22 @@ export function HowItWorksSection() {
                 <ScrollReveal key={step.number} delay={200 + i * 150}>
                   <div className="text-center">
                     {/* Number circle */}
-                    <div className="relative inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-teal-50 to-cyan-50 border-2 border-teal-200 mb-6">
-                      <Icon className="h-8 w-8 text-teal-600" />
-                      <div className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 text-white text-xs font-bold flex items-center justify-center shadow-md">
+                    <div className="relative inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-[#5cf28e]/10 to-[#50c878]/10 border-2 border-[#50c878]/30 mb-6">
+                      <Icon className="h-8 w-8 text-[#33824d]" />
+                      <div className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-gradient-to-br from-[#5cf28e] to-[#50c878] text-[#0d0d0d] text-xs font-bold flex items-center justify-center shadow-md">
                         {step.number}
                       </div>
                     </div>
 
                     {/* Title */}
                     <h3 className="text-lg font-bold text-slate-900 mb-1">{step.title}</h3>
-                    <p className="text-sm text-teal-600 font-medium mb-4">{step.subtitle}</p>
+                    <p className="text-sm text-[#33824d] font-medium mb-4">{step.subtitle}</p>
 
                     {/* Points */}
                     <ul className="text-left space-y-2 max-w-xs mx-auto">
                       {step.points.map((point) => (
                         <li key={point} className="flex items-start gap-2 text-sm text-slate-600">
-                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0" />
+                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#50c878] flex-shrink-0" />
                           {point}
                         </li>
                       ))}
