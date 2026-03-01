@@ -5,8 +5,8 @@ import { ArrowRight } from 'lucide-react';
 import { ScrollReveal } from './scroll-reveal';
 
 /* ────────────────────────────────────────────────────────────
-   Sample Journey Data — curated example for marketing showcase.
-   Represents a realistic Enterprise AI Adoption journey.
+   Sample Journey Data  -  curated example for marketing showcase.
+   Represents a realistic enterprise transformation journey.
    ──────────────────────────────────────────────────────────── */
 
 type AgencyLevel = 'human' | 'assisted' | 'autonomous';
@@ -20,14 +20,14 @@ interface JourneyCell {
   momentOfTruth?: boolean;
 }
 
-const ACTORS = ['Customer', 'Operations Lead', 'Compliance Officer'] as const;
+const ACTORS = ['Customer', 'Operations Lead', 'Partner / Ecosystem'] as const;
 
 const STAGES = ['Discovery', 'Engagement', 'Fulfilment', 'Growth'] as const;
 
 const JOURNEY: Record<string, Record<string, JourneyCell>> = {
   Customer: {
     Discovery: {
-      action: 'Shares unfiltered expectations in AI conversation',
+      action: 'Shares unfiltered expectations in guided conversation',
       sentiment: 'positive',
       agency: 'human',
     },
@@ -67,30 +67,30 @@ const JOURNEY: Record<string, Record<string, JourneyCell>> = {
       momentOfTruth: true,
     },
     Growth: {
-      action: 'AI monitors adoption signals and drift',
+      action: 'AI monitors transformation signals and drift',
       sentiment: 'positive',
       agency: 'autonomous',
     },
   },
-  'Compliance Officer': {
+  'Partner / Ecosystem': {
     Discovery: {
-      action: 'Maps regulatory constraints as first-class citizens',
+      action: 'Maps ecosystem constraints and alignment gaps',
       sentiment: 'neutral',
       agency: 'human',
     },
     Engagement: {
-      action: 'AI identifies governance gaps blocking innovation',
+      action: 'AI identifies where partner goals diverge from strategy',
       sentiment: 'concerned',
       agency: 'assisted',
       painPoint: true,
     },
     Fulfilment: {
-      action: 'Balance safeguards validate risk vs opportunity',
+      action: 'Ecosystem roadmap aligned to transformation plan',
       sentiment: 'positive',
       agency: 'assisted',
     },
     Growth: {
-      action: 'Deterministic compliance scoring on new initiatives',
+      action: 'Deterministic scoring on partner integration maturity',
       sentiment: 'positive',
       agency: 'autonomous',
     },
@@ -135,7 +135,7 @@ export function JourneyShowcase() {
         <ScrollReveal delay={150}>
           <p className="text-lg text-white/50 max-w-2xl mx-auto text-center mb-12">
             DREAM maps every actor&apos;s journey, showing exactly where AI augments
-            human decision-making &mdash; and where humans must lead.
+            human decision-making  -  and where humans must lead.
           </p>
         </ScrollReveal>
 
@@ -236,10 +236,10 @@ export function JourneyShowcase() {
         <ScrollReveal delay={700}>
           <div className="text-center">
             <Link
-              href="/dream/use-cases/enterprise-ai-adoption"
+              href="/dream/use-cases"
               className="inline-flex items-center gap-2 text-sm font-semibold text-[#5cf28e] hover:text-[#50c878] transition-colors"
             >
-              Explore Enterprise AI Adoption <ArrowRight className="h-4 w-4" />
+              Explore use cases <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </ScrollReveal>

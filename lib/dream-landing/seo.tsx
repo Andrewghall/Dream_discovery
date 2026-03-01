@@ -1,5 +1,5 @@
 /**
- * DREAM Landing — SEO utilities
+ * DREAM Landing  -  SEO utilities
  *
  * Shared JSON-LD generators for structured data.
  */

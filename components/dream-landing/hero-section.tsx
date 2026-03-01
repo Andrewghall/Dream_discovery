@@ -30,7 +30,7 @@ export function HeroSection() {
           <div className="dream-banner-glow mx-auto mb-10">
             <Image
               src="/Dream.PNG"
-              alt="DREAM — Discover, Reimagine, Educate, Apply, Mobilise"
+              alt="DREAM  -  Discover, Reimagine, Educate, Apply, Mobilise"
               width={700}
               height={253}
               priority
@@ -42,9 +42,9 @@ export function HeroSection() {
         {/* Headline */}
         <ScrollReveal delay={400}>
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-white leading-tight mb-6">
-            Turn Collective Thinking Into{' '}
+            Stop Guessing. Start Deciding{' '}
             <span className="bg-gradient-to-r from-[#5cf28e] to-[#50c878] bg-clip-text text-transparent">
-              Decision Intelligence
+              With Confidence.
             </span>
           </h1>
         </ScrollReveal>
@@ -52,10 +52,10 @@ export function HeroSection() {
         {/* Elevator pitch */}
         <ScrollReveal delay={500}>
           <p className="text-lg md:text-xl text-white/60 max-w-3xl mx-auto leading-relaxed mb-10">
-            Every organisation wants to harness AI. Few know where to start. DREAM uses
-            agentic AI and specialist small language models to cut through the noise, capture
-            how your people actually think, and give your teams the space to reimagine
-            their future.
+            Built for leadership teams who must align strategy, cut through conflicting
+            priorities, and produce decisions executives can defend. DREAM captures how your
+            organisation really thinks and turns it into measurable strategic direction
+             -  with AI that augments human judgment, not replaces it.
           </p>
         </ScrollReveal>
 
@@ -65,13 +65,13 @@ export function HeroSection() {
             <CalendlyButton
               className="px-8 py-4 text-lg font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] shadow-lg shadow-[#5cf28e]/20 hover:bg-[#50c878] transition-all hover:shadow-xl hover:shadow-[#5cf28e]/30 cursor-pointer"
             >
-              Book a Demo
+              See It in Action
             </CalendlyButton>
             <a
-              href="#ask-dream"
+              href="#assessment"
               className="px-8 py-4 text-lg font-semibold rounded-xl border border-white/20 text-white hover:bg-white/10 transition-all"
             >
-              Ask DREAM Anything
+              Take a 5-Minute Assessment
             </a>
           </div>
         </ScrollReveal>
@@ -87,9 +87,9 @@ export function HeroSection() {
             </div>
             <div>
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
-                <AnimatedCounter target={15} suffix=" min" />
+                10&times;
               </div>
-              <div className="text-xs sm:text-sm text-white/40 mt-1">Per conversation</div>
+              <div className="text-xs sm:text-sm text-white/40 mt-1">Faster than surveys</div>
             </div>
             <div>
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">

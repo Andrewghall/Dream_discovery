@@ -1,17 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Zap, RefreshCw, Users, ArrowRight } from 'lucide-react';
+import { Zap, RefreshCw, Users, ShieldCheck, Workflow, ArrowRight } from 'lucide-react';
 import { PageHero } from '@/components/dream-landing/page-hero';
 import { ScrollReveal } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
 
 export const metadata: Metadata = {
-  title: 'Use Cases — DREAM in Action',
+  title: 'Use Cases  -  DREAM in Action',
   description:
-    'See how organisations use DREAM to drive enterprise AI adoption, digital transformation, and customer experience redesign with clarity and alignment.',
+    'See how organisations use DREAM for enterprise AI adoption, operating model redesign, compliance transformation, human-AI workflow design, and partner ecosystem alignment.',
   alternates: { canonical: '/dream/use-cases' },
   openGraph: {
-    title: 'Use Cases — DREAM in Action',
+    title: 'Use Cases  -  DREAM in Action',
     description: 'Real-world applications of DREAM for enterprise transformation.',
     url: '/dream/use-cases',
   },
@@ -22,25 +22,43 @@ const USE_CASES = [
     icon: Zap,
     title: 'Enterprise AI Adoption',
     description:
-      'Every enterprise wants to adopt AI. Few know how. DREAM cuts through the noise — conflicting priorities, siloed thinking, misaligned maturity perceptions — and builds a transformation roadmap grounded in what people actually think.',
+      'Every enterprise wants to adopt AI. Few know how. DREAM captures what your entire organisation and partner ecosystem actually thinks  -  then builds an aligned transformation roadmap.',
     href: '/dream/use-cases/enterprise-ai-adoption',
     featured: true,
     tags: ['AI Strategy', 'Transformation', 'Alignment'],
   },
   {
-    icon: RefreshCw,
-    title: 'Digital Transformation',
+    icon: Workflow,
+    title: 'Human-AI Workflow Design',
     description:
-      'Digital transformation fails when organisations don\'t understand their own readiness. DREAM surfaces the gap between ambition and capability — then builds a constraint-aware path from here to there.',
+      'Designing how humans and AI work together isn\u2019t a technology problem  -  it\u2019s an organisational one. DREAM surfaces where people see AI augmenting their roles, where they see it replacing them, and where the gap between intent and reality will derail deployment.',
     href: null,
     featured: false,
-    tags: ['Digital', 'Modernisation', 'Roadmap'],
+    tags: ['Workforce', 'Process Design', 'AI Integration'],
+  },
+  {
+    icon: RefreshCw,
+    title: 'Operating Model Redesign',
+    description:
+      'Operating models fail when they\u2019re designed in boardrooms and imposed on the business. DREAM reveals how the organisation actually operates  -  where agility exists, where it doesn\u2019t, and what partners and teams need to work differently.',
+    href: null,
+    featured: false,
+    tags: ['Operating Model', 'Governance', 'Partner Alignment'],
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Compliance & Regulatory Transformation',
+    description:
+      'Regulation doesn\u2019t have to be a barrier to innovation. DREAM maps how your teams, partners, and ecosystem perceive compliance  -  where it enables, where it blocks, and how to redesign governance as a competitive advantage.',
+    href: null,
+    featured: false,
+    tags: ['Compliance', 'Regulation', 'Governance'],
   },
   {
     icon: Users,
     title: 'Customer Experience Redesign',
     description:
-      'Customer experience isn\'t owned by one team — it spans every department. DREAM reveals how different parts of the organisation see the customer, where perspectives diverge, and where alignment is critical.',
+      'Customer experience isn\u2019t owned by one team  -  it spans every department and partner touchpoint. DREAM reveals how different parts of the organisation see the customer, where perspectives diverge, and where alignment is critical.',
     href: null,
     featured: false,
     tags: ['CX', 'Alignment', 'Journey'],
@@ -54,7 +72,7 @@ export default function UseCasesPage() {
         eyebrow="Use Cases"
         headline="DREAM in"
         highlightText="Action"
-        subheadline="See how organisations use DREAM to cut through noise, align their people, and drive transformation with clarity."
+        subheadline="Whether it's AI adoption, operating model redesign, compliance transformation, or designing how humans and AI work together  -  DREAM runs the same rigorous process across your entire enterprise and partner ecosystem."
       />
 
       {/* ═══ USE CASE CARDS ═══ */}
@@ -104,9 +122,6 @@ export default function UseCasesPage() {
                       <div className="w-10 h-10 rounded-xl bg-slate-200 flex items-center justify-center">
                         <Icon className="h-5 w-5 text-slate-500" />
                       </div>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-slate-200 text-slate-500">
-                        Coming Soon
-                      </span>
                     </div>
                     <h3 className="text-xl font-bold text-slate-900 mb-2">{uc.title}</h3>
                     <p className="text-slate-600 leading-relaxed mb-3">{uc.description}</p>
@@ -126,8 +141,8 @@ export default function UseCasesPage() {
       </section>
 
       <CTASection
-        headline="Have a specific use case in mind?"
-        subheadline="DREAM adapts to any organisational challenge. Let's talk about yours."
+        headline="Have a specific challenge in mind?"
+        subheadline="DREAM adapts to any transformation  -  from AI deployment to regulatory change. Let's talk about yours."
       />
     </>
   );

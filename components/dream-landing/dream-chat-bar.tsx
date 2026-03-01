@@ -192,7 +192,7 @@ export function DreamChatBar() {
       {/* Input bar */}
       <div className="bg-white/90 backdrop-blur-xl border-t border-slate-200 shadow-2xl">
         <div className="max-w-4xl mx-auto px-6 py-3">
-          {/* Suggestion chips — only when no messages */}
+          {/* Suggestion chips  -  only when no messages */}
           {messages.length === 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {PLACEHOLDER_SUGGESTIONS.map((suggestion) => (

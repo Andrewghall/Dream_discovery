@@ -1,8 +1,8 @@
 /**
- * DREAM POCTR Capability Maturity Assessment — Public API
+ * DREAM POCTR Capability Maturity Assessment  -  Public API
  *
  * POST: Validate submission, generate PDF via Puppeteer, email via Resend.
- * Public endpoint — rate-limited by IP (5 per hour).
+ * Public endpoint  -  rate-limited by IP (5 per hour).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -93,7 +93,7 @@ function validatePayload(body: unknown): SubmissionPayload | string {
     return { domain, score, levelName, levelDescriptor, nextLevelName, nextLevelDescriptor };
   });
 
-  if (scores.some((s) => s === null)) return 'Invalid domain scores (must be 1–5 with valid maturity level)';
+  if (scores.some((s) => s === null)) return 'Invalid domain scores (must be 1-5 with valid maturity level)';
 
   const overallScore = Number(b.overallScore);
   if (overallScore < 1 || overallScore > 5) return 'Invalid overall score';
@@ -208,11 +208,11 @@ export async function POST(request: NextRequest) {
     const { error: emailError } = await resend.emails.send({
       from: `DREAM Assessment <${fromEmail.includes('<') ? fromEmail.split('<')[1].replace('>', '') : fromEmail}>`,
       to: [payload.email],
-      subject: 'Your DREAM Capability Maturity Report',
+      subject: 'Your DREAM Transformation Readiness Report',
       html: emailHtml,
       attachments: [
         {
-          filename: 'DREAM-Capability-Maturity-Report.pdf',
+          filename: 'DREAM-Transformation-Readiness-Report.pdf',
           content: pdfBuffer.toString('base64'),
         },
       ],
@@ -250,9 +250,9 @@ function buildConfirmationEmail(name: string, focus: string, levelName: string):
         <span style="width: 10px; height: 10px; border-radius: 50%; background: #5cf28e; display: inline-block;"></span>
         <span style="color: #fff; font-weight: 700; font-size: 14px;">ETHENTA DREAM</span>
       </div>
-      <h1 style="color: #fff; font-size: 22px; font-weight: 700; margin: 0 0 8px;">Your Capability Maturity Report</h1>
+      <h1 style="color: #fff; font-size: 22px; font-weight: 700; margin: 0 0 8px;">Your Transformation Readiness Report</h1>
       <p style="color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.6; margin: 0;">
-        Hi ${escHtml(name)}, your POCTR Capability Maturity Assessment report is attached as a PDF. Your organisation assessed at maturity level <strong style="color: #5cf28e;">${escHtml(levelName)}</strong>.
+        Hi ${escHtml(name)}, your POCTR Transformation Readiness report is attached as a PDF. Your organisation assessed at maturity level <strong style="color: #5cf28e;">${escHtml(levelName)}</strong>.
       </p>
     </div>
     <div style="background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px; margin-bottom: 20px;">
@@ -271,7 +271,7 @@ function buildConfirmationEmail(name: string, focus: string, levelName: string):
       </a>
     </div>
     <p style="text-align: center; font-size: 11px; color: #94a3b8; margin-top: 24px;">
-      Ethenta &mdash; Decision Intelligence for Transformation
+      Ethenta  -  Decision Intelligence for Transformation
     </p>
   </div>
 </body>

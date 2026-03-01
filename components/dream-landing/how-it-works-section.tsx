@@ -60,7 +60,7 @@ export function HowItWorksSection() {
 
         {/* Timeline */}
         <div className="relative">
-          {/* Connector line — desktop only */}
+          {/* Connector line  -  desktop only */}
           <div className="hidden md:block absolute top-12 left-[16.67%] right-[16.67%] h-0.5 border-t-2 border-dashed border-[#50c878]/40" />
 
           <div className="grid md:grid-cols-3 gap-10 md:gap-8">

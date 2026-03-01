@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 
 /* ────────────────────────────────────────────────────────────
-   RadarChart — Pure SVG pentagon radar/spider chart
+   RadarChart  -  Pure SVG pentagon radar/spider chart
    Shows maturity profile across 5 DREAM domains.
    Supports both 1-5 (maturity levels) and 1-10 scales.
    ──────────────────────────────────────────────────────────── */
@@ -48,7 +48,7 @@ export function RadarChart({
   const n = domains.length;
   const angleOffset = -Math.PI / 2; // start at top
 
-  // Get the (x, y) for a vertex at index i, scaled to val (0–maxValue)
+  // Get the (x, y) for a vertex at index i, scaled to val (0-maxValue)
   const point = (i: number, val: number): [number, number] => {
     const angle = angleOffset + (2 * Math.PI * i) / n;
     const r = (val / maxValue) * radius * scale;
@@ -129,7 +129,7 @@ export function RadarChart({
         );
       })}
 
-      {/* ── Target polygon (dashed outline) — only if target provided ── */}
+      {/* ── Target polygon (dashed outline)  -  only if target provided ── */}
       {target && (
         <polygon
           points={polygon(target)}

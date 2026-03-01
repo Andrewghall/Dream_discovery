@@ -50,7 +50,7 @@ export function WhoItsForSection() {
           </h2>
         </ScrollReveal>
 
-        {/* Persona cards — 2x2 */}
+        {/* Persona cards  -  2x2 */}
         <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
           {PERSONAS.map((persona, i) => {
             const Icon = persona.icon;

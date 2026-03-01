@@ -1,5 +1,5 @@
 /**
- * DREAM POCTR Capability Maturity Assessment — PDF Report Template
+ * DREAM POCTR Capability Maturity Assessment  -  PDF Report Template
  *
  * Self-contained HTML rendered to A4 PDF by Puppeteer.
  * All styles are inline; SVG radar chart is embedded.
@@ -42,7 +42,7 @@ const DOMAIN_COLOURS: Record<string, string> = {
 
 const DOMAIN_ADVICE: Record<string, string> = {
   People: 'building leadership alignment and developing the skills capability your organisation needs',
-  Organisation: 'strengthening governance agility and cross-functional collaboration to enable faster transformation',
+  Organisation: 'strengthening governance agility, cross-functional collaboration, and partner ecosystem alignment to enable faster transformation',
   Customer: 'deepening customer understanding and creating seamless, coherent experiences across touchpoints',
   Technology: 'modernising your technology landscape and building a data-driven decision-making culture',
   Regulation: 'reframing compliance as an enabler of innovation rather than a barrier to progress',
@@ -57,12 +57,12 @@ const RECOMMENDATIONS: Record<string, { title: string; body: (topDomain: string,
   Acceleration: {
     title: 'Acceleration Workshop',
     body: (d, lvl) =>
-      `Your organisation assessed at maturity level ${lvl} — a solid base, but significant gaps remain, particularly in ${DOMAIN_ADVICE[d] || 'key strategic areas'}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation. By capturing every voice and synthesising the collective intelligence of your organisation, DREAM reveals the tensions that derail programmes and builds the shared understanding needed to accelerate change.`,
+      `Your organisation assessed at maturity level ${lvl}  -  a solid base, but significant gaps remain, particularly in ${DOMAIN_ADVICE[d] || 'key strategic areas'}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation. By capturing every voice and synthesising the collective intelligence of your organisation, DREAM reveals the tensions that derail programmes and builds the shared understanding needed to accelerate change.`,
   },
   Optimisation: {
     title: 'Optimisation Workshop',
     body: (d, lvl) =>
-      `Your organisation assessed at maturity level ${lvl}. There are still meaningful opportunities — especially in ${DOMAIN_ADVICE[d] || 'areas of strategic importance'}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward. At this stage, the value of DREAM lies in surfacing the subtle misalignments and blind spots that prevent organisations from reaching their full potential.`,
+      `Your organisation assessed at maturity level ${lvl}. There are still meaningful opportunities  -  especially in ${DOMAIN_ADVICE[d] || 'areas of strategic importance'}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward. At this stage, the value of DREAM lies in surfacing the subtle misalignments and blind spots that prevent organisations from reaching their full potential.`,
   },
 };
 
@@ -217,13 +217,15 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     font-weight: 600;
   }
   .domain-dot { width: 8px; height: 8px; border-radius: 50%; }
-  .seg-bar {
-    display: flex;
-    gap: 3px;
-  }
-  .seg-bar .seg {
+  .bar-bg {
     height: 6px;
-    flex: 1;
+    background: #e2e8f0;
+    border-radius: 3px;
+    width: 100%;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
     border-radius: 3px;
   }
 
@@ -316,7 +318,7 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     <div class="header-left">
       <div class="brand"><span class="brand-dot"></span> ETHENTA DREAM</div>
       <h1>Capability Maturity Assessment</h1>
-      <p>POCTR Maturity Report</p>
+      <p>Transformation Readiness Report</p>
       <div class="methodology">Assessed using the POCTR Capability Maturity Model</div>
     </div>
     <div class="header-right">
@@ -335,7 +337,7 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     <div class="score-box">
       <div class="num" style="color:#0d0d0d;">Level ${Math.round(data.overallScore)}</div>
       <div class="level-name">${escHtml(data.overallLevelName)}</div>
-      <div class="label">${data.overallScore.toFixed(1)} / 5 &mdash; Overall Maturity</div>
+      <div class="label">${data.overallScore.toFixed(1)} / 5  -  Overall Maturity</div>
     </div>
   </div>
 
@@ -354,16 +356,13 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
 ${data.domains
   .map((d) => {
     const col = DOMAIN_COLOURS[d.domain] || '#6b7280';
-    const filledSegs = Math.round(d.score);
     return `      <tr>
         <td><div class="domain-name"><span class="domain-dot" style="background:${col}"></span> ${escHtml(d.domain)}</div></td>
         <td style="text-align:center; font-weight:600;">${d.score.toFixed(1)}</td>
-        <td style="font-weight:600; color:${col};">L${Math.round(d.score)} &mdash; ${escHtml(d.levelName)}</td>
+        <td style="font-weight:600; color:${col};">L${Math.round(d.score)}  -  ${escHtml(d.levelName)}</td>
         <td>
-          <div class="seg-bar">
-            ${[1, 2, 3, 4, 5].map((s) =>
-              `<div class="seg" style="background:${s <= filledSegs ? col : '#e2e8f0'}; opacity:${s <= filledSegs ? '0.7' : '1'};"></div>`
-            ).join('')}
+          <div class="bar-bg">
+            <div class="bar-fill" style="width:${(d.score / 5) * 100}%; background:${col}; opacity:0.7;"></div>
           </div>
         </td>
       </tr>`;
@@ -382,7 +381,7 @@ ${sorted
       <div class="priority-header">
         <div class="priority-rank-num" style="background:${DOMAIN_COLOURS[d.domain] || '#6b7280'}">${i + 1}</div>
         <div class="priority-item-name">${escHtml(d.domain)}</div>
-        <div class="priority-item-level" style="color:${DOMAIN_COLOURS[d.domain] || '#6b7280'}">L${Math.round(d.score)} &mdash; ${escHtml(d.levelName)}</div>
+        <div class="priority-item-level" style="color:${DOMAIN_COLOURS[d.domain] || '#6b7280'}">L${Math.round(d.score)}  -  ${escHtml(d.levelName)}</div>
       </div>
       ${Math.round(d.score) < 5 ? `<div class="priority-next"><strong>Next: ${escHtml(d.nextLevelName)}</strong><br/>${escHtml(d.nextLevelDescriptor)}</div>` : ''}
     </div>`,
@@ -399,7 +398,7 @@ ${sorted
 
   <!-- Footer -->
   <div class="footer">
-    <div>Generated by <strong>DREAM</strong> &mdash; POCTR Capability Maturity Assessment</div>
+    <div>Generated by <strong>DREAM</strong>  -  POCTR Transformation Readiness Assessment</div>
     <div>Book a demo: <a href="mailto:hello@ethenta.com">hello@ethenta.com</a></div>
   </div>
 </div>

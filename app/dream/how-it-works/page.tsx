@@ -6,12 +6,12 @@ import { CTASection } from '@/components/dream-landing/cta-section';
 import { BreadcrumbJsonLd, FaqJsonLd } from '@/lib/dream-landing/seo';
 
 export const metadata: Metadata = {
-  title: 'How It Works — From Conversation to Action',
+  title: 'How It Works  -  From Conversation to Action',
   description:
     'Three stages: AI Discovery before the workshop, live cognitive guidance during, and a full analytical intelligence dashboard after. Here is the complete DREAM journey.',
   alternates: { canonical: '/dream/how-it-works' },
   openGraph: {
-    title: 'How DREAM Works — From Conversation to Action',
+    title: 'How DREAM Works  -  From Conversation to Action',
     description: 'The complete DREAM journey: AI Discovery, live workshop guidance, and post-workshop intelligence.',
     url: '/dream/how-it-works',
   },
@@ -24,9 +24,9 @@ const STAGES = [
     title: 'Before the Workshop',
     subtitle: 'AI-Powered Discovery',
     colour: 'from-blue-500 to-cyan-500',
-    timeline: '1–2 weeks before',
+    timeline: '1-2 weeks before',
     paragraphs: [
-      'Every participant receives a link to a private, AI-guided conversation. In just 15 minutes, the AI explores their perspective across five organisational domains: People, Organisation, Customer, Technology, and Regulation.',
+      'Every participant  -  from internal teams to partners and ecosystem stakeholders  -  receives a link to a private, AI-guided conversation. In just 15 minutes, the AI explores their perspective across five domains: People, Organisation, Customer, Technology, and Regulation.',
       'This isn\'t a survey. It\'s a genuine dialogue where participants share insights, rate maturity, identify constraints, and describe their vision for the future. The AI adapts its questions based on responses, going deeper where it matters.',
       'By the time the workshop begins, EthentaFlow has already extracted hundreds of insights, detected themes, scored confidence levels, and prepared a Discovery Intelligence briefing for the facilitator. The workshop starts with data, not blank whiteboards.',
     ],
@@ -34,7 +34,7 @@ const STAGES = [
       '15-minute structured AI conversations with each participant',
       'Five organisational domains explored in depth',
       'Maturity ratings: current state, target state, projected trajectory',
-      'Confidence scoring — certainty vs hedging detected automatically',
+      'Confidence scoring  -  certainty vs hedging detected automatically',
       'Automatic insight extraction and theme clustering',
       'Discovery Intelligence briefing prepared for facilitators',
     ],
@@ -45,19 +45,19 @@ const STAGES = [
     title: 'During the Workshop',
     subtitle: 'Live Cognitive Guidance',
     colour: 'from-purple-500 to-pink-500',
-    timeline: '4–8 hours',
+    timeline: '4-8 hours',
     paragraphs: [
       'The facilitator guides participants through three live phases: Reimagine (envision the ideal future), Constraints (identify what blocks the path), and Apply (design the transformation plan). AI cognitive guidance runs throughout.',
-      'Agentic AI generates questions grounded in Discovery data — not generic prompts, but specific questions driven by what participants actually said. The 360° Hemisphere builds live on-screen, giving everyone a visual map of the organisation\'s collective thinking.',
+      'Agentic AI generates questions grounded in Discovery data  -  not generic prompts, but specific questions driven by what participants actually said. The 360° Hemisphere builds live on-screen, giving everyone a visual map of the organisation\'s collective thinking.',
       'Real-time synthesis means insights compound as the workshop progresses. By the time you reach the Apply phase, the AI has already mapped every constraint to the vision it blocks and can suggest where to focus transformation energy.',
     ],
     capabilities: [
       'Three live phases: Reimagine, Constraints, Apply',
       'AI cognitive guidance with dynamically generated questions',
-      'Questions grounded in real Discovery data — not generic templates',
+      'Questions grounded in real Discovery data  -  not generic templates',
       'Live 360° Hemisphere builds on-screen in real-time',
       'Real-time synthesis using Agentic AI facilitation',
-      'Facilitator augmented, not replaced — AI handles analysis, humans lead the room',
+      'Facilitator augmented, not replaced  -  AI handles analysis, humans lead the room',
     ],
   },
   {
@@ -68,9 +68,9 @@ const STAGES = [
     colour: 'from-[#5cf28e] to-[#50c878]',
     timeline: 'Immediate',
     paragraphs: [
-      'The moment the workshop ends, the full analytical dashboard is available. Seven distinct views transform raw dialogue into structured, board-ready intelligence. No waiting for consultants to write reports — the intelligence is computed in real-time.',
+      'The moment the workshop ends, the full analytical dashboard is available. Seven distinct views transform raw dialogue into structured, board-ready intelligence. No waiting for consultants to write reports  -  the intelligence is computed in real-time.',
       'The Hemisphere Psyche Diagnostic compares the organisation\'s state before the workshop (from Discovery) with its state after (from the live session). Where have minds shifted? Where does resistance persist? This before-and-after comparison is unique to DREAM.',
-      'The executive scratchpad provides editable strategic deliverables that can be taken directly into steering committees and board presentations. Everything is exportable, shareable, and grounded in data — not facilitator interpretation.',
+      'The executive scratchpad provides editable strategic deliverables that can be taken directly into steering committees and board presentations. Everything is exportable, shareable, and grounded in data  -  not facilitator interpretation.',
     ],
     capabilities: [
       'Post-live analytical dashboard with 7 deep views',
@@ -84,7 +84,7 @@ const STAGES = [
 ];
 
 const WORKSHOP_STATS = [
-  { target: 8, suffix: '–25', label: 'Participants' },
+  { target: 360, suffix: '°', label: 'Enterprise & partners' },
   { target: 15, suffix: ' min', label: 'Per conversation' },
   { target: 1000, suffix: '+', label: 'Data points captured' },
   { target: 7, label: 'Analytical views' },
@@ -101,8 +101,8 @@ export default function HowItWorksPage() {
       />
       <FaqJsonLd
         faqs={[
-          { question: 'How long does a DREAM workshop take?', answer: 'The live workshop runs for 4–8 hours. Before the workshop, each participant completes a 15-minute AI Discovery conversation over 1–2 weeks. Results are available immediately after.' },
-          { question: 'How many participants can a DREAM workshop support?', answer: 'Typically 8–25 participants each have a 15-minute AI-guided Discovery conversation. The live workshop works best with 10–20 people in the room.' },
+          { question: 'How long does a DREAM workshop take?', answer: 'The live workshop runs for 4-8 hours. Before the workshop, each participant completes a 15-minute AI Discovery conversation over 1-2 weeks. Results are available immediately after.' },
+          { question: 'How many participants can a DREAM workshop support?', answer: 'DREAM scales to your entire organisation and partner ecosystem. Every participant has a private 15-minute AI-guided Discovery conversation. The live workshop brings key stakeholders together to work with the collective intelligence.' },
           { question: 'What technology do participants need?', answer: 'No special software required. Everything is browser-based. Participants receive a link and complete their Discovery conversation on any device.' },
           { question: 'How quickly are results available?', answer: 'The full analytical dashboard with 7 views is available immediately after the workshop ends. No waiting for consultants to compile reports.' },
           { question: 'Does DREAM replace the facilitator?', answer: 'No. DREAM augments the facilitator with AI-powered cognitive guidance, real-time analysis, and structured insight. Humans lead the room; the AI handles the analysis.' },

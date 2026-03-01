@@ -8,21 +8,21 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://dream.ethenta.com'
 export const metadata: Metadata = {
   title: {
     template: '%s | Ethenta DREAM',
-    default: 'Ethenta DREAM — Workshop Intelligence Platform',
+    default: 'Ethenta DREAM  -  Workshop Intelligence Platform',
   },
   description:
     'AI-powered decision intelligence that transforms workshops into measurable organisational insight. Discover. Reimagine. Educate. Apply. Mobilise.',
   openGraph: {
     type: 'website',
     siteName: 'Ethenta DREAM',
-    title: 'Ethenta DREAM — Workshop Intelligence Platform',
+    title: 'Ethenta DREAM  -  Workshop Intelligence Platform',
     description:
-      'Turn every workshop into decision intelligence with EthentaFlow™ — the AI engine that captures what people really think and reveals what organisations actually need.',
-    images: [{ url: '/Dream.PNG', width: 1412, height: 510, alt: 'Ethenta DREAM — Workshop Intelligence Platform' }],
+      'Turn every workshop into decision intelligence with EthentaFlow™  -  the AI engine that captures what people really think and reveals what organisations actually need.',
+    images: [{ url: '/Dream.PNG', width: 1412, height: 510, alt: 'Ethenta DREAM  -  Workshop Intelligence Platform' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Ethenta DREAM — Workshop Intelligence Platform',
+    title: 'Ethenta DREAM  -  Workshop Intelligence Platform',
     description:
       'Turn every workshop into decision intelligence with EthentaFlow™.',
     images: ['/Dream.PNG'],

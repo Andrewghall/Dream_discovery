@@ -14,7 +14,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
   'financial-services': {
     slug: 'financial-services',
     name: 'Financial Services',
-    tagline: 'Digital transformation, regulatory compliance, customer experience redesign',
+    tagline: 'Regulatory transformation, digital modernisation, partner ecosystem alignment',
     headline: 'Decision Intelligence for Financial Services',
     subheadline:
       'Navigate regulatory complexity, digital transformation, and customer expectations with clarity. DREAM surfaces the real tensions between innovation appetite and compliance culture.',
@@ -22,7 +22,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       {
         title: 'Regulatory Burden vs Innovation',
         description:
-          'Compliance teams resist speed. Innovation teams resist controls. The result is paralysis — or worse, uncontrolled experimentation that creates regulatory exposure.',
+          'Compliance teams resist speed. Innovation teams resist controls. The result is paralysis  -  or worse, uncontrolled experimentation that creates regulatory exposure.',
       },
       {
         title: 'Customer Experience Expectations',
@@ -37,14 +37,14 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       {
         title: 'Risk Culture vs Growth Culture',
         description:
-          'Financial services organisations are built on risk management. But growth requires risk-taking. DREAM reveals where these cultures collide — and where they can coexist.',
+          'Financial services organisations are built on risk management. But growth requires risk-taking. DREAM reveals where these cultures collide  -  and where they can coexist.',
       },
     ],
     dreamHelps: [
       {
         phase: 'Discover',
         description:
-          'Surfaces the real maturity gap between compliance readiness and innovation capability. Captures what frontline advisors, risk officers, and transformation leads actually think — not what they present in steering committees.',
+          'Surfaces the real maturity gap between compliance readiness and innovation capability. Captures what frontline advisors, risk officers, and transformation leads actually think  -  not what they present in steering committees.',
       },
       {
         phase: 'Reimagine',
@@ -60,10 +60,11 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     exampleInsights: [
       '82% of advisors rated digital capability at 2/10 while the CTO\'s roadmap assumed 6/10',
       'The word "compliance" appeared 47 times in constraint responses but zero times in vision responses',
-      'Customer domain received the highest creative density but the lowest constraint attention — a blind spot',
+      'Customer domain received the highest creative density but the lowest constraint attention  -  a blind spot',
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -73,22 +74,22 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     tagline: 'Service redesign, workforce transformation, patient journey optimisation',
     headline: 'Decision Intelligence for Healthcare',
     subheadline:
-      'Healthcare transformation is uniquely complex — clinical priorities, workforce pressures, patient safety, and digital ambition must all be balanced. DREAM reveals where these forces align and where they collide.',
+      'Healthcare transformation is uniquely complex  -  clinical priorities, workforce pressures, patient safety, and digital ambition must all be balanced. DREAM reveals where these forces align and where they collide.',
     challenges: [
       {
         title: 'Clinical vs Administrative Priorities',
         description:
-          'Clinicians focus on patient outcomes. Administrators focus on efficiency and cost. These aren\'t opposing goals — but without structured dialogue, they become opposing camps.',
+          'Clinicians focus on patient outcomes. Administrators focus on efficiency and cost. These aren\'t opposing goals  -  but without structured dialogue, they become opposing camps.',
       },
       {
         title: 'Workforce Under Pressure',
         description:
-          'Staff burnout, recruitment challenges, and skills gaps create a workforce that is resistant to change — not because they don\'t want improvement, but because they have no capacity for it.',
+          'Staff burnout, recruitment challenges, and skills gaps create a workforce that is resistant to change  -  not because they don\'t want improvement, but because they have no capacity for it.',
       },
       {
         title: 'Patient Journey Complexity',
         description:
-          'Patients don\'t experience departments — they experience journeys. But most healthcare organisations are structured around departments, creating handoff gaps that patients feel but nobody owns.',
+          'Patients don\'t experience departments  -  they experience journeys. But most healthcare organisations are structured around departments, creating handoff gaps that patients feel but nobody owns.',
       },
       {
         title: 'Digital Transformation in Clinical Settings',
@@ -114,12 +115,13 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       },
     ],
     exampleInsights: [
-      'Clinicians and administrators agreed on the future vision — but had completely different views on the starting point',
+      'Clinicians and administrators agreed on the future vision  -  but had completely different views on the starting point',
       'Patient experience was the highest-priority domain in Reimagine but received zero attention in current governance structures',
-      'Workforce capacity was rated as the #1 constraint by 90% of participants — but didn\'t appear in the board\'s transformation priorities',
+      'Workforce capacity was rated as the #1 constraint by 90% of participants  -  but didn\'t appear in the board\'s transformation priorities',
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -129,7 +131,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     tagline: 'Service modernisation, citizen experience, policy alignment',
     headline: 'Decision Intelligence for Government',
     subheadline:
-      'Public sector transformation operates under unique constraints — political cycles, public accountability, cross-departmental complexity, and citizen expectations. DREAM maps all of them.',
+      'Public sector transformation operates under unique constraints  -  political cycles, public accountability, cross-departmental complexity, and citizen expectations. DREAM maps all of them.',
     challenges: [
       {
         title: 'Cross-Departmental Alignment',
@@ -144,7 +146,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       {
         title: 'Citizen Expectations',
         description:
-          'Citizens compare government services to private sector experiences. The gap between expectation and delivery erodes public trust — but the constraints on innovation are fundamentally different.',
+          'Citizens compare government services to private sector experiences. The gap between expectation and delivery erodes public trust  -  but the constraints on innovation are fundamentally different.',
       },
       {
         title: 'Legacy Systems and Procurement',
@@ -171,11 +173,12 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     ],
     exampleInsights: [
       'Policy teams and service delivery teams used completely different language to describe the same citizen outcome',
-      'Technology readiness varied by a factor of 5 across departments — making enterprise-wide digital strategy impossible without addressing this gap first',
-      'The word "accountability" appeared 32 times in constraints but was absent from vision — suggesting governance is seen as a barrier, not an enabler',
+      'Technology readiness varied by a factor of 5 across departments  -  making enterprise-wide digital strategy impossible without addressing this gap first',
+      'The word "accountability" appeared 32 times in constraints but was absent from vision  -  suggesting governance is seen as a barrier, not an enabler',
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -185,12 +188,12 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     tagline: 'Customer experience transformation, omnichannel strategy, workforce capability',
     headline: 'Decision Intelligence for Retail',
     subheadline:
-      'Retail moves fast. Customer expectations shift constantly. DREAM gives you the organisational truth behind your omnichannel strategy — not the PowerPoint version.',
+      'Retail moves fast. Customer expectations shift constantly. DREAM gives you the organisational truth behind your omnichannel strategy  -  not the PowerPoint version.',
     challenges: [
       {
         title: 'Omnichannel Complexity',
         description:
-          'Every channel — store, online, mobile, social — has its own team, its own metrics, and its own view of the customer. Unified experiences require unified thinking. Most organisations don\'t have it.',
+          'Every channel  -  store, online, mobile, social  -  has its own team, its own metrics, and its own view of the customer. Unified experiences require unified thinking. Most organisations don\'t have it.',
       },
       {
         title: 'Customer Experience vs Operational Efficiency',
@@ -200,7 +203,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       {
         title: 'Workforce Transformation',
         description:
-          'Store colleagues face changing roles as digital grows. New skills, new tools, new expectations — but rarely new support. The gap between head office ambition and store-floor reality is often invisible.',
+          'Store colleagues face changing roles as digital grows. New skills, new tools, new expectations  -  but rarely new support. The gap between head office ambition and store-floor reality is often invisible.',
       },
       {
         title: 'Data-Driven Decision Making',
@@ -227,11 +230,12 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     ],
     exampleInsights: [
       'Store teams and digital teams had zero overlap in their top-5 customer priorities',
-      'Customer experience was the #1 vision theme but the #5 investment priority — a clear strategy-execution gap',
+      'Customer experience was the #1 vision theme but the #5 investment priority  -  a clear strategy-execution gap',
       'Supply chain constraints were identified by 16 of 20 participants but owned by nobody in the governance structure',
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -241,7 +245,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     tagline: 'Product strategy alignment, engineering culture, go-to-market readiness',
     headline: 'Decision Intelligence for Technology Companies',
     subheadline:
-      'Technology companies move fast — but not always in the same direction. DREAM aligns product, engineering, and go-to-market teams around shared strategic clarity.',
+      'Technology companies move fast  -  but not always in the same direction. DREAM aligns product, engineering, and go-to-market teams around shared strategic clarity.',
     challenges: [
       {
         title: 'Product Strategy Alignment',
@@ -251,7 +255,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       {
         title: 'Engineering Culture vs Business Priorities',
         description:
-          'Engineers want to build elegant solutions. Business wants to ship features. These priorities aren\'t incompatible — but without structured dialogue, they feel that way.',
+          'Engineers want to build elegant solutions. Business wants to ship features. These priorities aren\'t incompatible  -  but without structured dialogue, they feel that way.',
       },
       {
         title: 'Go-to-Market Readiness',
@@ -261,7 +265,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       {
         title: 'Scaling Beyond the Founder',
         description:
-          'As technology companies grow, the founder\'s vision must become the organisation\'s vision. DREAM reveals where the organisation has internalised that vision — and where it hasn\'t.',
+          'As technology companies grow, the founder\'s vision must become the organisation\'s vision. DREAM reveals where the organisation has internalised that vision  -  and where it hasn\'t.',
       },
     ],
     dreamHelps: [
@@ -284,10 +288,11 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     exampleInsights: [
       'Product and engineering agreed on the vision but had a 4-point gap on timeline feasibility',
       'Sales described the product as "enterprise-ready" while engineering rated enterprise features at 3/10 maturity',
-      'Customer domain contributions came entirely from sales — zero direct customer perspective in the room',
+      'Customer domain contributions came entirely from sales  -  zero direct customer perspective in the room',
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -297,7 +302,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     tagline: 'Client delivery methodology, knowledge management, growth strategy',
     headline: 'Decision Intelligence for Professional Services',
     subheadline:
-      'Consultancies and advisory firms can use DREAM to deliver deeper client insight in less time — replacing weeks of interviews with structured AI-powered intelligence.',
+      'Consultancies and advisory firms can use DREAM to deliver deeper client insight in less time  -  replacing weeks of interviews with structured AI-powered intelligence.',
     challenges: [
       {
         title: 'Client Discovery at Scale',
@@ -329,12 +334,12 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       {
         phase: 'Reimagine',
         description:
-          'Facilitate client workshops with real-time AI synthesis. The 360° Hemisphere gives clients a visual they\'ve never seen before — their organisation\'s collective thinking mapped in real-time.',
+          'Facilitate client workshops with real-time AI synthesis. The 360° Hemisphere gives clients a visual they\'ve never seen before  -  their organisation\'s collective thinking mapped in real-time.',
       },
       {
         phase: 'Apply',
         description:
-          'Deliver analytical output that no traditional consultancy can match. Seven views, deterministic scoring, and exportable reports — all available immediately after the workshop.',
+          'Deliver analytical output that no traditional consultancy can match. Seven views, deterministic scoring, and exportable reports  -  all available immediately after the workshop.',
       },
     ],
     exampleInsights: [
@@ -344,6 +349,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 };

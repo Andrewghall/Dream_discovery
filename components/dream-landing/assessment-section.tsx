@@ -20,7 +20,7 @@ import { RadarChart } from './radar-chart';
 import { CalendlyButton } from './calendly-button';
 
 /* ────────────────────────────────────────────────────────────
-   POCTR Capability Maturity Model — Data & Types
+   POCTR Capability Maturity Model  -  Data & Types
    ──────────────────────────────────────────────────────────── */
 
 const MATURITY_LEVELS = [
@@ -35,16 +35,17 @@ interface MaturityQuestion {
   id: string;
   dimension: string;
   question: string;
-  descriptors: [string, string, string, string, string]; // L1–L5
+  descriptors: [string, string, string, string, string]; // L1-L5
 }
 
 interface Domain {
   key: string;
   name: string;
+  description: string;
   icon: typeof Users;
   colour: string;
   colourHex: string;
-  levelDescriptors: [string, string, string, string, string]; // Domain-level L1–L5
+  levelDescriptors: [string, string, string, string, string]; // Domain-level L1-L5
   questions: [MaturityQuestion, MaturityQuestion, MaturityQuestion];
 }
 
@@ -52,6 +53,7 @@ const DOMAINS: Domain[] = [
   {
     key: 'people',
     name: 'People',
+    description: 'Talent development, leadership alignment, and cultural readiness for change.',
     icon: Users,
     colour: 'bg-blue-500',
     colourHex: '#3b82f6',
@@ -68,7 +70,7 @@ const DOMAINS: Domain[] = [
         dimension: 'Talent Development & Skills Capability',
         question: 'How does your organisation develop the skills and capabilities it needs?',
         descriptors: [
-          'Skills development is informal — individuals seek out their own training with no organisational strategy.',
+          'Skills development is informal  -  individuals seek out their own training with no organisational strategy.',
           'Some training programmes exist, but they are not connected to strategic priorities or future needs.',
           'A structured skills framework exists with development paths aligned to organisational strategy.',
           'Skills gaps are systematically identified, measured, and addressed through targeted investment.',
@@ -84,7 +86,7 @@ const DOMAINS: Domain[] = [
           'Leadership communicates a vision, but translation into team-level action is inconsistent.',
           'Leaders actively align teams around shared objectives with regular cadence and feedback loops.',
           'Strategic alignment is measured and tracked; leaders use data to identify and resolve misalignment.',
-          'Alignment is cultural — teams self-organise around strategic priorities; leadership enables rather than directs.',
+          'Alignment is cultural  -  teams self-organise around strategic priorities; leadership enables rather than directs.',
         ],
       },
       {
@@ -104,15 +106,16 @@ const DOMAINS: Domain[] = [
   {
     key: 'organisation',
     name: 'Organisation',
+    description: 'Governance, cross-functional collaboration, partner ecosystem alignment, and operating model adaptability.',
     icon: Building2,
     colour: 'bg-green-500',
     colourHex: '#22c55e',
     levelDescriptors: [
-      'Decision-making is centralised and slow. Governance is process-heavy and change-resistant.',
-      'Some cross-functional collaboration exists but is project-driven rather than structural. Governance recognises the need for agility.',
-      'Governance frameworks balance control and speed. Cross-functional teams operate with clear mandates and accountability.',
-      'Organisational design is intentionally optimised. Decision authority is distributed with clear escalation. Change is managed as a capability.',
-      'The organisation is structurally adaptive. Governance evolves in real time. Collaboration is the default operating model.',
+      'Decision-making is centralised and slow. Governance is process-heavy and change-resistant. Partner relationships are transactional.',
+      'Some cross-functional collaboration exists but is project-driven rather than structural. Partner engagement is ad hoc. Governance recognises the need for agility.',
+      'Governance frameworks balance control and speed. Cross-functional teams operate with clear mandates. Key partners are structurally aligned.',
+      'Organisational design is intentionally optimised. Decision authority is distributed with clear escalation. Strategic partners are integrated into planning cycles.',
+      'The organisation is structurally adaptive. Governance evolves in real time. Internal and partner ecosystems collaborate seamlessly.',
     ],
     questions: [
       {
@@ -129,14 +132,14 @@ const DOMAINS: Domain[] = [
       },
       {
         id: 'o2',
-        dimension: 'Cross-Functional Collaboration',
-        question: 'How effectively do teams work across functional boundaries on shared goals?',
+        dimension: 'Cross-Boundary Collaboration',
+        question: 'How effectively do teams collaborate across functional boundaries and with external partners?',
         descriptors: [
-          'Teams operate in silos; collaboration depends on personal relationships rather than structure.',
-          'Cross-functional projects exist but coordination is manual and outcomes are inconsistent.',
-          'Cross-functional teams have clear mandates, shared objectives, and defined ways of working.',
-          'Collaboration is embedded in operating models; shared metrics drive joint accountability.',
-          'Functional boundaries are fluid; teams self-form around opportunities and dissolve when complete.',
+          'Teams operate in silos; collaboration depends on personal relationships. External partner relationships are transactional and siloed.',
+          'Cross-functional projects exist but coordination is manual. Partner engagement is ad hoc with no structured alignment.',
+          'Cross-functional teams have clear mandates and shared objectives. Key partnerships have structured collaboration and shared goals.',
+          'Collaboration is embedded in operating models with shared metrics. Strategic partners are integrated into planning and delivery cycles.',
+          'Functional boundaries are fluid; teams self-form around opportunities. The ecosystem is an extension of the organisation  -  partners co-create and co-innovate seamlessly.',
         ],
       },
       {
@@ -156,6 +159,7 @@ const DOMAINS: Domain[] = [
   {
     key: 'customer',
     name: 'Customer',
+    description: 'Customer insight, experience coherence across touchpoints, and voice of the customer in decisions.',
     icon: Heart,
     colour: 'bg-purple-500',
     colourHex: '#a855f7',
@@ -208,6 +212,7 @@ const DOMAINS: Domain[] = [
   {
     key: 'technology',
     name: 'Technology',
+    description: 'Architecture maturity, data as a strategic asset, and AI & automation readiness.',
     icon: Cpu,
     colour: 'bg-orange-500',
     colourHex: '#f97316',
@@ -260,6 +265,7 @@ const DOMAINS: Domain[] = [
   {
     key: 'regulation',
     name: 'Regulation',
+    description: 'Compliance as an enabler, regulatory change readiness, and risk appetite governance.',
     icon: Scale,
     colour: 'bg-red-500',
     colourHex: '#ef4444',
@@ -345,7 +351,7 @@ interface Recommendation {
 
 const DOMAIN_ADVICE: Record<string, string> = {
   People: 'building leadership alignment and developing the skills capability your organisation needs',
-  Organisation: 'strengthening governance agility and cross-functional collaboration to enable faster transformation',
+  Organisation: 'strengthening governance agility, cross-functional collaboration, and partner ecosystem alignment to enable faster transformation',
   Customer: 'deepening customer understanding and creating seamless, coherent experiences across touchpoints',
   Technology: 'modernising your technology landscape and building a data-driven decision-making culture',
   Regulation: 'reframing compliance as an enabler of innovation rather than a barrier to progress',
@@ -371,8 +377,8 @@ function getRecommendation(
 
   const bodies: Record<string, string> = {
     Foundation: `Your organisation assessed at maturity level ${overallLevelName}. The biggest opportunity lies in ${advice}. A DREAM Foundation workshop would help you build the shared understanding and strategic clarity needed to move forward with confidence.`,
-    Acceleration: `Your organisation assessed at maturity level ${overallLevelName} — a solid base, but significant gaps remain, particularly in ${advice}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation.`,
-    Optimisation: `Your organisation assessed at maturity level ${overallLevelName}. There are still meaningful opportunities — especially in ${advice}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward.`,
+    Acceleration: `Your organisation assessed at maturity level ${overallLevelName}  -  a solid base, but significant gaps remain, particularly in ${advice}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation.`,
+    Optimisation: `Your organisation assessed at maturity level ${overallLevelName}. There are still meaningful opportunities  -  especially in ${advice}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward.`,
   };
 
   return { headline: headlines[focus], body: bodies[focus], focus };
@@ -462,7 +468,7 @@ function MaturityLevelSelector({
    ──────────────────────────────────────────────────────────── */
 
 export function AssessmentSection() {
-  // step: 0 = intro, 1–5 = domain, 6 = results
+  // step: 0 = intro, 1-5 = domain, 6 = results
   const [step, setStep] = useState(0);
   const [scores, setScores] = useState<Scores>({ ...DEFAULT_SCORES });
 
@@ -606,19 +612,22 @@ export function AssessmentSection() {
                   </span>
                 </div>
                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4">
-                  Assess Your{' '}
+                  How Ready Is Your Organisation to{' '}
                   <span className="bg-gradient-to-r from-[#5cf28e] to-[#50c878] bg-clip-text text-transparent">
-                    Capability Maturity
+                    Transform?
                   </span>
                 </h2>
                 <p className="text-white/60 leading-relaxed mb-4">
-                  Rate your organisation across the five POCTR domains &mdash; People, Organisation,
-                  Customer, Technology, and Regulation. Select the maturity level that best describes
-                  your current state for each capability dimension.
+                  Whether you&apos;re deploying agentic AI, rethinking your operating model,
+                  aligning partner ecosystems, or driving a new strategy  -  transformation
+                  success depends on the same five dimensions. Rate your organisation across
+                  People, Organisation, Customer, Technology, and Regulation to see where
+                  you&apos;re strong and where the gaps will stall your programmes.
                 </p>
                 <p className="text-white/40 text-xs leading-relaxed mb-6">
-                  Based on the POCTR Capability Maturity Model &mdash; a structured framework for
-                  benchmarking organisational readiness across the critical dimensions of transformation.
+                  The POCTR model measures your readiness to execute strategic change  -  from
+                  enterprise AI adoption and partner alignment to operating model redesign. Used
+                  by DREAM workshops to ground transformation in what your people actually think.
                 </p>
                 <div className="flex flex-wrap gap-4 mb-8">
                   {DOMAINS.map((d) => (
@@ -659,7 +668,7 @@ export function AssessmentSection() {
     );
   }
 
-  // ── Render domain questions (steps 1–5) ─────────────────────
+  // ── Render domain questions (steps 1-5) ─────────────────────
 
   if (step >= 1 && step <= 5) {
     const domain = DOMAINS[step - 1];
@@ -699,7 +708,7 @@ export function AssessmentSection() {
 
             {/* Domain card */}
             <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3 mb-1">
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: `${domain.colourHex}20` }}
@@ -713,6 +722,7 @@ export function AssessmentSection() {
                   </p>
                 </div>
               </div>
+              <p className="text-xs text-slate-500 mb-4 ml-[52px]">{domain.description}</p>
 
               {/* Question completion indicators */}
               <div className="flex items-center gap-2 mb-6">
@@ -781,10 +791,10 @@ export function AssessmentSection() {
             Your Results
           </p>
           <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-2">
-            Capability Maturity Profile
+            Transformation Readiness Profile
           </h2>
           <p className="text-slate-500 text-sm">
-            Assessed using the POCTR Capability Maturity Model
+            POCTR Capability Maturity Model  -  measuring readiness to execute strategic change
           </p>
         </div>
 
@@ -830,7 +840,7 @@ export function AssessmentSection() {
 
           {/* ── Right: Domain breakdown + recommendation + email ── */}
           <div className="space-y-6">
-            {/* Domain breakdown — sorted by priority (lowest first) */}
+            {/* Domain breakdown  -  sorted by priority (lowest first) */}
             <div>
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-3">
                 Priority Development Areas
@@ -855,19 +865,16 @@ export function AssessmentSection() {
                             L{Math.round(result.score)} &middot; {result.levelName}
                           </span>
                         </div>
-                        {/* 5-segment progress bar */}
-                        <div className="flex gap-1">
-                          {[1, 2, 3, 4, 5].map((seg) => (
-                            <div
-                              key={seg}
-                              className="h-1.5 flex-1 rounded-full transition-all duration-700"
-                              style={{
-                                backgroundColor:
-                                  seg <= Math.round(result.score) ? result.colourHex : '#e2e8f0',
-                                opacity: seg <= Math.round(result.score) ? 0.7 : 1,
-                              }}
-                            />
-                          ))}
+                        {/* Continuous progress bar */}
+                        <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{
+                              width: `${(result.score / 5) * 100}%`,
+                              backgroundColor: result.colourHex,
+                              opacity: 0.7,
+                            }}
+                          />
                         </div>
                       </div>
                     </div>
@@ -906,8 +913,10 @@ export function AssessmentSection() {
                   </h4>
                 </div>
                 <p className="text-xs text-slate-500 mb-4">
-                  We&apos;ll send you a detailed PDF with your maturity profile, domain breakdown,
-                  next-level recommendations, and personalised workshop guidance.
+                  We&apos;ll send you a detailed PDF with your transformation readiness profile,
+                  domain breakdown, next-level recommendations, and personalised guidance
+                  on where to focus  -  from AI adoption and partner ecosystem alignment
+                  to operating model change.
                 </p>
                 <div className="space-y-3">
                   <input
@@ -957,7 +966,7 @@ export function AssessmentSection() {
                 <CheckCircle2 className="h-10 w-10 text-[#5cf28e] mx-auto mb-3" />
                 <h4 className="text-lg font-bold text-slate-900 mb-1">Report Sent!</h4>
                 <p className="text-sm text-slate-500 mb-4">
-                  Check your inbox &mdash; your POCTR Capability Maturity Report is on its way.
+                  Check your inbox  -  your Transformation Readiness Report is on its way.
                 </p>
                 <CalendlyButton
                   className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all cursor-pointer"
