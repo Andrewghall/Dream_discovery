@@ -606,19 +606,22 @@ export function AssessmentSection() {
                   </span>
                 </div>
                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4">
-                  Assess Your{' '}
+                  How Ready Is Your Organisation to{' '}
                   <span className="bg-gradient-to-r from-[#5cf28e] to-[#50c878] bg-clip-text text-transparent">
-                    Capability Maturity
+                    Transform?
                   </span>
                 </h2>
                 <p className="text-white/60 leading-relaxed mb-4">
-                  Rate your organisation across the five POCTR domains &mdash; People, Organisation,
-                  Customer, Technology, and Regulation. Select the maturity level that best describes
-                  your current state for each capability dimension.
+                  Whether you&apos;re deploying agentic AI, rethinking your operating model, or
+                  aligning teams around a new strategy &mdash; transformation success depends on
+                  the same five dimensions. Rate your organisation across People, Organisation,
+                  Customer, Technology, and Regulation to see where you&apos;re strong and where
+                  the gaps will stall your programmes.
                 </p>
                 <p className="text-white/40 text-xs leading-relaxed mb-6">
-                  Based on the POCTR Capability Maturity Model &mdash; a structured framework for
-                  benchmarking organisational readiness across the critical dimensions of transformation.
+                  The POCTR model measures your readiness to execute strategic change &mdash; from
+                  enterprise AI adoption to operating model redesign. Used by DREAM workshops
+                  to ground transformation in what your people actually think.
                 </p>
                 <div className="flex flex-wrap gap-4 mb-8">
                   {DOMAINS.map((d) => (
@@ -781,10 +784,10 @@ export function AssessmentSection() {
             Your Results
           </p>
           <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-2">
-            Capability Maturity Profile
+            Transformation Readiness Profile
           </h2>
           <p className="text-slate-500 text-sm">
-            Assessed using the POCTR Capability Maturity Model
+            POCTR Capability Maturity Model &mdash; measuring readiness to execute strategic change
           </p>
         </div>
 
@@ -906,8 +909,9 @@ export function AssessmentSection() {
                   </h4>
                 </div>
                 <p className="text-xs text-slate-500 mb-4">
-                  We&apos;ll send you a detailed PDF with your maturity profile, domain breakdown,
-                  next-level recommendations, and personalised workshop guidance.
+                  We&apos;ll send you a detailed PDF with your transformation readiness profile,
+                  domain breakdown, next-level recommendations, and personalised guidance
+                  on where to focus &mdash; from AI adoption to operating model change.
                 </p>
                 <div className="space-y-3">
                   <input
@@ -957,7 +961,7 @@ export function AssessmentSection() {
                 <CheckCircle2 className="h-10 w-10 text-[#5cf28e] mx-auto mb-3" />
                 <h4 className="text-lg font-bold text-slate-900 mb-1">Report Sent!</h4>
                 <p className="text-sm text-slate-500 mb-4">
-                  Check your inbox &mdash; your POCTR Capability Maturity Report is on its way.
+                  Check your inbox &mdash; your Transformation Readiness Report is on its way.
                 </p>
                 <CalendlyButton
                   className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all cursor-pointer"
