@@ -1,10 +1,13 @@
 'use client';
 
 import { ScrollReveal } from './scroll-reveal';
+import { CalendlyButton } from './calendly-button';
 
 interface CTASectionProps {
   headline?: string;
   subheadline?: string;
+  /** When true (default), primary CTA opens Calendly popup instead of following href */
+  useCalendly?: boolean;
   primaryCta?: { label: string; href: string };
   secondaryCta?: { label: string; href: string };
   variant?: 'gradient' | 'dark' | 'light';
@@ -13,6 +16,7 @@ interface CTASectionProps {
 export function CTASection({
   headline = 'Ready to transform your workshops?',
   subheadline,
+  useCalendly = true,
   primaryCta = {
     label: 'Book a Demo',
     href: 'mailto:hello@ethenta.com?subject=DREAM%20Demo%20Request',
@@ -47,12 +51,20 @@ export function CTASection({
 
         <ScrollReveal delay={200}>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
-            <a
-              href={primaryCta.href}
-              className="px-8 py-4 text-lg font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] shadow-lg shadow-[#5cf28e]/20 hover:bg-[#50c878] transition-all hover:shadow-xl hover:shadow-[#5cf28e]/30"
-            >
-              {primaryCta.label}
-            </a>
+            {useCalendly ? (
+              <CalendlyButton
+                className="px-8 py-4 text-lg font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] shadow-lg shadow-[#5cf28e]/20 hover:bg-[#50c878] transition-all hover:shadow-xl hover:shadow-[#5cf28e]/30 cursor-pointer"
+              >
+                {primaryCta.label}
+              </CalendlyButton>
+            ) : (
+              <a
+                href={primaryCta.href}
+                className="px-8 py-4 text-lg font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] shadow-lg shadow-[#5cf28e]/20 hover:bg-[#50c878] transition-all hover:shadow-xl hover:shadow-[#5cf28e]/30"
+              >
+                {primaryCta.label}
+              </a>
+            )}
             <a
               href={secondaryCta.href}
               className={`px-8 py-4 text-lg font-semibold rounded-xl border transition-all ${

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ScrollReveal, AnimatedCounter } from './scroll-reveal';
 import { RadarChart } from './radar-chart';
+import { CalendlyButton } from './calendly-button';
 
 /* ────────────────────────────────────────────────────────────
    Types & Data
@@ -674,12 +675,11 @@ export function AssessmentSection() {
                 <p className="text-sm text-slate-500 mb-4">
                   Check your inbox — your personalised readiness report is on its way.
                 </p>
-                <a
-                  href="mailto:hello@ethenta.com?subject=DREAM%20Assessment%20—%20Book%20a%20Demo"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all"
+                <CalendlyButton
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all cursor-pointer"
                 >
                   Book a Demo <ArrowRight className="h-4 w-4" />
-                </a>
+                </CalendlyButton>
               </div>
             )}
 

@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import { ScrollReveal, AnimatedCounter } from './scroll-reveal';
+import { CalendlyButton } from './calendly-button';
 
 export function HeroSection() {
   return (
@@ -60,12 +61,11 @@ export function HeroSection() {
         {/* CTAs */}
         <ScrollReveal delay={600}>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-            <a
-              href="mailto:hello@ethenta.com?subject=DREAM%20Demo%20Request"
-              className="px-8 py-4 text-lg font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] shadow-lg shadow-[#5cf28e]/20 hover:bg-[#50c878] transition-all hover:shadow-xl hover:shadow-[#5cf28e]/30"
+            <CalendlyButton
+              className="px-8 py-4 text-lg font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] shadow-lg shadow-[#5cf28e]/20 hover:bg-[#50c878] transition-all hover:shadow-xl hover:shadow-[#5cf28e]/30 cursor-pointer"
             >
               Book a Demo
-            </a>
+            </CalendlyButton>
             <a
               href="#ask-dream"
               className="px-8 py-4 text-lg font-semibold rounded-xl border border-white/20 text-white hover:bg-white/10 transition-all"

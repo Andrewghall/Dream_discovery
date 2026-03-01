@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { CalendlyButton } from './calendly-button';
 
 export function DreamFooter() {
   return (
@@ -85,12 +86,11 @@ export function DreamFooter() {
             </li>
           </ul>
           <div className="mt-6">
-            <a
-              href="mailto:hello@ethenta.com?subject=DREAM%20Demo%20Request"
-              className="inline-block px-5 py-2.5 text-sm font-semibold rounded-lg bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all shadow-sm"
+            <CalendlyButton
+              className="inline-block px-5 py-2.5 text-sm font-semibold rounded-lg bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all shadow-sm cursor-pointer"
             >
               Book a Demo
-            </a>
+            </CalendlyButton>
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronDown, Menu, X } from 'lucide-react';
+import { CalendlyButton } from './calendly-button';
 
 interface NavChild {
   href: string;
@@ -159,12 +160,11 @@ export function DreamNav() {
 
         {/* Right side: Book a Demo + Sign In */}
         <div className="hidden lg:flex items-center gap-3">
-          <a
-            href="mailto:hello@ethenta.com?subject=DREAM%20Demo%20Request"
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all shadow-sm"
+          <CalendlyButton
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all shadow-sm cursor-pointer"
           >
             Book a Demo
-          </a>
+          </CalendlyButton>
           <Link
             href="/login"
             className="px-4 py-2 text-sm font-semibold rounded-lg transition-all border border-slate-200 text-slate-700 hover:bg-slate-50"
@@ -242,12 +242,11 @@ export function DreamNav() {
             )}
 
             <div className="pt-3 mt-3 border-t border-slate-100 space-y-2">
-              <a
-                href="mailto:hello@ethenta.com?subject=DREAM%20Demo%20Request"
-                className="block text-center px-4 py-2.5 text-sm font-semibold rounded-lg bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all"
+              <CalendlyButton
+                className="block w-full text-center px-4 py-2.5 text-sm font-semibold rounded-lg bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all cursor-pointer"
               >
                 Book a Demo
-              </a>
+              </CalendlyButton>
               <Link
                 href="/login"
                 className="block text-center px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all"
