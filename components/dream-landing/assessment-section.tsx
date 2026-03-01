@@ -108,11 +108,11 @@ const DOMAINS: Domain[] = [
     colour: 'bg-green-500',
     colourHex: '#22c55e',
     levelDescriptors: [
-      'Decision-making is centralised and slow. Governance is process-heavy and change-resistant.',
-      'Some cross-functional collaboration exists but is project-driven rather than structural. Governance recognises the need for agility.',
-      'Governance frameworks balance control and speed. Cross-functional teams operate with clear mandates and accountability.',
-      'Organisational design is intentionally optimised. Decision authority is distributed with clear escalation. Change is managed as a capability.',
-      'The organisation is structurally adaptive. Governance evolves in real time. Collaboration is the default operating model.',
+      'Decision-making is centralised and slow. Governance is process-heavy and change-resistant. Partner relationships are transactional.',
+      'Some cross-functional collaboration exists but is project-driven rather than structural. Partner engagement is ad hoc. Governance recognises the need for agility.',
+      'Governance frameworks balance control and speed. Cross-functional teams operate with clear mandates. Key partners are structurally aligned.',
+      'Organisational design is intentionally optimised. Decision authority is distributed with clear escalation. Strategic partners are integrated into planning cycles.',
+      'The organisation is structurally adaptive. Governance evolves in real time. Internal and partner ecosystems collaborate seamlessly.',
     ],
     questions: [
       {
@@ -612,16 +612,16 @@ export function AssessmentSection() {
                   </span>
                 </h2>
                 <p className="text-white/60 leading-relaxed mb-4">
-                  Whether you&apos;re deploying agentic AI, rethinking your operating model, or
-                  aligning teams around a new strategy &mdash; transformation success depends on
-                  the same five dimensions. Rate your organisation across People, Organisation,
-                  Customer, Technology, and Regulation to see where you&apos;re strong and where
-                  the gaps will stall your programmes.
+                  Whether you&apos;re deploying agentic AI, rethinking your operating model,
+                  aligning partner ecosystems, or driving a new strategy &mdash; transformation
+                  success depends on the same five dimensions. Rate your organisation across
+                  People, Organisation, Customer, Technology, and Regulation to see where
+                  you&apos;re strong and where the gaps will stall your programmes.
                 </p>
                 <p className="text-white/40 text-xs leading-relaxed mb-6">
                   The POCTR model measures your readiness to execute strategic change &mdash; from
-                  enterprise AI adoption to operating model redesign. Used by DREAM workshops
-                  to ground transformation in what your people actually think.
+                  enterprise AI adoption and partner alignment to operating model redesign. Used
+                  by DREAM workshops to ground transformation in what your people actually think.
                 </p>
                 <div className="flex flex-wrap gap-4 mb-8">
                   {DOMAINS.map((d) => (
@@ -908,7 +908,8 @@ export function AssessmentSection() {
                 <p className="text-xs text-slate-500 mb-4">
                   We&apos;ll send you a detailed PDF with your transformation readiness profile,
                   domain breakdown, next-level recommendations, and personalised guidance
-                  on where to focus &mdash; from AI adoption to operating model change.
+                  on where to focus &mdash; from AI adoption and partner ecosystem alignment
+                  to operating model change.
                 </p>
                 <div className="space-y-3">
                   <input
