@@ -13,27 +13,39 @@ import {
   Mail,
   Download,
   ClipboardCheck,
+  Check,
 } from 'lucide-react';
 import { ScrollReveal, AnimatedCounter } from './scroll-reveal';
 import { RadarChart } from './radar-chart';
 import { CalendlyButton } from './calendly-button';
 
 /* ────────────────────────────────────────────────────────────
-   Types & Data
+   POCTR Capability Maturity Model — Data & Types
    ──────────────────────────────────────────────────────────── */
 
-interface DomainQuestion {
+const MATURITY_LEVELS = [
+  { level: 1, name: 'Ad Hoc',    description: 'No formal approach; reactive and inconsistent' },
+  { level: 2, name: 'Emerging',  description: 'Some awareness and initial processes; fragmented' },
+  { level: 3, name: 'Defined',   description: 'Documented processes; cross-functional consistency' },
+  { level: 4, name: 'Managed',   description: 'Measured and data-driven; actively optimised' },
+  { level: 5, name: 'Leading',   description: 'Innovative and adaptive; industry-leading' },
+] as const;
+
+interface MaturityQuestion {
   id: string;
-  text: string;
+  dimension: string;
+  question: string;
+  descriptors: [string, string, string, string, string]; // L1–L5
 }
 
 interface Domain {
   key: string;
   name: string;
   icon: typeof Users;
-  colour: string;         // tailwind bg class
-  colourHex: string;      // for accents
-  questions: [DomainQuestion, DomainQuestion];
+  colour: string;
+  colourHex: string;
+  levelDescriptors: [string, string, string, string, string]; // Domain-level L1–L5
+  questions: [MaturityQuestion, MaturityQuestion, MaturityQuestion];
 }
 
 const DOMAINS: Domain[] = [
@@ -43,9 +55,50 @@ const DOMAINS: Domain[] = [
     icon: Users,
     colour: 'bg-blue-500',
     colourHex: '#3b82f6',
+    levelDescriptors: [
+      'Skills development is ad hoc. Leadership communication is inconsistent. Retention is reactive.',
+      'Some talent programmes exist but are fragmented. Leadership vision is communicated top-down without structured alignment.',
+      'Structured talent development with skills frameworks aligned to strategic goals. Leaders actively build alignment across teams.',
+      'Workforce capability is measured, benchmarked, and continuously developed. Leadership drives a data-informed culture of accountability.',
+      'Talent is a strategic differentiator. Adaptive workforce planning anticipates future needs. Leaders model continuous learning at every level.',
+    ],
     questions: [
-      { id: 'p1', text: 'How effectively does your organisation develop and retain the skills needed for its strategic goals?' },
-      { id: 'p2', text: 'How well does leadership communicate vision and create alignment across teams?' },
+      {
+        id: 'p1',
+        dimension: 'Talent Development & Skills Capability',
+        question: 'How does your organisation develop the skills and capabilities it needs?',
+        descriptors: [
+          'Skills development is informal — individuals seek out their own training with no organisational strategy.',
+          'Some training programmes exist, but they are not connected to strategic priorities or future needs.',
+          'A structured skills framework exists with development paths aligned to organisational strategy.',
+          'Skills gaps are systematically identified, measured, and addressed through targeted investment.',
+          'Workforce capability planning anticipates future needs; the organisation is known for developing exceptional talent.',
+        ],
+      },
+      {
+        id: 'p2',
+        dimension: 'Leadership Alignment & Communication',
+        question: 'How does leadership create alignment on strategic direction?',
+        descriptors: [
+          'Leaders communicate in silos; teams have different understandings of strategic priorities.',
+          'Leadership communicates a vision, but translation into team-level action is inconsistent.',
+          'Leaders actively align teams around shared objectives with regular cadence and feedback loops.',
+          'Strategic alignment is measured and tracked; leaders use data to identify and resolve misalignment.',
+          'Alignment is cultural — teams self-organise around strategic priorities; leadership enables rather than directs.',
+        ],
+      },
+      {
+        id: 'p3',
+        dimension: 'Change Readiness & Culture',
+        question: 'How does your workforce respond when the organisation needs to change direction?',
+        descriptors: [
+          'Change is resisted; there is no structured change management and initiatives stall frequently.',
+          'Change management exists for large programmes, but day-to-day adaptability is low.',
+          'The organisation has a consistent approach to change; most teams can adapt with appropriate support.',
+          'Change capability is embedded; teams adapt quickly and change fatigue is actively monitored.',
+          'Adaptability is a defining cultural trait; the workforce embraces continuous change as the norm.',
+        ],
+      },
     ],
   },
   {
@@ -54,9 +107,50 @@ const DOMAINS: Domain[] = [
     icon: Building2,
     colour: 'bg-green-500',
     colourHex: '#22c55e',
+    levelDescriptors: [
+      'Decision-making is centralised and slow. Governance is process-heavy and change-resistant.',
+      'Some cross-functional collaboration exists but is project-driven rather than structural. Governance recognises the need for agility.',
+      'Governance frameworks balance control and speed. Cross-functional teams operate with clear mandates and accountability.',
+      'Organisational design is intentionally optimised. Decision authority is distributed with clear escalation. Change is managed as a capability.',
+      'The organisation is structurally adaptive. Governance evolves in real time. Collaboration is the default operating model.',
+    ],
     questions: [
-      { id: 'o1', text: 'How agile are your governance and decision-making processes when responding to change?' },
-      { id: 'o2', text: 'How effectively do cross-functional teams collaborate on shared objectives?' },
+      {
+        id: 'o1',
+        dimension: 'Decision-Making Speed & Governance',
+        question: 'How quickly can your organisation make and execute strategic decisions?',
+        descriptors: [
+          'Decisions require multiple approval layers; speed-to-decision is a recognised bottleneck.',
+          'Some decision authority is delegated, but escalation is frequent and governance processes are heavy.',
+          'Decision rights are clearly defined; governance balances control with the need for speed.',
+          'Decision-making is streamlined with defined SLAs; data-driven governance enables rapid response.',
+          'Decision authority flows to where the insight is; governance is adaptive and enables real-time response.',
+        ],
+      },
+      {
+        id: 'o2',
+        dimension: 'Cross-Functional Collaboration',
+        question: 'How effectively do teams work across functional boundaries on shared goals?',
+        descriptors: [
+          'Teams operate in silos; collaboration depends on personal relationships rather than structure.',
+          'Cross-functional projects exist but coordination is manual and outcomes are inconsistent.',
+          'Cross-functional teams have clear mandates, shared objectives, and defined ways of working.',
+          'Collaboration is embedded in operating models; shared metrics drive joint accountability.',
+          'Functional boundaries are fluid; teams self-form around opportunities and dissolve when complete.',
+        ],
+      },
+      {
+        id: 'o3',
+        dimension: 'Operating Model Adaptability',
+        question: 'How well does your operating model support new ways of working?',
+        descriptors: [
+          'The operating model is rigid and inherited; changes require major restructuring.',
+          'There is awareness that the operating model needs to evolve, but structural change is slow.',
+          'The operating model is periodically reviewed and adapted to support strategic shifts.',
+          'Operating model design is a continuous process; the organisation can reconfigure rapidly.',
+          'The operating model is modular and adaptive by design; new capabilities can be stood up and stood down quickly.',
+        ],
+      },
     ],
   },
   {
@@ -65,9 +159,50 @@ const DOMAINS: Domain[] = [
     icon: Heart,
     colour: 'bg-purple-500',
     colourHex: '#a855f7',
+    levelDescriptors: [
+      'Customer insight is anecdotal. Experiences are siloed by channel. Feedback is gathered but rarely acted upon.',
+      'Basic customer data is collected. Some journey mapping has been attempted. Feedback loops exist in isolated functions.',
+      'Customer insights inform product and service decisions. Journey mapping is embedded. Multi-channel experience is actively managed.',
+      'Real-time customer intelligence drives decisions. Personalisation is systematic. Customer outcomes are measured and optimised.',
+      'The organisation anticipates customer needs before they emerge. Co-creation with customers is standard. Experience innovation is continuous.',
+    ],
     questions: [
-      { id: 'c1', text: 'How well does your organisation understand and respond to changing customer expectations?' },
-      { id: 'c2', text: 'How seamlessly do customers experience your services across different touchpoints?' },
+      {
+        id: 'c1',
+        dimension: 'Customer Insight & Understanding',
+        question: 'How well does your organisation understand what customers actually need?',
+        descriptors: [
+          'Customer understanding is based on assumptions and anecdotal feedback from front-line staff.',
+          'Some customer research is conducted, but insights are not systematically shared or acted upon.',
+          'Customer insights are gathered through structured research and inform product and service decisions.',
+          'Real-time customer data and analytics drive a deep understanding of needs, behaviours, and value drivers.',
+          'The organisation anticipates emerging customer needs; co-creation and continuous discovery are standard practice.',
+        ],
+      },
+      {
+        id: 'c2',
+        dimension: 'Experience Coherence Across Touchpoints',
+        question: 'How consistently do customers experience your brand across all channels and interactions?',
+        descriptors: [
+          'Each channel operates independently; customers encounter different experiences depending on how they interact.',
+          'Some effort has been made to align channels, but gaps and handoff friction are common.',
+          'Customer journeys are mapped and actively managed; key touchpoints deliver a consistent experience.',
+          'Omnichannel experience is integrated; transitions between channels are seamless and personalised.',
+          'The customer experience is continuously optimised and innovated; the organisation sets the standard in its sector.',
+        ],
+      },
+      {
+        id: 'c3',
+        dimension: 'Voice of the Customer in Decision-Making',
+        question: 'How systematically does customer feedback influence strategic and operational decisions?',
+        descriptors: [
+          'Customer complaints are handled reactively; feedback rarely reaches decision-makers.',
+          'Customer satisfaction is measured periodically, but results do not consistently influence decisions.',
+          'Customer feedback loops are established; insights are reported to leadership and inform planning cycles.',
+          'Customer metrics are embedded in strategic KPIs; product and service decisions are validated against customer outcomes.',
+          'Customers are active participants in strategy; their voice is a first-class input to all significant decisions.',
+        ],
+      },
     ],
   },
   {
@@ -76,9 +211,50 @@ const DOMAINS: Domain[] = [
     icon: Cpu,
     colour: 'bg-orange-500',
     colourHex: '#f97316',
+    levelDescriptors: [
+      'Technology is legacy-heavy and fragmented. Data is siloed. IT is seen as a cost centre.',
+      'Some modernisation efforts are underway. Data is accessible within departments. Technology strategy exists but lacks execution.',
+      'Integrated platforms support core processes. Data governance is established. Technology is a recognised enabler of strategy.',
+      'Cloud-native, API-driven architecture. Data analytics informs strategic decisions. Technology investment is outcome-driven.',
+      'Technology enables continuous innovation. AI and automation are embedded. The organisation is a technology-native enterprise.',
+    ],
     questions: [
-      { id: 't1', text: 'How modern and integrated is your technology landscape for supporting business goals?' },
-      { id: 't2', text: 'How effectively does your organisation leverage data for strategic decision-making?' },
+      {
+        id: 't1',
+        dimension: 'Architecture & Integration Maturity',
+        question: 'How modern and integrated is your technology landscape?',
+        descriptors: [
+          'Systems are legacy, fragmented, and poorly documented; integration is point-to-point and brittle.',
+          'Some modernisation initiatives are underway, but legacy dependencies create friction and delay.',
+          'Core systems are integrated through defined interfaces; architecture principles guide technology decisions.',
+          'Cloud-native, API-driven architecture enables rapid change; technology supports rather than constrains the business.',
+          'Architecture is continuously evolving; the platform enables experimentation, rapid scaling, and innovation at speed.',
+        ],
+      },
+      {
+        id: 't2',
+        dimension: 'Data as a Strategic Asset',
+        question: 'How effectively does your organisation use data to make decisions?',
+        descriptors: [
+          'Data is siloed in spreadsheets and departmental systems; reporting is manual and inconsistent.',
+          'Some centralised reporting exists, but data quality issues limit trust and usage.',
+          'Data governance is established; consistent reporting supports operational and strategic decisions.',
+          'Advanced analytics and insight capabilities drive data-informed decision-making across the organisation.',
+          'AI-augmented intelligence is embedded; data is a recognised strategic asset that drives competitive advantage.',
+        ],
+      },
+      {
+        id: 't3',
+        dimension: 'Automation & AI Readiness',
+        question: 'How mature is your organisation\'s use of automation and artificial intelligence?',
+        descriptors: [
+          'Automation is minimal and manual processes dominate; AI is not on the agenda.',
+          'Some process automation has been implemented in isolated areas; AI is being explored but lacks strategy.',
+          'Automation is applied strategically to high-value processes; an AI strategy exists with initial pilots underway.',
+          'Intelligent automation is embedded in core operations; AI models are in production and generating measurable value.',
+          'AI and automation are a core capability; the organisation continuously identifies and scales new applications.',
+        ],
+      },
     ],
   },
   {
@@ -87,29 +263,74 @@ const DOMAINS: Domain[] = [
     icon: Scale,
     colour: 'bg-red-500',
     colourHex: '#ef4444',
+    levelDescriptors: [
+      'Compliance is reactive and siloed. Regulatory change creates disruption. Risk is managed through avoidance.',
+      'Compliance processes are documented but manual. Some regulatory horizon scanning exists. Risk appetite is poorly defined.',
+      'Compliance is integrated into operations. Regulatory change management is proactive. Risk frameworks balance protection and opportunity.',
+      'Regulatory intelligence informs strategy. Compliance is automated where possible. Risk is quantified and actively managed as a portfolio.',
+      'Regulation is leveraged as competitive advantage. The organisation shapes industry standards. Compliance enables innovation rather than constraining it.',
+    ],
     questions: [
-      { id: 'r1', text: 'How well does your compliance framework enable (rather than hinder) innovation?' },
-      { id: 'r2', text: 'How confident are you that your organisation can adapt to new regulatory requirements?' },
+      {
+        id: 'r1',
+        dimension: 'Compliance as an Enabler',
+        question: 'Does your compliance framework enable innovation or constrain it?',
+        descriptors: [
+          'Compliance is treated as a constraint; teams avoid innovation for fear of regulatory exposure.',
+          'Compliance processes are understood but manual; they slow delivery without adding proportionate value.',
+          'Compliance is integrated into delivery processes; teams understand how to innovate within boundaries.',
+          'Compliance is automated where possible; regulatory requirements are embedded as guardrails, not gates.',
+          'The organisation uses regulatory expertise as a competitive advantage; compliance enables faster, safer innovation.',
+        ],
+      },
+      {
+        id: 'r2',
+        dimension: 'Regulatory Change Readiness',
+        question: 'How well does your organisation anticipate and respond to regulatory changes?',
+        descriptors: [
+          'Regulatory changes are discovered late and create scrambles; impact assessment is reactive.',
+          'Some horizon scanning exists, but regulatory change management is manual and inconsistent.',
+          'A structured process monitors regulatory change; impact is assessed and implementation is planned proactively.',
+          'Regulatory intelligence is integrated into strategic planning; the organisation responds to change ahead of deadlines.',
+          'The organisation actively engages with regulators and shapes the regulatory landscape in its sector.',
+        ],
+      },
+      {
+        id: 'r3',
+        dimension: 'Risk Appetite & Governance',
+        question: 'How clearly is your organisation\'s risk appetite defined and applied to decisions?',
+        descriptors: [
+          'Risk appetite is undefined; decisions either avoid all risk or take risk without understanding consequences.',
+          'Risk appetite is discussed at board level but is not translated into practical guidance for teams.',
+          'Risk appetite is defined and communicated; frameworks help teams make risk-informed decisions consistently.',
+          'Risk is quantified, dynamically monitored, and managed as a portfolio; risk appetite informs strategy actively.',
+          'Risk intelligence is a strategic capability; the organisation balances protection with opportunity as a competitive lever.',
+        ],
+      },
     ],
   },
 ];
 
+/* ────────────────────────────────────────────────────────────
+   Scores & Results Types
+   ──────────────────────────────────────────────────────────── */
+
 interface Scores {
-  [questionId: string]: { current: number; target: number };
+  [questionId: string]: number | null;
 }
 
 const DEFAULT_SCORES: Scores = Object.fromEntries(
-  DOMAINS.flatMap((d) =>
-    d.questions.map((q) => [q.id, { current: 5, target: 7 }]),
-  ),
+  DOMAINS.flatMap((d) => d.questions.map((q) => [q.id, null])),
 );
 
 interface DomainResult {
   name: string;
   colourHex: string;
-  current: number;
-  target: number;
-  gap: number;
+  score: number;
+  levelName: string;
+  levelDescriptor: string;
+  nextLevelName: string;
+  nextLevelDescriptor: string;
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -122,27 +343,25 @@ interface Recommendation {
   focus: 'Foundation' | 'Acceleration' | 'Optimisation';
 }
 
-function getRecommendation(
-  results: DomainResult[],
-  overallReadiness: number,
-): Recommendation {
-  const sorted = [...results].sort((a, b) => b.gap - a.gap);
-  const topGap = sorted[0];
+const DOMAIN_ADVICE: Record<string, string> = {
+  People: 'building leadership alignment and developing the skills capability your organisation needs',
+  Organisation: 'strengthening governance agility and cross-functional collaboration to enable faster transformation',
+  Customer: 'deepening customer understanding and creating seamless, coherent experiences across touchpoints',
+  Technology: 'modernising your technology landscape and building a data-driven decision-making culture',
+  Regulation: 'reframing compliance as an enabler of innovation rather than a barrier to progress',
+};
 
+function getRecommendation(
+  priorityDomain: string,
+  overallScore: number,
+  overallLevelName: string,
+): Recommendation {
   let focus: Recommendation['focus'];
-  if (overallReadiness < 4) focus = 'Foundation';
-  else if (overallReadiness <= 6) focus = 'Acceleration';
+  if (overallScore <= 2.0) focus = 'Foundation';
+  else if (overallScore <= 3.5) focus = 'Acceleration';
   else focus = 'Optimisation';
 
-  const domainAdvice: Record<string, string> = {
-    People: 'building leadership alignment and skills capability',
-    Organisation: 'strengthening governance agility and cross-functional collaboration',
-    Customer: 'deepening customer understanding and journey coherence',
-    Technology: 'modernising your technology landscape and data strategy',
-    Regulation: 'reframing compliance as an enabler of innovation',
-  };
-
-  const advice = domainAdvice[topGap.name] || 'addressing your organisational gaps';
+  const advice = DOMAIN_ADVICE[priorityDomain] || 'addressing your organisational gaps';
 
   const headlines: Record<string, string> = {
     Foundation: 'Build Your Foundation',
@@ -151,64 +370,88 @@ function getRecommendation(
   };
 
   const bodies: Record<string, string> = {
-    Foundation: `Your organisation is in the early stages of transformation readiness. The biggest opportunity lies in ${advice}. A DREAM Foundation workshop would help you build the shared understanding and strategic clarity needed to move forward with confidence.`,
-    Acceleration: `Your organisation has a solid base but significant gaps remain — particularly in ${advice}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation.`,
-    Optimisation: `Your organisation is relatively mature but there are still meaningful gaps — especially in ${advice}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward.`,
+    Foundation: `Your organisation assessed at maturity level ${overallLevelName}. The biggest opportunity lies in ${advice}. A DREAM Foundation workshop would help you build the shared understanding and strategic clarity needed to move forward with confidence.`,
+    Acceleration: `Your organisation assessed at maturity level ${overallLevelName} — a solid base, but significant gaps remain, particularly in ${advice}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation.`,
+    Optimisation: `Your organisation assessed at maturity level ${overallLevelName}. There are still meaningful opportunities — especially in ${advice}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward.`,
   };
 
-  return {
-    headline: headlines[focus],
-    body: bodies[focus],
-    focus,
-  };
+  return { headline: headlines[focus], body: bodies[focus], focus };
 }
 
 /* ────────────────────────────────────────────────────────────
-   Custom Slider
+   Maturity Level Selector Component
    ──────────────────────────────────────────────────────────── */
 
-function MaturitySlider({
-  label,
-  value,
-  onChange,
+function MaturityLevelSelector({
+  question,
+  selectedLevel,
+  onSelect,
   accentHex,
 }: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
+  question: MaturityQuestion;
+  selectedLevel: number | null;
+  onSelect: (level: number) => void;
   accentHex: string;
 }) {
-  const pct = ((value - 1) / 9) * 100;
-
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-slate-500 font-medium">{label}</span>
-        <span
-          className="text-sm font-bold tabular-nums min-w-[2ch] text-center"
-          style={{ color: accentHex }}
-        >
-          {value}
-        </span>
+    <div className="space-y-4">
+      <div>
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+          {question.dimension}
+        </p>
+        <p className="text-sm font-medium text-slate-700 leading-relaxed">
+          {question.question}
+        </p>
       </div>
-      <div className="relative">
-        <input
-          type="range"
-          min={1}
-          max={10}
-          step={1}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="slider-input w-full h-2 rounded-full appearance-none cursor-pointer"
-          style={{
-            background: `linear-gradient(to right, ${accentHex} 0%, ${accentHex} ${pct}%, #e2e8f0 ${pct}%, #e2e8f0 100%)`,
-          }}
-        />
-      </div>
-      <div className="flex justify-between text-[10px] text-slate-300 px-0.5">
-        <span>1</span>
-        <span>5</span>
-        <span>10</span>
+      <div className="space-y-2">
+        {MATURITY_LEVELS.map((level, i) => {
+          const isSelected = selectedLevel === level.level;
+          return (
+            <button
+              key={level.level}
+              type="button"
+              onClick={() => onSelect(level.level)}
+              className={`w-full text-left rounded-xl border-2 p-3 transition-all ${
+                isSelected
+                  ? 'shadow-sm'
+                  : 'border-slate-200 hover:border-slate-300 bg-white'
+              }`}
+              style={
+                isSelected
+                  ? {
+                      borderColor: accentHex,
+                      backgroundColor: `${accentHex}08`,
+                    }
+                  : undefined
+              }
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5"
+                  style={{
+                    backgroundColor: isSelected ? accentHex : '#e2e8f0',
+                    color: isSelected ? '#fff' : '#64748b',
+                  }}
+                >
+                  {level.level}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className={`text-xs font-bold ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>
+                      {level.name}
+                    </span>
+                    {isSelected && (
+                      <Check className="h-3.5 w-3.5 shrink-0" style={{ color: accentHex }} />
+                    )}
+                  </div>
+                  <p className={`text-xs leading-relaxed ${isSelected ? 'text-slate-600' : 'text-slate-400'}`}>
+                    {question.descriptors[i]}
+                  </p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -234,53 +477,59 @@ export function AssessmentSection() {
   // ── Score helpers ───────────────────────────────────────────
 
   const updateScore = useCallback(
-    (qId: string, field: 'current' | 'target', val: number) => {
-      setScores((prev) => ({
-        ...prev,
-        [qId]: { ...prev[qId], [field]: val },
-      }));
+    (qId: string, level: number) => {
+      setScores((prev) => ({ ...prev, [qId]: level }));
     },
     [],
   );
+
+  // ── Computed: current domain completeness ────────────────────
+
+  const currentDomainComplete = useMemo(() => {
+    if (step < 1 || step > 5) return true;
+    const domain = DOMAINS[step - 1];
+    return domain.questions.every((q) => scores[q.id] !== null);
+  }, [step, scores]);
 
   // ── Computed results ────────────────────────────────────────
 
   const domainResults: DomainResult[] = useMemo(
     () =>
       DOMAINS.map((d) => {
-        const s1 = scores[d.questions[0].id];
-        const s2 = scores[d.questions[1].id];
-        const current = (s1.current + s2.current) / 2;
-        const target = (s1.target + s2.target) / 2;
+        const vals = d.questions.map((q) => scores[q.id] || 0);
+        const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+        const score = Math.round(avg * 10) / 10;
+        const levelIndex = Math.min(Math.max(Math.round(avg) - 1, 0), 4);
+        const nextLevelIndex = Math.min(levelIndex + 1, 4);
         return {
           name: d.name,
           colourHex: d.colourHex,
-          current: Math.round(current * 10) / 10,
-          target: Math.round(target * 10) / 10,
-          gap: Math.round((target - current) * 10) / 10,
+          score,
+          levelName: MATURITY_LEVELS[levelIndex].name,
+          levelDescriptor: d.levelDescriptors[levelIndex],
+          nextLevelName: MATURITY_LEVELS[nextLevelIndex].name,
+          nextLevelDescriptor: d.levelDescriptors[nextLevelIndex],
         };
       }),
     [scores],
   );
 
-  const overallReadiness = useMemo(
-    () => Math.round((domainResults.reduce((s, r) => s + r.current, 0) / domainResults.length) * 10) / 10,
+  const overallScore = useMemo(
+    () => Math.round((domainResults.reduce((s, r) => s + r.score, 0) / domainResults.length) * 10) / 10,
     [domainResults],
   );
 
-  const transformationDistance = useMemo(
-    () => Math.round((domainResults.reduce((s, r) => s + r.gap, 0) / domainResults.length) * 10) / 10,
-    [domainResults],
-  );
+  const overallLevelIndex = Math.min(Math.max(Math.round(overallScore) - 1, 0), 4);
+  const overallLevelName = MATURITY_LEVELS[overallLevelIndex].name;
 
-  const topGaps = useMemo(
-    () => [...domainResults].sort((a, b) => b.gap - a.gap).slice(0, 3),
+  const priorityDomains = useMemo(
+    () => [...domainResults].sort((a, b) => a.score - b.score),
     [domainResults],
   );
 
   const recommendation = useMemo(
-    () => getRecommendation(domainResults, overallReadiness),
-    [domainResults, overallReadiness],
+    () => getRecommendation(priorityDomains[0]?.name || 'People', overallScore, overallLevelName),
+    [priorityDomains, overallScore, overallLevelName],
   );
 
   // ── Email submit ────────────────────────────────────────────
@@ -300,13 +549,16 @@ export function AssessmentSection() {
         name: name.trim(),
         email: email.trim(),
         organisation: organisation.trim() || undefined,
-        scores: DOMAINS.map((d) => ({
-          domain: d.name,
-          current: domainResults.find((r) => r.name === d.name)!.current,
-          target: domainResults.find((r) => r.name === d.name)!.target,
+        scores: domainResults.map((r) => ({
+          domain: r.name,
+          score: r.score,
+          levelName: r.levelName,
+          levelDescriptor: r.levelDescriptor,
+          nextLevelName: r.nextLevelName,
+          nextLevelDescriptor: r.nextLevelDescriptor,
         })),
-        overallReadiness,
-        transformationDistance,
+        overallScore,
+        overallLevelName,
         recommendation: recommendation.focus,
       };
 
@@ -333,7 +585,7 @@ export function AssessmentSection() {
 
   if (step === 0) {
     return (
-      <section className="bg-gradient-to-b from-slate-50 to-white py-20">
+      <section id="assessment" className="bg-gradient-to-b from-slate-50 to-white py-20">
         <div className="max-w-5xl mx-auto px-6">
           <ScrollReveal>
             <div className="bg-[#0d0d0d] rounded-3xl p-8 sm:p-12 overflow-hidden relative">
@@ -356,29 +608,43 @@ export function AssessmentSection() {
                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4">
                   Assess Your{' '}
                   <span className="bg-gradient-to-r from-[#5cf28e] to-[#50c878] bg-clip-text text-transparent">
-                    Readiness
+                    Capability Maturity
                   </span>
                 </h2>
-                <p className="text-white/60 leading-relaxed mb-6">
-                  Rate your organisation across five critical domains — People, Organisation,
-                  Customer, Technology, and Regulation — to see where you are today versus where you
-                  need to be. Get an instant gap analysis with a visual radar diagram, plus a
-                  personalised PDF report with workshop recommendations.
+                <p className="text-white/60 leading-relaxed mb-4">
+                  Rate your organisation across the five POCTR domains &mdash; People, Organisation,
+                  Customer, Technology, and Regulation. Select the maturity level that best describes
+                  your current state for each capability dimension.
+                </p>
+                <p className="text-white/40 text-xs leading-relaxed mb-6">
+                  Based on the POCTR Capability Maturity Model &mdash; a structured framework for
+                  benchmarking organisational readiness across the critical dimensions of transformation.
                 </p>
                 <div className="flex flex-wrap gap-4 mb-8">
-                  {DOMAINS.map((d) => {
-                    const Icon = d.icon;
-                    return (
-                      <div key={d.key} className="flex items-center gap-1.5 text-white/50">
-                        <div
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: d.colourHex }}
-                        />
-                        <span className="text-xs">{d.name}</span>
-                      </div>
-                    );
-                  })}
+                  {DOMAINS.map((d) => (
+                    <div key={d.key} className="flex items-center gap-1.5 text-white/50">
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: d.colourHex }}
+                      />
+                      <span className="text-xs">{d.name}</span>
+                    </div>
+                  ))}
                 </div>
+
+                {/* Maturity level preview */}
+                <div className="flex flex-wrap gap-2 mb-8">
+                  {MATURITY_LEVELS.map((l) => (
+                    <div
+                      key={l.level}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/[0.08]"
+                    >
+                      <span className="text-[10px] font-bold text-[#5cf28e]">L{l.level}</span>
+                      <span className="text-[10px] text-white/50">{l.name}</span>
+                    </div>
+                  ))}
+                </div>
+
                 <button
                   onClick={() => setStep(1)}
                   className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all shadow-lg shadow-[#5cf28e]/20"
@@ -398,9 +664,10 @@ export function AssessmentSection() {
   if (step >= 1 && step <= 5) {
     const domain = DOMAINS[step - 1];
     const Icon = domain.icon;
+    const answeredCount = domain.questions.filter((q) => scores[q.id] !== null).length;
 
     return (
-      <section className="bg-gradient-to-b from-slate-50 to-white py-20">
+      <section id="assessment" className="bg-gradient-to-b from-slate-50 to-white py-20">
         <div className="max-w-5xl mx-auto px-6">
           <div className="max-w-2xl mx-auto">
             {/* Progress bar */}
@@ -411,7 +678,7 @@ export function AssessmentSection() {
                     className="h-1.5 w-full rounded-full transition-all duration-300"
                     style={{
                       backgroundColor:
-                        i < step
+                        i < step - 1
                           ? '#5cf28e'
                           : i === step - 1
                           ? d.colourHex
@@ -432,7 +699,7 @@ export function AssessmentSection() {
 
             {/* Domain card */}
             <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center gap-3 mb-2">
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: `${domain.colourHex}20` }}
@@ -442,38 +709,40 @@ export function AssessmentSection() {
                 <div>
                   <h3 className="text-lg font-bold text-slate-900">{domain.name}</h3>
                   <p className="text-xs text-slate-400">
-                    Step {step} of 5
+                    Step {step} of 5 &middot; {answeredCount} of 3 answered
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-8">
+              {/* Question completion indicators */}
+              <div className="flex items-center gap-2 mb-6">
                 {domain.questions.map((q, qi) => (
-                  <div key={q.id}>
-                    <p className="text-sm font-medium text-slate-700 mb-4 leading-relaxed">
-                      <span
-                        className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold text-white mr-2"
-                        style={{ backgroundColor: domain.colourHex }}
-                      >
-                        {qi + 1}
-                      </span>
-                      {q.text}
-                    </p>
-                    <div className="grid sm:grid-cols-2 gap-4 pl-7">
-                      <MaturitySlider
-                        label="Where are you today?"
-                        value={scores[q.id].current}
-                        onChange={(v) => updateScore(q.id, 'current', v)}
-                        accentHex={domain.colourHex}
-                      />
-                      <MaturitySlider
-                        label="Where do you need to be?"
-                        value={scores[q.id].target}
-                        onChange={(v) => updateScore(q.id, 'target', v)}
-                        accentHex={domain.colourHex}
-                      />
+                  <div
+                    key={q.id}
+                    className="flex items-center gap-1"
+                  >
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
+                      style={{
+                        backgroundColor: scores[q.id] !== null ? domain.colourHex : '#e2e8f0',
+                        color: scores[q.id] !== null ? '#fff' : '#94a3b8',
+                      }}
+                    >
+                      {scores[q.id] !== null ? <Check className="h-3 w-3" /> : qi + 1}
                     </div>
                   </div>
+                ))}
+              </div>
+
+              <div className="space-y-8">
+                {domain.questions.map((q) => (
+                  <MaturityLevelSelector
+                    key={q.id}
+                    question={q}
+                    selectedLevel={scores[q.id]}
+                    onSelect={(level) => updateScore(q.id, level)}
+                    accentHex={domain.colourHex}
+                  />
                 ))}
               </div>
 
@@ -488,7 +757,8 @@ export function AssessmentSection() {
                 </button>
                 <button
                   onClick={() => setStep(step + 1)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all"
+                  disabled={!currentDomainComplete}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {step === 5 ? 'See Results' : 'Next'}
                   <ArrowRight className="h-4 w-4" />
@@ -504,100 +774,114 @@ export function AssessmentSection() {
   // ── Render results (step 6) ─────────────────────────────────
 
   return (
-    <section className="bg-gradient-to-b from-slate-50 to-white py-20">
+    <section id="assessment" className="bg-gradient-to-b from-slate-50 to-white py-20">
       <div className="max-w-5xl mx-auto px-6">
         <div className="text-center mb-10">
           <p className="text-[#50c878] text-sm font-semibold tracking-[0.15em] uppercase mb-3">
             Your Results
           </p>
           <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-2">
-            Readiness Assessment
+            Capability Maturity Profile
           </h2>
-          <p className="text-slate-500">Here&apos;s where your organisation stands today.</p>
+          <p className="text-slate-500 text-sm">
+            Assessed using the POCTR Capability Maturity Model
+          </p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-10 items-start">
-          {/* ── Left: Radar + scores ── */}
+          {/* ── Left: Radar + overall ── */}
           <div className="flex flex-col items-center">
             <RadarChart
               domains={DOMAINS.map((d) => d.name)}
-              current={domainResults.map((r) => r.current)}
-              target={domainResults.map((r) => r.target)}
+              current={domainResults.map((r) => r.score)}
+              maxValue={5}
               animated
             />
 
-            <div className="flex items-center gap-6 mt-4 mb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-1 rounded bg-[#5cf28e]" />
-                <span className="text-xs text-slate-500">Current</span>
+            {/* Overall maturity level */}
+            <div className="mt-6 text-center">
+              <div className="text-4xl font-black text-slate-900 mb-1">
+                Level {overallLevelIndex + 1}
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-1 rounded border border-[#5cf28e]" style={{ borderStyle: 'dashed' }} />
-                <span className="text-xs text-slate-500">Target</span>
+              <div className="text-lg font-bold text-[#5cf28e] mb-1">
+                {overallLevelName}
+              </div>
+              <div className="text-sm text-slate-400 tabular-nums">
+                {overallScore.toFixed(1)} / 5
               </div>
             </div>
 
-            {/* Overall scores */}
-            <div className="flex gap-6 mt-4">
-              <div className="text-center">
-                <div className="text-3xl font-black text-slate-900">
-                  <AnimatedCounter target={Math.round(overallReadiness * 10)} duration={1200} suffix="" />
-                  <span className="text-lg font-bold text-slate-400">/{10}</span>
+            {/* Maturity scale reference */}
+            <div className="flex items-center gap-1 mt-6">
+              {MATURITY_LEVELS.map((l) => (
+                <div
+                  key={l.level}
+                  className={`px-2 py-1 rounded text-[9px] font-bold transition-all ${
+                    l.level === overallLevelIndex + 1
+                      ? 'bg-[#5cf28e] text-[#0d0d0d]'
+                      : 'bg-slate-100 text-slate-400'
+                  }`}
+                >
+                  {l.name}
                 </div>
-                <div className="text-xs text-slate-500">Overall Readiness</div>
-              </div>
-              <div className="w-px bg-slate-200" />
-              <div className="text-center">
-                <div className="text-3xl font-black text-[#5cf28e]">
-                  +{transformationDistance.toFixed(1)}
-                </div>
-                <div className="text-xs text-slate-500">Avg. Gap</div>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* ── Right: Gaps + recommendation + email ── */}
+          {/* ── Right: Domain breakdown + recommendation + email ── */}
           <div className="space-y-6">
-            {/* Top gaps */}
+            {/* Domain breakdown — sorted by priority (lowest first) */}
             <div>
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-3">
-                Your Top Gaps
+                Priority Development Areas
               </h3>
               <div className="space-y-3">
-                {topGaps.map((gap, i) => (
+                {priorityDomains.map((result, i) => (
                   <div
-                    key={gap.name}
-                    className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-4"
+                    key={result.name}
+                    className="bg-white rounded-xl border border-slate-200 p-4"
                   >
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
-                      style={{ backgroundColor: gap.colourHex }}
-                    >
-                      {i + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-semibold text-slate-900">{gap.name}</span>
-                        <span className="text-sm font-bold" style={{ color: gap.colourHex }}>
-                          +{gap.gap}
-                        </span>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
+                        style={{ backgroundColor: result.colourHex }}
+                      >
+                        {i + 1}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-700"
-                            style={{
-                              width: `${(gap.current / 10) * 100}%`,
-                              backgroundColor: gap.colourHex,
-                              opacity: 0.6,
-                            }}
-                          />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-sm font-semibold text-slate-900">{result.name}</span>
+                          <span className="text-xs font-bold" style={{ color: result.colourHex }}>
+                            L{Math.round(result.score)} &middot; {result.levelName}
+                          </span>
                         </div>
-                        <span className="text-[10px] text-slate-400 tabular-nums">
-                          {gap.current} → {gap.target}
-                        </span>
+                        {/* 5-segment progress bar */}
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((seg) => (
+                            <div
+                              key={seg}
+                              className="h-1.5 flex-1 rounded-full transition-all duration-700"
+                              style={{
+                                backgroundColor:
+                                  seg <= Math.round(result.score) ? result.colourHex : '#e2e8f0',
+                                opacity: seg <= Math.round(result.score) ? 0.7 : 1,
+                              }}
+                            />
+                          ))}
+                        </div>
                       </div>
                     </div>
+                    {/* Next level recommendation */}
+                    {Math.round(result.score) < 5 && (
+                      <div className="ml-11 mt-2 pl-3 border-l-2 border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                          Next: {result.nextLevelName}
+                        </p>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          {result.nextLevelDescriptor}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -622,8 +906,8 @@ export function AssessmentSection() {
                   </h4>
                 </div>
                 <p className="text-xs text-slate-500 mb-4">
-                  We&apos;ll send you a detailed PDF with your radar chart, domain scores, gap analysis,
-                  and personalised workshop recommendation.
+                  We&apos;ll send you a detailed PDF with your maturity profile, domain breakdown,
+                  next-level recommendations, and personalised workshop guidance.
                 </p>
                 <div className="space-y-3">
                   <input
@@ -658,7 +942,7 @@ export function AssessmentSection() {
                     {submitting ? (
                       <>
                         <span className="w-4 h-4 border-2 border-[#0d0d0d]/20 border-t-[#0d0d0d] rounded-full animate-spin" />
-                        Generating report…
+                        Generating report&hellip;
                       </>
                     ) : (
                       <>
@@ -673,7 +957,7 @@ export function AssessmentSection() {
                 <CheckCircle2 className="h-10 w-10 text-[#5cf28e] mx-auto mb-3" />
                 <h4 className="text-lg font-bold text-slate-900 mb-1">Report Sent!</h4>
                 <p className="text-sm text-slate-500 mb-4">
-                  Check your inbox — your personalised readiness report is on its way.
+                  Check your inbox &mdash; your POCTR Capability Maturity Report is on its way.
                 </p>
                 <CalendlyButton
                   className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all cursor-pointer"
@@ -696,44 +980,11 @@ export function AssessmentSection() {
               }}
               className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
             >
-              ← Retake assessment
+              &larr; Retake assessment
             </button>
           </div>
         </div>
       </div>
-
-      {/* ── Slider custom styles ── */}
-      <style jsx global>{`
-        .slider-input::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: #5cf28e;
-          border: 2px solid #0d0d0d;
-          cursor: pointer;
-          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-        }
-        .slider-input::-moz-range-thumb {
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: #5cf28e;
-          border: 2px solid #0d0d0d;
-          cursor: pointer;
-          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-        }
-        .slider-input::-webkit-slider-runnable-track {
-          height: 8px;
-          border-radius: 9999px;
-        }
-        .slider-input::-moz-range-track {
-          height: 8px;
-          border-radius: 9999px;
-          background: transparent;
-        }
-      `}</style>
     </section>
   );
 }

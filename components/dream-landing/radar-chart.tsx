@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 
 /* ────────────────────────────────────────────────────────────
    RadarChart — Pure SVG pentagon radar/spider chart
-   Shows current vs. target maturity across 5 DREAM domains.
+   Shows maturity profile across 5 DREAM domains.
+   Supports both 1-5 (maturity levels) and 1-10 scales.
    ──────────────────────────────────────────────────────────── */
 
 const DOMAIN_COLOURS: Record<string, string> = {
@@ -18,7 +19,8 @@ const DOMAIN_COLOURS: Record<string, string> = {
 interface RadarChartProps {
   domains: string[];
   current: number[];
-  target: number[];
+  target?: number[];
+  maxValue?: number;
   size?: number;
   animated?: boolean;
 }
@@ -27,6 +29,7 @@ export function RadarChart({
   domains,
   current,
   target,
+  maxValue = 5,
   size = 320,
   animated = true,
 }: RadarChartProps) {
@@ -45,10 +48,10 @@ export function RadarChart({
   const n = domains.length;
   const angleOffset = -Math.PI / 2; // start at top
 
-  // Get the (x, y) for a vertex at index i, scaled to val (0–10)
+  // Get the (x, y) for a vertex at index i, scaled to val (0–maxValue)
   const point = (i: number, val: number): [number, number] => {
     const angle = angleOffset + (2 * Math.PI * i) / n;
-    const r = (val / 10) * radius * scale;
+    const r = (val / maxValue) * radius * scale;
     return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
   };
 
@@ -56,8 +59,8 @@ export function RadarChart({
   const polygon = (values: number[]): string =>
     values.map((v, i) => point(i, v)).map(([x, y]) => `${x},${y}`).join(' ');
 
-  // Concentric grid rings at 2, 4, 6, 8, 10
-  const rings = [2, 4, 6, 8, 10];
+  // Concentric grid rings
+  const rings = Array.from({ length: maxValue }, (_, i) => i + 1);
 
   // Axis label positions (pushed outward)
   const labelPos = (i: number): [number, number] => {
@@ -80,20 +83,35 @@ export function RadarChart({
           key={`ring-${ring}`}
           points={Array.from({ length: n }, (_, i) => {
             const angle = angleOffset + (2 * Math.PI * i) / n;
-            const r = (ring / 10) * radius;
+            const r = (ring / maxValue) * radius;
             return `${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`;
           }).join(' ')}
           fill="none"
           stroke="#e2e8f0"
-          strokeWidth={ring === 10 ? 1.5 : 0.8}
+          strokeWidth={ring === maxValue ? 1.5 : 0.8}
           opacity={0.6}
         />
       ))}
 
+      {/* ── Ring level labels ── */}
+      {rings.map((ring) => {
+        const angle = angleOffset; // place labels along the top axis
+        const r = (ring / maxValue) * radius;
+        return (
+          <text
+            key={`ring-label-${ring}`}
+            x={cx + r * Math.cos(angle) + 4}
+            y={cy + r * Math.sin(angle) - 4}
+            className="text-[8px] fill-slate-400"
+            textAnchor="start"
+          >
+            {ring}
+          </text>
+        );
+      })}
+
       {/* ── Axis lines ── */}
       {domains.map((_, i) => {
-        const [ex, ey] = point(i, 10);
-        // Don't apply scale to axis lines
         const angle = angleOffset + (2 * Math.PI * i) / n;
         const axX = cx + radius * Math.cos(angle);
         const axY = cy + radius * Math.sin(angle);
@@ -111,16 +129,18 @@ export function RadarChart({
         );
       })}
 
-      {/* ── Target polygon (dashed outline) ── */}
-      <polygon
-        points={polygon(target)}
-        fill="rgba(92, 242, 142, 0.06)"
-        stroke="#5cf28e"
-        strokeWidth={1.5}
-        strokeDasharray="6 3"
-        opacity={0.7}
-        className="transition-all duration-700 ease-out"
-      />
+      {/* ── Target polygon (dashed outline) — only if target provided ── */}
+      {target && (
+        <polygon
+          points={polygon(target)}
+          fill="rgba(92, 242, 142, 0.06)"
+          stroke="#5cf28e"
+          strokeWidth={1.5}
+          strokeDasharray="6 3"
+          opacity={0.7}
+          className="transition-all duration-700 ease-out"
+        />
+      )}
 
       {/* ── Current polygon (solid fill) ── */}
       <polygon
@@ -187,8 +207,9 @@ export function RadarChart({
 export function renderRadarSvgString(
   domains: string[],
   current: number[],
-  target: number[],
+  target?: number[],
   size = 360,
+  maxValue = 5,
 ): string {
   const cx = size / 2;
   const cy = size / 2;
@@ -198,14 +219,14 @@ export function renderRadarSvgString(
 
   const pt = (i: number, val: number): [number, number] => {
     const angle = angleOffset + (2 * Math.PI * i) / n;
-    const r = (val / 10) * radius;
+    const r = (val / maxValue) * radius;
     return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
   };
 
   const poly = (values: number[]): string =>
     values.map((v, i) => pt(i, v)).map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
 
-  const rings = [2, 4, 6, 8, 10];
+  const rings = Array.from({ length: maxValue }, (_, i) => i + 1);
   const domainColours: Record<string, string> = {
     People: '#3b82f6',
     Organisation: '#22c55e',
@@ -220,10 +241,19 @@ export function renderRadarSvgString(
   for (const ring of rings) {
     const pts = Array.from({ length: n }, (_, i) => {
       const angle = angleOffset + (2 * Math.PI * i) / n;
-      const r = (ring / 10) * radius;
+      const r = (ring / maxValue) * radius;
       return `${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`;
     }).join(' ');
-    svg += `<polygon points="${pts}" fill="none" stroke="#d1d5db" stroke-width="${ring === 10 ? 1.2 : 0.6}" opacity="0.5"/>`;
+    svg += `<polygon points="${pts}" fill="none" stroke="#d1d5db" stroke-width="${ring === maxValue ? 1.2 : 0.6}" opacity="0.5"/>`;
+  }
+
+  // Ring labels
+  for (const ring of rings) {
+    const angle = angleOffset;
+    const r = (ring / maxValue) * radius;
+    const lx = cx + r * Math.cos(angle) + 4;
+    const ly = cy + r * Math.sin(angle) - 4;
+    svg += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="9" font-family="Arial,sans-serif" fill="#94a3b8">${ring}</text>`;
   }
 
   // Axis lines
@@ -234,8 +264,10 @@ export function renderRadarSvgString(
     svg += `<line x1="${cx}" y1="${cy}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#d1d5db" stroke-width="0.6" opacity="0.3"/>`;
   }
 
-  // Target polygon
-  svg += `<polygon points="${poly(target)}" fill="rgba(92,242,142,0.08)" stroke="#5cf28e" stroke-width="1.5" stroke-dasharray="6 3" opacity="0.7"/>`;
+  // Target polygon (only if provided)
+  if (target) {
+    svg += `<polygon points="${poly(target)}" fill="rgba(92,242,142,0.08)" stroke="#5cf28e" stroke-width="1.5" stroke-dasharray="6 3" opacity="0.7"/>`;
+  }
 
   // Current polygon
   svg += `<polygon points="${poly(current)}" fill="rgba(92,242,142,0.22)" stroke="#5cf28e" stroke-width="2"/>`;
