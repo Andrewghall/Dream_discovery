@@ -1671,10 +1671,15 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
           >
             {generating ? 'Generating…' : '✦ Generate Report'}
           </Button>
+          <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/output`} target="_blank">
+            <Button size="sm" variant="outline" className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs">
+              View Output →
+            </Button>
+          </Link>
           {hasScratchpad && (
             <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`} target="_blank">
               <Button size="sm" variant="outline" className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs">
-                View Output →
+                Scratchpad →
               </Button>
             </Link>
           )}

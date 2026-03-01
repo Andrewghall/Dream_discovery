@@ -171,7 +171,7 @@ function domainToPhaseTag(domain: string, customDimensionNames?: string[] | null
   }
   const dl = d.toLowerCase();
   if (dl.includes('people') || dl.includes('human') || dl.includes('talent') || dl.includes('workforce') || dl.includes('hr')) return 'people';
-  if (dl.includes('corporate') || dl.includes('business') || dl.includes('enterprise') || dl.includes('organization') || dl.includes('organisation') || dl.includes('strategy') || dl.includes('operation')) return 'corporate';
+  if (dl.includes('corporate') || dl.includes('business') || dl.includes('enterprise') || dl.includes('organization') || dl.includes('organisation') || dl.includes('strategy') || dl.includes('operation') || dl.includes('supply')) return 'corporate';
   if (dl.includes('customer') || dl.includes('client') || dl.includes('user') || dl.includes('consumer') || dl.includes('market')) return 'customer';
   if (dl.includes('tech') || dl.includes('digital') || dl.includes('software') || dl.includes('data') || dl.includes('infrastructure') || dl.includes('system')) return 'technology';
   if (dl.includes('regulat') || dl.includes('compliance') || dl.includes('legal') || dl.includes('governance') || dl.includes('policy')) return 'regulation';
