@@ -26,7 +26,7 @@ const STAGES = [
     colour: 'from-blue-500 to-cyan-500',
     timeline: '1–2 weeks before',
     paragraphs: [
-      'Every participant receives a link to a private, AI-guided conversation. In just 15 minutes, the AI explores their perspective across five organisational domains: People, Organisation, Customer, Technology, and Regulation.',
+      'Every participant \u2014 from internal teams to partners and ecosystem stakeholders \u2014 receives a link to a private, AI-guided conversation. In just 15 minutes, the AI explores their perspective across five domains: People, Organisation, Customer, Technology, and Regulation.',
       'This isn\'t a survey. It\'s a genuine dialogue where participants share insights, rate maturity, identify constraints, and describe their vision for the future. The AI adapts its questions based on responses, going deeper where it matters.',
       'By the time the workshop begins, EthentaFlow has already extracted hundreds of insights, detected themes, scored confidence levels, and prepared a Discovery Intelligence briefing for the facilitator. The workshop starts with data, not blank whiteboards.',
     ],
@@ -84,7 +84,7 @@ const STAGES = [
 ];
 
 const WORKSHOP_STATS = [
-  { target: 8, suffix: '–25', label: 'Participants' },
+  { target: 360, suffix: '°', label: 'Enterprise & partners' },
   { target: 15, suffix: ' min', label: 'Per conversation' },
   { target: 1000, suffix: '+', label: 'Data points captured' },
   { target: 7, label: 'Analytical views' },
@@ -102,7 +102,7 @@ export default function HowItWorksPage() {
       <FaqJsonLd
         faqs={[
           { question: 'How long does a DREAM workshop take?', answer: 'The live workshop runs for 4–8 hours. Before the workshop, each participant completes a 15-minute AI Discovery conversation over 1–2 weeks. Results are available immediately after.' },
-          { question: 'How many participants can a DREAM workshop support?', answer: 'Typically 8–25 participants each have a 15-minute AI-guided Discovery conversation. The live workshop works best with 10–20 people in the room.' },
+          { question: 'How many participants can a DREAM workshop support?', answer: 'DREAM scales to your entire organisation and partner ecosystem. Every participant has a private 15-minute AI-guided Discovery conversation. The live workshop brings key stakeholders together to work with the collective intelligence.' },
           { question: 'What technology do participants need?', answer: 'No special software required. Everything is browser-based. Participants receive a link and complete their Discovery conversation on any device.' },
           { question: 'How quickly are results available?', answer: 'The full analytical dashboard with 7 views is available immediately after the workshop ends. No waiting for consultants to compile reports.' },
           { question: 'Does DREAM replace the facilitator?', answer: 'No. DREAM augments the facilitator with AI-powered cognitive guidance, real-time analysis, and structured insight. Humans lead the room; the AI handles the analysis.' },

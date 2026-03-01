@@ -21,7 +21,7 @@ export function CTASection({
     label: 'Book a Demo',
     href: 'mailto:hello@ethenta.com?subject=DREAM%20Demo%20Request',
   },
-  secondaryCta = { label: 'Ask DREAM Anything', href: '#ask-dream' },
+  secondaryCta = { label: 'Explore Use Cases', href: '/dream/use-cases' },
   variant = 'gradient',
 }: CTASectionProps) {
   const bgClass =

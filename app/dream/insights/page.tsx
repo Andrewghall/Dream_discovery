@@ -104,16 +104,16 @@ const SECONDARY_VIEWS = [
 
 const EXAMPLE_INSIGHTS = [
   {
-    insight: '73% of staff rated Technology maturity at 3/10 while leadership projected 7/10',
-    interpretation: 'The maturity perception gap. This single finding often reshapes the entire transformation strategy.',
+    insight: 'Leadership rated Organisation maturity at 4/5. Frontline teams rated it 1.8/5. Neither group knew.',
+    interpretation: 'The perception gap. When leaders and teams disagree on readiness, transformation programmes stall before they start.',
   },
   {
     insight: '12 unresolved tensions surfaced — top 3 between Customer and Organisation domains',
     interpretation: 'Structural friction between what customers need and how the organisation operates.',
   },
   {
-    insight: '68% of creative vision came from 2 of 15 participants',
-    interpretation: 'Bias detection flag. The reimagined future reflects two perspectives, not fifteen.',
+    insight: '68% of creative vision came from just 2 participants out of the entire group',
+    interpretation: 'Bias detection flag. The reimagined future reflects two perspectives, not the whole organisation.',
   },
   {
     insight: 'Narrative Divergence: leadership described transformation as "exciting", frontline described it as "exhausting"',

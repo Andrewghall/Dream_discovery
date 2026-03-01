@@ -14,7 +14,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
   'financial-services': {
     slug: 'financial-services',
     name: 'Financial Services',
-    tagline: 'Digital transformation, regulatory compliance, customer experience redesign',
+    tagline: 'Regulatory transformation, digital modernisation, partner ecosystem alignment',
     headline: 'Decision Intelligence for Financial Services',
     subheadline:
       'Navigate regulatory complexity, digital transformation, and customer expectations with clarity. DREAM surfaces the real tensions between innovation appetite and compliance culture.',
@@ -64,6 +64,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -120,6 +121,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -176,6 +178,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -232,6 +235,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -288,6 +292,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 
@@ -344,6 +349,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
     ],
     relatedUseCases: [
       { href: '/dream/use-cases/enterprise-ai-adoption', title: 'Enterprise AI Adoption' },
+      { href: '/dream/use-cases', title: 'All Use Cases' },
     ],
   },
 };

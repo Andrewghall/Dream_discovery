@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, Zap, Layers, Target, BarChart3, Users, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Zap, Layers, Target, BarChart3, Users } from 'lucide-react';
 import { HeroSection } from '@/components/dream-landing/hero-section';
 import { ScrollReveal } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
@@ -151,6 +151,24 @@ export default function DreamLandingPage() {
                 >
                   Explore this use case <ArrowRight className="h-4 w-4" />
                 </Link>
+
+                {/* Breadth signal */}
+                <div className="mt-8 pt-6 border-t border-white/10">
+                  <p className="text-white/30 text-xs font-semibold uppercase tracking-wider mb-3">DREAM also powers</p>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {['Operating model redesign', 'Compliance & regulation', 'Human-AI workflow design', 'Partner ecosystem alignment'].map((uc) => (
+                      <span key={uc} className="px-3 py-1.5 text-xs text-white/50 border border-white/10 rounded-full">
+                        {uc}
+                      </span>
+                    ))}
+                  </div>
+                  <Link
+                    href="/dream/use-cases"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#5cf28e]/70 hover:text-[#5cf28e] transition-colors"
+                  >
+                    See all use cases <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
               </div>
             </div>
           </ScrollReveal>
