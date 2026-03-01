@@ -1,5 +1,5 @@
 /**
- * DREAM Capability Maturity Assessment — Public API
+ * DREAM POCTR Capability Maturity Assessment — Public API
  *
  * POST: Validate submission, generate PDF via Puppeteer, email via Resend.
  * Public endpoint — rate-limited by IP (5 per hour).
@@ -9,7 +9,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 import { generateAssessmentPdfHtml, type AssessmentPdfData } from '@/lib/dream-landing/assessment-pdf';
-import { sendEmail } from '@/lib/email/send';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -46,14 +45,24 @@ setInterval(() => {
 /* ── Validation ───────────────────────────────────────────── */
 
 const VALID_DOMAINS = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+const VALID_LEVELS = ['Ad Hoc', 'Emerging', 'Defined', 'Managed', 'Leading'];
+
+interface DomainScore {
+  domain: string;
+  score: number;
+  levelName: string;
+  levelDescriptor: string;
+  nextLevelName: string;
+  nextLevelDescriptor: string;
+}
 
 interface SubmissionPayload {
   name: string;
   email: string;
   organisation?: string;
-  scores: { domain: string; current: number; target: number }[];
-  overallReadiness: number;
-  transformationDistance: number;
+  scores: DomainScore[];
+  overallScore: number;
+  overallLevelName: string;
   recommendation: string;
 }
 
@@ -73,19 +82,26 @@ function validatePayload(body: unknown): SubmissionPayload | string {
 
   const scores = (b.scores as Array<Record<string, unknown>>).map((s) => {
     const domain = String(s.domain || '');
-    const current = Number(s.current);
-    const target = Number(s.target);
+    const score = Number(s.score);
+    const levelName = String(s.levelName || '');
+    const levelDescriptor = String(s.levelDescriptor || '');
+    const nextLevelName = String(s.nextLevelName || '');
+    const nextLevelDescriptor = String(s.nextLevelDescriptor || '');
     if (!VALID_DOMAINS.includes(domain)) return null;
-    if (current < 1 || current > 10 || target < 1 || target > 10) return null;
-    return { domain, current, target };
+    if (score < 1 || score > 5) return null;
+    if (!VALID_LEVELS.includes(levelName)) return null;
+    return { domain, score, levelName, levelDescriptor, nextLevelName, nextLevelDescriptor };
   });
 
-  if (scores.some((s) => s === null)) return 'Invalid domain scores (must be 1–10)';
+  if (scores.some((s) => s === null)) return 'Invalid domain scores (must be 1–5 with valid maturity level)';
 
-  const overallReadiness = Number(b.overallReadiness);
-  const transformationDistance = Number(b.transformationDistance);
+  const overallScore = Number(b.overallScore);
+  if (overallScore < 1 || overallScore > 5) return 'Invalid overall score';
+
+  const overallLevelName = String(b.overallLevelName || '');
+  if (!VALID_LEVELS.includes(overallLevelName)) return 'Invalid overall maturity level';
+
   const recommendation = String(b.recommendation || '');
-
   if (!['Foundation', 'Acceleration', 'Optimisation'].includes(recommendation))
     return 'Invalid recommendation type';
 
@@ -93,9 +109,9 @@ function validatePayload(body: unknown): SubmissionPayload | string {
     name,
     email,
     organisation,
-    scores: scores as { domain: string; current: number; target: number }[],
-    overallReadiness,
-    transformationDistance,
+    scores: scores as DomainScore[],
+    overallScore,
+    overallLevelName,
     recommendation,
   };
 }
@@ -139,8 +155,8 @@ export async function POST(request: NextRequest) {
       organisation: payload.organisation,
       date: reportDate,
       domains: payload.scores,
-      overallReadiness: payload.overallReadiness,
-      transformationDistance: payload.transformationDistance,
+      overallScore: payload.overallScore,
+      overallLevelName: payload.overallLevelName,
       recommendation: payload.recommendation as 'Foundation' | 'Acceleration' | 'Optimisation',
     };
 
@@ -176,7 +192,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Send email with PDF attachment via Resend
-    const emailHtml = buildConfirmationEmail(payload.name, payload.recommendation);
+    const emailHtml = buildConfirmationEmail(payload.name, payload.recommendation, payload.overallLevelName);
 
     // Use the raw Resend client for attachment support
     const { Resend } = await import('resend');
@@ -192,11 +208,11 @@ export async function POST(request: NextRequest) {
     const { error: emailError } = await resend.emails.send({
       from: `DREAM Assessment <${fromEmail.includes('<') ? fromEmail.split('<')[1].replace('>', '') : fromEmail}>`,
       to: [payload.email],
-      subject: 'Your DREAM Readiness Assessment Report',
+      subject: 'Your DREAM Capability Maturity Report',
       html: emailHtml,
       attachments: [
         {
-          filename: 'DREAM-Readiness-Assessment.pdf',
+          filename: 'DREAM-Capability-Maturity-Report.pdf',
           content: pdfBuffer.toString('base64'),
         },
       ],
@@ -208,7 +224,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(
-      `[Assessment] Report sent to ${payload.email} (${payload.name}, ${payload.organisation || 'no org'}, readiness: ${payload.overallReadiness})`,
+      `[Assessment] Report sent to ${payload.email} (${payload.name}, ${payload.organisation || 'no org'}, maturity: L${Math.round(payload.overallScore)} ${payload.overallLevelName})`,
     );
 
     return NextResponse.json({ success: true });
@@ -223,7 +239,7 @@ export async function POST(request: NextRequest) {
 
 /* ── Confirmation Email HTML ──────────────────────────────── */
 
-function buildConfirmationEmail(name: string, focus: string): string {
+function buildConfirmationEmail(name: string, focus: string, levelName: string): string {
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
@@ -234,28 +250,28 @@ function buildConfirmationEmail(name: string, focus: string): string {
         <span style="width: 10px; height: 10px; border-radius: 50%; background: #5cf28e; display: inline-block;"></span>
         <span style="color: #fff; font-weight: 700; font-size: 14px;">ETHENTA DREAM</span>
       </div>
-      <h1 style="color: #fff; font-size: 22px; font-weight: 700; margin: 0 0 8px;">Your Readiness Report</h1>
+      <h1 style="color: #fff; font-size: 22px; font-weight: 700; margin: 0 0 8px;">Your Capability Maturity Report</h1>
       <p style="color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.6; margin: 0;">
-        Hi ${escHtml(name)}, your DREAM Capability Maturity Assessment report is attached as a PDF.
+        Hi ${escHtml(name)}, your POCTR Capability Maturity Assessment report is attached as a PDF. Your organisation assessed at maturity level <strong style="color: #5cf28e;">${escHtml(levelName)}</strong>.
       </p>
     </div>
     <div style="background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px; margin-bottom: 20px;">
       <p style="font-size: 13px; line-height: 1.7; color: #475569; margin: 0 0 16px;">
         Based on your assessment, we recommend a <strong>${escHtml(focus)}</strong> workshop approach.
-        The attached report contains your full maturity profile, radar chart, gap analysis, and personalised recommendations.
+        The attached report contains your full maturity profile, domain breakdown, next-level recommendations, and personalised workshop guidance.
       </p>
       <p style="font-size: 13px; line-height: 1.7; color: #475569; margin: 0;">
         Ready to explore your results in more detail? Book a demo with our team.
       </p>
     </div>
     <div style="text-align: center; padding: 8px 0;">
-      <a href="mailto:hello@ethenta.com?subject=DREAM%20Assessment%20—%20Book%20a%20Demo"
+      <a href="mailto:hello@ethenta.com?subject=DREAM%20Assessment%20%E2%80%94%20Book%20a%20Demo"
          style="display: inline-block; background: #5cf28e; color: #0d0d0d; font-weight: 600; font-size: 14px; padding: 12px 28px; border-radius: 10px; text-decoration: none;">
         Book a Demo
       </a>
     </div>
     <p style="text-align: center; font-size: 11px; color: #94a3b8; margin-top: 24px;">
-      Ethenta — Decision Intelligence for Transformation
+      Ethenta &mdash; Decision Intelligence for Transformation
     </p>
   </div>
 </body>

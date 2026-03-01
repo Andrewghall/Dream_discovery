@@ -1,5 +1,5 @@
 /**
- * DREAM Capability Maturity Assessment — PDF Report Template
+ * DREAM POCTR Capability Maturity Assessment — PDF Report Template
  *
  * Self-contained HTML rendered to A4 PDF by Puppeteer.
  * All styles are inline; SVG radar chart is embedded.
@@ -17,11 +17,14 @@ export interface AssessmentPdfData {
   date: string;
   domains: {
     domain: string;
-    current: number;
-    target: number;
+    score: number;
+    levelName: string;
+    levelDescriptor: string;
+    nextLevelName: string;
+    nextLevelDescriptor: string;
   }[];
-  overallReadiness: number;
-  transformationDistance: number;
+  overallScore: number;
+  overallLevelName: string;
   recommendation: 'Foundation' | 'Acceleration' | 'Optimisation';
 }
 
@@ -45,21 +48,21 @@ const DOMAIN_ADVICE: Record<string, string> = {
   Regulation: 'reframing compliance as an enabler of innovation rather than a barrier to progress',
 };
 
-const RECOMMENDATIONS: Record<string, { title: string; body: (topDomain: string) => string }> = {
+const RECOMMENDATIONS: Record<string, { title: string; body: (topDomain: string, levelName: string) => string }> = {
   Foundation: {
     title: 'Foundation Workshop',
-    body: (d) =>
-      `Your organisation is in the early stages of transformation readiness. The biggest opportunity lies in ${DOMAIN_ADVICE[d] || 'addressing your organisational gaps'}. A DREAM Foundation workshop would help you build the shared understanding and strategic clarity needed to move forward with confidence. Through structured AI-facilitated discovery, DREAM would surface the real perceptions across your teams, identify where alignment is weakest, and create a grounded roadmap for meaningful change.`,
+    body: (d, lvl) =>
+      `Your organisation assessed at maturity level ${lvl}. The biggest opportunity lies in ${DOMAIN_ADVICE[d] || 'addressing your organisational gaps'}. A DREAM Foundation workshop would help you build the shared understanding and strategic clarity needed to move forward with confidence. Through structured AI-facilitated discovery, DREAM would surface the real perceptions across your teams, identify where alignment is weakest, and create a grounded roadmap for meaningful change.`,
   },
   Acceleration: {
     title: 'Acceleration Workshop',
-    body: (d) =>
-      `Your organisation has built a solid base but significant gaps remain — particularly in ${DOMAIN_ADVICE[d] || 'key strategic areas'}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation. By capturing every voice and synthesising the collective intelligence of your organisation, DREAM reveals the tensions that derail programmes and builds the shared understanding needed to accelerate change.`,
+    body: (d, lvl) =>
+      `Your organisation assessed at maturity level ${lvl} — a solid base, but significant gaps remain, particularly in ${DOMAIN_ADVICE[d] || 'key strategic areas'}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation. By capturing every voice and synthesising the collective intelligence of your organisation, DREAM reveals the tensions that derail programmes and builds the shared understanding needed to accelerate change.`,
   },
   Optimisation: {
     title: 'Optimisation Workshop',
-    body: (d) =>
-      `Your organisation is relatively mature but there are still meaningful gaps — especially in ${DOMAIN_ADVICE[d] || 'areas of strategic importance'}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward. At this stage, the value of DREAM lies in surfacing the subtle misalignments and blind spots that prevent organisations from reaching their full potential.`,
+    body: (d, lvl) =>
+      `Your organisation assessed at maturity level ${lvl}. There are still meaningful opportunities — especially in ${DOMAIN_ADVICE[d] || 'areas of strategic importance'}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward. At this stage, the value of DREAM lies in surfacing the subtle misalignments and blind spots that prevent organisations from reaching their full potential.`,
   },
 };
 
@@ -69,15 +72,12 @@ const RECOMMENDATIONS: Record<string, { title: string; body: (topDomain: string)
 
 export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
   const domainNames = data.domains.map((d) => d.domain);
-  const currentScores = data.domains.map((d) => d.current);
-  const targetScores = data.domains.map((d) => d.target);
+  const currentScores = data.domains.map((d) => d.score);
 
-  const radarSvg = renderRadarSvgString(domainNames, currentScores, targetScores, 340);
+  const radarSvg = renderRadarSvgString(domainNames, currentScores, undefined, 340, 5);
 
-  // Sort domains by gap (largest first)
-  const sorted = [...data.domains]
-    .map((d) => ({ ...d, gap: Math.round((d.target - d.current) * 10) / 10 }))
-    .sort((a, b) => b.gap - a.gap);
+  // Sort domains by score (lowest first = highest priority)
+  const sorted = [...data.domains].sort((a, b) => a.score - b.score);
 
   const topDomain = sorted[0]?.domain || 'People';
   const rec = RECOMMENDATIONS[data.recommendation] || RECOMMENDATIONS.Acceleration;
@@ -117,6 +117,11 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.1em;
+  }
+  .header-left .methodology {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 4px;
   }
   .header-right {
     text-align: right;
@@ -158,18 +163,6 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     margin-bottom: 8px;
   }
 
-  .legend {
-    display: flex;
-    justify-content: center;
-    gap: 24px;
-    margin-bottom: 24px;
-    font-size: 11px;
-    color: #64748b;
-  }
-  .legend-item { display: flex; align-items: center; gap: 6px; }
-  .legend-solid { width: 20px; height: 3px; border-radius: 2px; background: #5cf28e; }
-  .legend-dashed { width: 20px; height: 3px; border-radius: 2px; border-top: 2px dashed #5cf28e; }
-
   .scores-grid {
     display: flex;
     justify-content: center;
@@ -181,6 +174,12 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     font-size: 32px;
     font-weight: 800;
     line-height: 1;
+    margin-bottom: 2px;
+  }
+  .score-box .level-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #5cf28e;
     margin-bottom: 2px;
   }
   .score-box .label {
@@ -218,28 +217,14 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     font-weight: 600;
   }
   .domain-dot { width: 8px; height: 8px; border-radius: 50%; }
-  .bar-bg {
+  .seg-bar {
+    display: flex;
+    gap: 3px;
+  }
+  .seg-bar .seg {
     height: 6px;
-    background: #f1f5f9;
+    flex: 1;
     border-radius: 3px;
-    width: 100%;
-    position: relative;
-    overflow: hidden;
-  }
-  .bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    position: absolute;
-    left: 0;
-    top: 0;
-  }
-  .bar-target {
-    position: absolute;
-    top: -1px;
-    width: 2px;
-    height: 8px;
-    background: #0d0d0d;
-    border-radius: 1px;
   }
 
   .rec-box {
@@ -280,18 +265,21 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
   }
   .footer a { color: #5cf28e; text-decoration: none; font-weight: 600; }
 
-  .gap-rank { margin-bottom: 28px; }
-  .gap-item {
+  .priority-rank { margin-bottom: 28px; }
+  .priority-item {
+    margin-bottom: 10px;
+    padding: 10px 14px;
+    background: #f8fafc;
+    border-radius: 10px;
+    border: 1px solid #f1f5f9;
+  }
+  .priority-header {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 8px;
-    padding: 8px 12px;
-    background: #f8fafc;
-    border-radius: 8px;
-    border: 1px solid #f1f5f9;
+    margin-bottom: 6px;
   }
-  .gap-rank-num {
+  .priority-rank-num {
     width: 24px;
     height: 24px;
     border-radius: 6px;
@@ -303,8 +291,22 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     font-weight: 700;
     flex-shrink: 0;
   }
-  .gap-item-name { font-weight: 600; font-size: 12px; flex: 1; }
-  .gap-item-val { font-weight: 700; font-size: 12px; }
+  .priority-item-name { font-weight: 600; font-size: 12px; flex: 1; }
+  .priority-item-level { font-weight: 700; font-size: 11px; }
+  .priority-next {
+    margin-left: 34px;
+    padding-left: 10px;
+    border-left: 2px solid #e2e8f0;
+    font-size: 11px;
+    color: #64748b;
+    line-height: 1.5;
+  }
+  .priority-next strong {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+  }
 </style>
 </head>
 <body>
@@ -314,7 +316,8 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     <div class="header-left">
       <div class="brand"><span class="brand-dot"></span> ETHENTA DREAM</div>
       <h1>Capability Maturity Assessment</h1>
-      <p>Readiness Report</p>
+      <p>POCTR Maturity Report</p>
+      <div class="methodology">Assessed using the POCTR Capability Maturity Model</div>
     </div>
     <div class="header-right">
       <div class="org">${escHtml(data.name)}</div>
@@ -324,22 +327,15 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
   </div>
 
   <!-- Radar Chart -->
-  <div class="section-title">Your Maturity Profile</div>
+  <div class="section-title">Maturity Profile</div>
   <div class="radar-container">${radarSvg}</div>
-  <div class="legend">
-    <div class="legend-item"><span class="legend-solid"></span> Current State</div>
-    <div class="legend-item"><span class="legend-dashed"></span> Target State</div>
-  </div>
 
-  <!-- Overall Scores -->
+  <!-- Overall Score -->
   <div class="scores-grid">
     <div class="score-box">
-      <div class="num" style="color:#0d0d0d;">${data.overallReadiness.toFixed(1)}</div>
-      <div class="label">Overall Readiness</div>
-    </div>
-    <div class="score-box">
-      <div class="num" style="color:#5cf28e;">${data.transformationDistance.toFixed(1)}</div>
-      <div class="label">Avg. Gap</div>
+      <div class="num" style="color:#0d0d0d;">Level ${Math.round(data.overallScore)}</div>
+      <div class="level-name">${escHtml(data.overallLevelName)}</div>
+      <div class="label">${data.overallScore.toFixed(1)} / 5 &mdash; Overall Maturity</div>
     </div>
   </div>
 
@@ -348,27 +344,26 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
   <table class="domain-table">
     <thead>
       <tr>
-        <th style="width:28%;">Domain</th>
-        <th style="width:12%; text-align:center;">Current</th>
-        <th style="width:12%; text-align:center;">Target</th>
-        <th style="width:10%; text-align:center;">Gap</th>
-        <th style="width:38%;">Progress</th>
+        <th style="width:24%;">Domain</th>
+        <th style="width:14%; text-align:center;">Score</th>
+        <th style="width:24%;">Level</th>
+        <th style="width:38%;">Maturity</th>
       </tr>
     </thead>
     <tbody>
 ${data.domains
   .map((d) => {
     const col = DOMAIN_COLOURS[d.domain] || '#6b7280';
-    const gap = Math.round((d.target - d.current) * 10) / 10;
+    const filledSegs = Math.round(d.score);
     return `      <tr>
         <td><div class="domain-name"><span class="domain-dot" style="background:${col}"></span> ${escHtml(d.domain)}</div></td>
-        <td style="text-align:center; font-weight:600;">${d.current.toFixed(1)}</td>
-        <td style="text-align:center; font-weight:600;">${d.target.toFixed(1)}</td>
-        <td style="text-align:center; font-weight:700; color:${col};">+${gap.toFixed(1)}</td>
+        <td style="text-align:center; font-weight:600;">${d.score.toFixed(1)}</td>
+        <td style="font-weight:600; color:${col};">L${Math.round(d.score)} &mdash; ${escHtml(d.levelName)}</td>
         <td>
-          <div class="bar-bg">
-            <div class="bar-fill" style="width:${(d.current / 10) * 100}%; background:${col}; opacity:0.6;"></div>
-            <div class="bar-target" style="left:${(d.target / 10) * 100}%;"></div>
+          <div class="seg-bar">
+            ${[1, 2, 3, 4, 5].map((s) =>
+              `<div class="seg" style="background:${s <= filledSegs ? col : '#e2e8f0'}; opacity:${s <= filledSegs ? '0.7' : '1'};"></div>`
+            ).join('')}
           </div>
         </td>
       </tr>`;
@@ -377,16 +372,19 @@ ${data.domains
     </tbody>
   </table>
 
-  <!-- Gap Ranking -->
-  <div class="section-title">Top Gaps by Priority</div>
-  <div class="gap-rank">
+  <!-- Priority Development Areas -->
+  <div class="section-title">Priority Development Areas</div>
+  <div class="priority-rank">
 ${sorted
   .map(
     (d, i) =>
-      `    <div class="gap-item">
-      <div class="gap-rank-num" style="background:${DOMAIN_COLOURS[d.domain] || '#6b7280'}">${i + 1}</div>
-      <div class="gap-item-name">${escHtml(d.domain)}</div>
-      <div class="gap-item-val" style="color:${DOMAIN_COLOURS[d.domain] || '#6b7280'}">+${d.gap.toFixed(1)}</div>
+      `    <div class="priority-item">
+      <div class="priority-header">
+        <div class="priority-rank-num" style="background:${DOMAIN_COLOURS[d.domain] || '#6b7280'}">${i + 1}</div>
+        <div class="priority-item-name">${escHtml(d.domain)}</div>
+        <div class="priority-item-level" style="color:${DOMAIN_COLOURS[d.domain] || '#6b7280'}">L${Math.round(d.score)} &mdash; ${escHtml(d.levelName)}</div>
+      </div>
+      ${Math.round(d.score) < 5 ? `<div class="priority-next"><strong>Next: ${escHtml(d.nextLevelName)}</strong><br/>${escHtml(d.nextLevelDescriptor)}</div>` : ''}
     </div>`,
   )
   .join('\n')}
@@ -396,12 +394,12 @@ ${sorted
   <div class="rec-box">
     <div class="tag">Recommended Approach</div>
     <h3>${escHtml(rec.title)}</h3>
-    <p>${escHtml(rec.body(topDomain))}</p>
+    <p>${escHtml(rec.body(topDomain, data.overallLevelName))}</p>
   </div>
 
   <!-- Footer -->
   <div class="footer">
-    <div>Generated by <strong>DREAM</strong> — Ethenta&rsquo;s Capability Maturity Assessment</div>
+    <div>Generated by <strong>DREAM</strong> &mdash; POCTR Capability Maturity Assessment</div>
     <div>Book a demo: <a href="mailto:hello@ethenta.com">hello@ethenta.com</a></div>
   </div>
 </div>
