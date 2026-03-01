@@ -24,7 +24,7 @@ import { BreadcrumbJsonLd } from '@/lib/dream-landing/seo';
 export const metadata: Metadata = {
   title: 'Enterprise AI Adoption — Cut Through the Noise with DREAM',
   description:
-    'Every enterprise wants to adopt AI. Few know how. DREAM cuts through conflicting priorities, siloed thinking, and misaligned maturity perceptions to build an actionable AI transformation roadmap.',
+    'Every enterprise wants to adopt AI. Few know how. DREAM captures what your entire organisation and partner ecosystem actually thinks — then cuts through conflicting priorities and misaligned perceptions to build an actionable transformation roadmap.',
   alternates: { canonical: '/dream/use-cases/enterprise-ai-adoption' },
   openGraph: {
     title: 'Enterprise AI Adoption — Cut Through the Noise with DREAM',
@@ -44,7 +44,7 @@ const NOISE_CARDS = [
     icon: Layers,
     title: 'Siloed Thinking',
     description:
-      'AI initiatives spring up in isolation. Each team evaluates tools in its own bubble. There is no enterprise-wide view of capability, readiness, or ambition. The result: duplication, conflict, and wasted investment.',
+      'AI initiatives spring up in isolation. Each team evaluates tools in its own bubble. Partners and vendors are engaged without coordination. There is no enterprise-wide view of capability, readiness, or ecosystem alignment. The result: duplication, conflict, and wasted investment.',
   },
   {
     icon: BarChart3,
@@ -71,7 +71,7 @@ const DOMAIN_QUESTIONS = [
     icon: Building2,
     domain: 'Organisation',
     colour: 'bg-emerald-100 text-emerald-600',
-    question: 'How would AI change your governance and decision-making processes? Where would AI create the most organisational value?',
+    question: 'How would AI change your governance and decision-making processes? How would it reshape the way you work with partners and your wider ecosystem?',
   },
   {
     icon: ShoppingBag,
@@ -139,9 +139,9 @@ export default function EnterpriseAIAdoptionPage() {
         eyebrow="Use Case"
         headline="Enterprise AI"
         highlightText="Adoption"
-        subheadline="Every enterprise wants to adopt AI. Few know how. DREAM cuts through the noise and builds a transformation roadmap grounded in what people actually think."
+        subheadline="Every enterprise wants to adopt AI. Few know how. DREAM captures what your entire organisation and partner ecosystem actually thinks — then builds an aligned transformation roadmap."
         stats={[
-          { target: 15, suffix: '–30', label: 'Participants' },
+          { target: 360, suffix: '°', label: 'Enterprise & partners' },
           { target: 5, label: 'Domains explored' },
           { target: 1000, suffix: '+', label: 'Insights captured' },
         ]}
@@ -197,8 +197,8 @@ export default function EnterpriseAIAdoptionPage() {
               </span>
             </h2>
             <p className="text-lg text-slate-600 max-w-3xl mb-10">
-              Structured AI conversations across 5 organisational domains surface what people ACTUALLY
-              think — not what they present in steering committees.
+              Structured AI conversations across 5 domains — spanning your teams, partners, and wider
+              ecosystem — surface what people ACTUALLY think, not what they present in steering committees.
             </p>
           </ScrollReveal>
           <div className="space-y-4">
@@ -255,7 +255,7 @@ export default function EnterpriseAIAdoptionPage() {
                 </p>
                 <ul className="space-y-2">
                   {[
-                    'Every participant contributes their vision across all 5 domains',
+                    'Every participant — internal teams and partners alike — contributes their vision across all 5 domains',
                     'AI facilitation ensures all perspectives are heard',
                     'Themes emerge: where does the organisation converge on AI ambition?',
                     'The collective vision takes shape on-screen in real-time',
@@ -391,7 +391,7 @@ export default function EnterpriseAIAdoptionPage() {
                 icon: CheckCircle,
                 title: 'Alignment',
                 description:
-                  'Every division, every layer, every domain — surfaced, compared, and brought into a shared understanding. No more "they think this, we think that."',
+                  'Every division, every partner, every domain — surfaced, compared, and brought into a shared understanding. No more "they think this, we think that."',
               },
               {
                 icon: Target,
