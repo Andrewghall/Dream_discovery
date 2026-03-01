@@ -56,8 +56,8 @@ const PERSONAS = [
 const VALUE_PROPS = [
   {
     icon: Zap,
-    title: '10\u00D7 Faster Insight',
-    description: 'Capture what 50 people really think in a fraction of the time surveys take.',
+    title: 'Enterprise 360\u00B0',
+    description: 'Capture what your entire organisation and partner ecosystem really thinks — in a fraction of the time surveys take.',
   },
   {
     icon: Users,
