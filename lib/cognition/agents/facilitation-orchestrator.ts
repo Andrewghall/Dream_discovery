@@ -28,6 +28,7 @@ import {
 import { runFacilitationAgent, type DeliberationContext, type PadProposal } from './facilitation-agent';
 import { validateReferences } from './guardian-agent';
 import { runJourneyCompletionAgent } from './journey-completion-agent';
+import { runJourneyEnrichmentAgent, type JourneyEnrichment } from './journey-enrichment-agent';
 import {
   mergeAgentAssessment,
   buildJourneyContextString,
@@ -42,8 +43,11 @@ const MIN_EMISSION_INTERVAL_MS = 120_000;    // 2 min hard minimum between emiss
 const PAD_GENERATION_INTERVAL_MS = 45_000;   // 45s between generation triggers
 const PAD_UTTERANCE_THRESHOLD = 6;           // 6 utterances trigger
 const ORCHESTRATOR_MODEL = 'gpt-4o-mini';
-const MAX_ORCHESTRATOR_ITERATIONS = 4;       // assess → journey → facilitation → emit
-const ORCHESTRATOR_TIMEOUT_MS = 25_000;      // 25s hard cap (allows journey agent call)
+const MAX_ORCHESTRATOR_ITERATIONS = 5;       // assess → journey → enrichment → facilitation → emit
+const ORCHESTRATOR_TIMEOUT_MS = 30_000;      // 30s hard cap (allows journey + enrichment calls)
+const MIN_ENRICHMENT_INTERVAL_MS = 180_000;  // 3 min between enrichment runs
+const MIN_ENRICHMENT_INTERACTIONS = 3;       // Need ≥3 interactions to enrich
+const MIN_ENRICHMENT_BELIEFS = 5;            // Need ≥5 beliefs for enrichment
 
 // ══════════════════════════════════════════════════════════════
 // PACING GOVERNANCE (pre-LLM gating — saves cost)
@@ -231,6 +235,14 @@ const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'consult_journey_enrichment_agent',
+      description: 'Ask the Journey Enrichment Agent to populate AI agency levels, intensity scores, risk exposure, and governance overlays for journey interactions. Only useful when ≥3 interactions AND ≥5 beliefs exist, and at least 3 minutes since last enrichment.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'request_facilitation_proposals',
       description: 'Ask the Facilitation Agent to generate 1-3 sub-questions grounded in participant speech, signal gaps, and journey gaps.',
       parameters: { type: 'object', properties: {}, required: [] },
@@ -269,12 +281,14 @@ ${mainQ ? `CURRENT MAIN QUESTION: "${mainQ.text}" (Purpose: ${mainQ.purpose})` :
 YOUR PROCESS:
 1. assess_session — read the room: beliefs, signals, gaps, recent participant speech
 2. consult_journey_completion_agent — check journey map gaps (only if actors detected)
-3. request_facilitation_proposals — generate sub-questions with signal + speech + journey context
-4. verify_and_emit — verify belief references, emit approved pads to facilitator
+3. consult_journey_enrichment_agent — enrich interactions with AI agency, intensity, risk (only if ≥3 interactions AND ≥5 beliefs)
+4. request_facilitation_proposals — generate sub-questions with signal + speech + journey context
+5. verify_and_emit — verify belief references, emit approved pads to facilitator
 
 RULES:
-- Four tool calls max, done. No deliberation loops.
+- Five tool calls max, done. No deliberation loops.
 - Skip step 2 if assess_session shows no actors detected yet.
+- Skip step 3 if insufficient data (< 3 interactions or < 5 beliefs) or enriched recently.
 - NEVER skip assess_session — signals and speech are essential input.
 - ${guidanceState.dialoguePhase === 'REIMAGINE' ? 'REIMAGINE PHASE: Everything must be aspirational. Zero constraints.' : guidanceState.dialoguePhase === 'CONSTRAINTS' ? 'CONSTRAINTS PHASE: Map real limitations. Be thorough and specific.' : 'DEFINE APPROACH PHASE: Solutions must be actionable and account for known constraints.'}
 ${guidanceState.surfacedPadPrompts.length > 0
@@ -428,6 +442,85 @@ async function executeOrchestratorTool(
         return JSON.stringify({ assessed: false, reason: 'Journey Agent returned no assessment.' });
       } catch (error) {
         return JSON.stringify({ error: error instanceof Error ? error.message : 'Journey assessment failed' });
+      }
+    }
+
+    // ── CONSULT JOURNEY ENRICHMENT AGENT ───────────────────
+    case 'consult_journey_enrichment_agent': {
+      const liveJourney = buildJourneyFromCogState(cogState);
+
+      // Gate: need enough data to enrich meaningfully
+      if (liveJourney.interactions.length < MIN_ENRICHMENT_INTERACTIONS) {
+        return JSON.stringify({ skipped: true, reason: `Only ${liveJourney.interactions.length} interactions (need ≥${MIN_ENRICHMENT_INTERACTIONS}).` });
+      }
+      if (cogState.beliefs.size < MIN_ENRICHMENT_BELIEFS) {
+        return JSON.stringify({ skipped: true, reason: `Only ${cogState.beliefs.size} beliefs (need ≥${MIN_ENRICHMENT_BELIEFS}).` });
+      }
+
+      // Throttle: max once per 3 minutes
+      const lastEnrichmentMs = (guidanceState as any)._lastEnrichmentAtMs || 0;
+      if (Date.now() - lastEnrichmentMs < MIN_ENRICHMENT_INTERVAL_MS) {
+        return JSON.stringify({ skipped: true, reason: 'Enriched recently. Will enrich again later.' });
+      }
+
+      await onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'orchestrator',
+        to: 'journey-enrichment-agent',
+        message: `Enrich ${liveJourney.interactions.length} interactions with AI agency, intensity, and risk data.`,
+        type: 'handoff',
+      });
+
+      try {
+        const enrichment = await runJourneyEnrichmentAgent(guidanceState, liveJourney, cogState, onConversation);
+
+        if (enrichment) {
+          // Apply enrichments to journey interactions
+          const enrichmentMap = new Map(enrichment.enrichments.map(e => [e.interactionId, e]));
+
+          for (const ix of liveJourney.interactions) {
+            const e = enrichmentMap.get(ix.id);
+            if (!e) continue;
+            ix.aiAgencyNow = e.aiAgencyNow as AiAgencyLevel;
+            ix.aiAgencyFuture = e.aiAgencyFuture as AiAgencyLevel;
+            ix.businessIntensity = e.businessIntensity;
+            ix.customerIntensity = e.customerIntensity;
+            // Store constraint flags from enrichment
+            if (e.governanceOverlays.length > 0 || e.riskExposure !== 'low') {
+              ix.constraintFlags = [
+                ...(ix.constraintFlags || []),
+                ...e.governanceOverlays.map((g, gi) => ({
+                  id: `enrich:${ix.id}:${gi}`,
+                  type: 'regulatory' as const,
+                  label: g,
+                  severity: (e.riskExposure === 'high' ? 'blocking' : e.riskExposure === 'medium' ? 'significant' : 'manageable') as 'blocking' | 'significant' | 'manageable',
+                  sourceNodeIds: [],
+                  addedBy: 'ai' as const,
+                })),
+              ];
+            }
+          }
+
+          // Track enrichment timestamp
+          (guidanceState as any)._lastEnrichmentAtMs = Date.now();
+
+          // Emit enriched journey data
+          await emitEvent('journey.completion', {
+            journeyCompletionState: guidanceState.journeyCompletionState,
+            liveJourney,
+          });
+
+          return JSON.stringify({
+            enriched: true,
+            interactionsEnriched: enrichment.enrichments.length,
+            automationReadiness: (enrichment.overallAutomationReadiness * 100).toFixed(0) + '%',
+            summary: enrichment.summary,
+          });
+        }
+
+        return JSON.stringify({ enriched: false, reason: 'Enrichment Agent returned no data.' });
+      } catch (error) {
+        return JSON.stringify({ error: error instanceof Error ? error.message : 'Enrichment failed' });
       }
     }
 

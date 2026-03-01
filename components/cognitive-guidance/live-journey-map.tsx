@@ -22,10 +22,10 @@ const SENTIMENT_COLORS: Record<string, { bg: string; border: string; text: strin
   critical:  { bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     dot: 'bg-red-400' },
 };
 
-const AI_AGENCY_ICONS: Record<AiAgencyLevel, { icon: string; label: string }> = {
-  human:      { icon: '👤', label: 'Human' },
-  assisted:   { icon: '🤝', label: 'Assisted' },
-  autonomous: { icon: '🤖', label: 'Autonomous' },
+const AI_AGENCY_ICONS: Record<AiAgencyLevel, { icon: string; label: string; badgeColor: string }> = {
+  human:      { icon: '👤', label: 'Human', badgeColor: 'bg-slate-200 text-slate-600' },
+  assisted:   { icon: '🤝', label: 'Assisted', badgeColor: 'bg-blue-100 text-blue-700' },
+  autonomous: { icon: '🤖', label: 'Autonomous', badgeColor: 'bg-emerald-100 text-emerald-700' },
 };
 
 const INTENSITY_LEVELS = [0.25, 0.5, 0.75, 1.0];
@@ -291,6 +291,15 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                   </span>
                 ))}
               </div>
+              <div className="h-3 w-px bg-border" />
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 border border-emerald-600/30" />
+                <span className="text-[10px] text-muted-foreground">Enriched</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px]">🛡️</span>
+                <span className="text-[10px] text-muted-foreground">Governance</span>
+              </div>
             </div>
             {!isOutput && (
               <Button
@@ -524,9 +533,24 @@ function InteractionCard({
 }) {
   const style = getSentimentStyle(interaction.sentiment);
 
+  // Emotional weight heatmap: combined intensity drives border colour
+  const combinedIntensity = (interaction.businessIntensity + interaction.customerIntensity) / 2;
+  const intensityStyle = combinedIntensity > 0.7
+    ? 'ring-1 ring-red-300/40'
+    : combinedIntensity > 0.5
+      ? 'ring-1 ring-amber-300/30'
+      : '';
+
+  // Governance overlay: has regulatory constraint flags
+  const hasGovernance = interaction.constraintFlags?.some(f => f.type === 'regulatory');
+
+  // AI boundary badge: show when enriched (not default 'human'→'human')
+  const isEnriched = interaction.aiAgencyNow !== 'human' || interaction.aiAgencyFuture !== 'human'
+    || interaction.businessIntensity !== 0.5 || interaction.customerIntensity !== 0.5;
+
   return (
     <div
-      className={`group relative p-2 rounded-lg border ${style.bg} ${style.border} ${readOnly ? '' : 'cursor-pointer hover:shadow-md'} transition-all animate-in fade-in duration-300`}
+      className={`group relative p-2 rounded-lg border ${style.bg} ${style.border} ${intensityStyle} ${isEnriched ? 'animate-enrichment-pulse' : ''} ${readOnly ? '' : 'cursor-pointer hover:shadow-md'} transition-all animate-in fade-in duration-300`}
       onClick={readOnly ? undefined : onEdit}
     >
       {/* Pain point / moment of truth markers */}
@@ -535,6 +559,19 @@ function InteractionCard({
       )}
       {interaction.isMomentOfTruth && (
         <span className="absolute -top-1.5 -right-1.5 text-[10px]" title="Moment of Truth">⭐</span>
+      )}
+
+      {/* Governance shield icon */}
+      {hasGovernance && (
+        <span className="absolute -bottom-1 -right-1 text-[10px]" title="Governance/Regulatory Overlay">🛡️</span>
+      )}
+
+      {/* Enrichment indicator — small emerald dot when AI-enriched */}
+      {isEnriched && (
+        <span
+          className="absolute -top-0.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-emerald-400 border border-emerald-600/30"
+          title="AI-enriched interaction"
+        />
       )}
 
       {/* AI-added sparkle */}
@@ -600,23 +637,49 @@ function InteractionCard({
         />
       </div>
 
-      {/* AI agency */}
+      {/* AI agency — enhanced boundary badge when enriched */}
       <div className="mt-1 flex items-center gap-1 text-[9px] text-muted-foreground" onClick={e => e.stopPropagation()}>
-        <button
-          className="hover:bg-black/5 rounded px-0.5 transition-colors"
-          onClick={() => onToggleAiAgency('aiAgencyNow')}
-          title={`Day 1: ${AI_AGENCY_ICONS[interaction.aiAgencyNow].label} (click to cycle)`}
-        >
-          {AI_AGENCY_ICONS[interaction.aiAgencyNow].icon}
-        </button>
-        <span className="opacity-40">→</span>
-        <button
-          className="hover:bg-black/5 rounded px-0.5 transition-colors"
-          onClick={() => onToggleAiAgency('aiAgencyFuture')}
-          title={`Future: ${AI_AGENCY_ICONS[interaction.aiAgencyFuture].label} (click to cycle)`}
-        >
-          {AI_AGENCY_ICONS[interaction.aiAgencyFuture].icon}
-        </button>
+        {isEnriched ? (
+          /* Enhanced AI boundary badge — clear labelled pills */
+          <>
+            <button
+              className={`inline-flex items-center gap-0.5 px-1 py-0 rounded-full text-[8px] font-medium ${AI_AGENCY_ICONS[interaction.aiAgencyNow].badgeColor} transition-colors hover:opacity-80`}
+              onClick={() => onToggleAiAgency('aiAgencyNow')}
+              title={`Day 1: ${AI_AGENCY_ICONS[interaction.aiAgencyNow].label} (click to cycle)`}
+            >
+              {AI_AGENCY_ICONS[interaction.aiAgencyNow].icon}
+              <span className="hidden sm:inline">{AI_AGENCY_ICONS[interaction.aiAgencyNow].label}</span>
+            </button>
+            <span className="text-[8px] font-bold text-muted-foreground/50">→</span>
+            <button
+              className={`inline-flex items-center gap-0.5 px-1 py-0 rounded-full text-[8px] font-medium ${AI_AGENCY_ICONS[interaction.aiAgencyFuture].badgeColor} transition-colors hover:opacity-80`}
+              onClick={() => onToggleAiAgency('aiAgencyFuture')}
+              title={`Future: ${AI_AGENCY_ICONS[interaction.aiAgencyFuture].label} (click to cycle)`}
+            >
+              {AI_AGENCY_ICONS[interaction.aiAgencyFuture].icon}
+              <span className="hidden sm:inline">{AI_AGENCY_ICONS[interaction.aiAgencyFuture].label}</span>
+            </button>
+          </>
+        ) : (
+          /* Default compact emoji-only display */
+          <>
+            <button
+              className="hover:bg-black/5 rounded px-0.5 transition-colors"
+              onClick={() => onToggleAiAgency('aiAgencyNow')}
+              title={`Day 1: ${AI_AGENCY_ICONS[interaction.aiAgencyNow].label} (click to cycle)`}
+            >
+              {AI_AGENCY_ICONS[interaction.aiAgencyNow].icon}
+            </button>
+            <span className="opacity-40">→</span>
+            <button
+              className="hover:bg-black/5 rounded px-0.5 transition-colors"
+              onClick={() => onToggleAiAgency('aiAgencyFuture')}
+              title={`Future: ${AI_AGENCY_ICONS[interaction.aiAgencyFuture].label} (click to cycle)`}
+            >
+              {AI_AGENCY_ICONS[interaction.aiAgencyFuture].icon}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
