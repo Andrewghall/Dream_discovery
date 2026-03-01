@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, Zap, Layers, Target } from 'lucide-react';
+import { ArrowRight, Zap, Layers, Target, BarChart3, Users, ShieldCheck } from 'lucide-react';
 import { HeroSection } from '@/components/dream-landing/hero-section';
 import { ScrollReveal } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
@@ -14,14 +14,14 @@ const AssessmentSection = dynamic(
 );
 
 export const metadata: Metadata = {
-  title: 'Ethenta DREAM — Agentic Decision Intelligence Platform',
+  title: 'Ethenta DREAM \u2014 AI-Guided Decision Intelligence Platform',
   description:
-    'The world\u2019s first agentic decision intelligence platform. DREAM uses agentic AI and specialist small language models to cut through the noise, capture how your people actually think, and turn collective thinking into defensible decisions.',
+    'Stop guessing. DREAM captures how your organisation really thinks and turns collective insight into measurable strategic direction \u2014 with AI that augments human judgment, not replaces it.',
   alternates: { canonical: '/dream' },
   openGraph: {
-    title: 'Ethenta DREAM — Agentic Decision Intelligence Platform',
+    title: 'Ethenta DREAM \u2014 AI-Guided Decision Intelligence Platform',
     description:
-      'Turn collective thinking into decision intelligence. Agentic AI and specialist SLMs that capture what people really think.',
+      'Built for leadership teams who must align strategy and produce decisions they can defend. AI-guided decision intelligence.',
     url: '/dream',
   },
 };
@@ -31,25 +31,43 @@ const PERSONAS = [
     title: 'Enterprise AI Adoption',
     href: '/dream/use-cases/enterprise-ai-adoption',
     description:
-      'Your people know more than any strategy deck. DREAM captures every voice and surfaces the tensions, misaligned priorities, and hidden constraints that derail AI adoption and transformation.',
+      'Every enterprise wants AI. Few know where to start. DREAM surfaces tensions, misaligned priorities, and hidden constraints \u2014 then builds a transformation roadmap grounded in what people actually think.',
   },
   {
     title: 'Strategy & Innovation',
     href: '/dream/use-cases',
     description:
-      'The organisational truth that PowerPoint decks and steering committees hide. Give teams the space to think, reimagine, and align.',
+      'The organisational truth that PowerPoint decks hide. Capture every voice, score the trade-offs, and align teams around priorities you can measure.',
   },
   {
     title: 'Consultancies & Advisory',
     href: '/dream/industries/professional-services',
     description:
-      'Deeper client insight in less time. Agentic AI handles the analysis so your consultants can focus on what matters.',
+      '10\u00D7 deeper client insight in a fraction of the time. AI-guided analysis so your consultants focus on strategy, not data gathering.',
   },
   {
     title: 'Regulated Industries',
     href: '/dream/industries/financial-services',
     description:
-      'Map constraints as first-class citizens. Balance innovation with governance. Deterministic scoring you can defend.',
+      'Map constraints as first-class citizens. Balance innovation with governance. Data-backed scoring you can defend to any regulator.',
+  },
+];
+
+const VALUE_PROPS = [
+  {
+    icon: Zap,
+    title: '10\u00D7 Faster Insight',
+    description: 'Capture what 50 people really think in a fraction of the time surveys take.',
+  },
+  {
+    icon: Users,
+    title: 'Cross-Functional Alignment',
+    description: 'Surface the tensions and misaligned priorities that derail programmes.',
+  },
+  {
+    icon: BarChart3,
+    title: 'Measurable Trade-Offs',
+    description: 'Produce decisions with scored priorities, not opinion-based PowerPoint.',
   },
 ];
 
@@ -62,13 +80,37 @@ export default function DreamLandingPage() {
       {/* ═══ 2. CAPABILITY MATURITY ASSESSMENT ═══ */}
       <AssessmentSection />
 
-      {/* ═══ 3. WHAT MAKES DREAM DIFFERENT — collapsible cards ═══ */}
+      {/* ═══ 3. VALUE GRID ═══ */}
+      <section className="bg-white py-16">
+        <div className="max-w-5xl mx-auto px-6">
+          <ScrollReveal>
+            <p className="text-[#50c878] text-sm font-semibold tracking-[0.15em] uppercase mb-3 text-center">
+              What You Get
+            </p>
+          </ScrollReveal>
+          <div className="grid sm:grid-cols-3 gap-6 mt-8">
+            {VALUE_PROPS.map(({ icon: Icon, title, description }, i) => (
+              <ScrollReveal key={title} delay={100 + i * 80}>
+                <div className="text-center p-6">
+                  <div className="w-12 h-12 rounded-2xl bg-[#5cf28e]/10 flex items-center justify-center mx-auto mb-4">
+                    <Icon className="h-6 w-6 text-[#5cf28e]" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 mb-2">{title}</h3>
+                  <p className="text-sm text-slate-600 leading-relaxed">{description}</p>
+                </div>
+              </ScrollReveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ 4. WHAT MAKES DREAM DIFFERENT — collapsible cards ═══ */}
       <DifferentiatorsSection />
 
-      {/* ═══ 4. ACTOR JOURNEY SHOWCASE ═══ */}
+      {/* ═══ 5. ACTOR JOURNEY SHOWCASE ═══ */}
       <JourneyShowcase />
 
-      {/* ═══ 5. ENTERPRISE AI ADOPTION SPOTLIGHT ═══ */}
+      {/* ═══ 6. ENTERPRISE AI ADOPTION SPOTLIGHT ═══ */}
       <section className="bg-gradient-to-b from-slate-50 to-white py-20">
         <div className="max-w-5xl mx-auto px-6">
           <ScrollReveal>
@@ -115,7 +157,7 @@ export default function DreamLandingPage() {
         </div>
       </section>
 
-      {/* ═══ 6. WHO IT'S FOR ═══ */}
+      {/* ═══ 7. WHO IT'S FOR ═══ */}
       <section className="bg-white py-20">
         <div className="max-w-5xl mx-auto px-6">
           <ScrollReveal>
@@ -146,10 +188,10 @@ export default function DreamLandingPage() {
         </div>
       </section>
 
-      {/* ═══ 7. CTA ═══ */}
+      {/* ═══ 8. CTA ═══ */}
       <CTASection
-        headline="Ready to cut through the noise?"
-        subheadline="See how DREAM turns collective thinking into decision intelligence."
+        headline="Your organisation already has the answers."
+        subheadline="DREAM reveals them and turns them into a plan you can act on."
       />
     </>
   );
