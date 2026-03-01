@@ -21,7 +21,7 @@ export function HeroSection() {
         {/* Eyebrow */}
         <ScrollReveal delay={100}>
           <p className="text-[#5cf28e] text-sm font-semibold tracking-[0.2em] uppercase mb-8">
-            Decision Intelligence Platform
+            The World&apos;s First Agentic Decision Intelligence Platform
           </p>
         </ScrollReveal>
 
@@ -52,10 +52,10 @@ export function HeroSection() {
         {/* Elevator pitch */}
         <ScrollReveal delay={500}>
           <p className="text-lg md:text-xl text-white/60 max-w-3xl mx-auto leading-relaxed mb-10">
-            DREAM captures how your organisation actually thinks, reveals what truly matters
-            across people, customers, operations and risk, and converts live collaboration
-            into clear, aligned and defensible decisions &mdash; powered by
-            EthentaFlow&trade;.
+            Every organisation wants to harness AI. Few know where to start. DREAM uses
+            agentic AI and specialist small language models to cut through the noise, capture
+            how your people actually think, and give your teams the space to reimagine
+            their future.
           </p>
         </ScrollReveal>
 
