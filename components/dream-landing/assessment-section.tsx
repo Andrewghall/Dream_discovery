@@ -41,6 +41,7 @@ interface MaturityQuestion {
 interface Domain {
   key: string;
   name: string;
+  description: string;
   icon: typeof Users;
   colour: string;
   colourHex: string;
@@ -52,6 +53,7 @@ const DOMAINS: Domain[] = [
   {
     key: 'people',
     name: 'People',
+    description: 'Talent development, leadership alignment, and cultural readiness for change.',
     icon: Users,
     colour: 'bg-blue-500',
     colourHex: '#3b82f6',
@@ -104,6 +106,7 @@ const DOMAINS: Domain[] = [
   {
     key: 'organisation',
     name: 'Organisation',
+    description: 'Governance, cross-functional collaboration, partner ecosystem alignment, and operating model adaptability.',
     icon: Building2,
     colour: 'bg-green-500',
     colourHex: '#22c55e',
@@ -156,6 +159,7 @@ const DOMAINS: Domain[] = [
   {
     key: 'customer',
     name: 'Customer',
+    description: 'Customer insight, experience coherence across touchpoints, and voice of the customer in decisions.',
     icon: Heart,
     colour: 'bg-purple-500',
     colourHex: '#a855f7',
@@ -208,6 +212,7 @@ const DOMAINS: Domain[] = [
   {
     key: 'technology',
     name: 'Technology',
+    description: 'Architecture maturity, data as a strategic asset, and AI & automation readiness.',
     icon: Cpu,
     colour: 'bg-orange-500',
     colourHex: '#f97316',
@@ -260,6 +265,7 @@ const DOMAINS: Domain[] = [
   {
     key: 'regulation',
     name: 'Regulation',
+    description: 'Compliance as an enabler, regulatory change readiness, and risk appetite governance.',
     icon: Scale,
     colour: 'bg-red-500',
     colourHex: '#ef4444',
@@ -702,7 +708,7 @@ export function AssessmentSection() {
 
             {/* Domain card */}
             <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3 mb-1">
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: `${domain.colourHex}20` }}
@@ -716,6 +722,7 @@ export function AssessmentSection() {
                   </p>
                 </div>
               </div>
+              <p className="text-xs text-slate-500 mb-4 ml-[52px]">{domain.description}</p>
 
               {/* Question completion indicators */}
               <div className="flex items-center gap-2 mb-6">
