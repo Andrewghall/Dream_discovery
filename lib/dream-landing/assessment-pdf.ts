@@ -5,7 +5,7 @@
  * All styles are inline; SVG radar chart is embedded.
  */
 
-import { renderRadarSvgString } from '@/components/dream-landing/radar-chart';
+import { renderRadarSvgString } from '@/lib/dream-landing/radar-svg';
 
 /* ────────────────────────────────────────────────────────────
    Types
