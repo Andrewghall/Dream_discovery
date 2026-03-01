@@ -7,6 +7,14 @@ import { CTASection } from '@/components/dream-landing/cta-section';
 
 export const metadata: Metadata = {
   title: 'Industries — DREAM Across Every Sector',
+  description:
+    'DREAM delivers decision intelligence for financial services, healthcare, government, retail, technology, and professional services. See how structured workshops transform any industry.',
+  alternates: { canonical: '/dream/industries' },
+  openGraph: {
+    title: 'Industries — DREAM Across Every Sector',
+    description: 'See how DREAM transforms workshops into decision intelligence across every industry.',
+    url: '/dream/industries',
+  },
 };
 
 const INDUSTRY_CARDS = [

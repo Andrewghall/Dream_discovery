@@ -4,6 +4,14 @@ import { IndustryPageTemplate } from '@/components/dream-landing/industry-page-t
 
 export const metadata: Metadata = {
   title: 'Financial Services — Decision Intelligence with DREAM',
+  description:
+    'Navigate regulatory complexity, digital transformation, and customer expectations in financial services. DREAM surfaces tensions between innovation appetite and compliance culture.',
+  alternates: { canonical: '/dream/industries/financial-services' },
+  openGraph: {
+    title: 'Financial Services — Decision Intelligence with DREAM',
+    description: 'Structured workshop intelligence for financial services transformation.',
+    url: '/dream/industries/financial-services',
+  },
 };
 
 export default function FinancialServicesPage() {

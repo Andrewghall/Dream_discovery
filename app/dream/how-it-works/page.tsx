@@ -3,9 +3,18 @@ import { MessageSquare, Users, BarChart3, Clock, UserCheck, FileText } from 'luc
 import { PageHero } from '@/components/dream-landing/page-hero';
 import { ScrollReveal, AnimatedCounter } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
+import { BreadcrumbJsonLd, FaqJsonLd } from '@/lib/dream-landing/seo';
 
 export const metadata: Metadata = {
   title: 'How It Works — From Conversation to Action',
+  description:
+    'Three stages: AI Discovery before the workshop, live cognitive guidance during, and a full analytical intelligence dashboard after. Here is the complete DREAM journey.',
+  alternates: { canonical: '/dream/how-it-works' },
+  openGraph: {
+    title: 'How DREAM Works — From Conversation to Action',
+    description: 'The complete DREAM journey: AI Discovery, live workshop guidance, and post-workshop intelligence.',
+    url: '/dream/how-it-works',
+  },
 };
 
 const STAGES = [
@@ -84,6 +93,21 @@ const WORKSHOP_STATS = [
 export default function HowItWorksPage() {
   return (
     <>
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'DREAM', href: '/dream' },
+          { name: 'How It Works', href: '/dream/how-it-works' },
+        ]}
+      />
+      <FaqJsonLd
+        faqs={[
+          { question: 'How long does a DREAM workshop take?', answer: 'The live workshop runs for 4–8 hours. Before the workshop, each participant completes a 15-minute AI Discovery conversation over 1–2 weeks. Results are available immediately after.' },
+          { question: 'How many participants can a DREAM workshop support?', answer: 'Typically 8–25 participants each have a 15-minute AI-guided Discovery conversation. The live workshop works best with 10–20 people in the room.' },
+          { question: 'What technology do participants need?', answer: 'No special software required. Everything is browser-based. Participants receive a link and complete their Discovery conversation on any device.' },
+          { question: 'How quickly are results available?', answer: 'The full analytical dashboard with 7 views is available immediately after the workshop ends. No waiting for consultants to compile reports.' },
+          { question: 'Does DREAM replace the facilitator?', answer: 'No. DREAM augments the facilitator with AI-powered cognitive guidance, real-time analysis, and structured insight. Humans lead the room; the AI handles the analysis.' },
+        ]}
+      />
       <PageHero
         eyebrow="The Journey"
         headline="From Conversation to"
@@ -127,7 +151,7 @@ export default function HowItWorksPage() {
                 </div>
                 <ScrollReveal delay={200}>
                   <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 border border-slate-200">
-                    <h4 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wider">Capabilities</h4>
+                    <h3 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wider">Capabilities</h3>
                     <ul className="space-y-3">
                       {stage.capabilities.map((cap) => (
                         <li key={cap} className="flex items-start gap-2 text-sm text-slate-600">
@@ -148,9 +172,9 @@ export default function HowItWorksPage() {
       <section className="bg-gradient-to-r from-[#0d0d0d] via-[#1a1a2e] to-[#0d0d0d] py-16">
         <div className="max-w-4xl mx-auto px-6">
           <ScrollReveal>
-            <h3 className="text-xl font-bold text-white text-center mb-8">
+            <h2 className="text-xl font-bold text-white text-center mb-8">
               Typical Workshop Parameters
-            </h3>
+            </h2>
           </ScrollReveal>
           <ScrollReveal delay={100}>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">

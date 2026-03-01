@@ -1,9 +1,28 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Brain, Sparkles, BarChart3, MessageSquare, Users, ArrowRight, Zap, Layers, Target } from 'lucide-react';
 import { HeroSection } from '@/components/dream-landing/hero-section';
 import { ScrollReveal } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
-import { AssessmentSection } from '@/components/dream-landing/assessment-section';
+import dynamic from 'next/dynamic';
+
+const AssessmentSection = dynamic(
+  () => import('@/components/dream-landing/assessment-section').then((m) => m.AssessmentSection),
+  { ssr: true },
+);
+
+export const metadata: Metadata = {
+  title: 'Ethenta DREAM — Workshop Intelligence Platform',
+  description:
+    'Turn every workshop into decision intelligence. DREAM captures what people really think, surfaces organisational truth, and delivers measurable strategic insight — powered by EthentaFlow™.',
+  alternates: { canonical: '/dream' },
+  openGraph: {
+    title: 'Ethenta DREAM — Workshop Intelligence Platform',
+    description:
+      'Turn every workshop into decision intelligence with EthentaFlow™ — the AI engine that captures what people really think.',
+    url: '/dream',
+  },
+};
 
 const METHODOLOGY_LETTERS = [
   { letter: 'D', name: 'Discover', gradient: 'from-blue-500 to-cyan-500' },

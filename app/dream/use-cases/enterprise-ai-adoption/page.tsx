@@ -19,9 +19,18 @@ import {
 import { PageHero } from '@/components/dream-landing/page-hero';
 import { ScrollReveal, AnimatedCounter } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
+import { BreadcrumbJsonLd } from '@/lib/dream-landing/seo';
 
 export const metadata: Metadata = {
   title: 'Enterprise AI Adoption — Cut Through the Noise with DREAM',
+  description:
+    'Every enterprise wants to adopt AI. Few know how. DREAM cuts through conflicting priorities, siloed thinking, and misaligned maturity perceptions to build an actionable AI transformation roadmap.',
+  alternates: { canonical: '/dream/use-cases/enterprise-ai-adoption' },
+  openGraph: {
+    title: 'Enterprise AI Adoption — Cut Through the Noise with DREAM',
+    description: 'How DREAM helps enterprises build aligned AI transformation roadmaps.',
+    url: '/dream/use-cases/enterprise-ai-adoption',
+  },
 };
 
 const NOISE_CARDS = [
@@ -119,6 +128,13 @@ const EXAMPLE_INSIGHTS = [
 export default function EnterpriseAIAdoptionPage() {
   return (
     <>
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'DREAM', href: '/dream' },
+          { name: 'Use Cases', href: '/dream/use-cases' },
+          { name: 'Enterprise AI Adoption', href: '/dream/use-cases/enterprise-ai-adoption' },
+        ]}
+      />
       <PageHero
         eyebrow="Use Case"
         headline="Enterprise AI"
@@ -195,7 +211,7 @@ export default function EnterpriseAIAdoptionPage() {
                       <Icon className="h-5 w-5" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900 mb-1">{domain.domain}</h4>
+                      <h3 className="text-sm font-bold text-slate-900 mb-1">{domain.domain}</h3>
                       <p className="text-sm text-slate-600 leading-relaxed italic">&ldquo;{domain.question}&rdquo;</p>
                     </div>
                   </div>

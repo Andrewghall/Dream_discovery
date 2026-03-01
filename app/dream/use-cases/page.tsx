@@ -7,6 +7,14 @@ import { CTASection } from '@/components/dream-landing/cta-section';
 
 export const metadata: Metadata = {
   title: 'Use Cases — DREAM in Action',
+  description:
+    'See how organisations use DREAM to drive enterprise AI adoption, digital transformation, and customer experience redesign with clarity and alignment.',
+  alternates: { canonical: '/dream/use-cases' },
+  openGraph: {
+    title: 'Use Cases — DREAM in Action',
+    description: 'Real-world applications of DREAM for enterprise transformation.',
+    url: '/dream/use-cases',
+  },
 };
 
 const USE_CASES = [

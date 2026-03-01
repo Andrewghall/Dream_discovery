@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 export function DreamFooter() {
   return (
-    <footer className="bg-slate-950 text-slate-400 py-16 px-6 pb-28">
+    <footer aria-label="Site footer" className="bg-slate-950 text-slate-400 py-16 px-6 pb-28">
       <div className="max-w-7xl mx-auto grid md:grid-cols-3 gap-12">
         {/* Brand */}
         <div>

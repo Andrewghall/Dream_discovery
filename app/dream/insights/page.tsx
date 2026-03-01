@@ -5,6 +5,14 @@ import { CTASection } from '@/components/dream-landing/cta-section';
 
 export const metadata: Metadata = {
   title: 'Analytical Intelligence — 7 Views That Reveal the Truth',
+  description:
+    'Seven analytical views including the 360° Hemisphere, Sentiment Index, Bias Detection, and Multi-Lens Analysis. See what traditional workshops miss.',
+  alternates: { canonical: '/dream/insights' },
+  openGraph: {
+    title: 'Analytical Intelligence — 7 Views That Reveal the Truth',
+    description: 'Seven analytical views that reveal the true state of your organisation.',
+    url: '/dream/insights',
+  },
 };
 
 const PRIMARY_VIEWS = [

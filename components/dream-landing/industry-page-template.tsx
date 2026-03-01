@@ -1,5 +1,3 @@
-'use client';
-
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import type { IndustryData } from '@/lib/dream-landing/industry-data';
@@ -100,7 +98,7 @@ export function IndustryPageTemplate({ industry }: IndustryPageTemplateProps) {
         <section className="bg-white py-16">
           <div className="max-w-5xl mx-auto px-6">
             <ScrollReveal>
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Related Use Cases</h3>
+              <h2 className="text-lg font-bold text-slate-900 mb-4">Related Use Cases</h2>
               <div className="flex flex-wrap gap-3">
                 {industry.relatedUseCases.map((uc) => (
                   <Link

@@ -6,6 +6,14 @@ import { CTASection } from '@/components/dream-landing/cta-section';
 
 export const metadata: Metadata = {
   title: 'EthentaFlow — The Technology Behind DREAM',
+  description:
+    'EthentaFlow™ is the AI capture-and-synthesise engine powering DREAM. Deterministic analytics, real-time synthesis, and 7 analytical views transform workshop conversations into board-ready intelligence.',
+  alternates: { canonical: '/dream/technology' },
+  openGraph: {
+    title: 'EthentaFlow™ — The Technology Behind DREAM',
+    description: 'Deterministic AI intelligence that captures, synthesises, and delivers organisational insight.',
+    url: '/dream/technology',
+  },
 };
 
 const CAPABILITIES = [

@@ -5,6 +5,14 @@ import { CTASection } from '@/components/dream-landing/cta-section';
 
 export const metadata: Metadata = {
   title: 'The DREAM Methodology — Five Phases of Transformation',
+  description:
+    'Discover, Reimagine, Educate, Apply, Mobilise — the five-phase methodology that turns organisational noise into structured strategic clarity.',
+  alternates: { canonical: '/dream/methodology' },
+  openGraph: {
+    title: 'The DREAM Methodology — Five Phases of Transformation',
+    description: 'Five structured phases that turn organisational noise into strategic clarity.',
+    url: '/dream/methodology',
+  },
 };
 
 const PHASES = [
@@ -146,7 +154,7 @@ export default function MethodologyPage() {
               </div>
               <ScrollReveal delay={200}>
                 <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 border border-slate-200">
-                  <h4 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wider">Key Capabilities</h4>
+                  <h3 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wider">Key Capabilities</h3>
                   <ul className="space-y-3">
                     {phase.bullets.map((bullet) => (
                       <li key={bullet} className="flex items-start gap-2 text-sm text-slate-600">
