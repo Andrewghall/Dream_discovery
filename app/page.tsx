@@ -5,7 +5,7 @@ export default async function Home() {
   const session = await getSession();
 
   if (!session) {
-    redirect("/login");
+    redirect("/dream");
   }
 
   // Route to the right dashboard based on role

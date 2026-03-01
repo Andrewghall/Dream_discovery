@@ -154,6 +154,39 @@
   animation: enrichment-pulse 2s ease-in-out 3;
 }
 
+/* ── DREAM landing page scroll-reveal animations ── */
+.reveal-up {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal-left {
+  opacity: 0;
+  transform: translateX(-40px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal-right {
+  opacity: 0;
+  transform: translateX(40px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal-visible {
+  opacity: 1;
+  transform: translate(0, 0);
+}
+
+@keyframes banner-glow {
+  0%, 100% { filter: drop-shadow(0 0 40px rgba(45, 212, 191, 0.15)); }
+  50% { filter: drop-shadow(0 0 60px rgba(45, 212, 191, 0.25)); }
+}
+.dream-banner-glow {
+  animation: banner-glow 4s ease-in-out infinite;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
