@@ -145,6 +145,15 @@
   }
 }
 
+/* Subtle enrichment pulse for live journey map */
+@keyframes enrichment-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.animate-enrichment-pulse {
+  animation: enrichment-pulse 2s ease-in-out 3;
+}
+
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }

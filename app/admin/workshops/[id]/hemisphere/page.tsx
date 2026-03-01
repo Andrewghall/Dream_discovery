@@ -10,6 +10,13 @@ import {
   AgentOrchestrationPanel,
   type AgentConversationEntry,
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
+import { HemisphereDiagnosticPanel } from '@/components/hemisphere/hemisphere-diagnostic';
+import type { HemisphereDiagnostic, DiagnosticDelta } from '@/lib/types/hemisphere-diagnostic';
+import {
+  DEMO_DIAGNOSTIC_BEFORE,
+  DEMO_DIAGNOSTIC_AFTER,
+  DEMO_DIAGNOSTIC_DELTA,
+} from '@/lib/hemisphere-diagnostic/demo-diagnostic';
 
 /* ─────────────────────────── Types ─────────────────────────── */
 
@@ -775,7 +782,13 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
   // Domain tabs — dynamic from research dimensions
   const [activeDomain, setActiveDomain] = useState<string>('all');
-  const [rightTab, setRightTab] = useState<'synthesis' | 'actors'>('synthesis');
+  const [rightTab, setRightTab] = useState<'synthesis' | 'actors' | 'diagnostic'>('synthesis');
+
+  // Diagnostic state
+  const [diagnosticBefore, setDiagnosticBefore] = useState<HemisphereDiagnostic | null>(null);
+  const [diagnosticAfter, setDiagnosticAfter] = useState<HemisphereDiagnostic | null>(null);
+  const [diagnosticDelta, setDiagnosticDelta] = useState<DiagnosticDelta | null>(null);
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
 
   // Canvas & interaction
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -887,6 +900,46 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       transitionRef.current = { startMs: performance.now(), from: new Map(prevPositionsRef.current) };
     }
   }, [runType]);
+
+  // Fetch diagnostic data when diagnostic tab is selected
+  const isRetailDemo = workshopId === 'retail-cx-workshop';
+  useEffect(() => {
+    if (rightTab !== 'diagnostic') return;
+    if (diagnosticLoading) return;
+    // Already loaded (including demo data)
+    if (diagnosticBefore || diagnosticAfter) return;
+
+    // Use instant demo data for the retail workshop
+    if (isRetailDemo) {
+      setDiagnosticBefore(DEMO_DIAGNOSTIC_BEFORE);
+      setDiagnosticAfter(DEMO_DIAGNOSTIC_AFTER);
+      setDiagnosticDelta(DEMO_DIAGNOSTIC_DELTA);
+      return;
+    }
+
+    const fetchDiagnostic = async () => {
+      try {
+        setDiagnosticLoading(true);
+        let url = `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere/diagnostic`;
+        if (selectedSnapshotId) {
+          url += `?snapshotId=${encodeURIComponent(selectedSnapshotId)}`;
+        }
+        const r = await fetch(url, { cache: 'no-store' });
+        const json = await r.json().catch(() => null);
+        if (json?.ok) {
+          setDiagnosticBefore(json.before || null);
+          setDiagnosticAfter(json.after || null);
+          setDiagnosticDelta(json.delta || null);
+        }
+      } catch (e) {
+        console.warn('[Diagnostic] Fetch failed:', e);
+      } finally {
+        setDiagnosticLoading(false);
+      }
+    };
+    void fetchDiagnostic();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rightTab, workshopId, selectedSnapshotId, isRetailDemo]);
 
   // Check if scratchpad exists
   useEffect(() => {
@@ -1828,7 +1881,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
             ))}
           </div>
 
-          {/* Synthesis / Actors toggle */}
+          {/* Synthesis / Actors / Diagnostic toggle */}
           <div className="flex border-b border-white/10">
             <button
               onClick={() => setRightTab('synthesis')}
@@ -1836,7 +1889,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                 rightTab === 'synthesis' ? 'text-white border-b-2 border-blue-500' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Domain Synthesis
+              Synthesis
             </button>
             <button
               onClick={() => setRightTab('actors')}
@@ -1844,7 +1897,15 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                 rightTab === 'actors' ? 'text-white border-b-2 border-purple-500' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Actor Journey
+              Actors
+            </button>
+            <button
+              onClick={() => setRightTab('diagnostic')}
+              className={`flex-1 py-2 text-xs font-medium transition-all ${
+                rightTab === 'diagnostic' ? 'text-white border-b-2 border-emerald-500' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Diagnostic
             </button>
           </div>
 
@@ -1858,10 +1919,17 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                 allNodes={nodes}
                 domainTabs={domainTabs}
               />
-            ) : (
+            ) : rightTab === 'actors' ? (
               <ActorJourneyPanel
                 workshopId={workshopId}
                 snapshotId={selectedSnapshotId || undefined}
+              />
+            ) : (
+              <HemisphereDiagnosticPanel
+                before={diagnosticBefore}
+                after={diagnosticAfter}
+                delta={diagnosticDelta}
+                loading={diagnosticLoading}
               />
             )}
           </div>
