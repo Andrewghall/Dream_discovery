@@ -129,14 +129,14 @@ const DOMAINS: Domain[] = [
       },
       {
         id: 'o2',
-        dimension: 'Cross-Functional Collaboration',
-        question: 'How effectively do teams work across functional boundaries on shared goals?',
+        dimension: 'Cross-Boundary Collaboration',
+        question: 'How effectively do teams collaborate across functional boundaries and with external partners?',
         descriptors: [
-          'Teams operate in silos; collaboration depends on personal relationships rather than structure.',
-          'Cross-functional projects exist but coordination is manual and outcomes are inconsistent.',
-          'Cross-functional teams have clear mandates, shared objectives, and defined ways of working.',
-          'Collaboration is embedded in operating models; shared metrics drive joint accountability.',
-          'Functional boundaries are fluid; teams self-form around opportunities and dissolve when complete.',
+          'Teams operate in silos; collaboration depends on personal relationships. External partner relationships are transactional and siloed.',
+          'Cross-functional projects exist but coordination is manual. Partner engagement is ad hoc with no structured alignment.',
+          'Cross-functional teams have clear mandates and shared objectives. Key partnerships have structured collaboration and shared goals.',
+          'Collaboration is embedded in operating models with shared metrics. Strategic partners are integrated into planning and delivery cycles.',
+          'Functional boundaries are fluid; teams self-form around opportunities. The ecosystem is an extension of the organisation — partners co-create and co-innovate seamlessly.',
         ],
       },
       {
@@ -345,7 +345,7 @@ interface Recommendation {
 
 const DOMAIN_ADVICE: Record<string, string> = {
   People: 'building leadership alignment and developing the skills capability your organisation needs',
-  Organisation: 'strengthening governance agility and cross-functional collaboration to enable faster transformation',
+  Organisation: 'strengthening governance agility, cross-functional collaboration, and partner ecosystem alignment to enable faster transformation',
   Customer: 'deepening customer understanding and creating seamless, coherent experiences across touchpoints',
   Technology: 'modernising your technology landscape and building a data-driven decision-making culture',
   Regulation: 'reframing compliance as an enabler of innovation rather than a barrier to progress',
@@ -858,19 +858,16 @@ export function AssessmentSection() {
                             L{Math.round(result.score)} &middot; {result.levelName}
                           </span>
                         </div>
-                        {/* 5-segment progress bar */}
-                        <div className="flex gap-1">
-                          {[1, 2, 3, 4, 5].map((seg) => (
-                            <div
-                              key={seg}
-                              className="h-1.5 flex-1 rounded-full transition-all duration-700"
-                              style={{
-                                backgroundColor:
-                                  seg <= Math.round(result.score) ? result.colourHex : '#e2e8f0',
-                                opacity: seg <= Math.round(result.score) ? 0.7 : 1,
-                              }}
-                            />
-                          ))}
+                        {/* Continuous progress bar */}
+                        <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{
+                              width: `${(result.score / 5) * 100}%`,
+                              backgroundColor: result.colourHex,
+                              opacity: 0.7,
+                            }}
+                          />
                         </div>
                       </div>
                     </div>

@@ -42,7 +42,7 @@ const DOMAIN_COLOURS: Record<string, string> = {
 
 const DOMAIN_ADVICE: Record<string, string> = {
   People: 'building leadership alignment and developing the skills capability your organisation needs',
-  Organisation: 'strengthening governance agility and cross-functional collaboration to enable faster transformation',
+  Organisation: 'strengthening governance agility, cross-functional collaboration, and partner ecosystem alignment to enable faster transformation',
   Customer: 'deepening customer understanding and creating seamless, coherent experiences across touchpoints',
   Technology: 'modernising your technology landscape and building a data-driven decision-making culture',
   Regulation: 'reframing compliance as an enabler of innovation rather than a barrier to progress',
@@ -217,13 +217,15 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
     font-weight: 600;
   }
   .domain-dot { width: 8px; height: 8px; border-radius: 50%; }
-  .seg-bar {
-    display: flex;
-    gap: 3px;
-  }
-  .seg-bar .seg {
+  .bar-bg {
     height: 6px;
-    flex: 1;
+    background: #e2e8f0;
+    border-radius: 3px;
+    width: 100%;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
     border-radius: 3px;
   }
 
@@ -354,16 +356,13 @@ export function generateAssessmentPdfHtml(data: AssessmentPdfData): string {
 ${data.domains
   .map((d) => {
     const col = DOMAIN_COLOURS[d.domain] || '#6b7280';
-    const filledSegs = Math.round(d.score);
     return `      <tr>
         <td><div class="domain-name"><span class="domain-dot" style="background:${col}"></span> ${escHtml(d.domain)}</div></td>
         <td style="text-align:center; font-weight:600;">${d.score.toFixed(1)}</td>
         <td style="font-weight:600; color:${col};">L${Math.round(d.score)} &mdash; ${escHtml(d.levelName)}</td>
         <td>
-          <div class="seg-bar">
-            ${[1, 2, 3, 4, 5].map((s) =>
-              `<div class="seg" style="background:${s <= filledSegs ? col : '#e2e8f0'}; opacity:${s <= filledSegs ? '0.7' : '1'};"></div>`
-            ).join('')}
+          <div class="bar-bg">
+            <div class="bar-fill" style="width:${(d.score / 5) * 100}%; background:${col}; opacity:0.7;"></div>
           </div>
         </td>
       </tr>`;
