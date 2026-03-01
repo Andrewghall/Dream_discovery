@@ -3,6 +3,7 @@ import { Brain, Sparkles, BarChart3, MessageSquare, Users, ArrowRight, Zap, Laye
 import { HeroSection } from '@/components/dream-landing/hero-section';
 import { ScrollReveal } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
+import { AssessmentSection } from '@/components/dream-landing/assessment-section';
 
 const METHODOLOGY_LETTERS = [
   { letter: 'D', name: 'Discover', gradient: 'from-blue-500 to-cyan-500' },
@@ -210,6 +211,9 @@ export default function DreamLandingPage() {
           </ScrollReveal>
         </div>
       </section>
+
+      {/* ═══ CAPABILITY MATURITY ASSESSMENT ═══ */}
+      <AssessmentSection />
 
       {/* ═══ USE CASE SPOTLIGHT: ENTERPRISE AI ADOPTION ═══ */}
       <section className="bg-gradient-to-b from-slate-50 to-white py-20">

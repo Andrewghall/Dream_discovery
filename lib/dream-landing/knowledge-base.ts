@@ -207,5 +207,32 @@ DREAM doesn't ask "what do you want to do with AI?" — it surfaces what the org
 - Vision nodes concentrated 78% in Technology domain — treating AI as a tech problem, not a business transformation
 
 ### The Outcome
-Clarity (where we actually stand), Alignment (shared understanding across layers), and an Actionable Roadmap (constraint-aware, multi-lens scored transformation plan)`;
+Clarity (where we actually stand), Alignment (shared understanding across layers), and an Actionable Roadmap (constraint-aware, multi-lens scored transformation plan)
+
+## Capability Maturity Assessment
+The DREAM homepage features a free, interactive Capability Maturity Assessment. It's a 5-minute self-assessment that helps organisations understand their readiness for transformation.
+
+### How It Works
+- Visitors rate their organisation across 5 domains: People, Organisation, Customer, Technology, and Regulation
+- Each domain has 2 questions, rated on two scales: "Where are you today?" (1-10) and "Where do you need to be?" (1-10)
+- The assessment produces an instant radar/spider diagram showing current state vs target state
+- Gaps between current and target reveal transformation opportunities
+- Results are shown immediately — no email gate for the diagram
+
+### The PDF Report
+After seeing their results, visitors can enter their name and email to receive a detailed PDF report containing:
+- Their personalised radar chart
+- Domain-by-domain breakdown with scores and gaps
+- Gap ranking by priority
+- A personalised workshop recommendation (Foundation, Acceleration, or Optimisation focus)
+
+### Workshop Recommendations
+Based on assessment results:
+- **Overall readiness < 4**: Foundation workshop — building shared understanding and strategic clarity
+- **Overall readiness 4–6**: Acceleration workshop — cutting through noise, aligning teams, building constraint-aware roadmaps
+- **Overall readiness > 6**: Optimisation workshop — fine-tuning strategy, identifying subtle constraints, designing focused paths forward
+
+The answer is always "yes, a DREAM workshop would help" — the recommendation is tailored to where the biggest gaps are.
+
+When asked about the assessment, encourage visitors to try it on the homepage. It takes just 5 minutes and provides immediate, actionable insight.`;
 }
