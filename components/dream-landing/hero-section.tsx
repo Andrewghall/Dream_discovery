@@ -21,7 +21,7 @@ export function HeroSection() {
         {/* Eyebrow */}
         <ScrollReveal delay={100}>
           <p className="text-[#5cf28e] text-sm font-semibold tracking-[0.2em] uppercase mb-8">
-            Workshop Intelligence Platform
+            Decision Intelligence Platform
           </p>
         </ScrollReveal>
 
@@ -42,7 +42,7 @@ export function HeroSection() {
         {/* Headline */}
         <ScrollReveal delay={400}>
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-white leading-tight mb-6">
-            Turn Every Workshop Into{' '}
+            Turn Collective Thinking Into{' '}
             <span className="bg-gradient-to-r from-[#5cf28e] to-[#50c878] bg-clip-text text-transparent">
               Decision Intelligence
             </span>
@@ -52,9 +52,10 @@ export function HeroSection() {
         {/* Elevator pitch */}
         <ScrollReveal delay={500}>
           <p className="text-lg md:text-xl text-white/60 max-w-3xl mx-auto leading-relaxed mb-10">
-            DREAM captures what people really think, surfaces what organisations actually need,
-            and transforms live workshops into measurable strategic insight &mdash; powered by
-            EthentaFlow&trade;, the AI engine that never misses a signal.
+            DREAM captures how your organisation actually thinks, reveals what truly matters
+            across people, customers, operations and risk, and converts live collaboration
+            into clear, aligned and defensible decisions &mdash; powered by
+            EthentaFlow&trade;.
           </p>
         </ScrollReveal>
 
@@ -82,7 +83,7 @@ export function HeroSection() {
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 <AnimatedCounter target={1000} suffix="+" />
               </div>
-              <div className="text-xs sm:text-sm text-white/40 mt-1">Insights per workshop</div>
+              <div className="text-xs sm:text-sm text-white/40 mt-1">Insights per session</div>
             </div>
             <div>
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
