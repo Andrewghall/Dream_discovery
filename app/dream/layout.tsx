@@ -1,7 +1,13 @@
 import type { Metadata } from 'next';
+import { DreamNav } from '@/components/dream-landing/dream-nav';
+import { DreamFooter } from '@/components/dream-landing/dream-footer';
+import { DreamChatBar } from '@/components/dream-landing/dream-chat-bar';
 
 export const metadata: Metadata = {
-  title: 'Ethenta DREAM — Workshop Intelligence Platform',
+  title: {
+    template: '%s | Ethenta DREAM',
+    default: 'Ethenta DREAM — Workshop Intelligence Platform',
+  },
   description:
     'AI-powered decision intelligence that transforms workshops into measurable organisational insight. Discover. Reimagine. Educate. Apply. Mobilise.',
   openGraph: {
@@ -13,5 +19,12 @@ export const metadata: Metadata = {
 };
 
 export default function DreamLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <DreamNav />
+      <main className="pt-16">{children}</main>
+      <DreamFooter />
+      <DreamChatBar />
+    </>
+  );
 }
