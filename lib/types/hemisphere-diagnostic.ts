@@ -113,6 +113,8 @@ export interface ActorContribution {
   actor: string;
   /** Share of total nodes attributed to this actor (0-1) */
   share: number;
+  /** Group-normalised share equalising each actor's influence (0-1) */
+  normalisedShare: number;
   /** Absolute node count */
   mentionCount: number;
 }

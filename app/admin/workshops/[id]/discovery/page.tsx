@@ -190,6 +190,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-1',
         topic: 'Speed of AI adoption vs workforce readiness',
         rank: 1,
+        tensionIndex: 12,
         severity: 'critical',
         viewpoints: [
           { actor: 'Leadership', position: 'Need to accelerate AI to stay competitive', sentiment: 'positive', evidenceQuote: 'We cannot afford to wait while competitors automate' },
@@ -204,6 +205,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-2',
         topic: 'Data-driven personalisation vs privacy compliance',
         rank: 2,
+        tensionIndex: 9,
         severity: 'critical',
         viewpoints: [
           { actor: 'Marketing', position: 'Predictive engagement requires deep customer data', sentiment: 'positive', evidenceQuote: 'We need to move from segments to individual profiles' },
@@ -218,6 +220,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-3',
         topic: 'Channel-centric structure vs omnichannel aspiration',
         rank: 3,
+        tensionIndex: 6,
         severity: 'significant',
         viewpoints: [
           { actor: 'Leadership', position: 'Advocate cross-functional journey squads', sentiment: 'positive', evidenceQuote: 'We need to organise around customer journeys not channels' },
@@ -232,6 +235,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-4',
         topic: 'Decision-making speed vs governance layers',
         rank: 4,
+        tensionIndex: 4,
         severity: 'significant',
         viewpoints: [
           { actor: 'Operations', position: 'Too many approval layers delay market responsiveness', sentiment: 'negative', evidenceQuote: 'By the time we get sign-off, the opportunity has passed' },
@@ -245,6 +249,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-5',
         topic: 'Investment in technology modernisation vs budget constraints',
         rank: 5,
+        tensionIndex: 2,
         severity: 'moderate',
         viewpoints: [
           { actor: 'Technology', position: 'Composable architecture is the only viable path', sentiment: 'positive', evidenceQuote: 'We must replace legacy POS and build a unified platform' },

@@ -54,6 +54,8 @@ export interface TensionEntry {
   id: string;
   topic: string;
   rank: number;
+  /** Deterministic score: SeverityWeight x DivergenceVariance x CrossActorSpread */
+  tensionIndex: number;
   /** 'critical' | 'significant' | 'moderate' */
   severity: 'critical' | 'significant' | 'moderate';
   /** Competing viewpoints from different actors */

@@ -169,10 +169,17 @@ function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
     .slice(0, 20)
     .map(([name, data]) => ({ name, ...data }));
 
+  // Theme density normalisation: ThemeWeight = ThemeMentions / TotalMentionsAllThemes
+  const totalThemeMentions = [...allThemes.values()].reduce((s, t) => s + t.count, 0) || 1;
   const topThemes = [...allThemes.entries()]
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 15)
-    .map(([label, data]) => ({ label, ...data, avgConfidence: data.count > 0 ? data.totalConfidence / data.count : 0 }));
+    .map(([label, data]) => ({
+      label,
+      ...data,
+      avgConfidence: data.count > 0 ? data.totalConfidence / data.count : 0,
+      density: Math.round((data.count / totalThemeMentions) * 1000) / 1000,
+    }));
 
   return { byDomain, byPhase, topKeywords, topActors, topThemes, totalNodes, transformationalCount, lowConfidenceCount };
 }
@@ -399,7 +406,7 @@ ${keywordText}`;
 
 async function runThemeAgentAnalysis(workshopName: string, data: ReturnType<typeof aggregateNodes>): Promise<string> {
   const domainNames = Object.keys(data.byDomain);
-  const themeList = data.topThemes.slice(0, 10).map(t => `${t.label} (${t.category}, ${t.count} occurrences, avg confidence ${(t.avgConfidence * 100).toFixed(0)}%)`).join('\n');
+  const themeList = data.topThemes.slice(0, 10).map(t => `${t.label} (${t.category}, ${t.count} occurrences, density ${((t.density ?? 0) * 100).toFixed(1)}%, avg confidence ${(t.avgConfidence * 100).toFixed(0)}%)`).join('\n');
   const keywordList = data.topKeywords.slice(0, 15).map(k => `${k.word} (${k.count})`).join(', ');
 
   const prompt = `You are the Theme Agent for the DREAM Discovery workshop "${workshopName}". Analyse the thematic patterns from the workshop data and provide a structured assessment.
