@@ -47,7 +47,7 @@ export function PageHero({
             src={backgroundImage}
             alt=""
             fill
-            className="object-cover opacity-20"
+            className="object-cover opacity-40"
             style={{ objectPosition: imagePosition || 'center' }}
             priority
           />
@@ -55,7 +55,7 @@ export function PageHero({
             className="absolute inset-0"
             style={{
               background:
-                'linear-gradient(to bottom, rgba(13,13,13,0.4) 0%, rgba(13,13,13,0.7) 50%, rgba(13,13,13,0.95) 100%)',
+                'linear-gradient(to bottom, rgba(13,13,13,0.15) 0%, rgba(13,13,13,0.5) 60%, rgba(13,13,13,0.92) 100%)',
             }}
           />
         </div>

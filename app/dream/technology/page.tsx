@@ -93,7 +93,7 @@ export default function TechnologyPage() {
         headline="Powered by"
         highlightText="EthentaFlow™"
         subheadline="The capture-and-synthesise engine that transforms conversations into organisational intelligence. Not just AI  -  deterministic, reproducible, auditable."
-        backgroundImage="/dream-heroes/hero-ethentaflow.jpg"
+        backgroundImage="/dream-heroes/hero-signals.png"
         imagePosition="center"
       />
 
