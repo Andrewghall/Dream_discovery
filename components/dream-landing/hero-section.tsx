@@ -53,7 +53,7 @@ export function HeroSection() {
         <ScrollReveal delay={500}>
           <p className="text-lg md:text-xl text-white/60 max-w-3xl mx-auto leading-relaxed mb-10">
             Built for leadership teams who must align strategy, cut through conflicting
-            priorities, and produce decisions executives can defend. Multiple specialist AI agents
+            priorities, and produce decisions executives can defend. Multiple agentic AI specialists
             work in concert  -  capturing, synthesising, and analysing  -  to turn how your
             organisation really thinks into measurable strategic direction.
           </p>
