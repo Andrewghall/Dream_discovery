@@ -56,35 +56,46 @@ export default function LoginPage() {
   // Show welcome screen while redirecting
   if (welcomeMessage) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-lg">
-            <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">{welcomeMessage}</h1>
-          <p className="text-gray-500">Taking you to your dashboard...</p>
+      <div className="min-h-screen flex items-center justify-center bg-[#0d0d0d] relative overflow-hidden">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(92, 242, 142, 0.08), transparent)',
+          }}
+        />
+        <div className="relative z-10 text-center">
+          <Image src="/ethenta-logo.png" alt="Ethenta" width={80} height={80} className="mx-auto mb-6" />
+          <h1 className="text-4xl font-bold text-white mb-3">{welcomeMessage}</h1>
+          <p className="text-white/50">Taking you to your dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+    <div className="min-h-screen flex items-center justify-center bg-[#0d0d0d] relative overflow-hidden">
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(92, 242, 142, 0.06), transparent)',
+        }}
+      />
+
+      <div className="relative z-10 w-full max-w-md px-4">
+        <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-8 backdrop-blur-sm">
           <div className="text-center mb-8">
             <div className="mb-4">
               <Image src="/ethenta-logo.png" alt="Ethenta" width={64} height={64} className="mx-auto" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">DREAM Discovery</h1>
-            <p className="text-gray-500 text-sm">Sign in to your account</p>
+            <h1 className="text-3xl font-bold text-white mb-2">DREAM Discovery</h1>
+            <p className="text-white/50 text-sm">Sign in to your account</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-white/80">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -92,7 +103,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
                 required
-                className="w-full"
+                className="w-full bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 focus:border-[#5cf28e]/50 focus:ring-[#5cf28e]/20"
                 autoComplete="email"
                 disabled={loading}
               />
@@ -100,8 +111,8 @@ export default function LoginPage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <Link href="/forgot-password" className="text-sm text-indigo-600 hover:text-indigo-500">
+                <Label htmlFor="password" className="text-white/80">Password</Label>
+                <Link href="/forgot-password" className="text-sm text-[#5cf28e]/70 hover:text-[#5cf28e] transition-colors">
                   Forgot password?
                 </Link>
               </div>
@@ -113,14 +124,14 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
                   required
-                  className="w-full pr-10"
+                  className="w-full pr-10 bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 focus:border-[#5cf28e]/50 focus:ring-[#5cf28e]/20"
                   autoComplete="current-password"
                   disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
                   tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -129,14 +140,14 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
                 {error}
               </div>
             )}
 
             <LoadingButton
               type="submit"
-              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-6 text-lg font-semibold"
+              className="w-full bg-[#5cf28e] hover:bg-[#50c878] text-[#0d0d0d] py-6 text-lg font-semibold transition-colors"
               loading={loading}
               loadingText="Signing in..."
             >
@@ -144,8 +155,8 @@ export default function LoginPage() {
             </LoadingButton>
           </form>
 
-          <div className="mt-8 text-center text-sm text-gray-500">
-            <p>© 2026 DREAM Discovery Platform</p>
+          <div className="mt-8 text-center text-sm text-white/30">
+            <p>&copy; 2026 DREAM Discovery Platform</p>
           </div>
         </div>
       </div>
