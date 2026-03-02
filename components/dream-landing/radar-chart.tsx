@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
 
 const DOMAIN_COLOURS: Record<string, string> = {
   People: '#3b82f6',       // blue-500
-  Organisation: '#22c55e', // green-500
+  'Organisation & Partners': '#22c55e', // green-500
   Customer: '#a855f7',     // purple-500
   Technology: '#f97316',   // orange-500
   Regulation: '#ef4444',   // red-500
