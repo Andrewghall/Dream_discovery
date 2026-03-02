@@ -122,6 +122,8 @@ export default function MethodologyPage() {
         headline="Five Phases. One"
         highlightText="Transformation."
         subheadline="Each letter in DREAM represents a phase in the journey from insight to action. Together, they create a structured path from organisational noise to strategic clarity."
+        backgroundImage="/dream-heroes/hero-signals.png"
+        imagePosition="center"
       />
 
       {/* ═══ PHASE DEEP-DIVES ═══ */}

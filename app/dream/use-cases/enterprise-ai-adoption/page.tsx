@@ -145,6 +145,8 @@ export default function EnterpriseAIAdoptionPage() {
           { target: 5, label: 'Domains explored' },
           { target: 1000, suffix: '+', label: 'Insights captured' },
         ]}
+        backgroundImage="/dream-heroes/hero-app-scratchpad.png"
+        imagePosition="top center"
       />
 
       {/* ═══ THE NOISE PROBLEM ═══ */}

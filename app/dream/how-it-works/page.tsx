@@ -113,6 +113,8 @@ export default function HowItWorksPage() {
         headline="From Conversation to"
         highlightText="Action"
         subheadline="Three stages. One continuous intelligence pipeline. From AI-powered Discovery conversations to real-time workshop synthesis to immediate analytical output."
+        backgroundImage="/dream-heroes/hero-signals.png"
+        imagePosition="left center"
       />
 
       {/* ═══ STAGE DEEP-DIVES ═══ */}

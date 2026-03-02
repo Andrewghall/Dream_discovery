@@ -7,7 +7,7 @@
 
 const DOMAIN_COLOURS: Record<string, string> = {
   People: '#3b82f6',
-  Organisation: '#22c55e',
+  'Organisation & Partners': '#22c55e',
   Customer: '#a855f7',
   Technology: '#f97316',
   Regulation: '#ef4444',

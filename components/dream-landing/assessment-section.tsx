@@ -105,7 +105,7 @@ const DOMAINS: Domain[] = [
   },
   {
     key: 'organisation',
-    name: 'Organisation',
+    name: 'Organisation & Partners',
     description: 'Governance, cross-functional collaboration, partner ecosystem alignment, and operating model adaptability.',
     icon: Building2,
     colour: 'bg-green-500',
@@ -123,11 +123,11 @@ const DOMAINS: Domain[] = [
         dimension: 'Decision-Making Speed & Governance',
         question: 'How quickly can your organisation make and execute strategic decisions?',
         descriptors: [
-          'Decisions require multiple approval layers; speed-to-decision is a recognised bottleneck.',
-          'Some decision authority is delegated, but escalation is frequent and governance processes are heavy.',
-          'Decision rights are clearly defined; governance balances control with the need for speed.',
-          'Decision-making is streamlined with defined SLAs; data-driven governance enables rapid response.',
-          'Decision authority flows to where the insight is; governance is adaptive and enables real-time response.',
+          'Decisions require multiple approval layers; speed-to-decision is a recognised bottleneck. Decisions involving partners require separate, slower processes.',
+          'Some decision authority is delegated, but escalation is frequent and governance processes are heavy. Partner-related decisions lack clear ownership or escalation paths.',
+          'Decision rights are clearly defined; governance balances control with the need for speed. Joint decisions with key partners follow agreed governance frameworks.',
+          'Decision-making is streamlined with defined SLAs; data-driven governance enables rapid response. Partner decisions are embedded in the same governance cadence as internal ones.',
+          'Decision authority flows to where the insight is; governance is adaptive and enables real-time response. Partners participate in shared decision frameworks as naturally as internal teams.',
         ],
       },
       {
@@ -147,11 +147,11 @@ const DOMAINS: Domain[] = [
         dimension: 'Operating Model Adaptability',
         question: 'How well does your operating model support new ways of working?',
         descriptors: [
-          'The operating model is rigid and inherited; changes require major restructuring.',
-          'There is awareness that the operating model needs to evolve, but structural change is slow.',
-          'The operating model is periodically reviewed and adapted to support strategic shifts.',
-          'Operating model design is a continuous process; the organisation can reconfigure rapidly.',
-          'The operating model is modular and adaptive by design; new capabilities can be stood up and stood down quickly.',
+          'The operating model is rigid and inherited; changes require major restructuring. Partner integration requires bespoke workarounds each time.',
+          'There is awareness that the operating model needs to evolve, but structural change is slow. Adapting the model to include partner workflows is manual and time-consuming.',
+          'The operating model is periodically reviewed and adapted to support strategic shifts. The model accommodates partner collaboration through defined integration points.',
+          'Operating model design is a continuous process; the organisation can reconfigure rapidly. Partner and internal operations share modular, reconfigurable building blocks.',
+          'The operating model is modular and adaptive by design; new capabilities can be stood up and stood down quickly. Partners plug in and out of the operating model as seamlessly as internal teams.',
         ],
       },
     ],
@@ -190,9 +190,9 @@ const DOMAINS: Domain[] = [
         descriptors: [
           'Each channel operates independently; customers encounter different experiences depending on how they interact.',
           'Some effort has been made to align channels, but gaps and handoff friction are common.',
-          'Customer journeys are mapped and actively managed; key touchpoints deliver a consistent experience.',
-          'Omnichannel experience is integrated; transitions between channels are seamless and personalised.',
-          'The customer experience is continuously optimised and innovated; the organisation sets the standard in its sector.',
+          'Customer journeys are mapped and actively managed; key touchpoints, including partner-delivered channels, deliver a consistent experience.',
+          'Omnichannel experience is integrated; transitions between direct and partner channels are seamless and personalised.',
+          'The customer experience is continuously optimised across owned and partner channels; the organisation sets the standard in its sector.',
         ],
       },
       {
@@ -231,9 +231,9 @@ const DOMAINS: Domain[] = [
         descriptors: [
           'Systems are legacy, fragmented, and poorly documented; integration is point-to-point and brittle.',
           'Some modernisation initiatives are underway, but legacy dependencies create friction and delay.',
-          'Core systems are integrated through defined interfaces; architecture principles guide technology decisions.',
-          'Cloud-native, API-driven architecture enables rapid change; technology supports rather than constrains the business.',
-          'Architecture is continuously evolving; the platform enables experimentation, rapid scaling, and innovation at speed.',
+          'Core systems are integrated through defined interfaces; partner systems connect through standard APIs.',
+          'Cloud-native, API-driven architecture enables rapid change; partner and internal platforms interoperate seamlessly.',
+          'Architecture is continuously evolving; the platform enables experimentation, rapid scaling, and partner ecosystems integrate natively.',
         ],
       },
       {
@@ -351,7 +351,7 @@ interface Recommendation {
 
 const DOMAIN_ADVICE: Record<string, string> = {
   People: 'building leadership alignment and developing the skills capability your organisation needs',
-  Organisation: 'strengthening governance agility, cross-functional collaboration, and partner ecosystem alignment to enable faster transformation',
+  'Organisation & Partners': 'strengthening governance agility, cross-functional collaboration, and partner ecosystem alignment to enable faster transformation',
   Customer: 'deepening customer understanding and creating seamless, coherent experiences across touchpoints',
   Technology: 'modernising your technology landscape and building a data-driven decision-making culture',
   Regulation: 'reframing compliance as an enabler of innovation rather than a barrier to progress',

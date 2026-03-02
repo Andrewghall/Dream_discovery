@@ -34,7 +34,7 @@ export interface AssessmentPdfData {
 
 const DOMAIN_COLOURS: Record<string, string> = {
   People: '#3b82f6',
-  Organisation: '#22c55e',
+  'Organisation & Partners': '#22c55e',
   Customer: '#a855f7',
   Technology: '#f97316',
   Regulation: '#ef4444',
@@ -42,7 +42,7 @@ const DOMAIN_COLOURS: Record<string, string> = {
 
 const DOMAIN_ADVICE: Record<string, string> = {
   People: 'building leadership alignment and developing the skills capability your organisation needs',
-  Organisation: 'strengthening governance agility, cross-functional collaboration, and partner ecosystem alignment to enable faster transformation',
+  'Organisation & Partners': 'strengthening governance agility, cross-functional collaboration, and partner ecosystem alignment to enable faster transformation',
   Customer: 'deepening customer understanding and creating seamless, coherent experiences across touchpoints',
   Technology: 'modernising your technology landscape and building a data-driven decision-making culture',
   Regulation: 'reframing compliance as an enabler of innovation rather than a barrier to progress',
