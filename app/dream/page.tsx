@@ -16,7 +16,7 @@ const AssessmentSection = dynamic(
 export const metadata: Metadata = {
   title: 'Ethenta DREAM  -  AI-Guided Decision Intelligence Platform',
   description:
-    'Stop guessing. DREAM captures how your organisation really thinks and turns collective insight into measurable strategic direction  -  with AI that augments human judgment, not replaces it.',
+    'Stop guessing. DREAM orchestrates multiple specialist AI agents to capture how your organisation really thinks and turn collective insight into measurable strategic direction.',
   alternates: { canonical: '/dream' },
   openGraph: {
     title: 'Ethenta DREAM  -  AI-Guided Decision Intelligence Platform',

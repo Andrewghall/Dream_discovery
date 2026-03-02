@@ -7,7 +7,7 @@ import { CTASection } from '@/components/dream-landing/cta-section';
 export const metadata: Metadata = {
   title: 'EthentaFlow  -  The Technology Behind DREAM',
   description:
-    'EthentaFlow™ is the AI capture-and-synthesise engine powering DREAM. Deterministic analytics, real-time synthesis, and 7 analytical views transform workshop conversations into board-ready intelligence.',
+    'EthentaFlow™ orchestrates multiple specialist AI agents alongside deterministic analytics to power DREAM. Real-time synthesis, agentic coordination, and 7 analytical views transform workshop conversations into board-ready intelligence.',
   alternates: { canonical: '/dream/technology' },
   openGraph: {
     title: 'EthentaFlow™  -  The Technology Behind DREAM',
@@ -36,13 +36,13 @@ const CAPABILITIES = [
     iconBg: 'bg-indigo-100 text-indigo-600',
     title: 'Synthesise in Real-Time',
     description:
-      'Agentic AI and specialist Small Language Models analyse, correlate, and surface patterns as the workshop unfolds.',
+      'Multiple specialist AI agents orchestrate in real-time  -  each with a distinct role  -  to analyse, correlate, and surface patterns as the workshop unfolds.',
     details: [
-      'Agentic AI orchestration across Discovery, Reimagine, and Apply phases',
-      'Specialist Small Language Models (SLMs) for focused analytical tasks',
-      'Real-time theme clustering and pattern recognition across participants',
-      'Dynamic question generation grounded in Discovery data',
-      'Live 360° Hemisphere builds on-screen as the workshop progresses',
+      'Discovery Agent conducts adaptive conversations, extracting structured intelligence from each participant',
+      'Facilitation Orchestrator coordinates live workshop phases, handing off between specialist agents',
+      'Question Set Agent generates phase-specific questions grounded in real Discovery data',
+      'Synthesis agents cluster themes, score confidence, and surface cross-participant patterns in real-time',
+      'Live 360° Hemisphere builds on-screen as the agents work in concert',
     ],
   },
   {
@@ -74,7 +74,7 @@ const PIPELINE_STAGES = [
     stage: 'Synthesise',
     colour: 'from-indigo-500 to-purple-500',
     description:
-      'Agentic AI and specialist SLMs analyse, correlate, and cluster patterns in real-time. The deterministic diagnostic engine computes sentiment, bias, and balance scores reproducibly.',
+      'Multiple specialist AI agents  -  orchestrated by a central Facilitation Orchestrator  -  analyse, correlate, and cluster patterns in real-time. The deterministic diagnostic engine computes sentiment, bias, and balance scores reproducibly alongside the agentic layer.',
   },
   {
     icon: BarChart3,
@@ -92,7 +92,7 @@ export default function TechnologyPage() {
         eyebrow="The Technology"
         headline="Powered by"
         highlightText="EthentaFlow™"
-        subheadline="The capture-and-synthesise engine that transforms conversations into organisational intelligence. Not just AI  -  deterministic, reproducible, auditable."
+        subheadline="Multiple specialist AI agents orchestrated together with deterministic analytics. Not a single AI  -  an ensemble that captures, synthesises, and delivers reproducible intelligence."
         backgroundImage="/dream-heroes/hero-signals.png"
         imagePosition="center"
       />

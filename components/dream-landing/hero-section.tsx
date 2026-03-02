@@ -53,9 +53,9 @@ export function HeroSection() {
         <ScrollReveal delay={500}>
           <p className="text-lg md:text-xl text-white/60 max-w-3xl mx-auto leading-relaxed mb-10">
             Built for leadership teams who must align strategy, cut through conflicting
-            priorities, and produce decisions executives can defend. DREAM captures how your
-            organisation really thinks and turns it into measurable strategic direction
-             -  with AI that augments human judgment, not replaces it.
+            priorities, and produce decisions executives can defend. Multiple specialist AI agents
+            work in concert  -  capturing, synthesising, and analysing  -  to turn how your
+            organisation really thinks into measurable strategic direction.
           </p>
         </ScrollReveal>
 

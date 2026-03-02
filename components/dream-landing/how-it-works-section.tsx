@@ -10,7 +10,7 @@ const STEPS = [
     title: 'Before the Workshop',
     subtitle: 'AI-Powered Discovery',
     points: [
-      '15-minute AI-guided conversations with each participant',
+      'A dedicated Discovery Agent conducts 15-minute conversations with each participant',
       'Structured extraction across People, Organisation, Customer, Technology, Regulation',
       'Individual maturity ratings and confidence scoring',
       'Automatic insight extraction and theme detection',
@@ -22,9 +22,9 @@ const STEPS = [
     title: 'During the Workshop',
     subtitle: 'Live Cognitive Guidance',
     points: [
-      'AI-powered facilitation through Reimagine, Constraints, and Apply phases',
-      'Real-time synthesis using Agentic AI facilitation',
-      'Dynamic question generation grounded in Discovery data',
+      'Multiple specialist AI agents coordinate across Reimagine, Constraints, and Apply phases',
+      'A Facilitation Orchestrator hands off between question generation, synthesis, and analysis agents in real-time',
+      'Dynamic question generation grounded in Discovery data  -  not generic prompts',
       '360\u00B0 Hemisphere builds live on-screen',
     ],
   },

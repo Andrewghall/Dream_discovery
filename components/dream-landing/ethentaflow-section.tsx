@@ -16,7 +16,7 @@ const CAPABILITIES = [
     iconBg: 'bg-indigo-100 text-indigo-600',
     title: 'Synthesise in Real-Time',
     description:
-      'Agentic AI and specialist Small Language Models analyse, correlate, and surface patterns as the workshop unfolds. Themes emerge. Tensions surface. Insights compound.',
+      'Multiple specialist AI agents work in concert  -  a Facilitation Orchestrator coordinates theme clustering, question generation, and pattern recognition agents as the workshop unfolds. Insights compound in real-time.',
   },
   {
     icon: BarChart3,
