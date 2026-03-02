@@ -91,11 +91,11 @@ export function AdminHeader({ section }: AdminHeaderProps) {
 
   const handleLogout = async () => {
     if (section === 'admin') {
-      await fetch('/api/auth/logout');
-      router.push('/login');
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/dream');
     } else {
       await fetch('/api/auth/tenant-logout', { method: 'POST' });
-      router.push('/login');
+      router.push('/dream');
     }
   };
 

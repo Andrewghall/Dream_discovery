@@ -125,11 +125,11 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
           Collapse
         </button>
         <Link
-          href="/login"
+          href="/dream"
           onClick={async (e) => {
             e.preventDefault();
-            await fetch('/api/auth/logout');
-            window.location.href = '/login';
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/dream';
           }}
           className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
         >
@@ -188,11 +188,11 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
           <ChevronsRight className="h-4 w-4" />
         </button>
         <Link
-          href="/login"
+          href="/dream"
           onClick={async (e) => {
             e.preventDefault();
-            await fetch('/api/auth/logout');
-            window.location.href = '/login';
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/dream';
           }}
           className="flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
           title="Logout"
