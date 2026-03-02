@@ -70,6 +70,8 @@ export default function IndustriesPage() {
         headline="Transforming Organisations Across"
         highlightText="Every Sector"
         subheadline="DREAM works across any industry where organisational alignment, strategic clarity, and transformation intelligence matter."
+        backgroundImage="/dream-heroes/hero-signals.png"
+        imagePosition="center"
       />
 
       {/* ═══ INDUSTRY GRID ═══ */}

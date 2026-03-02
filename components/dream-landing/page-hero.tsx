@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { ScrollReveal, AnimatedCounter } from './scroll-reveal';
 
 interface StatItem {
@@ -16,6 +17,8 @@ interface PageHeroProps {
   subheadline: string;
   dark?: boolean;
   stats?: StatItem[];
+  backgroundImage?: string;
+  imagePosition?: string;
 }
 
 export function PageHero({
@@ -25,6 +28,8 @@ export function PageHero({
   subheadline,
   dark = true,
   stats,
+  backgroundImage,
+  imagePosition,
 }: PageHeroProps) {
   const bgClass = dark ? 'bg-[#0d0d0d]' : 'bg-white';
   const eyebrowClass = dark ? 'text-[#5cf28e]' : 'text-[#50c878]';
@@ -36,6 +41,26 @@ export function PageHero({
 
   return (
     <section className={`relative ${bgClass} py-24 md:py-32 overflow-hidden`}>
+      {backgroundImage && (
+        <div className="absolute inset-0">
+          <Image
+            src={backgroundImage}
+            alt=""
+            fill
+            className="object-cover opacity-20"
+            style={{ objectPosition: imagePosition || 'center' }}
+            priority
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                'linear-gradient(to bottom, rgba(13,13,13,0.4) 0%, rgba(13,13,13,0.7) 50%, rgba(13,13,13,0.95) 100%)',
+            }}
+          />
+        </div>
+      )}
+
       {dark && (
         <div
           className="absolute inset-0 pointer-events-none"

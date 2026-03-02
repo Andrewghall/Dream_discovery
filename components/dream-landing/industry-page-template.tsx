@@ -16,6 +16,7 @@ export function IndustryPageTemplate({ industry }: IndustryPageTemplateProps) {
         eyebrow={industry.name}
         headline={industry.headline}
         subheadline={industry.subheadline}
+        backgroundImage="/dream-heroes/hero-signals.png"
       />
 
       {/* ═══ INDUSTRY CHALLENGES ═══ */}

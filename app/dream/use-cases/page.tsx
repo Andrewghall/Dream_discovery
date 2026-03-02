@@ -73,6 +73,8 @@ export default function UseCasesPage() {
         headline="DREAM in"
         highlightText="Action"
         subheadline="Whether it's AI adoption, operating model redesign, compliance transformation, or designing how humans and AI work together  -  DREAM runs the same rigorous process across your entire enterprise and partner ecosystem."
+        backgroundImage="/dream-heroes/hero-signals.png"
+        imagePosition="right center"
       />
 
       {/* ═══ USE CASE CARDS ═══ */}

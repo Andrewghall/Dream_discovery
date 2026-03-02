@@ -134,6 +134,8 @@ export default function InsightsPage() {
           { target: 1000, suffix: '+', label: 'Data points per workshop' },
           { target: 100, suffix: '%', label: 'Deterministic scoring' },
         ]}
+        backgroundImage="/dream-heroes/hero-app-vision.png"
+        imagePosition="top center"
       />
 
       {/* ═══ PRIMARY VIEWS ═══ */}
