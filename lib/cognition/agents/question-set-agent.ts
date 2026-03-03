@@ -1,5 +1,5 @@
 /**
- * DREAM Question Set Agent — Workshop Facilitation Questions
+ * DREAM Question Set Agent - Workshop Facilitation Questions
  *
  * A GPT-4o-mini tool-calling agent that generates a tailored set of
  * workshop facilitation questions for the three live workshop phases:
@@ -11,7 +11,7 @@
  *   - DREAM track context (Enterprise vs Domain)
  *
  * These are NOT Discovery interview questions. Discovery has already
- * happened — the agents have those answers. These questions guide the
+ * happened - the agents have those answers. These questions guide the
  * facilitator through the live workshop session.
  */
 
@@ -43,7 +43,7 @@ const DEFAULT_PHASE_LENS_ORDER: Record<WorkshopPhase, string[]> = {
 };
 
 /**
- * Get lens order for a phase — uses research dimensions when available.
+ * Get lens order for a phase - uses research dimensions when available.
  * With custom dimensions, all phases use all dimensions.
  */
 function getPhaseLensOrder(phase: WorkshopPhase, research?: WorkshopPrepResearch | null): string[] {
@@ -53,11 +53,11 @@ function getPhaseLensOrder(phase: WorkshopPhase, research?: WorkshopPrepResearch
   return DEFAULT_PHASE_LENS_ORDER[phase];
 }
 
-/** @deprecated Use getPhaseLensOrder — kept for backward compat */
+/** @deprecated Use getPhaseLensOrder - kept for backward compat */
 const PHASE_LENS_ORDER = DEFAULT_PHASE_LENS_ORDER;
 
 const PHASE_GUIDANCE: Record<WorkshopPhase, string> = {
-  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers — just pure aspiration. The facilitator guides them through People, Customer, and Organisation lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
+  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Customer, and Organisation lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
 
   CONSTRAINTS: `CONSTRAINTS maps the real-world limitations, working RIGHT-TO-LEFT through the lenses: Regulation → Customer → Technology → Organisation → People. Start with hard external constraints (regulatory, compliance) and work inward to softer people constraints. The goal is to systematically identify what stands between today and the reimagined vision. This phase references the vision from REIMAGINE to assess each constraint's impact.`,
 
@@ -74,7 +74,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: 'get_research_context',
       description:
-        'Retrieve the Research Agent\'s findings about the client company — company overview, industry context, challenges, competitive landscape, and domain insights.',
+        'Retrieve the Research Agent\'s findings about the client company - company overview, industry context, challenges, competitive landscape, and domain insights.',
       parameters: {
         type: 'object',
         properties: {},
@@ -87,7 +87,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: 'get_discovery_insights',
       description:
-        'Retrieve insights from completed Discovery interviews — key themes, pain points, aspirations, consensus areas, divergence areas, and maturity scores. This is what participants have ALREADY told us. Use this to build questions that go deeper, not repeat what was said.',
+        'Retrieve insights from completed Discovery interviews - key themes, pain points, aspirations, consensus areas, divergence areas, and maturity scores. This is what participants have ALREADY told us. Use this to build questions that go deeper, not repeat what was said.',
       parameters: {
         type: 'object',
         properties: {},
@@ -133,11 +133,11 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                 },
                 text: {
                   type: 'string',
-                  description: 'The facilitation question text — what the facilitator would ask the room.',
+                  description: 'The facilitation question text - what the facilitator would ask the room.',
                 },
                 purpose: {
                   type: 'string',
-                  description: 'Why this question matters — what it aims to surface from participants.',
+                  description: 'Why this question matters - what it aims to surface from participants.',
                 },
                 grounding: {
                   type: 'string',
@@ -155,7 +155,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                       },
                       text: {
                         type: 'string',
-                        description: 'The sub-question text — a specific angle or probe.',
+                        description: 'The sub-question text - a specific angle or probe.',
                       },
                       purpose: {
                         type: 'string',
@@ -187,7 +187,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           designRationale: {
             type: 'string',
             description:
-              'A paragraph explaining the overall question design strategy — how the questions build on Discovery insights, why certain topics are emphasized, and how they guide the facilitator through the workshop. This is shown to the facilitator.',
+              'A paragraph explaining the overall question design strategy - how the questions build on Discovery insights, why certain topics are emphasized, and how they guide the facilitator through the workshop. This is shown to the facilitator.',
           },
         },
         required: ['designRationale'],
@@ -213,7 +213,7 @@ function executeQuestionSetTool(
       if (!research) {
         return {
           result: JSON.stringify({ available: false, note: 'No research available. Generate questions based on general industry knowledge and the DREAM track context.' }),
-          summary: '**Research context:** Not available — will use general industry knowledge.',
+          summary: '**Research context:** Not available - will use general industry knowledge.',
         };
       }
 
@@ -253,9 +253,9 @@ function executeQuestionSetTool(
         return {
           result: JSON.stringify({
             available: false,
-            note: 'No Discovery interview data available yet. Participants have not completed their interviews. Generate questions based on research context and DREAM track — the facilitator can refine after Discovery is complete.',
+            note: 'No Discovery interview data available yet. Participants have not completed their interviews. Generate questions based on research context and DREAM track - the facilitator can refine after Discovery is complete.',
           }),
-          summary: '**Discovery insights:** Not yet available — participants have not completed interviews. Questions will be based on research context.',
+          summary: '**Discovery insights:** Not yet available - participants have not completed interviews. Questions will be based on research context.',
         };
       }
 
@@ -268,7 +268,7 @@ function executeQuestionSetTool(
       const watchPoints = Array.isArray(briefing.watchPoints) ? briefing.watchPoints : [];
 
       const themesText = themes.length > 0
-        ? themes.map((t: Record<string, unknown>) => `  \u2022 **${t.title}** (${t.domain || 'General'}, ${t.sentiment}) — ${t.frequency} mentions`).join('\n')
+        ? themes.map((t: Record<string, unknown>) => `  \u2022 **${t.title}** (${t.domain || 'General'}, ${t.sentiment}) - ${t.frequency} mentions`).join('\n')
         : '  (none)';
       const painText = painPoints.length > 0
         ? painPoints.map((p: Record<string, unknown>) => `  \u2022 ${p.description} (${p.domain}, ${p.severity})`).join('\n')
@@ -332,7 +332,7 @@ function executeQuestionSetTool(
             },
           },
         }),
-        summary: `**Workshop Phase Structure:**\n\n${trackContext}\n\n**Phase 1 \u2014 REIMAGINE** (Pure Vision)\nLens order: ${reimagineLenses.join(' \u2192 ')}\n${PHASE_GUIDANCE.REIMAGINE}\n\n**Phase 2 \u2014 CONSTRAINTS** (Map Limitations, Right-to-Left)\nLens order: ${constraintLenses.join(' \u2192 ')}\n${PHASE_GUIDANCE.CONSTRAINTS}\n\n**Phase 3 \u2014 DEFINE APPROACH** (Build Solution, Left-to-Right)\nLens order: ${defineLenses.join(' \u2192 ')}\n${PHASE_GUIDANCE.DEFINE_APPROACH}`,
+        summary: `Retrieved workshop phase structure. ${trackContext}\n\n3 phases: REIMAGINE (${reimagineLenses.length} lenses), CONSTRAINTS (${constraintLenses.length} lenses), DEFINE APPROACH (${defineLenses.length} lenses). Now designing facilitation questions for each phase...`,
       };
     }
 
@@ -386,7 +386,7 @@ function executeQuestionSetTool(
             return acc;
           }, {} as Record<string, number>),
         }),
-        summary: `**Designed ${phaseLabel} phase** \u2014 ${facilitation.length} facilitation questions\n\n${qLines}`,
+        summary: `**Designed ${phaseLabel} phase** - ${facilitation.length} facilitation questions\n\n${qLines}`,
       };
     }
 
@@ -440,7 +440,7 @@ THE THREE WORKSHOP PHASES:
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
 
-${research?.industryDimensions?.length ? `\nIMPORTANT — INDUSTRY DIMENSIONS:\nThis workshop uses research-derived dimensions specific to ${context.industry || 'this industry'}, NOT generic lenses.\nThe dimensions are: ${research.industryDimensions.map(d => d.name).join(', ')}\n${research.industryDimensions.map(d => `  • ${d.name}: ${d.description}`).join('\n')}\nUse THESE dimension names in your question lens assignments, NOT the generic People/Organisation/Technology/etc.\n` : ''}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}
+${research?.industryDimensions?.length ? `\nIMPORTANT - INDUSTRY DIMENSIONS:\nThis workshop uses research-derived dimensions specific to ${context.industry || 'this industry'}, NOT generic lenses.\nThe dimensions are: ${research.industryDimensions.map(d => d.name).join(', ')}\n${research.industryDimensions.map(d => `  • ${d.name}: ${d.description}`).join('\n')}\nUse THESE dimension names in your question lens assignments, NOT the generic People/Organisation/Technology/etc.\n` : ''}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}
 YOUR APPROACH:
 1. First, get the research context (company, industry, challenges).
 2. Get Discovery insights if available (what participants already told us).
@@ -459,16 +459,16 @@ YOUR APPROACH:
      * Be directly scoped to the parent main question's topic
      * Reference concrete research/Discovery findings where possible
      * Give the room something tangible to discuss immediately
-     * CRITICAL — sub-questions must NOT repeat the main question's framing.
+     * CRITICAL - sub-questions must NOT repeat the main question's framing.
        The main question already sets the aspirational/constraint/action frame.
        Sub-questions drill into SPECIFIC angles:
        REIMAGINE subs: The main question handles the "imagine the ideal" framing.
-         Subs must probe SPECIFIC aspects — name a real finding from Discovery
+         Subs must probe SPECIFIC aspects - name a real finding from Discovery
          or research and ask about it. NEVER use generic patterns like
          "In your ideal...", "Describe the perfect...", "Paint the picture...",
          "What does the ideal future look like...", "Imagine a world where...".
-         Instead: "Discovery flagged X as a pain point — in this reimagined
-         future, how does that change?", "8 participants mentioned Y — what
+         Instead: "Discovery flagged X as a pain point - in this reimagined
+         future, how does that change?", "8 participants mentioned Y - what
          does Y look like when it's working brilliantly?"
        CONSTRAINTS subs should be specific, probing, grounded in the vision.
          Ask "what stands in the way?", "what limitations exist?"
@@ -497,7 +497,7 @@ GOOD (context-specific, grounded in research/Discovery):
   "In Discovery, 8 of 12 participants flagged Clubcard integration as a pain
    point. In the reimagined future, what does the perfect Clubcard experience
    look like for a customer walking into a Tesco Extra?"
-  "Your industry is seeing rapid adoption of checkout-free retail — Sainsbury's
+  "Your industry is seeing rapid adoption of checkout-free retail - Sainsbury's
    and Amazon Fresh are investing heavily. What technology constraints prevent
    Tesco from moving in this direction?"
 
@@ -579,7 +579,7 @@ export async function runQuestionSetAgent(
         }
       }
 
-      // No tool calls — done
+      // No tool calls - done
       if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
         break;
       }
@@ -678,7 +678,7 @@ export async function runQuestionSetAgent(
       }
     }
 
-    // Loop ended without commit — build from whatever phases were designed
+    // Loop ended without commit - build from whatever phases were designed
     console.log('[Question Set Agent] Loop ended without commit \u2014 building from designed phases');
     return buildWorkshopQuestionSet(designedPhases, 'Workshop facilitation questions designed based on company context.');
   } catch (error) {
@@ -751,7 +751,7 @@ function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuest
     REIMAGINE: [
       { lens: 'General', text: 'If we could design the ideal future state for this business with no constraints at all, what does success look like in 3 years?', purpose: 'Opens the vision conversation with a broad, unconstrained prompt', subQuestions: [
         { lens: 'People', text: 'In this ideal future, how do people experience their work day? What makes it fulfilling?', purpose: 'Explore the human experience dimension' },
-        { lens: 'Customer', text: 'Describe the perfect customer interaction from start to finish — what does effortless look like?', purpose: 'Paint the ideal customer experience' },
+        { lens: 'Customer', text: 'Describe the perfect customer interaction from start to finish - what does effortless look like?', purpose: 'Paint the ideal customer experience' },
       ] },
       { lens: 'People', text: 'In this ideal future, how are the people in the organisation working? What does their day look like?', purpose: 'Explores the human dimension of the vision', subQuestions: [
         { lens: 'People', text: 'What new skills or capabilities do people have in this future?', purpose: 'Explore capability aspirations' },
@@ -831,7 +831,7 @@ function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuest
       ] },
       { lens: 'General', text: 'What does the 90-day plan look like? What can we start tomorrow?', purpose: 'Creates urgency and near-term commitments', subQuestions: [
         { lens: 'General', text: 'What is the single most impactful action we take in week one?', purpose: 'Drive immediate action' },
-        { lens: 'Organisation', text: 'What governance cadence keeps this on track — weekly, fortnightly?', purpose: 'Establish rhythm' },
+        { lens: 'Organisation', text: 'What governance cadence keeps this on track - weekly, fortnightly?', purpose: 'Establish rhythm' },
       ] },
     ],
   };
@@ -842,7 +842,7 @@ function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuest
     lens: q.lens as LensName | 'General' | null,
     text: q.text,
     purpose: q.purpose,
-    grounding: 'Generic facilitation question — not tailored to specific client context.',
+    grounding: 'Generic facilitation question - not tailored to specific client context.',
     order: i + 1,
     isEdited: false,
     subQuestions: (q.subQuestions || []).map((sq) => ({
@@ -855,5 +855,5 @@ function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuest
 }
 
 function fallbackQuestionSet(context: PrepContext): WorkshopQuestionSet {
-  return buildWorkshopQuestionSet(new Map(), `Generic workshop facilitation questions for ${context.clientName || 'the client'}. These have not been tailored to specific company context or Discovery insights — the facilitator should review and modify as needed.`);
+  return buildWorkshopQuestionSet(new Map(), `Generic workshop facilitation questions for ${context.clientName || 'the client'}. These have not been tailored to specific company context or Discovery insights - the facilitator should review and modify as needed.`);
 }
