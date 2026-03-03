@@ -344,3 +344,87 @@ export function getFixedQuestionObject(
 ): FixedQuestion | null {
   return fixedQuestionsForVersion(questionSetVersion)[phase]?.[index] ?? null;
 }
+
+// ── Custom Discovery question helpers ─────────────────────────
+
+/**
+ * Build a questions record from the workshop's discoveryQuestions JSON.
+ * Maps lens-based questions into phase-compatible format.
+ * Returns null if discoveryQuestions is not set or has no lenses.
+ */
+export function buildQuestionsFromDiscoverySet(
+  discoveryQuestions: any,
+): Record<string, FixedQuestion[]> | null {
+  if (!discoveryQuestions?.lenses?.length) return null;
+
+  const result: Record<string, FixedQuestion[]> = {};
+
+  // Intro phase - standard intro questions
+  result.intro = [
+    {
+      text: "Please describe your role, how long you've been in the organisation, and what you spend most of your time doing.",
+      tag: 'context' as FixedQuestionTag,
+    },
+    {
+      text: 'What is the best thing about working here? What keeps you going?',
+      tag: 'working' as FixedQuestionTag,
+    },
+    {
+      text: 'And what is the single most frustrating thing?',
+      tag: 'pain_points' as FixedQuestionTag,
+    },
+  ];
+
+  // Map each lens to a phase
+  for (const lens of discoveryQuestions.lenses) {
+    result[lens.key] = lens.questions.map((q: any) => ({
+      text: q.text,
+      tag: (q.tag || 'context') as FixedQuestionTag,
+      maturityScale: q.maturityScale,
+    }));
+  }
+
+  // Prioritization phase - dynamically list the lens labels
+  const lensLabels = discoveryQuestions.lenses.map((l: any) => l.label).join(', ');
+  result.prioritization = [
+    {
+      text: `Of the areas we have discussed (${lensLabels}), which one gets in the way of your work the most?`,
+      tag: 'biggest_constraint' as FixedQuestionTag,
+    },
+    {
+      text: 'Which area, if fixed, would make the biggest positive difference to your ability to do your job?',
+      tag: 'high_impact' as FixedQuestionTag,
+    },
+    {
+      text: 'Overall, do you believe this organisation can genuinely change for the better? What makes you think that?',
+      tag: 'optimism' as FixedQuestionTag,
+    },
+    {
+      text: "What else should we know? What question should we have asked but didn't?",
+      tag: 'final_thoughts' as FixedQuestionTag,
+    },
+  ];
+
+  // Summary phase
+  result.summary = [
+    {
+      text: 'Thank you for candidly sharing your experiences. Your input will help shape the workshop, and you will receive a summary report based on what you shared.',
+      tag: 'closing' as FixedQuestionTag,
+    },
+  ];
+
+  return result;
+}
+
+/**
+ * Get the phase order for a workshop with custom Discovery questions.
+ * Returns lens keys wrapped with intro, prioritization, summary.
+ */
+export function getPhaseOrderForDiscovery(
+  discoveryQuestions: any,
+): string[] {
+  if (!discoveryQuestions?.lenses?.length) return PHASE_ORDER as string[];
+
+  const lensKeys = discoveryQuestions.lenses.map((l: any) => l.key);
+  return ['intro', ...lensKeys, 'prioritization', 'summary'];
+}

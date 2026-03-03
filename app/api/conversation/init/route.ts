@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getFixedQuestion, getFixedQuestionObject } from '@/lib/conversation/fixed-questions';
+import { getFixedQuestion, getFixedQuestionObject, buildQuestionsFromDiscoverySet } from '@/lib/conversation/fixed-questions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,8 +77,13 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const firstMessage = getFixedQuestion('intro', 0, includeRegulation, questionSetVersion);
-      const qObj = getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
+      const customQs = buildQuestionsFromDiscoverySet((participant.workshop as any).discoveryQuestions);
+      const firstMessage = customQs
+        ? customQs.intro[0].text
+        : getFixedQuestion('intro', 0, includeRegulation, questionSetVersion);
+      const qObj = customQs
+        ? customQs.intro[0]
+        : getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
 
       await prisma.conversationMessage.create({
         data: {
@@ -194,8 +199,13 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const firstMessage = getFixedQuestion('intro', 0, includeRegulation, questionSetVersion);
-      const qObj = getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
+      const customQs2 = buildQuestionsFromDiscoverySet((participant.workshop as any).discoveryQuestions);
+      const firstMessage = customQs2
+        ? customQs2.intro[0].text
+        : getFixedQuestion('intro', 0, includeRegulation, questionSetVersion);
+      const qObj = customQs2
+        ? customQs2.intro[0]
+        : getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
 
       await prisma.conversationMessage.create({
         data: {

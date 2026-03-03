@@ -138,9 +138,10 @@ model Workshop {
   discoverAnalysis  Json?                 @map("discover_analysis")    // Organisational Analysis dashboard data
 
   // Field Discovery / Diagnostic extension fields
-  engagementType    EngagementType?       @map("engagement_type")      // Diagnostic Baseline, Operational Deep Dive, etc.
-  domainPack        String?               @map("domain_pack")          // Key into domain pack registry (e.g. "contact_centre")
-  domainPackConfig  Json?                 @map("domain_pack_config")   // Resolved config snapshot at creation time
+  engagementType      EngagementType?       @map("engagement_type")      // Diagnostic Baseline, Operational Deep Dive, etc.
+  domainPack          String?               @map("domain_pack")          // Key into domain pack registry (e.g. "contact_centre")
+  domainPackConfig    Json?                 @map("domain_pack_config")   // Resolved config snapshot at creation time
+  discoveryQuestions  Json?                 @map("discovery_questions")  // Per-lens Discovery interview questions (editable)
 
   insights          ConversationInsight[]
   sessions          ConversationSession[]

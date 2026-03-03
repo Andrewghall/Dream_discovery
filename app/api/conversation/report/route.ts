@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { sendDiscoveryReportEmail } from '@/lib/email/send-report';
-import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
+import { fixedQuestionsForVersion, FixedQuestion, buildQuestionsFromDiscoverySet } from '@/lib/conversation/fixed-questions';
 import { createHash } from 'crypto';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 
@@ -147,9 +147,22 @@ function parseQuestionKey(questionKey: string): { phase: string; tag: string; in
   return { phase, tag, index, version: typeof maybeVersion === 'string' && maybeVersion ? maybeVersion : null };
 }
 
-function questionTextFromKey(questionKey: string): { phase: string | null; question: string; tag: string | null } {
+function questionTextFromKey(
+  questionKey: string,
+  customQs?: Record<string, FixedQuestion[]> | null,
+): { phase: string | null; question: string; tag: string | null } {
   const parsed = parseQuestionKey(questionKey);
   if (!parsed) return { phase: null, question: '', tag: null };
+
+  // Try custom questions first (for domain-pack Discovery), then fall back to versioned set
+  const customQ = customQs?.[parsed.phase]?.[parsed.index];
+  if (customQ) {
+    return {
+      phase: parsed.phase,
+      question: customQ.text,
+      tag: parsed.tag,
+    };
+  }
 
   const qs = fixedQuestionsForVersion(parsed.version);
   const phaseKey = parsed.phase as keyof typeof qs;
@@ -628,11 +641,14 @@ export async function GET(request: NextRequest) {
     const narrativeTexts: string[] = [];
     let introContext: string | null = null;
 
+    // Build custom Discovery questions for question-text lookups (null if not configured)
+    const reportCustomQs = buildQuestionsFromDiscoverySet((session.workshop as any)?.discoveryQuestions);
+
     if (session.dataPoints.length > 0) {
       for (const dp of session.dataPoints) {
         const key = dp.questionKey || '';
         if (!key) continue;
-        const meta = questionTextFromKey(key);
+        const meta = questionTextFromKey(key, reportCustomQs);
         const question = meta.question;
         const phase = meta.phase;
         const tag = meta.tag;

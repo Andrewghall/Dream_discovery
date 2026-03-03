@@ -77,6 +77,7 @@ vi.mock('@/lib/conversation/fixed-questions', () => ({
   fixedQuestionsForVersion: vi.fn(() => ({
     people: [{ text: 'Q1' }],
   })),
+  buildQuestionsFromDiscoverySet: vi.fn().mockReturnValue(null),
 }));
 
 // -- Import route handler ------------------------------------------------

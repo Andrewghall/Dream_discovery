@@ -73,6 +73,7 @@ vi.mock('resend', () => ({
 // Mock fixed questions
 vi.mock('@/lib/conversation/fixed-questions', () => ({
   fixedQuestionsForVersion: vi.fn().mockReturnValue({}),
+  buildQuestionsFromDiscoverySet: vi.fn().mockReturnValue(null),
 }));
 
 // ── Imports (after mocks) ──────────────────────────────────

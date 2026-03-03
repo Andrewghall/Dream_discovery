@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { ConversationPhase } from '@/lib/types/conversation';
 import OpenAI from 'openai';
 import {
-  FIXED_QUESTIONS,
+  FixedQuestion,
   fixedQuestionsForVersion,
   getFixedQuestion,
   getFixedQuestionObject,
   getNextPhase,
-  getPhaseProgressPercent,
+  buildQuestionsFromDiscoverySet,
+  getPhaseOrderForDiscovery,
+  getPhaseOrder,
 } from '@/lib/conversation/fixed-questions';
 
 const openai = new OpenAI({
@@ -130,11 +131,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const currentPhase = session.currentPhase as ConversationPhase;
-    let newPhase: ConversationPhase = currentPhase;
+    const currentPhase = session.currentPhase as string;
+    let newPhase: string = currentPhase;
     let newProgress = session.phaseProgress;
     const includeRegulation = session.includeRegulation ?? session.workshop.includeRegulation ?? true;
     const questionSetVersion = (session as unknown as { questionSetVersion?: string | null }).questionSetVersion || 'v1';
+
+    // Build custom Discovery questions from workshop config (null if not set)
+    const customQs = buildQuestionsFromDiscoverySet((session.workshop as any).discoveryQuestions);
+    const phaseOrder: string[] = customQs
+      ? getPhaseOrderForDiscovery((session.workshop as any).discoveryQuestions)
+      : (getPhaseOrder(includeRegulation) as string[]);
 
     const lastAiMessage = [...session.messages].reverse().find((m) => m.role === 'AI');
     const questionAsked = lastAiMessage?.content || '';
@@ -211,13 +218,16 @@ export async function POST(request: NextRequest) {
         const nextPhase = getNextPhase('regulation', nextIncludeRegulation);
         const nextQuestionIndex = 0;
 
-        const aiResponse = `No problem — skipping regulation.\n\n${getFixedQuestion(
-          nextPhase,
-          nextQuestionIndex,
-          nextIncludeRegulation,
-          questionSetVersion
-        )}`;
-        const qObj = getFixedQuestionObject(nextPhase, nextQuestionIndex, nextIncludeRegulation, questionSetVersion);
+        const skipNextQ = customQs
+          ? customQs[nextPhase]?.[nextQuestionIndex]
+          : null;
+        const aiResponse = `No problem -- skipping regulation.\n\n${
+          skipNextQ
+            ? skipNextQ.text
+            : getFixedQuestion(nextPhase, nextQuestionIndex, nextIncludeRegulation, questionSetVersion)
+        }`;
+        const qObj: FixedQuestion | null = skipNextQ
+          || getFixedQuestionObject(nextPhase, nextQuestionIndex, nextIncludeRegulation, questionSetVersion);
 
         const aiMessage = await prisma.conversationMessage.create({
           data: {
@@ -332,23 +342,31 @@ export async function POST(request: NextRequest) {
       totalParticipantCountCurrentPhase - clarificationCountCurrentPhase
     );
 
-    const qs = fixedQuestionsForVersion(questionSetVersion);
-    const totalQuestionsInPhase = qs[currentPhase].length;
+    // Use custom questions if available, otherwise standard versioned set
+    const qs: Record<string, FixedQuestion[]> = customQs || fixedQuestionsForVersion(questionSetVersion);
+    const totalQuestionsInPhase = qs[currentPhase]?.length || 0;
     let nextQuestionIndex = answeredCountCurrentPhase;
 
     if (answeredCountCurrentPhase >= totalQuestionsInPhase) {
-      newPhase = getNextPhase(currentPhase, includeRegulation);
+      // Advance to next phase using the appropriate phase order
+      const idx = phaseOrder.indexOf(currentPhase);
+      newPhase = phaseOrder[Math.min(idx + 1, phaseOrder.length - 1)];
       nextQuestionIndex = 0;
       newProgress = 0;
     } else {
       newPhase = currentPhase;
-      const progressPercent = getPhaseProgressPercent(newPhase, answeredCountCurrentPhase, questionSetVersion);
+      const total = qs[newPhase]?.length || 0;
+      const progressPercent = total > 0
+        ? Math.max(0, Math.min(100, Math.round((answeredCountCurrentPhase / total) * 100)))
+        : 0;
       newProgress = progressPercent;
     }
 
-    const aiResponse = getFixedQuestion(newPhase, nextQuestionIndex, includeRegulation, questionSetVersion);
-    const qObj = getFixedQuestionObject(newPhase, nextQuestionIndex, includeRegulation, questionSetVersion);
-    const isFinalClosingLine = newPhase === 'summary' && nextQuestionIndex === qs.summary.length - 1;
+    const nextQ: FixedQuestion | null = qs[newPhase]?.[nextQuestionIndex] || null;
+    const aiResponse = nextQ?.text || '';
+    const qObj = nextQ;
+    const summaryQs = qs.summary || [];
+    const isFinalClosingLine = newPhase === 'summary' && nextQuestionIndex === summaryQs.length - 1;
 
     if (isFinalClosingLine) {
       newProgress = 100;

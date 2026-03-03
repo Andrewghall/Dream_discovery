@@ -24,6 +24,9 @@ import {
   Pencil,
   Save,
   X,
+  MessageSquare,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import {
   AgentOrchestrationPanel,
@@ -49,6 +52,7 @@ type WorkshopPrep = {
   prepResearch: Record<string, unknown> | null;
   customQuestions: Record<string, unknown> | null;
   discoveryBriefing: Record<string, unknown> | null;
+  domainPack: string | null;
 };
 
 type FacilitationQuestion = {
@@ -179,6 +183,12 @@ export default function PrepPage({ params }: PageProps) {
   };
   const [briefingData, setBriefingData] = useState<BriefingOutput | null>(null);
 
+  // Discovery interview questions
+  const [discoveryQuestionsData, setDiscoveryQuestionsData] = useState<any>(null);
+  const [discoveryQuestionsLoading, setDiscoveryQuestionsLoading] = useState(false);
+  const [editingDiscoveryQId, setEditingDiscoveryQId] = useState<string | null>(null);
+  const [editingDiscoveryQText, setEditingDiscoveryQText] = useState('');
+
   // Collapsible output cards
   const [researchCollapsed, setResearchCollapsed] = useState(false);
   const [questionsCollapsed, setQuestionsCollapsed] = useState(false);
@@ -209,6 +219,21 @@ export default function PrepPage({ params }: PageProps) {
           setQuestionsData(w.customQuestions as Record<string, unknown> | null);
           setBriefingComplete(!!w.discoveryBriefing);
           setBriefingData(w.discoveryBriefing as BriefingOutput | null);
+
+          // Fetch Discovery interview questions
+          if (w.domainPack) {
+            try {
+              const dqRes = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`);
+              if (dqRes.ok) {
+                const dqData = await dqRes.json();
+                if (dqData.discoveryQuestions) {
+                  setDiscoveryQuestionsData(dqData.discoveryQuestions);
+                }
+              }
+            } catch {
+              // fail silently
+            }
+          }
         }
       } catch {
         // fail silently
@@ -571,6 +596,91 @@ export default function PrepPage({ params }: PageProps) {
       // fail silently
     }
   }, [editingQuestionId, editingQuestionText, questionsData, workshopId]);
+
+  // ── Generate Discovery Interview Questions via SSE ──────
+  const generateDiscoveryQuestions = useCallback(async () => {
+    setDiscoveryQuestionsLoading(true);
+    try {
+      const response = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) throw new Error('Failed to generate');
+
+      // Read SSE stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (reader) {
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          // Parse SSE events
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6));
+                if (event.type === 'discovery-questions.generated' && event.data) {
+                  setDiscoveryQuestionsData(event.data);
+                }
+              } catch { /* skip non-JSON lines */ }
+            }
+          }
+        }
+      }
+
+      // Reload from server to be sure
+      const dqRes = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`);
+      if (dqRes.ok) {
+        const dqData = await dqRes.json();
+        if (dqData.discoveryQuestions) {
+          setDiscoveryQuestionsData(dqData.discoveryQuestions);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to generate Discovery questions:', err);
+    } finally {
+      setDiscoveryQuestionsLoading(false);
+    }
+  }, [workshopId]);
+
+  // ── Save Discovery question edit ──────────────────────
+  const saveDiscoveryQuestionEdit = useCallback(async () => {
+    if (!editingDiscoveryQId || !discoveryQuestionsData) return;
+
+    const updated = JSON.parse(JSON.stringify(discoveryQuestionsData));
+    for (const lens of updated.lenses) {
+      for (const q of lens.questions) {
+        if (q.id === editingDiscoveryQId) {
+          q.text = editingDiscoveryQText;
+          q.isEdited = true;
+          break;
+        }
+      }
+    }
+
+    try {
+      const res = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discoveryQuestions: updated }),
+      });
+
+      if (res.ok) {
+        setDiscoveryQuestionsData(updated);
+        setEditingDiscoveryQId(null);
+        setEditingDiscoveryQText('');
+      }
+    } catch (err) {
+      console.error('Failed to save Discovery question edit:', err);
+    }
+  }, [editingDiscoveryQId, editingDiscoveryQText, discoveryQuestionsData, workshopId]);
 
   // Parse questions data into typed structure
   const parsedQuestions: WorkshopQuestionSetData | null = (() => {
@@ -968,6 +1078,133 @@ export default function PrepPage({ params }: PageProps) {
                 </div>
               ) : null}
               </div>}
+            </div>
+          )}
+
+          {/* ── Discovery Interview Questions ─────────────── */}
+          {workshop?.domainPack && (
+            <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/30 dark:border-emerald-900 dark:bg-emerald-950/20 overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <MessageSquare className="h-5 w-5 text-emerald-600" />
+                      <h2 className="text-base font-semibold">Discovery Interview Questions</h2>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Questions participants will answer during their Discovery interview, organised by lens
+                    </p>
+                  </div>
+                  <Button
+                    onClick={generateDiscoveryQuestions}
+                    disabled={discoveryQuestionsLoading || !researchData}
+                    size="sm"
+                    variant="outline"
+                    className="border-emerald-300 hover:bg-emerald-100 dark:border-emerald-700 dark:hover:bg-emerald-900/30"
+                  >
+                    {discoveryQuestionsLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : discoveryQuestionsData ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Regenerate
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Generate Discovery Questions
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {!researchData && !discoveryQuestionsData && (
+                <div className="px-4 pb-4">
+                  <p className="text-sm text-muted-foreground italic">
+                    Run the Research Agent first to generate research-grounded Discovery questions
+                  </p>
+                </div>
+              )}
+
+              {discoveryQuestionsData?.lenses && (
+                <div className="px-4 pb-4 space-y-4">
+                  {discoveryQuestionsData.lenses.map((lens: any, lensIdx: number) => (
+                    <div key={lens.key} className="border rounded-lg overflow-hidden">
+                      <div className="bg-slate-100 dark:bg-slate-800 px-4 py-2.5 flex items-center gap-2">
+                        <span className="text-sm font-semibold">{lens.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {lens.questions.length} questions
+                        </span>
+                      </div>
+                      <div className="divide-y">
+                        {lens.questions.map((q: any, qIdx: number) => (
+                          <div
+                            key={q.id}
+                            className="px-4 py-3 group hover:bg-slate-50 dark:hover:bg-slate-900/30 relative"
+                          >
+                            {editingDiscoveryQId === q.id ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  className="w-full min-h-[80px] p-2 text-sm border rounded-md bg-white dark:bg-slate-900"
+                                  value={editingDiscoveryQText}
+                                  onChange={(e) => setEditingDiscoveryQText(e.target.value)}
+                                />
+                                <div className="flex gap-2">
+                                  <Button size="sm" onClick={saveDiscoveryQuestionEdit}>Save</Button>
+                                  <Button size="sm" variant="ghost" onClick={() => { setEditingDiscoveryQId(null); setEditingDiscoveryQText(''); }}>Cancel</Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start gap-3">
+                                <span className="text-xs text-muted-foreground mt-0.5 shrink-0">
+                                  {qIdx + 1}.
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm whitespace-pre-wrap">{q.text}</p>
+                                  {q.purpose && (
+                                    <p className="text-xs text-muted-foreground mt-1 italic">
+                                      {q.purpose}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {q.tag === 'triple_rating' && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                        Maturity Rating
+                                      </span>
+                                    )}
+                                    {q.isEdited && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                        edited
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => { setEditingDiscoveryQId(q.id); setEditingDiscoveryQText(q.text); }}
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded shrink-0"
+                                  title="Edit question"
+                                >
+                                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                  {discoveryQuestionsData.agentRationale && (
+                    <p className="text-xs text-muted-foreground italic mt-2">
+                      {discoveryQuestionsData.agentRationale}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
