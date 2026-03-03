@@ -1,0 +1,420 @@
+[
+  {
+    "id": "case-ops-friction",
+    "gold": {
+      "id": "case-ops-friction",
+      "note": "Operational delays and approvals indicate friction and constraint themes.",
+      "expected": {
+        "sentimentTone": "concerned",
+        "domains": ["operations", "people"],
+        "themes": ["approval delay", "handoff friction", "unclear ownership"],
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "concerned",
+      "domains": ["operations", "people", "technology"],
+      "themes": ["approval delay", "handoff friction", "unclear ownership"],
+      "overallConfidence": 0.83
+    }
+  },
+  {
+    "id": "case-customer-positive",
+    "gold": {
+      "id": "case-customer-positive",
+      "note": "Customer signals positive momentum with minor concern.",
+      "expected": {
+        "sentimentTone": "positive",
+        "domains": ["customer", "operations"],
+        "themes": ["faster response", "better transparency"],
+        "confidenceRange": { "min": 0.55, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "positive",
+      "domains": ["customer", "operations"],
+      "themes": ["faster response", "better transparency", "cross-team alignment"],
+      "overallConfidence": 0.78
+    }
+  },
+  {
+    "id": "case-risk-critical",
+    "gold": {
+      "id": "case-risk-critical",
+      "note": "Critical risk language should keep sentiment and risk domain classification strict.",
+      "expected": {
+        "sentimentTone": "critical",
+        "domains": ["regulation", "risk"],
+        "themes": ["compliance gap", "audit exposure", "manual workaround"],
+        "confidenceRange": { "min": 0.65, "max": 0.98 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "critical",
+      "domains": ["risk", "regulation"],
+      "themes": ["compliance gap", "audit exposure", "manual workaround"],
+      "overallConfidence": 0.87
+    }
+  },
+  {
+    "id": "case-tech-debt-concerned",
+    "gold": {
+      "id": "case-tech-debt-concerned",
+      "note": "Legacy systems creating bottlenecks. Technology and operations overlap.",
+      "expected": {
+        "sentimentTone": "concerned",
+        "domains": ["technology", "operations"],
+        "themes": ["legacy system", "integration gap", "technical debt"],
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "concerned",
+      "domains": ["technology", "operations"],
+      "themes": ["legacy system", "integration gap", "technical debt", "migration risk"],
+      "overallConfidence": 0.79
+    }
+  },
+  {
+    "id": "case-culture-positive",
+    "gold": {
+      "id": "case-culture-positive",
+      "note": "Strong team culture with good collaboration signals.",
+      "expected": {
+        "sentimentTone": "positive",
+        "domains": ["people", "culture"],
+        "themes": ["team cohesion", "shared purpose", "open communication"],
+        "confidenceRange": { "min": 0.7, "max": 0.98 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "positive",
+      "domains": ["people", "culture"],
+      "themes": ["team cohesion", "shared purpose", "open communication"],
+      "overallConfidence": 0.91
+    }
+  },
+  {
+    "id": "case-finance-neutral",
+    "gold": {
+      "id": "case-finance-neutral",
+      "note": "Budget discussion without strong sentiment either way.",
+      "expected": {
+        "sentimentTone": "neutral",
+        "domains": ["finance", "operations"],
+        "themes": ["budget allocation", "cost visibility", "resource planning"],
+        "confidenceRange": { "min": 0.5, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "neutral",
+      "domains": ["finance", "operations"],
+      "themes": ["budget allocation", "cost visibility", "resource planning"],
+      "overallConfidence": 0.72
+    }
+  },
+  {
+    "id": "case-strategy-positive",
+    "gold": {
+      "id": "case-strategy-positive",
+      "note": "Clear strategic direction with innovation focus.",
+      "expected": {
+        "sentimentTone": "positive",
+        "domains": ["strategy", "innovation"],
+        "themes": ["market opportunity", "growth roadmap", "competitive edge"],
+        "confidenceRange": { "min": 0.65, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "positive",
+      "domains": ["strategy", "innovation"],
+      "themes": ["market opportunity", "growth roadmap", "competitive edge"],
+      "overallConfidence": 0.85
+    }
+  },
+  {
+    "id": "case-regulation-neutral",
+    "gold": {
+      "id": "case-regulation-neutral",
+      "note": "Routine regulatory tracking without alarm signals.",
+      "expected": {
+        "sentimentTone": "neutral",
+        "domains": ["regulation"],
+        "themes": ["policy tracking", "reporting cadence"],
+        "confidenceRange": { "min": 0.5, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "neutral",
+      "domains": ["regulation"],
+      "themes": ["policy tracking", "reporting cadence"],
+      "overallConfidence": 0.68
+    }
+  },
+  {
+    "id": "case-people-critical",
+    "gold": {
+      "id": "case-people-critical",
+      "note": "Severe talent retention issues with leadership gaps.",
+      "expected": {
+        "sentimentTone": "critical",
+        "domains": ["people", "operations"],
+        "themes": ["talent drain", "leadership vacuum", "burnout risk"],
+        "confidenceRange": { "min": 0.7, "max": 0.98 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "critical",
+      "domains": ["people", "operations"],
+      "themes": ["talent drain", "leadership vacuum", "burnout risk"],
+      "overallConfidence": 0.88
+    }
+  },
+  {
+    "id": "case-innovation-positive",
+    "gold": {
+      "id": "case-innovation-positive",
+      "note": "Emerging R&D capabilities with strong tech investment.",
+      "expected": {
+        "sentimentTone": "positive",
+        "domains": ["technology", "innovation"],
+        "themes": ["R&D pipeline", "prototype success", "experimentation culture"],
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "positive",
+      "domains": ["technology", "innovation"],
+      "themes": ["R&D pipeline", "prototype success", "experimentation culture"],
+      "overallConfidence": 0.82
+    }
+  },
+  {
+    "id": "case-customer-churn-concerned",
+    "gold": {
+      "id": "case-customer-churn-concerned",
+      "note": "Rising churn signals with service quality concerns.",
+      "expected": {
+        "sentimentTone": "concerned",
+        "domains": ["customer", "operations"],
+        "themes": ["churn rate", "service quality", "response time"],
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "concerned",
+      "domains": ["customer", "operations"],
+      "themes": ["churn rate", "service quality", "response time", "onboarding gap"],
+      "overallConfidence": 0.76
+    }
+  },
+  {
+    "id": "case-multi-domain-critical",
+    "gold": {
+      "id": "case-multi-domain-critical",
+      "note": "Systemic failure spanning multiple domains. Edge case: 4+ domains.",
+      "expected": {
+        "sentimentTone": "critical",
+        "domains": ["operations", "technology", "people", "risk"],
+        "themes": ["system outage", "incident response", "communication breakdown", "data loss"],
+        "confidenceRange": { "min": 0.7, "max": 0.99 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "critical",
+      "domains": ["operations", "technology", "people", "risk"],
+      "themes": ["system outage", "incident response", "communication breakdown", "data loss"],
+      "overallConfidence": 0.92
+    }
+  },
+  {
+    "id": "case-single-domain-neutral",
+    "gold": {
+      "id": "case-single-domain-neutral",
+      "note": "Narrow focus on one domain only. Edge case: single domain.",
+      "expected": {
+        "sentimentTone": "neutral",
+        "domains": ["finance"],
+        "themes": ["quarterly review", "variance analysis"],
+        "confidenceRange": { "min": 0.5, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "neutral",
+      "domains": ["finance"],
+      "themes": ["quarterly review", "variance analysis"],
+      "overallConfidence": 0.65
+    }
+  },
+  {
+    "id": "case-minimal-themes",
+    "gold": {
+      "id": "case-minimal-themes",
+      "note": "Very brief input producing minimal theme set. Edge case: single theme.",
+      "expected": {
+        "sentimentTone": "neutral",
+        "domains": ["operations"],
+        "themes": ["process review"],
+        "confidenceRange": { "min": 0.4, "max": 0.85 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "neutral",
+      "domains": ["operations"],
+      "themes": ["process review"],
+      "overallConfidence": 0.55
+    }
+  },
+  {
+    "id": "case-high-confidence",
+    "gold": {
+      "id": "case-high-confidence",
+      "note": "Clear, unambiguous positive signals with high model confidence.",
+      "expected": {
+        "sentimentTone": "positive",
+        "domains": ["customer", "strategy"],
+        "themes": ["NPS improvement", "brand loyalty", "referral growth"],
+        "confidenceRange": { "min": 0.85, "max": 0.99 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "positive",
+      "domains": ["customer", "strategy"],
+      "themes": ["NPS improvement", "brand loyalty", "referral growth"],
+      "overallConfidence": 0.95
+    }
+  },
+  {
+    "id": "case-low-confidence",
+    "gold": {
+      "id": "case-low-confidence",
+      "note": "Ambiguous signals producing low model confidence. Edge case: low confidence range.",
+      "expected": {
+        "sentimentTone": "concerned",
+        "domains": ["people", "operations"],
+        "themes": ["unclear priorities", "mixed signals"],
+        "confidenceRange": { "min": 0.35, "max": 0.65 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "concerned",
+      "domains": ["people", "operations"],
+      "themes": ["unclear priorities", "mixed signals"],
+      "overallConfidence": 0.48
+    }
+  },
+  {
+    "id": "case-ops-neutral",
+    "gold": {
+      "id": "case-ops-neutral",
+      "note": "Standard operational review with no strong directional sentiment.",
+      "expected": {
+        "sentimentTone": "neutral",
+        "domains": ["operations", "technology"],
+        "themes": ["workflow mapping", "automation potential", "capacity planning"],
+        "confidenceRange": { "min": 0.55, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "neutral",
+      "domains": ["operations", "technology"],
+      "themes": ["workflow mapping", "automation potential", "capacity planning"],
+      "overallConfidence": 0.74
+    }
+  },
+  {
+    "id": "case-people-engagement-concerned",
+    "gold": {
+      "id": "case-people-engagement-concerned",
+      "note": "Declining engagement scores with culture friction.",
+      "expected": {
+        "sentimentTone": "concerned",
+        "domains": ["people", "culture"],
+        "themes": ["engagement decline", "feedback gap", "recognition deficit"],
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "concerned",
+      "domains": ["people", "culture"],
+      "themes": ["engagement decline", "feedback gap", "recognition deficit"],
+      "overallConfidence": 0.81
+    }
+  },
+  {
+    "id": "case-tech-upgrade-positive",
+    "gold": {
+      "id": "case-tech-upgrade-positive",
+      "note": "Successful platform migration with measurable improvements.",
+      "expected": {
+        "sentimentTone": "positive",
+        "domains": ["technology"],
+        "themes": ["platform migration", "performance gain", "user adoption"],
+        "confidenceRange": { "min": 0.65, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "positive",
+      "domains": ["technology"],
+      "themes": ["platform migration", "performance gain", "user adoption"],
+      "overallConfidence": 0.86
+    }
+  },
+  {
+    "id": "case-risk-neutral",
+    "gold": {
+      "id": "case-risk-neutral",
+      "note": "Routine risk assessment without elevated threat signals.",
+      "expected": {
+        "sentimentTone": "neutral",
+        "domains": ["risk", "regulation"],
+        "themes": ["risk register", "control effectiveness", "maturity assessment"],
+        "confidenceRange": { "min": 0.5, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "neutral",
+      "domains": ["risk", "regulation"],
+      "themes": ["risk register", "control effectiveness", "maturity assessment"],
+      "overallConfidence": 0.71
+    }
+  },
+  {
+    "id": "case-customer-critical",
+    "gold": {
+      "id": "case-customer-critical",
+      "note": "Major customer complaints with potential regulatory exposure.",
+      "expected": {
+        "sentimentTone": "critical",
+        "domains": ["customer", "risk"],
+        "themes": ["complaint escalation", "SLA breach", "reputation damage"],
+        "confidenceRange": { "min": 0.7, "max": 0.98 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "critical",
+      "domains": ["customer", "risk"],
+      "themes": ["complaint escalation", "SLA breach", "reputation damage"],
+      "overallConfidence": 0.89
+    }
+  },
+  {
+    "id": "case-superset-prediction",
+    "gold": {
+      "id": "case-superset-prediction",
+      "note": "Prediction includes extra domains beyond gold. Tests Jaccard penalty for superset predictions.",
+      "expected": {
+        "sentimentTone": "concerned",
+        "domains": ["operations"],
+        "themes": ["supply chain disruption", "vendor dependency"],
+        "confidenceRange": { "min": 0.55, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "concerned",
+      "domains": ["operations", "finance", "risk"],
+      "themes": ["supply chain disruption", "vendor dependency", "cost overrun"],
+      "overallConfidence": 0.73
+    }
+  }
+]

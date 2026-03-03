@@ -5,6 +5,8 @@ import type { ConstraintMapData, ConstraintNode, ConstraintRelationship } from '
 
 interface ConstraintMapProps {
   data: ConstraintMapData;
+  /** When true, show computed impact score instead of raw weight */
+  showImpactScore?: boolean;
 }
 
 // Domain colours (muted executive-grade palette)
@@ -29,7 +31,7 @@ const SEVERITY_STROKE: Record<string, string> = {
  * Layout: left-to-right hierarchy. Root constraints (no deps) on the left,
  * dependent constraints flowing right.
  */
-export function ConstraintMap({ data }: ConstraintMapProps) {
+export function ConstraintMap({ data, showImpactScore }: ConstraintMapProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   // Layout computation
@@ -164,7 +166,7 @@ export function ConstraintMap({ data }: ConstraintMapProps) {
                 className="fill-slate-500"
                 fontSize={8}
               >
-                {constraint.domain} &middot; w:{constraint.weight}
+                {constraint.domain} &middot; {showImpactScore ? 'impact' : 'w'}:{constraint.weight}
               </text>
             </g>
           );

@@ -8,6 +8,8 @@ import type {
 
 interface ConfidenceIndexProps {
   data: ConfidenceIndexData;
+  /** When true, show only the overall bar in a single row (no domain/layer breakdown) */
+  compact?: boolean;
 }
 
 const LAYER_LABELS: Record<NarrativeLayer, string> = {
@@ -25,7 +27,7 @@ const CONFIDENCE_COLORS = {
 /**
  * Confidence Index — Stacked bars showing certainty/hedging/uncertainty
  */
-export function ConfidenceIndex({ data }: ConfidenceIndexProps) {
+export function ConfidenceIndex({ data, compact }: ConfidenceIndexProps) {
   const overallTotal = data.overall.certain + data.overall.hedging + data.overall.uncertain;
 
   if (overallTotal === 0) {
@@ -47,7 +49,7 @@ export function ConfidenceIndex({ data }: ConfidenceIndexProps) {
       </div>
 
       {/* By Domain */}
-      {data.byDomain.length > 0 && (
+      {!compact && data.byDomain.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
             By Domain
@@ -78,7 +80,7 @@ export function ConfidenceIndex({ data }: ConfidenceIndexProps) {
       )}
 
       {/* By Layer */}
-      {data.byLayer.some((l) => total(l.distribution) > 0) && (
+      {!compact && data.byLayer.some((l) => total(l.distribution) > 0) && (
         <div>
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
             By Narrative Layer

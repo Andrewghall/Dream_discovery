@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     if (adminUsername && email.toLowerCase().trim() === adminUsername.toLowerCase()) {
       // ADMIN_PASSWORD must be a bcrypt hash (starts with $2).
-      // Plaintext passwords are not accepted — hash with bcrypt before setting the env var.
+      // Plaintext passwords are not accepted - hash with bcrypt before setting the env var.
       const isAdminValid = adminPassword && adminPassword.startsWith('$2')
         ? await bcrypt.compare(password, adminPassword)
         : false;
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
       }
 
-      // Valid admin — create JWT session without DB
+      // Valid admin - create JWT session without DB
       const sessionPayload: SessionPayload = {
         sessionId: nanoid(),
         userId: 'admin',
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
-    // Successful tenant login — reset failed attempts
+    // Successful tenant login - reset failed attempts
     await prisma.user.update({
       where: { id: user.id },
       data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
@@ -153,8 +153,21 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Create DB-backed session so logout-all / password-reset revocation works
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const dbSession = await prisma.session.create({
+      data: {
+        id: nanoid(),
+        userId: user.id,
+        token: nanoid(32),
+        userAgent,
+        ipAddress,
+        expiresAt,
+      },
+    });
+
     const sessionPayload: SessionPayload = {
-      sessionId: nanoid(),
+      sessionId: dbSession.id,
       userId: user.id,
       email: user.email,
       role: user.role,

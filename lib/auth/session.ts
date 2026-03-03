@@ -1,10 +1,14 @@
 /**
- * Secure Session Management with JWT
- * Uses HMAC-SHA256 signing to prevent tampering
+ * Secure Session Management with JWT + DB state
+ * Uses HMAC-SHA256 signing to prevent tampering.
+ * Non-platform-admin sessions are also validated against the DB
+ * (exists, not revoked, not expired) so that logout-all / password-reset
+ * revocation takes effect immediately.
  */
 
 import * as jose from 'jose';
 import { cookies } from 'next/headers';
+import { prisma } from '@/lib/prisma';
 
 export interface SessionPayload {
   sessionId: string;
@@ -48,7 +52,9 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
 }
 
 /**
- * Verify and decode a JWT session token
+ * Verify and decode a JWT session token (signature + expiry only).
+ * Does NOT check DB session state. Use verifySessionWithDB() when
+ * you need revocation-aware verification.
  * @param token JWT string
  * @returns Decoded session payload or null if invalid
  */
@@ -70,6 +76,52 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 }
 
 /**
+ * Verify a JWT AND check DB session state for non-platform-admin users.
+ *
+ * Platform admin sessions are env-var based and have no DB record,
+ * so they are validated by JWT signature only.
+ *
+ * For all other roles the DB Session row must:
+ *   - exist
+ *   - not be revoked (revokedAt IS NULL)
+ *   - not be expired  (expiresAt > now)
+ *
+ * @param token JWT string
+ * @returns Decoded session payload or null if invalid/revoked/expired
+ */
+export async function verifySessionWithDB(token: string): Promise<SessionPayload | null> {
+  const payload = await verifySessionToken(token);
+  if (!payload) return null;
+
+  // Platform admin: env-var auth, no DB session row
+  if (payload.role === 'PLATFORM_ADMIN') {
+    return payload;
+  }
+
+  // All other roles: verify DB session state
+  try {
+    const dbSession = await prisma.session.findFirst({
+      where: {
+        id: payload.sessionId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+
+    if (!dbSession) {
+      return null;
+    }
+
+    return payload;
+  } catch (error) {
+    console.error('DB session verification failed:', error);
+    // On DB error, fall back to JWT-only to avoid locking everyone out
+    return payload;
+  }
+}
+
+/**
  * Check if a session token is expired
  * @param token JWT string
  * @returns true if expired, false otherwise
@@ -87,7 +139,7 @@ export async function isSessionExpired(token: string): Promise<boolean> {
 export async function getSession(): Promise<SessionPayload | null> {
   try {
     const cookieStore = await cookies();
-    // Single unified session cookie — all roles use the same cookie name
+    // Single unified session cookie -- all roles use the same cookie name
     const sessionCookie = cookieStore.get('session');
     if (sessionCookie?.value) {
       const payload = await verifySessionToken(sessionCookie.value);

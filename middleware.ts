@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySessionToken, createSessionToken } from '@/lib/auth/session';
+import { verifySessionWithDB, createSessionToken } from '@/lib/auth/session';
 import * as jose from 'jose';
+
+// Node.js runtime so Prisma DB session checks work in middleware
+export const runtime = 'nodejs';
 
 const TENANT_ROLES = ['TENANT_ADMIN', 'TENANT_USER'];
 const REFRESH_WINDOW_MS = 2 * 60 * 60 * 1000; // Refresh if within 2 hours of expiry
@@ -9,7 +12,8 @@ async function getSessionFromRequest(request: NextRequest) {
   const cookie = request.cookies.get('session');
   if (!cookie?.value) return null;
   try {
-    return await verifySessionToken(cookie.value);
+    // DB-backed: rejects revoked/expired DB sessions for non-admin users
+    return await verifySessionWithDB(cookie.value);
   } catch {
     return null;
   }
@@ -25,7 +29,7 @@ function shouldRefreshToken(request: NextRequest): boolean {
   try {
     const decoded = jose.decodeJwt(cookie.value);
     if (!decoded.exp) return false;
-    const expiresAt = decoded.exp * 1000; // seconds → ms
+    const expiresAt = decoded.exp * 1000; // seconds -> ms
     return expiresAt - Date.now() < REFRESH_WINDOW_MS;
   } catch {
     return false;
@@ -47,7 +51,7 @@ export async function middleware(request: NextRequest) {
     const session = await getSessionFromRequest(request);
 
     if (!session?.userId) {
-      // Not logged in — go to login
+      // Not logged in or session revoked - go to login
       const loginUrl = new URL('/login', request.url);
       return NextResponse.redirect(loginUrl);
     }
@@ -58,12 +62,12 @@ export async function middleware(request: NextRequest) {
     }
 
     if (isTenantPath && !TENANT_ROLES.includes(session.role)) {
-      // Platform admin trying to access /tenant/* — redirect them to /admin
+      // Platform admin trying to access /tenant/* - redirect them to /admin
       return NextResponse.redirect(new URL('/admin', request.url));
     }
 
     if (isTenantPath && TENANT_ROLES.includes(session.role) && !session.organizationId) {
-      // Tenant user with no org — back to login
+      // Tenant user with no org - back to login
       return NextResponse.redirect(new URL('/login', request.url));
     }
 

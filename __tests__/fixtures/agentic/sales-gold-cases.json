@@ -1,0 +1,377 @@
+[
+  {
+    "id": "sales-discovery-exploring",
+    "gold": {
+      "id": "sales-discovery-exploring",
+      "note": "Early discovery call, customer exploring options with no strong commitment signals.",
+      "expected": {
+        "customerIntent": "exploring",
+        "sentimentTone": "neutral",
+        "topics": ["needs", "decision_process"],
+        "coachingTriggered": false,
+        "coachingPriority": null,
+        "dealHealth": "Warm",
+        "confidenceRange": { "min": 0.5, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "exploring",
+      "sentimentTone": "neutral",
+      "topics": ["needs", "decision_process"],
+      "coachingTriggered": false,
+      "coachingPriority": null,
+      "dealHealth": "Warm",
+      "overallConfidence": 0.72
+    }
+  },
+  {
+    "id": "sales-demo-interested",
+    "gold": {
+      "id": "sales-demo-interested",
+      "note": "Customer showing genuine interest during product demo with buying signals.",
+      "expected": {
+        "customerIntent": "interested",
+        "sentimentTone": "positive",
+        "topics": ["needs", "buying_signal"],
+        "coachingTriggered": true,
+        "coachingPriority": "low",
+        "dealHealth": "Warm",
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "interested",
+      "sentimentTone": "positive",
+      "topics": ["needs", "buying_signal"],
+      "coachingTriggered": true,
+      "coachingPriority": "low",
+      "dealHealth": "Warm",
+      "overallConfidence": 0.78
+    }
+  },
+  {
+    "id": "sales-objection-pricing",
+    "gold": {
+      "id": "sales-objection-pricing",
+      "note": "Customer raising pricing concerns and budget constraints.",
+      "expected": {
+        "customerIntent": "objecting",
+        "sentimentTone": "concerned",
+        "topics": ["objection", "budget"],
+        "coachingTriggered": true,
+        "coachingPriority": "high",
+        "dealHealth": "Cool",
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "objecting",
+      "sentimentTone": "concerned",
+      "topics": ["objection", "budget"],
+      "coachingTriggered": true,
+      "coachingPriority": "high",
+      "dealHealth": "Cool",
+      "overallConfidence": 0.81
+    }
+  },
+  {
+    "id": "sales-ready-to-close",
+    "gold": {
+      "id": "sales-ready-to-close",
+      "note": "Buyer asking about next steps, timeline, and contract process.",
+      "expected": {
+        "customerIntent": "ready_to_buy",
+        "sentimentTone": "positive",
+        "topics": ["buying_signal", "timeline", "decision_process"],
+        "coachingTriggered": true,
+        "coachingPriority": "medium",
+        "dealHealth": "Hot",
+        "confidenceRange": { "min": 0.7, "max": 0.99 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "ready_to_buy",
+      "sentimentTone": "positive",
+      "topics": ["buying_signal", "timeline", "decision_process"],
+      "coachingTriggered": true,
+      "coachingPriority": "medium",
+      "dealHealth": "Hot",
+      "overallConfidence": 0.91
+    }
+  },
+  {
+    "id": "sales-cold-outreach-neutral",
+    "gold": {
+      "id": "sales-cold-outreach-neutral",
+      "note": "Cold outreach with minimal engagement, no clear signals.",
+      "expected": {
+        "customerIntent": "neutral",
+        "sentimentTone": "neutral",
+        "topics": ["other"],
+        "coachingTriggered": false,
+        "coachingPriority": null,
+        "dealHealth": "Cold",
+        "confidenceRange": { "min": 0.4, "max": 0.8 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "neutral",
+      "sentimentTone": "neutral",
+      "topics": ["other"],
+      "coachingTriggered": false,
+      "coachingPriority": null,
+      "dealHealth": "Cold",
+      "overallConfidence": 0.55
+    }
+  },
+  {
+    "id": "sales-competitor-mention",
+    "gold": {
+      "id": "sales-competitor-mention",
+      "note": "Customer mentions competitor strengths, expressing hesitation.",
+      "expected": {
+        "customerIntent": "hesitant",
+        "sentimentTone": "concerned",
+        "topics": ["competition", "objection"],
+        "coachingTriggered": true,
+        "coachingPriority": "high",
+        "dealHealth": "Cool",
+        "confidenceRange": { "min": 0.55, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "hesitant",
+      "sentimentTone": "concerned",
+      "topics": ["competition", "objection"],
+      "coachingTriggered": true,
+      "coachingPriority": "high",
+      "dealHealth": "Cool",
+      "overallConfidence": 0.74
+    }
+  },
+  {
+    "id": "sales-budget-confirmed",
+    "gold": {
+      "id": "sales-budget-confirmed",
+      "note": "Budget confirmed with timeline set, strong buying signals.",
+      "expected": {
+        "customerIntent": "ready_to_buy",
+        "sentimentTone": "positive",
+        "topics": ["budget", "timeline", "buying_signal"],
+        "coachingTriggered": true,
+        "coachingPriority": "low",
+        "dealHealth": "Hot",
+        "confidenceRange": { "min": 0.75, "max": 0.99 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "ready_to_buy",
+      "sentimentTone": "positive",
+      "topics": ["budget", "timeline", "buying_signal"],
+      "coachingTriggered": true,
+      "coachingPriority": "low",
+      "dealHealth": "Hot",
+      "overallConfidence": 0.89
+    }
+  },
+  {
+    "id": "sales-multi-stakeholder",
+    "gold": {
+      "id": "sales-multi-stakeholder",
+      "note": "Complex multi-stakeholder discovery with process focus.",
+      "expected": {
+        "customerIntent": "exploring",
+        "sentimentTone": "neutral",
+        "topics": ["decision_process", "needs", "timeline"],
+        "coachingTriggered": true,
+        "coachingPriority": "medium",
+        "dealHealth": "Warm",
+        "confidenceRange": { "min": 0.5, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "exploring",
+      "sentimentTone": "neutral",
+      "topics": ["decision_process", "needs", "timeline"],
+      "coachingTriggered": true,
+      "coachingPriority": "medium",
+      "dealHealth": "Warm",
+      "overallConfidence": 0.68
+    }
+  },
+  {
+    "id": "sales-technical-concerns",
+    "gold": {
+      "id": "sales-technical-concerns",
+      "note": "Deep technical objections with critical tone.",
+      "expected": {
+        "customerIntent": "objecting",
+        "sentimentTone": "critical",
+        "topics": ["objection", "needs"],
+        "coachingTriggered": true,
+        "coachingPriority": "high",
+        "dealHealth": "Cool",
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "objecting",
+      "sentimentTone": "critical",
+      "topics": ["objection", "needs"],
+      "coachingTriggered": true,
+      "coachingPriority": "high",
+      "dealHealth": "Cool",
+      "overallConfidence": 0.82
+    }
+  },
+  {
+    "id": "sales-expansion-opportunity",
+    "gold": {
+      "id": "sales-expansion-opportunity",
+      "note": "Existing customer exploring expansion with positive signals.",
+      "expected": {
+        "customerIntent": "interested",
+        "sentimentTone": "positive",
+        "topics": ["needs", "buying_signal", "budget"],
+        "coachingTriggered": true,
+        "coachingPriority": "medium",
+        "dealHealth": "Hot",
+        "confidenceRange": { "min": 0.65, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "interested",
+      "sentimentTone": "positive",
+      "topics": ["needs", "buying_signal", "budget"],
+      "coachingTriggered": true,
+      "coachingPriority": "medium",
+      "dealHealth": "Hot",
+      "overallConfidence": 0.84
+    }
+  },
+  {
+    "id": "sales-stalling-deal",
+    "gold": {
+      "id": "sales-stalling-deal",
+      "note": "Deal stalling, customer delaying without clear objection.",
+      "expected": {
+        "customerIntent": "hesitant",
+        "sentimentTone": "neutral",
+        "topics": ["timeline", "decision_process"],
+        "coachingTriggered": true,
+        "coachingPriority": "high",
+        "dealHealth": "Cool",
+        "confidenceRange": { "min": 0.5, "max": 0.85 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "hesitant",
+      "sentimentTone": "neutral",
+      "topics": ["timeline", "decision_process"],
+      "coachingTriggered": true,
+      "coachingPriority": "high",
+      "dealHealth": "Cool",
+      "overallConfidence": 0.63
+    }
+  },
+  {
+    "id": "sales-champion-building",
+    "gold": {
+      "id": "sales-champion-building",
+      "note": "Internal champion actively building the case with buying signals.",
+      "expected": {
+        "customerIntent": "interested",
+        "sentimentTone": "positive",
+        "topics": ["decision_process", "needs", "buying_signal"],
+        "coachingTriggered": true,
+        "coachingPriority": "low",
+        "dealHealth": "Warm",
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "interested",
+      "sentimentTone": "positive",
+      "topics": ["decision_process", "needs", "buying_signal"],
+      "coachingTriggered": true,
+      "coachingPriority": "low",
+      "dealHealth": "Warm",
+      "overallConfidence": 0.79
+    }
+  },
+  {
+    "id": "sales-lost-deal-signals",
+    "gold": {
+      "id": "sales-lost-deal-signals",
+      "note": "Clear signals deal is lost: competitor chosen, budget pulled.",
+      "expected": {
+        "customerIntent": "objecting",
+        "sentimentTone": "critical",
+        "topics": ["competition", "objection", "budget"],
+        "coachingTriggered": true,
+        "coachingPriority": "high",
+        "dealHealth": "Cold",
+        "confidenceRange": { "min": 0.7, "max": 0.99 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "objecting",
+      "sentimentTone": "critical",
+      "topics": ["competition", "objection", "budget"],
+      "coachingTriggered": true,
+      "coachingPriority": "high",
+      "dealHealth": "Cold",
+      "overallConfidence": 0.88
+    }
+  },
+  {
+    "id": "sales-needs-discovery-deep",
+    "gold": {
+      "id": "sales-needs-discovery-deep",
+      "note": "Deep needs uncovering with positive rapport, no coaching needed yet.",
+      "expected": {
+        "customerIntent": "exploring",
+        "sentimentTone": "positive",
+        "topics": ["needs", "timeline"],
+        "coachingTriggered": false,
+        "coachingPriority": null,
+        "dealHealth": "Warm",
+        "confidenceRange": { "min": 0.55, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "exploring",
+      "sentimentTone": "positive",
+      "topics": ["needs", "timeline"],
+      "coachingTriggered": false,
+      "coachingPriority": null,
+      "dealHealth": "Warm",
+      "overallConfidence": 0.71
+    }
+  },
+  {
+    "id": "sales-single-topic-minimal",
+    "gold": {
+      "id": "sales-single-topic-minimal",
+      "note": "Minimal engagement, single topic. Edge case: single topic, low confidence.",
+      "expected": {
+        "customerIntent": "neutral",
+        "sentimentTone": "neutral",
+        "topics": ["other"],
+        "coachingTriggered": false,
+        "coachingPriority": null,
+        "dealHealth": "Cold",
+        "confidenceRange": { "min": 0.3, "max": 0.65 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "neutral",
+      "sentimentTone": "neutral",
+      "topics": ["other"],
+      "coachingTriggered": false,
+      "coachingPriority": null,
+      "dealHealth": "Cold",
+      "overallConfidence": 0.42
+    }
+  }
+]

@@ -138,12 +138,10 @@ export async function POST(request: NextRequest) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       const loginUrl = `${baseUrl}${role === 'PLATFORM_ADMIN' ? '/login' : '/tenant/login'}`;
       const setPasswordUrl = `${baseUrl}/reset-password?token=${resetToken}`;
-      console.log('[create] Sending welcome email to', user.email, 'from org:', user.organization?.name);
       const emailResult = await sendWelcomeEmail({
         to: user.email,
         userName: user.name.split(' ')[0],
         userEmail: user.email,
-        temporaryPassword,
         loginUrl,
         setPasswordUrl,
         role: user.role,
@@ -151,7 +149,6 @@ export async function POST(request: NextRequest) {
         maxSeats: user.organization?.maxSeats ?? undefined,
       });
       emailSent = true;
-      console.log('[create] Welcome email sent OK, id:', emailResult.emailId);
     } catch (err: any) {
       emailError = err?.message || String(err);
       console.error('[create] Failed to send welcome email:', emailError);
@@ -171,7 +168,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
-      temporaryPassword,
       emailSent,
       emailError,
     });

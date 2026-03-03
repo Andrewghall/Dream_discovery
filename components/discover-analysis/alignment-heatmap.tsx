@@ -5,6 +5,10 @@ import type { AlignmentHeatmapData, AlignmentCell } from '@/lib/types/discover-a
 
 interface AlignmentHeatmapProps {
   data: AlignmentHeatmapData;
+  /** When true, append (n=X) next to actor labels */
+  showSampleSize?: boolean;
+  /** When provided, render a participation imbalance warning above the heatmap */
+  imbalanceWarning?: string | null;
 }
 
 /**
@@ -13,7 +17,7 @@ interface AlignmentHeatmapProps {
  * Cell colour: red (divergence) → white (neutral) → green (alignment)
  * Cell opacity: proportional to utterance count (confidence)
  */
-export function AlignmentHeatmap({ data }: AlignmentHeatmapProps) {
+export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: AlignmentHeatmapProps) {
   const [tooltip, setTooltip] = useState<{
     cell: AlignmentCell;
     x: number;
@@ -77,8 +81,22 @@ export function AlignmentHeatmap({ data }: AlignmentHeatmapProps) {
     );
   }
 
+  // Compute per-actor sample sizes for n= display
+  const actorSampleSizes = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of cells) {
+      map.set(c.actor, (map.get(c.actor) || 0) + c.utteranceCount);
+    }
+    return map;
+  }, [cells]);
+
   return (
     <div className="relative overflow-x-auto">
+      {imbalanceWarning && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+          <span className="text-xs text-amber-700">{imbalanceWarning}</span>
+        </div>
+      )}
       <svg
         width={svgWidth}
         height={svgHeight}
@@ -97,6 +115,11 @@ export function AlignmentHeatmap({ data }: AlignmentHeatmapProps) {
             fontWeight={500}
           >
             {truncate(actor, 12)}
+            {showSampleSize && (
+              <tspan className="fill-slate-400" fontSize={9}>
+                {' '}(n={actorSampleSizes.get(actor) || 0})
+              </tspan>
+            )}
           </text>
         ))}
 

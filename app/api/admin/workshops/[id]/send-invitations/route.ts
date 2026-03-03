@@ -125,7 +125,7 @@ export async function POST(
         emailsSent++;
         results.push({ email: participant.email, ok: true, resendId });
       } catch (error: unknown) {
-        console.error(`   - ❌ Failed to send email to ${participant.email}:`, error);
+        console.error(`   - Failed to send email to ${participant.email}:`, error);
         const message =
           error instanceof Error
             ? error.message
@@ -133,11 +133,12 @@ export async function POST(
               ? error
               : JSON.stringify(error);
         results.push({ email: participant.email, ok: false, error: message });
-        throw new Error(`Failed to send email to ${participant.email}: ${message}`);
+        // Continue sending to remaining recipients instead of aborting
       }
     }
-    
-    console.log(`\n📧 Summary: ${emailsSent} emails sent, 0 errors`);
+
+    const emailsFailed = results.filter((r) => !r.ok).length;
+    console.log(`\n   Summary: ${emailsSent} sent, ${emailsFailed} failed`);
 
     if (emailsSent > 0) {
       // Update workshop status
@@ -150,8 +151,9 @@ export async function POST(
     }
 
     return NextResponse.json({
-      success: true,
+      success: emailsFailed === 0,
       emailsSent,
+      emailsFailed,
       diagnostics: {
         ...diagnostics,
         appUrl,
