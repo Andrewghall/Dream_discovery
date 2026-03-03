@@ -606,32 +606,55 @@ export default function PrepPage({ params }: PageProps) {
         method: 'POST',
       });
 
-      if (!response.ok) throw new Error('Failed to generate');
+      if (!response.ok || !response.body) {
+        setDiscoveryQuestionsLoading(false);
+        setAgentConversation((prev) => [
+          ...prev,
+          {
+            timestampMs: Date.now(),
+            agent: 'prep-orchestrator',
+            to: '',
+            message: `Discovery question generation failed: ${response.statusText || 'Unknown error'}. Please try again.`,
+            type: 'info',
+          },
+        ]);
+        return;
+      }
 
-      // Read SSE stream
-      const reader = response.body?.getReader();
+      // Read SSE stream (same pattern as research/briefing/questions)
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
 
-      if (reader) {
-        let buffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
 
-          // Parse SSE events
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const event = JSON.parse(line.slice(6));
-                if (event.type === 'discovery-questions.generated' && event.data) {
-                  setDiscoveryQuestionsData(event.data);
+        let eventType = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ') && eventType) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (eventType === 'agent.conversation') {
+                setAgentConversation((prev) => [...prev, data as AgentConversationEntry]);
+              } else if (eventType === 'discovery-questions.generated') {
+                if (data && typeof data === 'object' && 'discoveryQuestions' in data) {
+                  setDiscoveryQuestionsData(data.discoveryQuestions);
                 }
-              } catch { /* skip non-JSON lines */ }
+              }
+            } catch {
+              // Ignore parse errors
             }
+            eventType = '';
+          } else if (line === '') {
+            eventType = '';
           }
         }
       }
@@ -646,6 +669,16 @@ export default function PrepPage({ params }: PageProps) {
       }
     } catch (err) {
       console.error('Failed to generate Discovery questions:', err);
+      setAgentConversation((prev) => [
+        ...prev,
+        {
+          timestampMs: Date.now(),
+          agent: 'prep-orchestrator',
+          to: '',
+          message: `Discovery question generation failed: ${err instanceof Error ? err.message : 'Network error'}. Please try again.`,
+          type: 'info',
+        },
+      ]);
     } finally {
       setDiscoveryQuestionsLoading(false);
     }

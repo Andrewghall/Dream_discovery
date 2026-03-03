@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
 import { runDiscoveryQuestionAgent } from '@/lib/cognition/agents/discovery-question-agent';
+import type { AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -100,13 +101,48 @@ export async function POST(
         clientName: workshop.clientName,
       });
 
+      // Opening handoff from orchestrator
+      sendEvent('agent.conversation', {
+        timestampMs: Date.now(),
+        agent: 'prep-orchestrator',
+        to: 'discovery-question-agent',
+        message: `Discovery Question Agent, please generate tailored interview questions for ${workshop.clientName || 'the client'}. Use the domain pack lenses, research findings, and workshop context to produce specific, grounded questions for each lens.`,
+        type: 'handoff',
+      } satisfies AgentConversationEntry);
+
       try {
         const questionSet = await runDiscoveryQuestionAgent(workshopId, (entry) => {
-          sendEvent('agent.conversation', entry);
+          // Wrap the agent's { role, content } into a full AgentConversationEntry
+          const mapped: AgentConversationEntry = {
+            timestampMs: Date.now(),
+            agent: 'discovery-question-agent',
+            to: 'prep-orchestrator',
+            message: entry.content,
+            type: (entry.role === 'proposal' ? 'proposal' : entry.role === 'request' ? 'request' : 'info') as AgentConversationEntry['type'],
+          };
+          sendEvent('agent.conversation', mapped);
         });
+
+        // Orchestrator acknowledgement
+        const totalQs = questionSet.lenses.reduce((sum, l) => sum + l.questions.length, 0);
+        sendEvent('agent.conversation', {
+          timestampMs: Date.now(),
+          agent: 'prep-orchestrator',
+          to: 'discovery-question-agent',
+          message: `Thank you, Discovery Question Agent. ${totalQs} questions across ${questionSet.lenses.length} lenses have been stored. These will be used in participant Discovery interviews.`,
+          type: 'acknowledgement',
+        } satisfies AgentConversationEntry);
 
         sendEvent('discovery-questions.generated', { discoveryQuestions: questionSet });
       } catch (error) {
+        sendEvent('agent.conversation', {
+          timestampMs: Date.now(),
+          agent: 'prep-orchestrator',
+          to: '',
+          message: `Discovery question generation encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+          type: 'info',
+        } satisfies AgentConversationEntry);
+
         sendEvent('error', {
           message: error instanceof Error ? error.message : 'Discovery question agent failed',
         });
