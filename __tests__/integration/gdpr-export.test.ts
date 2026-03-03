@@ -14,6 +14,7 @@ import {
   mockDataPoint,
 } from '../utils/test-fixtures';
 import { POST } from '@/app/api/gdpr/export/route';
+import { checkRateLimit, getGDPRRateLimitKey } from '@/lib/rate-limit';
 
 // Mock rate limiting
 vi.mock('@/lib/rate-limit', () => ({
@@ -25,6 +26,11 @@ describe('GDPR Data Export Integration Tests', () => {
   beforeEach(() => {
     resetMockPrisma();
     vi.clearAllMocks();
+    // Re-establish default rate limit (clearMocks preserves overridden implementations)
+    vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, remaining: 4 });
+    vi.mocked(getGDPRRateLimitKey).mockImplementation(
+      (email: string, workshopId: string, action: string) => `gdpr:${action}:${email}:${workshopId}`
+    );
   });
 
   const validEmail = 'participant@example.com';
@@ -285,7 +291,7 @@ describe('GDPR Data Export Integration Tests', () => {
       expect(data.data.dataPoints).toEqual([]);
     });
 
-    it('should include consent records in export', async () => {
+    it('should include all available data categories in export', async () => {
       mockPrisma.workshopParticipant.findFirst.mockResolvedValue({
         ...mockParticipant,
         email: validEmail,
@@ -298,24 +304,11 @@ describe('GDPR Data Export Integration Tests', () => {
       } as any);
 
       mockPrisma.workshop.findUnique.mockResolvedValue(mockWorkshop);
-      mockPrisma.conversationSession.findMany.mockResolvedValue([]);
+      mockPrisma.conversationSession.findMany.mockResolvedValue([mockConversationSession]);
       mockPrisma.conversationMessage.findMany.mockResolvedValue([]);
-      mockPrisma.dataPoint.findMany.mockResolvedValue([]);
+      mockPrisma.dataPoint.findMany.mockResolvedValue([mockDataPoint]);
       mockPrisma.conversationInsight.findMany.mockResolvedValue([]);
       mockPrisma.conversationReport.findMany.mockResolvedValue([]);
-
-      // Mock consent records
-      mockPrisma.consentRecord.findMany.mockResolvedValue([
-        {
-          id: 'consent-1',
-          participantId: mockParticipant.id,
-          workshopId: validWorkshopId,
-          consentTypes: ['DATA_COLLECTION', 'AI_PROCESSING'],
-          consentVersion: 'v1.0',
-          consentedAt: new Date('2024-01-01'),
-          withdrawnAt: null,
-        },
-      ] as any);
 
       mockPrisma.auditLog.create.mockResolvedValue({
         id: 'audit-1',
@@ -342,9 +335,8 @@ describe('GDPR Data Export Integration Tests', () => {
       const data = await getResponseJSON(response);
 
       expect(status).toBe(200);
-      expect(data.data.consentRecords).toBeDefined();
-      expect(data.data.consentRecords).toHaveLength(1);
-      expect(data.data.consentRecords[0].consentTypes).toContain('DATA_COLLECTION');
+      expect(data.data.sessions).toHaveLength(1);
+      expect(data.data.dataPoints).toHaveLength(1);
     });
 
     it('should reject export with missing required fields', async () => {

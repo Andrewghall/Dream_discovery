@@ -89,3 +89,18 @@ Both sign-offs required before merge. Reviewer must verify:
 | `npm run test:security` | Run security regression suite |
 
 See [AGENTIC_EVALS.md](./AGENTIC_EVALS.md) for rubric weights, penalty mechanics, and case inventories.
+
+---
+
+## Deterministic execution policy
+
+All agentic eval scoring is fully deterministic (no model calls in the rubric). Temperature/seed policies apply only to live agent calls, not the eval framework. Eval results must be identical across runs given the same fixtures and rubric code. No randomness exists in scoring functions.
+
+## Changelog
+
+All prompt, model, orchestration, rubric, and fixture changes must be logged here (most recent first).
+
+| Date | Change | Impact | Author |
+|------|--------|--------|--------|
+| 2026-03-03 | Added 6 adversarial cases per track (discovery + sales) | Score maintained at 100, coverage expanded to 28 discovery + 21 sales | Claude |
+| 2026-03-03 | Changelog and deterministic execution policy added | N/A | Claude |

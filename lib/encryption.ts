@@ -213,3 +213,76 @@ export function decryptFields<T extends Record<string, any>>(
 export function generateEncryptionKey(): string {
   return crypto.randomBytes(32).toString('base64');
 }
+
+// ══════════════════════════════════════════════════════════════
+// PASSWORD-BASED ENCRYPTION (used by GDPR export/delete flows)
+// ══════════════════════════════════════════════════════════════
+
+const PB_SALT_LENGTH = 16;
+const PB_IV_LENGTH = 12; // GCM recommended 12-byte nonce
+const PB_TAG_LENGTH = 16;
+const PB_KEY_LENGTH = 32;
+const PB_ITERATIONS = 100000;
+
+/**
+ * Encrypt an object with a user-supplied password.
+ * Uses PBKDF2 key derivation + AES-256-GCM.
+ * Output: base64( salt || iv || authTag || ciphertext )
+ *
+ * @param data - Object to encrypt (will be JSON-serialised)
+ * @param password - Encryption password
+ * @returns base64-encoded ciphertext
+ */
+export function encryptData(data: unknown, password: string): string {
+  const plaintext = JSON.stringify(data);
+
+  const salt = crypto.randomBytes(PB_SALT_LENGTH);
+  const iv = crypto.randomBytes(PB_IV_LENGTH);
+  const key = crypto.pbkdf2Sync(password, salt, PB_ITERATIONS, PB_KEY_LENGTH, 'sha256');
+
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  // Pack: salt(16) | iv(12) | authTag(16) | ciphertext(...)
+  const packed = Buffer.concat([salt, iv, authTag, encrypted]);
+  return packed.toString('base64');
+}
+
+/**
+ * Decrypt a base64 ciphertext produced by encryptData.
+ * Returns the parsed object on success, or null on any failure
+ * (wrong password, corrupt data, invalid format).
+ *
+ * @param ciphertext - base64-encoded ciphertext from encryptData
+ * @param password - Decryption password
+ * @returns Parsed object or null
+ */
+export function decryptData(ciphertext: string, password: string): any {
+  if (!ciphertext) return null;
+
+  try {
+    const packed = Buffer.from(ciphertext, 'base64');
+
+    // Minimum length: salt(16) + iv(12) + authTag(16) + at least 1 byte
+    if (packed.length < PB_SALT_LENGTH + PB_IV_LENGTH + PB_TAG_LENGTH + 1) {
+      return null;
+    }
+
+    const salt = packed.subarray(0, PB_SALT_LENGTH);
+    const iv = packed.subarray(PB_SALT_LENGTH, PB_SALT_LENGTH + PB_IV_LENGTH);
+    const authTag = packed.subarray(PB_SALT_LENGTH + PB_IV_LENGTH, PB_SALT_LENGTH + PB_IV_LENGTH + PB_TAG_LENGTH);
+    const encrypted = packed.subarray(PB_SALT_LENGTH + PB_IV_LENGTH + PB_TAG_LENGTH);
+
+    const key = crypto.pbkdf2Sync(password, salt, PB_ITERATIONS, PB_KEY_LENGTH, 'sha256');
+
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    return JSON.parse(decrypted.toString('utf8'));
+  } catch {
+    // Wrong password, corrupt data, invalid base64, etc.
+    return null;
+  }
+}

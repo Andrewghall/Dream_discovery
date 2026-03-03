@@ -373,5 +373,155 @@
       "dealHealth": "Cold",
       "overallConfidence": 0.42
     }
+  },
+  {
+    "id": "adv-mixed-intent-signals",
+    "gold": {
+      "id": "adv-mixed-intent-signals",
+      "note": "Adversarial: customer shows interest but also raises objections in same conversation. Net intent should be hesitant, not collapsed to interested or objecting.",
+      "expected": {
+        "customerIntent": "hesitant",
+        "sentimentTone": "neutral",
+        "topics": ["needs", "objection", "budget"],
+        "coachingTriggered": true,
+        "coachingPriority": "high",
+        "dealHealth": "Cool",
+        "confidenceRange": { "min": 0.4, "max": 0.78 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "hesitant",
+      "sentimentTone": "neutral",
+      "topics": ["needs", "objection", "budget"],
+      "coachingTriggered": true,
+      "coachingPriority": "high",
+      "dealHealth": "Cool",
+      "overallConfidence": 0.59
+    }
+  },
+  {
+    "id": "adv-false-urgency-buyer",
+    "gold": {
+      "id": "adv-false-urgency-buyer",
+      "note": "Adversarial: customer uses urgent language but no actual buying signals. Tests drift where urgency inflates intent to ready_to_buy.",
+      "expected": {
+        "customerIntent": "exploring",
+        "sentimentTone": "positive",
+        "topics": ["needs", "timeline"],
+        "coachingTriggered": true,
+        "coachingPriority": "medium",
+        "dealHealth": "Warm",
+        "confidenceRange": { "min": 0.45, "max": 0.82 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "exploring",
+      "sentimentTone": "positive",
+      "topics": ["needs", "timeline"],
+      "coachingTriggered": true,
+      "coachingPriority": "medium",
+      "dealHealth": "Warm",
+      "overallConfidence": 0.67
+    }
+  },
+  {
+    "id": "adv-passive-aggressive-objection",
+    "gold": {
+      "id": "adv-passive-aggressive-objection",
+      "note": "Adversarial: polite surface language masking deep objection. Tests drift where polite framing softens intent classification.",
+      "expected": {
+        "customerIntent": "objecting",
+        "sentimentTone": "concerned",
+        "topics": ["competition", "objection", "decision_process"],
+        "coachingTriggered": true,
+        "coachingPriority": "high",
+        "dealHealth": "Cold",
+        "confidenceRange": { "min": 0.5, "max": 0.88 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "objecting",
+      "sentimentTone": "concerned",
+      "topics": ["competition", "objection", "decision_process"],
+      "coachingTriggered": true,
+      "coachingPriority": "high",
+      "dealHealth": "Cold",
+      "overallConfidence": 0.72
+    }
+  },
+  {
+    "id": "adv-ghost-deal-engaged",
+    "gold": {
+      "id": "adv-ghost-deal-engaged",
+      "note": "Adversarial: customer engaged in conversation but with no real purchase intent. Tests drift where engagement inflates deal health.",
+      "expected": {
+        "customerIntent": "neutral",
+        "sentimentTone": "positive",
+        "topics": ["needs", "other"],
+        "coachingTriggered": true,
+        "coachingPriority": "medium",
+        "dealHealth": "Cold",
+        "confidenceRange": { "min": 0.35, "max": 0.72 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "neutral",
+      "sentimentTone": "positive",
+      "topics": ["needs", "other"],
+      "coachingTriggered": true,
+      "coachingPriority": "medium",
+      "dealHealth": "Cold",
+      "overallConfidence": 0.51
+    }
+  },
+  {
+    "id": "adv-coaching-edge-borderline",
+    "gold": {
+      "id": "adv-coaching-edge-borderline",
+      "note": "Adversarial: borderline coaching scenario - minimal coaching signal that could be missed by drift. Tests sensitivity of coaching detection.",
+      "expected": {
+        "customerIntent": "interested",
+        "sentimentTone": "neutral",
+        "topics": ["needs", "decision_process"],
+        "coachingTriggered": true,
+        "coachingPriority": "low",
+        "dealHealth": "Warm",
+        "confidenceRange": { "min": 0.5, "max": 0.85 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "interested",
+      "sentimentTone": "neutral",
+      "topics": ["needs", "decision_process"],
+      "coachingTriggered": true,
+      "coachingPriority": "low",
+      "dealHealth": "Warm",
+      "overallConfidence": 0.66
+    }
+  },
+  {
+    "id": "adv-deal-health-inversion",
+    "gold": {
+      "id": "adv-deal-health-inversion",
+      "note": "Adversarial: all signals point to hot deal except customer explicitly delayed timeline. Tests whether temporal signals correctly cool deal health.",
+      "expected": {
+        "customerIntent": "interested",
+        "sentimentTone": "positive",
+        "topics": ["buying_signal", "timeline", "budget"],
+        "coachingTriggered": true,
+        "coachingPriority": "medium",
+        "dealHealth": "Warm",
+        "confidenceRange": { "min": 0.55, "max": 0.9 }
+      }
+    },
+    "prediction": {
+      "customerIntent": "interested",
+      "sentimentTone": "positive",
+      "topics": ["buying_signal", "timeline", "budget"],
+      "coachingTriggered": true,
+      "coachingPriority": "medium",
+      "dealHealth": "Warm",
+      "overallConfidence": 0.73
+    }
   }
 ]

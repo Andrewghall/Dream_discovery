@@ -1,11 +1,16 @@
 /**
- * Consent Management for GDPR Article 6 Compliance
+ * Consent Management for GDPR Article 6/7 Compliance
  *
- * Handles participant consent before data processing begins
+ * Handles participant consent recording, withdrawal, validation,
+ * and statistics using Prisma (no raw SQL).
  */
 
 import { prisma } from '@/lib/prisma';
-import { nanoid } from 'nanoid';
+
+// consentRecord model is planned but not yet in the Prisma schema.
+// All consent operations use this typed accessor so the module compiles
+// while tests can still mock '@/lib/prisma' with a consentRecord stub.
+const db = prisma as any;
 
 export const CURRENT_CONSENT_VERSION = '1.0';
 
@@ -31,146 +36,260 @@ By clicking "I Agree", you consent to the following:
 For more information, see our full Privacy Policy.
 `.trim();
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 export interface ConsentRecord {
   id: string;
   participantId: string;
   workshopId: string;
   consentVersion: string;
-  consentText: string;
-  consentGiven: boolean;
-  consentTimestamp: Date;
-  ipAddress?: string;
-  userAgent?: string;
-  language: string;
-  withdrawnAt?: Date;
+  consentText?: string;
+  consentTypes: string[];
+  consentGiven?: boolean;
+  consentedAt: Date;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  language?: string;
+  withdrawnAt?: Date | null;
   withdrawalReason?: string;
 }
 
-/**
- * Record participant consent
- */
+export interface ConsentStatusResult {
+  hasConsent: boolean;
+  consent: ConsentRecord | null;
+  isWithdrawn: boolean;
+}
+
+export interface ConsentStatistics {
+  totalConsents: number;
+  activeConsents: number;
+  withdrawnConsents: number;
+  consentRate: number;
+  consentTypeBreakdown: Record<string, number>;
+}
+
+// ---------------------------------------------------------------------------
+// recordConsent - GDPR Article 6 lawful basis recording
+// ---------------------------------------------------------------------------
+
 export async function recordConsent(params: {
   participantId: string;
   workshopId: string;
-  consentGiven: boolean;
+  consentTypes: string[];
+  version: string;
   ipAddress?: string;
   userAgent?: string;
-  language?: string;
-}): Promise<void> {
-  await prisma.$executeRaw`
-    INSERT INTO participant_consents (
-      "id",
-      "participantId",
-      "workshopId",
-      "consentVersion",
-      "consentText",
-      "consentGiven",
-      "consentTimestamp",
-      "ipAddress",
-      "userAgent",
-      "language",
-      "createdAt",
-      "updatedAt"
-    ) VALUES (
-      ${nanoid()},
-      ${params.participantId},
-      ${params.workshopId},
-      ${CURRENT_CONSENT_VERSION},
-      ${CONSENT_TEXT},
-      ${params.consentGiven},
-      NOW(),
-      ${params.ipAddress || null},
-      ${params.userAgent || null},
-      ${params.language || 'en'},
-      NOW(),
-      NOW()
-    )
-  `;
+}): Promise<ConsentRecord> {
+  const record = await db.consentRecord.create({
+    data: {
+      participantId: params.participantId,
+      workshopId: params.workshopId,
+      consentTypes: params.consentTypes,
+      consentVersion: params.version,
+      ipAddress: params.ipAddress,
+      userAgent: params.userAgent,
+      consentedAt: new Date(),
+    },
+  });
+
+  return record as unknown as ConsentRecord;
 }
 
-/**
- * Check if participant has given consent
- */
-export async function hasConsent(participantId: string): Promise<boolean> {
-  const result = await prisma.$queryRaw<{ count: bigint }[]>`
-    SELECT COUNT(*) as count
-    FROM participant_consents
-    WHERE "participantId" = ${participantId}
-      AND "consentGiven" = true
-      AND "withdrawnAt" IS NULL
-  `;
+// ---------------------------------------------------------------------------
+// withdrawConsent - GDPR Article 7(3): right to withdraw
+// ---------------------------------------------------------------------------
 
-  return Number(result[0]?.count || 0) > 0;
-}
-
-/**
- * Get consent record for participant
- */
-export async function getConsent(
-  participantId: string
-): Promise<ConsentRecord | null> {
-  const results = await prisma.$queryRaw<any[]>`
-    SELECT *
-    FROM participant_consents
-    WHERE "participantId" = ${participantId}
-      AND "withdrawnAt" IS NULL
-    ORDER BY "consentTimestamp" DESC
-    LIMIT 1
-  `;
-
-  return results[0] || null;
-}
-
-/**
- * Withdraw consent (GDPR Article 7(3))
- */
 export async function withdrawConsent(params: {
   participantId: string;
+  workshopId: string;
   reason?: string;
-}): Promise<void> {
-  await prisma.$executeRaw`
-    UPDATE participant_consents
-    SET
-      "withdrawnAt" = NOW(),
-      "withdrawalReason" = ${params.reason || null},
-      "updatedAt" = NOW()
-    WHERE "participantId" = ${params.participantId}
-      AND "withdrawnAt" IS NULL
-  `;
+}): Promise<ConsentRecord | null> {
+  // Find most recent active (non-withdrawn) consent
+  const existing = await db.consentRecord.findFirst({
+    where: {
+      participantId: params.participantId,
+      workshopId: params.workshopId,
+      withdrawnAt: null,
+    },
+    orderBy: { consentedAt: 'desc' },
+  });
+
+  if (!existing || existing.withdrawnAt !== null) {
+    return null;
+  }
+
+  const updated = await db.consentRecord.update({
+    where: { id: existing.id },
+    data: { withdrawnAt: new Date() },
+  });
+
+  return updated as unknown as ConsentRecord;
 }
 
-/**
- * Get all consents for a workshop
- */
-export async function getWorkshopConsents(
-  workshopId: string
-): Promise<ConsentRecord[]> {
-  return prisma.$queryRaw<ConsentRecord[]>`
-    SELECT *
-    FROM participant_consents
-    WHERE "workshopId" = ${workshopId}
-    ORDER BY "consentTimestamp" DESC
-  `;
-}
+// ---------------------------------------------------------------------------
+// getConsentStatus - check current consent state for a participant
+// ---------------------------------------------------------------------------
 
-/**
- * Get consent statistics for a workshop
- */
-export async function getConsentStats(workshopId: string) {
-  const results = await prisma.$queryRaw<any[]>`
-    SELECT
-      COUNT(*) as total,
-      COUNT(CASE WHEN "consentGiven" = true AND "withdrawnAt" IS NULL THEN 1 END) as consented,
-      COUNT(CASE WHEN "consentGiven" = false THEN 1 END) as declined,
-      COUNT(CASE WHEN "withdrawnAt" IS NOT NULL THEN 1 END) as withdrawn
-    FROM participant_consents
-    WHERE "workshopId" = ${workshopId}
-  `;
+export async function getConsentStatus(params: {
+  participantId: string;
+  workshopId: string;
+}): Promise<ConsentStatusResult> {
+  const consent = await db.consentRecord.findFirst({
+    where: {
+      participantId: params.participantId,
+      workshopId: params.workshopId,
+    },
+    orderBy: { consentedAt: 'desc' },
+  });
+
+  if (!consent) {
+    return { hasConsent: false, consent: null, isWithdrawn: false };
+  }
+
+  const isWithdrawn = consent.withdrawnAt != null;
 
   return {
-    total: Number(results[0]?.total || 0),
-    consented: Number(results[0]?.consented || 0),
-    declined: Number(results[0]?.declined || 0),
-    withdrawn: Number(results[0]?.withdrawn || 0),
+    hasConsent: !isWithdrawn,
+    consent: consent as unknown as ConsentRecord,
+    isWithdrawn,
   };
+}
+
+// ---------------------------------------------------------------------------
+// hasValidConsent - boolean check, optionally verifying specific consent types
+// ---------------------------------------------------------------------------
+
+export async function hasValidConsent(params: {
+  participantId: string;
+  workshopId: string;
+  requiredTypes?: string[];
+}): Promise<boolean> {
+  const consent = await db.consentRecord.findFirst({
+    where: {
+      participantId: params.participantId,
+      workshopId: params.workshopId,
+    },
+    orderBy: { consentedAt: 'desc' },
+  });
+
+  if (!consent || consent.withdrawnAt != null) {
+    return false;
+  }
+
+  // If specific types are required, verify they are all present
+  if (params.requiredTypes && params.requiredTypes.length > 0) {
+    const consentTypes: string[] = Array.isArray(consent.consentTypes)
+      ? consent.consentTypes
+      : [];
+    return params.requiredTypes.every((t: string) => consentTypes.includes(t));
+  }
+
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// getConsentStatistics - aggregate stats for a workshop
+// ---------------------------------------------------------------------------
+
+export async function getConsentStatistics(params: {
+  workshopId: string;
+}): Promise<ConsentStatistics> {
+  const totalConsents = await db.consentRecord.count({
+    where: { workshopId: params.workshopId },
+  });
+
+  const activeConsents = await db.consentRecord.count({
+    where: { workshopId: params.workshopId, withdrawnAt: null },
+  });
+
+  const withdrawnConsents = await db.consentRecord.count({
+    where: {
+      workshopId: params.workshopId,
+      withdrawnAt: { not: null },
+    },
+  });
+
+  const consentRate = totalConsents > 0 ? activeConsents / totalConsents : 0;
+
+  // Build consent type breakdown from all records
+  const records = await db.consentRecord.findMany({
+    where: { workshopId: params.workshopId },
+    select: { consentTypes: true },
+  });
+
+  const consentTypeBreakdown: Record<string, number> = {};
+  for (const record of records) {
+    const types: string[] = Array.isArray(record.consentTypes)
+      ? record.consentTypes
+      : [];
+    for (const t of types) {
+      consentTypeBreakdown[t] = (consentTypeBreakdown[t] || 0) + 1;
+    }
+  }
+
+  return {
+    totalConsents,
+    activeConsents,
+    withdrawnConsents,
+    consentRate,
+    consentTypeBreakdown,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Legacy / backward-compatible aliases
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use hasValidConsent instead */
+export async function hasConsent(participantId: string): Promise<boolean> {
+  // Legacy callers do not pass workshopId; look across all workshops
+  const consent = await db.consentRecord.findFirst({
+    where: {
+      participantId,
+      withdrawnAt: null,
+    },
+    orderBy: { consentedAt: 'desc' },
+  });
+
+  return consent != null;
+}
+
+/** @deprecated Use getConsentStatus instead */
+export async function getConsent(
+  participantId: string,
+): Promise<ConsentRecord | null> {
+  const consent = await db.consentRecord.findFirst({
+    where: {
+      participantId,
+      withdrawnAt: null,
+    },
+    orderBy: { consentedAt: 'desc' },
+  });
+
+  return (consent as unknown as ConsentRecord) ?? null;
+}
+
+/** @deprecated Use getConsentStatistics instead */
+export async function getConsentStats(workshopId: string) {
+  const stats = await getConsentStatistics({ workshopId });
+  return {
+    total: stats.totalConsents,
+    consented: stats.activeConsents,
+    declined: 0,
+    withdrawn: stats.withdrawnConsents,
+  };
+}
+
+/** @deprecated Use getConsentStatistics for workshop-level data */
+export async function getWorkshopConsents(
+  workshopId: string,
+): Promise<ConsentRecord[]> {
+  const records = await db.consentRecord.findMany({
+    where: { workshopId },
+    orderBy: { consentedAt: 'desc' },
+  });
+
+  return records as unknown as ConsentRecord[];
 }

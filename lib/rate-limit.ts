@@ -183,6 +183,33 @@ export const strictLimiter = rateLimit({
 });
 
 // ---------------------------------------------------------------------------
+// GDPR rate-limit helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Rate limit key for GDPR endpoints.
+ * Per participant per endpoint to prevent abuse.
+ */
+export function getGDPRRateLimitKey(email: string, workshopId: string, action: string): string {
+  return `gdpr:${action}:${email}:${workshopId}`;
+}
+
+/**
+ * Check rate limit for a GDPR endpoint.
+ * Returns { allowed, remaining, resetAt } for the given key.
+ */
+export async function checkRateLimit(
+  key: string,
+): Promise<{ allowed: boolean; remaining: number; resetAt?: number }> {
+  const result = await authLimiter.check(5, key);
+  return {
+    allowed: result.success,
+    remaining: result.remaining,
+    resetAt: result.reset,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Test helper (resets all internal state; not for production use)
 // ---------------------------------------------------------------------------
 

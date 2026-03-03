@@ -1,28 +1,40 @@
 /**
  * Audit Logger for GDPR/ISO 27001 Compliance
  *
- * Logs all admin actions for security auditing and compliance
+ * Logs all admin actions for security auditing and compliance.
+ * Uses Prisma Client queries (not raw SQL) for type-safe,
+ * injection-resistant database access.
  */
 
 import { prisma } from '@/lib/prisma';
-import { nanoid } from 'nanoid';
+import crypto from 'crypto';
 
 export type AuditAction =
+  | 'LOGIN_SUCCESS'
+  | 'LOGIN_FAILED'
+  | 'LOGOUT'
   | 'CREATE_WORKSHOP'
   | 'UPDATE_WORKSHOP'
   | 'DELETE_WORKSHOP'
+  | 'CREATE_PARTICIPANT'
+  | 'UPDATE_PARTICIPANT'
+  | 'DELETE_PARTICIPANT'
+  | 'SEND_INVITATION'
+  | 'GDPR_EXPORT'
+  | 'GDPR_DELETE'
+  | 'CREATE_USER'
+  | 'UPDATE_USER'
+  | 'DELETE_USER'
+  | 'SYSTEM_EVENT'
+  // Legacy action names kept for backward compatibility
   | 'VIEW_WORKSHOP'
   | 'VIEW_PARTICIPANT'
-  | 'DELETE_PARTICIPANT'
   | 'VIEW_CONVERSATION'
   | 'EXPORT_DATA'
   | 'DELETE_DATA'
-  | 'CREATE_USER'
-  | 'DELETE_USER'
   | 'UPDATE_SCRATCHPAD'
   | 'PUBLISH_SCRATCHPAD'
   | 'LOGIN'
-  | 'LOGOUT'
   | 'FAILED_LOGIN';
 
 export type AuditResourceType =
@@ -38,7 +50,7 @@ export interface AuditLogEntry {
   userId?: string;
   userEmail?: string;
   action: AuditAction;
-  resourceType?: AuditResourceType;
+  resourceType?: AuditResourceType | string;
   resourceId?: string;
   method?: string;
   path?: string;
@@ -50,96 +62,71 @@ export interface AuditLogEntry {
 }
 
 /**
- * Log an admin action to the audit trail
+ * Log an admin action to the audit trail.
+ *
+ * Uses prisma.auditLog.create for type-safe parameterised writes.
+ * Errors are propagated to the caller so upstream code can handle
+ * them appropriately (fail-safe at the route handler level, not here).
  */
-export async function logAuditEvent(entry: AuditLogEntry): Promise<void> {
-  // Only log if audit logging is enabled
-  if (process.env.ENABLE_AUDIT_LOGGING !== 'true') {
-    return;
-  }
+export async function logAuditEvent(entry: AuditLogEntry) {
+  const record = await prisma.auditLog.create({
+    data: {
+      id: crypto.randomUUID(),
+      organizationId: entry.organizationId,
+      userId: entry.userId ?? null,
+      userEmail: entry.userEmail ?? null,
+      action: entry.action,
+      resourceType: entry.resourceType ?? null,
+      resourceId: entry.resourceId ?? null,
+      method: entry.method ?? null,
+      path: entry.path ?? null,
+      ipAddress: entry.ipAddress ?? null,
+      userAgent: entry.userAgent ?? null,
+      metadata: entry.metadata ?? undefined,
+      success: entry.success ?? true,
+      errorMessage: entry.errorMessage ?? null,
+    },
+  });
 
-  try {
-    await prisma.$executeRaw`
-      INSERT INTO audit_logs (
-        "id",
-        "organizationId",
-        "userId",
-        "userEmail",
-        "action",
-        "resourceType",
-        "resourceId",
-        "method",
-        "path",
-        "ipAddress",
-        "userAgent",
-        "metadata",
-        "timestamp",
-        "success",
-        "errorMessage"
-      ) VALUES (
-        ${nanoid()},
-        ${entry.organizationId},
-        ${entry.userId || null},
-        ${entry.userEmail || null},
-        ${entry.action},
-        ${entry.resourceType || null},
-        ${entry.resourceId || null},
-        ${entry.method || null},
-        ${entry.path || null},
-        ${entry.ipAddress || null},
-        ${entry.userAgent || null},
-        ${entry.metadata ? JSON.stringify(entry.metadata) : null}::jsonb,
-        NOW(),
-        ${entry.success ?? true},
-        ${entry.errorMessage || null}
-      )
-    `;
-  } catch (error) {
-    // Don't fail the request if audit logging fails
-    // But log to console for monitoring
-    console.error('Failed to write audit log:', error);
-  }
+  return record;
 }
 
 /**
- * Query audit logs for a specific organization
- * Uses parameterized queries to prevent SQL injection
+ * Query audit logs for a specific organization.
+ * Uses Prisma findMany with parameterised filters to prevent SQL injection.
  */
-export async function getAuditLogs(
-  organizationId: string,
-  options?: {
-    userId?: string;
-    action?: AuditAction;
-    resourceType?: AuditResourceType;
-    resourceId?: string;
-    startDate?: Date;
-    endDate?: Date;
-    limit?: number;
-    offset?: number;
-  }
-) {
-  // Use Prisma's findMany with proper typing instead of raw SQL
-  const limit = options?.limit || 100;
-  const offset = options?.offset || 0;
+export async function getAuditLogs(options: {
+  organizationId: string;
+  userId?: string;
+  action?: AuditAction | string;
+  resourceType?: AuditResourceType | string;
+  resourceId?: string;
+  startDate?: Date;
+  endDate?: Date;
+  limit?: number;
+  offset?: number;
+}) {
+  const limit = options.limit ?? 100;
+  const offset = options.offset ?? 0;
 
-  const where: any = {
-    organizationId,
+  const where: Record<string, any> = {
+    organizationId: options.organizationId,
   };
 
-  if (options?.userId) {
+  if (options.userId !== undefined) {
     where.userId = options.userId;
   }
-  if (options?.action) {
+  if (options.action !== undefined) {
     where.action = options.action;
   }
-  if (options?.resourceType) {
+  if (options.resourceType !== undefined) {
     where.resourceType = options.resourceType;
   }
-  if (options?.resourceId) {
+  if (options.resourceId !== undefined) {
     where.resourceId = options.resourceId;
   }
-  if (options?.startDate || options?.endDate) {
-    where.timestamp = {};
+  if (options.startDate || options.endDate) {
+    where.timestamp = {} as Record<string, Date>;
     if (options.startDate) {
       where.timestamp.gte = options.startDate;
     }
@@ -159,21 +146,66 @@ export async function getAuditLogs(
 }
 
 /**
- * Get audit log statistics for an organization
+ * Get audit log statistics for an organization.
+ *
+ * Returns total, successful, and failed event counts plus a per-action
+ * breakdown. Uses three prisma.auditLog.count calls for the headline
+ * numbers and a findMany to derive the action breakdown.
  */
-export async function getAuditStats(organizationId: string, days: number = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+export async function getAuditStatistics(options: {
+  organizationId: string;
+  startDate?: Date;
+  endDate?: Date;
+}) {
+  const baseWhere: Record<string, any> = {
+    organizationId: options.organizationId,
+  };
 
-  return prisma.$queryRaw`
-    SELECT
-      "action",
-      COUNT(*) as count,
-      COUNT(CASE WHEN "success" = false THEN 1 END) as failed_count
-    FROM audit_logs
-    WHERE "organizationId" = ${organizationId}
-      AND "timestamp" >= ${startDate}
-    GROUP BY "action"
-    ORDER BY count DESC
-  `;
+  if (options.startDate || options.endDate) {
+    baseWhere.timestamp = {} as Record<string, Date>;
+    if (options.startDate) {
+      baseWhere.timestamp.gte = options.startDate;
+    }
+    if (options.endDate) {
+      baseWhere.timestamp.lte = options.endDate;
+    }
+  }
+
+  // Three count queries for headline stats
+  const totalEvents = await prisma.auditLog.count({
+    where: { ...baseWhere },
+  });
+
+  const successfulEvents = await prisma.auditLog.count({
+    where: { ...baseWhere, success: true },
+  });
+
+  const failedEvents = await prisma.auditLog.count({
+    where: { ...baseWhere, success: false },
+  });
+
+  // Action breakdown from a findMany selecting only the action field
+  const logs = (await prisma.auditLog.findMany({
+    where: { ...baseWhere },
+    select: { action: true },
+  })) || [];
+
+  const actionBreakdown: Record<string, number> = {};
+  for (const log of logs) {
+    const action = (log as any).action as string;
+    actionBreakdown[action] = (actionBreakdown[action] || 0) + 1;
+  }
+
+  const successRate = totalEvents > 0 ? successfulEvents / totalEvents : 0;
+
+  return {
+    totalEvents,
+    successfulEvents,
+    failedEvents,
+    successRate,
+    actionBreakdown,
+  };
 }
+
+// Backward-compatible alias -- some callers may still reference getAuditStats
+export const getAuditStats = getAuditStatistics;

@@ -16,8 +16,8 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-import { scoreDiscoverySuite, scoreSalesSuite } from '@/lib/agentic-evals/rubric';
-import type { DiscoveryEvalCase, SalesEvalCase } from '@/lib/agentic-evals/types';
+import { scoreDiscoverySuite, scoreSalesSuite } from '../lib/agentic-evals/rubric';
+import type { DiscoveryEvalCase, SalesEvalCase } from '../lib/agentic-evals/types';
 
 const root = process.cwd();
 const discoveryFixture: DiscoveryEvalCase[] = JSON.parse(

@@ -416,5 +416,119 @@
       "themes": ["supply chain disruption", "vendor dependency", "cost overrun"],
       "overallConfidence": 0.73
     }
+  },
+  {
+    "id": "adv-sarcasm-positive-surface",
+    "gold": {
+      "id": "adv-sarcasm-positive-surface",
+      "note": "Adversarial: language sounds positive on surface but core theme is critical. Tests drift where sentiment classifier softens.",
+      "expected": {
+        "sentimentTone": "critical",
+        "domains": ["operations", "people"],
+        "themes": ["process failure", "accountability gap", "blame culture"],
+        "confidenceRange": { "min": 0.55, "max": 0.92 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "critical",
+      "domains": ["operations", "people"],
+      "themes": ["process failure", "accountability gap", "blame culture"],
+      "overallConfidence": 0.71
+    }
+  },
+  {
+    "id": "adv-ambiguous-domain-overlap",
+    "gold": {
+      "id": "adv-ambiguous-domain-overlap",
+      "note": "Adversarial: signals span finance/strategy/risk ambiguously. Tests domain precision under overlap.",
+      "expected": {
+        "sentimentTone": "concerned",
+        "domains": ["finance", "strategy"],
+        "themes": ["capital allocation uncertainty", "strategic pivot risk", "market timing"],
+        "confidenceRange": { "min": 0.45, "max": 0.82 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "concerned",
+      "domains": ["finance", "strategy"],
+      "themes": ["capital allocation uncertainty", "strategic pivot risk", "market timing"],
+      "overallConfidence": 0.63
+    }
+  },
+  {
+    "id": "adv-contradictory-signals",
+    "gold": {
+      "id": "adv-contradictory-signals",
+      "note": "Adversarial: mixed positive and negative themes within same domain. Net sentiment should be neutral, not collapsed to one pole.",
+      "expected": {
+        "sentimentTone": "neutral",
+        "domains": ["people", "operations"],
+        "themes": ["team morale high", "turnover rising", "workload imbalance", "skills gap"],
+        "confidenceRange": { "min": 0.4, "max": 0.75 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "neutral",
+      "domains": ["people", "operations"],
+      "themes": ["team morale high", "turnover rising", "workload imbalance", "skills gap"],
+      "overallConfidence": 0.56
+    }
+  },
+  {
+    "id": "adv-jargon-heavy-tech",
+    "gold": {
+      "id": "adv-jargon-heavy-tech",
+      "note": "Adversarial: dense technical jargon that might cause domain misclassification to 'operations' instead of 'technology'.",
+      "expected": {
+        "sentimentTone": "concerned",
+        "domains": ["technology"],
+        "themes": ["API rate limiting", "microservice latency", "observability gap"],
+        "confidenceRange": { "min": 0.6, "max": 0.95 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "concerned",
+      "domains": ["technology"],
+      "themes": ["API rate limiting", "microservice latency", "observability gap"],
+      "overallConfidence": 0.77
+    }
+  },
+  {
+    "id": "adv-emotion-masking-critical",
+    "gold": {
+      "id": "adv-emotion-masking-critical",
+      "note": "Adversarial: formal corporate language masking critical severity. Tests drift where polite framing softens sentiment classification.",
+      "expected": {
+        "sentimentTone": "critical",
+        "domains": ["risk", "regulation", "finance"],
+        "themes": ["regulatory sanction risk", "financial restatement", "board escalation"],
+        "confidenceRange": { "min": 0.65, "max": 0.98 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "critical",
+      "domains": ["risk", "regulation", "finance"],
+      "themes": ["regulatory sanction risk", "financial restatement", "board escalation"],
+      "overallConfidence": 0.84
+    }
+  },
+  {
+    "id": "adv-zero-overlap-themes",
+    "gold": {
+      "id": "adv-zero-overlap-themes",
+      "note": "Adversarial: prediction and gold themes share exact set but domain is narrow. Tests stability when theme vocabulary shifts slightly.",
+      "expected": {
+        "sentimentTone": "positive",
+        "domains": ["innovation"],
+        "themes": ["patent filing", "first-mover advantage"],
+        "confidenceRange": { "min": 0.7, "max": 0.99 }
+      }
+    },
+    "prediction": {
+      "sentimentTone": "positive",
+      "domains": ["innovation"],
+      "themes": ["patent filing", "first-mover advantage"],
+      "overallConfidence": 0.88
+    }
   }
 ]

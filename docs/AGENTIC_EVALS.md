@@ -82,7 +82,7 @@ Workflow: `.github/workflows/agentic-evals.yml`
 
 Threshold changes are governance changes and require review.
 
-## Case Inventory (22 cases)
+## Case Inventory (28 cases: 22 standard + 6 adversarial)
 
 | # | Case ID | Sentiment | Domains | Theme Count | Edge Case |
 |---|---------|-----------|---------|-------------|-----------|
@@ -108,12 +108,19 @@ Threshold changes are governance changes and require review.
 | 20 | case-risk-neutral | neutral | risk, regulation | 3 | |
 | 21 | case-customer-critical | critical | customer, risk | 3 | |
 | 22 | case-superset-prediction | concerned | operations | 3 | Superset prediction (Jaccard penalty) |
+| 23 | adv-sarcasm-positive-surface | critical | operations, people | 3 | Adversarial: positive surface masking critical |
+| 24 | adv-ambiguous-domain-overlap | concerned | finance, strategy | 3 | Adversarial: ambiguous domain boundaries |
+| 25 | adv-contradictory-signals | neutral | people, operations | 4 | Adversarial: mixed positive/negative themes |
+| 26 | adv-jargon-heavy-tech | concerned | technology | 3 | Adversarial: dense jargon domain confusion |
+| 27 | adv-emotion-masking-critical | critical | risk, regulation, finance | 3 | Adversarial: formal language masking severity |
+| 28 | adv-zero-overlap-themes | positive | innovation | 2 | Adversarial: narrow domain stability |
 
 ### Coverage summary
 
-- **Sentiments**: 6 positive, 6 neutral, 6 concerned, 4 critical
-- **Domains**: 10 unique -- operations, people, customer, technology, regulation, risk, finance, strategy, innovation, culture
+- **Sentiments**: 7 positive, 7 neutral, 8 concerned, 6 critical
+- **Domains**: 10 unique - operations, people, customer, technology, regulation, risk, finance, strategy, innovation, culture
 - **Edge cases**: single domain (3), single theme (1), 4+ domains (1), high confidence (1), low confidence (1), superset prediction (1)
+- **Adversarial drift cases**: 6 (sarcasm masking, domain ambiguity, contradictory signals, jargon confusion, emotion masking, narrow vocabulary)
 
 ---
 
@@ -148,7 +155,7 @@ Threshold changes are governance changes and require review.
 | false | false | n/a | 1.0 |
 | false | true | n/a | 0.5 |
 
-## Sales Case Inventory (15 cases)
+## Sales Case Inventory (21 cases: 15 standard + 6 adversarial)
 
 | # | Case ID | Intent | Sentiment | Topics | Coaching | Deal Health | Edge Case |
 |---|---------|--------|-----------|--------|----------|-------------|-----------|
@@ -167,14 +174,21 @@ Threshold changes are governance changes and require review.
 | 13 | sales-lost-deal-signals | objecting | critical | competition, objection, budget | high | Cold | |
 | 14 | sales-needs-discovery-deep | exploring | positive | needs, timeline | none | Warm | |
 | 15 | sales-single-topic-minimal | neutral | neutral | other | none | Cold | Low confidence, single topic |
+| 16 | adv-mixed-intent-signals | hesitant | neutral | needs, objection, budget | high | Cool | Adversarial: mixed interest/objection |
+| 17 | adv-false-urgency-buyer | exploring | positive | needs, timeline | medium | Warm | Adversarial: urgency without buying signals |
+| 18 | adv-passive-aggressive-objection | objecting | concerned | competition, objection, decision_process | high | Cold | Adversarial: polite masking objection |
+| 19 | adv-ghost-deal-engaged | neutral | positive | needs, other | medium | Cold | Adversarial: engaged but no purchase intent |
+| 20 | adv-coaching-edge-borderline | interested | neutral | needs, decision_process | low | Warm | Adversarial: borderline coaching signal |
+| 21 | adv-deal-health-inversion | interested | positive | buying_signal, timeline, budget | medium | Warm | Adversarial: hot signals but timeline delay |
 
 ### Sales coverage summary
 
-- **Intents**: 3 interested, 3 exploring, 2 hesitant, 3 objecting, 2 ready_to_buy, 2 neutral
-- **Sentiments**: 6 positive, 5 neutral, 2 concerned, 2 critical
-- **Topics**: 8 unique -- needs, budget, timeline, competition, decision_process, objection, buying_signal, other
-- **Deal health**: 3 Hot, 5 Warm, 4 Cool, 3 Cold
-- **Coaching**: 3 no coaching, 3 low, 3 medium, 6 high
+- **Intents**: 4 interested, 4 exploring, 3 hesitant, 4 objecting, 2 ready_to_buy, 4 neutral
+- **Sentiments**: 8 positive, 7 neutral, 3 concerned, 3 critical
+- **Topics**: 8 unique - needs, budget, timeline, competition, decision_process, objection, buying_signal, other
+- **Deal health**: 3 Hot, 7 Warm, 5 Cool, 6 Cold
+- **Coaching**: 3 no coaching, 4 low, 5 medium, 9 high
+- **Adversarial drift cases**: 6 (mixed intent, false urgency, passive-aggressive, ghost deal, borderline coaching, deal health inversion)
 
 ## Prompt Change Safety
 

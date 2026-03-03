@@ -21,8 +21,6 @@ export default defineConfig({
         '.next/**',
       ],
     },
-    mockReset: true,
-    restoreMocks: true,
     clearMocks: true,
   },
   resolve: {
