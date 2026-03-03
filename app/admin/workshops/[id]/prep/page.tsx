@@ -941,7 +941,7 @@ export default function PrepPage({ params }: PageProps) {
           )}
           <div className={`flex flex-col md:flex-row items-stretch gap-0 transition-opacity ${!purposeComplete ? 'opacity-50 pointer-events-none' : ''}`}>
             {/* Step 1: Research */}
-            <div className="flex-1 rounded-xl border bg-card p-5">
+            <div className="flex-1 rounded-xl border bg-card p-5 flex flex-col">
               <div className="flex items-center gap-2 mb-1">
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-[10px] font-bold text-cyan-700 dark:text-cyan-300">1</span>
                 <Search className="h-4 w-4 text-cyan-600" />
@@ -955,7 +955,7 @@ export default function PrepPage({ params }: PageProps) {
                 onClick={runResearch}
                 disabled={researchRunning || !clientName || !purposeComplete}
                 size="sm"
-                className="w-full"
+                className="w-full mt-auto"
               >
                 {researchRunning ? (
                   <><Loader2 className="h-3 w-3 animate-spin mr-2" />Researching...</>
@@ -977,7 +977,7 @@ export default function PrepPage({ params }: PageProps) {
 
             {/* Step 2: Discovery Interview Questions */}
             {workshop?.domainPack ? (
-              <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
+              <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">2</span>
                   <MessageSquare className="h-4 w-4 text-emerald-600" />
@@ -991,7 +991,7 @@ export default function PrepPage({ params }: PageProps) {
                   onClick={generateDiscoveryQuestions}
                   disabled={discoveryQuestionsLoading || !researchData}
                   size="sm"
-                  className="w-full"
+                  className="w-full mt-auto"
                   variant={researchComplete ? 'default' : 'secondary'}
                 >
                   {discoveryQuestionsLoading ? (
@@ -1017,7 +1017,7 @@ export default function PrepPage({ params }: PageProps) {
             </div>
 
             {/* Step 3: Discovery Synthesis (or step 2 if no domainPack) */}
-            <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
+            <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
               <div className="flex items-center gap-2 mb-1">
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">{workshop?.domainPack ? '3' : '2'}</span>
                 <Brain className="h-4 w-4 text-amber-600" />
@@ -1031,7 +1031,7 @@ export default function PrepPage({ params }: PageProps) {
                 onClick={runBriefing}
                 disabled={briefingRunning || !researchComplete || !purposeComplete}
                 size="sm"
-                className="w-full"
+                className="w-full mt-auto"
                 variant={researchComplete ? 'default' : 'secondary'}
               >
                 {briefingRunning ? (
@@ -1053,7 +1053,7 @@ export default function PrepPage({ params }: PageProps) {
             </div>
 
             {/* Step 4: Workshop Questions (or step 3 if no domainPack) */}
-            <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!(researchComplete && briefingComplete) ? 'opacity-50' : ''}`}>
+            <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!(researchComplete && briefingComplete) ? 'opacity-50' : ''}`}>
               <div className="flex items-center gap-2 mb-1">
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">{workshop?.domainPack ? '4' : '3'}</span>
                 <FileQuestion className="h-4 w-4 text-indigo-600" />
@@ -1067,7 +1067,7 @@ export default function PrepPage({ params }: PageProps) {
                 onClick={runQuestions}
                 disabled={questionsRunning || !(researchComplete && briefingComplete) || !purposeComplete}
                 size="sm"
-                className="w-full"
+                className="w-full mt-auto"
                 variant={researchComplete && briefingComplete ? 'default' : 'secondary'}
               >
                 {questionsRunning ? (
