@@ -1223,6 +1223,24 @@ export default function PrepPage({ params }: PageProps) {
                                       </span>
                                     )}
                                   </div>
+                                  {q.tag === 'triple_rating' && q.maturityScale && Array.isArray(q.maturityScale) && q.maturityScale.length >= 2 && (
+                                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20 px-3 py-2 space-y-1">
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 mt-px shrink-0 w-4 text-center">1</span>
+                                        <span className="text-xs text-muted-foreground">{q.maturityScale[0]}</span>
+                                      </div>
+                                      {q.maturityScale.length >= 5 && (
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 mt-px shrink-0 w-4 text-center">3</span>
+                                          <span className="text-xs text-muted-foreground">{q.maturityScale[2]}</span>
+                                        </div>
+                                      )}
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 mt-px shrink-0 w-4 text-center">5</span>
+                                        <span className="text-xs text-muted-foreground">{q.maturityScale[q.maturityScale.length - 1]}</span>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                                 <button
                                   onClick={() => { setEditingDiscoveryQId(q.id); setEditingDiscoveryQText(q.text); }}
