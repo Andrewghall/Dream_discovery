@@ -3,8 +3,29 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { getDomainPack } from '@/lib/domain-packs';
+import type { EngagementType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+
+function toEngagementEnum(value: unknown): EngagementType | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const normalized = value.trim().toUpperCase();
+  const valid: EngagementType[] = [
+    'DIAGNOSTIC_BASELINE',
+    'OPERATIONAL_DEEP_DIVE',
+    'AI_ENABLEMENT',
+    'TRANSFORMATION_SPRINT',
+    'CULTURAL_ALIGNMENT',
+  ];
+  if (valid.includes(normalized as EngagementType)) {
+    return normalized as EngagementType;
+  }
+  const fromKey = normalized.replace(/[^A-Z0-9_]/g, '_');
+  if (valid.includes(fromKey as EngagementType)) {
+    return fromKey as EngagementType;
+  }
+  return null;
+}
 
 /**
  * GET /api/admin/workshops/[id]
@@ -218,7 +239,7 @@ export async function PATCH(
     if (body.customQuestions !== undefined) updateData.customQuestions = body.customQuestions;
     if (body.discoveryBriefing !== undefined) updateData.discoveryBriefing = body.discoveryBriefing;
     // Field Discovery / Diagnostic extension
-    if (typeof body.engagementType === 'string') updateData.engagementType = body.engagementType || null;
+    if (typeof body.engagementType === 'string') updateData.engagementType = toEngagementEnum(body.engagementType);
     if (typeof body.domainPack === 'string') {
       updateData.domainPack = body.domainPack || null;
       updateData.domainPackConfig = body.domainPack ? (getDomainPack(body.domainPack) as any ?? undefined) : null;

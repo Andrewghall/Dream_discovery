@@ -2,8 +2,31 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
 import { getDomainPack } from '@/lib/domain-packs';
+import type { EngagementType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+
+function toEngagementEnum(value: unknown): EngagementType | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const normalized = value.trim().toUpperCase();
+  const valid: EngagementType[] = [
+    'DIAGNOSTIC_BASELINE',
+    'OPERATIONAL_DEEP_DIVE',
+    'AI_ENABLEMENT',
+    'TRANSFORMATION_SPRINT',
+    'CULTURAL_ALIGNMENT',
+  ];
+  if (valid.includes(normalized as EngagementType)) {
+    return normalized as EngagementType;
+  }
+
+  // Accept UI keys like "operational_deep_dive"
+  const fromKey = normalized.replace(/[^A-Z0-9_]/g, '_');
+  if (valid.includes(fromKey as EngagementType)) {
+    return fromKey as EngagementType;
+  }
+  return undefined;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -133,34 +156,67 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
     }
 
-    const workshop = await prisma.workshop.create({
-      data: {
-        name,
-        description,
-        businessContext,
-        workshopType: workshopType || 'CUSTOM',
-        includeRegulation: includeRegulation ?? true,
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
-        responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,
-        organizationId,
-        createdById: session.userId,
-        // DREAM prep fields
-        clientName: clientName || undefined,
-        industry: industry || undefined,
-        companyWebsite: companyWebsite || undefined,
-        dreamTrack: dreamTrack || undefined,
-        targetDomain: targetDomain || undefined,
-        // Field Discovery / Diagnostic extension
-        engagementType: engagementType || undefined,
-        domainPack: domainPack || undefined,
-        domainPackConfig: domainPack ? (getDomainPack(domainPack) as any ?? undefined) : undefined,
-      },
-    });
+    const normalizedEngagementType = toEngagementEnum(engagementType);
+    const workshopData = {
+      name,
+      description,
+      businessContext,
+      workshopType: workshopType || 'CUSTOM',
+      includeRegulation: includeRegulation ?? true,
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+      responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,
+      organizationId,
+      createdById: session.userId,
+      // DREAM prep fields
+      clientName: clientName || undefined,
+      industry: industry || undefined,
+      companyWebsite: companyWebsite || undefined,
+      dreamTrack: dreamTrack || undefined,
+      targetDomain: targetDomain || undefined,
+      // Field Discovery / Diagnostic extension
+      engagementType: normalizedEngagementType,
+      domainPack: domainPack || undefined,
+      domainPackConfig: domainPack ? (getDomainPack(domainPack) as any ?? undefined) : undefined,
+    };
+
+    let workshop;
+    try {
+      workshop = await prisma.workshop.create({ data: workshopData });
+    } catch (err) {
+      // Backward compatibility: allow workshop creation even if DB is behind code
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes('engagement_type') || msg.toLowerCase().includes('domain_pack')) {
+        workshop = await prisma.workshop.create({
+          data: {
+            name,
+            description,
+            businessContext,
+            workshopType: workshopType || 'CUSTOM',
+            includeRegulation: includeRegulation ?? true,
+            scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+            responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,
+            organizationId,
+            createdById: session.userId,
+            clientName: clientName || undefined,
+            industry: industry || undefined,
+            companyWebsite: companyWebsite || undefined,
+            dreamTrack: dreamTrack || undefined,
+            targetDomain: targetDomain || undefined,
+          },
+        });
+      } else {
+        throw err;
+      }
+    }
 
     return NextResponse.json({ workshop });
   } catch (error: unknown) {
     console.error('Error creating workshop:', error);
 
-    return NextResponse.json({ error: 'Failed to create workshop' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { error: 'Failed to create workshop', details: { message } },
+      { status: 500 }
+    );
   }
 }
