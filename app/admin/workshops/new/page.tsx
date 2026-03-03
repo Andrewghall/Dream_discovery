@@ -163,21 +163,6 @@ export default function NewWorkshopPage() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="workshopType">Workshop Type *</Label>
-                <Select
-                  value={formData.workshopType}
-                  onValueChange={(value) => setFormData({ ...formData, workshopType: value })}
-                >
-                  <SelectTrigger id="workshopType">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CUSTOM">DREAM</SelectItem>
-                    <SelectItem value="SALES">Sales Call</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
 
               {/* ── Organization selector (PLATFORM_ADMIN only) ──── */}
               {isPlatformAdmin && orgs.length > 0 && (
