@@ -118,6 +118,9 @@ export type GuidanceState = {
   // Journey completion tracking
   journeyCompletionState: JourneyCompletionState | null;
 
+  // Coverage threshold for auto-advance (persisted per workshop, 50-95)
+  coverageThreshold: number;
+
   // Agent orchestration tracking
   lastThemeCheckAtMs: number;
   lastPadGenerationAtMs: number;
@@ -171,6 +174,7 @@ export function getOrCreateGuidanceState(
     prepContext: null,
     currentMainQuestion: null,
     journeyCompletionState: null,
+    coverageThreshold: 70,
     lastThemeCheckAtMs: 0,
     lastPadGenerationAtMs: 0,
     utterancesSinceLastPad: 0,
@@ -185,7 +189,7 @@ export function updateGuidanceState(
   workshopId: string,
   updates: Partial<Pick<
     GuidanceState,
-    'activeThemeId' | 'themes' | 'freeflowMode' | 'dialoguePhase' | 'prepContext' | 'currentMainQuestion' | 'journeyCompletionState'
+    'activeThemeId' | 'themes' | 'freeflowMode' | 'dialoguePhase' | 'prepContext' | 'currentMainQuestion' | 'journeyCompletionState' | 'coverageThreshold'
   >>,
 ): GuidanceState {
   const state = getOrCreateGuidanceState(workshopId);
@@ -197,6 +201,7 @@ export function updateGuidanceState(
   if (updates.prepContext !== undefined) state.prepContext = updates.prepContext;
   if (updates.currentMainQuestion !== undefined) state.currentMainQuestion = updates.currentMainQuestion;
   if (updates.journeyCompletionState !== undefined) state.journeyCompletionState = updates.journeyCompletionState;
+  if (updates.coverageThreshold !== undefined) state.coverageThreshold = updates.coverageThreshold;
 
   state.lastUpdatedAtMs = Date.now();
   return state;

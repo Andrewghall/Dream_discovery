@@ -1,6 +1,6 @@
 'use client';
 
-import React, { use, useEffect, useMemo, useRef, useState } from 'react';
+import React, { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,16 @@ import { LiveDomainRadar } from '@/components/live/live-domain-radar';
 import { AgenticReasoningPanel, type ReasoningEntry } from '@/components/live/agentic-reasoning-panel';
 import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
 import { transcribeAudio, checkCaptureAPIHealth, CaptureAPIStream, type CaptureAPIResponse, type StreamTranscript } from '@/lib/captureapi/client';
+
+// ── Agentic facilitation hooks + components ──────────────────
+import { useLiveEventPipeline } from '@/hooks/use-live-event-pipeline';
+import type { JourneyCompletionPayload } from '@/hooks/use-live-event-pipeline';
+import { usePadStateMachine, type PrepQuestionSet, type GuidanceStateOverrides } from '@/hooks/use-pad-state-machine';
+import { useJourneyMutations } from '@/hooks/use-journey-mutations';
+import type { JourneyCompletionState } from '@/lib/cognition/guidance-state';
+import type { AgentConversationEntry } from '@/components/cognitive-guidance/agent-orchestration-panel';
+import type { StickyPad as StickyPadType } from '@/lib/cognitive-guidance/pipeline';
+import type { DialoguePhase } from '@/lib/cognitive-guidance/pipeline';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -279,8 +289,15 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [revealOpen, setRevealOpen] = useState(false);
   const [actorJourneyExpanded, setActorJourneyExpanded] = useState(false);
 
-  // Cognitive state — live reasoning entries from the DREAM agent
+  // Cognitive state -- live reasoning entries from the DREAM agent
   const [reasoningEntries, setReasoningEntries] = useState<ReasoningEntry[]>([]);
+
+  // ── Agentic facilitation state ──────────────────────────────
+  const [prepQuestions, setPrepQuestions] = useState<PrepQuestionSet | null>(null);
+  const [coverageThreshold, setCoverageThreshold] = useState(70);
+  const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
+  const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
+  const guidanceLoadedRef = useRef(false);
 
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -307,6 +324,242 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const wakeLockRef = useRef<null | { release?: () => Promise<void> }>(null);
 
   const esRef = useRef<EventSource | null>(null);
+
+  // ── Agentic facilitation: guidance state sync callback ──────
+  const syncGuidanceState = useCallback(async (overrides: GuidanceStateOverrides) => {
+    try {
+      await fetch(`/api/workshops/${encodeURIComponent(workshopId)}/guidance-state`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(overrides),
+      });
+    } catch (err) {
+      console.warn('[Live] Failed to sync guidance state:', err);
+    }
+  }, [workshopId]);
+
+  // ── Agentic facilitation: journey mutations hook ────────────
+  const journeyMutations = useJourneyMutations({
+    initialJourney: { stages: [], actors: [], interactions: [] },
+    dialoguePhase: dialoguePhase as DialoguePhase,
+  });
+
+  // ── Agentic facilitation: pad state machine hook ────────────
+  const padStateMachine = usePadStateMachine({
+    workshopId,
+    dialoguePhase: dialoguePhase as DialoguePhase,
+    prepQuestions,
+    coverageThreshold,
+    journeyCompletionState,
+    cogNodes: null, // rely on agent-assessed coverage initially
+    onSyncGuidanceState: syncGuidanceState,
+  });
+
+  // ── Agentic facilitation: event pipeline hook ───────────────
+  const eventPipeline = useLiveEventPipeline({
+    workshopId,
+    enabled: status === 'capturing',
+    // Existing hemisphere behavior (transplanted from startSse)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onDataPointCreated: useCallback((payload: any) => {
+      const p = payload as DataPointCreatedPayload;
+      const dataPointId = p?.dataPoint?.id;
+      if (!dataPointId) return;
+      const createdAtMs =
+        typeof p.dataPoint.createdAt === 'string'
+          ? Date.parse(p.dataPoint.createdAt)
+          : p.dataPoint.createdAt instanceof Date
+            ? p.dataPoint.createdAt.getTime()
+            : Date.now();
+
+      const phaseFromServer = safePhase((p.dataPoint as { dialoguePhase?: unknown } | undefined)?.dialoguePhase);
+      const dpPhase =
+        phaseFromServer ??
+        (p.transcriptChunk
+          ? (pendingPhaseByKeyRef.current.get(
+              phaseKey({
+                startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+                endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+                text: String(p.dataPoint.rawText ?? ''),
+                source: String(p.transcriptChunk.source ?? ''),
+              })
+            ) ?? null)
+          : null);
+
+      const node: HemisphereNodeDatum = {
+        dataPointId,
+        createdAtMs,
+        rawText: String(p.dataPoint.rawText ?? ''),
+        dataPointSource: String(p.dataPoint.source ?? ''),
+        speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
+        dialoguePhase: dpPhase,
+        transcriptChunk: p.transcriptChunk
+          ? {
+              speakerId: p.transcriptChunk.speakerId || null,
+              startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+              endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+              confidence:
+                typeof p.transcriptChunk.confidence === 'number' ? p.transcriptChunk.confidence : null,
+              source: String(p.transcriptChunk.source ?? ''),
+            }
+          : null,
+        classification: null,
+      };
+      if (p.transcriptChunk) {
+        pendingPhaseByKeyRef.current.delete(
+          phaseKey({
+            startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+            endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+            text: String(p.dataPoint.rawText ?? ''),
+            source: String(p.transcriptChunk.source ?? ''),
+          })
+        );
+      }
+      setNodesById((prev) => {
+        if (prev[dataPointId]) return prev;
+        return { ...prev, [dataPointId]: node };
+      });
+    }, []),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onClassificationUpdated: useCallback((payload: any) => {
+      const p = payload as ClassificationUpdatedPayload;
+      const dataPointId = p?.dataPointId;
+      if (!dataPointId) return;
+      const cls = p.classification;
+      setNodesById((prev) => {
+        const existing = prev[dataPointId];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [dataPointId]: {
+            ...existing,
+            classification: {
+              primaryType: cls.primaryType as HemispherePrimaryType,
+              confidence: cls.confidence,
+              keywords: Array.isArray(cls.keywords) ? cls.keywords : [],
+              suggestedArea: cls.suggestedArea ?? null,
+              updatedAt: cls.updatedAt,
+            },
+          },
+        };
+      });
+    }, []),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onAgenticAnalyzed: useCallback((payload: any) => {
+      const p = payload as import('@/hooks/use-live-event-pipeline').AgenticAnalyzedPayload;
+      const dataPointId = p?.dataPointId;
+      if (!dataPointId) return;
+      setNodesById((prev) => {
+        const existing = prev[dataPointId];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [dataPointId]: {
+            ...existing,
+            agenticAnalysis: {
+              domains: p.analysis.domains.map((d) => ({
+                domain: d.domain,
+                relevance: d.confidence,
+                reasoning: '',
+              })),
+              themes: p.analysis.themes.map((t) => ({
+                label: t,
+                category: 'general',
+                confidence: 0.8,
+                reasoning: '',
+              })),
+              actors: Array.isArray(p.analysis.actors) ? p.analysis.actors.map((a) => ({
+                name: a.name,
+                role: a.role,
+                interactions: (p.analysis.interactions || [])
+                  .filter((ix) => ix.fromActor === a.name)
+                  .map((ix) => ({
+                    withActor: ix.toActor,
+                    action: ix.action,
+                    sentiment: ix.sentiment,
+                    context: ix.context,
+                  })),
+              })) : [],
+              semanticMeaning: p.analysis.interpretation,
+              sentimentTone: 'neutral',
+              overallConfidence: p.analysis.overallConfidence,
+            },
+          },
+        };
+      });
+    }, []),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onAnnotationUpdated: useCallback((payload: any) => {
+      const ann = payload as AnnotationUpdatedPayload;
+      const dataPointId = ann?.dataPointId;
+      if (!dataPointId) return;
+      const intent = typeof ann.annotation?.intent === 'string' ? ann.annotation.intent.trim() : '';
+      const phaseFromServer = safePhase((ann.annotation as { dialoguePhase?: unknown } | undefined)?.dialoguePhase);
+      setNodesById((prev) => {
+        const existing = prev[dataPointId];
+        if (!existing) return prev;
+        const nextIntent = intent || null;
+        const nextPhase = existing.dialoguePhase ?? phaseFromServer;
+        if (existing.intent === nextIntent && existing.dialoguePhase === nextPhase) return prev;
+        return {
+          ...prev,
+          [dataPointId]: {
+            ...existing,
+            intent: nextIntent,
+            dialoguePhase: nextPhase,
+          },
+        };
+      });
+    }, []),
+    // NEW agentic facilitation callbacks
+    onPadGenerated: useCallback((pad: StickyPadType) => {
+      padStateMachine.addAgentPad(pad);
+    }, [padStateMachine.addAgentPad]),
+    onJourneyCompletion: useCallback((payload: JourneyCompletionPayload) => {
+      setJourneyCompletionState(payload.journeyCompletionState);
+      if (payload.liveJourney) {
+        journeyMutations.mergeBackend(payload.liveJourney as import('@/lib/cognitive-guidance/pipeline').LiveJourneyData);
+      }
+    }, [journeyMutations.mergeBackend]),
+    onJourneyMutation: useCallback((intent: import('@/lib/cognition/agents/journey-mutation-types').JourneyMutationIntent) => {
+      journeyMutations.applyMutationIntent(intent);
+    }, [journeyMutations.applyMutationIntent]),
+    onAgentConversation: useCallback((entry: AgentConversationEntry) => {
+      setAgentConversation((prev) => [...prev, entry]);
+    }, []),
+  });
+
+  // ── Agentic facilitation: load guidance state on mount ──────
+  useEffect(() => {
+    if (guidanceLoadedRef.current) return;
+    guidanceLoadedRef.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/workshops/${encodeURIComponent(workshopId)}/guidance-state?init=true`,
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.guidanceState) {
+          if (data.guidanceState.coverageThreshold) {
+            setCoverageThreshold(data.guidanceState.coverageThreshold);
+          }
+          if (data.guidanceState.journeyCompletionState) {
+            setJourneyCompletionState(data.guidanceState.journeyCompletionState);
+          }
+          if (data.guidanceState.dialoguePhase) {
+            setDialoguePhase(data.guidanceState.dialoguePhase);
+          }
+        }
+        if (data?.customQuestions) {
+          setPrepQuestions(data.customQuestions as PrepQuestionSet);
+        }
+      } catch (err) {
+        console.warn('[Live] Failed to load guidance state:', err);
+      }
+    })();
+  }, [workshopId]);
 
   const pendingPhaseByKeyRef = useRef<Map<string, HemisphereDialoguePhase>>(new Map());
 
@@ -2640,277 +2893,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
   };
 
-  const startSse = () => {
-    try {
-      esRef.current?.close();
-    } catch {
-      // ignore
-    }
-
-    const es = new EventSource(eventUrl);
-    esRef.current = es;
-
-    es.addEventListener('datapoint.created', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        const p = evt.payload as DataPointCreatedPayload;
-        const dataPointId = p?.dataPoint?.id;
-        if (!dataPointId) return;
-        const createdAtMs =
-          typeof p.dataPoint.createdAt === 'string'
-            ? Date.parse(p.dataPoint.createdAt)
-            : p.dataPoint.createdAt instanceof Date
-              ? p.dataPoint.createdAt.getTime()
-              : Date.now();
-
-        const phaseFromServer = safePhase((p.dataPoint as { dialoguePhase?: unknown } | undefined)?.dialoguePhase);
-        const dpPhase =
-          phaseFromServer ??
-          (p.transcriptChunk
-            ? (pendingPhaseByKeyRef.current.get(
-                phaseKey({
-                  startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
-                  endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
-                  text: String(p.dataPoint.rawText ?? ''),
-                  source: String(p.transcriptChunk.source ?? ''),
-                })
-              ) ?? null)
-            : null);
-
-        const node: HemisphereNodeDatum = {
-          dataPointId,
-          createdAtMs,
-          rawText: String(p.dataPoint.rawText ?? ''),
-          dataPointSource: String(p.dataPoint.source ?? ''),
-          speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
-          dialoguePhase: dpPhase,
-          transcriptChunk: p.transcriptChunk
-            ? {
-                speakerId: p.transcriptChunk.speakerId || null,
-                startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
-                endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
-                confidence:
-                  typeof p.transcriptChunk.confidence === 'number' ? p.transcriptChunk.confidence : null,
-                source: String(p.transcriptChunk.source ?? ''),
-              }
-            : null,
-          classification: null,
-        };
-        if (p.transcriptChunk) {
-          pendingPhaseByKeyRef.current.delete(
-            phaseKey({
-              startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
-              endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
-              text: String(p.dataPoint.rawText ?? ''),
-              source: String(p.transcriptChunk.source ?? ''),
-            })
-          );
-        }
-        setNodesById((prev) => {
-          if (prev[dataPointId]) return prev;
-          return { ...prev, [dataPointId]: node };
-        });
-      } catch {
-        // ignore
-      }
-    });
-
-    es.addEventListener('classification.updated', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        const p = evt.payload as ClassificationUpdatedPayload;
-        const dataPointId = p?.dataPointId;
-        if (!dataPointId) return;
-
-        const cls = p.classification;
-        setNodesById((prev) => {
-          const existing = prev[dataPointId];
-          if (!existing) return prev;
-          return {
-            ...prev,
-            [dataPointId]: {
-              ...existing,
-              classification: {
-                primaryType: cls.primaryType,
-                confidence: cls.confidence,
-                keywords: Array.isArray(cls.keywords) ? cls.keywords : [],
-                suggestedArea: cls.suggestedArea ?? null,
-                updatedAt: cls.updatedAt,
-              },
-            },
-          };
-        });
-      } catch {
-        // ignore
-      }
-    });
-
-    es.addEventListener('annotation.updated', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        const p = evt.payload as AnnotationUpdatedPayload;
-        const dataPointId = p?.dataPointId;
-        if (!dataPointId) return;
-        const intent = typeof p.annotation?.intent === 'string' ? p.annotation.intent.trim() : '';
-        const phaseFromServer = safePhase((p.annotation as { dialoguePhase?: unknown } | undefined)?.dialoguePhase);
-
-        setNodesById((prev) => {
-          const existing = prev[dataPointId];
-          if (!existing) return prev;
-
-          const nextIntent = intent || null;
-          const nextPhase = existing.dialoguePhase ?? phaseFromServer;
-
-          if (existing.intent === nextIntent && existing.dialoguePhase === nextPhase) return prev;
-
-          return {
-            ...prev,
-            [dataPointId]: {
-              ...existing,
-              intent: nextIntent,
-              dialoguePhase: nextPhase,
-            },
-          };
-        });
-      } catch {
-        // ignore
-      }
-    });
-
-    es.addEventListener('agentic.analyzed', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        const p = evt.payload as {
-          dataPointId: string;
-          analysis: {
-            interpretation: {
-              semanticMeaning: string;
-              sentimentTone: string;
-            };
-            domains: Array<{domain: string; relevance: number; reasoning: string}>;
-            themes: Array<{label: string; category: string; confidence: number; reasoning: string}>;
-            actors?: Array<{
-              name: string;
-              role: string;
-              interactions: Array<{
-                withActor: string;
-                action: string;
-                sentiment: string;
-                context: string;
-              }>;
-            }>;
-            overallConfidence: number;
-          };
-        };
-        const dataPointId = p?.dataPointId;
-        if (!dataPointId) return;
-
-        console.log('[Agentic Analysis Received]', {
-          dataPointId,
-          domains: p.analysis.domains,
-          themes: p.analysis.themes,
-          semanticMeaning: p.analysis.interpretation.semanticMeaning,
-        });
-
-        setNodesById((prev) => {
-          const existing = prev[dataPointId];
-          if (!existing) return prev;
-
-          return {
-            ...prev,
-            [dataPointId]: {
-              ...existing,
-              agenticAnalysis: {
-                domains: p.analysis.domains,
-                themes: p.analysis.themes,
-                actors: Array.isArray(p.analysis.actors) ? p.analysis.actors : [],
-                semanticMeaning: p.analysis.interpretation.semanticMeaning,
-                sentimentTone: p.analysis.interpretation.sentimentTone,
-                overallConfidence: p.analysis.overallConfidence,
-              },
-            },
-          };
-        });
-      } catch (err) {
-        console.error('[Agentic Analysis Error]', err);
-      }
-    });
-
-    // ── Cognitive state events ─────────────────────────────
-    es.addEventListener('belief.created', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data);
-        const belief = evt.payload?.belief;
-        if (belief) {
-          console.log('[Belief Created]', belief.label, `(${belief.category}, confidence: ${(belief.confidence * 100).toFixed(0)}%)`);
-        }
-      } catch { /* ignore */ }
-    });
-
-    es.addEventListener('belief.reinforced', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data);
-        const belief = evt.payload?.belief;
-        if (belief) {
-          console.log('[Belief Reinforced]', belief.label, `(confidence: ${(belief.confidence * 100).toFixed(0)}%, evidence: ${belief.evidenceCount})`);
-        }
-      } catch { /* ignore */ }
-    });
-
-    es.addEventListener('belief.stabilised', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data);
-        const belief = evt.payload?.belief;
-        if (belief) {
-          console.log('[Belief Stabilised]', belief.label, '— committed to output');
-        }
-      } catch { /* ignore */ }
-    });
-
-    es.addEventListener('contradiction.detected', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data);
-        const c = evt.payload?.contradiction;
-        if (c) {
-          console.log('[Contradiction]', c.beliefA?.label, 'vs', c.beliefB?.label);
-        }
-      } catch { /* ignore */ }
-    });
-
-    es.addEventListener('agentic.reasoning', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data);
-        const p = evt.payload as {
-          level: ReasoningEntry['level'];
-          icon: string;
-          summary: string;
-          details?: string;
-        };
-        if (p?.summary) {
-          setReasoningEntries(prev => {
-            const entry: ReasoningEntry = {
-              timestampMs: evt.createdAt || Date.now(),
-              level: p.level,
-              icon: p.icon,
-              summary: p.summary,
-              details: p.details,
-            };
-            // Keep last 200 entries
-            const next = [...prev, entry];
-            return next.length > 200 ? next.slice(-200) : next;
-          });
-        }
-      } catch { /* ignore */ }
-    });
-
-    es.addEventListener('open', () => {
-      // ignore
-    });
-
-    es.onerror = () => {
-      // keep trying; browser auto-reconnects
-    };
-  };
+  // startSse() has been replaced by useLiveEventPipeline hook.
+  // The hook manages SSE + outbox poll with typed callbacks.
+  // Old startSse code removed -- all event handling now via hook callbacks above.
+  // (Old startSse body removed -- event handling now via useLiveEventPipeline hook)
 
   const startCapture = async () => {
     setError(null);
@@ -3118,10 +3104,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
         }`,
       ]);
 
-      // 1) Start SSE first so we can see events immediately
-      console.debug('Starting SSE…');
-      startSse();
-      console.debug('SSE started');
+      // SSE is now handled by useLiveEventPipeline hook (auto-starts when status === 'capturing')
+      console.debug('Event pipeline active via hook');
 
       void requestWakeLock();
 
@@ -3451,6 +3435,207 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 </CardContent>
               </Card>
           ) : null}
+
+          {/* ── Agentic Facilitation Panel (facilitator + split modes) ── */}
+          {viewMode !== 'room' && (
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Facilitation</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      Auto-advance at {coverageThreshold}%
+                    </span>
+                    <select
+                      className="h-7 rounded border bg-background px-2 text-xs"
+                      value={coverageThreshold}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setCoverageThreshold(val);
+                        void syncGuidanceState({ coverageThreshold: val });
+                      }}
+                    >
+                      <option value={60}>60%</option>
+                      <option value={70}>70%</option>
+                      <option value={80}>80%</option>
+                      <option value={90}>90%</option>
+                    </select>
+                    {eventPipeline.listening && (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-500">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Live ({eventPipeline.seenEventCount})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Main Question Card */}
+                {padStateMachine.currentMainQuestion && (
+                  <div className="rounded-lg border-2 border-amber-300/50 bg-amber-50/30 p-4 dark:bg-amber-950/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                        {phaseLabel} -- Question {padStateMachine.mainQuestionIndex + 1}/{padStateMachine.mainQuestions.length}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          disabled={padStateMachine.mainQuestionIndex <= 0}
+                          onClick={padStateMachine.handlePrevQuestion}
+                        >
+                          &#8592;
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          disabled={padStateMachine.mainQuestionIndex >= padStateMachine.mainQuestions.length - 1}
+                          onClick={padStateMachine.handleNextQuestion}
+                        >
+                          &#8594;
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium leading-snug">{padStateMachine.currentMainQuestion.text}</p>
+                    {padStateMachine.currentMainQuestion.purpose && (
+                      <p className="mt-1 text-xs text-muted-foreground">{padStateMachine.currentMainQuestion.purpose}</p>
+                    )}
+                    {/* Completion bar */}
+                    <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                        style={{ width: `${Math.min(100, padStateMachine.mainQuestionCompletionPercent)}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">{padStateMachine.mainQuestionCompletionPercent}% covered</span>
+                  </div>
+                )}
+
+                {/* Active sub-pads */}
+                {padStateMachine.activeSubPads.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">Active questions</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {padStateMachine.activeSubPads.slice(0, 4).map((pad) => (
+                        <div
+                          key={pad.id}
+                          className="rounded-md border p-3 text-sm"
+                          style={{
+                            borderLeftWidth: 3,
+                            borderLeftColor: pad.lens === 'People' ? '#93c5fd'
+                              : pad.lens === 'Organisation' ? '#6ee7b7'
+                              : pad.lens === 'Customer' ? '#c4b5fd'
+                              : pad.lens === 'Technology' ? '#fdba74'
+                              : pad.lens === 'Regulation' ? '#fca5a5'
+                              : '#cbd5e1',
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                              {pad.padLabel || pad.lens || pad.source}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] tabular-nums text-muted-foreground">
+                                {pad.coveragePercent}%
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 w-5 p-0 text-xs"
+                                onClick={() => padStateMachine.handleDismissPad(pad.id)}
+                              >
+                                x
+                              </Button>
+                            </div>
+                          </div>
+                          <p className="text-xs leading-snug">{pad.prompt}</p>
+                          {/* Coverage mini-bar */}
+                          <div className="mt-1.5 h-1 w-full rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-300"
+                              style={{
+                                width: `${pad.coveragePercent}%`,
+                                backgroundColor: pad.coveragePercent >= coverageThreshold ? '#22c55e' : '#f59e0b',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Covered sub-pads (collapsed) */}
+                {padStateMachine.coveredSubPads.length > 0 && (
+                  <div className="rounded-md border bg-muted/20 p-2">
+                    <div className="text-xs font-medium text-muted-foreground">
+                      Covered ({padStateMachine.coveredSubPads.length})
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {padStateMachine.coveredSubPads.map((pad) => (
+                        <span
+                          key={pad.id}
+                          className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        >
+                          {pad.padLabel || pad.lens || 'Covered'}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Signal pads */}
+                {padStateMachine.signalPads.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-muted-foreground">Signal-driven</div>
+                    {padStateMachine.signalPads.slice(0, 3).map((pad) => (
+                      <div key={pad.id} className="rounded border bg-muted/10 px-2 py-1 text-xs">
+                        {pad.prompt}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Journey summary */}
+                {journeyMutations.journey.actors.length > 0 && (
+                  <div className="rounded-md border bg-muted/20 p-2 text-xs">
+                    <span className="font-medium">Journey: </span>
+                    {journeyMutations.journey.stages.length} stages,{' '}
+                    {journeyMutations.journey.actors.length} actors,{' '}
+                    {journeyMutations.journey.interactions.length} interactions
+                    {journeyCompletionState && (
+                      <span className="ml-2 text-muted-foreground">
+                        ({journeyCompletionState.overallCompletionPercent}% complete)
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Agent conversation (last 5) */}
+                {agentConversation.length > 0 && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      Agent log ({agentConversation.length})
+                    </summary>
+                    <div className="mt-1 max-h-32 overflow-y-auto space-y-0.5">
+                      {agentConversation.slice(-5).map((entry, i) => (
+                        <div key={i} className="flex gap-1 text-muted-foreground">
+                          <span className="font-mono">{entry.agent}</span>
+                          {entry.to && <span>-&gt; {entry.to}</span>}
+                          <span className="truncate">{entry.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
               <Card>
                 <CardHeader>

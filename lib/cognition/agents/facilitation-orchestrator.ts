@@ -33,8 +33,9 @@ import {
   mergeAgentAssessment,
   buildJourneyContextString,
 } from '../journey-completion-state';
-import type { LiveJourneyData, LiveJourneyInteraction, AiAgencyLevel } from '@/lib/cognitive-guidance/pipeline';
+import type { LiveJourneyData, LiveJourneyInteraction, AiAgencyLevel, StickyPad } from '@/lib/cognitive-guidance/pipeline';
 import type { AgentConversationCallback } from './agent-types';
+import type { JourneyMutationIntent } from './journey-mutation-types';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ const MIN_EMISSION_INTERVAL_MS = 120_000;    // 2 min hard minimum between emiss
 const PAD_GENERATION_INTERVAL_MS = 45_000;   // 45s between generation triggers
 const PAD_UTTERANCE_THRESHOLD = 6;           // 6 utterances trigger
 const ORCHESTRATOR_MODEL = 'gpt-4o-mini';
-const MAX_ORCHESTRATOR_ITERATIONS = 5;       // assess → journey → enrichment → facilitation → emit
+const MAX_ORCHESTRATOR_ITERATIONS = 6;       // assess → journey → enrichment → mutations → facilitation → emit
 const ORCHESTRATOR_TIMEOUT_MS = 30_000;      // 30s hard cap (allows journey + enrichment calls)
 const MIN_ENRICHMENT_INTERVAL_MS = 180_000;  // 3 min between enrichment runs
 const MIN_ENRICHMENT_INTERACTIONS = 3;       // Need ≥3 interactions to enrich
@@ -154,6 +155,43 @@ function detectBeliefSignals(cogState: CognitiveState): SessionSignal[] {
 }
 
 // ══════════════════════════════════════════════════════════════
+// SUGGESTED PAD → STICKY PAD BUILDER
+// ══════════════════════════════════════════════════════════════
+
+function buildStickyPadFromSuggestion(
+  sp: { prompt: string; gapId: string; stage: string | null; label: string },
+  guidanceState: GuidanceState,
+): StickyPad {
+  const mainQIndex = guidanceState.currentMainQuestion
+    ? 0 // Will be enriched by the client-side pad state machine
+    : null;
+
+  return {
+    id: `journey-gap:${sp.gapId || Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+    type: 'GAP_PROBE',
+    prompt: sp.prompt,
+    signalStrength: 0.8,
+    provenance: {
+      triggerType: 'repeated_theme',
+      sourceNodeIds: [],
+      description: `Journey gap: ${sp.label}${sp.stage ? ` (stage: ${sp.stage})` : ''}`,
+    },
+    createdAtMs: Date.now(),
+    status: 'active',
+    snoozedUntilMs: null,
+    source: 'agent',
+    questionId: null,
+    grounding: sp.label,
+    coveragePercent: 0,
+    coverageState: 'active',
+    lens: null,
+    mainQuestionIndex: mainQIndex,
+    journeyGapId: sp.gapId || null,
+    padLabel: sp.label,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
 // JOURNEY DATA BUILDER — lightweight, from cognitive state actors
 // ══════════════════════════════════════════════════════════════
 
@@ -251,6 +289,34 @@ const ORCHESTRATOR_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'emit_journey_mutations',
+      description: 'Emit structural mutations to the live journey map (add/rename/merge/remove stages and actors, add interactions). Use after journey assessment reveals structural changes needed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          mutations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['add_stage', 'rename_stage', 'merge_stage', 'remove_stage', 'add_actor', 'rename_actor', 'add_interaction', 'update_interaction'],
+                },
+                payload: { type: 'object' },
+                sourceNodeIds: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['type', 'payload'],
+            },
+          },
+        },
+        required: ['mutations'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'verify_and_emit',
       description: 'Verify proposals have valid belief references and emit approved pads to the facilitator screen.',
       parameters: { type: 'object', properties: {}, required: [] },
@@ -282,11 +348,12 @@ YOUR PROCESS:
 1. assess_session — read the room: beliefs, signals, gaps, recent participant speech
 2. consult_journey_completion_agent — check journey map gaps (only if actors detected)
 3. consult_journey_enrichment_agent — enrich interactions with AI agency, intensity, risk (only if ≥3 interactions AND ≥5 beliefs)
-4. request_facilitation_proposals — generate sub-questions with signal + speech + journey context
-5. verify_and_emit — verify belief references, emit approved pads to facilitator
+4. emit_journey_mutations — emit structural journey changes if assessment reveals them (add/rename/merge stages or actors)
+5. request_facilitation_proposals — generate sub-questions with signal + speech + journey context
+6. verify_and_emit — verify belief references, emit approved pads to facilitator
 
 RULES:
-- Five tool calls max, done. No deliberation loops.
+- Six tool calls max, done. No deliberation loops.
 - Skip step 2 if assess_session shows no actors detected yet.
 - Skip step 3 if insufficient data (< 3 interactions or < 5 beliefs) or enriched recently.
 - NEVER skip assess_session — signals and speech are essential input.
@@ -306,9 +373,11 @@ async function executeOrchestratorTool(
   cogState: CognitiveState,
   guidanceState: GuidanceState,
   onConversation: AgentConversationCallback | undefined,
+  workshopId: string,
   state: {
     deliberation: DeliberationContext;
     proposals: PadProposal[];
+    emittedSuggestionKeys: Set<string>;
   },
   emitEvent: (type: string, payload: unknown) => void | Promise<void>,
 ): Promise<string> {
@@ -425,12 +494,27 @@ async function executeOrchestratorTool(
             liveJourney,  // Full actor + interaction data from cogState
           });
 
+          // Emit suggestedPadPrompts as pad.generated events (composite-key dedup)
+          const mainQuestionIndex = guidanceState.currentMainQuestion ? 0 : -1;
+          let suggestedPadsEmitted = 0;
+          for (const sp of assessment.suggestedPadPrompts || []) {
+            if (!sp.prompt) continue;
+            const dedupKey = `${workshopId}:${sp.gapId || ''}:${sp.stage || ''}:${mainQuestionIndex}`;
+            if (state.emittedSuggestionKeys.has(dedupKey)) continue;
+            state.emittedSuggestionKeys.add(dedupKey);
+            const pad = buildStickyPadFromSuggestion(sp, guidanceState);
+            await emitEvent('pad.generated', { pad });
+            guidanceState.surfacedPadPrompts.push(sp.prompt);
+            suggestedPadsEmitted++;
+          }
+
           const topGaps = assessment.gaps.filter(g => g.priority >= 0.5).slice(0, 3);
           return JSON.stringify({
             assessed: true,
             overallCompletion: assessment.overallCompletionPercent,
             gapCount: assessment.gaps.length,
             domainActor: assessment.domainActorName,
+            suggestedPadsEmitted,
             topGaps: topGaps.map(g => ({
               type: g.gapType,
               stage: g.stage,
@@ -522,6 +606,40 @@ async function executeOrchestratorTool(
       } catch (error) {
         return JSON.stringify({ error: error instanceof Error ? error.message : 'Enrichment failed' });
       }
+    }
+
+    // ── EMIT JOURNEY MUTATIONS ────────────────────────────
+    case 'emit_journey_mutations': {
+      const args = _args as { mutations?: Array<{ type: string; payload: Record<string, unknown>; sourceNodeIds?: string[] }> };
+      const mutations = Array.isArray(args.mutations) ? args.mutations : [];
+
+      if (mutations.length === 0) {
+        return JSON.stringify({ emitted: 0, reason: 'No mutations provided.' });
+      }
+
+      let emittedCount = 0;
+      for (const m of mutations) {
+        const intent: JourneyMutationIntent = {
+          id: `orch:${m.type}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+          type: m.type as JourneyMutationIntent['type'],
+          payload: m.payload || {},
+          sourceNodeIds: Array.isArray(m.sourceNodeIds) ? m.sourceNodeIds : [],
+          emittedAtMs: Date.now(),
+        };
+
+        await emitEvent('journey.mutation', intent);
+        emittedCount++;
+
+        await onConversation?.({
+          timestampMs: Date.now(),
+          agent: 'orchestrator',
+          to: '',
+          message: `Journey mutation: ${m.type} -- ${JSON.stringify(m.payload).substring(0, 80)}`,
+          type: 'info',
+        });
+      }
+
+      return JSON.stringify({ emitted: emittedCount });
     }
 
     // ── REQUEST FACILITATION PROPOSALS ──────────────────────
@@ -647,6 +765,7 @@ export async function runFacilitationOrchestrator(
   const orchestratorState = {
     deliberation: {} as DeliberationContext,
     proposals: [] as PadProposal[],
+    emittedSuggestionKeys: new Set<string>(),
   };
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -672,7 +791,7 @@ export async function runFacilitationOrchestrator(
         if (orchestratorState.proposals.length > 0) {
           await executeOrchestratorTool(
             'verify_and_emit', {}, cogState, guidanceState,
-            onConversation, orchestratorState, emitEvent,
+            onConversation, workshopId, orchestratorState, emitEvent,
           );
         }
         break;
@@ -722,7 +841,7 @@ export async function runFacilitationOrchestrator(
 
         const result = await executeOrchestratorTool(
           fnName, fnArgs, cogState, guidanceState,
-          onConversation, orchestratorState, emitEvent,
+          onConversation, workshopId, orchestratorState, emitEvent,
         );
 
         messages.push({
@@ -752,7 +871,7 @@ export async function runFacilitationOrchestrator(
       try {
         await executeOrchestratorTool(
           'verify_and_emit', {}, cogState, guidanceState,
-          onConversation, orchestratorState, emitEvent,
+          onConversation, workshopId, orchestratorState, emitEvent,
         );
       } catch {
         console.error('[Orchestrator] Recovery emit also failed');

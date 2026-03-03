@@ -153,6 +153,13 @@ export async function POST(
     updates.journeyCompletionState = body.journeyCompletionState;
   }
 
+  if (body.coverageThreshold !== undefined) {
+    const raw = Number(body.coverageThreshold);
+    if (!Number.isNaN(raw)) {
+      updates.coverageThreshold = Math.max(50, Math.min(95, Math.round(raw)));
+    }
+  }
+
   const updated = updateGuidanceState(workshopId, updates);
 
   return NextResponse.json({ guidanceState: updated });
