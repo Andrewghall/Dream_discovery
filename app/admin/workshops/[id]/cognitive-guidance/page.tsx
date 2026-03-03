@@ -1497,7 +1497,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       'agentic.analyzed',
     ].join(',');
 
-    const dispatchOutboxEvent = (type: string, payload: any) => {
+    const dispatchOutboxEvent = (type: string, payload: unknown) => {
       try {
         switch (type) {
           case 'classification.updated': {
@@ -1560,7 +1560,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             setHemisphereNodes(prev => {
               const existing = prev[dataPointId];
               if (!existing) return prev;
-              const maxApiRelevance = analysis.domains.reduce((m: number, d: any) => Math.max(m, d.relevance), 0.5);
+              const maxApiRelevance = analysis.domains.reduce(
+                (m: number, d) => Math.max(m, d.relevance),
+                0.5
+              );
               const enrichedDomains = [...analysis.domains];
               if (existing.rawText && existing.rawText.length >= 3) {
                 const kwLenses = inferKeywordLenses(existing.rawText);
@@ -1595,7 +1598,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           }
 
           case 'contradiction.detected': {
-            const c = payload?.contradiction;
+            const c = (payload as Record<string, any>)?.contradiction;
             if (c) {
               contradictionsRef.current.push({
                 id: c.id || `c_${Date.now()}`,
@@ -1616,7 +1619,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           }
 
           case 'pad.generated': {
-            const pad = payload?.pad;
+            const pad = (payload as Record<string, any>)?.pad;
             if (pad) {
               setStickyPads(prev => {
                 if (prev.some(p => p.id === pad.id)) return prev;
@@ -1639,11 +1642,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           }
 
           case 'journey.completion': {
-            if (payload?.journeyCompletionState) {
-              setJourneyCompletionState(payload.journeyCompletionState);
+            const jPayload = payload as Record<string, any>;
+            if (jPayload?.journeyCompletionState) {
+              setJourneyCompletionState(jPayload.journeyCompletionState);
             }
-            if (payload?.liveJourney) {
-              setLiveJourney(prev => mergeBackendJourney(prev, payload.liveJourney));
+            if (jPayload?.liveJourney) {
+              setLiveJourney(prev => mergeBackendJourney(prev, jPayload.liveJourney));
             }
             break;
           }
@@ -1663,7 +1667,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         if (!res.ok) return;
         const data = await res.json();
         const events = data.events as Array<{
-          id: string; type: string; payload: any; createdAt: string;
+          id: string;
+          type: string;
+          payload: unknown;
+          createdAt: string;
         }>;
         if (!events || events.length === 0) return;
 

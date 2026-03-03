@@ -11,6 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -26,6 +27,11 @@ import {
   FlaskConical,
   AudioLines,
   FileText,
+  Pencil,
+  Check,
+  X,
+  Loader2,
+  RotateCcw,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -36,6 +42,7 @@ export type CaptureSessionSegment = {
   id: string;
   segmentIndex: number;
   status: string;
+  transcript?: string | null;
 };
 
 export type CaptureSessionItem = {
@@ -107,14 +114,37 @@ function formatDate(iso: string): string {
 
 function SessionRow({
   session,
+  workshopId,
   onAnalyse,
   onResume,
 }: {
   session: CaptureSessionItem;
+  workshopId: string;
   onAnalyse?: (id: string) => void;
   onResume?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = React.useState(false);
+
+  // Detailed segments fetched on expand (includes transcript text)
+  const [detailedSegments, setDetailedSegments] = React.useState<
+    CaptureSessionSegment[] | null
+  >(null);
+  const [loadingSegments, setLoadingSegments] = React.useState(false);
+
+  // Transcript editing state
+  const [editingTranscript, setEditingTranscript] = React.useState<{
+    sessionId: string;
+    segmentId: string;
+  } | null>(null);
+  const [editingTranscriptText, setEditingTranscriptText] =
+    React.useState('');
+  const [savingTranscript, setSavingTranscript] = React.useState(false);
+
+  // Track which sessions have had transcripts edited (for re-analyse button)
+  const [transcriptEdited, setTranscriptEdited] = React.useState(false);
+
+  // Re-analyse loading state
+  const [reanalysing, setReanalysing] = React.useState(false);
 
   const captureLabel =
     CAPTURE_TYPE_LABELS[session.captureType] || session.captureType;
@@ -122,12 +152,135 @@ function SessionRow({
   const canResume =
     session.status === 'OPEN' || session.status === 'PAUSED';
 
+  // Fetch detailed session (with transcripts) when first expanded
+  const fetchDetailedSegments = React.useCallback(async () => {
+    if (detailedSegments !== null) return; // already loaded
+    setLoadingSegments(true);
+    try {
+      const res = await fetch(
+        `/api/admin/workshops/${workshopId}/capture-sessions/${session.id}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const segs: CaptureSessionSegment[] = (
+          data.session?.segments ?? []
+        ).map(
+          (s: Record<string, unknown>) =>
+            ({
+              id: s.id as string,
+              segmentIndex: s.segmentIndex as number,
+              status: s.status as string,
+              transcript: (s.transcript as string | null) ?? null,
+            }) satisfies CaptureSessionSegment
+        );
+        setDetailedSegments(segs);
+      }
+    } catch (err) {
+      console.error('Failed to fetch session details:', err);
+    } finally {
+      setLoadingSegments(false);
+    }
+  }, [workshopId, session.id, detailedSegments]);
+
+  const handleToggleExpand = React.useCallback(() => {
+    setExpanded((prev) => {
+      const next = !prev;
+      if (next) {
+        // Fetch on first expand
+        fetchDetailedSegments();
+      }
+      return next;
+    });
+  }, [fetchDetailedSegments]);
+
+  // Start editing a transcript
+  const handleStartEdit = (segmentId: string, currentText: string) => {
+    setEditingTranscript({ sessionId: session.id, segmentId });
+    setEditingTranscriptText(currentText);
+  };
+
+  // Cancel editing
+  const handleCancelEdit = () => {
+    setEditingTranscript(null);
+    setEditingTranscriptText('');
+  };
+
+  // Save edited transcript
+  const handleSaveTranscript = async () => {
+    if (!editingTranscript) return;
+    setSavingTranscript(true);
+    try {
+      const res = await fetch(
+        `/api/admin/workshops/${workshopId}/capture-sessions/${session.id}/segments`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            segmentId: editingTranscript.segmentId,
+            transcript: editingTranscriptText,
+          }),
+        }
+      );
+      if (res.ok) {
+        // Update local segments state
+        setDetailedSegments((prev) =>
+          prev
+            ? prev.map((seg) =>
+                seg.id === editingTranscript.segmentId
+                  ? { ...seg, transcript: editingTranscriptText }
+                  : seg
+              )
+            : prev
+        );
+        setTranscriptEdited(true);
+        setEditingTranscript(null);
+        setEditingTranscriptText('');
+      } else {
+        console.error('Failed to save transcript:', await res.text());
+      }
+    } catch (err) {
+      console.error('Failed to save transcript:', err);
+    } finally {
+      setSavingTranscript(false);
+    }
+  };
+
+  // Re-analyse session after transcript edits
+  const handleReanalyse = async () => {
+    setReanalysing(true);
+    try {
+      const res = await fetch(
+        `/api/admin/workshops/${workshopId}/capture-sessions/${session.id}/analyse`,
+        { method: 'POST' }
+      );
+      if (res.ok) {
+        setTranscriptEdited(false);
+        // Refresh session details
+        setDetailedSegments(null);
+        fetchDetailedSegments();
+        // Also call the parent onAnalyse if available (to refresh outer list)
+        onAnalyse?.(session.id);
+      } else {
+        console.error('Failed to re-analyse:', await res.text());
+      }
+    } catch (err) {
+      console.error('Failed to re-analyse:', err);
+    } finally {
+      setReanalysing(false);
+    }
+  };
+
+  // Which segments to render: prefer detailed (with transcripts), fall back to props
+  const displaySegments: CaptureSessionSegment[] = detailedSegments
+    ? detailedSegments
+    : (session.segments as CaptureSessionSegment[]);
+
   return (
     <div className="rounded-lg border">
       {/* Main row */}
       <button
         type="button"
-        onClick={() => setExpanded((prev) => !prev)}
+        onClick={handleToggleExpand}
         className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
       >
         {expanded ? (
@@ -193,24 +346,106 @@ function SessionRow({
             </p>
           )}
 
-          {/* Segment list */}
-          {session.segments.length > 0 ? (
-            <div className="mb-3 flex flex-col gap-1">
+          {/* Segment list with transcripts */}
+          {loadingSegments ? (
+            <div className="flex items-center gap-2 py-3">
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              <span className="text-muted-foreground text-xs">
+                Loading segments...
+              </span>
+            </div>
+          ) : displaySegments.length > 0 ? (
+            <div className="mb-3 flex flex-col gap-2">
               <span className="text-xs font-medium">Segments</span>
-              {(session.segments as CaptureSessionSegment[]).map((seg) => (
-                <div
-                  key={seg.id}
-                  className="flex items-center justify-between rounded bg-gray-50 px-3 py-1.5 text-xs"
-                >
-                  <span>Segment {seg.segmentIndex + 1}</span>
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] ${getStatusBadgeClass(seg.status)}`}
+              {displaySegments.map((seg) => {
+                const isEditing =
+                  editingTranscript?.sessionId === session.id &&
+                  editingTranscript?.segmentId === seg.id;
+
+                return (
+                  <div
+                    key={seg.id}
+                    className="rounded bg-gray-50 px-3 py-2 text-xs"
                   >
-                    {seg.status}
-                  </Badge>
-                </div>
-              ))}
+                    {/* Segment header row */}
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium">
+                        Segment {seg.segmentIndex + 1}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${getStatusBadgeClass(seg.status)}`}
+                      >
+                        {seg.status}
+                      </Badge>
+                    </div>
+
+                    {/* Transcript display or edit */}
+                    {isEditing ? (
+                      <div className="mt-1 flex flex-col gap-2">
+                        <Textarea
+                          value={editingTranscriptText}
+                          onChange={(e) =>
+                            setEditingTranscriptText(e.target.value)
+                          }
+                          rows={5}
+                          className="text-xs"
+                          placeholder="Enter transcript text..."
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={handleSaveTranscript}
+                            disabled={savingTranscript}
+                            className="gap-1 h-7 text-xs"
+                          >
+                            {savingTranscript ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <Check className="size-3" />
+                            )}
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleCancelEdit}
+                            disabled={savingTranscript}
+                            className="gap-1 h-7 text-xs"
+                          >
+                            <X className="size-3" />
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-1 flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          {seg.transcript ? (
+                            <p className="text-xs text-gray-700 whitespace-pre-wrap break-words">
+                              {seg.transcript}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground italic">
+                              No transcript
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleStartEdit(seg.id, seg.transcript ?? '')
+                          }
+                          className="shrink-0 p-1 rounded hover:bg-gray-200 transition-colors text-muted-foreground hover:text-gray-700"
+                          title="Edit transcript"
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p className="text-muted-foreground mb-3 text-xs">
@@ -220,6 +455,22 @@ function SessionRow({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
+            {transcriptEdited && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReanalyse}
+                disabled={reanalysing}
+                className="gap-1.5"
+              >
+                {reanalysing ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="size-3.5" />
+                )}
+                Re-analyse
+              </Button>
+            )}
             {canAnalyse && onAnalyse && (
               <Button
                 size="sm"
@@ -253,7 +504,7 @@ function SessionRow({
 // ---------------------------------------------------------------------------
 
 export function CaptureInbox({
-  workshopId: _workshopId,
+  workshopId,
   sessions,
   onAnalyse,
   onResume,
@@ -386,6 +637,7 @@ export function CaptureInbox({
               <SessionRow
                 key={session.id}
                 session={session}
+                workshopId={workshopId}
                 onAnalyse={onAnalyse}
                 onResume={onResume}
               />

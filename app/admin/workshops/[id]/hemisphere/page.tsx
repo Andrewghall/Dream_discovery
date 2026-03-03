@@ -647,7 +647,7 @@ function ActorJourneyPanel({ workshopId, snapshotId }: { workshopId: string; sna
                   {step.insights.length > 0 && (
                     <div className="mt-1 space-y-0.5">
                       {step.insights.slice(0, 2).map((ins, i) => (
-                        <div key={i} className="text-[10px] text-slate-400 italic">"{ins}"</div>
+                        <div key={i} className="text-[10px] text-slate-400 italic">&quot;{ins}&quot;</div>
                       ))}
                     </div>
                   )}

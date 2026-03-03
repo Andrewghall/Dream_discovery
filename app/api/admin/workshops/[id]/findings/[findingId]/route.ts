@@ -61,6 +61,8 @@ export async function PATCH(
     if (typeof body.confidenceScore === 'number') updateData.confidenceScore = body.confidenceScore;
     if (typeof body.frequencyCount === 'number') updateData.frequencyCount = body.frequencyCount;
     if (Array.isArray(body.roleCoverage)) updateData.roleCoverage = body.roleCoverage;
+    if (typeof body.lens === 'string') updateData.lens = body.lens;
+    if (typeof body.type === 'string') updateData.type = body.type;
 
     const finding = await prisma.finding.update({
       where: { id: findingId },

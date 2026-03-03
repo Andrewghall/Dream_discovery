@@ -12,12 +12,22 @@ import {
   Layers,
   FileSearch,
   GitCompareArrows,
+  TrendingUp,
+  Shield,
 } from 'lucide-react';
 import { SynthesisProgress } from '@/components/field-discovery/synthesis-progress';
 import { FindingsExplorer } from '@/components/field-discovery/findings-explorer';
 import type { FindingItem } from '@/components/field-discovery/findings-explorer';
 import { StreamComparison } from '@/components/field-discovery/stream-comparison';
 import type { StreamComparisonData } from '@/components/field-discovery/stream-comparison';
+import { AlignmentHeatmap } from '@/components/discover-analysis/alignment-heatmap';
+import { TensionSurface } from '@/components/discover-analysis/tension-surface';
+import { ConstraintMap } from '@/components/discover-analysis/constraint-map';
+import { ConfidenceIndex } from '@/components/discover-analysis/confidence-index';
+import { GptInquiryBar } from '@/components/discover-analysis/gpt-inquiry-bar';
+import { buildAnalysisFromFindings } from '@/lib/field-discovery/findings-to-analysis-adapter';
+import type { FindingRecord } from '@/lib/field-discovery/findings-to-analysis-adapter';
+import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,6 +49,21 @@ interface SynthesisData {
 }
 
 // ---------------------------------------------------------------------------
+// Empty state placeholder
+// ---------------------------------------------------------------------------
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="rounded-full bg-muted p-3 mb-3">
+        <AlertCircle className="h-6 w-6 text-muted-foreground" />
+      </div>
+      <p className="text-sm text-muted-foreground max-w-sm">{message}</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -49,11 +74,29 @@ export default function DiagnosticDashboardPage({ params }: PageProps) {
   const [synthesis, setSynthesis] = useState<SynthesisData | null>(null);
   const [findings, setFindings] = useState<FindingItem[]>([]);
   const [streamComparison, setStreamComparison] = useState<StreamComparisonData | null>(null);
+  const [analysis, setAnalysis] = useState<DiscoverAnalysis | null>(null);
 
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [runningSynthesis, setRunningSynthesis] = useState(false);
+
+  // ---- Build adapted analysis when findings change ----
+
+  const rebuildAnalysis = useCallback(
+    (items: FindingItem[]) => {
+      if (items.length > 0) {
+        const adapted = buildAnalysisFromFindings(
+          workshopId,
+          items as unknown as FindingRecord[]
+        );
+        setAnalysis(adapted);
+      } else {
+        setAnalysis(null);
+      }
+    },
+    [workshopId]
+  );
 
   // ---- Fetch functions ----
 
@@ -79,17 +122,20 @@ export default function DiagnosticDashboardPage({ params }: PageProps) {
     }
   }, [workshopId]);
 
-  const fetchFindings = useCallback(async () => {
+  const fetchFindings = useCallback(async (): Promise<FindingItem[]> => {
     try {
       const res = await fetch(
         `/api/admin/workshops/${workshopId}/findings`
       );
       if (!res.ok) throw new Error('Failed to load findings');
       const data = await res.json();
-      setFindings(data.findings ?? []);
+      const items: FindingItem[] = data.findings ?? [];
+      setFindings(items);
+      return items;
     } catch (err) {
       console.error('Error fetching findings:', err);
       setFindings([]);
+      return [];
     }
   }, [workshopId]);
 
@@ -122,11 +168,14 @@ export default function DiagnosticDashboardPage({ params }: PageProps) {
       setLoading(true);
       setError(null);
       try {
-        await Promise.all([
+        const [, loadedFindings] = await Promise.all([
           fetchSynthesis(),
           fetchFindings(),
           fetchStreamComparison(),
         ]);
+        if (!cancelled && loadedFindings) {
+          rebuildAnalysis(loadedFindings);
+        }
       } catch (err) {
         if (!cancelled) {
           setError('Failed to load diagnostic data. Please try again.');
@@ -139,7 +188,7 @@ export default function DiagnosticDashboardPage({ params }: PageProps) {
     return () => {
       cancelled = true;
     };
-  }, [fetchSynthesis, fetchFindings, fetchStreamComparison]);
+  }, [fetchSynthesis, fetchFindings, fetchStreamComparison, rebuildAnalysis]);
 
   // ---- Run synthesis ----
 
@@ -157,11 +206,16 @@ export default function DiagnosticDashboardPage({ params }: PageProps) {
       }
 
       // Refresh all data after synthesis completes
-      await Promise.all([
+      const [, newFindings] = await Promise.all([
         fetchSynthesis(),
         fetchFindings(),
         fetchStreamComparison(),
       ]);
+
+      // Rebuild adapted analysis with fresh findings
+      if (newFindings && newFindings.length > 0) {
+        rebuildAnalysis(newFindings);
+      }
     } catch (err) {
       console.error('Synthesis error:', err);
       setError(
@@ -170,13 +224,14 @@ export default function DiagnosticDashboardPage({ params }: PageProps) {
     } finally {
       setRunningSynthesis(false);
     }
-  }, [workshopId, fetchSynthesis, fetchFindings, fetchStreamComparison]);
+  }, [workshopId, fetchSynthesis, fetchFindings, fetchStreamComparison, rebuildAnalysis]);
 
   // ---- Refresh findings ----
 
   const handleRefreshFindings = useCallback(async () => {
-    await fetchFindings();
-  }, [fetchFindings]);
+    const refreshed = await fetchFindings();
+    rebuildAnalysis(refreshed);
+  }, [fetchFindings, rebuildAnalysis]);
 
   // ---- Render ----
 
@@ -222,6 +277,13 @@ export default function DiagnosticDashboardPage({ params }: PageProps) {
         </Button>
       </div>
 
+      {/* GPT Inquiry Bar */}
+      <GptInquiryBar
+        workshopId={workshopId}
+        hasAnalysis={!!analysis}
+        analysis={analysis}
+      />
+
       {/* Error banner */}
       {error && (
         <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
@@ -231,8 +293,16 @@ export default function DiagnosticDashboardPage({ params }: PageProps) {
       )}
 
       {/* Tabs */}
-      <Tabs defaultValue="per-lens">
+      <Tabs defaultValue="overview">
         <TabsList>
+          <TabsTrigger value="overview">
+            <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="constraints">
+            <Shield className="h-3.5 w-3.5 mr-1.5" />
+            Constraints
+          </TabsTrigger>
           <TabsTrigger value="per-lens">
             <Layers className="h-3.5 w-3.5 mr-1.5" />
             Per-Lens Analysis
@@ -246,6 +316,28 @@ export default function DiagnosticDashboardPage({ params }: PageProps) {
             Stream Comparison
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview" className="mt-4 space-y-6">
+          {analysis ? (
+            <>
+              <AlignmentHeatmap data={analysis.alignment} />
+              <TensionSurface data={analysis.tensions} />
+            </>
+          ) : (
+            <EmptyState message="Run synthesis to generate analysis overview" />
+          )}
+        </TabsContent>
+
+        <TabsContent value="constraints" className="mt-4 space-y-6">
+          {analysis ? (
+            <>
+              <ConstraintMap data={analysis.constraints} />
+              <ConfidenceIndex data={analysis.confidence} />
+            </>
+          ) : (
+            <EmptyState message="Run synthesis to generate constraint analysis" />
+          )}
+        </TabsContent>
 
         <TabsContent value="per-lens" className="mt-4">
           <SynthesisProgress

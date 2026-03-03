@@ -16,6 +16,7 @@ interface Organization {
   secondaryColor: string | null;
   maxSeats: number;
   billingEmail: string | null;
+  adminName?: string | null;
 }
 
 export default function OrganizationsPage() {
@@ -66,7 +67,7 @@ export default function OrganizationsPage() {
       secondaryColor: org.secondaryColor || '',
       maxSeats: String(org.maxSeats ?? 5),
       billingEmail: org.billingEmail || '',
-      adminName: (org as any).adminName || '',
+      adminName: org.adminName || '',
     });
     setError('');
     setSuccess('');

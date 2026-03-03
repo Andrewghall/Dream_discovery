@@ -4,7 +4,7 @@ import { use, useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Mic, RefreshCcw, Loader2, AlertCircle } from 'lucide-react';
+import { Mic, RefreshCcw, Loader2, AlertCircle, Smartphone, Link2, Copy, Check } from 'lucide-react';
 import { CaptureSessionForm } from '@/components/field-discovery/capture-session-form';
 import type { DomainPack, SessionFormData } from '@/components/field-discovery/capture-session-form';
 import { DesktopCaptureControls } from '@/components/field-discovery/desktop-capture-controls';
@@ -41,6 +41,12 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
   const [domainPackConfig, setDomainPackConfig] = useState<DomainPack | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Capture token state
+  const [captureToken, setCaptureToken] = useState<string | null>(null);
+  const [captureLink, setCaptureLink] = useState<string | null>(null);
+  const [generatingToken, setGeneratingToken] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // ---- Fetch workshop data (for domainPackConfig) ----
   const fetchWorkshop = useCallback(async () => {
@@ -121,6 +127,34 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
     setLoading(false);
   }, [fetchSessions]);
 
+  // ---- Generate capture token handler ----
+  async function handleGenerateToken() {
+    setGeneratingToken(true);
+    try {
+      const res = await fetch('/api/capture-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workshopId }),
+      });
+      if (!res.ok) throw new Error('Failed to generate token');
+      const data = await res.json();
+      setCaptureToken(data.token);
+      setCaptureLink(`${window.location.origin}/capture/${data.token}`);
+    } catch (err) {
+      console.error('Error generating capture link:', err);
+    } finally {
+      setGeneratingToken(false);
+    }
+  }
+
+  // ---- Copy capture link handler ----
+  async function handleCopyLink() {
+    if (!captureLink) return;
+    await navigator.clipboard.writeText(captureLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   // ---- Derived progress values ----
   const totalSessions = progress?.totalSessions ?? 0;
   const analysedCount = progress?.byStatus?.ANALYSED ?? 0;
@@ -158,6 +192,70 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
           {error}
         </div>
       )}
+
+      {/* --------------------------------------------------------------- */}
+      {/* Mobile Capture Link                                              */}
+      {/* --------------------------------------------------------------- */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Smartphone className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">Mobile Capture Link</CardTitle>
+          </div>
+          <CardDescription>
+            Generate a secure link for mobile field capture. Share with team
+            members to record deskside interviews on their phone or laptop.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!captureLink && (
+            <Button
+              size="sm"
+              onClick={handleGenerateToken}
+              disabled={generatingToken}
+            >
+              {generatingToken ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Link2 className="h-4 w-4 mr-2" />
+              )}
+              Generate Capture Link
+            </Button>
+          )}
+
+          {captureLink && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 rounded-md border bg-muted/50 px-3 py-2 font-mono text-xs break-all select-all">
+                  {captureLink}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyLink}
+                  className="shrink-0"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Link expires in 7 days
+                </p>
+                {copied && (
+                  <span className="text-xs font-medium text-green-600">
+                    Copied!
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* --------------------------------------------------------------- */}
       {/* Section A - Start Interview Session                              */}

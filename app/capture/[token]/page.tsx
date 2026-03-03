@@ -5,7 +5,7 @@ import { use } from 'react';
 import { CaptureSessionForm } from '@/components/field-discovery/capture-session-form';
 import { DesktopCaptureControls } from '@/components/field-discovery/desktop-capture-controls';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, Loader2, WifiOff } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, WifiOff } from 'lucide-react';
 import type { SessionFormData, DomainPack } from '@/components/field-discovery/capture-session-form';
 
 // ---------------------------------------------------------------------------
@@ -24,7 +24,8 @@ type PageState =
   | { status: 'loading' }
   | { status: 'invalid' }
   | { status: 'ready'; info: TokenInfo }
-  | { status: 'session'; info: TokenInfo; sessionId: string };
+  | { status: 'session'; info: TokenInfo; sessionId: string }
+  | { status: 'complete'; info: TokenInfo; segmentCount: number };
 
 // ---------------------------------------------------------------------------
 // Component
@@ -38,6 +39,7 @@ export default function MobileCaptureTokenPage({
   const { token } = use(params);
   const [state, setState] = React.useState<PageState>({ status: 'loading' });
   const [isOffline, setIsOffline] = React.useState(false);
+  const [sessionsRecorded, setSessionsRecorded] = React.useState(0);
 
   // -------------------------------------------------------------------------
   // Online / offline detection
@@ -131,6 +133,35 @@ export default function MobileCaptureTokenPage({
   }
 
   // -------------------------------------------------------------------------
+  // Header with workshop name + sessions badge
+  // -------------------------------------------------------------------------
+
+  function WorkshopHeader({ info }: { info: TokenInfo }) {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">
+            {info.workshopName || 'Workshop'}
+          </h2>
+          {sessionsRecorded > 0 && (
+            <Badge
+              variant="secondary"
+              className="bg-green-500/20 text-xs text-green-300"
+            >
+              {sessionsRecorded} recorded
+            </Badge>
+          )}
+        </div>
+        {info.domainPack && (
+          <Badge variant="secondary" className="w-fit text-xs">
+            {info.domainPack}
+          </Badge>
+        )}
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
@@ -169,17 +200,7 @@ export default function MobileCaptureTokenPage({
       {/* Ready state - show form */}
       {state.status === 'ready' && (
         <>
-          <div className="flex flex-col gap-1">
-            <h2 className="text-lg font-semibold">
-              {state.info.workshopName || 'Workshop'}
-            </h2>
-            {state.info.domainPack && (
-              <Badge variant="secondary" className="w-fit text-xs">
-                {state.info.domainPack}
-              </Badge>
-            )}
-          </div>
-
+          <WorkshopHeader info={state.info} />
           <CaptureSessionForm
             onSubmit={handleStartSession}
             domainPackConfig={state.info.domainPackConfig}
@@ -190,24 +211,54 @@ export default function MobileCaptureTokenPage({
       {/* Active session - show capture controls */}
       {state.status === 'session' && (
         <>
-          <div className="flex flex-col gap-1">
-            <h2 className="text-lg font-semibold">
-              {state.info.workshopName || 'Workshop'}
-            </h2>
-            {state.info.domainPack && (
-              <Badge variant="secondary" className="w-fit text-xs">
-                {state.info.domainPack}
-              </Badge>
-            )}
-          </div>
-
+          <WorkshopHeader info={state.info} />
           <DesktopCaptureControls
             sessionId={state.sessionId}
             workshopId={state.info.workshopId!}
             onSessionComplete={() => {
-              setState({ status: 'ready', info: state.info });
+              setSessionsRecorded(prev => prev + 1);
+              setState({ status: 'complete', info: state.info, segmentCount: 0 });
             }}
           />
+        </>
+      )}
+
+      {/* Session complete screen */}
+      {state.status === 'complete' && (
+        <>
+          <WorkshopHeader info={state.info} />
+
+          <div className="flex flex-col items-center gap-5 rounded-lg border border-green-500/30 bg-green-500/10 px-6 py-12">
+            <CheckCircle2 className="size-14 text-green-400" />
+
+            <div className="flex flex-col items-center gap-2">
+              <h2 className="text-xl font-semibold text-green-300">
+                Session Complete
+              </h2>
+              <p className="text-center text-sm text-white/60">
+                Your recording has been transcribed and is being analysed.
+              </p>
+            </div>
+
+            <Badge
+              variant="secondary"
+              className="bg-green-500/20 text-sm text-green-300"
+            >
+              {sessionsRecorded} {sessionsRecorded === 1 ? 'session' : 'sessions'} recorded
+            </Badge>
+
+            <button
+              type="button"
+              onClick={() => setState({ status: 'ready', info: state.info })}
+              className="mt-2 w-full rounded-lg bg-white/10 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-white/20 active:bg-white/25"
+            >
+              Record Another
+            </button>
+
+            <p className="text-xs text-white/40">
+              Close this tab when finished
+            </p>
+          </div>
         </>
       )}
     </div>

@@ -17,6 +17,8 @@ import {
   Trash2,
   CheckCircle2,
   Radio,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -30,13 +32,16 @@ type SegmentData = {
   blob: Blob | null;
   startedAt: number;
   stoppedAt: number | null;
+  transcript?: string;
+  transcribing?: boolean;
+  transcriptionError?: string;
 };
 
 type DesktopCaptureControlsProps = {
   sessionId: string;
   workshopId: string;
   onSegmentComplete?: (segmentIndex: number) => void;
-  onSessionComplete?: () => void;
+  onSessionComplete?: (analysisResult?: unknown) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -47,6 +52,11 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function truncateText(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen) + '...';
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +74,8 @@ export function DesktopCaptureControls({
   const [elapsed, setElapsed] = React.useState(0);
   const [audioLevel, setAudioLevel] = React.useState(0);
   const [error, setError] = React.useState<string | null>(null);
+  const [analysing, setAnalysing] = React.useState(false);
+  const [analysisComplete, setAnalysisComplete] = React.useState(false);
 
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
@@ -72,6 +84,14 @@ export function DesktopCaptureControls({
   const analyserRef = React.useRef<AnalyserNode | null>(null);
   const animFrameRef = React.useRef<number | null>(null);
   const segmentStartRef = React.useRef<number>(0);
+  const pendingTranscriptionsRef = React.useRef<Set<number>>(new Set());
+  const sessionFinishingRef = React.useRef(false);
+  const segmentsRef = React.useRef<SegmentData[]>([]);
+
+  // Keep segmentsRef in sync with segments state
+  React.useEffect(() => {
+    segmentsRef.current = segments;
+  }, [segments]);
 
   const currentSegmentIndex = segments.length;
 
@@ -132,6 +152,125 @@ export function DesktopCaptureControls({
       timerRef.current = null;
     }
   }, []);
+
+  // -----------------------------------------------------------------------
+  // Background transcription
+  // -----------------------------------------------------------------------
+
+  const triggerAnalysis = React.useCallback(async () => {
+    setAnalysing(true);
+    try {
+      const res = await fetch(
+        `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/analyse`,
+        { method: 'POST' }
+      );
+      let analysisResult: unknown = undefined;
+      if (res.ok) {
+        try {
+          analysisResult = await res.json();
+        } catch {
+          // Response may not be JSON
+        }
+      }
+      setAnalysing(false);
+      setAnalysisComplete(true);
+      // Brief delay so the user sees the success state
+      setTimeout(() => {
+        setAnalysisComplete(false);
+        onSessionComplete?.(analysisResult);
+      }, 1500);
+    } catch {
+      // Analysis failure is non-blocking -- still complete the session
+      setAnalysing(false);
+      onSessionComplete?.();
+    }
+  }, [workshopId, sessionId, onSessionComplete]);
+
+  const checkAllTranscriptionsComplete = React.useCallback(() => {
+    if (!sessionFinishingRef.current) return;
+    if (pendingTranscriptionsRef.current.size === 0) {
+      sessionFinishingRef.current = false;
+      triggerAnalysis();
+    }
+  }, [triggerAnalysis]);
+
+  const transcribeSegmentInBackground = React.useCallback(
+    async (
+      segmentIndex: number,
+      blob: Blob,
+      startedAt: number,
+      stoppedAt: number
+    ) => {
+      pendingTranscriptionsRef.current.add(segmentIndex);
+
+      // Mark segment as transcribing
+      setSegments((prev) =>
+        prev.map((seg) =>
+          seg.index === segmentIndex ? { ...seg, transcribing: true } : seg
+        )
+      );
+
+      try {
+        const formData = new FormData();
+        formData.append('audio', blob, `segment-${segmentIndex}.webm`);
+        formData.append('segmentIndex', String(segmentIndex));
+        formData.append('startedAt', new Date(startedAt).toISOString());
+        formData.append('stoppedAt', new Date(stoppedAt).toISOString());
+
+        const res = await fetch(
+          `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/segments/transcribe`,
+          {
+            method: 'POST',
+            body: formData,
+          }
+        );
+
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => 'Transcription failed');
+          setSegments((prev) =>
+            prev.map((seg) =>
+              seg.index === segmentIndex
+                ? {
+                    ...seg,
+                    transcribing: false,
+                    transcriptionError: errorText,
+                  }
+                : seg
+            )
+          );
+        } else {
+          let transcript = '';
+          try {
+            const data = await res.json();
+            transcript = data.transcript || '';
+          } catch {
+            transcript = '';
+          }
+          setSegments((prev) =>
+            prev.map((seg) =>
+              seg.index === segmentIndex
+                ? { ...seg, transcribing: false, transcript }
+                : seg
+            )
+          );
+        }
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : 'Transcription request failed';
+        setSegments((prev) =>
+          prev.map((seg) =>
+            seg.index === segmentIndex
+              ? { ...seg, transcribing: false, transcriptionError: msg }
+              : seg
+          )
+        );
+      } finally {
+        pendingTranscriptionsRef.current.delete(segmentIndex);
+        checkAllTranscriptionsComplete();
+      }
+    },
+    [workshopId, sessionId, checkAllTranscriptionsComplete]
+  );
 
   // -----------------------------------------------------------------------
   // Recording controls
@@ -204,17 +343,19 @@ export function DesktopCaptureControls({
     return new Promise<void>((resolve) => {
       const recorder = mediaRecorderRef.current!;
 
-      recorder.onstop = async () => {
+      recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, {
           type: recorder.mimeType,
         });
 
         const segmentIndex = currentSegmentIndex;
+        const startedAt = segmentStartRef.current;
+        const stoppedAt = Date.now();
         const segmentData: SegmentData = {
           index: segmentIndex,
           blob,
-          startedAt: segmentStartRef.current,
-          stoppedAt: Date.now(),
+          startedAt,
+          stoppedAt,
         };
 
         setSegments((prev) => [...prev, segmentData]);
@@ -223,25 +364,8 @@ export function DesktopCaptureControls({
         setElapsed(0);
         chunksRef.current = [];
 
-        // POST segment metadata to API
-        try {
-          await fetch(
-            `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/segments`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                segmentIndex,
-                startedAt: new Date(segmentData.startedAt).toISOString(),
-                stoppedAt: new Date(segmentData.stoppedAt!).toISOString(),
-                mimeType: recorder.mimeType,
-                sizeBytes: blob.size,
-              }),
-            }
-          );
-        } catch {
-          // Segment metadata upload failure is non-blocking
-        }
+        // Transcribe in background (non-blocking)
+        transcribeSegmentInBackground(segmentIndex, blob, startedAt, stoppedAt);
 
         onSegmentComplete?.(segmentIndex);
 
@@ -264,50 +388,41 @@ export function DesktopCaptureControls({
     });
   }, [
     currentSegmentIndex,
-    workshopId,
-    sessionId,
     onSegmentComplete,
     stopTimer,
     stopLevelMonitoring,
     startLevelMonitoring,
+    transcribeSegmentInBackground,
   ]);
 
   const finishSession = React.useCallback(() => {
     if (mediaRecorderRef.current) {
       const recorder = mediaRecorderRef.current;
 
-      recorder.onstop = async () => {
+      recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, {
           type: recorder.mimeType,
         });
 
         if (blob.size > 0) {
+          const segmentIndex = currentSegmentIndex;
+          const startedAt = segmentStartRef.current;
+          const stoppedAt = Date.now();
           const segmentData: SegmentData = {
-            index: currentSegmentIndex,
+            index: segmentIndex,
             blob,
-            startedAt: segmentStartRef.current,
-            stoppedAt: Date.now(),
+            startedAt,
+            stoppedAt,
           };
           setSegments((prev) => [...prev, segmentData]);
 
-          try {
-            await fetch(
-              `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/segments`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  segmentIndex: currentSegmentIndex,
-                  startedAt: new Date(segmentData.startedAt).toISOString(),
-                  stoppedAt: new Date(segmentData.stoppedAt!).toISOString(),
-                  mimeType: recorder.mimeType,
-                  sizeBytes: blob.size,
-                }),
-              }
-            );
-          } catch {
-            // Non-blocking
-          }
+          // Transcribe final segment in background
+          transcribeSegmentInBackground(
+            segmentIndex,
+            blob,
+            startedAt,
+            stoppedAt
+          );
         }
 
         // Release microphone
@@ -321,7 +436,21 @@ export function DesktopCaptureControls({
         setState('idle');
         chunksRef.current = [];
 
-        onSessionComplete?.();
+        // Mark session as finishing -- analysis will trigger once
+        // all pending transcriptions complete
+        sessionFinishingRef.current = true;
+
+        // If there are no pending transcriptions (e.g. the final segment
+        // had zero size and was not sent), trigger analysis immediately
+        if (pendingTranscriptionsRef.current.size === 0) {
+          sessionFinishingRef.current = false;
+          // If there are any segments at all, run analysis; otherwise just complete
+          if (segmentsRef.current.length > 0 || blob.size > 0) {
+            triggerAnalysis();
+          } else {
+            onSessionComplete?.();
+          }
+        }
       };
 
       if (recorder.state !== 'inactive') {
@@ -330,11 +459,11 @@ export function DesktopCaptureControls({
     }
   }, [
     currentSegmentIndex,
-    workshopId,
-    sessionId,
     onSessionComplete,
     stopTimer,
     stopLevelMonitoring,
+    transcribeSegmentInBackground,
+    triggerAnalysis,
   ]);
 
   const discardLastSegment = React.useCallback(() => {
@@ -438,7 +567,7 @@ export function DesktopCaptureControls({
 
         {/* Control buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {state === 'idle' && (
+          {state === 'idle' && !analysing && !analysisComplete && (
             <Button onClick={startRecording} className="gap-2">
               <Mic className="size-4" />
               Start Recording
@@ -494,16 +623,19 @@ export function DesktopCaptureControls({
             </Button>
           )}
 
-          {segments.length > 0 && state === 'idle' && (
-            <Button
-              variant="outline"
-              onClick={discardLastSegment}
-              className="gap-2 text-red-600 hover:text-red-700"
-            >
-              <Trash2 className="size-4" />
-              Discard Last Segment
-            </Button>
-          )}
+          {segments.length > 0 &&
+            state === 'idle' &&
+            !analysing &&
+            !analysisComplete && (
+              <Button
+                variant="outline"
+                onClick={discardLastSegment}
+                className="gap-2 text-red-600 hover:text-red-700"
+              >
+                <Trash2 className="size-4" />
+                Discard Last Segment
+              </Button>
+            )}
         </div>
 
         {/* Saved segments list */}
@@ -516,18 +648,80 @@ export function DesktopCaptureControls({
               {segments.map((seg) => (
                 <div
                   key={seg.index}
-                  className="flex items-center justify-between rounded bg-gray-50 px-3 py-1.5 text-xs"
+                  className="flex flex-col gap-1 rounded bg-gray-50 px-3 py-1.5"
                 >
-                  <span>Segment {seg.index + 1}</span>
-                  <span className="text-muted-foreground">
-                    {seg.blob
-                      ? `${(seg.blob.size / 1024).toFixed(0)} KB`
-                      : '--'}
-                  </span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium">
+                      Segment {seg.index + 1}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {seg.transcribing && (
+                        <Badge
+                          variant="secondary"
+                          className="flex items-center gap-1 text-xs"
+                        >
+                          <Loader2 className="size-3 animate-spin" />
+                          Transcribing...
+                        </Badge>
+                      )}
+                      {seg.transcriptionError && (
+                        <Badge
+                          variant="destructive"
+                          className="flex items-center gap-1 text-xs"
+                        >
+                          <AlertCircle className="size-3" />
+                          Error
+                        </Badge>
+                      )}
+                      {seg.transcript !== undefined &&
+                        !seg.transcribing &&
+                        !seg.transcriptionError && (
+                          <CheckCircle2 className="size-3.5 text-green-600" />
+                        )}
+                      <span className="text-muted-foreground">
+                        {seg.blob
+                          ? `${(seg.blob.size / 1024).toFixed(0)} KB`
+                          : '--'}
+                      </span>
+                    </div>
+                  </div>
+                  {seg.transcript && (
+                    <p className="text-muted-foreground text-xs leading-relaxed">
+                      {truncateText(seg.transcript, 150)}
+                    </p>
+                  )}
+                  {seg.transcriptionError && (
+                    <p className="text-xs leading-relaxed text-red-600">
+                      {seg.transcriptionError}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
           </div>
+        )}
+
+        {/* Analysis indicator */}
+        {analysing && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardContent className="flex items-center gap-3 py-3">
+              <Loader2 className="size-5 animate-spin text-blue-600" />
+              <span className="text-sm font-medium text-blue-700">
+                Extracting findings from transcripts...
+              </span>
+            </CardContent>
+          </Card>
+        )}
+
+        {analysisComplete && (
+          <Card className="border-green-200 bg-green-50">
+            <CardContent className="flex items-center gap-3 py-3">
+              <CheckCircle2 className="size-5 text-green-600" />
+              <span className="text-sm font-medium text-green-700">
+                Analysis complete
+              </span>
+            </CardContent>
+          </Card>
         )}
 
         {/* Error display */}
