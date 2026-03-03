@@ -8,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Building2, Globe, Target } from 'lucide-react';
+import { ArrowLeft, Building2, Globe, Target, Compass, Briefcase } from 'lucide-react';
 import Link from 'next/link';
+import { listDomainPacks, listEngagementTypes } from '@/lib/domain-packs';
 
 const INDUSTRY_OPTIONS = [
   'Retail',
@@ -26,6 +27,9 @@ const INDUSTRY_OPTIONS = [
   'Media & Entertainment',
   'Other',
 ];
+
+const DOMAIN_PACK_OPTIONS = listDomainPacks();
+const ENGAGEMENT_TYPE_OPTIONS = listEngagementTypes();
 
 type OrgOption = { id: string; name: string };
 
@@ -49,6 +53,9 @@ export default function NewWorkshopPage() {
     companyWebsite: '',
     dreamTrack: 'ENTERPRISE' as 'ENTERPRISE' | 'DOMAIN',
     targetDomain: '',
+    // Field Discovery / Diagnostic extension
+    engagementType: '',
+    domainPack: '',
   });
 
   const isDream = formData.workshopType !== 'SALES';
@@ -93,6 +100,9 @@ export default function NewWorkshopPage() {
           companyWebsite: isDream ? formData.companyWebsite || undefined : undefined,
           dreamTrack: isDream ? formData.dreamTrack : undefined,
           targetDomain: isDream && formData.dreamTrack === 'DOMAIN' ? formData.targetDomain || undefined : undefined,
+          // Field Discovery / Diagnostic extension
+          engagementType: isDream && formData.engagementType ? formData.engagementType : undefined,
+          domainPack: isDream && formData.domainPack ? formData.domainPack : undefined,
         }),
       });
 
@@ -293,7 +303,7 @@ export default function NewWorkshopPage() {
                     </div>
                   </div>
 
-                  {/* Target Domain — only for DOMAIN track */}
+                  {/* Target Domain -- only for DOMAIN track */}
                   {formData.dreamTrack === 'DOMAIN' && (
                     <div className="space-y-2">
                       <Label htmlFor="targetDomain">Target Domain</Label>
@@ -308,6 +318,72 @@ export default function NewWorkshopPage() {
                       </p>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* -- Diagnostic / Field Discovery Config (DREAM only) ---- */}
+              {isDream && (
+                <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/30 dark:border-blue-900 dark:bg-blue-950/20 p-5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Compass className="h-4 w-4 text-blue-600" />
+                    <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-400">Diagnostic Configuration</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground -mt-2 mb-3">
+                    Optional: configure for structured diagnostic mode with field discovery capture
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="engagementType">
+                        <span className="flex items-center gap-1.5">
+                          <Briefcase className="h-3.5 w-3.5" />
+                          Engagement Type
+                        </span>
+                      </Label>
+                      <Select
+                        value={formData.engagementType}
+                        onValueChange={(value) => setFormData({ ...formData, engagementType: value })}
+                      >
+                        <SelectTrigger id="engagementType">
+                          <SelectValue placeholder="Select engagement type..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ENGAGEMENT_TYPE_OPTIONS.map((et) => (
+                            <SelectItem key={et.key} value={et.key}>
+                              {et.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="domainPack">
+                        <span className="flex items-center gap-1.5">
+                          <Target className="h-3.5 w-3.5" />
+                          Domain Pack
+                        </span>
+                      </Label>
+                      <Select
+                        value={formData.domainPack}
+                        onValueChange={(value) => setFormData({ ...formData, domainPack: value })}
+                      >
+                        <SelectTrigger id="domainPack">
+                          <SelectValue placeholder="Select domain pack..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DOMAIN_PACK_OPTIONS.map((dp) => (
+                            <SelectItem key={dp.key} value={dp.key}>
+                              {dp.label} ({dp.category})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Domain packs configure lenses, actor taxonomy, metrics, and question templates for field discovery
+                  </p>
                 </div>
               )}
 

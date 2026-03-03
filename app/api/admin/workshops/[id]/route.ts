@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { getDomainPack } from '@/lib/domain-packs';
 
 export const dynamic = 'force-dynamic';
 
@@ -212,10 +213,16 @@ export async function PATCH(
     if (typeof body.name === 'string') updateData.name = body.name;
     if (typeof body.description === 'string') updateData.description = body.description || null;
     if (typeof body.businessContext === 'string') updateData.businessContext = body.businessContext || null;
-    // JSON fields — stored directly
+    // JSON fields -- stored directly
     if (body.prepResearch !== undefined) updateData.prepResearch = body.prepResearch;
     if (body.customQuestions !== undefined) updateData.customQuestions = body.customQuestions;
     if (body.discoveryBriefing !== undefined) updateData.discoveryBriefing = body.discoveryBriefing;
+    // Field Discovery / Diagnostic extension
+    if (typeof body.engagementType === 'string') updateData.engagementType = body.engagementType || null;
+    if (typeof body.domainPack === 'string') {
+      updateData.domainPack = body.domainPack || null;
+      updateData.domainPackConfig = body.domainPack ? (getDomainPack(body.domainPack) as any ?? undefined) : null;
+    }
 
     const updated = await prisma.workshop.update({
       where: { id },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
+import { getDomainPack } from '@/lib/domain-packs';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,6 +121,7 @@ export async function POST(request: NextRequest) {
       name, description, businessContext, workshopType,
       scheduledDate, responseDeadline, includeRegulation,
       clientName, industry, companyWebsite, dreamTrack, targetDomain,
+      engagementType, domainPack,
     } = body;
 
     // Determine which org this workshop belongs to
@@ -148,6 +150,10 @@ export async function POST(request: NextRequest) {
         companyWebsite: companyWebsite || undefined,
         dreamTrack: dreamTrack || undefined,
         targetDomain: targetDomain || undefined,
+        // Field Discovery / Diagnostic extension
+        engagementType: engagementType || undefined,
+        domainPack: domainPack || undefined,
+        domainPackConfig: domainPack ? (getDomainPack(domainPack) as any ?? undefined) : undefined,
       },
     });
 

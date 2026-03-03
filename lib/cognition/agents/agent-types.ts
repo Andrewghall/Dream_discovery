@@ -179,4 +179,8 @@ export type PrepContext = {
   companyWebsite: string | null;
   dreamTrack: 'ENTERPRISE' | 'DOMAIN' | null;
   targetDomain: string | null;
+  // Field Discovery / Diagnostic extension (optional)
+  engagementType?: string | null;
+  domainPack?: string | null;
+  domainPackConfig?: Record<string, unknown> | null;
 };

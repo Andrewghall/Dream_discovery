@@ -3,7 +3,7 @@
 import React, { use, useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Users, BookOpen, TrendingUp, Layers, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, TrendingUp, Layers, Loader2, RefreshCw, Compass } from 'lucide-react';
 import { AlignmentHeatmap } from '@/components/discover-analysis/alignment-heatmap';
 import { TensionSurface } from '@/components/discover-analysis/tension-surface';
 import { NarrativeDivergence } from '@/components/discover-analysis/narrative-divergence';
@@ -426,6 +426,9 @@ export default function DiscoveryPage({ params }: PageProps) {
   const [loading, setLoading] = useState(!isRetailDemo);
   const [summaryLoading, setSummaryLoading] = useState(!isRetailDemo);
 
+  // ── Workshop domain pack (for conditional Field Discovery card) ──
+  const [workshopDomainPack, setWorkshopDomainPack] = useState<string | null>(null);
+
   // ── Discover Analysis state ──────────────────────────────
   const [analysis, setAnalysis] = useState<DiscoverAnalysis | null>(
     isRetailDemo ? DEMO_DISCOVER_ANALYSIS : null
@@ -486,7 +489,7 @@ export default function DiscoveryPage({ params }: PageProps) {
     }
   }, [workshopId]);
 
-  // ── Fetch cached analysis (skip for retail demo) ─────────
+  // ── Fetch cached analysis + workshop info (skip for retail demo) ──
   useEffect(() => {
     if (isRetailDemo) return;
 
@@ -503,7 +506,18 @@ export default function DiscoveryPage({ params }: PageProps) {
       } catch { /* fail silently */ }
     }
 
+    async function fetchWorkshopInfo() {
+      try {
+        const res = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.workshop?.domainPack) setWorkshopDomainPack(data.workshop.domainPack);
+        }
+      } catch { /* fail silently */ }
+    }
+
     fetchAnalysis();
+    fetchWorkshopInfo();
   }, [workshopId, isRetailDemo]);
 
   // ── Fetch spider + keywords (skip for retail demo) ─────
@@ -743,7 +757,30 @@ export default function DiscoveryPage({ params }: PageProps) {
         )}
 
         {/* ══════════════════════════════════════════════════════════ */}
-        {/* ORGANISATIONAL ANALYSIS — Discover Analysis Dashboard    */}
+        {/* FIELD DISCOVERY — Conditional on domain pack             */}
+        {/* ══════════════════════════════════════════════════════════ */}
+
+        {workshopDomainPack && (
+          <div className="mt-12 pt-8 border-t-2 border-blue-200">
+            <Link href={`/admin/workshops/${workshopId}/discovery/field`}>
+              <div className="rounded-lg border-2 border-blue-200 bg-blue-50/50 hover:bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20 dark:hover:bg-blue-950/30 p-6 transition-all cursor-pointer group">
+                <div className="flex items-center gap-3 mb-2">
+                  <Compass className="h-5 w-5 text-blue-600 group-hover:text-blue-700" />
+                  <h2 className="text-lg font-bold tracking-tight text-blue-700 dark:text-blue-400">Field Discovery</h2>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  On-site interview capture, multi-segment recording, structured findings extraction, and cross-stream diagnostic synthesis.
+                </p>
+                <p className="text-xs text-blue-600 mt-2 group-hover:underline">
+                  Open Field Discovery module &rarr;
+                </p>
+              </div>
+            </Link>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════ */}
+        {/* ORGANISATIONAL ANALYSIS -- Discover Analysis Dashboard    */}
         {/* ══════════════════════════════════════════════════════════ */}
 
         <div className="mt-12 pt-8 border-t-2 border-slate-200">

@@ -1,0 +1,19 @@
+{
+  "name": "DREAM Field Capture",
+  "short_name": "DREAM Capture",
+  "description": "Mobile field capture for DREAM Discovery workshops",
+  "display": "standalone",
+  "scope": "/capture",
+  "start_url": "/capture",
+  "background_color": "#1e293b",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

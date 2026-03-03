@@ -10,15 +10,15 @@ export default async function WorkshopLayout({
 }) {
   const { id } = await params;
 
-  // Lightweight query — just the name for the sidebar
+  // Lightweight query - just the name for the sidebar
   const workshop = await prisma.workshop.findUnique({
     where: { id },
-    select: { name: true },
+    select: { name: true, domainPack: true },
   });
 
   return (
     <div className="flex min-h-screen">
-      <WorkshopSidebar workshopId={id} workshopName={workshop?.name || 'Workshop'} />
+      <WorkshopSidebar workshopId={id} workshopName={workshop?.name || 'Workshop'} domainPack={workshop?.domainPack ?? null} />
       <main className="flex-1 min-w-0">
         {children}
       </main>

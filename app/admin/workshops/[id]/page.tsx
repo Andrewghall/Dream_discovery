@@ -49,6 +49,9 @@ interface Workshop {
   scheduledDate: Date | null;
   responseDeadline: Date | null;
   participants: Participant[];
+  engagementType?: string | null;
+  domainPack?: string | null;
+  domainPackConfig?: Record<string, unknown> | null;
 }
 
 export default function WorkshopDetailPage({ params }: PageProps) {
@@ -655,6 +658,45 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Diagnostic Configuration -- shown when engagement type or domain pack is set */}
+            {(workshop.engagementType || workshop.domainPack) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Diagnostic Configuration</CardTitle>
+                  <CardDescription>Field discovery and diagnostic mode settings</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {workshop.engagementType && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Engagement Type</p>
+                        <p className="text-sm font-medium">
+                          {workshop.engagementType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                        </p>
+                      </div>
+                    )}
+                    {workshop.domainPack && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Domain Pack</p>
+                        <p className="text-sm font-medium">
+                          {(workshop.domainPackConfig as Record<string, unknown>)?.label as string || workshop.domainPack.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  {workshop.domainPackConfig && (
+                    <div className="mt-3 pt-3 border-t">
+                      <p className="text-xs text-muted-foreground">
+                        Domain pack loaded with {((workshop.domainPackConfig as Record<string, unknown>)?.actorTaxonomy as unknown[])?.length || 0} actor roles
+                        {' and '}
+                        {((workshop.domainPackConfig as Record<string, unknown>)?.questionTemplates as unknown[])?.length || 0} question templates
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>
