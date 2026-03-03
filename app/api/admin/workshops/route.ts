@@ -74,6 +74,19 @@ export async function GET(request: NextRequest) {
       snapshotCount: workshop._count.liveSnapshots,
     }));
 
+    // When no workshops found for a filtered (non-platform-admin) query,
+    // check the global count so the client can show a helpful diagnostic.
+    let globalCount: number | undefined;
+    if (totalCount === 0 && !isPlatformAdmin) {
+      globalCount = await prisma.workshop.count();
+      console.warn('[workshops] Empty result for filtered user', {
+        role: session.role,
+        organizationId: orgId || null,
+        userId: session.userId,
+        globalWorkshopCount: globalCount,
+      });
+    }
+
     return NextResponse.json(
       {
         workshops: workshopsWithStats,
@@ -84,6 +97,7 @@ export async function GET(request: NextRequest) {
           totalPages: Math.ceil(totalCount / limit),
           hasMore: page * limit < totalCount,
         },
+        ...(globalCount !== undefined ? { _debug: { globalWorkshopCount: globalCount, userRole: session.role, userOrgId: orgId } } : {}),
       },
       { headers: { 'Cache-Control': 'no-store' } }
     );

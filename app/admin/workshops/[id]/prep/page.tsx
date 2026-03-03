@@ -131,6 +131,7 @@ export default function PrepPage({ params }: PageProps) {
   const [description, setDescription] = useState('');
   const [businessContext, setBusinessContext] = useState('');
   const [savingPurpose, setSavingPurpose] = useState(false);
+  const [purposeSaved, setPurposeSaved] = useState(false);
 
   // Editable fields
   const [clientName, setClientName] = useState('');
@@ -224,12 +225,17 @@ export default function PrepPage({ params }: PageProps) {
   // ── Save workshop purpose ──────────────────────────
   const savePurpose = useCallback(async () => {
     setSavingPurpose(true);
+    setPurposeSaved(false);
     try {
-      await fetch(`/api/admin/workshops/${workshopId}`, {
+      const res = await fetch(`/api/admin/workshops/${workshopId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description, businessContext }),
       });
+      if (res.ok) {
+        setPurposeSaved(true);
+        setTimeout(() => setPurposeSaved(false), 3000);
+      }
     } catch {
       // fail silently
     } finally {
@@ -665,9 +671,9 @@ export default function PrepPage({ params }: PageProps) {
             </div>
 
             <div className="flex items-center gap-3 mt-4">
-              <Button onClick={savePurpose} disabled={savingPurpose} variant="outline" size="sm" className="border-amber-300 hover:bg-amber-100 dark:border-amber-600 dark:hover:bg-amber-900/30">
-                {savingPurpose ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Save className="h-3 w-3 mr-2" />}
-                Save Purpose
+              <Button onClick={savePurpose} disabled={savingPurpose || purposeSaved} variant="outline" size="sm" className={purposeSaved ? 'border-green-400 bg-green-50 text-green-700 dark:border-green-600 dark:bg-green-900/30 dark:text-green-400' : 'border-amber-300 hover:bg-amber-100 dark:border-amber-600 dark:hover:bg-amber-900/30'}>
+                {savingPurpose ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : purposeSaved ? <CheckCircle2 className="h-3 w-3 mr-2" /> : <Save className="h-3 w-3 mr-2" />}
+                {savingPurpose ? 'Saving...' : purposeSaved ? 'Saved' : 'Save Purpose'}
               </Button>
               {!purposeComplete && (
                 <span className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1">
