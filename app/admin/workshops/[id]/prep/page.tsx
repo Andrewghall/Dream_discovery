@@ -191,6 +191,7 @@ export default function PrepPage({ params }: PageProps) {
 
   // Collapsible output cards
   const [researchCollapsed, setResearchCollapsed] = useState(false);
+  const [discoveryQuestionsCollapsed, setDiscoveryQuestionsCollapsed] = useState(false);
   const [questionsCollapsed, setQuestionsCollapsed] = useState(false);
   const [briefingCollapsed, setBriefingCollapsed] = useState(false);
 
@@ -933,7 +934,7 @@ export default function PrepPage({ params }: PageProps) {
               </Button>
             </div>
 
-            {/* Arrow 1→2 */}
+            {/* Arrow 1->2 */}
             <div className="hidden md:flex items-center justify-center px-1">
               <ArrowRight className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
             </div>
@@ -941,10 +942,51 @@ export default function PrepPage({ params }: PageProps) {
               <ChevronDown className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
             </div>
 
-            {/* Step 2: Discovery Synthesis */}
+            {/* Step 2: Discovery Interview Questions */}
+            {workshop?.domainPack ? (
+              <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">2</span>
+                  <MessageSquare className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold">Discovery Questions</h3>
+                  {discoveryQuestionsData && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Generates interview questions for participant Discovery sessions, organised by lens.
+                </p>
+                <Button
+                  onClick={generateDiscoveryQuestions}
+                  disabled={discoveryQuestionsLoading || !researchData}
+                  size="sm"
+                  className="w-full"
+                  variant={researchComplete ? 'default' : 'secondary'}
+                >
+                  {discoveryQuestionsLoading ? (
+                    <><Loader2 className="h-3 w-3 animate-spin mr-2" />Generating...</>
+                  ) : discoveryQuestionsData ? (
+                    'Regenerate'
+                  ) : (
+                    'Generate Questions'
+                  )}
+                </Button>
+              </div>
+            ) : (
+              /* No domain pack -- skip step 2, show synthesis as step 2 */
+              null
+            )}
+
+            {/* Arrow 2->3 (or 1->2 if no domainPack) */}
+            <div className="hidden md:flex items-center justify-center px-1">
+              <ArrowRight className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
+            </div>
+            <div className="flex md:hidden items-center justify-center py-1">
+              <ChevronDown className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
+            </div>
+
+            {/* Step 3: Discovery Synthesis (or step 2 if no domainPack) */}
             <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">2</span>
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">{workshop?.domainPack ? '3' : '2'}</span>
                 <Brain className="h-4 w-4 text-amber-600" />
                 <h3 className="text-sm font-semibold">Discovery Synthesis</h3>
                 {briefingComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
@@ -969,7 +1011,7 @@ export default function PrepPage({ params }: PageProps) {
               </Button>
             </div>
 
-            {/* Arrow 2→3 */}
+            {/* Arrow 3->4 (or 2->3 if no domainPack) */}
             <div className="hidden md:flex items-center justify-center px-1">
               <ArrowRight className={`h-5 w-5 ${briefingComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
             </div>
@@ -977,10 +1019,10 @@ export default function PrepPage({ params }: PageProps) {
               <ChevronDown className={`h-5 w-5 ${briefingComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
             </div>
 
-            {/* Step 3: Workshop Questions */}
+            {/* Step 4: Workshop Questions (or step 3 if no domainPack) */}
             <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!(researchComplete && briefingComplete) ? 'opacity-50' : ''}`}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">3</span>
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">{workshop?.domainPack ? '4' : '3'}</span>
                 <FileQuestion className="h-4 w-4 text-indigo-600" />
                 <h3 className="text-sm font-semibold">Workshop Questions</h3>
                 {questionsComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
@@ -1081,56 +1123,22 @@ export default function PrepPage({ params }: PageProps) {
             </div>
           )}
 
-          {/* ── Discovery Interview Questions ─────────────── */}
-          {workshop?.domainPack && (
-            <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/30 dark:border-emerald-900 dark:bg-emerald-950/20 overflow-hidden">
-              <div className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <MessageSquare className="h-5 w-5 text-emerald-600" />
-                      <h2 className="text-base font-semibold">Discovery Interview Questions</h2>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Questions participants will answer during their Discovery interview, organised by lens
-                    </p>
-                  </div>
-                  <Button
-                    onClick={generateDiscoveryQuestions}
-                    disabled={discoveryQuestionsLoading || !researchData}
-                    size="sm"
-                    variant="outline"
-                    className="border-emerald-300 hover:bg-emerald-100 dark:border-emerald-700 dark:hover:bg-emerald-900/30"
-                  >
-                    {discoveryQuestionsLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : discoveryQuestionsData ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Regenerate
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Generate Discovery Questions
-                      </>
-                    )}
-                  </Button>
+          {/* ── Discovery Interview Questions Output ─────────────── */}
+          {workshop?.domainPack && discoveryQuestionsData && (
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <button
+                onClick={() => setDiscoveryQuestionsCollapsed(!discoveryQuestionsCollapsed)}
+                className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-emerald-600" />
+                  <h2 className="text-sm font-semibold">Discovery Interview Questions</h2>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
                 </div>
-              </div>
+                {discoveryQuestionsCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+              </button>
 
-              {!researchData && !discoveryQuestionsData && (
-                <div className="px-4 pb-4">
-                  <p className="text-sm text-muted-foreground italic">
-                    Run the Research Agent first to generate research-grounded Discovery questions
-                  </p>
-                </div>
-              )}
-
-              {discoveryQuestionsData?.lenses && (
+              {!discoveryQuestionsCollapsed && discoveryQuestionsData?.lenses && (
                 <div className="px-4 pb-4 space-y-4">
                   {discoveryQuestionsData.lenses.map((lens: any, lensIdx: number) => (
                     <div key={lens.key} className="border rounded-lg overflow-hidden">
@@ -1208,7 +1216,7 @@ export default function PrepPage({ params }: PageProps) {
             </div>
           )}
 
-          {/* ── Briefing Output (Step 2) ─────────────────── */}
+          {/* ── Briefing Output (Step 3) ─────────────────── */}
           {briefingData && (
             <div className="rounded-xl border bg-card overflow-hidden">
               <button
