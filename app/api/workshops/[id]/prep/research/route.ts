@@ -89,11 +89,17 @@ export async function POST(
       }
 
       // Emit opening orchestrator message
+      const purposeBlock = context.workshopPurpose
+        ? `\n\nWORKSHOP PURPOSE (WHY WE ARE HERE): ${context.workshopPurpose}`
+        : '';
+      const outcomesBlock = context.desiredOutcomes
+        ? `\nDESIRED OUTCOMES: ${context.desiredOutcomes}`
+        : '';
       const openingEntry: AgentConversationEntry = {
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'research-agent',
-        message: `Good morning. We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise — full end-to-end assessment.'} Could you please research the company and provide context that will help us tailor our approach?`,
+        message: `Good morning. We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise - full end-to-end assessment.'}${purposeBlock}${outcomesBlock}\n\nResearch Agent, could you please research the company and provide context that will help us tailor our approach? Keep the workshop purpose and desired outcomes front of mind - all research should serve why we are here.`,
         type: 'handoff',
       };
       sendEvent('agent.conversation', openingEntry);

@@ -81,11 +81,17 @@ export async function POST(
         try { controller.enqueue(encoder.encode(payload)); } catch { /* closed */ }
       }
 
+      const purposeBlock = context.workshopPurpose
+        ? `\n\nWORKSHOP PURPOSE (WHY WE ARE HERE): ${context.workshopPurpose}`
+        : '';
+      const outcomesBlock = context.desiredOutcomes
+        ? `\nDESIRED OUTCOMES: ${context.desiredOutcomes}`
+        : '';
       sendEvent('agent.conversation', {
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'discovery-intelligence-agent',
-        message: `Participants have completed their Discovery interviews. Discovery Intelligence Agent — could you synthesize their responses into a workshop briefing? This will seed the live facilitation agents with pre-workshop knowledge.`,
+        message: `Participants have completed their Discovery interviews. Discovery Intelligence Agent - could you synthesize their responses into a workshop briefing? This will seed the live facilitation agents with pre-workshop knowledge.${purposeBlock}${outcomesBlock}\n\nYour synthesis should be oriented around the workshop purpose - surface themes and insights that are relevant to why we are here and what we need to achieve.`,
         type: 'handoff',
       } satisfies AgentConversationEntry);
 

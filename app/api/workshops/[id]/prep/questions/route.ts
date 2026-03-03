@@ -92,11 +92,17 @@ export async function POST(
       }
 
       // Opening orchestrator message
+      const purposeBlock = context.workshopPurpose
+        ? `\n\nWORKSHOP PURPOSE (WHY WE ARE HERE): ${context.workshopPurpose}`
+        : '';
+      const outcomesBlock = context.desiredOutcomes
+        ? `\nDESIRED OUTCOMES: ${context.desiredOutcomes}`
+        : '';
       sendEvent('agent.conversation', {
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'question-set-agent',
-        message: `Thank you, Research Agent. Now, Question Set Agent — using the research context${discoveryBriefing ? ' and Discovery interview insights' : ''}, could you design a set of workshop facilitation questions for ${context.clientName || 'this client'}? These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}.` : 'This is an Enterprise-wide assessment.'} Remember — Discovery interviews are done. These questions are for the live workshop session.`,
+        message: `Thank you, Research Agent. Now, Question Set Agent - using the research context${discoveryBriefing ? ' and Discovery interview insights' : ''}, could you design a set of workshop facilitation questions for ${context.clientName || 'this client'}? These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}.` : 'This is an Enterprise-wide assessment.'}${purposeBlock}${outcomesBlock}\n\nEvery question you design must serve the workshop purpose and drive toward the desired outcomes. Remember - Discovery interviews are done. These questions are for the live workshop session.`,
         type: 'handoff',
       } satisfies AgentConversationEntry);
 
