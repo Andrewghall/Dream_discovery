@@ -46,6 +46,8 @@ export async function POST(
     where: { id: workshopId },
     select: {
       id: true,
+      description: true,
+      businessContext: true,
       clientName: true,
       industry: true,
       companyWebsite: true,
@@ -63,6 +65,8 @@ export async function POST(
 
   const context: PrepContext = {
     workshopId,
+    workshopPurpose: workshop.description,
+    desiredOutcomes: workshop.businessContext,
     clientName: workshop.clientName,
     industry: workshop.industry,
     companyWebsite: workshop.companyWebsite,

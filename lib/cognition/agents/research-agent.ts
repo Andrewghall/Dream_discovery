@@ -614,7 +614,9 @@ Client: ${context.clientName || 'Unknown'}
 Industry: ${context.industry || 'Unknown'}
 Website: ${context.companyWebsite || 'Not provided'}
 ${trackDesc}
-
+${context.workshopPurpose ? `\nWORKSHOP PURPOSE (WHY WE ARE HERE): ${context.workshopPurpose}` : ''}
+${context.desiredOutcomes ? `DESIRED OUTCOMES: ${context.desiredOutcomes}` : ''}
+${context.workshopPurpose || context.desiredOutcomes ? '\nYour research MUST be oriented toward this purpose and these outcomes. Every section of your briefing should help the facilitator understand the context relevant to WHY this workshop is happening and WHAT it needs to produce.\n' : ''}
 SEARCH CAPABILITY: ${searchMode}
 
 ═══ RESEARCH STRATEGY — PHASED APPROACH ═══

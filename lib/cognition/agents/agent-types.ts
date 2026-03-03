@@ -172,6 +172,8 @@ export type AgentReview = {
 
 export type PrepContext = {
   workshopId: string;
+  workshopPurpose: string | null;
+  desiredOutcomes: string | null;
   clientName: string | null;
   industry: string | null;
   companyWebsite: string | null;

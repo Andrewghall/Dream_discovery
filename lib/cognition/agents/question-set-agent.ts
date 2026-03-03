@@ -409,7 +409,9 @@ facilitation questions that will guide the live workshop session for
 ${context.clientName || 'the client'} (${context.industry || 'unknown industry'}).
 
 ${trackDesc}
-
+${context.workshopPurpose ? `\nWORKSHOP PURPOSE (WHY WE ARE HERE):\n${context.workshopPurpose}` : ''}
+${context.desiredOutcomes ? `\nDESIRED OUTCOMES (WHAT WE MUST WALK AWAY WITH):\n${context.desiredOutcomes}` : ''}
+${context.workshopPurpose || context.desiredOutcomes ? `\nTHIS IS THE MOST IMPORTANT INPUT. Every facilitation question you design MUST serve this purpose and drive toward these outcomes. If a question does not ladder up to WHY we are here and WHAT we need to achieve, do not include it. The workshop exists for this reason and no other.\n` : ''}
 CRITICAL CONTEXT:
 - Discovery interviews have ALREADY been completed. Participants have already
   answered questions about their roles, pain points, aspirations, and maturity

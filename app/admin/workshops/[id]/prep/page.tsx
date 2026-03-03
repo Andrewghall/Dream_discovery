@@ -4,9 +4,11 @@ import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Building2,
@@ -37,6 +39,8 @@ type PageProps = { params: Promise<{ id: string }> };
 type WorkshopPrep = {
   id: string;
   name: string;
+  description: string | null;
+  businessContext: string | null;
   clientName: string | null;
   industry: string | null;
   companyWebsite: string | null;
@@ -123,6 +127,11 @@ export default function PrepPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Workshop purpose fields
+  const [description, setDescription] = useState('');
+  const [businessContext, setBusinessContext] = useState('');
+  const [savingPurpose, setSavingPurpose] = useState(false);
+
   // Editable fields
   const [clientName, setClientName] = useState('');
   const [industry, setIndustry] = useState('');
@@ -186,6 +195,8 @@ export default function PrepPage({ params }: PageProps) {
           const data = await res.json();
           const w = data.workshop as WorkshopPrep;
           setWorkshop(w);
+          setDescription(w.description || '');
+          setBusinessContext(w.businessContext || '');
           setClientName(w.clientName || '');
           setIndustry(w.industry || '');
           setCompanyWebsite(w.companyWebsite || '');
@@ -207,6 +218,25 @@ export default function PrepPage({ params }: PageProps) {
     fetchWorkshop();
   }, [workshopId]);
 
+  // Gate: both purpose fields must be filled before agents can run
+  const purposeComplete = description.trim().length > 0 && businessContext.trim().length > 0;
+
+  // ── Save workshop purpose ──────────────────────────
+  const savePurpose = useCallback(async () => {
+    setSavingPurpose(true);
+    try {
+      await fetch(`/api/admin/workshops/${workshopId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description, businessContext }),
+      });
+    } catch {
+      // fail silently
+    } finally {
+      setSavingPurpose(false);
+    }
+  }, [workshopId, description, businessContext]);
+
   // ── Save client context ───────────────────────────
   const saveContext = useCallback(async () => {
     setSaving(true);
@@ -215,6 +245,8 @@ export default function PrepPage({ params }: PageProps) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          description,
+          businessContext,
           clientName,
           industry,
           companyWebsite,
@@ -227,7 +259,7 @@ export default function PrepPage({ params }: PageProps) {
     } finally {
       setSaving(false);
     }
-  }, [workshopId, clientName, industry, companyWebsite, dreamTrack, targetDomain]);
+  }, [workshopId, description, businessContext, clientName, industry, companyWebsite, dreamTrack, targetDomain]);
 
   // ── Trigger Research Agent via SSE ────────────────
   const runResearch = useCallback(async () => {
@@ -238,6 +270,8 @@ export default function PrepPage({ params }: PageProps) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          description,
+          businessContext,
           clientName,
           industry,
           companyWebsite,
@@ -590,6 +624,60 @@ export default function PrepPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-6">
+          {/* ── Workshop Purpose Card ────────────────────── */}
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-600/50 p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Target className="h-5 w-5 text-amber-600" />
+              <h2 className="text-base font-bold text-amber-900 dark:text-amber-200">Workshop Purpose</h2>
+            </div>
+            <p className="text-xs text-amber-700/70 dark:text-amber-400/60 mb-4">
+              This is the foundation for everything the agents will produce. Be specific.
+            </p>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="workshopWhy" className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Why are we running this workshop?
+                </Label>
+                <Textarea
+                  id="workshopWhy"
+                  rows={3}
+                  placeholder="What is the strategic reason for this session? What problem or opportunity has brought everyone together?"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="border-amber-200 dark:border-amber-700/50 focus-visible:ring-amber-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="workshopOutcomes" className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  What outcomes do you need to walk away with?
+                </Label>
+                <Textarea
+                  id="workshopOutcomes"
+                  rows={3}
+                  placeholder="What specific decisions, directions, or outputs must this workshop produce?"
+                  value={businessContext}
+                  onChange={(e) => setBusinessContext(e.target.value)}
+                  className="border-amber-200 dark:border-amber-700/50 focus-visible:ring-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 mt-4">
+              <Button onClick={savePurpose} disabled={savingPurpose} variant="outline" size="sm" className="border-amber-300 hover:bg-amber-100 dark:border-amber-600 dark:hover:bg-amber-900/30">
+                {savingPurpose ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Save className="h-3 w-3 mr-2" />}
+                Save Purpose
+              </Button>
+              {!purposeComplete && (
+                <span className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Both fields are required before agents can run
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* ── Client Context Card ──────────────────────── */}
           <div className="rounded-xl border bg-card p-6">
             <div className="flex items-center gap-2 mb-4">
@@ -693,7 +781,15 @@ export default function PrepPage({ params }: PageProps) {
           </div>
 
           {/* ── Agent Workflow Pipeline ────────────────────── */}
-          <div className="flex flex-col md:flex-row items-stretch gap-0">
+          {!purposeComplete && (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-700/50">
+              <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                Complete the <span className="font-semibold">Workshop Purpose</span> above before running agents.
+              </p>
+            </div>
+          )}
+          <div className={`flex flex-col md:flex-row items-stretch gap-0 transition-opacity ${!purposeComplete ? 'opacity-50 pointer-events-none' : ''}`}>
             {/* Step 1: Research */}
             <div className="flex-1 rounded-xl border bg-card p-5">
               <div className="flex items-center gap-2 mb-1">
@@ -707,7 +803,7 @@ export default function PrepPage({ params }: PageProps) {
               </p>
               <Button
                 onClick={runResearch}
-                disabled={researchRunning || !clientName}
+                disabled={researchRunning || !clientName || !purposeComplete}
                 size="sm"
                 className="w-full"
               >
@@ -742,7 +838,7 @@ export default function PrepPage({ params }: PageProps) {
               </p>
               <Button
                 onClick={runBriefing}
-                disabled={briefingRunning || !researchComplete}
+                disabled={briefingRunning || !researchComplete || !purposeComplete}
                 size="sm"
                 className="w-full"
                 variant={researchComplete ? 'default' : 'secondary'}
@@ -778,7 +874,7 @@ export default function PrepPage({ params }: PageProps) {
               </p>
               <Button
                 onClick={runQuestions}
-                disabled={questionsRunning || !(researchComplete && briefingComplete)}
+                disabled={questionsRunning || !(researchComplete && briefingComplete) || !purposeComplete}
                 size="sm"
                 className="w-full"
                 variant={researchComplete && briefingComplete ? 'default' : 'secondary'}
