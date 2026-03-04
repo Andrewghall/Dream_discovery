@@ -18,6 +18,7 @@ import {
   type WorkshopBlueprint,
   type LensPolicyEntry,
   type JourneyStageEntry,
+  type ActorEntry,
   type QuestionConstraints,
 } from '@/lib/workshop/blueprint';
 import { getDomainPack } from '@/lib/domain-packs/registry';
@@ -31,9 +32,9 @@ import type {
 // ================================================================
 
 export type GeneratorInput = ComposeInput & {
-  /** Research-derived journey stages (highest priority override for journeyStages) */
+  /** Research-derived journey stages (overridden by curated industry templates when available) */
   researchJourneyStages?: JourneyStageResearch[] | null;
-  /** Research-derived industry dimensions (highest priority override for lenses) */
+  /** Research-derived industry dimensions (overridden by curated industry lenses when available) */
   researchDimensions?: IndustryDimension[] | null;
   /** Current blueprint version to increment (omit or -1 for first generation) */
   previousVersion?: number;
@@ -109,12 +110,39 @@ const CONTACT_CENTRE_AIRLINE_LENSES: LensPolicyEntry[] = [
 ];
 
 const CONTACT_CENTRE_AIRLINE_JOURNEY_TEMPLATE: JourneyStageEntry[] = [
-  { name: 'Trip Planning & Booking Support', description: 'Customer seeks fare, route, schedule, and booking assistance' },
-  { name: 'Pre-Travel Changes & Preparation', description: 'Support for seat, baggage, check-in, special assistance, and itinerary changes' },
-  { name: 'Day-of-Travel Support', description: 'Real-time support for check-in, boarding, and airport-side issues' },
-  { name: 'Disruption & Recovery', description: 'Handle delays, cancellations, missed connections, and re-accommodation' },
-  { name: 'Post-Travel Resolution', description: 'Resolve baggage issues, refunds, compensation, and complaint handling' },
-  { name: 'Loyalty & Retention Follow-up', description: 'Recover trust, improve satisfaction, and support loyalty programme interactions' },
+  { name: 'Inspiration & Planning', description: 'Customer searches destinations, compares prices, explores schedules' },
+  { name: 'Booking', description: 'Flight selection, payment, seat choice, add-ons (bags, insurance)' },
+  { name: 'Pre-Travel Preparation', description: 'Manage booking, changes, upgrades, special assistance, passport/visa checks' },
+  { name: 'Check-in', description: 'Online check-in, seat confirmation, boarding pass issuance' },
+  { name: 'Airport Journey', description: 'Bag drop, security, boarding gate updates, delays' },
+  { name: 'Boarding', description: 'Gate operations, final documentation checks' },
+  { name: 'In-Flight Experience', description: 'Cabin service, customer assistance, disruption handling' },
+  { name: 'Arrival & Baggage', description: 'Baggage collection, immigration, transfers' },
+  { name: 'Post-Journey Support', description: 'Lost baggage, compensation, complaints, loyalty updates' },
+  { name: 'Loyalty & Future Engagement', description: 'Frequent flyer programmes, promotions, repeat booking' },
+];
+
+const CONTACT_CENTRE_AIRLINE_ACTORS: ActorEntry[] = [
+  // Customer actors
+  { key: 'passenger', label: 'Passenger / Traveller', description: 'Primary customer interacting with the airline' },
+  { key: 'corporate_booker', label: 'Corporate Travel Booker', description: 'Travel manager or company admin booking on behalf of travellers' },
+  { key: 'travel_agent', label: 'Travel Agent / OTA', description: 'Third-party booking intermediaries' },
+  { key: 'ff_member', label: 'Frequent Flyer Member', description: 'Loyalty programme participant with tiered service' },
+  // Contact centre actors
+  { key: 'cs_agent', label: 'Customer Service Agent', description: 'Handles calls, chats, emails, social queries' },
+  { key: 'specialist_agent', label: 'Specialist Agent', description: 'Baggage, refunds, loyalty, disruptions' },
+  { key: 'team_leader', label: 'Team Leader / Supervisor', description: 'Operational oversight, escalations, agent support' },
+  { key: 'wfm', label: 'Workforce Management (WFM)', description: 'Forecasting, scheduling, staffing' },
+  { key: 'qa', label: 'Quality Assurance (QA)', description: 'Performance evaluation and coaching' },
+  { key: 'training', label: 'Training & Enablement', description: 'Agent capability development' },
+  { key: 'ops_manager', label: 'Operations Manager', description: 'Contact centre operational leadership' },
+  // Wider operational actors
+  { key: 'airport_ops', label: 'Airport Operations', description: 'Gate teams, ground services' },
+  { key: 'cabin_crew', label: 'Cabin Crew', description: 'In-flight service and incident reporting' },
+  { key: 'revenue_mgmt', label: 'Revenue Management', description: 'Pricing, availability, upgrades' },
+  { key: 'cx_leadership', label: 'CX Leadership', description: 'Strategic ownership of customer journey' },
+  { key: 'it_digital', label: 'IT & Digital Platforms', description: 'Booking systems, CRM, customer data platforms' },
+  { key: 'regulators', label: 'Regulators', description: 'CAA, EU261 compliance' },
 ];
 
 function normalizeContextText(input: GeneratorInput): string {
@@ -380,11 +408,15 @@ const ENGAGEMENT_QUESTION_MODIFIERS: Record<string, EngagementModifier> = {
  *
  * Layering order (later layers win):
  *   1. composeBlueprint() -- defaults < engagement < domain pack < scalars
- *   2. Domain journey templates (from DOMAIN_JOURNEY_TEMPLATES)
- *   2b. Industry-specific lens overrides (e.g. airline contact centre)
- *   3. Research overrides -- research journey stages and industry dimensions
- *   4. Question constraints -- domain + engagement merge
- *   5. Version stamp
+ *   2. Domain journey templates (generic domain baseline)
+ *   3. Research overrides -- only when no curated industry override exists
+ *   4. Industry-specific overrides (lenses, journey, actors) -- highest priority
+ *   5. Question constraints -- domain + engagement merge
+ *   6. Version stamp
+ *
+ * When a curated industry override exists (e.g. airline contact centre),
+ * research is skipped entirely because curated data is higher quality.
+ * For generic domains, research overrides the domain-pack defaults.
  *
  * Pure and deterministic: no LLM calls, no network, no side effects.
  */
@@ -392,17 +424,50 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   // Start with the base composition
   const bp = composeBlueprint(input);
 
-  // Layer 2: Domain-specific journey stages
+  // Detect whether we have a curated industry-specific override (e.g. airline).
+  // Industry-specific data is higher confidence than research output and wins.
+  const hasIndustryOverride = isAirlineContactCentreContext(input);
+
+  // Layer 2: Domain-specific journey stages (baseline for the domain pack)
   const journeyTemplate = resolveJourneyTemplate(input);
   if (journeyTemplate) {
     bp.journeyStages = journeyTemplate.map((s) => ({ ...s }));
   }
 
-  // Layer 2b: Industry-specific lens overrides
+  // Layer 3: Research overrides domain-pack defaults (for generic domains).
+  // When a curated industry-specific override exists, research is skipped
+  // because the curated data is higher quality and more specific.
+  if (!hasIndustryOverride) {
+    if (input.researchJourneyStages && input.researchJourneyStages.length > 0) {
+      bp.journeyStages = input.researchJourneyStages.map((s) => ({
+        name: s.name,
+        description: s.description,
+      }));
+    }
+
+    if (input.researchDimensions && input.researchDimensions.length > 0) {
+      bp.lenses = input.researchDimensions.map((d): LensPolicyEntry => ({
+        name: d.name,
+        description: d.description,
+        keywords: [...d.keywords],
+        color: d.color,
+      }));
+    }
+  }
+
+  // Layer 4: Industry-specific lens overrides (highest priority)
   const industryLenses = resolveIndustryLenses(input);
   if (industryLenses) {
     bp.lenses = industryLenses.map((l) => ({ ...l, keywords: [...l.keywords] }));
-    // Rebuild phase lens policy for the industry-specific set
+  }
+
+  // Layer 4b: Industry-specific actor taxonomy override
+  if (hasIndustryOverride) {
+    bp.actorTaxonomy = CONTACT_CENTRE_AIRLINE_ACTORS.map((a) => ({ ...a }));
+  }
+
+  // Rebuild phase lens policy from whatever lenses ended up winning
+  {
     const lensNames = bp.lenses.map((l) => l.name);
     const reimagineTerms = ['people', 'customer', 'experience', 'culture', 'workforce'];
     bp.phaseLensPolicy = {
@@ -413,41 +478,6 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
       CONSTRAINTS: [...lensNames],
       DEFINE_APPROACH: [...lensNames],
     };
-    if (bp.phaseLensPolicy.REIMAGINE.length === 0) {
-      bp.phaseLensPolicy.REIMAGINE = lensNames.slice(0, Math.min(3, lensNames.length));
-    }
-  }
-
-  // Layer 3: Research overrides (highest priority for journey stages and lenses)
-  if (input.researchJourneyStages && input.researchJourneyStages.length > 0) {
-    bp.journeyStages = input.researchJourneyStages.map((s) => ({
-      name: s.name,
-      description: s.description,
-    }));
-  }
-
-  if (input.researchDimensions && input.researchDimensions.length > 0) {
-    bp.lenses = input.researchDimensions.map((d): LensPolicyEntry => ({
-      name: d.name,
-      description: d.description,
-      keywords: [...d.keywords],
-      color: d.color,
-    }));
-
-    // Rebuild phase lens policy for research-derived lenses
-    const lensNames = bp.lenses.map((l) => l.name);
-    // REIMAGINE restricts to people/customer/organisation-like dimensions.
-    // For research-derived lenses we include all that contain relevant keywords.
-    const reimagineTerms = ['people', 'customer', 'organisation', 'organization', 'human', 'employee', 'user', 'client', 'experience'];
-    bp.phaseLensPolicy = {
-      REIMAGINE: lensNames.filter((n) => {
-        const lower = n.toLowerCase();
-        return reimagineTerms.some((term) => lower.includes(term));
-      }),
-      CONSTRAINTS: [...lensNames],
-      DEFINE_APPROACH: [...lensNames],
-    };
-    // Ensure REIMAGINE has at least the first 3 lenses if keyword matching yielded nothing
     if (bp.phaseLensPolicy.REIMAGINE.length === 0) {
       bp.phaseLensPolicy.REIMAGINE = lensNames.slice(0, Math.min(3, lensNames.length));
     }

@@ -37,6 +37,7 @@ import HistoricalMetricsPanel from '@/components/prep/historical-metrics-panel';
 import { readBlueprintFromJson, type WorkshopBlueprint } from '@/lib/workshop/blueprint';
 import { readHistoricalMetricsFromJson, type HistoricalMetricsData } from '@/lib/historical-metrics/types';
 import { getDomainPack } from '@/lib/domain-packs/registry';
+import { toast } from 'sonner';
 
 // ══════════════════════════════════════════════════════════
 // TYPES
@@ -284,12 +285,16 @@ export default function PrepPage({ params }: PageProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description, businessContext }),
       });
-      if (res.ok) {
-        setPurposeSaved(true);
-        setTimeout(() => setPurposeSaved(false), 3000);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Failed to save purpose');
+        return;
       }
-    } catch {
-      // fail silently
+      setPurposeSaved(true);
+      setTimeout(() => setPurposeSaved(false), 3000);
+    } catch (err) {
+      console.error('Save purpose failed:', err);
+      toast.error('Network error -- could not save');
     } finally {
       setSavingPurpose(false);
     }
