@@ -12,11 +12,13 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Clipboard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getDomainPack, type MetricReference } from '@/lib/domain-packs/registry';
-import { parseCsvString, type ParsedCsv } from '@/lib/historical-metrics/parse-csv';
+import type { ParsedCsv } from '@/lib/historical-metrics/parse-csv';
+import { parseFile, parsePastedText, detectFormat, type SupportedFormat } from '@/lib/historical-metrics/parse-file';
 import { analyzeMetricTrends, type MetricTrend } from '@/lib/historical-metrics/summarize';
 import type { HistoricalMetricsData, PeriodGranularity } from '@/lib/historical-metrics/types';
 import { PERIOD_GRANULARITIES } from '@/lib/historical-metrics/types';
@@ -101,56 +103,81 @@ export default function HistoricalMetricsPanel({
   const [uploadError, setUploadError] = useState('');
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null);
 
-  // ── File handler ──────────────────────────────────────
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  // ── Shared: apply parsed data to state ────────────────
+  const applyParsedData = useCallback((parsed: ParsedCsv, name: string) => {
+    if (parsed.errors.length > 0 && parsed.rows.length === 0) {
+      setUploadError(`Parse failed: ${parsed.errors[0].message}`);
+      setUploadStep('error');
+      return;
+    }
+
+    setParsedCsv(parsed);
+    setFileName(name);
+
+    // Auto-detect period column (look for common names)
+    const periodCandidates = ['period', 'date', 'month', 'quarter', 'year', 'week', 'time'];
+    const detected = parsed.headers.find((h) =>
+      periodCandidates.some((c) => h.toLowerCase().includes(c)),
+    );
+    if (detected) setPeriodColumn(detected);
+
+    // Auto-map columns to metrics by matching header names to metric keys/labels
+    const autoMap: Record<string, string> = {};
+    for (const header of parsed.headers) {
+      if (header === detected) continue; // skip period column
+      const match = metricRefs.find(
+        (ref) =>
+          ref.key.toLowerCase() === header.toLowerCase() ||
+          ref.label.toLowerCase() === header.toLowerCase(),
+      );
+      if (match) {
+        autoMap[header] = match.key;
+      }
+    }
+    setColumnMapping(autoMap);
+
+    setUploadStep('parsed');
+  }, [metricRefs]);
+
+  // ── File handler (CSV, Excel, JSON) ─────────────────
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setUploadError('');
-    setFileName(file.name);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const parsed = parseCsvString(text);
+    const format = detectFormat(file.name);
+    if (!format) {
+      setUploadError(`Unsupported file type. Use CSV, Excel (.xlsx/.xls), or JSON.`);
+      setUploadStep('error');
+      e.target.value = '';
+      return;
+    }
 
-      if (parsed.errors.length > 0 && parsed.rows.length === 0) {
-        setUploadError(`CSV parse failed: ${parsed.errors[0].message}`);
-        setUploadStep('error');
-        return;
-      }
-
-      setParsedCsv(parsed);
-
-      // Auto-detect period column (look for common names)
-      const periodCandidates = ['period', 'date', 'month', 'quarter', 'year', 'week', 'time'];
-      const detected = parsed.headers.find((h) =>
-        periodCandidates.some((c) => h.toLowerCase().includes(c)),
-      );
-      if (detected) setPeriodColumn(detected);
-
-      // Auto-map columns to metrics by matching header names to metric keys/labels
-      const autoMap: Record<string, string> = {};
-      for (const header of parsed.headers) {
-        if (header === detected) continue; // skip period column
-        const match = metricRefs.find(
-          (ref) =>
-            ref.key.toLowerCase() === header.toLowerCase() ||
-            ref.label.toLowerCase() === header.toLowerCase(),
-        );
-        if (match) {
-          autoMap[header] = match.key;
-        }
-      }
-      setColumnMapping(autoMap);
-
-      setUploadStep('parsed');
-    };
-    reader.readAsText(file);
+    const parsed = await parseFile(file);
+    applyParsedData(parsed, file.name);
 
     // Reset file input
     e.target.value = '';
-  }, [metricRefs]);
+  }, [applyParsedData]);
+
+  // ── Clipboard paste handler ─────────────────────────
+  const handlePaste = useCallback(async () => {
+    setUploadError('');
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) {
+        setUploadError('Clipboard is empty');
+        setUploadStep('error');
+        return;
+      }
+      const parsed = parsePastedText(text);
+      applyParsedData(parsed, 'clipboard-paste.csv');
+    } catch {
+      setUploadError('Could not read clipboard. Check browser permissions.');
+      setUploadStep('error');
+    }
+  }, [applyParsedData]);
 
   // ── Column mapping handler ────────────────────────────
   const handleColumnMap = useCallback((csvHeader: string, metricKey: string) => {
@@ -412,25 +439,38 @@ export default function HistoricalMetricsPanel({
           {/* ── Upload Section ────────────────────────────── */}
           <div className="border-t pt-4">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Upload CSV Data
+              Upload Data
             </h3>
 
             {uploadStep === 'idle' && (
-              <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/10 p-6 cursor-pointer hover:border-muted-foreground/50 transition-colors">
-                <Upload className="h-6 w-6 text-muted-foreground mb-2" />
-                <span className="text-sm text-muted-foreground">
-                  Drop a CSV file here or click to browse
-                </span>
-                <span className="text-[10px] text-muted-foreground mt-1">
-                  Columns should include a period/date column and one or more metric columns
-                </span>
-                <input
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-              </label>
+              <div className="space-y-3">
+                <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/10 p-6 cursor-pointer hover:border-muted-foreground/50 transition-colors">
+                  <Upload className="h-6 w-6 text-muted-foreground mb-2" />
+                  <span className="text-sm text-muted-foreground">
+                    Drop a file here or click to browse
+                  </span>
+                  <span className="text-[10px] text-muted-foreground mt-1">
+                    CSV, Excel (.xlsx / .xls), or JSON
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Columns should include a period/date column and one or more metric columns
+                  </span>
+                  <input
+                    type="file"
+                    accept=".csv,.tsv,.xlsx,.xls,.json"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                </label>
+                <button
+                  onClick={handlePaste}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-muted-foreground/25 bg-muted/10 px-4 py-2.5 text-sm text-muted-foreground hover:border-muted-foreground/50 hover:bg-muted/20 transition-colors"
+                >
+                  <Clipboard className="h-4 w-4" />
+                  Paste from clipboard
+                  <span className="text-[10px]">(Excel, Google Sheets, or tabular text)</span>
+                </button>
+              </div>
             )}
 
             {uploadStep === 'done' && (
