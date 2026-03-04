@@ -678,14 +678,22 @@ export async function DELETE(
       prisma.workshopShare.deleteMany({ where: { workshopId: id } })
     );
 
-    // Final parent delete. If an unknown FK still blocks delete, auto-clean discovered refs and retry once.
+    // Final parent delete. Use deleteMany (not delete) for legacy-schema compatibility:
+    // delete() returns the deleted row and can fail if newer columns (e.g. blueprint) are absent.
+    // deleteMany() only executes DELETE ... WHERE and returns count.
     try {
-      await prisma.workshop.delete({ where: { id } });
+      const deleted = await prisma.workshop.deleteMany({ where: { id } });
+      if (deleted.count === 0) {
+        return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+      }
     } catch (error: unknown) {
       if (!isLikelyFkDeleteError(error)) throw error;
       await cleanupUnknownWorkshopRefs(id);
       try {
-        await prisma.workshop.delete({ where: { id } });
+        const deleted = await prisma.workshop.deleteMany({ where: { id } });
+        if (deleted.count === 0) {
+          return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+        }
       } catch (retryError: unknown) {
         if (!isLikelyFkDeleteError(retryError)) throw retryError;
         const blockers = await detectWorkshopDeleteBlockers(id);
