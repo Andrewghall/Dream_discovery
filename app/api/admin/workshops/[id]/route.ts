@@ -381,15 +381,47 @@ export async function DELETE(
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
     }
 
-    await prisma.workshop.delete({
-      where: { id },
+    // Defensive cleanup for environments where FK cascades may lag schema.
+    // Deletes are ordered child -> parent so workshop removal is reliable.
+    await prisma.$transaction(async (tx) => {
+      await tx.dataPointClassification.deleteMany({
+        where: { dataPoint: { workshopId: id } },
+      });
+      await tx.dataPointAnnotation.deleteMany({
+        where: { dataPoint: { workshopId: id } },
+      });
+      await tx.agenticAnalysis.deleteMany({
+        where: { dataPoint: { workshopId: id } },
+      });
+      await tx.conversationMessage.deleteMany({
+        where: { session: { workshopId: id } },
+      });
+      await tx.conversationInsight.deleteMany({ where: { workshopId: id } });
+      await tx.conversationReport.deleteMany({ where: { workshopId: id } });
+      await tx.dataPoint.deleteMany({ where: { workshopId: id } });
+      await tx.transcriptChunk.deleteMany({ where: { workshopId: id } });
+      await tx.workshopEventOutbox.deleteMany({ where: { workshopId: id } });
+      await tx.liveWorkshopSnapshot.deleteMany({ where: { workshopId: id } });
+      await tx.discoveryTheme.deleteMany({ where: { workshopId: id } });
+      await tx.diagnosticSynthesis.deleteMany({ where: { workshopId: id } });
+      await tx.finding.deleteMany({ where: { workshopId: id } });
+      await tx.captureSegment.deleteMany({
+        where: { captureSession: { workshopId: id } },
+      });
+      await tx.captureSession.deleteMany({ where: { workshopId: id } });
+      await tx.conversationSession.deleteMany({ where: { workshopId: id } });
+      await tx.workshopParticipant.deleteMany({ where: { workshopId: id } });
+      await tx.workshopScratchpad.deleteMany({ where: { workshopId: id } });
+      await tx.workshopShare.deleteMany({ where: { workshopId: id } });
+      await tx.workshop.delete({ where: { id } });
     });
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error deleting workshop:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to delete workshop' },
+      { error: 'Failed to delete workshop', details: { message } },
       { status: 500 }
     );
   }
