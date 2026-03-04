@@ -44,6 +44,21 @@ function isLikelySchemaDriftError(error: unknown): boolean {
   );
 }
 
+function isLikelyFkDeleteError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  const code = (error as { code?: string } | null)?.code;
+  return (
+    code === 'P2003' ||
+    message.includes('foreign key') ||
+    message.includes('constraint') ||
+    message.includes('violates')
+  );
+}
+
+function isSafeIdent(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
 async function runDeleteStep(
   label: string,
   step: () => Promise<unknown>
@@ -55,6 +70,44 @@ async function runDeleteStep(
     console.warn(`[workshop-delete] skipped step due to schema drift: ${label}`, {
       message: error instanceof Error ? error.message : String(error),
     });
+  }
+}
+
+type WorkshopFkRefRow = {
+  table_schema: string;
+  table_name: string;
+  column_name: string;
+};
+
+async function cleanupUnknownWorkshopRefs(workshopId: string): Promise<void> {
+  const refs = await prisma.$queryRaw<WorkshopFkRefRow[]>`
+    SELECT
+      tc.table_schema,
+      tc.table_name,
+      kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON ccu.constraint_name = tc.constraint_name
+      AND ccu.table_schema = tc.table_schema
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND ccu.table_name = 'workshops'
+      AND ccu.table_schema = 'public'
+      AND tc.table_schema = 'public'
+  `;
+
+  for (const ref of refs) {
+    const schema = ref.table_schema;
+    const table = ref.table_name;
+    const column = ref.column_name;
+    if (table === 'workshops') continue;
+    if (!isSafeIdent(schema) || !isSafeIdent(table) || !isSafeIdent(column)) continue;
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM "${schema}"."${table}" WHERE "${column}" = $1`,
+      workshopId
+    );
   }
 }
 
@@ -568,8 +621,14 @@ export async function DELETE(
       prisma.workshopShare.deleteMany({ where: { workshopId: id } })
     );
 
-    // Final parent delete must succeed.
-    await prisma.workshop.delete({ where: { id } });
+    // Final parent delete. If an unknown FK still blocks delete, auto-clean discovered refs and retry once.
+    try {
+      await prisma.workshop.delete({ where: { id } });
+    } catch (error: unknown) {
+      if (!isLikelyFkDeleteError(error)) throw error;
+      await cleanupUnknownWorkshopRefs(id);
+      await prisma.workshop.delete({ where: { id } });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
