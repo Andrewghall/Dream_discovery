@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
 import { getDomainPack } from '@/lib/domain-packs';
+import { composeBlueprint } from '@/lib/workshop/blueprint';
 import type { EngagementType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -157,6 +158,17 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedEngagementType = toEngagementEnum(engagementType);
+
+    // Compose runtime blueprint from setup selections
+    const blueprint = composeBlueprint({
+      industry: industry || null,
+      dreamTrack: dreamTrack || null,
+      engagementType: engagementType || null,
+      domainPack: domainPack || null,
+      purpose: description || null,
+      outcomes: businessContext || null,
+    });
+
     const workshopData = {
       name,
       description,
@@ -177,6 +189,8 @@ export async function POST(request: NextRequest) {
       engagementType: normalizedEngagementType,
       domainPack: domainPack || undefined,
       domainPackConfig: domainPack ? (getDomainPack(domainPack) as any ?? undefined) : undefined,
+      // Runtime blueprint snapshot
+      blueprint: blueprint as any,
     };
 
     let workshop;
@@ -185,7 +199,8 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       // Backward compatibility: allow workshop creation even if DB is behind code
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.toLowerCase().includes('engagement_type') || msg.toLowerCase().includes('domain_pack')) {
+      const msgLower = msg.toLowerCase();
+      if (msgLower.includes('engagement_type') || msgLower.includes('domain_pack') || msgLower.includes('blueprint')) {
         workshop = await prisma.workshop.create({
           data: {
             name,

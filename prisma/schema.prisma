@@ -142,6 +142,7 @@ model Workshop {
   domainPack          String?               @map("domain_pack")          // Key into domain pack registry (e.g. "contact_centre")
   domainPackConfig    Json?                 @map("domain_pack_config")   // Resolved config snapshot at creation time
   discoveryQuestions  Json?                 @map("discovery_questions")  // Per-lens Discovery interview questions (editable)
+  blueprint           Json?                 @map("blueprint")            // Composed WorkshopBlueprint snapshot (runtime config)
 
   insights          ConversationInsight[]
   sessions          ConversationSession[]

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { getDomainPack } from '@/lib/domain-packs';
+import { composeBlueprint } from '@/lib/workshop/blueprint';
 import type { EngagementType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -243,6 +244,39 @@ export async function PATCH(
     if (typeof body.domainPack === 'string') {
       updateData.domainPack = body.domainPack || null;
       updateData.domainPackConfig = body.domainPack ? (getDomainPack(body.domainPack) as any ?? undefined) : null;
+    }
+
+    // Recompose blueprint if any blueprint-relevant field changed
+    const blueprintFields = [
+      'engagementType', 'domainPack', 'dreamTrack',
+      'description', 'businessContext', 'industry',
+    ];
+    const blueprintFieldChanged = blueprintFields.some((f) => f in body);
+
+    if (blueprintFieldChanged) {
+      const current = await prisma.workshop.findUnique({
+        where: { id },
+        select: {
+          industry: true,
+          dreamTrack: true,
+          engagementType: true,
+          domainPack: true,
+          description: true,
+          businessContext: true,
+        },
+      });
+      if (current) {
+        const merged = {
+          industry: (updateData.industry as string | null) ?? current.industry ?? null,
+          dreamTrack: ((updateData.dreamTrack as string | null) ?? current.dreamTrack ?? null) as 'ENTERPRISE' | 'DOMAIN' | null,
+          engagementType: (updateData.engagementType as string | null)
+            ?? (current.engagementType ? current.engagementType.toLowerCase() : null),
+          domainPack: (updateData.domainPack as string | null) ?? current.domainPack ?? null,
+          purpose: (updateData.description as string | null) ?? current.description ?? null,
+          outcomes: (updateData.businessContext as string | null) ?? current.businessContext ?? null,
+        };
+        updateData.blueprint = composeBlueprint(merged) as any;
+      }
     }
 
     const updated = await prisma.workshop.update({
