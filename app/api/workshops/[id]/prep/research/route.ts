@@ -13,6 +13,8 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runResearchAgent } from '@/lib/cognition/agents/research-agent';
+import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +55,10 @@ export async function POST(
       companyWebsite: true,
       dreamTrack: true,
       targetDomain: true,
+      // Blueprint-relevant fields for regeneration after research
+      engagementType: true,
+      domainPack: true,
+      blueprint: true,
     },
   });
 
@@ -110,10 +116,27 @@ export async function POST(
           sendEvent('agent.conversation', entry);
         });
 
-        // Store research in workshop
+        // Regenerate blueprint with research-derived journey stages and dimensions
+        const existingBp = readBlueprintFromJson(workshop.blueprint);
+        const updatedBlueprint = generateBlueprint({
+          industry: workshop.industry ?? null,
+          dreamTrack: (workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null) ?? null,
+          engagementType: workshop.engagementType?.toLowerCase() ?? null,
+          domainPack: workshop.domainPack ?? null,
+          purpose: workshop.description ?? null,
+          outcomes: workshop.businessContext ?? null,
+          researchJourneyStages: research.journeyStages ?? null,
+          researchDimensions: research.industryDimensions ?? null,
+          previousVersion: existingBp?.blueprintVersion ?? 0,
+        });
+
+        // Store research and regenerated blueprint
         await prisma.workshop.update({
           where: { id: workshopId },
-          data: { prepResearch: JSON.parse(JSON.stringify(research)) },
+          data: {
+            prepResearch: JSON.parse(JSON.stringify(research)),
+            blueprint: updatedBlueprint as any,
+          },
         });
 
         // Emit orchestrator acknowledgement

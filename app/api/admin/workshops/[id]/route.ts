@@ -4,7 +4,9 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { getDomainPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { EngagementType } from '@prisma/client';
+import type { WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
 
@@ -263,9 +265,15 @@ export async function PATCH(
           domainPack: true,
           description: true,
           businessContext: true,
+          prepResearch: true,
+          blueprint: true,
         },
       });
       if (current) {
+        // Extract research data if available
+        const research = current.prepResearch as WorkshopPrepResearch | null;
+        const existingBp = readBlueprintFromJson(current.blueprint);
+
         const merged = {
           industry: (updateData.industry as string | null) ?? current.industry ?? null,
           dreamTrack: ((updateData.dreamTrack as string | null) ?? current.dreamTrack ?? null) as 'ENTERPRISE' | 'DOMAIN' | null,
@@ -274,6 +282,9 @@ export async function PATCH(
           domainPack: (updateData.domainPack as string | null) ?? current.domainPack ?? null,
           purpose: (updateData.description as string | null) ?? current.description ?? null,
           outcomes: (updateData.businessContext as string | null) ?? current.businessContext ?? null,
+          researchJourneyStages: research?.journeyStages ?? null,
+          researchDimensions: research?.industryDimensions ?? null,
+          previousVersion: existingBp?.blueprintVersion ?? 0,
         };
         updateData.blueprint = generateBlueprint(merged) as any;
       }

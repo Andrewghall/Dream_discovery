@@ -16,16 +16,28 @@ import {
   DEFAULT_BLUEPRINT,
   type ComposeInput,
   type WorkshopBlueprint,
+  type LensPolicyEntry,
   type JourneyStageEntry,
   type QuestionConstraints,
 } from '@/lib/workshop/blueprint';
 import { getDomainPack } from '@/lib/domain-packs/registry';
+import type {
+  JourneyStageResearch,
+  IndustryDimension,
+} from '@/lib/cognition/agents/agent-types';
 
 // ================================================================
 // Re-export input type for consumers
 // ================================================================
 
-export type GeneratorInput = ComposeInput;
+export type GeneratorInput = ComposeInput & {
+  /** Research-derived journey stages (highest priority override for journeyStages) */
+  researchJourneyStages?: JourneyStageResearch[] | null;
+  /** Research-derived industry dimensions (highest priority override for lenses) */
+  researchDimensions?: IndustryDimension[] | null;
+  /** Current blueprint version to increment (omit or -1 for first generation) */
+  previousVersion?: number;
+};
 
 // ================================================================
 // Domain Journey Stage Templates
@@ -278,10 +290,12 @@ const ENGAGEMENT_QUESTION_MODIFIERS: Record<string, EngagementModifier> = {
 /**
  * Generate a domain-aware WorkshopBlueprint.
  *
- * Builds on composeBlueprint() (which handles lenses, actors, data
- * requirements, pacing, agent chain, signals, findings) and enriches
- * with domain-specific journey stages, question constraints, and
- * engagement type modifiers.
+ * Layering order (later layers win):
+ *   1. composeBlueprint() -- defaults < engagement < domain pack < scalars
+ *   2. Domain journey templates (from DOMAIN_JOURNEY_TEMPLATES)
+ *   3. Research overrides -- research journey stages and industry dimensions
+ *   4. Question constraints -- domain + engagement merge
+ *   5. Version stamp
  *
  * Pure and deterministic: no LLM calls, no network, no side effects.
  */
@@ -289,16 +303,51 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   // Start with the base composition
   const bp = composeBlueprint(input);
 
-  // Layer: Domain-specific journey stages
+  // Layer 2: Domain-specific journey stages
   if (input.domainPack) {
-    const domainKey = input.domainPack.toLowerCase();
-    const journeyTemplate = DOMAIN_JOURNEY_TEMPLATES[domainKey];
+    const packKey = input.domainPack.toLowerCase();
+    const journeyTemplate = DOMAIN_JOURNEY_TEMPLATES[packKey];
     if (journeyTemplate) {
       bp.journeyStages = journeyTemplate.map((s) => ({ ...s }));
     }
   }
 
-  // Layer: Question constraints from domain + engagement type
+  // Layer 3: Research overrides (highest priority for journey stages and lenses)
+  if (input.researchJourneyStages && input.researchJourneyStages.length > 0) {
+    bp.journeyStages = input.researchJourneyStages.map((s) => ({
+      name: s.name,
+      description: s.description,
+    }));
+  }
+
+  if (input.researchDimensions && input.researchDimensions.length > 0) {
+    bp.lenses = input.researchDimensions.map((d): LensPolicyEntry => ({
+      name: d.name,
+      description: d.description,
+      keywords: [...d.keywords],
+      color: d.color,
+    }));
+
+    // Rebuild phase lens policy for research-derived lenses
+    const lensNames = bp.lenses.map((l) => l.name);
+    // REIMAGINE restricts to people/customer/organisation-like dimensions.
+    // For research-derived lenses we include all that contain relevant keywords.
+    const reimagineTerms = ['people', 'customer', 'organisation', 'organization', 'human', 'employee', 'user', 'client', 'experience'];
+    bp.phaseLensPolicy = {
+      REIMAGINE: lensNames.filter((n) => {
+        const lower = n.toLowerCase();
+        return reimagineTerms.some((term) => lower.includes(term));
+      }),
+      CONSTRAINTS: [...lensNames],
+      DEFINE_APPROACH: [...lensNames],
+    };
+    // Ensure REIMAGINE has at least the first 3 lenses if keyword matching yielded nothing
+    if (bp.phaseLensPolicy.REIMAGINE.length === 0) {
+      bp.phaseLensPolicy.REIMAGINE = lensNames.slice(0, Math.min(3, lensNames.length));
+    }
+  }
+
+  // Layer 4: Question constraints from domain + engagement type
   const domainKey = input.domainPack?.toLowerCase() ?? '';
   const etKey = input.engagementType?.toLowerCase() ?? '';
 
@@ -334,6 +383,9 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
       domainMetrics: metrics,
     };
   }
+
+  // Layer 5: Version stamp
+  bp.blueprintVersion = (input.previousVersion ?? -1) + 1;
 
   // Re-validate the enriched blueprint
   const result = WorkshopBlueprintSchema.safeParse(bp);

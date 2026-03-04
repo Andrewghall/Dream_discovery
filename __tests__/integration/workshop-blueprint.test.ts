@@ -118,6 +118,10 @@ describe('DEFAULT_BLUEPRINT', () => {
     expect(DEFAULT_BLUEPRINT.confidenceRules.classificationThreshold).toBe(0.4);
     expect(DEFAULT_BLUEPRINT.confidenceRules.beliefStabilisationThreshold).toBe(0.4);
   });
+
+  it('has blueprintVersion 0', () => {
+    expect(DEFAULT_BLUEPRINT.blueprintVersion).toBe(0);
+  });
 });
 
 // ================================================================

@@ -370,3 +370,230 @@ describe('All domain packs produce valid blueprints', () => {
     }
   }
 });
+
+// ================================================================
+// 6. Research Overrides
+// ================================================================
+
+describe('Research journey stage overrides', () => {
+  const researchStages = [
+    { name: 'Application', description: 'Student applies to programme', typicalTouchpoints: ['website', 'form'] },
+    { name: 'Acceptance', description: 'Offer and enrolment', typicalTouchpoints: ['email', 'portal'] },
+    { name: 'Orientation', description: 'First week immersion', typicalTouchpoints: ['campus', 'LMS'] },
+    { name: 'Graduation', description: 'Completing the programme', typicalTouchpoints: ['ceremony', 'alumni'] },
+  ];
+
+  it('overrides domain template with research journey stages', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      domainPack: 'contact_centre',
+      researchJourneyStages: researchStages,
+    });
+    expectValid(bp);
+    expect(bp.journeyStages).toHaveLength(4);
+    expect(bp.journeyStages[0].name).toBe('Application');
+    expect(bp.journeyStages[3].name).toBe('Graduation');
+  });
+
+  it('overrides default journey stages when no domain pack', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      researchJourneyStages: researchStages,
+    });
+    expectValid(bp);
+    expect(bp.journeyStages).toHaveLength(4);
+    expect(bp.journeyStages[0].name).toBe('Application');
+  });
+
+  it('ignores null research journey stages', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      domainPack: 'contact_centre',
+      researchJourneyStages: null,
+    });
+    expectValid(bp);
+    // Should use contact centre domain template
+    expect(bp.journeyStages[0].name).toBe('Contact Initiation');
+  });
+
+  it('ignores empty research journey stages array', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      domainPack: 'contact_centre',
+      researchJourneyStages: [],
+    });
+    expectValid(bp);
+    expect(bp.journeyStages[0].name).toBe('Contact Initiation');
+  });
+
+  it('drops typicalTouchpoints from research stages', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      researchJourneyStages: researchStages,
+    });
+    // JourneyStageEntry only has name + description
+    for (const stage of bp.journeyStages) {
+      expect(Object.keys(stage)).toEqual(['name', 'description']);
+    }
+  });
+});
+
+describe('Research dimension overrides', () => {
+  const researchDims = [
+    { name: 'Student Experience', description: 'Quality of student lifecycle', keywords: ['student', 'experience', 'learning'], color: '#60a5fa' },
+    { name: 'Institutional Trust', description: 'Reputation and governance', keywords: ['trust', 'governance', 'reputation'], color: '#34d399' },
+    { name: 'Digital Capability', description: 'Technology and data maturity', keywords: ['technology', 'digital', 'data'], color: '#fbbf24' },
+  ];
+
+  it('overrides default lenses with research dimensions', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      researchDimensions: researchDims,
+    });
+    expectValid(bp);
+    expect(bp.lenses).toHaveLength(3);
+    expect(bp.lenses[0].name).toBe('Student Experience');
+    expect(bp.lenses[1].name).toBe('Institutional Trust');
+    expect(bp.lenses[2].name).toBe('Digital Capability');
+  });
+
+  it('overrides domain pack lenses with research dimensions', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      domainPack: 'contact_centre',
+      researchDimensions: researchDims,
+    });
+    expectValid(bp);
+    expect(bp.lenses).toHaveLength(3);
+    expect(bp.lenses[0].name).toBe('Student Experience');
+  });
+
+  it('rebuilds phaseLensPolicy from research dimensions', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      researchDimensions: researchDims,
+    });
+    // CONSTRAINTS and DEFINE_APPROACH should include all research lenses
+    expect(bp.phaseLensPolicy.CONSTRAINTS).toHaveLength(3);
+    expect(bp.phaseLensPolicy.DEFINE_APPROACH).toHaveLength(3);
+    // REIMAGINE should include "Student Experience" (contains "experience" keyword match)
+    expect(bp.phaseLensPolicy.REIMAGINE.length).toBeGreaterThan(0);
+    expect(bp.phaseLensPolicy.REIMAGINE).toContain('Student Experience');
+  });
+
+  it('REIMAGINE falls back to first 3 lenses when no keyword matches', () => {
+    const noMatchDims = [
+      { name: 'Alpha', description: 'First dim', keywords: ['alpha'], color: '#aaa' },
+      { name: 'Beta', description: 'Second dim', keywords: ['beta'], color: '#bbb' },
+      { name: 'Gamma', description: 'Third dim', keywords: ['gamma'], color: '#ccc' },
+      { name: 'Delta', description: 'Fourth dim', keywords: ['delta'], color: '#ddd' },
+    ];
+    const bp = generateBlueprint({
+      ...emptyInput,
+      researchDimensions: noMatchDims,
+    });
+    expectValid(bp);
+    // No keyword matches, so falls back to first 3
+    expect(bp.phaseLensPolicy.REIMAGINE).toHaveLength(3);
+    expect(bp.phaseLensPolicy.REIMAGINE).toEqual(['Alpha', 'Beta', 'Gamma']);
+  });
+
+  it('ignores null research dimensions', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      researchDimensions: null,
+    });
+    expectValid(bp);
+    expect(bp.lenses).toHaveLength(5); // default
+  });
+
+  it('ignores empty research dimensions array', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      researchDimensions: [],
+    });
+    expectValid(bp);
+    expect(bp.lenses).toHaveLength(5); // default
+  });
+
+  it('preserves lens color and keywords from research', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      researchDimensions: researchDims,
+    });
+    expect(bp.lenses[0].color).toBe('#60a5fa');
+    expect(bp.lenses[0].keywords).toEqual(['student', 'experience', 'learning']);
+  });
+});
+
+describe('Research + domain + engagement layering', () => {
+  const researchStages = [
+    { name: 'Enrol', description: 'Student enrolment', typicalTouchpoints: ['portal'] },
+    { name: 'Learn', description: 'Active learning', typicalTouchpoints: ['LMS'] },
+    { name: 'Graduate', description: 'Completion', typicalTouchpoints: ['ceremony'] },
+  ];
+
+  it('layers all three correctly: research overrides journey, domain provides constraints, engagement adds modifiers', () => {
+    const bp = generateBlueprint({
+      industry: 'Education',
+      dreamTrack: 'DOMAIN',
+      engagementType: 'ai_enablement',
+      domainPack: 'contact_centre',
+      purpose: 'Assess AI readiness',
+      outcomes: 'Use case catalogue',
+      researchJourneyStages: researchStages,
+    });
+    expectValid(bp);
+    // Research overrides CC journey stages
+    expect(bp.journeyStages).toHaveLength(3);
+    expect(bp.journeyStages[0].name).toBe('Enrol');
+    // Domain provides question constraints (CC metrics)
+    expect(bp.questionConstraints.domainMetrics).toContain('AHT');
+    // Engagement adds modifiers
+    expect(bp.questionConstraints.requiredTopics.some((t) => t.includes('AI readiness'))).toBe(true);
+    // Identity preserved
+    expect(bp.industry).toBe('Education');
+  });
+});
+
+// ================================================================
+// 7. Blueprint Versioning
+// ================================================================
+
+describe('Blueprint versioning', () => {
+  it('starts at version 0 when no previousVersion provided', () => {
+    const bp = generateBlueprint(emptyInput);
+    expectValid(bp);
+    expect(bp.blueprintVersion).toBe(0);
+  });
+
+  it('increments from previousVersion', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      previousVersion: 2,
+    });
+    expectValid(bp);
+    expect(bp.blueprintVersion).toBe(3);
+  });
+
+  it('increments from 0 to 1', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      previousVersion: 0,
+    });
+    expectValid(bp);
+    expect(bp.blueprintVersion).toBe(1);
+  });
+
+  it('all pack + engagement combos have blueprintVersion 0 by default', () => {
+    const packs = ['contact_centre', 'hr_people', 'enterprise'];
+    for (const pack of packs) {
+      const bp = generateBlueprint({
+        ...emptyInput,
+        domainPack: pack,
+        engagementType: 'diagnostic_baseline',
+      });
+      expect(bp.blueprintVersion).toBe(0);
+    }
+  });
+});

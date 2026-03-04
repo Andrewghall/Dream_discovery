@@ -162,6 +162,9 @@ export type WorkshopBlueprint = {
 
   // Timestamp
   composedAtMs: number;
+
+  // Version tracking (incremented on each regeneration)
+  blueprintVersion: number;
 };
 
 // ================================================================
@@ -282,6 +285,7 @@ export const WorkshopBlueprintSchema = z.object({
   outputEmphasis: z.array(z.string()),
 
   composedAtMs: z.number(),
+  blueprintVersion: z.number().int().min(0),
 });
 
 // ================================================================
@@ -427,6 +431,7 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
   outputEmphasis: [],
 
   composedAtMs: 0,
+  blueprintVersion: 0,
 };
 
 // ================================================================
