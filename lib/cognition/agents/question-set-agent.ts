@@ -18,6 +18,7 @@
 import OpenAI from 'openai';
 import { nanoid } from 'nanoid';
 import { env } from '@/lib/env';
+import { hasDiscoveryData } from './agent-types';
 import type {
   WorkshopQuestionSet,
   FacilitationQuestion,
@@ -259,6 +260,17 @@ function executeQuestionSetTool(
         };
       }
 
+      // Briefing object exists but contains no actual participant data (zero-interview fallback)
+      if (!hasDiscoveryData(discoveryBriefing)) {
+        return {
+          result: JSON.stringify({
+            available: false,
+            note: 'Discovery interviews have not been completed. The briefing exists but contains no participant data. Generate questions based on research context and DREAM track.',
+          }),
+          summary: '**Discovery insights:** No interviews completed. Questions will be based on research context only.',
+        };
+      }
+
       const briefing = discoveryBriefing;
       const themes = Array.isArray(briefing.discoveryThemes) ? briefing.discoveryThemes : [];
       const painPoints = Array.isArray(briefing.painPoints) ? briefing.painPoints : [];
@@ -399,7 +411,7 @@ function executeQuestionSetTool(
 // SYSTEM PROMPT
 // ══════════════════════════════════════════════════════════════
 
-function buildQuestionSetSystemPrompt(context: PrepContext, research?: WorkshopPrepResearch | null): string {
+function buildQuestionSetSystemPrompt(context: PrepContext, research?: WorkshopPrepResearch | null, discoveryBriefing?: Record<string, unknown> | null): string {
   const trackDesc = context.dreamTrack === 'DOMAIN'
     ? `The DREAM track is **Domain**, focused on **${context.targetDomain || 'a specific area'}**. Weight questions toward this domain while still covering all relevant lenses in each phase.`
     : 'The DREAM track is **Enterprise** \u2014 a full end-to-end assessment across the entire business.';
@@ -413,11 +425,16 @@ ${context.workshopPurpose ? `\nWORKSHOP PURPOSE (WHY WE ARE HERE):\n${context.wo
 ${context.desiredOutcomes ? `\nDESIRED OUTCOMES (WHAT WE MUST WALK AWAY WITH):\n${context.desiredOutcomes}` : ''}
 ${context.workshopPurpose || context.desiredOutcomes ? `\nTHIS IS THE MOST IMPORTANT INPUT. Every facilitation question you design MUST serve this purpose and drive toward these outcomes. If a question does not ladder up to WHY we are here and WHAT we need to achieve, do not include it. The workshop exists for this reason and no other.\n` : ''}
 CRITICAL CONTEXT:
-- Discovery interviews have ALREADY been completed. Participants have already
+${hasDiscoveryData(discoveryBriefing)
+    ? `- Discovery interviews have ALREADY been completed. Participants have already
   answered questions about their roles, pain points, aspirations, and maturity
   ratings. You have access to what they said via get_discovery_insights().
 - These workshop facilitation questions are DIFFERENT from Discovery questions.
-  Do NOT repeat Discovery interview questions.
+  Do NOT repeat Discovery interview questions.`
+    : `- Discovery interviews have NOT been completed yet. There is no pre-interview
+  data available. Design questions based on research context and industry knowledge.
+  The get_discovery_insights() tool will confirm this.
+- Do NOT claim or imply that Discovery insights exist.`}
 - These questions guide a GROUP WORKSHOP SESSION with 8-15 participants in a room.
 - The facilitator uses these questions to run each phase of the workshop.
 
@@ -525,7 +542,7 @@ export async function runQuestionSetAgent(
   }
 
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const systemPrompt = buildQuestionSetSystemPrompt(context, research);
+  const systemPrompt = buildQuestionSetSystemPrompt(context, research, discoveryBriefing);
   const startMs = Date.now();
 
   // Track designed phases as they come in

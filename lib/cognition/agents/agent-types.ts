@@ -149,8 +149,24 @@ export type WorkshopIntelligence = {
   briefingSummary: string;
 };
 
+/**
+ * Returns true if the discovery briefing contains actual participant data
+ * (at least one participant, or any themes/painPoints/aspirations).
+ * Works with both typed WorkshopIntelligence and untyped Record<string, unknown>.
+ */
+export function hasDiscoveryData(
+  briefing: WorkshopIntelligence | Record<string, unknown> | null | undefined,
+): boolean {
+  if (!briefing) return false;
+  const themes = Array.isArray(briefing.discoveryThemes) ? briefing.discoveryThemes : [];
+  const painPoints = Array.isArray(briefing.painPoints) ? briefing.painPoints : [];
+  const aspirations = Array.isArray(briefing.aspirations) ? briefing.aspirations : [];
+  const count = typeof briefing.participantCount === 'number' ? briefing.participantCount : 0;
+  return count > 0 || themes.length > 0 || painPoints.length > 0 || aspirations.length > 0;
+}
+
 // ══════════════════════════════════════════════════════════
-// AGENT CALLBACK — for emitting conversation entries
+// AGENT CALLBACK - for emitting conversation entries
 // ══════════════════════════════════════════════════════════
 
 export type AgentConversationCallback = (entry: AgentConversationEntry) => void | Promise<void>;

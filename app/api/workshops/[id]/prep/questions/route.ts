@@ -1,12 +1,12 @@
 /**
  * /api/workshops/[id]/prep/questions
  *
- * POST  — Triggers the Question Set Agent to generate workshop facilitation questions (SSE)
- * GET   — Returns current custom question set
- * PUT   — Facilitator edits/saves the question set
+ * POST  - Triggers the Question Set Agent to generate workshop facilitation questions (SSE)
+ * GET   - Returns current custom question set
+ * PUT   - Facilitator edits/saves the question set
  *
  * NOTE: These are WORKSHOP FACILITATION questions for REIMAGINE / CONSTRAINTS / DEFINE APPROACH,
- * NOT Discovery interview questions. Discovery has already been completed.
+ * NOT Discovery interview questions.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,6 +14,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runQuestionSetAgent } from '@/lib/cognition/agents/question-set-agent';
+import { hasDiscoveryData } from '@/lib/cognition/agents/agent-types';
 import type { PrepContext, AgentConversationEntry, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
@@ -50,7 +51,7 @@ async function loadWorkshopPrep(workshopId: string) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// POST — Generate tailored questions via SSE
+// POST - Generate tailored questions via SSE
 // ══════════════════════════════════════════════════════════════
 
 export async function POST(
@@ -98,11 +99,12 @@ export async function POST(
       const outcomesBlock = context.desiredOutcomes
         ? `\nDESIRED OUTCOMES: ${context.desiredOutcomes}`
         : '';
+      const discoveryAvailable = hasDiscoveryData(discoveryBriefing);
       sendEvent('agent.conversation', {
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'question-set-agent',
-        message: `Thank you, Research Agent. Now, Question Set Agent - using the research context${discoveryBriefing ? ' and Discovery interview insights' : ''}, could you design a set of workshop facilitation questions for ${context.clientName || 'this client'}? These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}.` : 'This is an Enterprise-wide assessment.'}${purposeBlock}${outcomesBlock}\n\nEvery question you design must serve the workshop purpose and drive toward the desired outcomes. Remember - Discovery interviews are done. These questions are for the live workshop session.`,
+        message: `Thank you, Research Agent. Now, Question Set Agent - using the research context${discoveryAvailable ? ' and Discovery interview insights' : ''}, could you design a set of workshop facilitation questions for ${context.clientName || 'this client'}? These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}.` : 'This is an Enterprise-wide assessment.'}${purposeBlock}${outcomesBlock}\n\nEvery question you design must serve the workshop purpose and drive toward the desired outcomes. ${discoveryAvailable ? 'Discovery interviews have been completed. Use those insights to inform your questions, but do not repeat Discovery questions.' : 'Discovery interviews have not been completed yet. Design questions based on research context alone.'} These questions are for the live workshop session.`,
         type: 'handoff',
       } satisfies AgentConversationEntry);
 
@@ -160,7 +162,7 @@ export async function POST(
 }
 
 // ══════════════════════════════════════════════════════════════
-// GET — Return current custom question set
+// GET - Return current custom question set
 // ══════════════════════════════════════════════════════════════
 
 export async function GET(
@@ -180,7 +182,7 @@ export async function GET(
 }
 
 // ══════════════════════════════════════════════════════════════
-// PUT — Facilitator edits/saves question set
+// PUT - Facilitator edits/saves question set
 // ══════════════════════════════════════════════════════════════
 
 export async function PUT(
