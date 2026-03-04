@@ -44,6 +44,20 @@ function isLikelySchemaDriftError(error: unknown): boolean {
   );
 }
 
+async function runDeleteStep(
+  label: string,
+  step: () => Promise<unknown>
+): Promise<void> {
+  try {
+    await step();
+  } catch (error: unknown) {
+    if (!isLikelySchemaDriftError(error)) throw error;
+    console.warn(`[workshop-delete] skipped step due to schema drift: ${label}`, {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /**
  * GET /api/admin/workshops/[id]
  *
@@ -494,40 +508,68 @@ export async function DELETE(
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
     }
 
-    // Defensive cleanup for environments where FK cascades may lag schema.
-    // Deletes are ordered child -> parent so workshop removal is reliable.
-    await prisma.$transaction(async (tx) => {
-      await tx.dataPointClassification.deleteMany({
-        where: { dataPoint: { workshopId: id } },
-      });
-      await tx.dataPointAnnotation.deleteMany({
-        where: { dataPoint: { workshopId: id } },
-      });
-      await tx.agenticAnalysis.deleteMany({
-        where: { dataPoint: { workshopId: id } },
-      });
-      await tx.conversationMessage.deleteMany({
-        where: { session: { workshopId: id } },
-      });
-      await tx.conversationInsight.deleteMany({ where: { workshopId: id } });
-      await tx.conversationReport.deleteMany({ where: { workshopId: id } });
-      await tx.dataPoint.deleteMany({ where: { workshopId: id } });
-      await tx.transcriptChunk.deleteMany({ where: { workshopId: id } });
-      await tx.workshopEventOutbox.deleteMany({ where: { workshopId: id } });
-      await tx.liveWorkshopSnapshot.deleteMany({ where: { workshopId: id } });
-      await tx.discoveryTheme.deleteMany({ where: { workshopId: id } });
-      await tx.diagnosticSynthesis.deleteMany({ where: { workshopId: id } });
-      await tx.finding.deleteMany({ where: { workshopId: id } });
-      await tx.captureSegment.deleteMany({
-        where: { captureSession: { workshopId: id } },
-      });
-      await tx.captureSession.deleteMany({ where: { workshopId: id } });
-      await tx.conversationSession.deleteMany({ where: { workshopId: id } });
-      await tx.workshopParticipant.deleteMany({ where: { workshopId: id } });
-      await tx.workshopScratchpad.deleteMany({ where: { workshopId: id } });
-      await tx.workshopShare.deleteMany({ where: { workshopId: id } });
-      await tx.workshop.delete({ where: { id } });
-    });
+    // Defensive cleanup for environments where FK cascades or tables may lag schema.
+    // Deletes are ordered child -> parent. Missing-table/schema-drift errors are skipped.
+    await runDeleteStep('dataPointClassification', () =>
+      prisma.dataPointClassification.deleteMany({ where: { dataPoint: { workshopId: id } } })
+    );
+    await runDeleteStep('dataPointAnnotation', () =>
+      prisma.dataPointAnnotation.deleteMany({ where: { dataPoint: { workshopId: id } } })
+    );
+    await runDeleteStep('agenticAnalysis', () =>
+      prisma.agenticAnalysis.deleteMany({ where: { dataPoint: { workshopId: id } } })
+    );
+    await runDeleteStep('conversationMessage', () =>
+      prisma.conversationMessage.deleteMany({ where: { session: { workshopId: id } } })
+    );
+    await runDeleteStep('conversationInsight', () =>
+      prisma.conversationInsight.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('conversationReport', () =>
+      prisma.conversationReport.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('dataPoint', () =>
+      prisma.dataPoint.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('transcriptChunk', () =>
+      prisma.transcriptChunk.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('workshopEventOutbox', () =>
+      prisma.workshopEventOutbox.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('liveWorkshopSnapshot', () =>
+      prisma.liveWorkshopSnapshot.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('discoveryTheme', () =>
+      prisma.discoveryTheme.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('diagnosticSynthesis', () =>
+      prisma.diagnosticSynthesis.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('finding', () =>
+      prisma.finding.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('captureSegment', () =>
+      prisma.captureSegment.deleteMany({ where: { captureSession: { workshopId: id } } })
+    );
+    await runDeleteStep('captureSession', () =>
+      prisma.captureSession.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('conversationSession', () =>
+      prisma.conversationSession.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('workshopParticipant', () =>
+      prisma.workshopParticipant.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('workshopScratchpad', () =>
+      prisma.workshopScratchpad.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('workshopShare', () =>
+      prisma.workshopShare.deleteMany({ where: { workshopId: id } })
+    );
+
+    // Final parent delete must succeed.
+    await prisma.workshop.delete({ where: { id } });
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
