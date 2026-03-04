@@ -100,6 +100,13 @@ export type FindingPolicy = {
   enabledFindingTypes: string[];
 };
 
+export type QuestionConstraints = {
+  requiredTopics: string[];
+  forbiddenTopics: string[];
+  focusAreas: string[];
+  domainMetrics: string[];
+};
+
 // ================================================================
 // Top-level blueprint type
 // ================================================================
@@ -127,6 +134,9 @@ export type WorkshopBlueprint = {
 
   // Question policy
   questionPolicy: QuestionPolicy;
+
+  // Question constraints (domain-specific topic guidance)
+  questionConstraints: QuestionConstraints;
 
   // Data requirements
   dataRequirements: DataRequirements;
@@ -230,6 +240,13 @@ const FindingPolicySchema = z.object({
   enabledFindingTypes: z.array(z.string()),
 });
 
+const QuestionConstraintsSchema = z.object({
+  requiredTopics: z.array(z.string()),
+  forbiddenTopics: z.array(z.string()),
+  focusAreas: z.array(z.string()),
+  domainMetrics: z.array(z.string()),
+});
+
 // ================================================================
 // Top-level Zod schema
 // ================================================================
@@ -252,6 +269,7 @@ export const WorkshopBlueprintSchema = z.object({
   actorTaxonomy: z.array(ActorEntrySchema),
 
   questionPolicy: QuestionPolicySchema,
+  questionConstraints: QuestionConstraintsSchema,
   dataRequirements: DataRequirementsSchema,
   confidenceRules: ConfidenceRulesSchema,
 
@@ -327,6 +345,14 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
     questionsPerPhase: 5,
     subQuestionsPerMain: 3,
     coverageThresholdPercent: 70,
+  },
+
+  // Question constraints -- empty by default, populated by generator
+  questionConstraints: {
+    requiredTopics: [],
+    forbiddenTopics: [],
+    focusAreas: [],
+    domainMetrics: [],
   },
 
   // Data requirements -- from DIAGNOSTIC_BASELINE engagement type defaults

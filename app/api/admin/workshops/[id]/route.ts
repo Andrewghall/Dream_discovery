@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { getDomainPack } from '@/lib/domain-packs';
-import { composeBlueprint } from '@/lib/workshop/blueprint';
+import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import type { EngagementType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -275,7 +275,7 @@ export async function PATCH(
           purpose: (updateData.description as string | null) ?? current.description ?? null,
           outcomes: (updateData.businessContext as string | null) ?? current.businessContext ?? null,
         };
-        updateData.blueprint = composeBlueprint(merged) as any;
+        updateData.blueprint = generateBlueprint(merged) as any;
       }
     }
 

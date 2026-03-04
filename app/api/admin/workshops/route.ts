@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
 import { getDomainPack } from '@/lib/domain-packs';
-import { composeBlueprint } from '@/lib/workshop/blueprint';
+import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import type { EngagementType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -159,8 +159,8 @@ export async function POST(request: NextRequest) {
 
     const normalizedEngagementType = toEngagementEnum(engagementType);
 
-    // Compose runtime blueprint from setup selections
-    const blueprint = composeBlueprint({
+    // Generate domain-aware runtime blueprint from setup selections
+    const blueprint = generateBlueprint({
       industry: industry || null,
       dreamTrack: dreamTrack || null,
       engagementType: engagementType || null,

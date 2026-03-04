@@ -98,6 +98,15 @@ describe('DEFAULT_BLUEPRINT', () => {
     expect(DEFAULT_BLUEPRINT.findingPolicy.enabledFindingTypes).toContain('OPPORTUNITY');
   });
 
+  it('has empty default question constraints', () => {
+    expect(DEFAULT_BLUEPRINT.questionConstraints).toEqual({
+      requiredTopics: [],
+      forbiddenTopics: [],
+      focusAreas: [],
+      domainMetrics: [],
+    });
+  });
+
   it('pacing values match facilitation-orchestrator constants', () => {
     expect(DEFAULT_BLUEPRINT.pacing.minEmissionIntervalMs).toBe(120_000);
     expect(DEFAULT_BLUEPRINT.pacing.padGenerationIntervalMs).toBe(45_000);
