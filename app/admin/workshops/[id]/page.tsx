@@ -282,7 +282,11 @@ export default function WorkshopDetailPage({ params }: PageProps) {
         router.push('/admin');
       } else {
         const data = await response.json().catch(() => null);
-        alert(data?.error || 'Failed to delete workshop');
+        const message =
+          data?.details?.message ||
+          data?.error ||
+          'Failed to delete workshop';
+        alert(message);
       }
     } catch (error) {
       console.error('Failed to delete workshop:', error);

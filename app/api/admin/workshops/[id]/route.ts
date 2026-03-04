@@ -77,14 +77,16 @@ type WorkshopFkRefRow = {
   table_schema: string;
   table_name: string;
   column_name: string;
+  constraint_name: string;
 };
 
-async function cleanupUnknownWorkshopRefs(workshopId: string): Promise<void> {
-  const refs = await prisma.$queryRaw<WorkshopFkRefRow[]>`
+async function listWorkshopFkRefs(): Promise<WorkshopFkRefRow[]> {
+  return prisma.$queryRaw<WorkshopFkRefRow[]>`
     SELECT
       tc.table_schema,
       tc.table_name,
-      kcu.column_name
+      kcu.column_name,
+      tc.constraint_name
     FROM information_schema.table_constraints tc
     JOIN information_schema.key_column_usage kcu
       ON tc.constraint_name = kcu.constraint_name
@@ -95,8 +97,12 @@ async function cleanupUnknownWorkshopRefs(workshopId: string): Promise<void> {
     WHERE tc.constraint_type = 'FOREIGN KEY'
       AND ccu.table_name = 'workshops'
       AND ccu.table_schema = 'public'
-      AND tc.table_schema = 'public'
+      AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
   `;
+}
+
+async function cleanupUnknownWorkshopRefs(workshopId: string): Promise<void> {
+  const refs = await listWorkshopFkRefs();
 
   for (const ref of refs) {
     const schema = ref.table_schema;
@@ -104,11 +110,62 @@ async function cleanupUnknownWorkshopRefs(workshopId: string): Promise<void> {
     const column = ref.column_name;
     if (table === 'workshops') continue;
     if (!isSafeIdent(schema) || !isSafeIdent(table) || !isSafeIdent(column)) continue;
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM "${schema}"."${table}" WHERE "${column}" = $1`,
-      workshopId
-    );
+    try {
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM "${schema}"."${table}" WHERE "${column}" = $1`,
+        workshopId
+      );
+    } catch (error: unknown) {
+      // Keep trying other refs; parent delete pass will decide if anything still blocks.
+      console.warn('[workshop-delete] failed to clean discovered FK ref', {
+        schema,
+        table,
+        column,
+        constraint: ref.constraint_name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
+}
+
+type WorkshopDeleteBlocker = {
+  schema: string;
+  table: string;
+  column: string;
+  constraint: string;
+  count: number;
+};
+
+async function detectWorkshopDeleteBlockers(workshopId: string): Promise<WorkshopDeleteBlocker[]> {
+  const refs = await listWorkshopFkRefs();
+  const blockers: WorkshopDeleteBlocker[] = [];
+  for (const ref of refs) {
+    const schema = ref.table_schema;
+    const table = ref.table_name;
+    const column = ref.column_name;
+    if (table === 'workshops') continue;
+    if (!isSafeIdent(schema) || !isSafeIdent(table) || !isSafeIdent(column)) continue;
+    try {
+      const rows = await prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(
+        `SELECT COUNT(*)::bigint AS count FROM "${schema}"."${table}" WHERE "${column}" = $1`,
+        workshopId
+      );
+      const raw = rows?.[0]?.count ?? 0;
+      const count = typeof raw === 'bigint' ? Number(raw) : Number(raw);
+      if (Number.isFinite(count) && count > 0) {
+        blockers.push({
+          schema,
+          table,
+          column,
+          constraint: ref.constraint_name,
+          count,
+        });
+      }
+    } catch {
+      // Ignore unreadable refs.
+    }
+  }
+  return blockers;
 }
 
 /**
@@ -627,7 +684,19 @@ export async function DELETE(
     } catch (error: unknown) {
       if (!isLikelyFkDeleteError(error)) throw error;
       await cleanupUnknownWorkshopRefs(id);
-      await prisma.workshop.delete({ where: { id } });
+      try {
+        await prisma.workshop.delete({ where: { id } });
+      } catch (retryError: unknown) {
+        if (!isLikelyFkDeleteError(retryError)) throw retryError;
+        const blockers = await detectWorkshopDeleteBlockers(id);
+        const summary = blockers.length
+          ? `Delete blocked by FK refs: ${blockers.map((b) => `${b.schema}.${b.table}.${b.column}(${b.count})`).join(', ')}`
+          : (retryError instanceof Error ? retryError.message : String(retryError));
+        return NextResponse.json(
+          { error: 'Failed to delete workshop', details: { message: summary, blockers } },
+          { status: 409 }
+        );
+      }
     }
 
     return NextResponse.json({ success: true });

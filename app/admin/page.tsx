@@ -231,7 +231,12 @@ export default function AdminDashboard() {
     for (const wid of ids) {
       try {
         const res = await fetch(`/api/admin/workshops/${wid}`, { method: 'DELETE' });
-        if (!res.ok) failed++;
+        if (!res.ok) {
+          failed++;
+          const data = await res.json().catch(() => null);
+          const message = data?.details?.message || data?.error || 'Failed to delete workshop';
+          console.error(`[bulk-delete] ${wid}: ${message}`);
+        }
       } catch {
         failed++;
       }
