@@ -101,6 +101,9 @@ const CONTACT_CENTRE: DomainPack = {
     { key: 'attrition', label: 'Agent Attrition Rate', unit: '%', description: 'Annual agent turnover rate' },
     { key: 'occupancy', label: 'Occupancy Rate', unit: '%', description: 'Percentage of time agents are handling contacts' },
     { key: 'service_level', label: 'Service Level', unit: '%', description: 'Percentage of calls answered within target time' },
+    { key: 'call_volume', label: 'Call Volume', unit: 'count', description: 'Total inbound call count per period' },
+    { key: 'qa_score', label: 'QA Score', unit: 'score', description: 'Quality assurance evaluation score' },
+    { key: 'absenteeism', label: 'Absenteeism Rate', unit: '%', description: 'Percentage of scheduled hours lost to absence' },
   ],
   questionTemplates: [
     {

@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { NormalizedTranscriptChunk } from '@/lib/transcription/types';
+import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
 import {
   HemisphereNodes,
   type HemisphereDialoguePhase,
@@ -293,6 +294,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [reasoningEntries, setReasoningEntries] = useState<ReasoningEntry[]>([]);
 
   // ── Agentic facilitation state ──────────────────────────────
+  const [blueprint, setBlueprint] = useState<WorkshopBlueprint | null>(null);
   const [prepQuestions, setPrepQuestions] = useState<PrepQuestionSet | null>(null);
   const [coverageThreshold, setCoverageThreshold] = useState(70);
   const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
@@ -551,6 +553,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
           if (data.guidanceState.dialoguePhase) {
             setDialoguePhase(data.guidanceState.dialoguePhase);
           }
+        }
+        if (data?.blueprint) {
+          setBlueprint(data.blueprint as WorkshopBlueprint);
         }
         if (data?.customQuestions) {
           setPrepQuestions(data.customQuestions as PrepQuestionSet);

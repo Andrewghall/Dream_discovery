@@ -76,11 +76,15 @@ export async function runPrepOrchestrator(
       ? ` Research identified ${research.industryDimensions.length} industry-specific dimensions: ${research.industryDimensions.map(d => d.name).join(', ')}. Use these dimensions for question lenses, not generic defaults.`
       : '';
 
+    const metricsNote = context.historicalMetrics
+      ? ` Historical performance data is available for ${context.historicalMetrics.series.length} operational metrics -- use get_historical_metrics() to reference real baselines in question grounding.`
+      : '';
+
     onConversation?.({
       timestampMs: Date.now(),
       agent: 'prep-orchestrator',
       to: 'question-set-agent',
-      message: `Thank you, Research Agent. The findings have been stored - ${research.keyPublicChallenges.length} key challenges and ${research.recentDevelopments.length} recent developments identified.${dimensionsNote} Now, Question Set Agent - using the research context, could you design a set of workshop facilitation questions for ${context.clientName || 'the client'}? These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}.` : 'This is an Enterprise-wide assessment.'}${purposeIntro}${outcomesIntro}\n\nEvery question you design must serve the workshop purpose and drive toward the desired outcomes. These questions are for the live workshop session, not Discovery interviews.`,
+      message: `Thank you, Research Agent. The findings have been stored - ${research.keyPublicChallenges.length} key challenges and ${research.recentDevelopments.length} recent developments identified.${dimensionsNote}${metricsNote} Now, Question Set Agent - using the research context, could you design a set of workshop facilitation questions for ${context.clientName || 'the client'}? These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}.` : 'This is an Enterprise-wide assessment.'}${purposeIntro}${outcomesIntro}\n\nEvery question you design must serve the workshop purpose and drive toward the desired outcomes. These questions are for the live workshop session, not Discovery interviews.`,
       type: 'handoff',
     });
   } catch (error) {

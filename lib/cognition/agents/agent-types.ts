@@ -7,6 +7,7 @@
 
 import type { AgentConversationEntry } from '@/components/cognitive-guidance/agent-orchestration-panel';
 import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
+import type { HistoricalMetricsData } from '@/lib/historical-metrics/types';
 
 // ══════════════════════════════════════════════════════════
 // RE-EXPORT UI TYPE
@@ -209,4 +210,6 @@ export type PrepContext = {
   domainPackConfig?: Record<string, unknown> | null;
   // Runtime blueprint (optional - loaded from workshop.blueprint)
   blueprint?: WorkshopBlueprint | null;
+  // Historical performance metrics (optional - loaded from workshop.historicalMetrics)
+  historicalMetrics?: HistoricalMetricsData | null;
 };

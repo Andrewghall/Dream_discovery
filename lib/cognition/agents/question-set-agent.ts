@@ -30,6 +30,7 @@ import type {
   DataConfidence,
 } from './agent-types';
 import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
+import { analyzeMetricTrends } from '@/lib/historical-metrics/summarize';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -113,6 +114,19 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       name: 'get_blueprint_constraints',
       description:
         'Retrieve the workshop blueprint constraints that govern question design -- required topics that MUST be covered, forbidden topics to avoid, focus areas to emphasize, domain-specific metrics to probe, and question count policy. Call this BEFORE designing questions.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_historical_metrics',
+      description:
+        'Retrieve historical operational performance data -- metric trends, baselines, and changes over time. Use to ground questions in real data and probe gaps between historical performance and aspirations.',
       parameters: {
         type: 'object',
         properties: {},
@@ -379,6 +393,34 @@ function executeQuestionSetTool(
       };
     }
 
+    case 'get_historical_metrics': {
+      if (!context.historicalMetrics) {
+        return {
+          result: JSON.stringify({
+            available: false,
+            note: 'No historical metrics uploaded. Generate questions based on research and Discovery context.',
+          }),
+          summary: '**Historical metrics:** Not available.',
+        };
+      }
+      const trends = analyzeMetricTrends(context.historicalMetrics);
+      const trendLines = trends.map((t) => {
+        const changeStr = t.changePercent !== null
+          ? ` (${t.trend}, ${t.changePercent > 0 ? '+' : ''}${t.changePercent.toFixed(1)}%)`
+          : ` (${t.trend})`;
+        return `  - ${t.metricLabel}: ${t.latestValue} ${t.unit} as of ${t.latestPeriod}${changeStr}`;
+      });
+      return {
+        result: JSON.stringify({
+          available: true,
+          domainPack: context.historicalMetrics.domainPack,
+          sourceCount: context.historicalMetrics.sources.length,
+          metrics: trends,
+        }),
+        summary: `**Historical metrics:** ${trends.length} metrics from ${context.historicalMetrics.domainPack} pack.\n${trendLines.join('\n')}`,
+      };
+    }
+
     case 'get_workshop_phases': {
       const trackContext = context.dreamTrack === 'DOMAIN'
         ? `This is a **Domain-focused** workshop targeting **${context.targetDomain || 'a specific business area'}**. Questions should be weighted toward this domain while still covering all relevant lenses.`
@@ -564,6 +606,11 @@ ${hasDiscoveryData(discoveryBriefing)
 - Do NOT claim or imply that Discovery insights exist.`}
 - These questions guide a GROUP WORKSHOP SESSION with 8-15 participants in a room.
 - The facilitator uses these questions to run each phase of the workshop.
+${context.historicalMetrics
+    ? `- Historical performance data IS available (${context.historicalMetrics.series.length} metrics).
+  Call get_historical_metrics() to see actual operational baselines and trends.
+  Ground questions in real data -- reference specific metrics to make questions evidence-based.`
+    : '- No historical performance data available.'}
 
 ${research?.industryDimensions?.length ? `THE THREE WORKSHOP PHASES:
 
@@ -614,8 +661,9 @@ YOUR APPROACH:
 1. First, get the research context (company, industry, challenges).
 2. Get Discovery insights if available (what participants already told us).
 3. Get blueprint constraints (required/forbidden topics, focus areas, metrics).
-4. Get the workshop phase structure (lens order, purpose).
-5. For each phase in order (REIMAGINE, CONSTRAINTS, DEFINE_APPROACH):
+4. Get historical metrics if available (operational baselines and trends).
+5. Get the workshop phase structure (lens order, purpose).
+6. For each phase in order (REIMAGINE, CONSTRAINTS, DEFINE_APPROACH):
    - Design ${bp?.questionPolicy?.questionsPerPhase ?? 5} facilitation questions per phase
    - Each question should follow the lens order for that phase
    - Questions MUST reference specific company context where possible
@@ -644,7 +692,7 @@ YOUR APPROACH:
          Ask "what stands in the way?", "what limitations exist?"
        DEFINE_APPROACH subs should be actionable and ownership-focused.
          Ask "who owns this?", "what's step one?", "how do we prove it?"
-6. Commit the final question set with a design rationale and data confidence assessment.
+7. Commit the final question set with a design rationale and data confidence assessment.
 
 QUESTION DESIGN PRINCIPLES:
 - Questions are for a GROUP discussion, not individual interviews

@@ -43,6 +43,8 @@ import { StickyPadCanvas } from '@/components/cognitive-guidance/sticky-pad-canv
 import { MainQuestionCard } from '@/components/cognitive-guidance/featured-question-card';
 import LensCoverageBar from '@/components/cognitive-guidance/lens-coverage-bar';
 import GapIndicatorStrip from '@/components/cognitive-guidance/gap-indicator-strip';
+import DataSufficiencyBar from '@/components/cognitive-guidance/data-sufficiency-bar';
+import MetricContradictionAlert from '@/components/cognitive-guidance/metric-contradiction-alert';
 import SignalClusterPanel from '@/components/cognitive-guidance/signal-cluster-panel';
 import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
 import {
@@ -439,6 +441,16 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     contradictionCount: 0,
     stabilisedBeliefCount: 0,
   });
+
+  // ── Data sufficiency tracking ────────────────────────
+  const [dataSufficiency, setDataSufficiency] = useState({
+    hasResearch: false,
+    hasDiscoveryBriefing: false,
+    hasBlueprint: false,
+    hasHistoricalMetrics: false,
+    metricsCount: 0,
+  });
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
   // ── SSE state ──────────────────────────────────────────
   const [listening, setListening] = useState(false);
@@ -917,6 +929,18 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         const research = data.guidanceState?.prepContext?.research as WorkshopPrepResearch | null | undefined;
         if (research?.industryDimensions?.length) {
           setCustomLensColors(getDimensionColors(research));
+        }
+
+        // Populate data sufficiency from guidance state
+        const gs = data.guidanceState;
+        if (gs) {
+          setDataSufficiency({
+            hasResearch: !!gs.prepContext?.research,
+            hasDiscoveryBriefing: !!gs.prepContext?.discoveryIntelligence,
+            hasBlueprint: !!gs.blueprint,
+            hasHistoricalMetrics: !!gs.historicalMetrics,
+            metricsCount: gs.historicalMetrics?.series?.length ?? 0,
+          });
         }
 
         if (data.customQuestions && typeof data.customQuestions === 'object') {
@@ -1897,11 +1921,27 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           ))}
         </div>
 
+        {/* Data Sufficiency Bar */}
+        <DataSufficiencyBar
+          hasResearch={dataSufficiency.hasResearch}
+          hasDiscoveryBriefing={dataSufficiency.hasDiscoveryBriefing}
+          hasBlueprint={dataSufficiency.hasBlueprint}
+          hasHistoricalMetrics={dataSufficiency.hasHistoricalMetrics}
+          metricsCount={dataSufficiency.metricsCount}
+          sessionConfidence={sessionConfidence}
+        />
+
         {/* Lens Coverage Bar + Gap Indicators */}
         <div className="mt-3">
           <LensCoverageBar coverage={lensCoverage} />
         </div>
         <GapIndicatorStrip signals={signals} />
+
+        {/* Metric Contradiction Alerts */}
+        <MetricContradictionAlert
+          signals={signals.filter((s) => !dismissedAlerts.has(s.id))}
+          onDismiss={(id) => setDismissedAlerts((prev) => new Set(prev).add(id))}
+        />
 
         {/* ═══ PRIMARY CANVAS — Main Question + Sub-Pads Grid ═══ */}
         <div className="mt-4 space-y-4">

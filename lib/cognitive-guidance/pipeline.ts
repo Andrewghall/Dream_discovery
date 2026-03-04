@@ -1,7 +1,7 @@
 /**
- * Cognitive Guidance Pipeline — Stages 1-5
+ * Cognitive Guidance Pipeline --Stages 1-5
  *
- * All functions are PURE — no side effects, no LLM calls, no network.
+ * All functions are PURE --no side effects, no LLM calls, no network.
  * Every output traces to source data. Nothing is fabricated.
  */
 
@@ -27,11 +27,11 @@ export type Lens = string;
 
 export const DEFAULT_LENSES: Lens[] = ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'];
 
-/** @deprecated Use DEFAULT_LENSES or getAllLenses(research) — kept for backward compatibility */
+/** @deprecated Use DEFAULT_LENSES or getAllLenses(research) --kept for backward compatibility */
 export const ALL_LENSES: Lens[] = DEFAULT_LENSES;
 
 /**
- * Get effective lenses — from research dimensions or defaults.
+ * Get effective lenses --from research dimensions or defaults.
  */
 export function getAllLenses(customDimensionNames?: string[] | null): string[] {
   if (customDimensionNames?.length) return customDimensionNames;
@@ -87,14 +87,15 @@ export type SignalType =
   | 'high_freq_constraint'
   | 'unanswered_question'
   | 'weak_enabler'
-  | 'risk_cluster';
+  | 'risk_cluster'
+  | 'metric_contradiction';
 
 // ── DREAM Workshop Phases ────────────────────────────────
 // SYNTHESIS: Collective viewpoint from individual AI discovery interviews.
-//            Pre-populated from stored reports — no live audio needed.
+//            Pre-populated from stored reports --no live audio needed.
 // REIMAGINE: Pure business vision, goals, actors. NO constraints, NO technology.
-// CONSTRAINTS: Right-to-left across lenses — Regulation → Customer → Technology → Organisation → People.
-// DEFINE_APPROACH: Left-to-right solution design — People → Organisation → Technology → Customer → Regulation.
+// CONSTRAINTS: Right-to-left across lenses --Regulation → Customer → Technology → Organisation → People.
+// DEFINE_APPROACH: Left-to-right solution design --People → Organisation → Technology → Customer → Regulation.
 export type DialoguePhase = 'SYNTHESIS' | 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
 
 export const ALL_PHASES: DialoguePhase[] = ['SYNTHESIS', 'REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
@@ -127,6 +128,7 @@ const PHASE_ALLOWED_SIGNALS: Record<DialoguePhase, Set<SignalType>> = {
     'unanswered_question',
     'weak_enabler',
     'risk_cluster',
+    'metric_contradiction',
   ]),
   DEFINE_APPROACH: new Set([
     'repeated_theme',
@@ -134,12 +136,64 @@ const PHASE_ALLOWED_SIGNALS: Record<DialoguePhase, Set<SignalType>> = {
     'contradiction',
     'unanswered_question',
     'weak_enabler',
+    'metric_contradiction',
   ]),
 };
 
 // In REIMAGINE, only these lenses should trigger missing_dimension signals
 // (Technology and Regulation are irrelevant in the visionary phase)
 const REIMAGINE_LENSES: Set<Lens> = new Set(['People', 'Customer', 'Organisation']);
+
+// ── Blueprint-aware helpers ────────────────────────────────
+
+/**
+ * Get the allowed signal types for a phase. Blueprint signal policy
+ * takes precedence when available, otherwise falls back to defaults.
+ */
+export function getPhaseAllowedSignals(
+  phase: DialoguePhase,
+  blueprintPolicy?: Record<string, string[]> | null,
+): Set<SignalType> {
+  if (blueprintPolicy?.[phase]) {
+    return new Set(blueprintPolicy[phase] as SignalType[]);
+  }
+  return PHASE_ALLOWED_SIGNALS[phase];
+}
+
+/**
+ * Get the REIMAGINE-phase lens filter. Blueprint phaseLensPolicy.REIMAGINE
+ * takes precedence when available, otherwise falls back to defaults.
+ */
+export function getReimagineFilter(
+  blueprintPhaseLensPolicy?: { REIMAGINE?: string[] } | null,
+): Set<string> {
+  if (blueprintPhaseLensPolicy?.REIMAGINE?.length) {
+    return new Set(blueprintPhaseLensPolicy.REIMAGINE);
+  }
+  return REIMAGINE_LENSES;
+}
+
+/**
+ * Get the confidence threshold for classification.
+ * Blueprint confidenceRules.classificationThreshold takes precedence.
+ */
+export function getConfidenceThreshold(blueprintThreshold?: number | null): number {
+  return blueprintThreshold ?? CONFIDENCE_THRESHOLD;
+}
+
+/**
+ * Get journey stages for a given phase. Blueprint journey stages take
+ * precedence when available, otherwise falls back to defaults.
+ */
+export function getBlueprintJourneyStages(
+  phase: DialoguePhase,
+  blueprintStages?: Array<{ name: string }> | null,
+): string[] {
+  if (blueprintStages?.length) {
+    return blueprintStages.map(s => s.name);
+  }
+  return DEFAULT_JOURNEY_STAGES[phase];
+}
 
 export type Signal = {
   id: string;
@@ -157,7 +211,8 @@ export type StickyPadType =
   | 'RISK_PROBE'
   | 'ENABLER_PROBE'
   | 'CUSTOMER_IMPACT'
-  | 'OWNERSHIP_ACTION';
+  | 'OWNERSHIP_ACTION'
+  | 'METRIC_CHALLENGE';
 
 export type StickyPadSource = 'seed' | 'prep' | 'agent' | 'signal';
 export type CoverageState = 'active' | 'covered' | 'queued';
@@ -171,6 +226,7 @@ export type StickyPad = {
     triggerType: SignalType;
     sourceNodeIds: string[];
     description: string;
+    metricEvidence?: string | null;
   };
   createdAtMs: number;
   status: 'active' | 'snoozed' | 'dismissed';
@@ -285,7 +341,7 @@ export const DEFAULT_JOURNEY_STAGES: Record<DialoguePhase, string[]> = {
 };
 
 // ══════════════════════════════════════════════════════════
-// STAGE 1 — DETERMINISTIC CATEGORISATION
+// STAGE 1 --DETERMINISTIC CATEGORISATION
 // ══════════════════════════════════════════════════════════
 
 const PRIMARY_TYPE_TO_COG: Record<string, CogNodeType> = {
@@ -327,14 +383,17 @@ export function createInitialNode(
 
 /**
  * Stage 1: Recategorise when classification.updated arrives.
- * Returns updated node (immutable — creates new object).
+ * Returns updated node (immutable -- creates new object).
+ * Optional confidenceThreshold overrides the default (from blueprint).
  */
 export function categoriseNode(
   node: CogNode,
   classification: { primaryType: string; confidence: number; keywords: string[] },
+  confidenceThreshold?: number,
 ): CogNode {
   const mapped = PRIMARY_TYPE_TO_COG[classification.primaryType] || 'UNCLASSIFIED';
-  const confident = classification.confidence >= CONFIDENCE_THRESHOLD;
+  const threshold = confidenceThreshold ?? CONFIDENCE_THRESHOLD;
+  const confident = classification.confidence >= threshold;
 
   return {
     ...node,
@@ -346,7 +405,7 @@ export function categoriseNode(
 }
 
 // ══════════════════════════════════════════════════════════
-// STAGE 2 — LENS APPLICATION
+// STAGE 2 --LENS APPLICATION
 // ══════════════════════════════════════════════════════════
 
 const DEFAULT_DOMAIN_TO_LENS: Record<string, Lens> = {
@@ -371,7 +430,7 @@ export const LENS_TO_DOMAIN = DEFAULT_LENS_TO_DOMAIN;
 
 /**
  * Build domain→lens mapping. With research dimensions, it's identity
- * (no Operations↔Organisation mismatch — dimension names are consistent).
+ * (no Operations↔Organisation mismatch --dimension names are consistent).
  */
 export function buildDomainToLens(customDimensionNames?: string[] | null): Record<string, string> {
   if (customDimensionNames?.length) {
@@ -392,7 +451,7 @@ export function buildLensToDomain(customDimensionNames?: string[] | null): Recor
 
 const LENS_RELEVANCE_THRESHOLD = 0.3;
 
-/** Default keyword patterns per lens — used as fallback when CaptureAPI under-classifies */
+/** Default keyword patterns per lens --used as fallback when CaptureAPI under-classifies */
 const DEFAULT_KEYWORD_LENS_MAP: [string, RegExp][] = [
   ['Customer', /\b(customer\w*|client\w*|consumer\w*|buyer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*|user\w*|experience\w*|journey\w*|satisfaction|retention|churn|onboard\w*|loyalt\w*|feedback)\b/i],
   ['Technology', /\b(technolog\w*|AI|machine.?learning|system\w*|platform\w*|software|digital\w*|automat\w*|data\b|cloud|infra\w*|algorithm\w*|API|integrat\w*|cyber\w*|server\w*|database\w*|scal\w*|architect\w*|deploy\w*|devops|pipeline\w*)\b/i],
@@ -418,7 +477,7 @@ export function buildKeywordLensMap(
 }
 
 /**
- * Keyword-based lens inference — supplements CaptureAPI when it returns weak
+ * Keyword-based lens inference --supplements CaptureAPI when it returns weak
  * or missing domain classifications. Returns lenses at 0.3-0.5 relevance.
  * Accepts optional custom keyword map from research dimensions.
  */
@@ -486,7 +545,7 @@ export function applyLensMapping(
 }
 
 // ══════════════════════════════════════════════════════════
-// STAGE 3 — GAP & SIGNAL DETECTION
+// STAGE 3 --GAP & SIGNAL DETECTION
 // ══════════════════════════════════════════════════════════
 
 /**
@@ -557,7 +616,7 @@ export function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 
 /**
  * Stage 3: Detect structural signals from all nodes.
- * Pure counting and keyword overlap — no semantic inference.
+ * Pure counting and keyword overlap --no semantic inference.
  */
 export function detectSignals(
   nodes: CogNode[],
@@ -736,14 +795,14 @@ function getLensesForNodes(allNodes: CogNode[], nodeIds: string[]): Lens[] {
 }
 
 // ══════════════════════════════════════════════════════════
-// STAGE 4 — STICKY PAD GENERATION
+// STAGE 4 --STICKY PAD GENERATION
 // ══════════════════════════════════════════════════════════
 
 const MAX_ACTIVE_PADS = 8;
 
 /**
  * Stage 4: Generate facilitation sticky pads from detected signals.
- * Template-based string interpolation only — no LLM, no fabrication.
+ * Template-based string interpolation only --no LLM, no fabrication.
  *
  * Phase-aware: only generates pads appropriate for the current DREAM phase.
  * - REIMAGINE: vision, goals, actors only. No constraints/technology/regulation.
@@ -841,6 +900,7 @@ function signalToPadType(type: SignalType): StickyPadType {
     case 'unanswered_question': return 'CLARIFICATION';
     case 'weak_enabler': return 'ENABLER_PROBE';
     case 'risk_cluster': return 'RISK_PROBE';
+    case 'metric_contradiction': return 'METRIC_CHALLENGE';
     default: return 'CLARIFICATION';
   }
 }
@@ -861,7 +921,7 @@ function buildPromptFromSignal(signal: Signal): string {
       return `${signal.nodeIds.length} constraints identified in ${lens}. Are these blockers or conditions to manage?`;
     case 'unanswered_question': {
       const qText = signal.description.replace('Question unanswered: ', '');
-      return `${qText} — raised without a clear response. Worth revisiting?`;
+      return `${qText} --raised without a clear response. Worth revisiting?`;
     }
     case 'weak_enabler':
       return `${signal.description}. What needs to change to unlock this?`;
@@ -873,7 +933,7 @@ function buildPromptFromSignal(signal: Signal): string {
 }
 
 // ══════════════════════════════════════════════════════════
-// STAGE 4B — QUESTION COVERAGE CALCULATION
+// STAGE 4B --QUESTION COVERAGE CALCULATION
 // ══════════════════════════════════════════════════════════
 
 /**
@@ -909,7 +969,7 @@ export function calculateQuestionCoverage(
       relevantScore += 1;
     }
 
-    // Bonus for lens match — if the question mentions a lens and the node is tagged with it
+    // Bonus for lens match --if the question mentions a lens and the node is tagged with it
     for (const nodeLens of node.lenses) {
       if (pad.prompt.toLowerCase().includes(nodeLens.lens.toLowerCase())) {
         relevantScore += 0.3;
@@ -931,7 +991,7 @@ export function calculateQuestionCoverage(
 }
 
 // ══════════════════════════════════════════════════════════
-// STAGE 5 — ACTOR JOURNEY CONSTRUCTION
+// STAGE 5 --ACTOR JOURNEY CONSTRUCTION
 // ══════════════════════════════════════════════════════════
 
 const PHASE_KEYWORDS: Record<JourneyPhase, string[]> = {
@@ -949,7 +1009,7 @@ const PHASE_MATCH_THRESHOLD = 2;
 
 /**
  * Stage 5: Build actor journeys from nodes with actor data.
- * Keyword-driven mapping only — no inferred phases.
+ * Keyword-driven mapping only --no inferred phases.
  */
 export function updateActorJourneys(nodes: CogNode[]): Map<string, ActorJourney> {
   const journeys = new Map<string, ActorJourney>();
@@ -1016,7 +1076,7 @@ function mapSentiment(tone: string): 'positive' | 'neutral' | 'concerned' | 'cri
 }
 
 // ══════════════════════════════════════════════════════════
-// STAGE 5B — LIVE JOURNEY MAP CONSTRUCTION
+// STAGE 5B --LIVE JOURNEY MAP CONSTRUCTION
 // ══════════════════════════════════════════════════════════
 
 const JOURNEY_STAGE_KEYWORDS: Record<string, string[]> = {
@@ -1058,7 +1118,7 @@ function inferIntensityFromSentiment(sentiment: string): { biz: number; cust: nu
 
 /**
  * Stage 5B: Build live journey map from nodes with actor data.
- * Progressive — merges with existing data, preserves facilitator edits.
+ * Progressive --merges with existing data, preserves facilitator edits.
  */
 export function buildLiveJourney(
   nodes: CogNode[],
@@ -1133,7 +1193,7 @@ export function buildLiveJourney(
 }
 
 // ══════════════════════════════════════════════════════════
-// STAGE 5C — MERGE BACKEND JOURNEY DATA
+// STAGE 5C --MERGE BACKEND JOURNEY DATA
 // ══════════════════════════════════════════════════════════
 
 /**
@@ -1154,7 +1214,7 @@ export function mergeBackendJourney(
     actorsMap.set(a.name.toLowerCase(), { ...a });
   }
 
-  // Merge backend actors — update mention counts if higher
+  // Merge backend actors --update mention counts if higher
   for (const a of backend.actors) {
     const key = a.name.toLowerCase();
     const ex = actorsMap.get(key);
@@ -1169,7 +1229,7 @@ export function mergeBackendJourney(
     }
   }
 
-  // Merge interactions — dedup by id
+  // Merge interactions --dedup by id
   const existingIds = new Set(existing.interactions.map(i => i.id));
   const newInteractions = backend.interactions.filter(i => !existingIds.has(i.id));
 

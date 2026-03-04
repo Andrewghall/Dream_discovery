@@ -57,7 +57,7 @@ const JOURNEY_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'assess_completion',
-      description: 'Submit your assessment of journey map completeness. This is your commit tool — call it when you have analyzed the gaps.',
+      description: 'Submit your assessment of journey map completeness. This is your commit tool --call it when you have analyzed the gaps.',
       parameters: {
         type: 'object',
         properties: {
@@ -213,30 +213,44 @@ function buildJourneySystemPrompt(
   liveJourney: LiveJourneyData,
 ): string {
   const prep = guidanceState.prepContext;
+  const bp = guidanceState.blueprint;
   const existing = guidanceState.journeyCompletionState;
+
+  // Actor taxonomy from blueprint (falls back to generic industry inference)
+  const actorSection = bp?.actorTaxonomy?.length
+    ? `DOMAIN-SPECIFIC ACTORS:\n${bp.actorTaxonomy.map(a => `- ${a.label}: ${a.description}`).join('\n')}\nUse these actor names in your assessment and questions.`
+    : 'DOMAIN-SPECIFIC NAMING:\nUse domain-specific actor names. For education: "student" not "customer". For healthcare: "patient". For retail: "shopper". For B2B: "client". Infer from the industry and context.';
+
+  // Journey stages from blueprint
+  const stageNames = bp?.journeyStages?.length
+    ? bp.journeyStages.map(s => s.name)
+    : null;
+  const stageContext = stageNames
+    ? `Blueprint journey stages: ${stageNames.join(', ')}`
+    : '';
 
   return `You are the DREAM Journey Completion Agent. You track the customer journey map being built live during a workshop and identify gaps that need filling.
 
 ${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown industry'})` : ''}
-${prep?.dreamTrack ? `DREAM Track: ${prep.dreamTrack}${prep.targetDomain ? ' — Focus: ' + prep.targetDomain : ''}` : ''}
+${prep?.dreamTrack ? `DREAM Track: ${prep.dreamTrack}${prep.targetDomain ? ' / Focus: ' + prep.targetDomain : ''}` : ''}
 Current workshop phase: ${guidanceState.dialoguePhase}
 ${existing?.domainActorName ? `Domain actor: ${existing.domainActorName}` : ''}
+${stageContext}
 
 YOUR ROLE:
 You assess the customer journey map completeness and identify what's missing. You communicate gaps to the Orchestrator, who coordinates with the Facilitation Agent to generate questions.
 
-JOURNEY DATA MODEL — each interaction should ideally capture:
+JOURNEY DATA MODEL -- each interaction should ideally capture:
 1. Action + channel (what happens and through what medium)
 2. Sentiment / customer EQ (emotional state of the customer at this point)
 3. AI agency level (human / assisted / AI-only) for current state
-4. Automation level — Day 1 vs end state (how it changes over time)
+4. Automation level: Day 1 vs end state (how it changes over time)
 5. Company urgency to engage (businessIntensity)
 6. Proactive vs reactive (is the business initiating or responding?)
 7. Pain points (specific friction or failure points)
 8. Moments of truth (critical decision/experience points)
 
-DOMAIN-SPECIFIC NAMING:
-Use domain-specific actor names. For education: "student" not "customer". For healthcare: "patient". For retail: "shopper". For B2B: "client". Infer from the industry and context.
+${actorSection}
 
 Current journey state: ${liveJourney.stages.length} stages, ${liveJourney.actors.length} actors, ${liveJourney.interactions.length} interactions
 ${existing ? `Previous assessment: ${existing.overallCompletionPercent}% complete (assessment #${existing.assessmentCount})` : 'First assessment'}
@@ -244,7 +258,7 @@ ${existing ? `Previous assessment: ${existing.overallCompletionPercent}% complet
 RULES:
 - Assess ALL dimensions: channels, AI agency, automation, Day 1 vs end state, EQ, urgency, proactive/reactive, pain points, moments of truth
 - Prioritize gaps by impact: stages with zero interactions first, then sparse stages, then missing data fields
-- Generate suggestedPadPrompts that are specific and actionable — not vague
+- Generate suggestedPadPrompts that are specific and actionable, not vague
 - Use domain-specific actor names in all questions
 - Each gap's suggestedQuestion should be something a facilitator can naturally ask the room`;
 }
@@ -386,7 +400,7 @@ export async function runJourneyCompletionAgent(
 }
 
 // ══════════════════════════════════════════════════════════════
-// REVIEW FUNCTION — for reviewing facilitation proposals
+// REVIEW FUNCTION --for reviewing facilitation proposals
 // ══════════════════════════════════════════════════════════════
 
 const JOURNEY_REVIEW_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -437,9 +451,9 @@ REVIEW MODE: You are reviewing proposals from the Facilitation Agent. Assess the
 ${journeyContext ? `\nCURRENT JOURNEY STATE:\n${journeyContext}` : ''}
 
 Your stance:
-- "agree" — proposal helps fill a journey gap or is otherwise valuable
-- "challenge" — proposal duplicates covered ground or misses a critical gap; suggest redirecting to unfilled gaps
-- "build" — proposal is good but should ALSO capture specific journey fields (e.g., "also ask about automation level" or "also capture Day 1 vs end state")
+- "agree" --proposal helps fill a journey gap or is otherwise valuable
+- "challenge" --proposal duplicates covered ground or misses a critical gap; suggest redirecting to unfilled gaps
+- "build" --proposal is good but should ALSO capture specific journey fields (e.g., "also ask about automation level" or "also capture Day 1 vs end state")
 
 Always suggest the most impactful journey data to collect next.`;
 
@@ -518,5 +532,5 @@ Always suggest the most impactful journey data to collect next.`;
     console.error('[Journey Agent Review] Failed:', error instanceof Error ? error.message : error);
   }
 
-  return { agent: 'Journey Agent', stance: 'agree', feedback: 'Review timed out — no objections raised.' };
+  return { agent: 'Journey Agent', stance: 'agree', feedback: 'Review timed out --no objections raised.' };
 }

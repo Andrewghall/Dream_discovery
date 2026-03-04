@@ -22,6 +22,7 @@ import type { GuidanceState } from '../guidance-state';
 import type { AgentConversationCallback, WorkshopPrepResearch } from './agent-types';
 import type { StickyPad, StickyPadType, Lens } from '@/lib/cognitive-guidance/pipeline';
 import { getDimensionNames } from '../workshop-dimensions';
+import { analyzeMetricTrends } from '@/lib/historical-metrics/summarize';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ function buildFacilitationTools(dimensions?: string[]): OpenAI.Chat.Completions.
     type: 'function',
     function: {
       name: 'get_discovery_intelligence',
-      description: 'Get pre-workshop Discovery interview synthesis — themes, pain points, maturity scores.',
+      description: 'Get pre-workshop Discovery interview synthesis --themes, pain points, maturity scores.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -92,6 +93,14 @@ function buildFacilitationTools(dimensions?: string[]): OpenAI.Chat.Completions.
     function: {
       name: 'get_recent_speech',
       description: 'Get the last 10 things participants actually said (verbatim utterances). Ground your questions in their exact words.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_historical_metrics',
+      description: 'Get historical operational performance metrics -- baselines, trends, and changes. Use to check participant claims against real data and probe data-claim mismatches.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -110,7 +119,7 @@ function buildFacilitationTools(dimensions?: string[]): OpenAI.Chat.Completions.
               properties: {
                 type: {
                   type: 'string',
-                  enum: ['CLARIFICATION', 'GAP_PROBE', 'CONTRADICTION_PROBE', 'RISK_PROBE', 'ENABLER_PROBE', 'CUSTOMER_IMPACT', 'OWNERSHIP_ACTION'],
+                  enum: ['CLARIFICATION', 'GAP_PROBE', 'CONTRADICTION_PROBE', 'RISK_PROBE', 'ENABLER_PROBE', 'CUSTOMER_IMPACT', 'OWNERSHIP_ACTION', 'METRIC_CHALLENGE'],
                 },
                 prompt: { type: 'string', description: 'The facilitation question/prompt text.' },
                 lens: {
@@ -126,6 +135,7 @@ function buildFacilitationTools(dimensions?: string[]): OpenAI.Chat.Completions.
                 reasoning: { type: 'string', description: 'Why this pad is relevant now.' },
                 journeyGapId: { type: 'string', description: 'ID of the journey gap this pad addresses (if filling a journey gap).' },
                 padLabel: { type: 'string', description: 'Display label. Use "Journey Mapping" for general journey pads or "Journey: {stage name}" for stage-specific journey pads. Leave empty for non-journey pads.' },
+                metricEvidence: { type: 'string', description: 'For METRIC_CHALLENGE pads: cite the specific metric data that contradicts the participant claim. E.g. "AHT: 245s, increasing +8%"' },
               },
               required: ['type', 'prompt', 'sourceBeliefIds', 'reasoning'],
             },
@@ -267,6 +277,33 @@ function executeFacilitationTool(
       };
     }
 
+    case 'get_historical_metrics': {
+      const metrics = guidanceState.historicalMetrics;
+      if (!metrics) {
+        return {
+          result: JSON.stringify({ available: false, note: 'No historical metrics data uploaded.' }),
+          summary: 'No historical metrics available',
+        };
+      }
+      const trends = analyzeMetricTrends(metrics);
+      return {
+        result: JSON.stringify({
+          available: true,
+          domainPack: metrics.domainPack,
+          sourceCount: metrics.sources.length,
+          metrics: trends.map((t) => ({
+            metricLabel: t.metricLabel,
+            latestValue: t.latestValue,
+            unit: t.unit,
+            latestPeriod: t.latestPeriod,
+            trend: t.trend,
+            changePercent: t.changePercent,
+          })),
+        }),
+        summary: `Historical metrics: ${trends.length} metrics from ${metrics.domainPack} pack`,
+      };
+    }
+
     default:
       return { result: JSON.stringify({ error: 'Unknown tool' }), summary: `Unknown tool: ${toolName}` };
   }
@@ -281,14 +318,21 @@ function buildFacilitationSystemPrompt(
   guidanceState: GuidanceState,
 ): string {
   const prep = guidanceState.prepContext;
+  const bp = guidanceState.blueprint;
   const activeTheme = guidanceState.themes.find((t) => t.id === guidanceState.activeThemeId);
 
-  return `You are a skilled workshop facilitator's intelligent assistant. Your job is to suggest follow-up questions that a facilitator would naturally ask — grounded in what participants have ACTUALLY SAID.
+  // Actor taxonomy from blueprint (falls back to generic guidance)
+  const actorContext = bp?.actorTaxonomy?.length
+    ? `DOMAIN ACTORS: ${bp.actorTaxonomy.map(a => `${a.label} (${a.description})`).join(', ')}. Use these names in your questions.`
+    : '';
+
+  return `You are a skilled workshop facilitator's intelligent assistant. Your job is to suggest follow-up questions that a facilitator would naturally ask, grounded in what participants have ACTUALLY SAID.
 
 ${prep?.clientName ? `Client: ${prep.clientName} (${prep.industry || 'Unknown'})` : ''}
 Phase: ${guidanceState.dialoguePhase}
 Active theme: ${activeTheme ? `"${activeTheme.title}"` : 'None'}
 Beliefs accumulated: ${cogState.beliefs.size}
+${actorContext}
 
 ${guidanceState.currentMainQuestion
   ? `CURRENT MAIN QUESTION (YOUR GOAL):
@@ -297,7 +341,7 @@ Purpose: ${guidanceState.currentMainQuestion.purpose}
 Grounding: ${guidanceState.currentMainQuestion.grounding}
 
 Every sub-question you generate MUST help explore this main question. Stay scoped.`
-  : 'No main question active — generate broadly relevant prompts.'}
+  : 'No main question active, generate broadly relevant prompts.'}
 
 YOUR APPROACH:
 1. Call get_recent_speech to see what participants have actually been saying
@@ -305,15 +349,22 @@ YOUR APPROACH:
 3. Look at the SIGNALS and GAPS in the deliberation brief (missing dimensions, repeated themes, imbalances)
 4. Generate 1-3 questions that a facilitator would naturally ask NEXT
 
-STYLE RULES — THIS IS CRITICAL:
-- ALWAYS reference something specific a participant said: "You mentioned X — can you tell me more about..."
+STYLE RULES, THIS IS CRITICAL:
+- ALWAYS reference something specific a participant said: "You mentioned X, can you tell me more about..."
 - NEVER use consultant language: NO "innovative strategies", NO "enhance", NO "implement", NO "leverage", NO "How might we"
 - NEVER repeat the main question's aspirational framing in sub-questions. The main question already sets the vision. NO "In your ideal...", NO "In the ideal world...", NO "Imagine a future where...", NO "Describe the perfect...", NO "Paint the picture of...", NO "What does the ideal future state look like...". Your job is to probe SPECIFIC aspects with SPECIFIC follow-ups grounded in what participants actually said.
 - Write as a curious colleague: "What does that actually look like day to day?", "Who's affected most by that?"
-- Keep questions SHORT — one sentence, conversational, warm
-- If a signal shows a MISSING DIMENSION, ask about it naturally: "We've heard a lot about Operations — has anyone thought about how Regulation fits in?"
-- If a signal shows a REPEATED THEME, go deeper: "X keeps coming up — what's driving that?"
-- If a signal shows CATEGORY IMBALANCE (lots of constraints, few enablers), flip it: "We've identified several blockers in Y — who's working on solutions?"
+- Keep questions SHORT, one sentence, conversational, warm
+- If a signal shows a MISSING DIMENSION, ask about it naturally: "We've heard a lot about Operations, has anyone thought about how Regulation fits in?"
+- If a signal shows a REPEATED THEME, go deeper: "X keeps coming up, what's driving that?"
+- If a signal shows CATEGORY IMBALANCE (lots of constraints, few enablers), flip it: "We've identified several blockers in Y, who's working on solutions?"
+- If a signal shows a METRIC CONTRADICTION (participant claim vs historical data), probe gently: "You mentioned handle times are good -- the data shows AHT has been climbing, what's driving that?"
+${guidanceState.historicalMetrics
+  ? `
+HISTORICAL PERFORMANCE DATA AVAILABLE. Use get_historical_metrics() to check participant claims against real baselines.
+If someone makes a claim that contradicts the data, probe it constructively -- not accusatively.
+Use METRIC_CHALLENGE pad type for data-backed probes. Include metricEvidence in the pad.`
+  : ''}
 
 PHASE TONE:
 ${guidanceState.dialoguePhase === 'REIMAGINE'
@@ -328,9 +379,9 @@ ${guidanceState.surfacedPadPrompts.map((p, i) => `${i + 1}. "${p}"`).join('\n')}
 ` : ''}
 RULES:
 - Every pad MUST cite sourceBeliefIds from beliefs that actually exist
-- NEVER fabricate — only ask about things grounded in actual beliefs or signals
+- NEVER fabricate, only ask about things grounded in actual beliefs or signals
 - If you can't find enough grounding, generate fewer pads (1 is fine)
-- Quality over quantity — one brilliant probe beats three generic questions`;
+- Quality over quantity, one brilliant probe beats three generic questions`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -351,6 +402,7 @@ export type DeliberationContext = {
   journeyGaps?: string | null;
   signals?: string | null;
   recentUtterances?: string | null;
+  metricsContext?: string | null;
 };
 
 export async function runFacilitationAgent(
@@ -365,9 +417,10 @@ export async function runFacilitationAgent(
   const systemPrompt = buildFacilitationSystemPrompt(cogState, guidanceState);
   const startMs = Date.now();
 
-  // Build dynamic tools using research dimensions (falls back to defaults)
+  // Build dynamic tools: blueprint lenses > research dimensions > defaults
+  const bpLenses = guidanceState.blueprint?.lenses?.map(l => l.name);
   const research = guidanceState.prepContext?.research as WorkshopPrepResearch | null | undefined;
-  const dims = getDimensionNames(research);
+  const dims = bpLenses?.length ? bpLenses : getDimensionNames(research);
   const tools = buildFacilitationTools(dims);
 
   // Build the user message with signals + speech + journey context
@@ -377,6 +430,7 @@ export async function runFacilitationAgent(
     deliberation?.journeyGaps ? `JOURNEY MAP GAPS:\n${deliberation.journeyGaps}` : null,
     deliberation?.researchHighlights ? `RESEARCH CONTEXT: ${deliberation.researchHighlights}` : null,
     deliberation?.discoveryInsights ? `DISCOVERY INSIGHTS: ${deliberation.discoveryInsights}` : null,
+    deliberation?.metricsContext ? `HISTORICAL METRICS:\n${deliberation.metricsContext}` : null,
   ].filter(Boolean).join('\n\n');
 
   const userContent = deliberationBrief
@@ -435,15 +489,17 @@ export async function runFacilitationAgent(
               ? raw.sourceBeliefIds.map(String)
               : [];
 
+            const padType = (raw.type as StickyPadType) || 'CLARIFICATION';
             const pad: StickyPad = {
               id: `pad_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              type: (raw.type as StickyPadType) || 'CLARIFICATION',
+              type: padType,
               prompt: String(raw.prompt || ''),
-              signalStrength: 0.7,
+              signalStrength: padType === 'METRIC_CHALLENGE' ? 0.85 : 0.7,
               provenance: {
-                triggerType: 'repeated_theme',
+                triggerType: padType === 'METRIC_CHALLENGE' ? 'metric_contradiction' : 'repeated_theme',
                 sourceNodeIds: sourceBeliefIds,
                 description: String(raw.reasoning || ''),
+                ...(raw.metricEvidence ? { metricEvidence: String(raw.metricEvidence) } : {}),
               },
               createdAtMs: Date.now(),
               status: 'active',

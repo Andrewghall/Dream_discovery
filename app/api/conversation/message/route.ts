@@ -8,9 +8,12 @@ import {
   getFixedQuestionObject,
   getNextPhase,
   buildQuestionsFromDiscoverySet,
+  buildQuestionsFromBlueprint,
   getPhaseOrderForDiscovery,
+  getPhaseOrderFromBlueprint,
   getPhaseOrder,
 } from '@/lib/conversation/fixed-questions';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -137,11 +140,18 @@ export async function POST(request: NextRequest) {
     const includeRegulation = session.includeRegulation ?? session.workshop.includeRegulation ?? true;
     const questionSetVersion = (session as unknown as { questionSetVersion?: string | null }).questionSetVersion || 'v1';
 
-    // Build custom Discovery questions from workshop config (null if not set)
+    // Build question source (3-tier: discoveryQuestions > blueprint > legacy)
+    const blueprint = readBlueprintFromJson((session.workshop as any).blueprint);
     const customQs = buildQuestionsFromDiscoverySet((session.workshop as any).discoveryQuestions);
+    const blueprintQs =
+      !customQs && blueprint
+        ? buildQuestionsFromBlueprint(blueprint, questionSetVersion)
+        : null;
     const phaseOrder: string[] = customQs
       ? getPhaseOrderForDiscovery((session.workshop as any).discoveryQuestions)
-      : (getPhaseOrder(includeRegulation) as string[]);
+      : blueprint
+        ? (getPhaseOrderFromBlueprint(blueprint) as string[])
+        : (getPhaseOrder(includeRegulation) as string[]);
 
     const lastAiMessage = [...session.messages].reverse().find((m) => m.role === 'AI');
     const questionAsked = lastAiMessage?.content || '';
@@ -218,8 +228,10 @@ export async function POST(request: NextRequest) {
         const nextPhase = getNextPhase('regulation', nextIncludeRegulation);
         const nextQuestionIndex = 0;
 
-        const skipNextQ = customQs
-          ? customQs[nextPhase]?.[nextQuestionIndex]
+        // Use 3-tier cascade for next question after skip
+        const skipQs = customQs || blueprintQs;
+        const skipNextQ = skipQs
+          ? skipQs[nextPhase]?.[nextQuestionIndex] ?? null
           : null;
         const aiResponse = `No problem -- skipping regulation.\n\n${
           skipNextQ
@@ -342,8 +354,8 @@ export async function POST(request: NextRequest) {
       totalParticipantCountCurrentPhase - clarificationCountCurrentPhase
     );
 
-    // Use custom questions if available, otherwise standard versioned set
-    const qs: Record<string, FixedQuestion[]> = customQs || fixedQuestionsForVersion(questionSetVersion);
+    // Use 3-tier question source: discoveryQuestions > blueprint > legacy
+    const qs: Record<string, FixedQuestion[]> = customQs || blueprintQs || fixedQuestionsForVersion(questionSetVersion);
     const totalQuestionsInPhase = qs[currentPhase]?.length || 0;
     let nextQuestionIndex = answeredCountCurrentPhase;
 

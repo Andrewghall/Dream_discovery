@@ -32,6 +32,11 @@ import {
   AgentOrchestrationPanel,
   type AgentConversationEntry,
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
+import BlueprintPreviewPanel from '@/components/prep/blueprint-preview-panel';
+import HistoricalMetricsPanel from '@/components/prep/historical-metrics-panel';
+import { readBlueprintFromJson, type WorkshopBlueprint } from '@/lib/workshop/blueprint';
+import { readHistoricalMetricsFromJson, type HistoricalMetricsData } from '@/lib/historical-metrics/types';
+import { getDomainPack } from '@/lib/domain-packs/registry';
 
 // ══════════════════════════════════════════════════════════
 // TYPES
@@ -53,6 +58,8 @@ type WorkshopPrep = {
   customQuestions: Record<string, unknown> | null;
   discoveryBriefing: Record<string, unknown> | null;
   domainPack: string | null;
+  blueprint: Record<string, unknown> | null;
+  historicalMetrics: Record<string, unknown> | null;
 };
 
 type FacilitationQuestion = {
@@ -189,6 +196,11 @@ export default function PrepPage({ params }: PageProps) {
   const [editingDiscoveryQId, setEditingDiscoveryQId] = useState<string | null>(null);
   const [editingDiscoveryQText, setEditingDiscoveryQText] = useState('');
 
+  // Blueprint and historical metrics
+  const [blueprintData, setBlueprintData] = useState<WorkshopBlueprint | null>(null);
+  const [metricsData, setMetricsData] = useState<HistoricalMetricsData | null>(null);
+  const [hasMetricReferences, setHasMetricReferences] = useState(false);
+
   // Collapsible output cards
   const [researchCollapsed, setResearchCollapsed] = useState(false);
   const [discoveryQuestionsCollapsed, setDiscoveryQuestionsCollapsed] = useState(false);
@@ -220,6 +232,20 @@ export default function PrepPage({ params }: PageProps) {
           setQuestionsData(w.customQuestions as Record<string, unknown> | null);
           setBriefingComplete(!!w.discoveryBriefing);
           setBriefingData(w.discoveryBriefing as BriefingOutput | null);
+
+          // Parse blueprint and metrics from workshop response
+          const bp = readBlueprintFromJson(data.workshop.blueprint);
+          if (bp) setBlueprintData(bp);
+          const hm = readHistoricalMetricsFromJson(data.workshop.historicalMetrics);
+          if (hm) setMetricsData(hm);
+
+          // Check if domain pack has metric references
+          if (w.domainPack) {
+            const pack = getDomainPack(w.domainPack);
+            if (pack && pack.metricReferences.length > 0) {
+              setHasMetricReferences(true);
+            }
+          }
 
           // Fetch Discovery interview questions
           if (w.domainPack) {
@@ -1080,6 +1106,21 @@ export default function PrepPage({ params }: PageProps) {
               </Button>
             </div>
           </div>
+
+          {/* ── Blueprint Preview ─────────────────────────── */}
+          {blueprintData && (
+            <BlueprintPreviewPanel blueprint={blueprintData} />
+          )}
+
+          {/* ── Historical Metrics Upload ─────────────────── */}
+          {hasMetricReferences && workshop?.domainPack && (
+            <HistoricalMetricsPanel
+              workshopId={workshopId}
+              domainPack={workshop.domainPack}
+              existingMetrics={metricsData}
+              onMetricsUpdated={(updated) => setMetricsData(updated)}
+            />
+          )}
 
           {/* ── Research Output ─────────────────────────── */}
           {researchData && (
