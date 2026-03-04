@@ -30,6 +30,20 @@ function toEngagementEnum(value: unknown): EngagementType | null {
   return null;
 }
 
+function isLikelySchemaDriftError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes('does not exist') ||
+    message.includes('unknown arg') ||
+    message.includes('invalid invocation') ||
+    message.includes('column') ||
+    message.includes('engagement_type') ||
+    message.includes('domain_pack') ||
+    message.includes('blueprint') ||
+    message.includes('historical_metrics')
+  );
+}
+
 /**
  * GET /api/admin/workshops/[id]
  *
@@ -99,39 +113,138 @@ export async function GET(
       return NextResponse.json({ error: validation.error }, { status: 403 });
     }
 
-    const workshop = await prisma.workshop.findUnique({
-      where: { id },
-      include: {
-        participants: {
-          orderBy: { createdAt: 'asc' },
-          select: {
-            id: true,
-            workshopId: true,
-            email: true,
-            name: true,
-            role: true,
-            department: true,
-            discoveryToken: true,
-            attributionPreference: true,
-            emailSentAt: true,
-            doNotSendAgain: true,
-            responseStartedAt: true,
-            responseCompletedAt: true,
-            reminderSentAt: true,
-            createdAt: true,
+    let workshop: Record<string, unknown> | null = null;
+    try {
+      workshop = await prisma.workshop.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          organizationId: true,
+          name: true,
+          description: true,
+          businessContext: true,
+          includeRegulation: true,
+          workshopType: true,
+          status: true,
+          scheduledDate: true,
+          responseDeadline: true,
+          clientName: true,
+          industry: true,
+          companyWebsite: true,
+          dreamTrack: true,
+          targetDomain: true,
+          prepResearch: true,
+          customQuestions: true,
+          discoveryBriefing: true,
+          engagementType: true,
+          domainPack: true,
+          domainPackConfig: true,
+          discoveryQuestions: true,
+          blueprint: true,
+          historicalMetrics: true,
+          participants: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              workshopId: true,
+              email: true,
+              name: true,
+              role: true,
+              department: true,
+              discoveryToken: true,
+              attributionPreference: true,
+              emailSentAt: true,
+              doNotSendAgain: true,
+              responseStartedAt: true,
+              responseCompletedAt: true,
+              reminderSentAt: true,
+              createdAt: true,
+            },
+          },
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              logoUrl: true,
+              primaryColor: true,
+              secondaryColor: true,
+            },
           },
         },
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            logoUrl: true,
-            primaryColor: true,
-            secondaryColor: true,
+      }) as unknown as Record<string, unknown> | null;
+    } catch (error: unknown) {
+      if (!isLikelySchemaDriftError(error)) throw error;
+      // Legacy DB compatibility: load only older fields then hydrate missing new fields as null.
+      const legacy = await prisma.workshop.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          organizationId: true,
+          name: true,
+          description: true,
+          businessContext: true,
+          includeRegulation: true,
+          workshopType: true,
+          status: true,
+          scheduledDate: true,
+          responseDeadline: true,
+          createdAt: true,
+          updatedAt: true,
+          participants: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              workshopId: true,
+              email: true,
+              name: true,
+              role: true,
+              department: true,
+              discoveryToken: true,
+              emailSentAt: true,
+              responseStartedAt: true,
+              responseCompletedAt: true,
+              reminderSentAt: true,
+              createdAt: true,
+            },
+          },
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              logoUrl: true,
+              primaryColor: true,
+              secondaryColor: true,
+            },
           },
         },
-      },
-    });
+      });
+      if (!legacy) {
+        workshop = null;
+      } else {
+        workshop = {
+          ...legacy,
+          clientName: null,
+          industry: null,
+          companyWebsite: null,
+          dreamTrack: null,
+          targetDomain: null,
+          prepResearch: null,
+          customQuestions: null,
+          discoveryBriefing: null,
+          engagementType: null,
+          domainPack: null,
+          domainPackConfig: null,
+          discoveryQuestions: null,
+          blueprint: null,
+          historicalMetrics: null,
+          participants: (legacy.participants || []).map((p) => ({
+            ...p,
+            attributionPreference: 'NAMED',
+            doNotSendAgain: false,
+          })),
+        };
+      }
+    }
 
     if (!workshop) {
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
