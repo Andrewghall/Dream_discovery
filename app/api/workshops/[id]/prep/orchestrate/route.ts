@@ -13,6 +13,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runPrepOrchestrator } from '@/lib/cognition/agents/prep-orchestrator';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,7 @@ export async function POST(
       companyWebsite: true,
       dreamTrack: true,
       targetDomain: true,
+      blueprint: true,
     },
   });
 
@@ -72,6 +74,7 @@ export async function POST(
     companyWebsite: workshop.companyWebsite,
     dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
     targetDomain: workshop.targetDomain,
+    blueprint: readBlueprintFromJson(workshop.blueprint),
   };
 
   // ── SSE stream ─────────────────────────────────────

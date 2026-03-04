@@ -27,7 +27,9 @@ import type {
   PrepContext,
   AgentConversationCallback,
   LensSource,
+  DataConfidence,
 } from './agent-types';
+import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -44,14 +46,19 @@ const DEFAULT_PHASE_LENS_ORDER: Record<WorkshopPhase, string[]> = {
 };
 
 /**
- * Get lens order for a phase - uses research dimensions when available.
- * With custom dimensions, all phases use all dimensions.
+ * Get lens order for a phase.
+ * Priority: blueprint phaseLensPolicy > research dimensions > hardcoded defaults.
  * Returns both the lens list and the source for tracking.
  */
 export function getPhaseLensOrder(
   phase: WorkshopPhase,
   research?: WorkshopPrepResearch | null,
+  blueprint?: WorkshopBlueprint | null,
 ): { lenses: string[]; source: LensSource } {
+  // Blueprint is the most complete source (already incorporates research dimensions)
+  if (blueprint?.phaseLensPolicy?.[phase]?.length) {
+    return { lenses: blueprint.phaseLensPolicy[phase], source: blueprint.domainPack ? 'domain_pack' : 'research_dimensions' };
+  }
   if (research?.industryDimensions?.length) {
     return { lenses: research.industryDimensions.map(d => d.name), source: 'research_dimensions' };
   }
@@ -93,6 +100,19 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       name: 'get_discovery_insights',
       description:
         'Retrieve insights from completed Discovery interviews - key themes, pain points, aspirations, consensus areas, divergence areas, and maturity scores. This is what participants have ALREADY told us. Use this to build questions that go deeper, not repeat what was said.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_blueprint_constraints',
+      description:
+        'Retrieve the workshop blueprint constraints that govern question design -- required topics that MUST be covered, forbidden topics to avoid, focus areas to emphasize, domain-specific metrics to probe, and question count policy. Call this BEFORE designing questions.',
       parameters: {
         type: 'object',
         properties: {},
@@ -185,7 +205,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: 'commit_question_set',
       description:
-        'Commit the final workshop facilitation question set. Call this after designing questions for all three phases. Include an overall rationale explaining the question strategy.',
+        'Commit the final workshop facilitation question set. Call this after designing questions for all three phases. Include an overall rationale explaining the question strategy and an honest assessment of data confidence.',
       parameters: {
         type: 'object',
         properties: {
@@ -194,8 +214,20 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             description:
               'A paragraph explaining the overall question design strategy - how the questions build on Discovery insights, why certain topics are emphasized, and how they guide the facilitator through the workshop. This is shown to the facilitator.',
           },
+          dataConfidence: {
+            type: 'string',
+            enum: ['high', 'moderate', 'low'],
+            description:
+              'Overall confidence in question quality based on available data. high = research + Discovery data available and informing questions; moderate = research only, no Discovery data; low = no research, no Discovery -- questions are best-effort from general knowledge.',
+          },
+          dataSufficiencyNotes: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Specific notes about missing data or gaps that affect question quality. E.g. "No Discovery interview data available", "Research did not cover regulatory landscape", "Only 3 of 12 participants completed interviews".',
+          },
         },
-        required: ['designRationale'],
+        required: ['designRationale', 'dataConfidence', 'dataSufficiencyNotes'],
       },
     },
   },
@@ -309,48 +341,99 @@ function executeQuestionSetTool(
       };
     }
 
+    case 'get_blueprint_constraints': {
+      const bp = context.blueprint;
+      if (!bp || !bp.questionConstraints) {
+        return {
+          result: JSON.stringify({
+            available: false,
+            note: 'No blueprint constraints available. Use general question design principles.',
+          }),
+          summary: '**Blueprint constraints:** Not available. Using general question design defaults.',
+        };
+      }
+
+      const { questionConstraints, questionPolicy, diagnosticFocus, journeyStages } = bp;
+      const requiredList = questionConstraints.requiredTopics.length > 0
+        ? questionConstraints.requiredTopics.map(t => `  - ${t}`).join('\n')
+        : '  (none)';
+      const forbiddenList = questionConstraints.forbiddenTopics.length > 0
+        ? questionConstraints.forbiddenTopics.map(t => `  - ${t}`).join('\n')
+        : '  (none)';
+      const focusList = questionConstraints.focusAreas.length > 0
+        ? questionConstraints.focusAreas.map(f => `  - ${f}`).join('\n')
+        : '  (none)';
+      const metricsList = questionConstraints.domainMetrics.length > 0
+        ? questionConstraints.domainMetrics.join(', ')
+        : '(none)';
+
+      return {
+        result: JSON.stringify({
+          available: true,
+          questionConstraints,
+          questionPolicy,
+          diagnosticFocus: diagnosticFocus || null,
+          journeyStages: journeyStages.map(s => ({ name: s.name, description: s.description })),
+        }),
+        summary: `**Retrieved blueprint constraints:**\n\n**Required Topics** (MUST cover)\n${requiredList}\n\n**Forbidden Topics** (avoid)\n${forbiddenList}\n\n**Focus Areas** (weight toward)\n${focusList}\n\n**Domain Metrics:** ${metricsList}\n\n**Question Policy:** ${questionPolicy.questionsPerPhase} questions/phase, ${questionPolicy.subQuestionsPerMain} sub-questions/main${diagnosticFocus ? `\n\n**Diagnostic Focus:** ${diagnosticFocus}` : ''}`,
+      };
+    }
+
     case 'get_workshop_phases': {
       const trackContext = context.dreamTrack === 'DOMAIN'
         ? `This is a **Domain-focused** workshop targeting **${context.targetDomain || 'a specific business area'}**. Questions should be weighted toward this domain while still covering all relevant lenses.`
         : 'This is an **Enterprise-wide** assessment. Questions should cover all lenses equally.';
 
-      const reimagine = getPhaseLensOrder('REIMAGINE', research);
-      const constraints = getPhaseLensOrder('CONSTRAINTS', research);
-      const defineApproach = getPhaseLensOrder('DEFINE_APPROACH', research);
+      const bp = context.blueprint;
+      const reimagine = getPhaseLensOrder('REIMAGINE', research, bp);
+      const constraints = getPhaseLensOrder('CONSTRAINTS', research, bp);
+      const defineApproach = getPhaseLensOrder('DEFINE_APPROACH', research, bp);
       const lensSource = reimagine.source; // same source for all phases
+
+      // Read question counts from blueprint policy, with sensible fallbacks
+      const qPerPhase = bp?.questionPolicy?.questionsPerPhase ?? 5;
+      const subPerMain = bp?.questionPolicy?.subQuestionsPerMain ?? 3;
+      const questionCountLabel = `${qPerPhase} questions`;
+
+      // Include journey stages from blueprint if available
+      const journeyStages = bp?.journeyStages?.length
+        ? bp.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')
+        : null;
 
       return {
         result: JSON.stringify({
           dreamTrack: context.dreamTrack,
           targetDomain: context.targetDomain,
           trackGuidance: trackContext,
-          hasResearchedDimensions: lensSource === 'research_dimensions',
+          hasResearchedDimensions: lensSource === 'research_dimensions' || lensSource === 'domain_pack',
           lensSource,
+          questionPolicy: { questionsPerPhase: qPerPhase, subQuestionsPerMain: subPerMain },
+          journeyStages: bp?.journeyStages || null,
           phases: {
             REIMAGINE: {
               label: 'Reimagine',
               purpose: PHASE_GUIDANCE.REIMAGINE,
               lensOrder: reimagine.lenses,
-              questionCount: '5-8 questions',
+              questionCount: questionCountLabel,
               keyPrinciple: 'NO constraints. Pure vision. Dream big.',
             },
             CONSTRAINTS: {
               label: 'Constraints',
               purpose: PHASE_GUIDANCE.CONSTRAINTS,
               lensOrder: constraints.lenses,
-              questionCount: '6-10 questions',
+              questionCount: questionCountLabel,
               keyPrinciple: 'Map what stands in the way. Right-to-left through lenses.',
             },
             DEFINE_APPROACH: {
               label: 'Define Approach',
               purpose: PHASE_GUIDANCE.DEFINE_APPROACH,
               lensOrder: defineApproach.lenses,
-              questionCount: '6-10 questions',
+              questionCount: questionCountLabel,
               keyPrinciple: 'Build the practical path forward. Left-to-right through lenses.',
             },
           },
         }),
-        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE APPROACH (${defineApproach.lenses.length} dimensions).${lensSource === 'research_dimensions' ? ` Using research-derived dimensions: ${reimagine.lenses.join(', ')}.` : ' Using generic default lenses.'} Now designing facilitation questions for each phase...`,
+        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE APPROACH (${defineApproach.lenses.length} dimensions).${lensSource !== 'generic_fallback' ? ` Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}.` : ' Using generic default lenses.'} Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
       };
     }
 
@@ -421,7 +504,44 @@ function executeQuestionSetTool(
 export function buildQuestionSetSystemPrompt(context: PrepContext, research?: WorkshopPrepResearch | null, discoveryBriefing?: Record<string, unknown> | null): string {
   const trackDesc = context.dreamTrack === 'DOMAIN'
     ? `The DREAM track is **Domain**, focused on **${context.targetDomain || 'a specific area'}**. Weight questions toward this domain while still covering all relevant lenses in each phase.`
-    : 'The DREAM track is **Enterprise** \u2014 a full end-to-end assessment across the entire business.';
+    : 'The DREAM track is **Enterprise** -- a full end-to-end assessment across the entire business.';
+
+  // Build blueprint constraints block if available and meaningful
+  const bp = context.blueprint;
+  let constraintsBlock = '';
+  const qc = bp?.questionConstraints;
+  const hasConstraintContent = qc && (
+    qc.requiredTopics.length > 0 ||
+    qc.forbiddenTopics.length > 0 ||
+    qc.focusAreas.length > 0 ||
+    qc.domainMetrics.length > 0
+  );
+  if (hasConstraintContent && qc) {
+    const { requiredTopics, forbiddenTopics, focusAreas, domainMetrics } = qc;
+    const sections: string[] = [];
+
+    if (requiredTopics.length > 0) {
+      sections.push(`REQUIRED TOPICS -- You MUST cover each of these in at least one question:\n${requiredTopics.map(t => `  - ${t}`).join('\n')}`);
+    }
+    if (forbiddenTopics.length > 0) {
+      sections.push(`FORBIDDEN TOPICS -- Do NOT ask about these:\n${forbiddenTopics.map(t => `  - ${t}`).join('\n')}`);
+    }
+    if (focusAreas.length > 0) {
+      sections.push(`FOCUS AREAS -- Weight your questions toward these themes:\n${focusAreas.map(f => `  - ${f}`).join('\n')}`);
+    }
+    if (domainMetrics.length > 0) {
+      sections.push(`DOMAIN METRICS -- Reference these KPIs in question grounding:\n${domainMetrics.map(m => `  - ${m}`).join('\n')}`);
+    }
+
+    const qPolicy = bp.questionPolicy;
+    sections.push(`QUESTION POLICY:\n  - Target ${qPolicy.questionsPerPhase} questions per phase\n  - ${qPolicy.subQuestionsPerMain} starter sub-questions per main question`);
+
+    if (bp.diagnosticFocus) {
+      sections.push(`DIAGNOSTIC FOCUS: ${bp.diagnosticFocus}`);
+    }
+
+    constraintsBlock = `\nQUESTION CONSTRAINTS (from workshop blueprint):\n\n${sections.join('\n\n')}\n`;
+  }
 
   return `You are the DREAM Workshop Question Set Agent. Your job is to design the
 facilitation questions that will guide the live workshop session for
@@ -489,19 +609,20 @@ generic People/Organisation/Customer/Technology/Regulation names.
    Lenses: People, Organisation, Technology, Customer, Regulation
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
-`}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}
+`}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}${constraintsBlock}
 YOUR APPROACH:
 1. First, get the research context (company, industry, challenges).
 2. Get Discovery insights if available (what participants already told us).
-3. Get the workshop phase structure (lens order, purpose).
-4. For each phase in order (REIMAGINE, CONSTRAINTS, DEFINE_APPROACH):
-   - Design 5-8 facilitation questions per phase
+3. Get blueprint constraints (required/forbidden topics, focus areas, metrics).
+4. Get the workshop phase structure (lens order, purpose).
+5. For each phase in order (REIMAGINE, CONSTRAINTS, DEFINE_APPROACH):
+   - Design ${bp?.questionPolicy?.questionsPerPhase ?? 5} facilitation questions per phase
    - Each question should follow the lens order for that phase
    - Questions MUST reference specific company context where possible
    - Questions should BUILD ON Discovery insights, not repeat them
    - If Discovery revealed a pain point, ask "how does this play into the
      constraints?" - don't ask "what are your pain points?" again
-   - For EACH main question, generate 2-3 starter sub-questions. These are
+   - For EACH main question, generate ${bp?.questionPolicy?.subQuestionsPerMain ?? 3} starter sub-questions. These are
      specific angles or probes that immediately trigger dialogue when the
      facilitator activates the main question. Sub-questions should:
      * Each target a specific dimension from the workshop's lens set
@@ -523,7 +644,7 @@ YOUR APPROACH:
          Ask "what stands in the way?", "what limitations exist?"
        DEFINE_APPROACH subs should be actionable and ownership-focused.
          Ask "who owns this?", "what's step one?", "how do we prove it?"
-5. Commit the final question set with a design rationale.
+6. Commit the final question set with a design rationale and data confidence assessment.
 
 QUESTION DESIGN PRINCIPLES:
 - Questions are for a GROUP discussion, not individual interviews
@@ -662,16 +783,22 @@ export async function runQuestionSetAgent(
             }
           }
 
-          const { source: lensSourceLabel } = getPhaseLensOrder('REIMAGINE', research);
+          const { source: lensSourceLabel } = getPhaseLensOrder('REIMAGINE', research, context.blueprint);
+          const confidenceLabel = String(fnArgs.dataConfidence || 'moderate');
+          const sufficiencyNotes = Array.isArray(fnArgs.dataSufficiencyNotes) ? fnArgs.dataSufficiencyNotes.map(String) : [];
+          const sufficiencyBlock = sufficiencyNotes.length > 0
+            ? `\n\n**Data Sufficiency Notes**\n${sufficiencyNotes.map(n => `  - ${n}`).join('\n')}`
+            : '';
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'question-set-agent',
             to: 'prep-orchestrator',
-            message: `I've completed the workshop facilitation question set. **${totalQuestions} questions** across 3 phases (lensSource: ${lensSourceLabel}).\n\n**Design Rationale**\n${String(fnArgs.designRationale || '')}\n\n**Questions by Phase**\n${phasesSummary.join('\n')}`,
+            message: `I've completed the workshop facilitation question set. **${totalQuestions} questions** across 3 phases (lensSource: ${lensSourceLabel}, confidence: ${confidenceLabel}).\n\n**Design Rationale**\n${String(fnArgs.designRationale || '')}${sufficiencyBlock}\n\n**Questions by Phase**\n${phasesSummary.join('\n')}`,
             type: 'proposal',
             metadata: {
-              toolsUsed: ['get_research_context', 'get_discovery_insights', 'get_workshop_phases', 'design_phase_questions'],
+              toolsUsed: ['get_research_context', 'get_discovery_insights', 'get_blueprint_constraints', 'get_workshop_phases', 'design_phase_questions'],
               lensSource: lensSourceLabel,
+              dataConfidence: confidenceLabel,
             },
           });
 
@@ -695,7 +822,7 @@ export async function runQuestionSetAgent(
               type: 'request',
               metadata: { toolsUsed: [fnName] },
             });
-          } else if (fnName === 'get_research_context' || fnName === 'get_discovery_insights' || fnName === 'get_workshop_phases') {
+          } else if (fnName === 'get_research_context' || fnName === 'get_discovery_insights' || fnName === 'get_blueprint_constraints' || fnName === 'get_workshop_phases') {
             onConversation?.({
               timestampMs: Date.now(),
               agent: 'question-set-agent',
@@ -719,20 +846,28 @@ export async function runQuestionSetAgent(
       if (committed) {
         const elapsed = Date.now() - startMs;
         console.log(`[Question Set Agent] Committed after ${iteration + 1} iterations, ${elapsed}ms`);
+        const commitArgs = fnArgs_extract_full(messages);
         return buildWorkshopQuestionSet(
           designedPhases,
-          String(
-            (messages.find(m => m.role === 'tool' && typeof m.content === 'string' && m.content.includes('committed'))
-              ? fnArgs_extract(messages) : '') || 'Questions designed for workshop facilitation.'
-          ),
+          commitArgs.designRationale || 'Questions designed for workshop facilitation.',
           research,
+          context.blueprint,
+          (commitArgs.dataConfidence as DataConfidence) || 'moderate',
+          commitArgs.dataSufficiencyNotes || [],
         );
       }
     }
 
-    // Loop ended without commit - build from whatever phases were designed
-    console.log('[Question Set Agent] Loop ended without commit \u2014 building from designed phases');
-    return buildWorkshopQuestionSet(designedPhases, 'Workshop facilitation questions designed based on company context.', research);
+    // Loop ended without commit -- build from whatever phases were designed
+    console.log('[Question Set Agent] Loop ended without commit -- building from designed phases');
+    return buildWorkshopQuestionSet(
+      designedPhases,
+      'Workshop facilitation questions designed based on company context.',
+      research,
+      context.blueprint,
+      'moderate',
+      ['Agent loop ended without explicit commit -- confidence assessment may be incomplete'],
+    );
   } catch (error) {
     console.error('[Question Set Agent] Failed:', error instanceof Error ? error.message : error);
 
@@ -748,22 +883,31 @@ export async function runQuestionSetAgent(
   }
 }
 
-// Helper to extract designRationale from committed message
-function fnArgs_extract(messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[]): string {
-  // Look through messages for the commit_question_set tool call arguments
+// Helper to extract all commit args from the committed message
+function fnArgs_extract_full(messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[]): {
+  designRationale: string;
+  dataConfidence: string;
+  dataSufficiencyNotes: string[];
+} {
   for (const msg of messages) {
     if (msg.role === 'assistant' && 'tool_calls' in msg && msg.tool_calls) {
       for (const tc of msg.tool_calls) {
         if (tc.type === 'function' && tc.function.name === 'commit_question_set') {
           try {
             const args = JSON.parse(tc.function.arguments);
-            return String(args.designRationale || '');
+            return {
+              designRationale: String(args.designRationale || ''),
+              dataConfidence: String(args.dataConfidence || 'moderate'),
+              dataSufficiencyNotes: Array.isArray(args.dataSufficiencyNotes)
+                ? args.dataSufficiencyNotes.map(String)
+                : [],
+            };
           } catch { /* ignore */ }
         }
       }
     }
   }
-  return '';
+  return { designRationale: '', dataConfidence: 'moderate', dataSufficiencyNotes: [] };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -775,6 +919,9 @@ export function buildWorkshopQuestionSet(
   designedPhases: Map<WorkshopPhase, FacilitationQuestion[]>,
   designRationale: string,
   research?: WorkshopPrepResearch | null,
+  blueprint?: WorkshopBlueprint | null,
+  dataConfidence?: DataConfidence,
+  dataSufficiencyNotes?: string[],
 ): WorkshopQuestionSet {
   const allPhases: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
 
@@ -783,7 +930,7 @@ export function buildWorkshopQuestionSet(
   for (const phase of allPhases) {
     const designed = designedPhases.get(phase);
     const phaseLabel = phase === 'DEFINE_APPROACH' ? 'Define Approach' : phase.charAt(0) + phase.slice(1).toLowerCase();
-    const { lenses } = getPhaseLensOrder(phase, research);
+    const { lenses } = getPhaseLensOrder(phase, research, blueprint);
 
     phases[phase] = {
       label: phaseLabel,
@@ -797,6 +944,8 @@ export function buildWorkshopQuestionSet(
     phases,
     designRationale,
     generatedAtMs: Date.now(),
+    dataConfidence: dataConfidence ?? 'low',
+    dataSufficiencyNotes: dataSufficiencyNotes ?? ['No data confidence assessment available'],
   };
 }
 
@@ -910,5 +1059,12 @@ function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuest
 }
 
 function fallbackQuestionSet(context: PrepContext): WorkshopQuestionSet {
-  return buildWorkshopQuestionSet(new Map(), `Generic workshop facilitation questions for ${context.clientName || 'the client'}. These have not been tailored to specific company context or Discovery insights - the facilitator should review and modify as needed.`, null);
+  return buildWorkshopQuestionSet(
+    new Map(),
+    `Generic workshop facilitation questions for ${context.clientName || 'the client'}. These have not been tailored to specific company context or Discovery insights -- the facilitator should review and modify as needed.`,
+    null,
+    context.blueprint,
+    'low',
+    ['Fallback question set used -- agent could not complete design'],
+  );
 }

@@ -6,6 +6,7 @@
  */
 
 import type { AgentConversationEntry } from '@/components/cognitive-guidance/agent-orchestration-panel';
+import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
 
 // ══════════════════════════════════════════════════════════
 // RE-EXPORT UI TYPE
@@ -86,6 +87,8 @@ export type FacilitationQuestion = {
   subQuestions: SubQuestion[]; // 2-3 starter sub-questions for live session post-its
 };
 
+export type DataConfidence = 'high' | 'moderate' | 'low';
+
 export type WorkshopQuestionSet = {
   phases: Record<WorkshopPhase, {
     label: string;
@@ -95,6 +98,8 @@ export type WorkshopQuestionSet = {
   }>;
   designRationale: string;    // Agent's explanation of the overall question strategy
   generatedAtMs: number;
+  dataConfidence: DataConfidence;           // Overall confidence in question quality
+  dataSufficiencyNotes: string[];           // Specific notes about missing data or gaps
 };
 
 // Legacy alias for backward compatibility with existing stored data
@@ -202,4 +207,6 @@ export type PrepContext = {
   engagementType?: string | null;
   domainPack?: string | null;
   domainPackConfig?: Record<string, unknown> | null;
+  // Runtime blueprint (optional - loaded from workshop.blueprint)
+  blueprint?: WorkshopBlueprint | null;
 };

@@ -383,8 +383,10 @@ export async function runDiscoveryIntelligenceAgent(
   const systemPrompt = buildDiscoverySystemPrompt(context);
   const startMs = Date.now();
 
-  // Build dynamic tools using research dimensions
-  const dims = getDimensionNames(research);
+  // Build dynamic tools using blueprint lenses (preferred) or research dimensions (fallback)
+  const dims = context.blueprint?.lenses?.length
+    ? context.blueprint.lenses.map(l => l.name)
+    : getDimensionNames(research);
   const tools = buildDiscoveryTools(dims);
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [

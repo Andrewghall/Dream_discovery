@@ -12,6 +12,7 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runDiscoveryIntelligenceAgent } from '@/lib/cognition/agents/discovery-intelligence-agent';
 import { hasDiscoveryData } from '@/lib/cognition/agents/agent-types';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
@@ -51,6 +52,7 @@ export async function POST(
       dreamTrack: true,
       targetDomain: true,
       prepResearch: true,
+      blueprint: true,
     },
   });
 
@@ -70,6 +72,7 @@ export async function POST(
     companyWebsite: workshop.companyWebsite,
     dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
     targetDomain: workshop.targetDomain,
+    blueprint: readBlueprintFromJson(workshop.blueprint),
   };
 
   const research = workshop.prepResearch as unknown as WorkshopPrepResearch | null;

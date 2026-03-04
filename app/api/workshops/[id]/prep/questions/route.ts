@@ -15,6 +15,7 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runQuestionSetAgent } from '@/lib/cognition/agents/question-set-agent';
 import { hasDiscoveryData } from '@/lib/cognition/agents/agent-types';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,7 @@ async function loadWorkshopPrep(workshopId: string) {
       prepResearch: true,
       customQuestions: true,
       discoveryBriefing: true,
+      blueprint: true,
     },
   });
 
@@ -77,6 +79,7 @@ export async function POST(
     companyWebsite: workshop.companyWebsite,
     dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
     targetDomain: workshop.targetDomain,
+    blueprint: readBlueprintFromJson(workshop.blueprint),
   };
 
   const research = workshop.prepResearch as unknown as WorkshopPrepResearch | null;

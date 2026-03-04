@@ -23,6 +23,7 @@ export type AgentConversationEntry = {
     journeyStageCount?: number;
     dimensionCount?: number;
     lensSource?: 'research_dimensions' | 'domain_pack' | 'generic_fallback';
+    dataConfidence?: string;
   };
 };
 
