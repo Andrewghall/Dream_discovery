@@ -26,7 +26,7 @@ import type {
   WorkshopPrepResearch,
   PrepContext,
   AgentConversationCallback,
-  LensName,
+  LensSource,
 } from './agent-types';
 
 // ── Constants ───────────────────────────────────────────────
@@ -46,12 +46,16 @@ const DEFAULT_PHASE_LENS_ORDER: Record<WorkshopPhase, string[]> = {
 /**
  * Get lens order for a phase - uses research dimensions when available.
  * With custom dimensions, all phases use all dimensions.
+ * Returns both the lens list and the source for tracking.
  */
-function getPhaseLensOrder(phase: WorkshopPhase, research?: WorkshopPrepResearch | null): string[] {
+export function getPhaseLensOrder(
+  phase: WorkshopPhase,
+  research?: WorkshopPrepResearch | null,
+): { lenses: string[]; source: LensSource } {
   if (research?.industryDimensions?.length) {
-    return research.industryDimensions.map(d => d.name);
+    return { lenses: research.industryDimensions.map(d => d.name), source: 'research_dimensions' };
   }
-  return DEFAULT_PHASE_LENS_ORDER[phase];
+  return { lenses: DEFAULT_PHASE_LENS_ORDER[phase], source: 'generic_fallback' };
 }
 
 /** @deprecated Use getPhaseLensOrder - kept for backward compat */
@@ -130,7 +134,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               properties: {
                 lens: {
                   type: 'string',
-                  description: 'The DREAM lens this question addresses (People, Organisation, Customer, Technology, Regulation, or General for cross-cutting).',
+                  description: 'The dimension/lens this question addresses. Use the dimension names from get_workshop_phases (these may be research-derived industry dimensions or the default lenses). Use "General" for cross-cutting questions.',
                 },
                 text: {
                   type: 'string',
@@ -152,7 +156,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                     properties: {
                       lens: {
                         type: 'string',
-                        description: 'The DREAM lens this sub-question explores.',
+                        description: 'The dimension/lens this sub-question explores. Use dimension names from get_workshop_phases or "General".',
                       },
                       text: {
                         type: 'string',
@@ -310,41 +314,43 @@ function executeQuestionSetTool(
         ? `This is a **Domain-focused** workshop targeting **${context.targetDomain || 'a specific business area'}**. Questions should be weighted toward this domain while still covering all relevant lenses.`
         : 'This is an **Enterprise-wide** assessment. Questions should cover all lenses equally.';
 
-      const reimagineLenses = getPhaseLensOrder('REIMAGINE', research);
-      const constraintLenses = getPhaseLensOrder('CONSTRAINTS', research);
-      const defineLenses = getPhaseLensOrder('DEFINE_APPROACH', research);
+      const reimagine = getPhaseLensOrder('REIMAGINE', research);
+      const constraints = getPhaseLensOrder('CONSTRAINTS', research);
+      const defineApproach = getPhaseLensOrder('DEFINE_APPROACH', research);
+      const lensSource = reimagine.source; // same source for all phases
 
       return {
         result: JSON.stringify({
           dreamTrack: context.dreamTrack,
           targetDomain: context.targetDomain,
           trackGuidance: trackContext,
-          hasResearchedDimensions: !!research?.industryDimensions?.length,
+          hasResearchedDimensions: lensSource === 'research_dimensions',
+          lensSource,
           phases: {
             REIMAGINE: {
               label: 'Reimagine',
               purpose: PHASE_GUIDANCE.REIMAGINE,
-              lensOrder: reimagineLenses,
+              lensOrder: reimagine.lenses,
               questionCount: '5-8 questions',
               keyPrinciple: 'NO constraints. Pure vision. Dream big.',
             },
             CONSTRAINTS: {
               label: 'Constraints',
               purpose: PHASE_GUIDANCE.CONSTRAINTS,
-              lensOrder: constraintLenses,
+              lensOrder: constraints.lenses,
               questionCount: '6-10 questions',
               keyPrinciple: 'Map what stands in the way. Right-to-left through lenses.',
             },
             DEFINE_APPROACH: {
               label: 'Define Approach',
               purpose: PHASE_GUIDANCE.DEFINE_APPROACH,
-              lensOrder: defineLenses,
+              lensOrder: defineApproach.lenses,
               questionCount: '6-10 questions',
               keyPrinciple: 'Build the practical path forward. Left-to-right through lenses.',
             },
           },
         }),
-        summary: `Retrieved workshop phase structure. ${trackContext}\n\n3 phases: REIMAGINE (${reimagineLenses.length} lenses), CONSTRAINTS (${constraintLenses.length} lenses), DEFINE APPROACH (${defineLenses.length} lenses). Now designing facilitation questions for each phase...`,
+        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE APPROACH (${defineApproach.lenses.length} dimensions).${lensSource === 'research_dimensions' ? ` Using research-derived dimensions: ${reimagine.lenses.join(', ')}.` : ' Using generic default lenses.'} Now designing facilitation questions for each phase...`,
       };
     }
 
@@ -363,7 +369,7 @@ function executeQuestionSetTool(
       const facilitation: FacilitationQuestion[] = questions.map((q, i) => ({
         id: nanoid(8),
         phase,
-        lens: (String(q.lens || 'General') as LensName | 'General' | null),
+        lens: String(q.lens || 'General'),
         text: String(q.text || ''),
         purpose: String(q.purpose || ''),
         grounding: String(q.grounding || ''),
@@ -372,7 +378,7 @@ function executeQuestionSetTool(
         subQuestions: Array.isArray(q.subQuestions)
           ? q.subQuestions.map((sq: Record<string, unknown>) => ({
               id: nanoid(8),
-              lens: String(sq.lens || 'General') as LensName | 'General',
+              lens: String(sq.lens || 'General'),
               text: String(sq.text || ''),
               purpose: String(sq.purpose || ''),
             }))
@@ -411,7 +417,8 @@ function executeQuestionSetTool(
 // SYSTEM PROMPT
 // ══════════════════════════════════════════════════════════════
 
-function buildQuestionSetSystemPrompt(context: PrepContext, research?: WorkshopPrepResearch | null, discoveryBriefing?: Record<string, unknown> | null): string {
+/** @internal Exported for testing */
+export function buildQuestionSetSystemPrompt(context: PrepContext, research?: WorkshopPrepResearch | null, discoveryBriefing?: Record<string, unknown> | null): string {
   const trackDesc = context.dreamTrack === 'DOMAIN'
     ? `The DREAM track is **Domain**, focused on **${context.targetDomain || 'a specific area'}**. Weight questions toward this domain while still covering all relevant lenses in each phase.`
     : 'The DREAM track is **Enterprise** \u2014 a full end-to-end assessment across the entire business.';
@@ -438,26 +445,51 @@ ${hasDiscoveryData(discoveryBriefing)
 - These questions guide a GROUP WORKSHOP SESSION with 8-15 participants in a room.
 - The facilitator uses these questions to run each phase of the workshop.
 
-THE THREE WORKSHOP PHASES:
+${research?.industryDimensions?.length ? `THE THREE WORKSHOP PHASES:
+
+IMPORTANT: This workshop uses research-derived dimensions specific to
+${context.industry || 'this industry'}, NOT the generic default lenses.
+The dimensions are: ${research.industryDimensions.map(d => d.name).join(', ')}
+${research.industryDimensions.map(d => `  - ${d.name}: ${d.description}`).join('\n')}
+
+Use THESE dimension names in your question lens assignments. Do NOT use the
+generic People/Organisation/Customer/Technology/Regulation names.
 
 1. REIMAGINE (Pure Vision)
-   Lenses: People \u2192 Customer \u2192 Organisation ONLY
+   Dimensions: All (${research.industryDimensions.map(d => d.name).join(', ')})
    Goal: Get participants to paint the ideal future WITHOUT any constraints.
-   No technology, no budget, no regulation \u2014 just what "amazing" looks like.
+   No technology, no budget, no regulation - just what "amazing" looks like.
    Key: Open, aspirational, creative questions. "If you could wave a magic wand..."
 
-2. CONSTRAINTS (Map Limitations \u2014 Right-to-Left)
-   Lenses: Regulation \u2192 Customer \u2192 Technology \u2192 Organisation \u2192 People
+2. CONSTRAINTS (Map Limitations)
+   Dimensions: All (${research.industryDimensions.map(d => d.name).join(', ')})
    Goal: Systematically identify what stands between today and the reimagined vision.
    Start with hard external constraints and work inward.
    Key: Specific, probing, referencing the vision they just created.
 
-3. DEFINE APPROACH (Build Solution \u2014 Left-to-Right)
-   Lenses: People \u2192 Organisation \u2192 Technology \u2192 Customer \u2192 Regulation
+3. DEFINE APPROACH (Build Solution)
+   Dimensions: All (${research.industryDimensions.map(d => d.name).join(', ')})
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
+` : `THE THREE WORKSHOP PHASES:
 
-${research?.industryDimensions?.length ? `\nIMPORTANT - INDUSTRY DIMENSIONS:\nThis workshop uses research-derived dimensions specific to ${context.industry || 'this industry'}, NOT generic lenses.\nThe dimensions are: ${research.industryDimensions.map(d => d.name).join(', ')}\n${research.industryDimensions.map(d => `  • ${d.name}: ${d.description}`).join('\n')}\nUse THESE dimension names in your question lens assignments, NOT the generic People/Organisation/Technology/etc.\n` : ''}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}
+1. REIMAGINE (Pure Vision)
+   Lenses: People, Customer, Organisation ONLY
+   Goal: Get participants to paint the ideal future WITHOUT any constraints.
+   No technology, no budget, no regulation - just what "amazing" looks like.
+   Key: Open, aspirational, creative questions. "If you could wave a magic wand..."
+
+2. CONSTRAINTS (Map Limitations - Right-to-Left)
+   Lenses: Regulation, Customer, Technology, Organisation, People
+   Goal: Systematically identify what stands between today and the reimagined vision.
+   Start with hard external constraints and work inward.
+   Key: Specific, probing, referencing the vision they just created.
+
+3. DEFINE APPROACH (Build Solution - Left-to-Right)
+   Lenses: People, Organisation, Technology, Customer, Regulation
+   Goal: Design the practical path forward that bridges reality to vision.
+   Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
+`}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}
 YOUR APPROACH:
 1. First, get the research context (company, industry, challenges).
 2. Get Discovery insights if available (what participants already told us).
@@ -468,11 +500,11 @@ YOUR APPROACH:
    - Questions MUST reference specific company context where possible
    - Questions should BUILD ON Discovery insights, not repeat them
    - If Discovery revealed a pain point, ask "how does this play into the
-     constraints?" \u2014 don't ask "what are your pain points?" again
+     constraints?" - don't ask "what are your pain points?" again
    - For EACH main question, generate 2-3 starter sub-questions. These are
      specific angles or probes that immediately trigger dialogue when the
      facilitator activates the main question. Sub-questions should:
-     * Each target a specific lens (People, Organisation, Customer, etc.)
+     * Each target a specific dimension from the workshop's lens set
      * Be directly scoped to the parent main question's topic
      * Reference concrete research/Discovery findings where possible
      * Give the room something tangible to discuss immediately
@@ -630,14 +662,16 @@ export async function runQuestionSetAgent(
             }
           }
 
+          const { source: lensSourceLabel } = getPhaseLensOrder('REIMAGINE', research);
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'question-set-agent',
             to: 'prep-orchestrator',
-            message: `I've completed the workshop facilitation question set. **${totalQuestions} questions** across 3 phases.\n\n**Design Rationale**\n${String(fnArgs.designRationale || '')}\n\n**Questions by Phase**\n${phasesSummary.join('\n')}`,
+            message: `I've completed the workshop facilitation question set. **${totalQuestions} questions** across 3 phases (lensSource: ${lensSourceLabel}).\n\n**Design Rationale**\n${String(fnArgs.designRationale || '')}\n\n**Questions by Phase**\n${phasesSummary.join('\n')}`,
             type: 'proposal',
             metadata: {
               toolsUsed: ['get_research_context', 'get_discovery_insights', 'get_workshop_phases', 'design_phase_questions'],
+              lensSource: lensSourceLabel,
             },
           });
 
@@ -691,13 +725,14 @@ export async function runQuestionSetAgent(
             (messages.find(m => m.role === 'tool' && typeof m.content === 'string' && m.content.includes('committed'))
               ? fnArgs_extract(messages) : '') || 'Questions designed for workshop facilitation.'
           ),
+          research,
         );
       }
     }
 
     // Loop ended without commit - build from whatever phases were designed
     console.log('[Question Set Agent] Loop ended without commit \u2014 building from designed phases');
-    return buildWorkshopQuestionSet(designedPhases, 'Workshop facilitation questions designed based on company context.');
+    return buildWorkshopQuestionSet(designedPhases, 'Workshop facilitation questions designed based on company context.', research);
   } catch (error) {
     console.error('[Question Set Agent] Failed:', error instanceof Error ? error.message : error);
 
@@ -735,9 +770,11 @@ function fnArgs_extract(messages: OpenAI.Chat.Completions.ChatCompletionMessageP
 // HELPERS
 // ══════════════════════════════════════════════════════════════
 
-function buildWorkshopQuestionSet(
+/** @internal Exported for testing */
+export function buildWorkshopQuestionSet(
   designedPhases: Map<WorkshopPhase, FacilitationQuestion[]>,
   designRationale: string,
+  research?: WorkshopPrepResearch | null,
 ): WorkshopQuestionSet {
   const allPhases: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
 
@@ -746,11 +783,12 @@ function buildWorkshopQuestionSet(
   for (const phase of allPhases) {
     const designed = designedPhases.get(phase);
     const phaseLabel = phase === 'DEFINE_APPROACH' ? 'Define Approach' : phase.charAt(0) + phase.slice(1).toLowerCase();
+    const { lenses } = getPhaseLensOrder(phase, research);
 
     phases[phase] = {
       label: phaseLabel,
       description: PHASE_GUIDANCE[phase],
-      lensOrder: PHASE_LENS_ORDER[phase],
+      lensOrder: lenses,
       questions: designed || generateFallbackPhaseQuestions(phase),
     };
   }
@@ -856,7 +894,7 @@ function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuest
   return (fallbacks[phase] || []).map((q, i) => ({
     id: nanoid(8),
     phase,
-    lens: q.lens as LensName | 'General' | null,
+    lens: q.lens,
     text: q.text,
     purpose: q.purpose,
     grounding: 'Generic facilitation question - not tailored to specific client context.',
@@ -864,7 +902,7 @@ function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuest
     isEdited: false,
     subQuestions: (q.subQuestions || []).map((sq) => ({
       id: nanoid(8),
-      lens: sq.lens as LensName | 'General',
+      lens: sq.lens,
       text: sq.text,
       purpose: sq.purpose,
     })),
@@ -872,5 +910,5 @@ function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuest
 }
 
 function fallbackQuestionSet(context: PrepContext): WorkshopQuestionSet {
-  return buildWorkshopQuestionSet(new Map(), `Generic workshop facilitation questions for ${context.clientName || 'the client'}. These have not been tailored to specific company context or Discovery insights - the facilitator should review and modify as needed.`);
+  return buildWorkshopQuestionSet(new Map(), `Generic workshop facilitation questions for ${context.clientName || 'the client'}. These have not been tailored to specific company context or Discovery insights - the facilitator should review and modify as needed.`, null);
 }

@@ -14,7 +14,7 @@ import type { AgentConversationEntry } from '@/components/cognitive-guidance/age
 export type { AgentConversationEntry };
 
 // ══════════════════════════════════════════════════════════
-// WORKSHOP PREP RESEARCH — Output of Research Agent
+// WORKSHOP PREP RESEARCH - Output of Research Agent
 // ══════════════════════════════════════════════════════════
 
 // ── Research-driven workshop configuration types ────────────
@@ -48,7 +48,7 @@ export type WorkshopPrepResearch = {
 };
 
 // ══════════════════════════════════════════════════════════
-// WORKSHOP FACILITATION QUESTIONS — Output of Question Set Agent
+// WORKSHOP FACILITATION QUESTIONS - Output of Question Set Agent
 // ══════════════════════════════════════════════════════════
 
 export type WorkshopPhase = 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
@@ -62,14 +62,14 @@ export const WORKSHOP_PHASE_LABELS: Record<WorkshopPhase, string> = {
 };
 
 export const WORKSHOP_PHASE_DESCRIPTIONS: Record<WorkshopPhase, string> = {
-  REIMAGINE: 'Pure vision without constraints. Get participants to dream big about the ideal future state. Focus on People → Customer → Organisation only. No technology, no regulation — just the art of the possible.',
+  REIMAGINE: 'Pure vision without constraints. Get participants to dream big about the ideal future state. Focus on People, Customer, Organisation only. No technology, no regulation - just the art of the possible.',
   CONSTRAINTS: 'Map limitations systematically, working right-to-left: Regulation → Customer → Technology → Organisation → People. Identify what stands in the way of the reimagined vision.',
   DEFINE_APPROACH: 'Build the practical solution left-to-right: People → Organisation → Technology → Customer → Regulation. Design the approach that bridges today to the reimagined future while respecting constraints.',
 };
 
 export type SubQuestion = {
   id: string;
-  lens: LensName | 'General';
+  lens: string;             // Dimension name (research-derived or generic LensName or 'General')
   text: string;
   purpose: string;
 };
@@ -77,9 +77,9 @@ export type SubQuestion = {
 export type FacilitationQuestion = {
   id: string;
   phase: WorkshopPhase;
-  lens: LensName | 'General' | null;
+  lens: string | null;       // Dimension name (research-derived or generic LensName or 'General')
   text: string;
-  purpose: string;            // Why this question matters — what it aims to surface
+  purpose: string;            // Why this question matters - what it aims to surface
   grounding: string;          // How this connects to research/Discovery data
   order: number;
   isEdited: boolean;          // Has the facilitator edited this?
@@ -102,10 +102,13 @@ export type TailoredQuestion = FacilitationQuestion;
 export type TailoredQuestionSet = WorkshopQuestionSet;
 
 // ══════════════════════════════════════════════════════════
-// WORKSHOP INTELLIGENCE — Output of Discovery Intelligence Agent
+// WORKSHOP INTELLIGENCE - Output of Discovery Intelligence Agent
 // ══════════════════════════════════════════════════════════
 
 export type LensName = 'People' | 'Organisation' | 'Customer' | 'Technology' | 'Regulation';
+
+/** Tracks where the workshop lens/dimension set originated. */
+export type LensSource = 'research_dimensions' | 'domain_pack' | 'generic_fallback';
 
 export type MaturitySnapshot = {
   domain: LensName;
@@ -172,7 +175,7 @@ export function hasDiscoveryData(
 export type AgentConversationCallback = (entry: AgentConversationEntry) => void | Promise<void>;
 
 // ══════════════════════════════════════════════════════════
-// AGENT REVIEW — returned by any agent reviewing proposals
+// AGENT REVIEW - returned by any agent reviewing proposals
 // ══════════════════════════════════════════════════════════
 
 export type AgentReview = {
@@ -183,7 +186,7 @@ export type AgentReview = {
 };
 
 // ══════════════════════════════════════════════════════════
-// PREP CONTEXT — shared context passed to all agents
+// PREP CONTEXT - shared context passed to all agents
 // ══════════════════════════════════════════════════════════
 
 export type PrepContext = {

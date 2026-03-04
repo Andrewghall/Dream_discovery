@@ -513,8 +513,13 @@ export async function runDiscoveryQuestionAgent(
   // Track designed lenses as they come in
   const designedLenses = new Map<string, DiscoveryLensQuestions>();
 
-  // Determine lenses to iterate
-  const lensNames = domainPack?.lenses || ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+  // Determine lenses to iterate - research dimensions take priority
+  const lensNames: string[] = research?.industryDimensions?.length
+    ? research.industryDimensions.map(d => d.name)
+    : domainPack?.lenses || ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+  const lensSource: import('./agent-types').LensSource = research?.industryDimensions?.length
+    ? 'research_dimensions'
+    : domainPack?.lenses ? 'domain_pack' : 'generic_fallback';
   const lensListStr = lensNames.join(', ');
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -598,7 +603,7 @@ export async function runDiscoveryQuestionAgent(
           }
 
           emitConversation(
-            `I've completed the Discovery question set. **${totalQuestions} questions** across ${designedLenses.size} lenses.\n\n**Strategy**\n${commitRationale}\n\n**Questions by Lens**\n${lensSummary.join('\n')}`,
+            `I've completed the Discovery question set. **${totalQuestions} questions** across ${designedLenses.size} lenses (lensSource: ${lensSource}).\n\n**Strategy**\n${commitRationale}\n\n**Questions by Lens**\n${lensSummary.join('\n')}`,
             'proposal',
           );
 
@@ -660,7 +665,7 @@ export async function runDiscoveryQuestionAgent(
       'info',
     );
 
-    const fallback = buildFallbackQuestionSet(domainPack, context);
+    const fallback = buildFallbackQuestionSet(domainPack, context, research);
 
     try {
       await storeDiscoveryQuestions(workshopId, fallback);
@@ -718,12 +723,17 @@ async function storeDiscoveryQuestions(
 /**
  * Build a fallback question set from domain pack templates when the agent fails.
  * Generates generic maturity + exploratory questions per lens.
+ * Prefers research-derived dimensions when available.
  */
 function buildFallbackQuestionSet(
   domainPack: DomainPack | null,
   context: PrepContext,
+  research?: WorkshopPrepResearch | null,
 ): DiscoveryQuestionSet {
-  const lensNames: LensName[] = domainPack?.lenses || ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+  // Research dimensions take priority over domain pack lenses
+  const lensNames: string[] = research?.industryDimensions?.length
+    ? research.industryDimensions.map(d => d.name)
+    : domainPack?.lenses || ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
   const clientRef = context.clientName || 'your organisation';
 
   const DEFAULT_MATURITY_SCALES: Record<string, string[]> = {
