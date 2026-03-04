@@ -65,7 +65,13 @@ export async function GET(request: NextRequest) {
         where,
         skip,
         take: limit,
-        include: {
+        select: {
+          id: true,
+          name: true,
+          workshopType: true,
+          status: true,
+          scheduledDate: true,
+          createdAt: true,
           participants: {
             select: {
               id: true,
