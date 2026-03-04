@@ -488,7 +488,7 @@ export async function PATCH(
     // Recompose blueprint if any blueprint-relevant field changed
     const blueprintFields = [
       'engagementType', 'domainPack', 'dreamTrack',
-      'description', 'businessContext', 'industry',
+      'description', 'businessContext', 'industry', 'clientName',
     ];
     const blueprintFieldChanged = blueprintFields.some((f) => f in body);
 
@@ -496,6 +496,7 @@ export async function PATCH(
       const current = await prisma.workshop.findUnique({
         where: { id },
         select: {
+          clientName: true,
           industry: true,
           dreamTrack: true,
           engagementType: true,
@@ -519,6 +520,7 @@ export async function PATCH(
           domainPack: (updateData.domainPack as string | null) ?? current.domainPack ?? null,
           purpose: (updateData.description as string | null) ?? current.description ?? null,
           outcomes: (updateData.businessContext as string | null) ?? current.businessContext ?? null,
+          clientName: (updateData.clientName as string | null) ?? current.clientName ?? null,
           researchJourneyStages: research?.journeyStages ?? null,
           researchDimensions: research?.industryDimensions ?? null,
           previousVersion: existingBp?.blueprintVersion ?? 0,

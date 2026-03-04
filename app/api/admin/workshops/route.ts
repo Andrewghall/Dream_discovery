@@ -165,7 +165,9 @@ export async function POST(request: NextRequest) {
 
     const normalizedEngagementType = toEngagementEnum(engagementType);
 
-    // Generate domain-aware runtime blueprint from setup selections
+    // Generate domain-aware runtime blueprint from setup selections.
+    // clientName is included so industry detection (e.g. airline) can
+    // fire even when the industry field is not explicitly set.
     const blueprint = generateBlueprint({
       industry: industry || null,
       dreamTrack: dreamTrack || null,
@@ -173,6 +175,7 @@ export async function POST(request: NextRequest) {
       domainPack: domainPack || null,
       purpose: description || null,
       outcomes: businessContext || null,
+      clientName: clientName || null,
     });
 
     const workshopData = {
@@ -199,45 +202,31 @@ export async function POST(request: NextRequest) {
       blueprint: blueprint as any,
     };
 
-    let workshop;
-    try {
-      workshop = await prisma.workshop.create({ data: workshopData });
-    } catch (err) {
-      // Backward compatibility: allow workshop creation even if DB is behind code
-      const msg = err instanceof Error ? err.message : String(err);
-      const msgLower = msg.toLowerCase();
-      if (msgLower.includes('engagement_type') || msgLower.includes('domain_pack') || msgLower.includes('blueprint')) {
-        workshop = await prisma.workshop.create({
-          data: {
-            name,
-            description,
-            businessContext,
-            workshopType: workshopType || 'CUSTOM',
-            includeRegulation: includeRegulation ?? true,
-            scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
-            responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,
-            organizationId,
-            createdById: session.userId,
-            clientName: clientName || undefined,
-            industry: industry || undefined,
-            companyWebsite: companyWebsite || undefined,
-            dreamTrack: dreamTrack || undefined,
-            targetDomain: targetDomain || undefined,
-          },
-        });
-      } else {
-        throw err;
-      }
-    }
+    const workshop = await prisma.workshop.create({ data: workshopData });
 
     return NextResponse.json({ workshop });
   } catch (error: unknown) {
-    console.error('Error creating workshop:', error);
-
     const message = error instanceof Error ? error.message : 'Unknown error';
+    const isSchemaError = message.toLowerCase().includes('does not exist in the current database')
+      || message.toLowerCase().includes('unknown field');
+    console.error(
+      '[workshop-create]',
+      isSchemaError ? 'SCHEMA DRIFT DETECTED' : 'Error creating workshop:',
+      message,
+    );
+
     return NextResponse.json(
-      { error: 'Failed to create workshop', details: { message } },
-      { status: 500 }
+      {
+        error: 'Failed to create workshop',
+        details: {
+          message,
+          ...(isSchemaError && {
+            schemaDrift: true,
+            hint: 'The database schema is out of sync with the application. Run pending migrations.',
+          }),
+        },
+      },
+      { status: 500 },
     );
   }
 }

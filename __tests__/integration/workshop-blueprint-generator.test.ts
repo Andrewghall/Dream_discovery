@@ -115,6 +115,22 @@ describe('Contact centre + diagnostic baseline', () => {
     expect(bp.dreamTrack).toBe('DOMAIN');
     expect(bp.purpose).toBe('Assess operational maturity');
   });
+
+  it('uses airline-specific journey stages when airline context is detected', () => {
+    const airlineBp = generateBlueprint({
+      industry: 'Transport & Logistics',
+      dreamTrack: 'DOMAIN',
+      engagementType: 'operational_deep_dive',
+      domainPack: 'contact_centre',
+      purpose: 'Improve airline contact centre handling of flight disruptions',
+      outcomes: 'Reduce passenger effort during delay, cancellation, and baggage issues',
+    });
+    expectValid(airlineBp);
+    expect(airlineBp.journeyStages).toHaveLength(6);
+    expect(airlineBp.journeyStages[0].name).toBe('Trip Planning & Booking Support');
+    expect(airlineBp.journeyStages[3].name).toBe('Disruption & Recovery');
+    expect(airlineBp.journeyStages[5].name).toBe('Loyalty & Retention Follow-up');
+  });
 });
 
 // ================================================================
@@ -595,5 +611,150 @@ describe('Blueprint versioning', () => {
       });
       expect(bp.blueprintVersion).toBe(0);
     }
+  });
+});
+
+// ================================================================
+// 8. Airline Contact Centre Context Detection
+// ================================================================
+
+describe('Airline contact centre industry detection', () => {
+  it('clientName "Aer Lingus" triggers airline journey stages', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      domainPack: 'contact_centre',
+      engagementType: 'operational_deep_dive',
+      clientName: 'Aer Lingus',
+    });
+    expectValid(bp);
+    expect(bp.journeyStages[0].name).toBe('Trip Planning & Booking Support');
+    expect(bp.journeyStages[3].name).toBe('Disruption & Recovery');
+    expect(bp.journeyStages[5].name).toBe('Loyalty & Retention Follow-up');
+  });
+
+  it('clientName "Air Jordan" triggers airline journey stages', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      domainPack: 'contact_centre',
+      engagementType: 'operational_deep_dive',
+      clientName: 'Air Jordan Airways',
+    });
+    expectValid(bp);
+    expect(bp.journeyStages[0].name).toBe('Trip Planning & Booking Support');
+  });
+
+  it('industry "airline" triggers airline journey stages', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      industry: 'Airline',
+      domainPack: 'contact_centre',
+      engagementType: 'diagnostic_baseline',
+    });
+    expectValid(bp);
+    expect(bp.journeyStages[0].name).toBe('Trip Planning & Booking Support');
+  });
+
+  it('airline context produces airline-specific lenses (8 lenses)', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      industry: 'Aviation',
+      domainPack: 'contact_centre',
+      engagementType: 'operational_deep_dive',
+    });
+    expectValid(bp);
+    const lensNames = bp.lenses.map((l) => l.name);
+    expect(lensNames).toContain('Customer Experience');
+    expect(lensNames).toContain('People & Workforce');
+    expect(lensNames).toContain('Operations');
+    expect(lensNames).toContain('Technology');
+    expect(lensNames).toContain('Training & Capability');
+    expect(lensNames).toContain('Regulation & Compliance');
+    expect(lensNames).toContain('Organisation & Leadership');
+    expect(lensNames).toContain('Culture');
+    expect(bp.lenses).toHaveLength(8);
+  });
+
+  it('non-airline contact centre retains generic contact centre stages', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      industry: 'Telecommunications',
+      domainPack: 'contact_centre',
+      engagementType: 'diagnostic_baseline',
+    });
+    expectValid(bp);
+    expect(bp.journeyStages[0].name).toBe('Contact Initiation');
+    expect(bp.journeyStages[3].name).toBe('Resolution Delivery');
+    // Lenses should be the generic domain pack set (5 lenses)
+    expect(bp.lenses).toHaveLength(5);
+    const lensNames = bp.lenses.map((l) => l.name);
+    expect(lensNames).not.toContain('Culture');
+  });
+
+  it('non-airline contact centre keeps 5 generic lenses', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      industry: 'Retail',
+      domainPack: 'contact_centre',
+      engagementType: 'operational_deep_dive',
+    });
+    expectValid(bp);
+    expect(bp.lenses).toHaveLength(5);
+    const lensNames = bp.lenses.map((l) => l.name);
+    expect(lensNames).toContain('People');
+    expect(lensNames).toContain('Customer');
+  });
+
+  it('airline phaseLensPolicy includes customer-facing lenses in REIMAGINE', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      industry: 'Aviation',
+      domainPack: 'contact_centre',
+      engagementType: 'operational_deep_dive',
+    });
+    expectValid(bp);
+    expect(bp.phaseLensPolicy.REIMAGINE).toContain('Customer Experience');
+    expect(bp.phaseLensPolicy.REIMAGINE).toContain('People & Workforce');
+    expect(bp.phaseLensPolicy.REIMAGINE).toContain('Culture');
+    // CONSTRAINTS and DEFINE_APPROACH should include all 8
+    expect(bp.phaseLensPolicy.CONSTRAINTS).toHaveLength(8);
+    expect(bp.phaseLensPolicy.DEFINE_APPROACH).toHaveLength(8);
+  });
+
+  it('research overrides take priority over airline lenses', () => {
+    const researchDims = [
+      { name: 'Passenger Trust', description: 'Trust in the airline', keywords: ['trust'], color: '#aaa' },
+      { name: 'Ops Agility', description: 'Operational agility', keywords: ['agility'], color: '#bbb' },
+    ];
+    const bp = generateBlueprint({
+      ...emptyInput,
+      industry: 'Aviation',
+      domainPack: 'contact_centre',
+      researchDimensions: researchDims,
+    });
+    expectValid(bp);
+    expect(bp.lenses).toHaveLength(2);
+    expect(bp.lenses[0].name).toBe('Passenger Trust');
+    expect(bp.lenses[1].name).toBe('Ops Agility');
+  });
+
+  it('purpose text with "flight" triggers airline context', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      domainPack: 'contact_centre',
+      purpose: 'Assess contact centre handling flight disruptions and rebooking',
+    });
+    expectValid(bp);
+    expect(bp.journeyStages[0].name).toBe('Trip Planning & Booking Support');
+    expect(bp.lenses).toHaveLength(8);
+  });
+
+  it('outcomes text with "passenger" triggers airline context', () => {
+    const bp = generateBlueprint({
+      ...emptyInput,
+      domainPack: 'contact_centre',
+      outcomes: 'Improve passenger experience during delays and cancellations',
+    });
+    expectValid(bp);
+    expect(bp.journeyStages[0].name).toBe('Trip Planning & Booking Support');
   });
 });

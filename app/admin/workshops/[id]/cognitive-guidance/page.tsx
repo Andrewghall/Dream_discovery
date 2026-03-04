@@ -54,7 +54,8 @@ import {
 import type { GuidedTheme, JourneyCompletionState } from '@/lib/cognition/guidance-state';
 import { calculateDeterministicCompletion } from '@/lib/cognition/journey-completion-state';
 import type { WorkshopPhase, FacilitationQuestion, SubQuestion, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
-import { getDimensionColors } from '@/lib/cognition/workshop-dimensions';
+import { getDimensionColors, darkenHex, lightenHex } from '@/lib/cognition/workshop-dimensions';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { useAudioCapture } from '@/hooks/use-audio-capture';
 import type { StreamTranscript } from '@/lib/captureapi/client';
 import { MicSetupDialog } from '@/components/cognitive-guidance/mic-setup-dialog';
@@ -569,6 +570,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Dynamic lens colors from research dimensions ──
   const [customLensColors, setCustomLensColors] = useState<Record<string, { bg: string; text: string; accent: string; label: string }> | undefined>(undefined);
 
+  // ── Blueprint source indicator (transparency) ──
+  const [blueprintSource, setBlueprintSource] = useState<'blueprint' | 'research_override' | 'legacy_fallback'>('legacy_fallback');
+
   // ── Journey completion tracking ──
   const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
 
@@ -925,10 +929,32 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     fetch(`/api/workshops/${workshopId}/guidance-state?init=true`)
       .then((r) => r.json())
       .then((data) => {
-        // Build dynamic lens colors from research dimensions
+        // Build dynamic lens colors: blueprint lenses > research dimensions > defaults.
+        // Blueprint already incorporates research overrides plus industry-specific
+        // lenses (e.g. airline contact centre), so it is the preferred source.
+        const bpJson = data.guidanceState?.blueprint;
+        const bp = bpJson ? readBlueprintFromJson(bpJson) : null;
         const research = data.guidanceState?.prepContext?.research as WorkshopPrepResearch | null | undefined;
-        if (research?.industryDimensions?.length) {
+
+        if (bp?.lenses?.length) {
+          // Build color map from blueprint lenses (same shape as getDimensionColors)
+          const bpColors: Record<string, { bg: string; text: string; accent: string; label: string }> = {};
+          for (const lens of bp.lenses) {
+            bpColors[lens.name] = {
+              bg: lens.color,
+              text: darkenHex(lens.color),
+              accent: lightenHex(lens.color),
+              label: lens.name,
+            };
+          }
+          bpColors['General'] = { bg: '#e2e8f0', text: '#1e293b', accent: '#cbd5e1', label: 'Explore' };
+          setCustomLensColors(bpColors);
+          setBlueprintSource('blueprint');
+        } else if (research?.industryDimensions?.length) {
           setCustomLensColors(getDimensionColors(research));
+          setBlueprintSource('research_override');
+        } else {
+          setBlueprintSource('legacy_fallback');
         }
 
         // Populate data sufficiency from guidance state
@@ -1930,6 +1956,20 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           metricsCount={dataSufficiency.metricsCount}
           sessionConfidence={sessionConfidence}
         />
+
+        {/* Blueprint source indicator */}
+        <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+          <span className={`inline-block w-2 h-2 rounded-full ${
+            blueprintSource === 'blueprint' ? 'bg-green-500' :
+            blueprintSource === 'research_override' ? 'bg-amber-500' :
+            'bg-gray-400'
+          }`} />
+          <span>
+            Lens source: {blueprintSource === 'blueprint' ? 'Workshop blueprint' :
+              blueprintSource === 'research_override' ? 'Research dimensions' :
+              'Default fallback'}
+          </span>
+        </div>
 
         {/* Lens Coverage Bar + Gap Indicators */}
         <div className="mt-3">

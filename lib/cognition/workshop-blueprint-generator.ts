@@ -37,6 +37,8 @@ export type GeneratorInput = ComposeInput & {
   researchDimensions?: IndustryDimension[] | null;
   /** Current blueprint version to increment (omit or -1 for first generation) */
   previousVersion?: number;
+  /** Client name -- used for industry context detection (e.g. "Aer Lingus" => airline) */
+  clientName?: string | null;
 };
 
 // ================================================================
@@ -86,6 +88,92 @@ const DOMAIN_JOURNEY_TEMPLATES: Record<string, JourneyStageEntry[]> = {
   ],
   // enterprise: intentionally omitted -- falls through to default journey stages
 };
+
+// ================================================================
+// Industry-aware Lens Overrides
+//
+// When the context signals a specific industry (e.g. airline + contact_centre),
+// replace the generic domain pack lenses with industry-tuned ones.
+// Research-derived lenses still take highest priority.
+// ================================================================
+
+const CONTACT_CENTRE_AIRLINE_LENSES: LensPolicyEntry[] = [
+  { name: 'Customer Experience', description: 'Passenger journey quality, effort, and satisfaction across all touchpoints', color: '#ddd6fe', keywords: ['customer', 'passenger', 'experience', 'satisfaction', 'effort', 'journey', 'NPS', 'CSAT'] },
+  { name: 'People & Workforce', description: 'Agent capability, wellbeing, attrition, scheduling, and career paths', color: '#bfdbfe', keywords: ['people', 'agent', 'staff', 'team', 'attrition', 'recruit', 'wellbeing', 'morale', 'burnout', 'roster'] },
+  { name: 'Operations', description: 'Queue management, routing, handle time, SLA delivery, and BPO coordination', color: '#a7f3d0', keywords: ['operation', 'process', 'queue', 'routing', 'handle time', 'SLA', 'BPO', 'workflow', 'efficiency'] },
+  { name: 'Technology', description: 'Contact platform, IVR, CRM, automation, and digital channel enablement', color: '#fed7aa', keywords: ['technology', 'system', 'platform', 'IVR', 'CRM', 'digital', 'automation', 'AI', 'chatbot', 'self-service'] },
+  { name: 'Training & Capability', description: 'Onboarding, upskilling, knowledge management, and coaching effectiveness', color: '#fef08a', keywords: ['training', 'coach', 'onboard', 'knowledge', 'capability', 'skill', 'development', 'QA'] },
+  { name: 'Regulation & Compliance', description: 'Aviation consumer rights (EU261), data protection, accessibility, and complaint obligations', color: '#fecaca', keywords: ['regulation', 'compliance', 'EU261', 'GDPR', 'accessibility', 'complaint', 'legal', 'audit'] },
+  { name: 'Organisation & Leadership', description: 'Governance, decision speed, cross-site alignment, and strategic direction', color: '#c4b5fd', keywords: ['organisation', 'leadership', 'governance', 'decision', 'strategy', 'alignment', 'structure'] },
+  { name: 'Culture', description: 'Values in practice, psychological safety, service ethic, and continuous improvement mindset', color: '#fbcfe8', keywords: ['culture', 'values', 'mindset', 'safety', 'improvement', 'innovation', 'engagement'] },
+];
+
+const CONTACT_CENTRE_AIRLINE_JOURNEY_TEMPLATE: JourneyStageEntry[] = [
+  { name: 'Trip Planning & Booking Support', description: 'Customer seeks fare, route, schedule, and booking assistance' },
+  { name: 'Pre-Travel Changes & Preparation', description: 'Support for seat, baggage, check-in, special assistance, and itinerary changes' },
+  { name: 'Day-of-Travel Support', description: 'Real-time support for check-in, boarding, and airport-side issues' },
+  { name: 'Disruption & Recovery', description: 'Handle delays, cancellations, missed connections, and re-accommodation' },
+  { name: 'Post-Travel Resolution', description: 'Resolve baggage issues, refunds, compensation, and complaint handling' },
+  { name: 'Loyalty & Retention Follow-up', description: 'Recover trust, improve satisfaction, and support loyalty programme interactions' },
+];
+
+function normalizeContextText(input: GeneratorInput): string {
+  return [
+    input.industry ?? '',
+    input.clientName ?? '',
+    input.domainPack ?? '',
+    input.purpose ?? '',
+    input.outcomes ?? '',
+  ]
+    .join(' ')
+    .toLowerCase();
+}
+
+function isAirlineContactCentreContext(input: GeneratorInput): boolean {
+  if ((input.domainPack ?? '').toLowerCase() !== 'contact_centre') return false;
+  const text = normalizeContextText(input);
+  const airlineSignals = [
+    'airline',
+    'aviation',
+    'airport',
+    'flight',
+    'passenger',
+    'boarding',
+    'baggage',
+    'check-in',
+    'check in',
+    'cancellation',
+    'delay',
+    'rebooking',
+    're-accommodation',
+    // Client name patterns that strongly signal airline context
+    'aer ', 'air ', 'airways', 'jet ', 'ryanair', 'easyjet',
+    'vueling', 'wizz', 'flybe', 'loganair', 'lufthansa', 'klm',
+    'british airways', 'virgin atlantic', 'delta', 'emirates',
+    'qatar', 'etihad', 'singapore airlines', 'cathay',
+  ];
+  return airlineSignals.some((signal) => text.includes(signal));
+}
+
+/**
+ * Resolve industry-specific lens overrides.
+ * Returns null when no industry-specific override applies (domain pack default is kept).
+ */
+function resolveIndustryLenses(input: GeneratorInput): LensPolicyEntry[] | null {
+  if (isAirlineContactCentreContext(input)) {
+    return CONTACT_CENTRE_AIRLINE_LENSES;
+  }
+  return null;
+}
+
+function resolveJourneyTemplate(input: GeneratorInput): JourneyStageEntry[] | null {
+  const packKey = (input.domainPack ?? '').toLowerCase();
+  if (!packKey) return null;
+  if (isAirlineContactCentreContext(input)) {
+    return CONTACT_CENTRE_AIRLINE_JOURNEY_TEMPLATE;
+  }
+  return DOMAIN_JOURNEY_TEMPLATES[packKey] ?? null;
+}
 
 // ================================================================
 // Domain Question Constraints
@@ -293,6 +381,7 @@ const ENGAGEMENT_QUESTION_MODIFIERS: Record<string, EngagementModifier> = {
  * Layering order (later layers win):
  *   1. composeBlueprint() -- defaults < engagement < domain pack < scalars
  *   2. Domain journey templates (from DOMAIN_JOURNEY_TEMPLATES)
+ *   2b. Industry-specific lens overrides (e.g. airline contact centre)
  *   3. Research overrides -- research journey stages and industry dimensions
  *   4. Question constraints -- domain + engagement merge
  *   5. Version stamp
@@ -304,11 +393,28 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   const bp = composeBlueprint(input);
 
   // Layer 2: Domain-specific journey stages
-  if (input.domainPack) {
-    const packKey = input.domainPack.toLowerCase();
-    const journeyTemplate = DOMAIN_JOURNEY_TEMPLATES[packKey];
-    if (journeyTemplate) {
-      bp.journeyStages = journeyTemplate.map((s) => ({ ...s }));
+  const journeyTemplate = resolveJourneyTemplate(input);
+  if (journeyTemplate) {
+    bp.journeyStages = journeyTemplate.map((s) => ({ ...s }));
+  }
+
+  // Layer 2b: Industry-specific lens overrides
+  const industryLenses = resolveIndustryLenses(input);
+  if (industryLenses) {
+    bp.lenses = industryLenses.map((l) => ({ ...l, keywords: [...l.keywords] }));
+    // Rebuild phase lens policy for the industry-specific set
+    const lensNames = bp.lenses.map((l) => l.name);
+    const reimagineTerms = ['people', 'customer', 'experience', 'culture', 'workforce'];
+    bp.phaseLensPolicy = {
+      REIMAGINE: lensNames.filter((n) => {
+        const lower = n.toLowerCase();
+        return reimagineTerms.some((term) => lower.includes(term));
+      }),
+      CONSTRAINTS: [...lensNames],
+      DEFINE_APPROACH: [...lensNames],
+    };
+    if (bp.phaseLensPolicy.REIMAGINE.length === 0) {
+      bp.phaseLensPolicy.REIMAGINE = lensNames.slice(0, Math.min(3, lensNames.length));
     }
   }
 

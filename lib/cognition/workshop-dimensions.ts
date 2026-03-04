@@ -185,7 +185,7 @@ function escapeRegex(s: string): string {
  * Darken a hex color by mixing with black.
  * Used for text color on colored backgrounds.
  */
-function darkenHex(hex: string): string {
+export function darkenHex(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
@@ -197,7 +197,7 @@ function darkenHex(hex: string): string {
  * Lighten a hex color by mixing with white.
  * Used for accent/border colors.
  */
-function lightenHex(hex: string): string {
+export function lightenHex(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
