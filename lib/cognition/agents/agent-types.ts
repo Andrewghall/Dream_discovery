@@ -114,7 +114,7 @@ export type TailoredQuestionSet = WorkshopQuestionSet;
 export type LensName = 'People' | 'Organisation' | 'Customer' | 'Technology' | 'Regulation';
 
 /** Tracks where the workshop lens/dimension set originated. */
-export type LensSource = 'research_dimensions' | 'domain_pack' | 'generic_fallback';
+export type LensSource = 'research_dimensions' | 'domain_pack' | 'generic_fallback' | 'blueprint';
 
 export type MaturitySnapshot = {
   domain: LensName;

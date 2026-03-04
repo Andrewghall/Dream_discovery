@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
 import { runDiscoveryQuestionAgent } from '@/lib/cognition/agents/discovery-question-agent';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
@@ -62,12 +63,24 @@ export async function POST(
 
   const { id: workshopId } = await params;
 
+  // Parse optional facilitator direction from request body
+  let direction: string | null = null;
+  try {
+    const body = await request.json();
+    direction = typeof body?.direction === 'string' && body.direction.trim()
+      ? body.direction.trim()
+      : null;
+  } catch {
+    // No body or invalid JSON -- direction stays null
+  }
+
   const workshop = await prisma.workshop.findUnique({
     where: { id: workshopId },
     select: {
       id: true,
       clientName: true,
       domainPack: true,
+      blueprint: true,
     },
   });
 
@@ -84,6 +97,8 @@ export async function POST(
       headers: { 'Content-Type': 'application/json' },
     });
   }
+
+  const blueprint = readBlueprintFromJson(workshop.blueprint);
 
   const encoder = new TextEncoder();
 
@@ -106,13 +121,12 @@ export async function POST(
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'discovery-question-agent',
-        message: `Discovery Question Agent, please generate tailored interview questions for ${workshop.clientName || 'the client'}. Use the domain pack lenses, research findings, and workshop context to produce specific, grounded questions for each lens.`,
+        message: `Discovery Question Agent, please generate tailored interview questions for ${workshop.clientName || 'the client'}. Use the blueprint lenses, research findings, and workshop context to produce specific, grounded questions for each lens.${direction ? `\n\nFacilitator direction: "${direction}"` : ''}`,
         type: 'handoff',
       } satisfies AgentConversationEntry);
 
       try {
         const questionSet = await runDiscoveryQuestionAgent(workshopId, (entry) => {
-          // Wrap the agent's { role, content } into a full AgentConversationEntry
           const mapped: AgentConversationEntry = {
             timestampMs: Date.now(),
             agent: 'discovery-question-agent',
@@ -121,6 +135,9 @@ export async function POST(
             type: (entry.role === 'proposal' ? 'proposal' : entry.role === 'request' ? 'request' : 'info') as AgentConversationEntry['type'],
           };
           sendEvent('agent.conversation', mapped);
+        }, {
+          direction,
+          blueprint,
         });
 
         // Orchestrator acknowledgement

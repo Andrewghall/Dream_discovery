@@ -25,9 +25,12 @@ import type {
   WorkshopPrepResearch,
   PrepContext,
   LensName,
+  LensSource,
 } from './agent-types';
 import type { DomainPack } from '@/lib/domain-packs/registry';
 import { getDomainPack } from '@/lib/domain-packs/registry';
+import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -50,7 +53,13 @@ export interface DiscoveryQuestionSet {
   lenses: DiscoveryLensQuestions[];
   generatedAtMs: number;
   agentRationale: string;
+  facilitatorDirection?: string | null;
 }
+
+export type DiscoveryQuestionAgentOptions = {
+  direction?: string | null;
+  blueprint?: WorkshopBlueprint | null;
+};
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -300,6 +309,7 @@ function executeDiscoveryTool(
     }
 
     case 'get_workshop_context': {
+      const bp = context.blueprint;
       return {
         result: JSON.stringify({
           clientName: context.clientName || 'Unknown client',
@@ -310,8 +320,10 @@ function executeDiscoveryTool(
           targetDomain: context.targetDomain || null,
           engagementType: context.engagementType || null,
           domainPack: context.domainPack || null,
+          actorTaxonomy: bp?.actorTaxonomy?.map(a => ({ label: a.label, description: a.description })) || null,
+          blueprintLenses: bp?.lenses?.map(l => ({ name: l.name, description: l.description })) || null,
         }),
-        summary: `**Workshop context:**\n\n**Client:** ${context.clientName || 'Unknown'} (${context.industry || 'Unknown industry'})\n**Track:** ${context.dreamTrack || 'Not set'}${context.targetDomain ? ` -- ${context.targetDomain}` : ''}${context.workshopPurpose ? `\n**Purpose:** ${context.workshopPurpose}` : ''}${context.desiredOutcomes ? `\n**Desired Outcomes:** ${context.desiredOutcomes}` : ''}`,
+        summary: `**Workshop context:**\n\n**Client:** ${context.clientName || 'Unknown'} (${context.industry || 'Unknown industry'})\n**Track:** ${context.dreamTrack || 'Not set'}${context.targetDomain ? ` -- ${context.targetDomain}` : ''}${context.workshopPurpose ? `\n**Purpose:** ${context.workshopPurpose}` : ''}${context.desiredOutcomes ? `\n**Desired Outcomes:** ${context.desiredOutcomes}` : ''}${bp?.actorTaxonomy?.length ? `\n**Audience roles:** ${bp.actorTaxonomy.map(a => a.label).join(', ')}` : ''}`,
       };
     }
 
@@ -382,21 +394,48 @@ function executeDiscoveryTool(
 // SYSTEM PROMPT
 // ══════════════════════════════════════════════════════════════
 
-function buildDiscoverySystemPrompt(context: PrepContext): string {
+function buildDiscoverySystemPrompt(
+  context: PrepContext,
+  promptOptions?: { blueprint?: WorkshopBlueprint | null; direction?: string | null },
+): string {
+  const bp = promptOptions?.blueprint;
+  const direction = promptOptions?.direction;
+
+  // Build facilitator direction block (highest priority)
+  const directionBlock = direction
+    ? `\nFACILITATOR DIRECTION (HIGHEST PRIORITY -- FOLLOW THIS ABOVE ALL ELSE):
+${direction}\n`
+    : '';
+
+  // Build audience awareness block from blueprint actor taxonomy
+  const actors = bp?.actorTaxonomy;
+  const actorBlock = actors?.length
+    ? `\nAUDIENCE -- WHO WILL ANSWER THESE QUESTIONS:
+The following roles will be interviewed. You MUST pitch every question at a level
+these people can meaningfully answer from their own daily experience:
+${actors.map(a => `  - ${a.label}: ${a.description}`).join('\n')}
+
+LITMUS TEST RULE: For every question ask yourself -- could a ${actors[0]?.label || 'frontline worker'}
+answer this honestly from their own work experience? If not, rewrite it until they can.
+Questions must be broad enough to challenge, deep enough to surface real insight,
+but NOT so technical or strategic that frontline staff cannot answer.
+Do NOT ask about board-level strategy, ESG policy, or corporate governance unless
+you know the audience includes senior leaders.\n`
+    : '';
+
   return `You are the DREAM Discovery Question Agent. Your job is to generate tailored
 Discovery interview questions for ${context.clientName || 'the client'} (${context.industry || 'unknown industry'}).
 
 These questions will be used in one-on-one Discovery interviews with participants
 BEFORE the live workshop session. Each interview explores the participant's
-perspective through multiple lenses (People, Organisation, Customer, Technology,
-Regulation, or domain-specific equivalents).
+perspective through multiple lenses.
 
-${context.workshopPurpose ? `WORKSHOP PURPOSE (WHY WE ARE HERE):\n${context.workshopPurpose}\n` : ''}${context.desiredOutcomes ? `DESIRED OUTCOMES (WHAT WE MUST WALK AWAY WITH):\n${context.desiredOutcomes}\n` : ''}${context.workshopPurpose || context.desiredOutcomes ? `THIS IS THE MOST IMPORTANT INPUT. Every Discovery question you design MUST serve this purpose and drive toward surfacing the insights needed to achieve these outcomes.\n` : ''}
+${context.workshopPurpose ? `WORKSHOP PURPOSE (WHY WE ARE HERE):\n${context.workshopPurpose}\n` : ''}${context.desiredOutcomes ? `DESIRED OUTCOMES (WHAT WE MUST WALK AWAY WITH):\n${context.desiredOutcomes}\n` : ''}${context.workshopPurpose || context.desiredOutcomes ? `THIS IS THE MOST IMPORTANT INPUT. Every Discovery question you design MUST serve this purpose and drive toward surfacing the insights needed to achieve these outcomes.\n` : ''}${directionBlock}${actorBlock}
 YOUR APPROACH:
 1. First, get the domain pack context (tool 1) to see the lenses and question templates.
 2. Get the research context (tool 2) to understand the company, industry, and challenges.
 3. Get the workshop context (tool 3) for purpose, outcomes, and business context.
-4. For EACH lens in the domain pack, call design_lens_questions with 4-5 questions:
+4. For EACH lens, call design_lens_questions with 4-5 questions:
    - Question 1 MUST be a maturity rating question with tag "triple_rating" and a
      maturityScale array of exactly 5 levels (from lowest maturity to highest).
      The scale should be specific to the lens and client context, not generic.
@@ -406,11 +445,16 @@ YOUR APPROACH:
      * The specific client and industry (reference by name)
      * Research findings (company challenges, market landscape, competitors)
      * Workshop purpose and desired outcomes
+     * The AUDIENCE -- what these people actually know and experience day to day
    - Questions should feel tailored to this specific client, not generic
 5. After all lenses are designed, call commit_discovery_questions with a rationale.
 
 QUESTION DESIGN PRINCIPLES:
 - These are for ONE-ON-ONE interviews, not group sessions
+- Questions must be answerable by the people who will sit in the interview chair.
+  A contact centre agent cannot speak to ESG strategy or board-level governance.
+  A team leader can speak to daily operational friction and team dynamics.
+  Pitch every question at the audience's level of knowledge and experience.
 - The maturity rating question should ask participants to rate current state,
   target state, and projected state on the 5-level scale
 - Exploratory questions should surface specific insights about the client's reality
@@ -430,19 +474,26 @@ The scale should always be specific to the lens AND the client's domain.
 
 EXAMPLES OF GOOD vs BAD QUESTIONS:
 
+BAD (too strategic for frontline staff):
+  "What support do you need from leadership to advance sustainability initiatives?"
+  "How would you rate your ESG compliance maturity?"
+
 BAD (generic shell):
   "How would you rate your technology maturity?"
   "What are your biggest people challenges?"
 
-GOOD (context-specific, grounded in research):
+GOOD (context-specific, audience-appropriate, grounded in research):
   "Your competitors are investing heavily in AI-powered routing -- on a scale of
    1 to 5, where would you place your contact centre's technology capability today,
    where do you want it in 2 years, and where do you realistically think it will be?"
   "We know attrition in UK contact centres averages 26% -- what is driving your
    best agents to leave, and what would make them stay?"
+  "When a customer calls with a complex issue, what tools or systems help you most,
+   and where do you find yourself working around the technology?"
 
 The key difference: GOOD questions reference specific findings, name real
-industry dynamics, and give participants concrete context to respond to.
+industry dynamics, give participants concrete context to respond to, and
+are answerable from the participant's own experience.
 
 When communicating your findings, speak naturally as a colleague would.
 Be professional but warm. Explain your reasoning clearly.`;
@@ -455,6 +506,7 @@ Be professional but warm. Explain your reasoning clearly.`;
 export async function runDiscoveryQuestionAgent(
   workshopId: string,
   onConversationEntry?: (entry: { role: string; content: string }) => void,
+  options?: DiscoveryQuestionAgentOptions,
 ): Promise<DiscoveryQuestionSet> {
   if (!env.OPENAI_API_KEY) {
     throw new Error('OpenAI API key not configured -- cannot run Discovery Question Agent');
@@ -476,12 +528,16 @@ export async function runDiscoveryQuestionAgent(
       engagementType: true,
       businessContext: true,
       description: true,
+      blueprint: true,
     },
   });
 
   if (!workshop) {
     throw new Error(`Workshop ${workshopId} not found`);
   }
+
+  // Load blueprint: prefer passed-in option, fall back to DB
+  const blueprint = options?.blueprint ?? readBlueprintFromJson(workshop.blueprint);
 
   // Build PrepContext from workshop data
   const context: PrepContext = {
@@ -496,6 +552,7 @@ export async function runDiscoveryQuestionAgent(
     engagementType: workshop.engagementType || null,
     domainPack: workshop.domainPack || null,
     domainPackConfig: workshop.domainPackConfig as Record<string, unknown> | null,
+    blueprint,
   };
 
   const research = workshop.prepResearch as WorkshopPrepResearch | null;
@@ -507,19 +564,22 @@ export async function runDiscoveryQuestionAgent(
   };
 
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const systemPrompt = buildDiscoverySystemPrompt(context);
+  const systemPrompt = buildDiscoverySystemPrompt(context, {
+    blueprint,
+    direction: options?.direction,
+  });
   const startMs = Date.now();
 
   // Track designed lenses as they come in
   const designedLenses = new Map<string, DiscoveryLensQuestions>();
 
-  // Determine lenses to iterate - research dimensions take priority
-  const lensNames: string[] = research?.industryDimensions?.length
-    ? research.industryDimensions.map(d => d.name)
-    : domainPack?.lenses || ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
-  const lensSource: import('./agent-types').LensSource = research?.industryDimensions?.length
-    ? 'research_dimensions'
-    : domainPack?.lenses ? 'domain_pack' : 'generic_fallback';
+  // Determine lenses: blueprint (curated) > domain pack > generic fallback
+  const blueprintLensNames = blueprint?.lenses?.length
+    ? blueprint.lenses.map(l => l.name) : null;
+  const lensNames: string[] = blueprintLensNames
+    ?? (domainPack?.lenses || ['People', 'Organisation', 'Customer', 'Technology', 'Regulation']);
+  const lensSource: LensSource = blueprintLensNames
+    ? 'blueprint' : domainPack?.lenses ? 'domain_pack' : 'generic_fallback';
   const lensListStr = lensNames.join(', ');
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -638,7 +698,7 @@ export async function runDiscoveryQuestionAgent(
         const elapsed = Date.now() - startMs;
         console.log(`[Discovery Question Agent] Committed after ${iteration + 1} iterations, ${elapsed}ms`);
 
-        const questionSet = buildDiscoveryQuestionSet(designedLenses, commitRationale);
+        const questionSet = buildDiscoveryQuestionSet(designedLenses, commitRationale, options?.direction);
 
         // Store result on the workshop
         await storeDiscoveryQuestions(workshopId, questionSet);
@@ -652,6 +712,7 @@ export async function runDiscoveryQuestionAgent(
     const questionSet = buildDiscoveryQuestionSet(
       designedLenses,
       'Discovery interview questions designed based on domain pack and company context.',
+      options?.direction,
     );
 
     await storeDiscoveryQuestions(workshopId, questionSet);
@@ -665,7 +726,7 @@ export async function runDiscoveryQuestionAgent(
       'info',
     );
 
-    const fallback = buildFallbackQuestionSet(domainPack, context, research);
+    const fallback = buildFallbackQuestionSet(domainPack, context, research, blueprint);
 
     try {
       await storeDiscoveryQuestions(workshopId, fallback);
@@ -684,6 +745,7 @@ export async function runDiscoveryQuestionAgent(
 function buildDiscoveryQuestionSet(
   designedLenses: Map<string, DiscoveryLensQuestions>,
   rationale: string,
+  direction?: string | null,
 ): DiscoveryQuestionSet {
   const lenses: DiscoveryLensQuestions[] = [];
 
@@ -695,6 +757,7 @@ function buildDiscoveryQuestionSet(
     lenses,
     generatedAtMs: Date.now(),
     agentRationale: rationale,
+    facilitatorDirection: direction || null,
   };
 }
 
@@ -723,17 +786,19 @@ async function storeDiscoveryQuestions(
 /**
  * Build a fallback question set from domain pack templates when the agent fails.
  * Generates generic maturity + exploratory questions per lens.
- * Prefers research-derived dimensions when available.
+ * Blueprint lenses take priority, then domain pack, then generic fallback.
  */
 function buildFallbackQuestionSet(
   domainPack: DomainPack | null,
   context: PrepContext,
   research?: WorkshopPrepResearch | null,
+  blueprint?: WorkshopBlueprint | null,
 ): DiscoveryQuestionSet {
-  // Research dimensions take priority over domain pack lenses
-  const lensNames: string[] = research?.industryDimensions?.length
-    ? research.industryDimensions.map(d => d.name)
-    : domainPack?.lenses || ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+  // Blueprint lenses (curated) > domain pack > generic fallback
+  const blueprintLensNames = blueprint?.lenses?.length
+    ? blueprint.lenses.map(l => l.name) : null;
+  const lensNames: string[] = blueprintLensNames
+    ?? (domainPack?.lenses || ['People', 'Organisation', 'Customer', 'Technology', 'Regulation']);
   const clientRef = context.clientName || 'your organisation';
 
   const DEFAULT_MATURITY_SCALES: Record<string, string[]> = {

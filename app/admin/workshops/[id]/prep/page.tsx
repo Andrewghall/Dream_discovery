@@ -196,6 +196,7 @@ export default function PrepPage({ params }: PageProps) {
   const [discoveryQuestionsLoading, setDiscoveryQuestionsLoading] = useState(false);
   const [editingDiscoveryQId, setEditingDiscoveryQId] = useState<string | null>(null);
   const [editingDiscoveryQText, setEditingDiscoveryQText] = useState('');
+  const [discoveryDirection, setDiscoveryDirection] = useState('');
 
   // Blueprint and historical metrics
   const [blueprintData, setBlueprintData] = useState<WorkshopBlueprint | null>(null);
@@ -256,6 +257,9 @@ export default function PrepPage({ params }: PageProps) {
                 const dqData = await dqRes.json();
                 if (dqData.discoveryQuestions) {
                   setDiscoveryQuestionsData(dqData.discoveryQuestions);
+                  if (dqData.discoveryQuestions.facilitatorDirection) {
+                    setDiscoveryDirection(dqData.discoveryQuestions.facilitatorDirection);
+                  }
                 }
               }
             } catch {
@@ -635,6 +639,8 @@ export default function PrepPage({ params }: PageProps) {
     try {
       const response = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direction: discoveryDirection.trim() || null }),
       });
 
       if (!response.ok || !response.body) {
@@ -713,7 +719,7 @@ export default function PrepPage({ params }: PageProps) {
     } finally {
       setDiscoveryQuestionsLoading(false);
     }
-  }, [workshopId]);
+  }, [workshopId, discoveryDirection]);
 
   // ── Save Discovery question edit ──────────────────────
   const saveDiscoveryQuestionEdit = useCallback(async () => {
@@ -1015,9 +1021,17 @@ export default function PrepPage({ params }: PageProps) {
                   <h3 className="text-sm font-semibold">Discovery Questions</h3>
                   {discoveryQuestionsData && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
                 </div>
-                <p className="text-xs text-muted-foreground mb-4">
+                <p className="text-xs text-muted-foreground mb-2">
                   Generates interview questions for participant Discovery sessions, organised by lens.
                 </p>
+                <textarea
+                  className="w-full text-xs p-2 border rounded-md bg-white dark:bg-slate-900 resize-none placeholder:text-muted-foreground/60 mb-2"
+                  rows={2}
+                  placeholder="Guide the question style, e.g. 'Focus on agent daily experience, not corporate strategy. These are frontline contact centre staff.'"
+                  value={discoveryDirection}
+                  onChange={(e) => setDiscoveryDirection(e.target.value)}
+                  disabled={discoveryQuestionsLoading}
+                />
                 <Button
                   onClick={generateDiscoveryQuestions}
                   disabled={discoveryQuestionsLoading || !researchData}
@@ -1302,6 +1316,15 @@ export default function PrepPage({ params }: PageProps) {
                       </div>
                     </div>
                   ))}
+
+                  {discoveryQuestionsData.facilitatorDirection && (
+                    <div className="mt-2 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                      <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-0.5">Facilitator Direction</p>
+                      <p className="text-xs text-blue-600 dark:text-blue-400">
+                        {discoveryQuestionsData.facilitatorDirection}
+                      </p>
+                    </div>
+                  )}
 
                   {discoveryQuestionsData.agentRationale && (
                     <p className="text-xs text-muted-foreground italic mt-2">
