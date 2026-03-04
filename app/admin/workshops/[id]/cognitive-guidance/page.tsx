@@ -25,6 +25,7 @@ import {
   ALL_PHASES,
   PHASE_LABELS,
   DEFAULT_JOURNEY_STAGES,
+  getBlueprintJourneyStages,
   createInitialNode,
   categoriseNode,
   applyLensMapping,
@@ -471,6 +472,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── Audio capture + mic setup ─────────────────────────
   const dialoguePhaseRef = useRef<DialoguePhase>('REIMAGINE');
+  const blueprintStagesRef = useRef<Array<{ name: string }> | null>(null);
 
   // Live hemisphere nodes — updated in real-time from CaptureAPI token stream.
   // One "live" node per speaker that updates as words stream in, then removed
@@ -578,7 +580,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── Client-only: populate seed data after hydration (avoids React #418) ──
   useEffect(() => {
-    setStickyPads(prev => prev.length === 0 ? getSeedPadsForPhase('REIMAGINE') : prev);
+    setStickyPads(prev => prev.length === 0 ? getSeedPadsForPhase('REIMAGINE').slice(0, 4) : prev);
     if (isRetailDemo) {
       setLiveJourney(getDemoLiveJourney());
     }
@@ -624,7 +626,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         questionId: question.id,
         grounding: sq.purpose,
         coveragePercent: 0,
-        coverageState: 'active' as StickyPad['coverageState'],
+        coverageState: (i < 4 ? 'active' : 'queued') as StickyPad['coverageState'],
         lens: sq.lens || null,
         mainQuestionIndex: qIndex,
         journeyGapId: null,
@@ -746,7 +748,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       if (prevPhase === 'REIMAGINE' && phase === 'CONSTRAINTS') {
         setLiveJourney((prevJourney) => ({
           ...prevJourney,
-          stages: DEFAULT_JOURNEY_STAGES[phase],
+          stages: getBlueprintJourneyStages(phase, blueprintStagesRef.current),
           interactions: prevJourney.interactions.map((i) => ({
             ...i,
             idealBusinessIntensity: i.businessIntensity,
@@ -757,7 +759,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         // Only replace stages if not listening (no real data yet)
         setLiveJourney((prevJourney) => ({
           ...prevJourney,
-          stages: DEFAULT_JOURNEY_STAGES[phase],
+          stages: getBlueprintJourneyStages(phase, blueprintStagesRef.current),
         }));
       }
       return phase;
@@ -779,9 +781,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       if (phaseQuestions.length > 0) {
         // Load sub-pads for the first main question (auto-generates starters if no prep subs)
         const subPads = loadPrepSubPads(phaseQuestions[0], 0);
-        setStickyPads(subPads.length > 0 ? subPads : getSeedPadsForPhase(phase));
+        setStickyPads(subPads.length > 0 ? subPads : getSeedPadsForPhase(phase).slice(0, 4));
       } else {
-        setStickyPads(getSeedPadsForPhase(phase));
+        setStickyPads(getSeedPadsForPhase(phase).slice(0, 4));
       }
       setSelectedPadId(null);
     }
@@ -957,6 +959,25 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           setBlueprintSource('legacy_fallback');
         }
 
+        // Populate journey stages + actors from blueprint
+        if (bp?.journeyStages?.length) {
+          blueprintStagesRef.current = bp.journeyStages;
+          setLiveJourney(prev => ({
+            ...prev,
+            stages: bp.journeyStages.map(s => s.name),
+          }));
+        }
+        if (bp?.actorTaxonomy?.length) {
+          setLiveJourney(prev => ({
+            ...prev,
+            actors: bp.actorTaxonomy.map(a => ({
+              name: a.label,
+              role: a.description,
+              mentionCount: 0,
+            })),
+          }));
+        }
+
         // Populate data sufficiency from guidance state
         const gs = data.guidanceState;
         if (gs) {
@@ -986,7 +1007,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               setStickyPads(subPads);
             } else {
               // No sub-pads generated — fall back to old model
-              const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase);
+              const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase).slice(0, 4);
               if (prepPads.length > 0) setStickyPads(prepPads);
             }
             // Sync first main question as the goal for agents
@@ -995,7 +1016,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               currentMainQuestion: { text: firstQ.text, lens: firstQ.lens || null, purpose: firstQ.purpose, grounding: firstQ.grounding, phase: firstQ.phase },
             });
           } else {
-            const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase);
+            const prepPads = buildSessionPadsFromPrep(cq, dialoguePhase).slice(0, 4);
             if (prepPads.length > 0) setStickyPads(prepPads);
           }
         }
@@ -1057,7 +1078,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     });
 
     // Stage 5: Live Journey Construction (progressive, preserves facilitator edits)
-    setLiveJourney(prev => buildLiveJourney(nodesArr, prev, DEFAULT_JOURNEY_STAGES[dialoguePhase]));
+    setLiveJourney(prev => buildLiveJourney(nodesArr, prev, getBlueprintJourneyStages(dialoguePhase, blueprintStagesRef.current)));
 
     // Session confidence
     const confidence = calculateSessionConfidence(
@@ -1536,6 +1557,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     if (!listening) return;
 
     const POLL_TYPES = [
+      'datapoint.created',
       'pad.generated',
       'agent.conversation',
       'classification.updated',
@@ -1550,6 +1572,76 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     const dispatchOutboxEvent = (type: string, payload: unknown) => {
       try {
         switch (type) {
+          case 'datapoint.created': {
+            const p = payload as DataPointCreatedPayload;
+            const dataPointId = p?.dataPoint?.id;
+            if (!dataPointId) return;
+            const createdAtMs =
+              typeof p.dataPoint.createdAt === 'string'
+                ? Date.parse(p.dataPoint.createdAt)
+                : p.dataPoint.createdAt instanceof Date
+                  ? p.dataPoint.createdAt.getTime()
+                  : Date.now();
+            const cogNode = createInitialNode(
+              dataPointId,
+              String(p.dataPoint.rawText ?? ''),
+              p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
+              createdAtMs,
+            );
+            setCogNodes(prev => {
+              if (prev.has(dataPointId)) return prev;
+              const next = new Map(prev);
+              next.set(dataPointId, cogNode);
+              return next;
+            });
+
+            // Hemisphere node -- only for meaningful phrases (4+ words)
+            const nodeRawText = String(p.dataPoint.rawText ?? '');
+            const wordCount = nodeRawText.trim().split(/\s+/).filter(w => w.length > 0).length;
+            if (wordCount >= 4) {
+              const kwLensResults = nodeRawText.length >= 3 ? inferKeywordLenses(nodeRawText) : [];
+              const kwDomains = kwLensResults.map(kw => ({
+                domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
+                relevance: Math.min(0.95, kw.relevance + 0.4),
+                reasoning: kw.evidence,
+              })).filter(d => !!d.domain);
+
+              setHemisphereNodes(prev => ({
+                ...prev,
+                [dataPointId]: {
+                  dataPointId,
+                  createdAtMs,
+                  rawText: nodeRawText,
+                  dataPointSource: String(p.dataPoint.source ?? ''),
+                  speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
+                  dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
+                    ? (dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
+                    : null,
+                  transcriptChunk: p.transcriptChunk
+                    ? {
+                        speakerId: p.transcriptChunk.speakerId || null,
+                        startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+                        endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+                        confidence: typeof p.transcriptChunk.confidence === 'number' ? p.transcriptChunk.confidence : null,
+                        source: String(p.transcriptChunk.source ?? ''),
+                      }
+                    : null,
+                  classification: null,
+                  agenticAnalysis: kwDomains.length > 0 ? {
+                    domains: kwDomains,
+                    themes: [],
+                    actors: [],
+                    semanticMeaning: '',
+                    sentimentTone: 'neutral',
+                    overallConfidence: 0.5,
+                  } : null,
+                },
+              }));
+            }
+            nodeCountSinceLastRunRef.current++;
+            break;
+          }
+
           case 'classification.updated': {
             const p = payload as ClassificationUpdatedPayload;
             const dataPointId = p?.dataPointId;
