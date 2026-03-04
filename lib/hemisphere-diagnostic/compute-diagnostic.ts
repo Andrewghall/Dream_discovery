@@ -517,7 +517,7 @@ function computeBalanceSafeguard(
         flags.push({
           type: 'layer_imbalance',
           severity: 'warning',
-          message: `No nodes in ${layer} layer. The analysis may be missing ${layer === 'H1' ? 'visionary' : layer === 'H2' ? 'challenge/friction' : 'constraint/enabler'} perspectives.`,
+          message: `No nodes in ${layer} layer. The analysis may be missing ${layer === 'H1' ? 'visionary/design' : layer === 'H2' ? 'enabler/transitional' : 'challenge/constraint'} perspectives.`,
           metric: 0,
           threshold: 1,
         });

@@ -498,6 +498,9 @@ model WorkshopScratchpad {
   clientLogoUrl      String?  // URL to uploaded client logo
   solutionImageUrl   String?  // URL to uploaded solution overview image
 
+  // Output Assessment (archetype classification from deterministic classifier)
+  outputAssessment   Json?    // { archetype, secondaryArchetypes, confidence, rationale, requiredSections }
+
   // Metadata
   generatedFromSnapshot String? // ID of LiveWorkshopSnapshot used to generate
   status            ScratchpadStatus @default(DRAFT)

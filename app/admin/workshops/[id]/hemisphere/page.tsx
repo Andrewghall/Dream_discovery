@@ -1180,11 +1180,11 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     const out = new Map<string, NodePose>();
     // Full sphere: phi ranges from 0 (top) to π (bottom)
     // Layer bands spread across the full sphere with spacing
-    // Since EVIDENCE (H4) nodes are filtered out, spread H1–H3 across the FULL sphere
+    // Since EVIDENCE (H4) nodes are filtered out, spread H1-H3 across the FULL sphere
     const bandForLayer = (layer: HemisphereLayer): { a: number; b: number } => {
-      if (layer === 'H1') return { a: 0.05, b: 0.28 };   // Top region (Vision, Belief)
-      if (layer === 'H2') return { a: 0.38, b: 0.62 };   // Middle region (Challenge, Friction)
-      if (layer === 'H3') return { a: 0.72, b: 0.95 };   // Bottom region (Constraint, Enabler)
+      if (layer === 'H1') return { a: 0.05, b: 0.28 };   // Top: Imagine & Design (Vision, Belief)
+      if (layer === 'H2') return { a: 0.38, b: 0.62 };   // Middle: Transform & Enable (Enabler)
+      if (layer === 'H3') return { a: 0.72, b: 0.95 };   // Bottom: Challenges & Constraints (Challenge, Friction, Constraint)
       return { a: 0.78, b: 0.95 };                        // H4 fallback (rarely visible)
     };
     const clusterTheta = new Map<string, number>();

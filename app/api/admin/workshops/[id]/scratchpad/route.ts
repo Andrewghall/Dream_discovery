@@ -71,6 +71,7 @@ export async function PATCH(
         commercialContent: body.commercialContent,
         customerJourney: body.customerJourney,
         summaryContent: body.summaryContent,
+        ...(body.outputAssessment !== undefined ? { outputAssessment: body.outputAssessment } : {}),
         updatedAt: new Date(),
       },
     });

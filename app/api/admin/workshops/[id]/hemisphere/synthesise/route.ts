@@ -22,6 +22,8 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { classifyWorkshopArchetype } from '@/lib/output/archetype-classifier';
+import type { ClassifierInput } from '@/lib/output/archetype-classifier';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -500,7 +502,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // ── Pre-stream validation ───────────────────────────
   const workshop = await prisma.workshop.findUnique({
     where: { id: workshopId },
-    select: { id: true, name: true, organizationId: true, prepResearch: true },
+    select: { id: true, name: true, organizationId: true, prepResearch: true, industry: true, dreamTrack: true, targetDomain: true },
   });
   if (!workshop) {
     return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
@@ -819,6 +821,68 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         const jsonOrNull = (v: unknown) => (v && typeof v === 'object' ? v as Prisma.InputJsonValue : Prisma.DbNull);
 
+        // ════════════════════════════════════════════════════
+        // STEP 9b: Archetype classification (deterministic)
+        // ════════════════════════════════════════════════════
+        const nodeTypeCounts: Record<string, number> = {};
+        let classifierConstraintCount = 0;
+        let classifierEnablerCount = 0;
+        for (const node of Object.values(rawNodes as Record<string, SnapshotNode>)) {
+          if (!node?.rawText) continue;
+          const pt = safeStr(node.classification?.primaryType).toUpperCase();
+          if (pt) nodeTypeCounts[pt] = (nodeTypeCounts[pt] || 0) + 1;
+          // Map to hemisphere-equivalent types for the classifier
+          if (['CONSTRAINT', 'RISK'].includes(pt)) classifierConstraintCount++;
+          if (pt === 'ENABLER') classifierEnablerCount++;
+        }
+        // Map VISIONARY/OPPORTUNITY to VISION for the classifier
+        nodeTypeCounts['VISION'] = (nodeTypeCounts['VISION'] || 0) + (nodeTypeCounts['VISIONARY'] || 0) + (nodeTypeCounts['OPPORTUNITY'] || 0);
+
+        // Domain weights: normalise by total node count per domain
+        const domainWeights: Record<string, number> = {};
+        const totalDomainNodes = Object.values(aggregated.byDomain).reduce((s, b) =>
+          s + b.aspirations.length + b.constraints.length + b.enablers.length + b.opportunities.length + b.actions.length, 0) || 1;
+        for (const [domain, bucket] of Object.entries(aggregated.byDomain)) {
+          const domainTotal = bucket.aspirations.length + bucket.constraints.length + bucket.enablers.length + bucket.opportunities.length + bucket.actions.length;
+          domainWeights[domain] = domainTotal / totalDomainNodes;
+        }
+
+        // Derive diagnostic posture from creative/constraint ratio
+        const creativeCount = (nodeTypeCounts['VISION'] || 0) + (nodeTypeCounts['ENABLER'] || 0);
+        const negativeCount = classifierConstraintCount + (nodeTypeCounts['CHALLENGE'] || 0) + (nodeTypeCounts['FRICTION'] || 0);
+        const creativeRatio = aggregated.totalNodes > 0 ? creativeCount / aggregated.totalNodes : 0;
+        const negativeRatio = aggregated.totalNodes > 0 ? negativeCount / aggregated.totalNodes : 0;
+        let diagnosticPosture = 'aligned';
+        if (creativeRatio >= 0.55 && negativeRatio < 0.15) diagnosticPosture = 'innovation-dominated';
+        else if (negativeRatio >= 0.45 && creativeRatio < 0.15) diagnosticPosture = 'risk-dominated';
+        else if (creativeRatio >= 0.50) diagnosticPosture = 'expansive';
+        else if (negativeRatio >= 0.35) diagnosticPosture = 'defensive';
+
+        // Theme keywords
+        const themeKeywords = aggregated.topThemes.map(t => t.label);
+
+        const classifierInput: ClassifierInput = {
+          nodeTypeCounts,
+          domainWeights,
+          diagnosticPosture,
+          industry: workshop.industry || null,
+          dreamTrack: workshop.dreamTrack || null,
+          targetDomain: workshop.targetDomain || null,
+          constraintCount: classifierConstraintCount,
+          enablerCount: classifierEnablerCount,
+          themeKeywords,
+          totalNodes: aggregated.totalNodes,
+        };
+
+        const archetypeClassification = classifyWorkshopArchetype(classifierInput);
+
+        emit(
+          'orchestrator',
+          'orchestrator',
+          `**Output assessment**: ${archetypeClassification.primaryArchetype.replace(/_/g, ' ')} (confidence: ${(archetypeClassification.confidence * 100).toFixed(0)}%). ${archetypeClassification.rationale}${archetypeClassification.secondaryArchetypes.length > 0 ? ` Secondary signals: ${archetypeClassification.secondaryArchetypes.map(a => a.replace(/_/g, ' ')).join(', ')}.` : ''}`,
+          'info',
+        );
+
         const scratchpadData = {
           execSummary: jsonOrNull(synthesised.execSummary),
           discoveryOutput: jsonOrNull(synthesised.discoveryOutput),
@@ -828,6 +892,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           commercialContent: jsonOrNull(synthesised.commercialContent),
           customerJourney: jsonOrNull(synthesised.customerJourney),
           summaryContent: jsonOrNull(synthesised.summaryContent),
+          outputAssessment: archetypeClassification as unknown as Prisma.InputJsonValue,
           generatedFromSnapshot: snapshot!.id,
         };
 

@@ -131,9 +131,10 @@ function shortLabel(text: string, maxWords: number = 8): string {
 }
 
 function layerForType(type: NodeType): HemisphereLayer {
-  if (type === 'VISION' || type === 'BELIEF') return 'H1';
-  if (type === 'CHALLENGE' || type === 'FRICTION') return 'H2';
-  if (type === 'CONSTRAINT' || type === 'ENABLER') return 'H3';
+  // Negative-to-positive posture gradient: bottom (H3) to top (H1)
+  if (type === 'VISION' || type === 'BELIEF') return 'H1';          // Top: Imagine & Design (positive)
+  if (type === 'ENABLER') return 'H2';                               // Middle: Transform & Enable (transitional)
+  if (type === 'CHALLENGE' || type === 'FRICTION' || type === 'CONSTRAINT') return 'H3'; // Bottom: Challenges & Constraints (negative)
   return 'H4';
 }
 
