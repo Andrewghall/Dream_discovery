@@ -156,6 +156,32 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'search_actor_roles',
+      description:
+        'Research the key roles and stakeholders involved in this industry/domain operation. Find the people who would participate in or be affected by a workshop about this area — from senior leaders to front-line staff to external stakeholders.',
+      parameters: {
+        type: 'object',
+        properties: {
+          industry: {
+            type: 'string',
+            description: 'The industry context — e.g. "airline contact centre", "retail operations"',
+          },
+          domain: {
+            type: 'string',
+            description: 'The specific business domain or department — e.g. "customer service", "HR", "supply chain"',
+          },
+          clientType: {
+            type: 'string',
+            description: 'Type of operation — e.g. "B2C contact centre", "enterprise sales team", "compliance function"',
+          },
+        },
+        required: ['industry'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'commit_research',
       description:
         'Commit your research findings. Call this ONLY after you have conducted thorough multi-phase research (minimum 6 searches). Each field must contain substantive, multi-paragraph content — not brief summaries. This ends your research loop.',
@@ -242,6 +268,24 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             description:
               '4-6 industry-specific strategic dimensions. These replace generic categories with dimensions that matter for THIS industry. Each should have a distinct, accessible hex color and detailed descriptions.',
           },
+          actorTaxonomy: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                role: { type: 'string', description: 'Role title — e.g. "Customer Service Agent", "Operations Manager", "Quality Analyst"' },
+                description: { type: 'string', description: 'What this role does in this context (1-2 sentences)' },
+                seniority: {
+                  type: 'string',
+                  enum: ['executive', 'manager', 'operational', 'external'],
+                  description: 'Seniority level of this role',
+                },
+                department: { type: 'string', description: 'Department or functional area — e.g. "Operations", "Technology", "Quality"' },
+              },
+              required: ['role', 'description', 'seniority', 'department'],
+            },
+            description: '8-15 key roles/stakeholders relevant to this workshop. Cover executives, managers, front-line operational staff, and relevant external actors. Be specific to this industry and domain.',
+          },
         },
         required: [
           'companyOverview',
@@ -252,6 +296,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           'sourceUrls',
           'journeyStages',
           'industryDimensions',
+          'actorTaxonomy',
         ],
       },
     },
@@ -583,6 +628,57 @@ async function executeResearchTool(
       };
     }
 
+    case 'search_actor_roles': {
+      const industry = String(args.industry || context.industry || 'general');
+      const domain = String(args.domain || context.targetDomain || '');
+      const clientType = String(args.clientType || 'operations');
+
+      if (useTavily()) {
+        try {
+          const searchQuery = `${industry}${domain ? ` ${domain}` : ''} key roles stakeholders organisational structure ${clientType} team composition ${new Date().getFullYear()}`;
+          const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
+
+          const sources = tavily.results.map((r) => `\u2022 ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 800)}`).join('\n\n');
+          const answer = tavily.answer || 'No synthesised answer available.';
+
+          return {
+            result: JSON.stringify({
+              industry, domain, clientType, source: 'tavily_web_search',
+              answer,
+              resultCount: tavily.results.length,
+              results: tavily.results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 2000), fullContent: r.raw_content?.slice(0, 3000) || null })),
+            }),
+            summary: `**Actor Roles: ${industry}${domain ? ` (${domain})` : ''}** (${tavily.results.length} web results)\n${answer}\n\nSources:\n${sources}`,
+          };
+        } catch (err) {
+          console.error('[Research Agent] Tavily actor roles search failed, falling back:', err instanceof Error ? err.message : err);
+        }
+      }
+
+      // ── PARAMETRIC FALLBACK ──
+      const res = await openai.chat.completions.create({
+        model: MODEL,
+        temperature: 0.3,
+        max_tokens: 2000,
+        messages: [
+          {
+            role: 'system',
+            content: `You are an organisational design consultant. Identify the key roles and stakeholders involved in a specific business domain. Cover all levels: executive sponsors who set direction, middle management who oversee operations, front-line operational staff who do the work, and external stakeholders who are affected. For each role provide the title, a detailed description, seniority level, and department. Be specific to the industry and domain. NOTE: You are working from training knowledge, not live web search.`,
+          },
+          {
+            role: 'user',
+            content: `Identify 8-15 key roles for ${industry}${domain ? ` (${domain})` : ''}, client type: ${clientType}.\n\nFor each role provide:\n- Role title (specific to this industry, not generic)\n- Description of what they do (1-2 sentences)\n- Seniority: executive, manager, operational, or external\n- Department or functional area\n\nBe specific to this industry and domain.`,
+          },
+        ],
+      });
+
+      const content = res.choices[0]?.message?.content || 'No actor data available.';
+      return {
+        result: JSON.stringify({ industry, domain, clientType, source: 'parametric_knowledge', analysis: content }),
+        summary: `**Actor Roles: ${industry}${domain ? ` (${domain})` : ''}** (parametric knowledge)\n${content}`,
+      };
+    }
+
     default:
       return { result: JSON.stringify({ error: 'Unknown tool' }), summary: `Unknown tool: ${toolName}` };
   }
@@ -647,9 +743,10 @@ ${isDomain
     : `- Cross-functional challenges facing the business
 - Digital transformation status, strategic initiatives, and major programmes`}
 
-PHASE 4: Journey and Dimensions Research (2-3 searches)
+PHASE 4: Journey, Dimensions, and Actor Research (3-4 searches)
 - Customer/user lifecycle stages specific to this industry — NOT generic stages
 - Key strategic dimensions that matter for workshop analysis in this sector
+- Key roles and stakeholders: who works in this type of operation, who makes decisions, who is affected — from executive sponsors to front-line staff to external stakeholders. Be specific to the industry and domain.
 
 ═══ MINIMUM SEARCH REQUIREMENTS ═══
 
@@ -674,6 +771,8 @@ ${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${cont
 - journeyStages: 6-12 industry-specific stages with detailed descriptions (2-3 sentences each) and 3-5 specific touchpoints per stage.
 
 - industryDimensions: 4-6 dimensions with descriptive names, detailed descriptions (what it covers and why it matters), and 10-20 classification keywords each. Choose dimensions that matter for THIS industry.
+
+- actorTaxonomy: 8-15 roles covering executive sponsors, managers, front-line operational staff, and external stakeholders. Each role needs a specific title (not generic), a detailed description of what they do, a seniority level (executive/manager/operational/external), and a department. Be specific to this industry and domain — a retail contact centre has different actors than an airline contact centre or a law firm.
 
 ═══ QUALITY STANDARDS ═══
 
@@ -797,7 +896,7 @@ You must conduct at least ${context.dreamTrack === 'DOMAIN' ? '8' : '6'} differe
               tool_call_id: toolCall.id,
               content: JSON.stringify({
                 status: 'rejected',
-                reason: `You have only conducted ${searchCount} searches so far. The minimum for a thorough research briefing is ${minSearches}. Please continue researching — explore more angles before committing. Your current findings would produce a surface-level brief. Have you covered: company foundation, industry/competitive landscape, ${context.dreamTrack === 'DOMAIN' ? 'domain deep-dive, ' : ''}customer journey, and strategic dimensions?`,
+                reason: `You have only conducted ${searchCount} searches so far. The minimum for a thorough research briefing is ${minSearches}. Please continue researching — explore more angles before committing. Your current findings would produce a surface-level brief. Have you covered: company foundation, industry/competitive landscape, ${context.dreamTrack === 'DOMAIN' ? 'domain deep-dive, ' : ''}customer journey, strategic dimensions, and actor roles?`,
               }),
             });
             continue;
@@ -831,18 +930,25 @@ You must conduct at least ${context.dreamTrack === 'DOMAIN' ? '8' : '6'} differe
             ? `\n\n**Industry Dimensions** (${industryDims.length} axes — replacing generic categories)\n${industryDims.map((d) => `  • ${d.name}: ${d.description || 'No description'}${d.keywords?.length ? ` (${d.keywords.length} keywords)` : ''}`).join('\n')}`
             : '';
 
+          // Actor taxonomy summary
+          const actors = Array.isArray(fnArgs.actorTaxonomy) ? (fnArgs.actorTaxonomy as Array<{ role: string; description?: string; seniority?: string }>) : [];
+          const actorsSection = actors.length > 0
+            ? `\n\n**Actor Taxonomy** (${actors.length} roles)\n${actors.map((a) => `  \u2022 ${a.role} (${a.seniority || 'unknown'}): ${a.description || 'No description'}`).join('\n')}`
+            : '';
+
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'research-agent',
             to: 'prep-orchestrator',
-            message: `${searchLabel} — I've completed my research on ${context.clientName || 'the company'}. Here are my full findings:\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}${journeySection}${dimensionsSection}${sourcesSection}`,
+            message: `${searchLabel} — I've completed my research on ${context.clientName || 'the company'}. Here are my full findings:\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}${journeySection}${dimensionsSection}${actorsSection}${sourcesSection}`,
             type: 'proposal',
             metadata: {
-              toolsUsed: ['search_company_info', 'search_industry_trends', 'search_domain_challenges', 'search_customer_journey', 'search_industry_dimensions'],
+              toolsUsed: ['search_company_info', 'search_industry_trends', 'search_domain_challenges', 'search_customer_journey', 'search_industry_dimensions', 'search_actor_roles'],
               searchMode: useTavily() ? 'tavily_web_search' : 'parametric_fallback',
               sourceCount: sourceUrls.length,
               journeyStageCount: journeyStages.length,
               dimensionCount: industryDims.length,
+              actorCount: actors.length,
             },
           });
 
@@ -921,6 +1027,7 @@ function normaliseResearchOutput(args: Record<string, unknown>): WorkshopPrepRes
     sourceUrls: Array.isArray(args.sourceUrls) ? args.sourceUrls.map(String) : [],
     journeyStages: Array.isArray(args.journeyStages) ? args.journeyStages as WorkshopPrepResearch['journeyStages'] : null,
     industryDimensions: Array.isArray(args.industryDimensions) ? args.industryDimensions as WorkshopPrepResearch['industryDimensions'] : null,
+    actorTaxonomy: Array.isArray(args.actorTaxonomy) ? args.actorTaxonomy as WorkshopPrepResearch['actorTaxonomy'] : null,
   };
 }
 
@@ -967,6 +1074,7 @@ function fallbackResearch(context: PrepContext): WorkshopPrepResearch {
     sourceUrls: [],
     journeyStages: null,
     industryDimensions: null,
+    actorTaxonomy: null,
   };
 }
 

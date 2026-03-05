@@ -523,6 +523,7 @@ export async function PATCH(
           clientName: (updateData.clientName as string | null) ?? current.clientName ?? null,
           researchJourneyStages: research?.journeyStages ?? null,
           researchDimensions: research?.industryDimensions ?? null,
+          researchActors: research?.actorTaxonomy ?? null,
           previousVersion: existingBp?.blueprintVersion ?? 0,
         };
         updateData.blueprint = generateBlueprint(merged) as any;

@@ -396,8 +396,14 @@ export default function PrepPage({ params }: PageProps) {
                 setAgentConversation((prev) => [...prev, data as AgentConversationEntry]);
               } else if (eventType === 'research.complete') {
                 setResearchComplete(true);
-                if (data && typeof data === 'object' && 'research' in data) {
-                  setResearchData(data.research as ResearchOutput);
+                if (data && typeof data === 'object') {
+                  if ('research' in data) {
+                    setResearchData(data.research as ResearchOutput);
+                  }
+                  if ('blueprint' in data) {
+                    const bp = readBlueprintFromJson(data.blueprint);
+                    if (bp) setBlueprintData(bp);
+                  }
                 }
               }
             } catch {
@@ -1126,9 +1132,23 @@ export default function PrepPage({ params }: PageProps) {
             </div>
           </div>
 
-          {/* ── Blueprint Preview ─────────────────────────── */}
-          {blueprintData && (
+          {/* ── Blueprint Preview (gated on research completion) ── */}
+          {researchComplete && blueprintData ? (
             <BlueprintPreviewPanel blueprint={blueprintData} />
+          ) : (
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <div className="flex items-center gap-3 p-4">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <h2 className="text-sm font-semibold text-muted-foreground">Blueprint Configuration</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {researchRunning
+                      ? 'Research Agent is analysing -- blueprint will be generated from findings...'
+                      : 'Run the Research Agent to generate your Blueprint Configuration'}
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* ── Historical Metrics Upload ─────────────────── */}

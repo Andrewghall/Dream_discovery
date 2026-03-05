@@ -25,6 +25,7 @@ import { getDomainPack } from '@/lib/domain-packs/registry';
 import type {
   JourneyStageResearch,
   IndustryDimension,
+  ActorResearch,
 } from '@/lib/cognition/agents/agent-types';
 
 // ================================================================
@@ -36,6 +37,8 @@ export type GeneratorInput = ComposeInput & {
   researchJourneyStages?: JourneyStageResearch[] | null;
   /** Research-derived industry dimensions (overridden by curated industry lenses when available) */
   researchDimensions?: IndustryDimension[] | null;
+  /** Research-derived actor taxonomy (overridden by curated industry actors when available) */
+  researchActors?: ActorResearch[] | null;
   /** Current blueprint version to increment (omit or -1 for first generation) */
   previousVersion?: number;
   /** Client name -- used for industry context detection (e.g. "Aer Lingus" => airline) */
@@ -451,6 +454,14 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
         description: d.description,
         keywords: [...d.keywords],
         color: d.color,
+      }));
+    }
+
+    if (input.researchActors && input.researchActors.length > 0) {
+      bp.actorTaxonomy = input.researchActors.map((a): ActorEntry => ({
+        key: a.role.toLowerCase().replace(/[\s\/]+/g, '_').replace(/[^a-z0-9_]/g, ''),
+        label: a.role,
+        description: a.description,
       }));
     }
   }

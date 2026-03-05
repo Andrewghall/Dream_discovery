@@ -22,6 +22,7 @@ export type AgentConversationEntry = {
     sourceCount?: number;
     journeyStageCount?: number;
     dimensionCount?: number;
+    actorCount?: number;
     lensSource?: 'research_dimensions' | 'domain_pack' | 'generic_fallback' | 'blueprint';
     dataConfidence?: string;
   };

@@ -34,6 +34,13 @@ export type IndustryDimension = {
   color: string;             // Hex color for UI rendering (e.g. "#60a5fa")
 };
 
+export type ActorResearch = {
+  role: string;              // "Customer Service Agent", "Operations Manager"
+  description: string;       // What this role does in this context (1-2 sentences)
+  seniority: string;         // "executive" | "manager" | "operational" | "external"
+  department: string;        // "Operations", "Technology", "Quality", etc.
+};
+
 export type WorkshopPrepResearch = {
   companyOverview: string;
   industryContext: string;
@@ -47,6 +54,7 @@ export type WorkshopPrepResearch = {
   // Research-driven workshop configuration (null for legacy workshops)
   journeyStages: JourneyStageResearch[] | null;    // Typical customer journey for this industry
   industryDimensions: IndustryDimension[] | null;   // Industry-specific axes (replaces hardcoded 5)
+  actorTaxonomy: ActorResearch[] | null;            // Key roles and stakeholders for this industry/domain
 };
 
 // ══════════════════════════════════════════════════════════

@@ -125,8 +125,10 @@ export async function POST(
           domainPack: workshop.domainPack ?? null,
           purpose: workshop.description ?? null,
           outcomes: workshop.businessContext ?? null,
+          clientName: workshop.clientName ?? null,
           researchJourneyStages: research.journeyStages ?? null,
           researchDimensions: research.industryDimensions ?? null,
+          researchActors: research.actorTaxonomy ?? null,
           previousVersion: existingBp?.blueprintVersion ?? 0,
         });
 
@@ -148,8 +150,8 @@ export async function POST(
           type: 'acknowledgement',
         } satisfies AgentConversationEntry);
 
-        // Emit completion event with full research
-        sendEvent('research.complete', { research });
+        // Emit completion event with full research and updated blueprint
+        sendEvent('research.complete', { research, blueprint: updatedBlueprint });
       } catch (error) {
         sendEvent('agent.conversation', {
           timestampMs: Date.now(),
