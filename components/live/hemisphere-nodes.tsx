@@ -123,6 +123,20 @@ function intentColor(intent: string) {
   return palette[Math.max(0, Math.min(palette.length - 1, i))];
 }
 
+const DEFAULT_LENS_NAMES = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+
+function buildDomainAngles(lensNames: string[]): Record<string, number> {
+  const angles: Record<string, number> = {};
+  const count = lensNames.length;
+  lensNames.forEach((name, i) => {
+    // Evenly distribute across the half-circle (PI to 0, left to right)
+    angles[name] = count > 1
+      ? Math.PI - (i / (count - 1)) * Math.PI
+      : Math.PI / 2; // single lens goes to center
+  });
+  return angles;
+}
+
 export const HemisphereNodes = memo(function HemisphereNodes(props: {
   nodes: HemisphereNodeDatum[];
   originTimeMs: number | null;
@@ -139,9 +153,11 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
     color?: string;
     width?: number;
   }>;
+  lensNames?: string[];
   className?: string;
 }) {
-  const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, themeAttractors, links, className } = props;
+  const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, themeAttractors, links, lensNames, className } = props;
+  const activeLenses = lensNames?.length ? lensNames : DEFAULT_LENS_NAMES;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -176,13 +192,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
     const t0 = originTimeMs ?? Math.min(...nodes.map((n) => n.createdAtMs));
 
     // Domain angles — nodes are pulled toward their classified domain zone
-    const domainAngles: Record<string, number> = {
-      People: (5 * Math.PI) / 6,
-      Operations: (3 * Math.PI) / 4,
-      Customer: Math.PI / 2,
-      Technology: Math.PI / 3,
-      Regulation: Math.PI / 6,
-    };
+    const domainAngles = buildDomainAngles(activeLenses);
 
     return nodes.map((n) => {
       const dt = Math.max(0, n.createdAtMs - t0);
@@ -271,7 +281,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         conf: clsConf,
       };
     });
-  }, [nodes, originTimeMs, timeScaleMs, themeAttractors]);
+  }, [nodes, originTimeMs, timeScaleMs, themeAttractors, activeLenses]);
 
   const convergenceLinks = useMemo(() => {
     if (!themeAttractors) return [] as Array<{
@@ -365,14 +375,8 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       return `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
     });
 
-    // Domain-aligned spokes — visually define the 5 domain zones
-    const domainSpokeAngles = [
-      (5 * Math.PI) / 6,  // People
-      (3 * Math.PI) / 4,  // Operations
-      Math.PI / 2,         // Customer
-      Math.PI / 3,         // Technology
-      Math.PI / 6,         // Regulation
-    ];
+    // Domain-aligned spokes — visually define domain zones
+    const domainSpokeAngles = Object.values(buildDomainAngles(activeLenses));
     const spokes = domainSpokeAngles.map((theta) => {
       const x = cx + R * Math.cos(theta);
       const y = cy - R * Math.sin(theta);
@@ -380,7 +384,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
     });
 
     return { W, H, cx, cy, R, arc, rings, spokes };
-  }, []);
+  }, [activeLenses]);
 
   return (
     <div ref={containerRef} className={className} style={{ position: 'relative' }}>
@@ -423,21 +427,14 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
           </text>
 
           {/* Domain zone labels — positioned along the arc */}
-          {(
-            [
-              { theta: (5 * Math.PI) / 6, label: 'People' },
-              { theta: (3 * Math.PI) / 4, label: 'Ops' },
-              { theta: Math.PI / 2, label: 'Customer' },
-              { theta: Math.PI / 3, label: 'Tech' },
-              { theta: Math.PI / 6, label: 'Regulation' },
-            ] as const
-          ).map((p) => {
+          {Object.entries(buildDomainAngles(activeLenses)).map(([name, theta]) => {
             const r = backdrop.R * 1.04;
-            const x = backdrop.cx + r * Math.cos(p.theta);
-            const y = backdrop.cy - r * Math.sin(p.theta);
+            const x = backdrop.cx + r * Math.cos(theta);
+            const y = backdrop.cy - r * Math.sin(theta);
+            const shortLabel = name.length > 12 ? name.slice(0, 11) + '\u2026' : name;
             return (
               <text
-                key={`domain-${p.label}`}
+                key={`domain-${name}`}
                 x={x}
                 y={y}
                 fontSize={11}
@@ -445,7 +442,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
                 textAnchor="middle"
                 fontWeight={600}
               >
-                {p.label}
+                {shortLabel}
               </text>
             );
           })}

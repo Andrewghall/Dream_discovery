@@ -4,7 +4,7 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { getDomainPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
-import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { readBlueprintFromJson, WorkshopBlueprintSchema } from '@/lib/workshop/blueprint';
 import type { EngagementType } from '@prisma/client';
 import type { WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 
@@ -485,14 +485,27 @@ export async function PATCH(
       updateData.domainPackConfig = body.domainPack ? (getDomainPack(body.domainPack) as any ?? undefined) : null;
     }
 
-    // Recompose blueprint if any blueprint-relevant field changed
+    // Direct blueprint override -- user edited the blueprint manually
+    const hasDirectBlueprint = body.blueprint && typeof body.blueprint === 'object' && !Array.isArray(body.blueprint);
+    if (hasDirectBlueprint) {
+      const parsed = WorkshopBlueprintSchema.safeParse(body.blueprint);
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: 'Invalid blueprint', details: parsed.error.flatten().fieldErrors },
+          { status: 400 }
+        );
+      }
+      updateData.blueprint = parsed.data as any;
+    }
+
+    // Recompose blueprint if any blueprint-relevant field changed (skip if direct override provided)
     const blueprintFields = [
       'engagementType', 'domainPack', 'dreamTrack',
       'description', 'businessContext', 'industry', 'clientName',
     ];
     const blueprintFieldChanged = blueprintFields.some((f) => f in body);
 
-    if (blueprintFieldChanged) {
+    if (blueprintFieldChanged && !hasDirectBlueprint) {
       const current = await prisma.workshop.findUnique({
         where: { id },
         select: {

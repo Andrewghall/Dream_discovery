@@ -31,6 +31,8 @@ import {
   applyLensMapping,
   inferKeywordLenses,
   LENS_TO_DOMAIN,
+  buildKeywordLensMap,
+  buildLensToDomain,
   calculateLensCoverage,
   detectSignals,
   generateStickyPads,
@@ -473,6 +475,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Audio capture + mic setup ─────────────────────────
   const dialoguePhaseRef = useRef<DialoguePhase>('REIMAGINE');
   const blueprintStagesRef = useRef<Array<{ name: string }> | null>(null);
+  const blueprintLensNamesRef = useRef<string[]>([]);
+  const customKeywordMapRef = useRef<[string, RegExp][] | null>(null);
+  const customLensToDomainRef = useRef<Record<string, string> | null>(null);
 
   // Live hemisphere nodes — updated in real-time from CaptureAPI token stream.
   // One "live" node per speaker that updates as words stream in, then removed
@@ -503,9 +508,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     if (wordCount < 4) return;
 
     // Run keyword inference on the growing text
-    const kwLensResults = text.length >= 3 ? inferKeywordLenses(text) : [];
+    const kwLensResults = text.length >= 3 ? inferKeywordLenses(text, customKeywordMapRef.current) : [];
     const kwDomains = kwLensResults.map(kw => ({
-      domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
+      domain: (customLensToDomainRef.current ?? LENS_TO_DOMAIN)[kw.lens] ?? kw.lens,
       relevance: Math.min(0.95, kw.relevance + 0.4),
       reasoning: kw.evidence,
     })).filter(d => !!d.domain);
@@ -959,7 +964,13 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           setBlueprintSource('legacy_fallback');
         }
 
-        // Populate journey stages + actors from blueprint
+        // Populate lens names + keyword maps from blueprint
+        if (bp?.lenses?.length) {
+          blueprintLensNamesRef.current = bp.lenses.map(l => l.name);
+          const customDimensions = bp.lenses.map(l => ({ name: l.name, keywords: l.keywords }));
+          customKeywordMapRef.current = buildKeywordLensMap(customDimensions);
+          customLensToDomainRef.current = buildLensToDomain(bp.lenses.map(l => l.name));
+        }
         if (bp?.journeyStages?.length) {
           blueprintStagesRef.current = bp.journeyStages;
           setLiveJourney(prev => ({
@@ -1161,9 +1172,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         if (wordCount >= 4) {
           // Run keyword inference so dots position correctly
           // (CaptureAPI sends raw transcripts with no domain classification)
-          const kwLensResults = nodeRawText.length >= 3 ? inferKeywordLenses(nodeRawText) : [];
+          const kwLensResults = nodeRawText.length >= 3 ? inferKeywordLenses(nodeRawText, customKeywordMapRef.current) : [];
           const kwDomains = kwLensResults.map(kw => ({
-                domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
+                domain: (customLensToDomainRef.current ?? LENS_TO_DOMAIN)[kw.lens] ?? kw.lens,
                 relevance: Math.min(0.95, kw.relevance + 0.4),
                 reasoning: kw.evidence,
               })).filter(d => !!d.domain);
@@ -1287,10 +1298,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           const maxApiRelevance = analysis.domains.reduce((m, d) => Math.max(m, d.relevance), 0.5);
           const enrichedDomains = [...analysis.domains];
           if (existing.rawText && existing.rawText.length >= 3) {
-            const kwLenses = inferKeywordLenses(existing.rawText);
+            const kwLenses = inferKeywordLenses(existing.rawText, customKeywordMapRef.current);
             const existingDomains = new Set(enrichedDomains.map(d => d.domain));
             for (const kw of kwLenses) {
-              const domain = LENS_TO_DOMAIN[kw.lens];
+              const domain = (customLensToDomainRef.current ?? LENS_TO_DOMAIN)[kw.lens];
               if (!domain) continue;
               if (existingDomains.has(domain)) {
                 // Boost existing domain to at least match CaptureAPI max
@@ -1599,9 +1610,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             const nodeRawText = String(p.dataPoint.rawText ?? '');
             const wordCount = nodeRawText.trim().split(/\s+/).filter(w => w.length > 0).length;
             if (wordCount >= 4) {
-              const kwLensResults = nodeRawText.length >= 3 ? inferKeywordLenses(nodeRawText) : [];
+              const kwLensResults = nodeRawText.length >= 3 ? inferKeywordLenses(nodeRawText, customKeywordMapRef.current) : [];
               const kwDomains = kwLensResults.map(kw => ({
-                domain: LENS_TO_DOMAIN[kw.lens] ?? kw.lens,
+                domain: (customLensToDomainRef.current ?? LENS_TO_DOMAIN)[kw.lens] ?? kw.lens,
                 relevance: Math.min(0.95, kw.relevance + 0.4),
                 reasoning: kw.evidence,
               })).filter(d => !!d.domain);
@@ -1708,10 +1719,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               );
               const enrichedDomains = [...analysis.domains];
               if (existing.rawText && existing.rawText.length >= 3) {
-                const kwLenses = inferKeywordLenses(existing.rawText);
+                const kwLenses = inferKeywordLenses(existing.rawText, customKeywordMapRef.current);
                 const existingDomains = new Set(enrichedDomains.map(d => d.domain));
                 for (const kw of kwLenses) {
-                  const domain = LENS_TO_DOMAIN[kw.lens];
+                  const domain = (customLensToDomainRef.current ?? LENS_TO_DOMAIN)[kw.lens];
                   if (!domain) continue;
                   if (existingDomains.has(domain)) {
                     const idx = enrichedDomains.findIndex(d => d.domain === domain);
@@ -2229,6 +2240,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 nodes={hemisphereNodeArray}
                 originTimeMs={null}
                 onNodeClick={(node) => setExpandedNode(node)}
+                lensNames={blueprintLensNamesRef.current}
               />
             </div>
           </div>
@@ -2279,6 +2291,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                   nodes={hemisphereNodeArray}
                   originTimeMs={null}
                   onNodeClick={(node) => { setExpandedNode(node); }}
+                  lensNames={blueprintLensNamesRef.current}
                 />
               </div>
             </div>
