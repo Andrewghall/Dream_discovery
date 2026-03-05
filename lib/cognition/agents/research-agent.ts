@@ -20,12 +20,12 @@ import { buildJourneyContextString } from '../journey-completion-state';
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 15;        // More iterations for deep, multi-phase research
-const LOOP_TIMEOUT_MS = 150_000;  // 2.5 minutes — gpt-4o is slower but much deeper
-const MODEL = 'gpt-4o';           // Better depth, judgment, and longer outputs for prep research
+const MAX_ITERATIONS = 12;        // Enough for thorough 4-phase research without dragging
+const LOOP_TIMEOUT_MS = 90_000;   // 1.5 minutes — gpt-4o-mini is fast, keep it tight
+const MODEL = 'gpt-4o-mini';      // Fast, cost-effective — research quality driven by good prompting
 const LIVE_REVIEW_MODEL = 'gpt-4o-mini';  // Keep fast for latency-sensitive live reviews
 const MIN_SEARCHES_BEFORE_COMMIT = 6;
-const MIN_SEARCHES_DOMAIN_TRACK = 8;
+const MIN_SEARCHES_DOMAIN_TRACK = 7;
 
 // ══════════════════════════════════════════════════════════════
 // TOOL DEFINITIONS

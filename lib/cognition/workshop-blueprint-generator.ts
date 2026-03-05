@@ -183,7 +183,11 @@ function isAirlineContactCentreContext(input: GeneratorInput): boolean {
     'british airways', 'virgin atlantic', 'delta', 'emirates',
     'qatar', 'etihad', 'singapore airlines', 'cathay',
   ];
-  return airlineSignals.some((signal) => text.includes(signal));
+  if (airlineSignals.some((signal) => text.includes(signal))) return true;
+
+  // Check common airline abbreviations as whole words (avoid false positives)
+  const abbrevPatterns = [/\bba\b/, /\biag\b/, /\bqf\b/, /\bek\b/, /\bsq\b/];
+  return abbrevPatterns.some((re) => re.test(text));
 }
 
 /**
