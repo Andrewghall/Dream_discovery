@@ -29,9 +29,7 @@ interface WorkshopSidebarProps {
 function buildNavSections(domainPack?: string | null) {
   const analyseItems = [
     { label: 'Discovery', path: '/discovery', icon: Search },
-    ...(domainPack
-      ? [{ label: 'Field Discovery', path: '/discovery/field', icon: Compass }]
-      : []),
+    { label: 'Field Discovery', path: '/discovery/field', icon: Compass },
     { label: 'Hemisphere', path: '/hemisphere', icon: Globe },
     { label: 'Spider', path: '/spider', icon: BarChart3 },
   ];
