@@ -355,6 +355,28 @@ const PRIMARY_TYPE_TO_COG: Record<string, CogNodeType> = {
   QUESTION: 'QUESTION',
 };
 
+// ── Live Session Version payload (auto-saved every 30s) ──
+
+export type LiveSessionVersionPayload = {
+  v: 2;
+  savedAtMs: number;
+  dialoguePhase: string;
+  mainQuestionIndex: number;
+  hemisphereNodes: Record<string, unknown>;
+  cogNodes: Array<[string, CogNode]>;
+  stickyPads: StickyPad[];
+  completedByQuestion: Array<[number, StickyPad[]]>;
+  signals: Signal[];
+  liveJourney: LiveJourneyData;
+  sessionConfidence: SessionConfidence;
+  themes: unknown[];
+  activeThemeId: string | null;
+  lensCoverage: Array<[string, unknown]>;
+  agentConversation: unknown[];
+  journeyCompletionState: unknown | null;
+  customLensColors?: Record<string, { bg: string; text: string; accent: string; label: string }>;
+};
+
 const CONFIDENCE_THRESHOLD = 0.4;
 
 /**

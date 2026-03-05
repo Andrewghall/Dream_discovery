@@ -3,7 +3,7 @@
 import React, { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ArrowRight, ChevronRight, Radio, Square, X, Maximize2, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronRight, Radio, Square, X, Maximize2, Zap, Loader2, Check, History } from 'lucide-react';
 import {
   HemisphereNodes,
   type HemisphereNodeDatum,
@@ -62,6 +62,8 @@ import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { useAudioCapture } from '@/hooks/use-audio-capture';
 import type { StreamTranscript } from '@/lib/captureapi/client';
 import { MicSetupDialog } from '@/components/cognitive-guidance/mic-setup-dialog';
+import VersionHistoryPanel from '@/components/cognitive-guidance/version-history-panel';
+import type { LiveSessionVersionPayload } from '@/lib/cognitive-guidance/pipeline';
 import { toast } from 'sonner';
 
 type PageProps = {
@@ -466,6 +468,20 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [cgSnapshots, setCgSnapshots] = useState<Array<{ id: string; name: string; dialoguePhase: string }>>([]);
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
   const [lastSavedSnapshotId, setLastSavedSnapshotId] = useState<string | null>(null);
+
+  // ── Versioned session auto-save (full state, every 30s) ──
+  const [sessionVersions, setSessionVersions] = useState<Array<{
+    id: string; version: number; dialoguePhase: string; label: string | null; createdAt: string;
+  }>>([]);
+  const [currentVersion, setCurrentVersion] = useState(0);
+  const [versionSaveStatus, setVersionSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const lastVersionHashRef = useRef('');
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+
+  const versionUrl = useMemo(
+    () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/session-versions`,
+    [workshopId]
+  );
 
   const snapshotUrl = useMemo(
     () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/snapshots`,
@@ -1555,6 +1571,139 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     return () => { clearTimeout(timeout); clearInterval(interval); };
   }, [listening, autoSave]);
 
+  // ── Versioned session auto-save (full state, every 30s) ────────────
+  const fetchSessionVersions = useCallback(async () => {
+    try {
+      const r = await fetch(`${versionUrl}?limit=50`);
+      const json = await r.json().catch(() => null);
+      if (json?.ok && Array.isArray(json.versions)) {
+        setSessionVersions(json.versions);
+        if (json.versions.length > 0) {
+          setCurrentVersion(json.versions[0].version);
+        }
+      }
+    } catch { /* ignore */ }
+  }, [versionUrl]);
+
+  useEffect(() => { void fetchSessionVersions(); }, [fetchSessionVersions]);
+
+  const autoSaveVersion = useCallback(async () => {
+    // Build permanent hemisphere nodes (filter out live: streaming nodes)
+    const permanentNodes: Record<string, HemisphereNodeDatum> = {};
+    for (const [key, val] of Object.entries(hemisphereNodes)) {
+      if (!key.startsWith('live:')) permanentNodes[key] = val;
+    }
+    // Don't save if nothing meaningful exists
+    if (Object.keys(permanentNodes).length === 0 && stickyPads.length === 0) return;
+
+    // Quick-hash to skip saves when nothing changed
+    const quickHash = `${Object.keys(permanentNodes).length}-${stickyPads.length}-${mainQuestionIndex}-${dialoguePhase}-${agentConversation.length}`;
+    if (quickHash === lastVersionHashRef.current) return;
+
+    const payload: LiveSessionVersionPayload = {
+      v: 2,
+      savedAtMs: Date.now(),
+      dialoguePhase,
+      mainQuestionIndex,
+      hemisphereNodes: permanentNodes,
+      cogNodes: Array.from(cogNodes.entries()),
+      stickyPads,
+      completedByQuestion: Array.from(completedByQuestion.entries()),
+      signals,
+      liveJourney,
+      sessionConfidence,
+      themes,
+      activeThemeId,
+      lensCoverage: Array.from(lensCoverage.entries()),
+      agentConversation,
+      journeyCompletionState,
+      customLensColors,
+    };
+
+    try {
+      setVersionSaveStatus('saving');
+      const r = await fetch(versionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dialoguePhase, payload }),
+      });
+      const json = await r.json().catch(() => null);
+      if (r.ok && json?.ok) {
+        setCurrentVersion(json.version.version);
+        lastVersionHashRef.current = quickHash;
+        setVersionSaveStatus('saved');
+        void fetchSessionVersions();
+        setTimeout(() => setVersionSaveStatus(s => s === 'saved' ? 'idle' : s), 3000);
+      } else {
+        setVersionSaveStatus('error');
+      }
+    } catch {
+      setVersionSaveStatus('error');
+    }
+  }, [
+    hemisphereNodes, cogNodes, stickyPads, completedByQuestion, signals,
+    liveJourney, sessionConfidence, themes, activeThemeId, lensCoverage,
+    agentConversation, journeyCompletionState, customLensColors,
+    dialoguePhase, mainQuestionIndex, versionUrl, fetchSessionVersions,
+  ]);
+
+  // Auto-save version every 30 seconds while listening
+  useEffect(() => {
+    if (!listening) return;
+    const timeout = setTimeout(() => { void autoSaveVersion(); }, 10_000);
+    const interval = setInterval(() => { void autoSaveVersion(); }, 30_000);
+    return () => { clearTimeout(timeout); clearInterval(interval); };
+  }, [listening, autoSaveVersion]);
+
+  const restoreFromVersion = useCallback(async (versionId: string) => {
+    try {
+      const r = await fetch(`${versionUrl}/${versionId}`);
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.ok) {
+        toast.error('Failed to load version');
+        return;
+      }
+      const p = json.version.payload as LiveSessionVersionPayload;
+
+      // Restore all state
+      setDialoguePhase(p.dialoguePhase as DialoguePhase);
+      dialoguePhaseRef.current = p.dialoguePhase as DialoguePhase;
+      setMainQuestionIndex(p.mainQuestionIndex);
+      setHemisphereNodes(p.hemisphereNodes as Record<string, HemisphereNodeDatum>);
+      setCogNodes(new Map(p.cogNodes as Array<[string, CogNode]>));
+      setStickyPads(p.stickyPads);
+      setCompletedByQuestion(new Map(p.completedByQuestion));
+      setSignals(p.signals);
+      setLiveJourney(p.liveJourney as LiveJourneyData);
+      setSessionConfidence(p.sessionConfidence as SessionConfidence);
+      setThemes(p.themes as GuidedTheme[]);
+      setActiveThemeId(p.activeThemeId);
+      setLensCoverage(new Map(p.lensCoverage as Array<[Lens, LensCoverage]>));
+      setAgentConversation(p.agentConversation as AgentConversationEntry[]);
+      setJourneyCompletionState(p.journeyCompletionState as JourneyCompletionState | null);
+      if (p.customLensColors) setCustomLensColors(p.customLensColors);
+
+      setNodeCount(Object.keys(p.hemisphereNodes).length);
+      setCurrentVersion(json.version.version);
+      lastVersionHashRef.current = '';
+
+      toast.success(`Restored to version ${json.version.version}`);
+    } catch {
+      toast.error('Failed to restore version');
+    }
+  }, [versionUrl]);
+
+  const handleVersionLabel = useCallback(async (versionId: string, label: string) => {
+    try {
+      await fetch(`${versionUrl}/${versionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      });
+      void fetchSessionVersions();
+    } catch { /* ignore */ }
+  }, [versionUrl, fetchSessionVersions]);
+
   // ── Poll event outbox for all derived events (durable cross-isolate delivery) ──
   // Events emitted inside after() callbacks don't reach the SSE endpoint on Vercel
   // serverless (different isolates). The outbox table is the source of truth.
@@ -1987,6 +2136,20 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 )}
               </span>
             )}
+            {/* Version badge + history trigger */}
+            {currentVersion > 0 && (
+              <button
+                onClick={() => setVersionHistoryOpen(true)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                title="View version history"
+              >
+                <History className="h-3 w-3" />
+                v{currentVersion}
+                {versionSaveStatus === 'saving' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                {versionSaveStatus === 'saved' && <Check className="h-3 w-3 text-emerald-500" />}
+                {versionSaveStatus === 'error' && <span className="w-1.5 h-1.5 rounded-full bg-red-500" />}
+              </button>
+            )}
             {/* Review in Hemisphere button (shown after stopping with data) */}
             {!listening && lastSavedSnapshotId && Object.keys(hemisphereNodes).length > 0 && (
               <Link href={`/admin/workshops/${workshopId}/hemisphere?snapshotId=${lastSavedSnapshotId}`}>
@@ -2305,6 +2468,17 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             onClose={() => setExpandedNode(null)}
           />
         )}
+
+        {/* ═══ VERSION HISTORY PANEL ═══ */}
+        <VersionHistoryPanel
+          open={versionHistoryOpen}
+          onOpenChange={setVersionHistoryOpen}
+          versions={sessionVersions}
+          currentVersion={currentVersion}
+          isLive={listening}
+          onRestore={restoreFromVersion}
+          onLabel={handleVersionLabel}
+        />
       </div>
     </div>
   );
