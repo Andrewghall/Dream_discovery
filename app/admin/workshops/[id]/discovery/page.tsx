@@ -3,7 +3,7 @@
 import React, { use, useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Users, BookOpen, TrendingUp, Layers, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, TrendingUp, Layers, Loader2, RefreshCw, Compass } from 'lucide-react';
 import { AlignmentHeatmap } from '@/components/discover-analysis/alignment-heatmap';
 import { TensionSurface } from '@/components/discover-analysis/tension-surface';
 import { NarrativeDivergence } from '@/components/discover-analysis/narrative-divergence';
@@ -11,6 +11,7 @@ import { ConstraintMap } from '@/components/discover-analysis/constraint-map';
 import { ConfidenceIndex } from '@/components/discover-analysis/confidence-index';
 import { GptInquiryBar } from '@/components/discover-analysis/gpt-inquiry-bar';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
+import { buildAnalysisFromFindings } from '@/lib/field-discovery/findings-to-analysis-adapter';
 
 // ══════════════════════════════════════════════════════════
 // CONSTANTS
@@ -190,6 +191,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-1',
         topic: 'Speed of AI adoption vs workforce readiness',
         rank: 1,
+        tensionIndex: 12,
         severity: 'critical',
         viewpoints: [
           { actor: 'Leadership', position: 'Need to accelerate AI to stay competitive', sentiment: 'positive', evidenceQuote: 'We cannot afford to wait while competitors automate' },
@@ -204,6 +206,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-2',
         topic: 'Data-driven personalisation vs privacy compliance',
         rank: 2,
+        tensionIndex: 9,
         severity: 'critical',
         viewpoints: [
           { actor: 'Marketing', position: 'Predictive engagement requires deep customer data', sentiment: 'positive', evidenceQuote: 'We need to move from segments to individual profiles' },
@@ -218,6 +221,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-3',
         topic: 'Channel-centric structure vs omnichannel aspiration',
         rank: 3,
+        tensionIndex: 6,
         severity: 'significant',
         viewpoints: [
           { actor: 'Leadership', position: 'Advocate cross-functional journey squads', sentiment: 'positive', evidenceQuote: 'We need to organise around customer journeys not channels' },
@@ -232,6 +236,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-4',
         topic: 'Decision-making speed vs governance layers',
         rank: 4,
+        tensionIndex: 4,
         severity: 'significant',
         viewpoints: [
           { actor: 'Operations', position: 'Too many approval layers delay market responsiveness', sentiment: 'negative', evidenceQuote: 'By the time we get sign-off, the opportunity has passed' },
@@ -245,6 +250,7 @@ const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
         id: 'tension-5',
         topic: 'Investment in technology modernisation vs budget constraints',
         rank: 5,
+        tensionIndex: 2,
         severity: 'moderate',
         viewpoints: [
           { actor: 'Technology', position: 'Composable architecture is the only viable path', sentiment: 'positive', evidenceQuote: 'We must replace legacy POS and build a unified platform' },
@@ -406,25 +412,18 @@ export default function DiscoveryPage({ params }: PageProps) {
   const { id: workshopId } = use(params);
   const isRetailDemo = workshopId === RETAIL_WORKSHOP_ID;
 
-  const [spiderData, setSpiderData] = useState<SpiderAxisStat[] | null>(
-    isRetailDemo ? DEMO_SPIDER_DATA : null
-  );
-  const [wordCloudData, setWordCloudData] = useState<WordCloudItem[] | null>(
-    isRetailDemo ? DEMO_WORD_CLOUD : null
-  );
-  const [summary, setSummary] = useState<WorkshopSummary | null>(
-    isRetailDemo ? DEMO_SUMMARY : null
-  );
-  const [participantCount, setParticipantCount] = useState(
-    isRetailDemo ? DEMO_PARTICIPANT_COUNT : 0
-  );
-  const [loading, setLoading] = useState(!isRetailDemo);
-  const [summaryLoading, setSummaryLoading] = useState(!isRetailDemo);
+  const [spiderData, setSpiderData] = useState<SpiderAxisStat[] | null>(null);
+  const [wordCloudData, setWordCloudData] = useState<WordCloudItem[] | null>(null);
+  const [summary, setSummary] = useState<WorkshopSummary | null>(null);
+  const [participantCount, setParticipantCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+
+  // ── Workshop domain pack (for conditional Field Discovery card) ──
+  const [workshopDomainPack, setWorkshopDomainPack] = useState<string | null>(null);
 
   // ── Discover Analysis state ──────────────────────────────
-  const [analysis, setAnalysis] = useState<DiscoverAnalysis | null>(
-    isRetailDemo ? DEMO_DISCOVER_ANALYSIS : null
-  );
+  const [analysis, setAnalysis] = useState<DiscoverAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState<string | null>(null);
 
@@ -481,32 +480,66 @@ export default function DiscoveryPage({ params }: PageProps) {
     }
   }, [workshopId]);
 
-  // ── Fetch cached analysis (skip for retail demo) ─────────
+  // ── Fetch cached analysis + workshop info (all workshops) ──
   useEffect(() => {
-    if (isRetailDemo) return;
-
     async function fetchAnalysis() {
       try {
+        // 1. Try fetching stored analysis from API
         const res = await fetch(
           `/api/admin/workshops/${encodeURIComponent(workshopId)}/discover-analysis`,
           { cache: 'no-store' },
         );
         if (res.ok) {
           const data = await res.json();
-          if (data.analysis) setAnalysis(data.analysis);
+          if (data.analysis) {
+            setAnalysis(data.analysis);
+            return;
+          }
+        }
+      } catch { /* continue to fallbacks */ }
+
+      // 2. If no stored analysis, try building from findings
+      try {
+        const findingsRes = await fetch(
+          `/api/admin/workshops/${encodeURIComponent(workshopId)}/findings`,
+          { cache: 'no-store' },
+        );
+        if (findingsRes.ok) {
+          const findingsData = await findingsRes.json();
+          if (findingsData.findings && findingsData.findings.length > 0) {
+            const adapted = buildAnalysisFromFindings(workshopId, findingsData.findings);
+            setAnalysis(adapted);
+            return;
+          }
+        }
+      } catch { /* continue to fallback */ }
+
+      // 3. If no findings AND retail demo, use hardcoded demo data
+      if (isRetailDemo) {
+        setAnalysis(DEMO_DISCOVER_ANALYSIS);
+      }
+    }
+
+    async function fetchWorkshopInfo() {
+      try {
+        const res = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.workshop?.domainPack) setWorkshopDomainPack(data.workshop.domainPack);
         }
       } catch { /* fail silently */ }
     }
 
     fetchAnalysis();
+    fetchWorkshopInfo();
   }, [workshopId, isRetailDemo]);
 
-  // ── Fetch spider + keywords (skip for retail demo) ─────
+  // ── Fetch spider + keywords (all workshops, retail demo fallback) ─────
   useEffect(() => {
-    if (isRetailDemo) return;
-
     async function fetchDiscoveryData() {
       setLoading(true);
+      let gotSpider = false;
+      let gotKeywords = false;
       try {
         const [spiderRes, keywordsRes] = await Promise.all([
           fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/spider?bust=${Date.now()}`, { cache: 'no-store' }),
@@ -515,37 +548,50 @@ export default function DiscoveryPage({ params }: PageProps) {
 
         if (spiderRes.ok) {
           const data = await spiderRes.json();
-          setSpiderData(data.axisStats || null);
-          setParticipantCount(data.participantCount || 0);
+          if (data.axisStats && data.axisStats.length > 0) {
+            setSpiderData(data.axisStats);
+            setParticipantCount(data.participantCount || 0);
+            gotSpider = true;
+          }
         }
 
         if (keywordsRes.ok) {
           const data = await keywordsRes.json();
           // API returns { terms: [{ text, count }] }
           const terms = data.terms || data.keywords;
-          if (Array.isArray(terms)) {
+          if (Array.isArray(terms) && terms.length > 0) {
             setWordCloudData(
               terms.slice(0, 60).map((k: { text?: string; term?: string; count: number }) => ({
                 text: k.text || k.term || '',
                 value: k.count,
               }))
             );
+            gotKeywords = true;
           }
         }
       } catch {
         // fail silently
-      } finally {
-        setLoading(false);
       }
+
+      // Retail demo fallback for spider + word cloud
+      if (isRetailDemo) {
+        if (!gotSpider) {
+          setSpiderData(DEMO_SPIDER_DATA);
+          setParticipantCount(DEMO_PARTICIPANT_COUNT);
+        }
+        if (!gotKeywords) {
+          setWordCloudData(DEMO_WORD_CLOUD);
+        }
+      }
+
+      setLoading(false);
     }
 
     fetchDiscoveryData();
   }, [workshopId, isRetailDemo]);
 
-  // ── Fetch summary (skip for retail demo) ───────────────
+  // ── Fetch summary (all workshops, retail demo fallback) ───────────────
   useEffect(() => {
-    if (isRetailDemo) return;
-
     async function fetchSummary() {
       setSummaryLoading(true);
       try {
@@ -555,13 +601,21 @@ export default function DiscoveryPage({ params }: PageProps) {
         );
         if (res.ok) {
           const data = await res.json();
-          setSummary(data.summary || null);
+          if (data.summary) {
+            setSummary(data.summary);
+            setSummaryLoading(false);
+            return;
+          }
         }
       } catch {
-        // fail silently
-      } finally {
-        setSummaryLoading(false);
+        // fall through to demo fallback
       }
+
+      // Retail demo fallback
+      if (isRetailDemo) {
+        setSummary(DEMO_SUMMARY);
+      }
+      setSummaryLoading(false);
     }
 
     fetchSummary();
@@ -738,7 +792,30 @@ export default function DiscoveryPage({ params }: PageProps) {
         )}
 
         {/* ══════════════════════════════════════════════════════════ */}
-        {/* ORGANISATIONAL ANALYSIS — Discover Analysis Dashboard    */}
+        {/* FIELD DISCOVERY — Conditional on domain pack             */}
+        {/* ══════════════════════════════════════════════════════════ */}
+
+        {workshopDomainPack && (
+          <div className="mt-12 pt-8 border-t-2 border-blue-200">
+            <Link href={`/admin/workshops/${workshopId}/discovery/field`}>
+              <div className="rounded-lg border-2 border-blue-200 bg-blue-50/50 hover:bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20 dark:hover:bg-blue-950/30 p-6 transition-all cursor-pointer group">
+                <div className="flex items-center gap-3 mb-2">
+                  <Compass className="h-5 w-5 text-blue-600 group-hover:text-blue-700" />
+                  <h2 className="text-lg font-bold tracking-tight text-blue-700 dark:text-blue-400">Field Discovery</h2>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  On-site interview capture, multi-segment recording, structured findings extraction, and cross-stream diagnostic synthesis.
+                </p>
+                <p className="text-xs text-blue-600 mt-2 group-hover:underline">
+                  Open Field Discovery module &rarr;
+                </p>
+              </div>
+            </Link>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════ */}
+        {/* ORGANISATIONAL ANALYSIS -- Discover Analysis Dashboard    */}
         {/* ══════════════════════════════════════════════════════════ */}
 
         <div className="mt-12 pt-8 border-t-2 border-slate-200">
@@ -761,31 +838,29 @@ export default function DiscoveryPage({ params }: PageProps) {
                   Generated {new Date(analysis.generatedAt).toLocaleDateString()}
                 </span>
               )}
-              {!isRetailDemo && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={generateAnalysis}
-                  disabled={analysisLoading}
-                >
-                  {analysisLoading ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                      Generating...
-                    </>
-                  ) : analysis ? (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                      Regenerate
-                    </>
-                  ) : (
-                    <>
-                      <Layers className="h-3.5 w-3.5 mr-1.5" />
-                      Generate Analysis
-                    </>
-                  )}
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={generateAnalysis}
+                disabled={analysisLoading}
+              >
+                {analysisLoading ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    Generating...
+                  </>
+                ) : analysis ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                    Regenerate
+                  </>
+                ) : (
+                  <>
+                    <Layers className="h-3.5 w-3.5 mr-1.5" />
+                    Generate Analysis
+                  </>
+                )}
+              </Button>
             </div>
           </div>
 
@@ -855,12 +930,10 @@ export default function DiscoveryPage({ params }: PageProps) {
                 Generate an analysis to surface alignment, tensions, narrative divergence,
                 constraints, and confidence levels across your workshop data.
               </p>
-              {!isRetailDemo && (
-                <Button onClick={generateAnalysis} disabled={analysisLoading}>
-                  <Layers className="h-4 w-4 mr-2" />
-                  Generate Organisational Analysis
-                </Button>
-              )}
+              <Button onClick={generateAnalysis} disabled={analysisLoading}>
+                <Layers className="h-4 w-4 mr-2" />
+                Generate Organisational Analysis
+              </Button>
             </div>
           ) : null}
         </div>

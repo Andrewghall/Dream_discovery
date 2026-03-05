@@ -13,6 +13,7 @@ const DOT_COLORS: Record<SignalType, string> = {
   high_freq_constraint: 'bg-orange-500',
   unanswered_question: 'bg-blue-500',
   repeated_theme: 'bg-slate-500',
+  metric_contradiction: 'bg-yellow-500',
 };
 
 const LENS_BADGE_COLORS: Record<string, string> = {
@@ -31,6 +32,7 @@ const SIGNAL_LABELS: Record<SignalType, string> = {
   high_freq_constraint: 'High Freq Constraint',
   unanswered_question: 'Unanswered Question',
   repeated_theme: 'Repeated Theme',
+  metric_contradiction: 'Metric Check',
 };
 
 type Props = {

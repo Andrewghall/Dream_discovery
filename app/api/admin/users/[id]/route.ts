@@ -76,6 +76,11 @@ export async function PATCH(
     return NextResponse.json({ error: 'Forbidden: cannot assign PLATFORM_ADMIN role' }, { status: 403 });
   }
 
+  // Tenant admins cannot change organizationId for any user
+  if (session.role === 'TENANT_ADMIN' && organizationId !== undefined) {
+    return NextResponse.json({ error: 'Forbidden: tenant admins cannot reassign organization' }, { status: 403 });
+  }
+
   // Check email uniqueness if changing
   if (email && email.toLowerCase().trim() !== existing.email) {
     const conflict = await prisma.user.findUnique({

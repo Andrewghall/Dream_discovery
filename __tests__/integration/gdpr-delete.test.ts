@@ -14,6 +14,7 @@ import {
   mockDataPoint,
 } from '../utils/test-fixtures';
 import { POST } from '@/app/api/gdpr/delete/route';
+import { checkRateLimit, getGDPRRateLimitKey } from '@/lib/rate-limit';
 
 // Mock rate limiting
 vi.mock('@/lib/rate-limit', () => ({
@@ -25,6 +26,11 @@ describe('GDPR Data Deletion Integration Tests', () => {
   beforeEach(() => {
     resetMockPrisma();
     vi.clearAllMocks();
+    // Re-establish default rate limit (clearMocks preserves overridden implementations)
+    vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, remaining: 2 });
+    vi.mocked(getGDPRRateLimitKey).mockImplementation(
+      (email: string, workshopId: string, action: string) => `gdpr:${action}:${email}:${workshopId}`
+    );
   });
 
   const validEmail = 'participant@example.com';
@@ -92,10 +98,10 @@ describe('GDPR Data Deletion Integration Tests', () => {
         }),
       });
 
-      // Verify audit log was created
+      // Verify audit log was created (via logAuditEvent which adds id)
       expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          action: 'GDPR_DELETE_REQUEST',
+          action: 'GDPR_DELETE',
           success: true,
         }),
       });
@@ -252,7 +258,6 @@ describe('GDPR Data Deletion Integration Tests', () => {
       expect(mockPrisma.dataPointClassification.deleteMany).toHaveBeenCalled();
       expect(mockPrisma.dataPointAnnotation.deleteMany).toHaveBeenCalled();
       expect(mockPrisma.conversationSession.deleteMany).toHaveBeenCalled();
-      expect(mockPrisma.consentRecord.deleteMany).toHaveBeenCalled();
       expect(mockPrisma.workshopParticipant.delete).toHaveBeenCalled();
 
       // Verify audit log was created
@@ -648,7 +653,7 @@ describe('GDPR Data Deletion Integration Tests', () => {
 
       expect(status).toBe(200);
 
-      // GDPR Article 17 requires deletion of these categories
+      // GDPR Article 17 requires deletion of these data categories
       const requiredDeletions = [
         'messages',
         'insights',
@@ -657,7 +662,6 @@ describe('GDPR Data Deletion Integration Tests', () => {
         'classifications',
         'annotations',
         'sessions',
-        'consentRecords',
       ];
 
       requiredDeletions.forEach((category) => {

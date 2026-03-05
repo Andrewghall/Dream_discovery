@@ -1,0 +1,736 @@
+'use client';
+
+import * as React from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Mic,
+  Square,
+  Pause,
+  Play,
+  Trash2,
+  CheckCircle2,
+  Radio,
+  Loader2,
+  AlertCircle,
+} from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type RecordingState = 'idle' | 'recording' | 'paused';
+
+type SegmentData = {
+  index: number;
+  blob: Blob | null;
+  startedAt: number;
+  stoppedAt: number | null;
+  transcript?: string;
+  transcribing?: boolean;
+  transcriptionError?: string;
+};
+
+type DesktopCaptureControlsProps = {
+  sessionId: string;
+  workshopId: string;
+  onSegmentComplete?: (segmentIndex: number) => void;
+  onSessionComplete?: (analysisResult?: unknown) => void;
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function truncateText(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen) + '...';
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export function DesktopCaptureControls({
+  sessionId,
+  workshopId,
+  onSegmentComplete,
+  onSessionComplete,
+}: DesktopCaptureControlsProps) {
+  const [state, setState] = React.useState<RecordingState>('idle');
+  const [segments, setSegments] = React.useState<SegmentData[]>([]);
+  const [elapsed, setElapsed] = React.useState(0);
+  const [audioLevel, setAudioLevel] = React.useState(0);
+  const [error, setError] = React.useState<string | null>(null);
+  const [analysing, setAnalysing] = React.useState(false);
+  const [analysisComplete, setAnalysisComplete] = React.useState(false);
+
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const streamRef = React.useRef<MediaStream | null>(null);
+  const chunksRef = React.useRef<Blob[]>([]);
+  const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const analyserRef = React.useRef<AnalyserNode | null>(null);
+  const animFrameRef = React.useRef<number | null>(null);
+  const segmentStartRef = React.useRef<number>(0);
+  const pendingTranscriptionsRef = React.useRef<Set<number>>(new Set());
+  const sessionFinishingRef = React.useRef(false);
+  const segmentsRef = React.useRef<SegmentData[]>([]);
+
+  // Keep segmentsRef in sync with segments state
+  React.useEffect(() => {
+    segmentsRef.current = segments;
+  }, [segments]);
+
+  const currentSegmentIndex = segments.length;
+
+  // -----------------------------------------------------------------------
+  // Audio level monitoring
+  // -----------------------------------------------------------------------
+
+  const startLevelMonitoring = React.useCallback((stream: MediaStream) => {
+    try {
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      function tick() {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        const avg =
+          dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
+        // Normalise to 0-100 range
+        setAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
+        animFrameRef.current = requestAnimationFrame(tick);
+      }
+
+      tick();
+    } catch {
+      // Audio level monitoring is non-critical
+    }
+  }, []);
+
+  const stopLevelMonitoring = React.useCallback(() => {
+    analyserRef.current = null;
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    setAudioLevel(0);
+  }, []);
+
+  // -----------------------------------------------------------------------
+  // Timer
+  // -----------------------------------------------------------------------
+
+  const startTimer = React.useCallback(() => {
+    setElapsed(0);
+    timerRef.current = setInterval(() => {
+      setElapsed((prev) => prev + 1);
+    }, 1000);
+  }, []);
+
+  const stopTimer = React.useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  // -----------------------------------------------------------------------
+  // Background transcription
+  // -----------------------------------------------------------------------
+
+  const triggerAnalysis = React.useCallback(async () => {
+    setAnalysing(true);
+    try {
+      const res = await fetch(
+        `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/analyse`,
+        { method: 'POST' }
+      );
+      let analysisResult: unknown = undefined;
+      if (res.ok) {
+        try {
+          analysisResult = await res.json();
+        } catch {
+          // Response may not be JSON
+        }
+      }
+      setAnalysing(false);
+      setAnalysisComplete(true);
+      // Brief delay so the user sees the success state
+      setTimeout(() => {
+        setAnalysisComplete(false);
+        onSessionComplete?.(analysisResult);
+      }, 1500);
+    } catch {
+      // Analysis failure is non-blocking -- still complete the session
+      setAnalysing(false);
+      onSessionComplete?.();
+    }
+  }, [workshopId, sessionId, onSessionComplete]);
+
+  const checkAllTranscriptionsComplete = React.useCallback(() => {
+    if (!sessionFinishingRef.current) return;
+    if (pendingTranscriptionsRef.current.size === 0) {
+      sessionFinishingRef.current = false;
+      triggerAnalysis();
+    }
+  }, [triggerAnalysis]);
+
+  const transcribeSegmentInBackground = React.useCallback(
+    async (
+      segmentIndex: number,
+      blob: Blob,
+      startedAt: number,
+      stoppedAt: number
+    ) => {
+      pendingTranscriptionsRef.current.add(segmentIndex);
+
+      // Mark segment as transcribing
+      setSegments((prev) =>
+        prev.map((seg) =>
+          seg.index === segmentIndex ? { ...seg, transcribing: true } : seg
+        )
+      );
+
+      try {
+        const formData = new FormData();
+        formData.append('audio', blob, `segment-${segmentIndex}.webm`);
+        formData.append('segmentIndex', String(segmentIndex));
+        formData.append('startedAt', new Date(startedAt).toISOString());
+        formData.append('stoppedAt', new Date(stoppedAt).toISOString());
+
+        const res = await fetch(
+          `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/segments/transcribe`,
+          {
+            method: 'POST',
+            body: formData,
+          }
+        );
+
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => 'Transcription failed');
+          setSegments((prev) =>
+            prev.map((seg) =>
+              seg.index === segmentIndex
+                ? {
+                    ...seg,
+                    transcribing: false,
+                    transcriptionError: errorText,
+                  }
+                : seg
+            )
+          );
+        } else {
+          let transcript = '';
+          try {
+            const data = await res.json();
+            transcript = data.transcript || '';
+          } catch {
+            transcript = '';
+          }
+          setSegments((prev) =>
+            prev.map((seg) =>
+              seg.index === segmentIndex
+                ? { ...seg, transcribing: false, transcript }
+                : seg
+            )
+          );
+        }
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : 'Transcription request failed';
+        setSegments((prev) =>
+          prev.map((seg) =>
+            seg.index === segmentIndex
+              ? { ...seg, transcribing: false, transcriptionError: msg }
+              : seg
+          )
+        );
+      } finally {
+        pendingTranscriptionsRef.current.delete(segmentIndex);
+        checkAllTranscriptionsComplete();
+      }
+    },
+    [workshopId, sessionId, checkAllTranscriptionsComplete]
+  );
+
+  // -----------------------------------------------------------------------
+  // Recording controls
+  // -----------------------------------------------------------------------
+
+  const startRecording = React.useCallback(async () => {
+    setError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      streamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
+      segmentStartRef.current = Date.now();
+
+      recorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.start(1000); // collect data every second
+      setState('recording');
+      startTimer();
+      startLevelMonitoring(stream);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to access microphone';
+      setError(msg);
+    }
+  }, [startTimer, startLevelMonitoring]);
+
+  const pauseRecording = React.useCallback(() => {
+    if (mediaRecorderRef.current && state === 'recording') {
+      mediaRecorderRef.current.pause();
+      setState('paused');
+      stopTimer();
+      stopLevelMonitoring();
+    }
+  }, [state, stopTimer, stopLevelMonitoring]);
+
+  const resumeRecording = React.useCallback(() => {
+    if (mediaRecorderRef.current && state === 'paused') {
+      mediaRecorderRef.current.resume();
+      setState('recording');
+      // Resume timer from where it was
+      timerRef.current = setInterval(() => {
+        setElapsed((prev) => prev + 1);
+      }, 1000);
+      if (streamRef.current) {
+        startLevelMonitoring(streamRef.current);
+      }
+    }
+  }, [state, startLevelMonitoring]);
+
+  const stopSegment = React.useCallback(async () => {
+    if (!mediaRecorderRef.current) return;
+
+    return new Promise<void>((resolve) => {
+      const recorder = mediaRecorderRef.current!;
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType,
+        });
+
+        const segmentIndex = currentSegmentIndex;
+        const startedAt = segmentStartRef.current;
+        const stoppedAt = Date.now();
+        const segmentData: SegmentData = {
+          index: segmentIndex,
+          blob,
+          startedAt,
+          stoppedAt,
+        };
+
+        setSegments((prev) => [...prev, segmentData]);
+        stopTimer();
+        stopLevelMonitoring();
+        setElapsed(0);
+        chunksRef.current = [];
+
+        // Transcribe in background (non-blocking)
+        transcribeSegmentInBackground(segmentIndex, blob, startedAt, stoppedAt);
+
+        onSegmentComplete?.(segmentIndex);
+
+        // Re-start recording for the next segment
+        chunksRef.current = [];
+        segmentStartRef.current = Date.now();
+        recorder.start(1000);
+        setState('recording');
+        timerRef.current = setInterval(() => {
+          setElapsed((prev) => prev + 1);
+        }, 1000);
+        if (streamRef.current) {
+          startLevelMonitoring(streamRef.current);
+        }
+
+        resolve();
+      };
+
+      recorder.stop();
+    });
+  }, [
+    currentSegmentIndex,
+    onSegmentComplete,
+    stopTimer,
+    stopLevelMonitoring,
+    startLevelMonitoring,
+    transcribeSegmentInBackground,
+  ]);
+
+  const finishSession = React.useCallback(() => {
+    if (mediaRecorderRef.current) {
+      const recorder = mediaRecorderRef.current;
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType,
+        });
+
+        if (blob.size > 0) {
+          const segmentIndex = currentSegmentIndex;
+          const startedAt = segmentStartRef.current;
+          const stoppedAt = Date.now();
+          const segmentData: SegmentData = {
+            index: segmentIndex,
+            blob,
+            startedAt,
+            stoppedAt,
+          };
+          setSegments((prev) => [...prev, segmentData]);
+
+          // Transcribe final segment in background
+          transcribeSegmentInBackground(
+            segmentIndex,
+            blob,
+            startedAt,
+            stoppedAt
+          );
+        }
+
+        // Release microphone
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        mediaRecorderRef.current = null;
+
+        stopTimer();
+        stopLevelMonitoring();
+        setElapsed(0);
+        setState('idle');
+        chunksRef.current = [];
+
+        // Mark session as finishing -- analysis will trigger once
+        // all pending transcriptions complete
+        sessionFinishingRef.current = true;
+
+        // If there are no pending transcriptions (e.g. the final segment
+        // had zero size and was not sent), trigger analysis immediately
+        if (pendingTranscriptionsRef.current.size === 0) {
+          sessionFinishingRef.current = false;
+          // If there are any segments at all, run analysis; otherwise just complete
+          if (segmentsRef.current.length > 0 || blob.size > 0) {
+            triggerAnalysis();
+          } else {
+            onSessionComplete?.();
+          }
+        }
+      };
+
+      if (recorder.state !== 'inactive') {
+        recorder.stop();
+      }
+    }
+  }, [
+    currentSegmentIndex,
+    onSessionComplete,
+    stopTimer,
+    stopLevelMonitoring,
+    transcribeSegmentInBackground,
+    triggerAnalysis,
+  ]);
+
+  const discardLastSegment = React.useCallback(() => {
+    setSegments((prev) => {
+      if (prev.length === 0) return prev;
+      return prev.slice(0, -1);
+    });
+  }, []);
+
+  // Cleanup on unmount
+  React.useEffect(() => {
+    return () => {
+      stopTimer();
+      stopLevelMonitoring();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, [stopTimer, stopLevelMonitoring]);
+
+  // -----------------------------------------------------------------------
+  // Status indicator colours
+  // -----------------------------------------------------------------------
+
+  const statusColor =
+    state === 'recording'
+      ? 'bg-red-500'
+      : state === 'paused'
+        ? 'bg-amber-500'
+        : 'bg-gray-400';
+
+  const statusLabel =
+    state === 'recording'
+      ? 'Recording'
+      : state === 'paused'
+        ? 'Paused'
+        : 'Idle';
+
+  // -----------------------------------------------------------------------
+  // Render
+  // -----------------------------------------------------------------------
+
+  return (
+    <Card className="w-full max-w-lg">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Mic className="size-5" />
+          Capture Controls
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="flex flex-col gap-5">
+        {/* Status row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-block size-3 rounded-full ${statusColor} ${
+                state === 'recording' ? 'animate-pulse' : ''
+              }`}
+            />
+            <span className="text-sm font-medium">{statusLabel}</span>
+          </div>
+
+          <span className="font-mono text-2xl tabular-nums tracking-wider">
+            {formatDuration(elapsed)}
+          </span>
+        </div>
+
+        {/* Audio level indicator */}
+        <div className="flex flex-col gap-1">
+          <span className="text-muted-foreground text-xs">Input Level</span>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+            <div
+              className="h-full rounded-full transition-all duration-75"
+              style={{
+                width: `${audioLevel}%`,
+                backgroundColor:
+                  audioLevel > 80
+                    ? '#ef4444'
+                    : audioLevel > 50
+                      ? '#f59e0b'
+                      : '#22c55e',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Segment counter */}
+        {(state !== 'idle' || segments.length > 0) && (
+          <div className="flex items-center gap-2">
+            <Radio className="text-muted-foreground size-4" />
+            <span className="text-sm">
+              Segment {currentSegmentIndex + (state !== 'idle' ? 1 : 0)} of
+              current session
+            </span>
+            {segments.length > 0 && (
+              <Badge variant="secondary" className="ml-auto">
+                {segments.length} saved
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Control buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          {state === 'idle' && !analysing && !analysisComplete && (
+            <Button onClick={startRecording} className="gap-2">
+              <Mic className="size-4" />
+              Start Recording
+            </Button>
+          )}
+
+          {state === 'recording' && (
+            <>
+              <Button
+                variant="outline"
+                onClick={pauseRecording}
+                className="gap-2"
+              >
+                <Pause className="size-4" />
+                Pause
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={stopSegment}
+                className="gap-2"
+              >
+                <Square className="size-4" />
+                Stop Segment
+              </Button>
+            </>
+          )}
+
+          {state === 'paused' && (
+            <>
+              <Button onClick={resumeRecording} className="gap-2">
+                <Play className="size-4" />
+                Resume
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={stopSegment}
+                className="gap-2"
+              >
+                <Square className="size-4" />
+                Stop Segment
+              </Button>
+            </>
+          )}
+
+          {state !== 'idle' && (
+            <Button
+              variant="destructive"
+              onClick={finishSession}
+              className="gap-2"
+            >
+              <CheckCircle2 className="size-4" />
+              Finish Session
+            </Button>
+          )}
+
+          {segments.length > 0 &&
+            state === 'idle' &&
+            !analysing &&
+            !analysisComplete && (
+              <Button
+                variant="outline"
+                onClick={discardLastSegment}
+                className="gap-2 text-red-600 hover:text-red-700"
+              >
+                <Trash2 className="size-4" />
+                Discard Last Segment
+              </Button>
+            )}
+        </div>
+
+        {/* Saved segments list */}
+        {segments.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <span className="text-muted-foreground text-xs font-medium">
+              Saved Segments
+            </span>
+            <div className="flex flex-col gap-1">
+              {segments.map((seg) => (
+                <div
+                  key={seg.index}
+                  className="flex flex-col gap-1 rounded bg-gray-50 px-3 py-1.5"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium">
+                      Segment {seg.index + 1}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {seg.transcribing && (
+                        <Badge
+                          variant="secondary"
+                          className="flex items-center gap-1 text-xs"
+                        >
+                          <Loader2 className="size-3 animate-spin" />
+                          Transcribing...
+                        </Badge>
+                      )}
+                      {seg.transcriptionError && (
+                        <Badge
+                          variant="destructive"
+                          className="flex items-center gap-1 text-xs"
+                        >
+                          <AlertCircle className="size-3" />
+                          Error
+                        </Badge>
+                      )}
+                      {seg.transcript !== undefined &&
+                        !seg.transcribing &&
+                        !seg.transcriptionError && (
+                          <CheckCircle2 className="size-3.5 text-green-600" />
+                        )}
+                      <span className="text-muted-foreground">
+                        {seg.blob
+                          ? `${(seg.blob.size / 1024).toFixed(0)} KB`
+                          : '--'}
+                      </span>
+                    </div>
+                  </div>
+                  {seg.transcript && (
+                    <p className="text-muted-foreground text-xs leading-relaxed">
+                      {truncateText(seg.transcript, 150)}
+                    </p>
+                  )}
+                  {seg.transcriptionError && (
+                    <p className="text-xs leading-relaxed text-red-600">
+                      {seg.transcriptionError}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Analysis indicator */}
+        {analysing && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardContent className="flex items-center gap-3 py-3">
+              <Loader2 className="size-5 animate-spin text-blue-600" />
+              <span className="text-sm font-medium text-blue-700">
+                Extracting findings from transcripts...
+              </span>
+            </CardContent>
+          </Card>
+        )}
+
+        {analysisComplete && (
+          <Card className="border-green-200 bg-green-50">
+            <CardContent className="flex items-center gap-3 py-3">
+              <CheckCircle2 className="size-5 text-green-600" />
+              <span className="text-sm font-medium text-green-700">
+                Analysis complete
+              </span>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Error display */}
+        {error && (
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

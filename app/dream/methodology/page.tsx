@@ -23,7 +23,7 @@ const PHASES = [
     bg: 'bg-white',
     tagline: 'AI-Powered Discovery',
     paragraphs: [
-      'Before the workshop begins, every participant engages in a structured 15-minute AI conversation. This isn\'t a survey or a questionnaire  -  it\'s a genuine dialogue, guided by Agentic AI, that explores what each person really thinks about the organisation\'s current state and future potential.',
+      'Before the workshop begins, every participant engages in a structured 15-minute conversation with a dedicated Discovery Agent. This isn\'t a survey or a questionnaire  -  it\'s a genuine dialogue where a specialist AI agent adapts its questions in real-time, exploring what each person really thinks about the organisation\'s current state and future potential.',
       'The conversation covers five organisational domains: People, Organisation, Customer, Technology, and Regulation. For each domain, participants provide maturity ratings  -  current state, target state, and projected trajectory  -  along with free-form insights, constraints, and visions.',
       'Every response is scored for confidence. The AI detects certainty vs hedging automatically, building a map of where the organisation is confident and where it is guessing. Insights are extracted, themes detected, and constraints identified  -  all before anyone enters the workshop room.',
     ],
@@ -44,12 +44,12 @@ const PHASES = [
     tagline: 'Collective Future-State Visioning',
     paragraphs: [
       'Reimagine is pure creative energy. No constraints allowed. No budgets discussed. The question is simple: what does the ideal future look like?',
-      'Participants collectively envision the future state of the organisation. AI facilitation ensures every voice is heard  -  not just the loudest. Themes emerge from the group\'s collective vision, and the 360° Hemisphere begins to build live on-screen as creative nodes populate the upper hemisphere.',
+      'Participants collectively envision the future state of the organisation. A Facilitation Orchestrator coordinates specialist agents that generate questions, cluster themes, and ensure every voice is heard  -  not just the loudest. The 360° Hemisphere begins to build live on-screen as creative nodes populate the upper hemisphere.',
       'This phase deliberately separates vision from execution. By capturing what people genuinely believe the future should look like  -  before constraints are introduced  -  DREAM reveals the organisation\'s true ambition. The gap between reimagined future and current reality becomes the transformation distance.',
     ],
     bullets: [
       'Pure vision generation  -  no constraints, no budgets, no limitations',
-      'AI-powered facilitation ensures all perspectives are heard',
+      'Multiple specialist agents ensure all perspectives are heard  -  not just the loudest voices',
       'Real-time theme clustering across participant contributions',
       'Live 360° Hemisphere builds on-screen',
       'Creative density measured across all five domains',

@@ -470,12 +470,9 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                                   onEdit={() => !isOutput && startEdit(interaction)}
                                   onRemove={() => !isOutput && removeInteraction(interaction.id)}
                                   onUpdateIntensity={(field, value) => !isOutput && updateInteraction(interaction.id, { [field]: value })}
-                                  onToggleAiAgency={(field) => {
+                                  onSetAiAgency={(field, value) => {
                                     if (isOutput) return;
-                                    const order: AiAgencyLevel[] = ['human', 'assisted', 'autonomous'];
-                                    const current = interaction[field];
-                                    const next = order[(order.indexOf(current) + 1) % order.length];
-                                    updateInteraction(interaction.id, { [field]: next });
+                                    updateInteraction(interaction.id, { [field]: value });
                                   }}
                                 />
                               );
@@ -522,14 +519,14 @@ function InteractionCard({
   onEdit,
   onRemove,
   onUpdateIntensity,
-  onToggleAiAgency,
+  onSetAiAgency,
 }: {
   interaction: LiveJourneyInteraction;
   readOnly?: boolean;
   onEdit: () => void;
   onRemove: () => void;
   onUpdateIntensity: (field: 'businessIntensity' | 'customerIntensity', value: number) => void;
-  onToggleAiAgency: (field: 'aiAgencyNow' | 'aiAgencyFuture') => void;
+  onSetAiAgency: (field: 'aiAgencyNow' | 'aiAgencyFuture', value: AiAgencyLevel) => void;
 }) {
   const style = getSentimentStyle(interaction.sentiment);
 
@@ -637,49 +634,53 @@ function InteractionCard({
         />
       </div>
 
-      {/* AI agency — enhanced boundary badge when enriched */}
-      <div className="mt-1 flex items-center gap-1 text-[9px] text-muted-foreground" onClick={e => e.stopPropagation()}>
-        {isEnriched ? (
-          /* Enhanced AI boundary badge — clear labelled pills */
-          <>
-            <button
-              className={`inline-flex items-center gap-0.5 px-1 py-0 rounded-full text-[8px] font-medium ${AI_AGENCY_ICONS[interaction.aiAgencyNow].badgeColor} transition-colors hover:opacity-80`}
-              onClick={() => onToggleAiAgency('aiAgencyNow')}
-              title={`Day 1: ${AI_AGENCY_ICONS[interaction.aiAgencyNow].label} (click to cycle)`}
-            >
-              {AI_AGENCY_ICONS[interaction.aiAgencyNow].icon}
-              <span className="hidden sm:inline">{AI_AGENCY_ICONS[interaction.aiAgencyNow].label}</span>
-            </button>
-            <span className="text-[8px] font-bold text-muted-foreground/50">→</span>
-            <button
-              className={`inline-flex items-center gap-0.5 px-1 py-0 rounded-full text-[8px] font-medium ${AI_AGENCY_ICONS[interaction.aiAgencyFuture].badgeColor} transition-colors hover:opacity-80`}
-              onClick={() => onToggleAiAgency('aiAgencyFuture')}
-              title={`Future: ${AI_AGENCY_ICONS[interaction.aiAgencyFuture].label} (click to cycle)`}
-            >
-              {AI_AGENCY_ICONS[interaction.aiAgencyFuture].icon}
-              <span className="hidden sm:inline">{AI_AGENCY_ICONS[interaction.aiAgencyFuture].label}</span>
-            </button>
-          </>
-        ) : (
-          /* Default compact emoji-only display */
-          <>
-            <button
-              className="hover:bg-black/5 rounded px-0.5 transition-colors"
-              onClick={() => onToggleAiAgency('aiAgencyNow')}
-              title={`Day 1: ${AI_AGENCY_ICONS[interaction.aiAgencyNow].label} (click to cycle)`}
-            >
-              {AI_AGENCY_ICONS[interaction.aiAgencyNow].icon}
-            </button>
-            <span className="opacity-40">→</span>
-            <button
-              className="hover:bg-black/5 rounded px-0.5 transition-colors"
-              onClick={() => onToggleAiAgency('aiAgencyFuture')}
-              title={`Future: ${AI_AGENCY_ICONS[interaction.aiAgencyFuture].label} (click to cycle)`}
-            >
-              {AI_AGENCY_ICONS[interaction.aiAgencyFuture].icon}
-            </button>
-          </>
-        )}
+      {/* AI agency  -  triple badge strip for Now and Future */}
+      <div className="mt-1.5 flex items-center gap-0.5 text-[9px]" onClick={e => e.stopPropagation()}>
+        {/* Now strip */}
+        <div className="flex items-center gap-px">
+          {(['human', 'assisted', 'autonomous'] as const).map((level) => {
+            const cfg = AI_AGENCY_ICONS[level];
+            const isActive = level === interaction.aiAgencyNow;
+            const Tag = readOnly ? 'span' : 'button';
+            return (
+              <Tag
+                key={`now-${level}`}
+                className={`inline-flex items-center gap-0.5 px-1 py-0 rounded-full text-[8px] font-medium transition-all ${
+                  isActive
+                    ? cfg.badgeColor
+                    : 'bg-transparent text-muted-foreground/25'
+                } ${!readOnly ? 'hover:opacity-80 cursor-pointer' : ''}`}
+                onClick={readOnly ? undefined : () => onSetAiAgency('aiAgencyNow', level)}
+                title={`Now: ${cfg.label}${!readOnly ? ' (click to select)' : ''}`}
+              >
+                <span className={isActive ? '' : 'opacity-30'}>{cfg.icon}</span>
+              </Tag>
+            );
+          })}
+        </div>
+        <span className="text-[8px] font-bold text-muted-foreground/40 mx-0.5">→</span>
+        {/* Future strip */}
+        <div className="flex items-center gap-px">
+          {(['human', 'assisted', 'autonomous'] as const).map((level) => {
+            const cfg = AI_AGENCY_ICONS[level];
+            const isActive = level === interaction.aiAgencyFuture;
+            const Tag = readOnly ? 'span' : 'button';
+            return (
+              <Tag
+                key={`future-${level}`}
+                className={`inline-flex items-center gap-0.5 px-1 py-0 rounded-full text-[8px] font-medium transition-all ${
+                  isActive
+                    ? cfg.badgeColor
+                    : 'bg-transparent text-muted-foreground/25'
+                } ${!readOnly ? 'hover:opacity-80 cursor-pointer' : ''}`}
+                onClick={readOnly ? undefined : () => onSetAiAgency('aiAgencyFuture', level)}
+                title={`Future: ${cfg.label}${!readOnly ? ' (click to select)' : ''}`}
+              >
+                <span className={isActive ? '' : 'opacity-30'}>{cfg.icon}</span>
+              </Tag>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

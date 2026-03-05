@@ -220,6 +220,7 @@ export async function runDiscoverAnalysisAgent(
             id: `tension-${nanoid(6)}`,
             topic: String(t.topic || 'Unnamed tension'),
             rank: i + 1,
+            tensionIndex: 0, // Overridden by deterministic scoring
             severity: validateSeverity(t.severity),
             viewpoints: Array.isArray(t.viewpoints)
               ? (t.viewpoints as Array<Record<string, unknown>>).map((v) => ({

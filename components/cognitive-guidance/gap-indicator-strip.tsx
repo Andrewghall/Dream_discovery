@@ -10,6 +10,7 @@ const SIGNAL_COLORS: Record<SignalType, string> = {
   high_freq_constraint: 'bg-orange-100 text-orange-800 border-orange-300',
   unanswered_question: 'bg-blue-100 text-blue-800 border-blue-300',
   repeated_theme: 'bg-slate-100 text-slate-700 border-slate-300',
+  metric_contradiction: 'bg-yellow-100 text-yellow-800 border-yellow-300',
 };
 
 const SIGNAL_LABELS: Record<SignalType, string> = {
@@ -20,6 +21,7 @@ const SIGNAL_LABELS: Record<SignalType, string> = {
   high_freq_constraint: 'High Freq Constraint',
   unanswered_question: 'Unanswered Question',
   repeated_theme: 'Repeated Theme',
+  metric_contradiction: 'Metric Check',
 };
 
 type Props = {

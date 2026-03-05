@@ -32,6 +32,11 @@ import { CommercialTab } from '@/components/scratchpad/CommercialTab';
 import { PotentialSolutionTab } from '@/components/scratchpad/PotentialSolutionTab';
 import { CustomerJourneyTab } from '@/components/scratchpad/CustomerJourneyTab';
 import { SummaryTab } from '@/components/scratchpad/SummaryTab';
+import { HemisphereOutputTab } from '@/components/scratchpad/HemisphereOutputTab';
+import { WorkshopContextBanner } from '@/components/scratchpad/WorkshopContextBanner';
+import { ScratchpadInquiryBar } from '@/components/scratchpad/ScratchpadInquiryBar';
+import { composeActiveSections, buildSectionContext, type SectionDefinition } from '@/lib/output/section-registry';
+import type { WorkshopArchetype } from '@/lib/output/archetype-classifier';
 
 interface PageProps {
   params: Promise<{
@@ -51,6 +56,13 @@ interface ScratchpadData {
   commercialContent: any;
   customerJourney: any;
   summaryContent: any;
+  outputAssessment?: {
+    primaryArchetype: WorkshopArchetype;
+    secondaryArchetypes: WorkshopArchetype[];
+    confidence: number;
+    rationale: string;
+    requiredSections: string[];
+  } | null;
   solutionImageUrl?: string | null;
   clientLogoUrl?: string | null;
   status: 'DRAFT' | 'IN_REVIEW' | 'PUBLISHED';
@@ -63,6 +75,8 @@ interface Workshop {
   id: string;
   name: string;
   status: string;
+  description?: string | null;
+  businessContext?: string | null;
   organization?: {
     id: string;
     name: string;
@@ -455,76 +469,34 @@ export default function ScratchpadPage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-8 mb-8">
-            <TabsTrigger value="exec-summary" className="text-xs">Exec Summary</TabsTrigger>
-            <TabsTrigger value="discovery" className="text-xs">Discovery</TabsTrigger>
-            <TabsTrigger value="reimagine" className="text-xs">Reimagine</TabsTrigger>
-            <TabsTrigger value="constraints" className="text-xs">Constraints</TabsTrigger>
-            <TabsTrigger value="solution" className="text-xs">Solution</TabsTrigger>
-            <TabsTrigger
-              value="commercial"
-              className="text-xs"
-              onClick={(e) => {
-                if (hasPassword && !commercialUnlocked) {
-                  e.preventDefault();
-                  handleCommercialAccess();
-                }
-              }}
-            >
-              {hasPassword && !commercialUnlocked && <Lock className="h-3 w-3 mr-1" />}
-              Commercial
-            </TabsTrigger>
-            <TabsTrigger value="customer-journey" className="text-xs">Journey Map</TabsTrigger>
-            <TabsTrigger value="summary" className="text-xs">Summary</TabsTrigger>
-          </TabsList>
+        {/* Workshop Context Banner */}
+        <WorkshopContextBanner
+          workshopPurpose={workshop?.description}
+          desiredOutcomes={workshop?.businessContext}
+          archetype={scratchpad.outputAssessment?.primaryArchetype}
+          confidence={scratchpad.outputAssessment?.confidence}
+          rationale={scratchpad.outputAssessment?.rationale}
+        />
 
-          <TabsContent value="exec-summary">
-            <ExecutiveSummaryTab data={scratchpad.execSummary} onChange={handleTabChange('execSummary')} />
-          </TabsContent>
+        {/* Inquiry Bar */}
+        <ScratchpadInquiryBar
+          workshopId={workshopId}
+          hasScratchpad={!!scratchpad}
+          workshopPurpose={workshop?.description}
+          desiredOutcomes={workshop?.businessContext}
+        />
 
-          <TabsContent value="discovery">
-            <DiscoveryOutputTab data={scratchpad.discoveryOutput} onChange={handleTabChange('discoveryOutput')} />
-          </TabsContent>
-
-          <TabsContent value="reimagine">
-            <ReimaginOutputTab data={scratchpad.reimagineContent} customerJourney={scratchpad.customerJourney} onChange={handleTabChange('reimagineContent')} />
-          </TabsContent>
-
-          <TabsContent value="constraints">
-            <ConstraintsTab data={scratchpad.constraintsContent} onChange={handleTabChange('constraintsContent')} />
-          </TabsContent>
-
-          <TabsContent value="solution">
-            <PotentialSolutionTab data={scratchpad.potentialSolution} onChange={handleTabChange('potentialSolution')} />
-          </TabsContent>
-
-          <TabsContent value="commercial">
-            {commercialUnlocked ? (
-              <CommercialTab data={scratchpad.commercialContent} onChange={handleTabChange('commercialContent')} />
-            ) : (
-              <Card className="p-8 text-center">
-                <Lock className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h2 className="text-2xl font-bold mb-2">Password Protected</h2>
-                <p className="text-muted-foreground">
-                  This section requires a password to access.
-                </p>
-                <Button className="mt-4" onClick={handleCommercialAccess}>
-                  Enter Password
-                </Button>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="customer-journey">
-            <CustomerJourneyTab data={scratchpad.customerJourney} onChange={handleTabChange('customerJourney')} />
-          </TabsContent>
-
-          <TabsContent value="summary">
-            <SummaryTab data={scratchpad.summaryContent} onChange={handleTabChange('summaryContent')} />
-          </TabsContent>
-        </Tabs>
+        {/* Dynamic Tabs */}
+        <DynamicScratchpadTabs
+          scratchpad={scratchpad}
+          workshopId={workshopId}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          handleTabChange={handleTabChange}
+          hasPassword={hasPassword}
+          commercialUnlocked={commercialUnlocked}
+          handleCommercialAccess={handleCommercialAccess}
+        />
       </div>
 
       {/* Password Verification Dialog */}
@@ -614,5 +586,157 @@ export default function ScratchpadPage({ params }: PageProps) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ================================================================
+// Dynamic Tab Renderer
+// ================================================================
+
+/** Maps section IDs to their tab content components */
+function renderSectionContent(
+  sectionId: string,
+  scratchpad: ScratchpadData,
+  workshopId: string,
+  handleTabChange: (field: keyof ScratchpadData) => (updated: any) => void,
+  commercialUnlocked: boolean,
+  handleCommercialAccess: () => void,
+): React.ReactNode {
+  switch (sectionId) {
+    case 'exec-summary':
+      return <ExecutiveSummaryTab data={scratchpad.execSummary} onChange={handleTabChange('execSummary')} />;
+    case 'discovery':
+      return <DiscoveryOutputTab data={scratchpad.discoveryOutput} onChange={handleTabChange('discoveryOutput')} />;
+    case 'reimagine':
+      return <ReimaginOutputTab data={scratchpad.reimagineContent} customerJourney={scratchpad.customerJourney} onChange={handleTabChange('reimagineContent')} />;
+    case 'constraints':
+      return <ConstraintsTab data={scratchpad.constraintsContent} onChange={handleTabChange('constraintsContent')} />;
+    case 'solution':
+      return <PotentialSolutionTab data={scratchpad.potentialSolution} onChange={handleTabChange('potentialSolution')} />;
+    case 'commercial':
+      return commercialUnlocked ? (
+        <CommercialTab data={scratchpad.commercialContent} onChange={handleTabChange('commercialContent')} />
+      ) : (
+        <Card className="p-8 text-center">
+          <Lock className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+          <h2 className="text-2xl font-bold mb-2">Password Protected</h2>
+          <p className="text-muted-foreground">
+            This section requires a password to access.
+          </p>
+          <Button className="mt-4" onClick={handleCommercialAccess}>
+            Enter Password
+          </Button>
+        </Card>
+      );
+    case 'customer-journey':
+      return <CustomerJourneyTab data={scratchpad.customerJourney} onChange={handleTabChange('customerJourney')} />;
+    case 'hemisphere':
+      return <HemisphereOutputTab workshopId={workshopId} />;
+    case 'summary':
+      return <SummaryTab data={scratchpad.summaryContent} onChange={handleTabChange('summaryContent')} />;
+    default:
+      return <Card className="p-8 text-center text-muted-foreground">Section not found: {sectionId}</Card>;
+  }
+}
+
+interface DynamicScratchpadTabsProps {
+  scratchpad: ScratchpadData;
+  workshopId: string;
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  handleTabChange: (field: keyof ScratchpadData) => (updated: any) => void;
+  hasPassword: boolean;
+  commercialUnlocked: boolean;
+  handleCommercialAccess: () => void;
+}
+
+function DynamicScratchpadTabs({
+  scratchpad,
+  workshopId,
+  activeTab,
+  setActiveTab,
+  handleTabChange,
+  hasPassword,
+  commercialUnlocked,
+  handleCommercialAccess,
+}: DynamicScratchpadTabsProps) {
+  // Build section context from current scratchpad data
+  const assessment = scratchpad.outputAssessment;
+  const archetype: WorkshopArchetype = assessment?.primaryArchetype || 'hybrid';
+
+  // Build context to determine which sections are active
+  const sectionContext = buildSectionContext(
+    scratchpad as unknown as Record<string, unknown>,
+    true, // hemisphere data is always potentially available if synthesis ran
+    assessment ? 5 : 0, // Use a reasonable default; exact count is in the assessment
+    assessment ? 3 : 0,
+  );
+
+  // Compute active sections
+  // If no outputAssessment exists (backward compat), show all sections
+  const activeSections: SectionDefinition[] = assessment
+    ? composeActiveSections(archetype, sectionContext)
+    : composeActiveSections('hybrid', {
+        ...sectionContext,
+        hasReimagineContent: true,
+        hasConstraintsContent: true,
+        hasPotentialSolution: true,
+        hasCommercialContent: true,
+        hasCustomerJourney: true,
+        hasSummaryContent: true,
+        hasHemisphereData: true,
+        constraintCount: 5,
+        enablerCount: 3,
+      });
+
+  // Determine grid columns based on active section count
+  const colCount = Math.min(activeSections.length, 10);
+  const gridClass = `grid w-full mb-8`;
+  const gridStyle = { gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` };
+
+  return (
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <TabsList className={gridClass} style={gridStyle}>
+        {activeSections.map((section) => {
+          // Special handling for commercial tab lock
+          if (section.id === 'commercial') {
+            return (
+              <TabsTrigger
+                key={section.id}
+                value={section.id}
+                className="text-xs"
+                onClick={(e) => {
+                  if (hasPassword && !commercialUnlocked) {
+                    e.preventDefault();
+                    handleCommercialAccess();
+                  }
+                }}
+              >
+                {hasPassword && !commercialUnlocked && <Lock className="h-3 w-3 mr-1" />}
+                {section.title}
+              </TabsTrigger>
+            );
+          }
+          return (
+            <TabsTrigger key={section.id} value={section.id} className="text-xs">
+              {section.title}
+            </TabsTrigger>
+          );
+        })}
+      </TabsList>
+
+      {activeSections.map((section) => (
+        <TabsContent key={section.id} value={section.id}>
+          {renderSectionContent(
+            section.id,
+            scratchpad,
+            workshopId,
+            handleTabChange,
+            commercialUnlocked,
+            handleCommercialAccess,
+          )}
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }

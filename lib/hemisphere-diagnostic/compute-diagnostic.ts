@@ -54,6 +54,74 @@ const EXCESS_CONSTRAINT_H1_THRESHOLD = 0.1;
 const LOW_MOBILISATION_ENABLER_THRESHOLD = 0.1;
 const MISSING_DOMAIN_MIN_TOTAL_NODES = 10;
 
+// ── Actor Group Normalisation ────────────────────────────────
+
+/**
+ * Compute per-actor normalisation weights.
+ *
+ * Equalises each actor's influence regardless of how many data
+ * points they contributed. An actor who contributed 50 entries
+ * gets a lower per-entry weight than one who contributed 10,
+ * so that every voice carries equal analytical weight.
+ *
+ * Formula per actor: weight = (1 / numActors) / (actorEntries / totalEntries)
+ * Then scaled so that sum(count * weight) = totalEntries.
+ *
+ * @returns Map from actor name to per-entry weight multiplier
+ */
+function computeActorNormWeights(nodes: HemisphereNode[]): Map<string, number> {
+  const actorCounts = new Map<string, number>();
+  let totalEntries = 0;
+
+  for (const node of nodes) {
+    for (const src of node.sources) {
+      const name = src.participantName || 'Unknown';
+      actorCounts.set(name, (actorCounts.get(name) || 0) + 1);
+      totalEntries++;
+    }
+  }
+
+  if (totalEntries === 0 || actorCounts.size === 0) return new Map();
+
+  const numActors = actorCounts.size;
+  const equalShare = 1 / numActors;
+  const weights = new Map<string, number>();
+
+  for (const [actor, count] of actorCounts) {
+    const rawShare = count / totalEntries;
+    weights.set(actor, equalShare / rawShare);
+  }
+
+  // Scale so that sum(count * weight) preserves totalEntries
+  let weightedSum = 0;
+  for (const [actor, count] of actorCounts) {
+    weightedSum += count * (weights.get(actor) || 1);
+  }
+  const scale = totalEntries / weightedSum;
+  for (const [actor, w] of weights) {
+    weights.set(actor, w * scale);
+  }
+
+  return weights;
+}
+
+/**
+ * Compute the actor-normalised weight of a single node.
+ * Returns the average normalisation weight across all
+ * of this node's sources.
+ */
+function normalisedNodeWeight(
+  node: HemisphereNode,
+  actorWeights: Map<string, number>,
+): number {
+  if (node.sources.length === 0) return 1;
+  let sum = 0;
+  for (const src of node.sources) {
+    sum += actorWeights.get(src.participantName || 'Unknown') || 1;
+  }
+  return sum / node.sources.length;
+}
+
 // ── Main Entry Point ─────────────────────────────────────────
 
 /**
@@ -96,6 +164,9 @@ function computeSentimentIndex(
   nodes: HemisphereNode[],
   edges: HemisphereEdge[],
 ): SentimentIndex {
+  // Actor normalisation weights (equalises voice across participants)
+  const actorWeights = computeActorNormWeights(nodes);
+
   // Group nodes by their primary domain (first phaseTag)
   const domainMap = new Map<string, HemisphereNode[]>();
   for (const node of nodes) {
@@ -121,8 +192,17 @@ function computeSentimentIndex(
     const constraintNodes = domainNodes.filter((n) => CONSTRAINT_TYPES.includes(n.type));
     const challengeNodes = domainNodes.filter((n) => CHALLENGE_TYPES.includes(n.type));
 
-    const creativeDensity = (creativeNodes.length / total) * 100;
-    const constraintDensity = (constraintNodes.length / total) * 100;
+    // Actor-normalised density: weight each node by its sources' normalisation
+    const totalWeighted = domainNodes.reduce((s, n) => s + normalisedNodeWeight(n, actorWeights), 0);
+    const creativeWeighted = creativeNodes.reduce((s, n) => s + normalisedNodeWeight(n, actorWeights), 0);
+    const constraintWeighted = constraintNodes.reduce((s, n) => s + normalisedNodeWeight(n, actorWeights), 0);
+
+    const creativeDensity = totalWeighted > 0
+      ? (creativeWeighted / totalWeighted) * 100
+      : (creativeNodes.length / total) * 100;
+    const constraintDensity = totalWeighted > 0
+      ? (constraintWeighted / totalWeighted) * 100
+      : (constraintNodes.length / total) * 100;
 
     // Redesign energy: count cross-domain edges from ENABLER nodes in this domain
     const enablerIds = new Set(
@@ -191,12 +271,14 @@ function computeSentimentIndex(
   // Sort: constraint-heavy domains first (bottom), creative at top
   domains.sort((a, b) => a.creativeDensity - b.creativeDensity);
 
-  // Overall scores
-  const totalNodes = nodes.length || 1;
-  const totalCreative = nodes.filter((n) => CREATIVE_TYPES.includes(n.type)).length;
-  const totalConstraint = nodes.filter((n) => CONSTRAINT_TYPES.includes(n.type)).length;
-  const overallCreative = round2((totalCreative / totalNodes) * 100);
-  const overallConstraint = round2((totalConstraint / totalNodes) * 100);
+  // Overall scores (actor-normalised)
+  const allCreativeNodes = nodes.filter((n) => CREATIVE_TYPES.includes(n.type));
+  const allConstraintNodes = nodes.filter((n) => CONSTRAINT_TYPES.includes(n.type));
+  const totalWeightedAll = nodes.reduce((s, n) => s + normalisedNodeWeight(n, actorWeights), 0) || 1;
+  const creativeWeightedAll = allCreativeNodes.reduce((s, n) => s + normalisedNodeWeight(n, actorWeights), 0);
+  const constraintWeightedAll = allConstraintNodes.reduce((s, n) => s + normalisedNodeWeight(n, actorWeights), 0);
+  const overallCreative = round2((creativeWeightedAll / totalWeightedAll) * 100);
+  const overallConstraint = round2((constraintWeightedAll / totalWeightedAll) * 100);
 
   const balanceLabel = deriveBalanceLabel(overallCreative, overallConstraint, domains);
 
@@ -251,11 +333,16 @@ function computeBiasDetection(nodes: HemisphereNode[]): BiasDetection {
     }
   }
 
+  // Compute actor-normalised shares (equal voice per participant)
+  const numActors = actorCounts.size;
+  const equalVoiceShare = numActors > 0 ? 1 / numActors : 0;
+
   const contributionBalance: ActorContribution[] = [];
   for (const [actor, count] of actorCounts.entries()) {
     contributionBalance.push({
       actor,
       share: round2(totalSourceEntries > 0 ? count / totalSourceEntries : 0),
+      normalisedShare: round2(equalVoiceShare),
       mentionCount: count,
     });
   }
@@ -430,7 +517,7 @@ function computeBalanceSafeguard(
         flags.push({
           type: 'layer_imbalance',
           severity: 'warning',
-          message: `No nodes in ${layer} layer. The analysis may be missing ${layer === 'H1' ? 'visionary' : layer === 'H2' ? 'challenge/friction' : 'constraint/enabler'} perspectives.`,
+          message: `No nodes in ${layer} layer. The analysis may be missing ${layer === 'H1' ? 'visionary/design' : layer === 'H2' ? 'enabler/transitional' : 'challenge/constraint'} perspectives.`,
           metric: 0,
           threshold: 1,
         });

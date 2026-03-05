@@ -166,7 +166,6 @@ export function JourneyShowcase() {
                   {/* Journey cells */}
                   {STAGES.map((stage, si) => {
                     const cell = JOURNEY[actor][stage];
-                    const agencyStyle = AGENCY_CONFIG[cell.agency];
                     const sentimentDot = SENTIMENT_DOT[cell.sentiment];
                     const delay = 300 + ai * 150 + si * 80;
 
@@ -193,12 +192,26 @@ export function JourneyShowcase() {
                             {cell.action}
                           </p>
 
-                          {/* Agency badge */}
-                          <div
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${agencyStyle.bg} ${agencyStyle.text}`}
-                          >
-                            <span>{agencyStyle.icon}</span>
-                            {agencyStyle.label}
+                          {/* Agency badge strip  -  all three shown, active one highlighted */}
+                          <div className="flex items-center gap-1">
+                            {(['human', 'assisted', 'autonomous'] as const).map((level) => {
+                              const cfg = AGENCY_CONFIG[level];
+                              const isActive = level === cell.agency;
+                              return (
+                                <div
+                                  key={level}
+                                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-all ${
+                                    isActive
+                                      ? `${cfg.bg} ${cfg.text}`
+                                      : 'bg-transparent text-white/20'
+                                  }`}
+                                  title={cfg.label}
+                                >
+                                  <span className={isActive ? '' : 'opacity-40'}>{cfg.icon}</span>
+                                  {isActive && <span>{cfg.label}</span>}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       </ScrollReveal>

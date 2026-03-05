@@ -59,6 +59,9 @@ export default function AdminDashboard() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
+  const [orgName, setOrgName] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [workshopDebug, setWorkshopDebug] = useState<{ globalWorkshopCount?: number; userRole?: string; userOrgId?: string } | null>(null);
   const [auditLogs, setAuditLogs] = useState<Array<{
     id: string; type: string; action: string; resource: string;
     success: boolean; email: string; timestamp: string;
@@ -112,6 +115,8 @@ export default function AdminDashboard() {
         setUserRole(data.role || null);
         setUserName(data.name || null);
         setOrgLogoUrl(data.orgLogoUrl || null);
+        setOrgName(data.orgName || null);
+        setUserEmail(data.email || null);
       })
       .catch(() => null);
     fetch('/api/admin/audit-logs?limit=10', { cache: 'no-store' })
@@ -143,6 +148,12 @@ export default function AdminDashboard() {
 
       setWorkshopsError(null);
       setWorkshops((data && typeof data === 'object' ? (data as Record<string, unknown>).workshops : null) as Workshop[] || []);
+      // Capture debug info from API when workshops are empty
+      if (data && typeof data === 'object' && (data as Record<string, unknown>)._debug) {
+        setWorkshopDebug((data as Record<string, unknown>)._debug as typeof workshopDebug);
+      } else {
+        setWorkshopDebug(null);
+      }
     } catch (error) {
       console.error('Failed to fetch workshops:', error);
       setWorkshopsError(error instanceof Error ? error.message : 'Failed to fetch workshops');
@@ -220,7 +231,12 @@ export default function AdminDashboard() {
     for (const wid of ids) {
       try {
         const res = await fetch(`/api/admin/workshops/${wid}`, { method: 'DELETE' });
-        if (!res.ok) failed++;
+        if (!res.ok) {
+          failed++;
+          const data = await res.json().catch(() => null);
+          const message = data?.details?.message || data?.error || 'Failed to delete workshop';
+          console.error(`[bulk-delete] ${wid}: ${message}`);
+        }
       } catch {
         failed++;
       }
@@ -328,9 +344,21 @@ export default function AdminDashboard() {
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight">DREAM Discovery</h1>
             </div>
-            <p className="text-muted-foreground mt-1">
-              {userName ? `Welcome, ${userName}` : 'Manage workshops and discovery conversations'}
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-muted-foreground">
+                {userName ? `Welcome, ${userName}` : 'Manage workshops and discovery conversations'}
+              </p>
+              {userRole && (
+                <Badge variant="outline" className="text-xs">
+                  {userRole === 'PLATFORM_ADMIN' ? 'Platform Admin' : userRole === 'TENANT_ADMIN' ? 'Org Admin' : 'User'}
+                </Badge>
+              )}
+              {orgName && (
+                <Badge variant="secondary" className="text-xs">
+                  {orgName}
+                </Badge>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
             <Link href="/admin/workshops/new">
@@ -464,6 +492,22 @@ export default function AdminDashboard() {
                 <p className="text-muted-foreground mb-4">
                   Create your first workshop to start gathering insights
                 </p>
+                {userRole && userRole !== 'PLATFORM_ADMIN' && (
+                  <div className="text-xs text-amber-600 mb-4 space-y-1">
+                    <p>
+                      Logged in as <span className="font-semibold">{userRole}</span>
+                      {orgName ? ` (${orgName})` : ''}.
+                      {' '}You can only see workshops belonging to your organisation.
+                    </p>
+                    {workshopDebug && typeof workshopDebug.globalWorkshopCount === 'number' && workshopDebug.globalWorkshopCount > 0 && (
+                      <p className="font-semibold text-red-600">
+                        {workshopDebug.globalWorkshopCount} workshop{workshopDebug.globalWorkshopCount !== 1 ? 's' : ''} exist
+                        {' '}in the database but belong to a different organisation.
+                        {' '}Log in with your platform admin credentials to see all workshops.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <Link href="/admin/workshops/new">
                   <Button>
                     <Plus className="h-4 w-4 mr-2" />

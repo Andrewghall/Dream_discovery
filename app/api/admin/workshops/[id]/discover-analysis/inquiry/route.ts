@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
+import { buildAnalysisFromFindings } from '@/lib/field-discovery/findings-to-analysis-adapter';
 
 export const maxDuration = 60;
 
@@ -53,12 +54,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Use stored analysis, or fall back to client-provided analysis (e.g. demo workshops)
     const analysis = (workshop.discoverAnalysis as DiscoverAnalysis | null)
       ?? (body.analysis as DiscoverAnalysis | null);
-    if (!analysis) {
+
+    // NEW: If still no analysis, try building from diagnostic findings
+    let resolvedAnalysis = analysis;
+    if (!resolvedAnalysis) {
+      const findings = await prisma.finding.findMany({
+        where: { workshopId },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      });
+      if (findings.length > 0) {
+        resolvedAnalysis = buildAnalysisFromFindings(workshopId, findings as any);
+      }
+    }
+
+    if (!resolvedAnalysis) {
       return NextResponse.json({ error: 'No analysis available. Generate the analysis first.' }, { status: 400 });
     }
 
     // Build system prompt with analysis context
-    const systemPrompt = buildInquirySystemPrompt(workshop.name || 'Workshop', analysis);
+    const systemPrompt = buildInquirySystemPrompt(workshop.name || 'Workshop', resolvedAnalysis);
 
     // Build messages
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -185,8 +200,10 @@ ${confidenceSummary}
 ## Guidelines
 - Ground every answer in the data above
 - When asked about tensions, reference specific viewpoints and actors
-- When asked about alignment, reference specific theme×actor cells
+- When asked about alignment, reference specific theme x actor cells
 - When asked about narratives, compare across layers with concrete examples
 - If the data doesn't support an answer, say so clearly
-- Format responses with markdown for readability`;
+- Format responses with markdown for readability
+
+Note: This analysis may include data from both remote Discovery interviews (Stream A) and field capture sessions (Stream B).`;
 }

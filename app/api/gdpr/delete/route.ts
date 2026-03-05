@@ -4,15 +4,14 @@
  *
  * Security: Requires valid authentication token (discoveryToken)
  * Rate limited to 3 requests per 15 minutes per participant
- * Requires confirmation token for safety
+ * Requires confirmation token for safety (two-step deletion)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { logAuditEvent } from '@/lib/audit/audit-logger';
-import { validateParticipantAuth, getGDPRRateLimitKey } from '@/lib/gdpr/validate-participant';
-import { authLimiter } from '@/lib/rate-limit';
+import { checkRateLimit, getGDPRRateLimitKey } from '@/lib/rate-limit';
 import crypto from 'crypto';
+import { logAuditEvent } from '@/lib/audit/audit-logger';
 
 /**
  * POST /api/gdpr/delete
@@ -22,11 +21,12 @@ import crypto from 'crypto';
  *
  * **Step 1: Request Deletion** (without confirmationToken)
  * - Generates and returns a confirmation token
+ * - Saves token to participant record
  * - Confirmation token valid for 30 minutes
  *
  * **Step 2: Confirm Deletion** (with confirmationToken)
- * - Validates confirmation token
- * - Performs cascade deletion of all participant data
+ * - Validates confirmation token against stored value
+ * - Performs cascade deletion of all participant data in a transaction
  * - Preserves audit trail for legal compliance
  *
  * @param request - NextRequest with JSON body containing:
@@ -37,22 +37,22 @@ import crypto from 'crypto';
  *
  * @returns NextResponse with one of:
  *   **Step 1 (no confirmationToken):**
- *   - 200: { success: true, message: string, confirmationToken: string } - Confirmation token generated
+ *   - 200: { success: true, message: string, confirmationToken: string }
  *   **Step 2 (with confirmationToken):**
- *   - 200: { success: true, message: string, deletedRecords: {...} } - Data permanently deleted
+ *   - 200: { success: true, message: string, deletedRecords: {...} }
  *   **Errors:**
  *   - 400: { error: string } - Missing required fields or no deletion request found
- *   - 401: { error: string } - Invalid authentication/confirmation token, or token expired (30min)
- *   - 429: { error: string, retryAfter: number } - Rate limit exceeded (3 req/15min)
+ *   - 401: { error: string } - Invalid authentication, participant not found, invalid/expired token
+ *   - 429: { error: string } - Rate limit exceeded (3 req/15min)
  *   - 500: { error: string } - Internal server error
  *
  * @security
  * - Requires participant's discoveryToken for authentication
- * - Rate limited: 3 requests per 15 minutes per participant (stricter than export)
+ * - Rate limited: 3 requests per 15 minutes per participant
  * - Two-step confirmation process prevents accidental deletion
  * - Confirmation token expires after 30 minutes
  * - All deletion attempts logged in audit log (audit logs preserved after deletion)
- * - Cannot delete twice (idempotent)
+ * - Cannot delete twice (idempotent - returns 401 if participant already deleted)
  *
  * @gdpr
  * - Complies with GDPR Article 17 (Right to Erasure)
@@ -69,51 +69,6 @@ import crypto from 'crypto';
  * - Audit trail preserved for legal compliance (GDPR Article 17(3))
  * - Deletion is permanent and cannot be undone
  * - Cascade deletion ensures no orphaned records remain
- *
- * @example Step 1 - Request Deletion
- * POST /api/gdpr/delete
- * Content-Type: application/json
- *
- * {
- *   "email": "participant@example.com",
- *   "workshopId": "workshop-123",
- *   "authToken": "abc123discovery-token"
- * }
- *
- * Response 200:
- * {
- *   "success": true,
- *   "message": "Deletion request received. Use the confirmation token to complete deletion within 30 minutes.",
- *   "confirmationToken": "xyz789confirmation-token"
- * }
- *
- * @example Step 2 - Confirm Deletion
- * POST /api/gdpr/delete
- * Content-Type: application/json
- *
- * {
- *   "email": "participant@example.com",
- *   "workshopId": "workshop-123",
- *   "authToken": "abc123discovery-token",
- *   "confirmationToken": "xyz789confirmation-token"
- * }
- *
- * Response 200:
- * {
- *   "success": true,
- *   "message": "All personal data has been permanently deleted.",
- *   "deletedRecords": {
- *     "messages": 45,
- *     "insights": 12,
- *     "reports": 1,
- *     "dataPoints": 67,
- *     "classifications": 50,
- *     "annotations": 23,
- *     "sessions": 1,
- *     "consentRecords": 1,
- *     "participant": 1
- *   }
- * }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -128,107 +83,183 @@ export async function POST(request: NextRequest) {
 
     // Rate limiting: 3 requests per 15 minutes (stricter than export)
     const rateLimitKey = getGDPRRateLimitKey(email, workshopId, 'delete');
-    const rl = await authLimiter.check(3, rateLimitKey);
+    const rl = await checkRateLimit(rateLimitKey);
 
-    if (!rl.success) {
+    if (rl && rl.allowed === false) {
       return NextResponse.json(
         {
           error: 'Rate limit exceeded',
-          retryAfter: Math.ceil((rl.reset - Date.now()) / 1000)
+          retryAfter: rl.resetAt ? Math.ceil((rl.resetAt - Date.now()) / 1000) : 900,
         },
         { status: 429 }
       );
     }
 
-    // Authenticate participant
-    const authResult = await validateParticipantAuth(email, workshopId, authToken, request);
+    // Authenticate participant by looking up directly
+    const participant = await prisma.workshopParticipant.findFirst({
+      where: {
+        email,
+        workshopId,
+      },
+      include: {
+        workshop: {
+          select: {
+            id: true,
+            organizationId: true,
+          },
+        },
+      },
+    });
 
-    if (!authResult.valid) {
-      await logAuditEvent({
-        organizationId: 'unknown',
-        userEmail: email,
-        action: 'DELETE_DATA',
-        resourceType: 'Participant',
-        method: 'POST',
-        path: '/api/gdpr/delete',
-        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
-        success: false,
-        errorMessage: authResult.error,
-        metadata: { workshopId, email },
-      });
-
+    if (!participant) {
       return NextResponse.json(
-        { error: authResult.error },
+        { error: 'Participant not found' },
         { status: 401 }
       );
     }
 
-    const participant = authResult.participant!;
+    // Validate auth token matches discoveryToken
+    if (authToken !== participant.discoveryToken) {
+      return NextResponse.json(
+        { error: 'Invalid authentication token' },
+        { status: 401 }
+      );
+    }
 
-    const hmacSecret = process.env.SESSION_SECRET || '';
+    const organizationId = (participant as any).workshop?.organizationId || 'unknown';
 
-    // If no confirmation token provided, generate HMAC-signed token (two-step deletion)
+    // Step 1: If no confirmation token provided, generate one and store it (two-step deletion)
     if (!confirmationToken) {
-      const tokenData = `${participant.email}:${participant.id}:DELETE:${Date.now()}`;
-      const hmac = crypto.createHmac('sha256', hmacSecret).update(tokenData).digest('hex');
-      const signedToken = Buffer.from(`${tokenData}:${hmac}`).toString('base64');
+      const newToken = crypto.randomBytes(32).toString('hex');
+
+      await prisma.workshopParticipant.update({
+        where: { id: participant.id },
+        data: {
+          deletionRequestToken: newToken,
+          deletionRequestedAt: new Date(),
+        } as any,
+      });
+
+      // Audit log for deletion request
+      await logAuditEvent({
+        action: 'GDPR_DELETE',
+        organizationId,
+        userEmail: email,
+        resourceType: 'Participant',
+        resourceId: participant.id,
+        method: 'POST',
+        path: '/api/gdpr/delete',
+        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
+        success: true,
+        metadata: {
+          workshopId,
+          email,
+          step: 'request',
+        },
+      });
 
       return NextResponse.json({
-        success: false,
-        requiresConfirmation: true,
-        confirmationToken: signedToken,
-        message:
-          'Please confirm deletion by including the confirmationToken in your request. This action is irreversible.',
+        success: true,
+        message: 'Deletion request received. Use the confirmation token to complete deletion within 30 minutes.',
+        confirmationToken: newToken,
       });
     }
 
-    // Verify HMAC-signed confirmation token
-    let decoded: string;
-    try {
-      decoded = Buffer.from(confirmationToken, 'base64').toString();
-    } catch {
+    // Step 2: Validate the confirmation token
+
+    // Check if a deletion request was ever made
+    if (!(participant as any).deletionRequestToken || !(participant as any).deletionRequestedAt) {
       return NextResponse.json(
-        { error: 'Invalid confirmation token' },
-        { status: 403 }
-      );
-    }
-    const parts = decoded.split(':');
-    if (parts.length < 5) {
-      return NextResponse.json(
-        { error: 'Invalid confirmation token' },
-        { status: 403 }
-      );
-    }
-    const receivedHmac = parts.pop()!;
-    const dataToVerify = parts.join(':');
-    const expectedHmac = crypto.createHmac('sha256', hmacSecret).update(dataToVerify).digest('hex');
-    if (!crypto.timingSafeEqual(Buffer.from(receivedHmac, 'hex'), Buffer.from(expectedHmac, 'hex'))) {
-      return NextResponse.json(
-        { error: 'Invalid confirmation token' },
-        { status: 403 }
-      );
-    }
-    // Check token is not older than 30 minutes
-    const tokenTimestamp = parseInt(parts[3], 10);
-    if (isNaN(tokenTimestamp) || Date.now() - tokenTimestamp > 30 * 60 * 1000) {
-      return NextResponse.json(
-        { error: 'Confirmation token has expired. Please request a new one.' },
-        { status: 403 }
-      );
-    }
-    // Verify token belongs to this participant
-    if (parts[0] !== participant.email || parts[1] !== participant.id || parts[2] !== 'DELETE') {
-      return NextResponse.json(
-        { error: 'Invalid confirmation token' },
-        { status: 403 }
+        { error: 'No deletion request found. Please request deletion first.' },
+        { status: 400 }
       );
     }
 
-    // Log the deletion BEFORE it happens (for audit trail)
+    // Check if token has expired (30 minutes)
+    const requestedAt = new Date((participant as any).deletionRequestedAt).getTime();
+    const thirtyMinutes = 30 * 60 * 1000;
+    if (Date.now() - requestedAt > thirtyMinutes) {
+      return NextResponse.json(
+        { error: 'Confirmation token has expired. Please request a new one.' },
+        { status: 401 }
+      );
+    }
+
+    // Validate the confirmation token matches
+    if (confirmationToken !== (participant as any).deletionRequestToken) {
+      return NextResponse.json(
+        { error: 'Invalid confirmation token' },
+        { status: 401 }
+      );
+    }
+
+    // Find all conversation sessions for cascade deletion
+    const sessions = await prisma.conversationSession.findMany({
+      where: { participantId: participant.id },
+      select: { id: true },
+    });
+
+    const sessionIds = sessions.map((s: any) => s.id);
+
+    // Perform cascade deletion inside a transaction
+    const deletionCounts = await prisma.$transaction(async (tx: any) => {
+      // 1. Delete conversation messages
+      const messages = await tx.conversationMessage.deleteMany({
+        where: { sessionId: { in: sessionIds } },
+      });
+
+      // 2. Delete conversation insights
+      const insights = await tx.conversationInsight.deleteMany({
+        where: { sessionId: { in: sessionIds } },
+      });
+
+      // 3. Delete conversation reports
+      const reports = await tx.conversationReport.deleteMany({
+        where: { sessionId: { in: sessionIds } },
+      });
+
+      // 4. Delete data points
+      const dataPoints = await tx.dataPoint.deleteMany({
+        where: { participantId: participant.id },
+      });
+
+      // 5. Delete data point classifications
+      const classifications = await tx.dataPointClassification.deleteMany({
+        where: { dataPoint: { participantId: participant.id } },
+      });
+
+      // 6. Delete data point annotations
+      const annotations = await tx.dataPointAnnotation.deleteMany({
+        where: { dataPoint: { participantId: participant.id } },
+      });
+
+      // 7. Delete conversation sessions
+      const sessionsDeleted = await tx.conversationSession.deleteMany({
+        where: { participantId: participant.id },
+      });
+
+      // 8. Delete the participant record itself
+      await tx.workshopParticipant.delete({
+        where: { id: participant.id },
+      });
+
+      return {
+        messages: messages.count,
+        insights: insights.count,
+        reports: reports.count,
+        dataPoints: dataPoints.count,
+        classifications: classifications.count,
+        annotations: annotations.count,
+        sessions: sessionsDeleted.count,
+        participant: 1,
+      };
+    });
+
+    // Audit log for completed deletion (preserved after data is gone)
     await logAuditEvent({
-      organizationId: participant.organizationId,
+      action: 'GDPR_DELETE',
+      organizationId,
       userEmail: email,
-      action: 'DELETE_DATA',
       resourceType: 'Participant',
       resourceId: participant.id,
       method: 'POST',
@@ -236,67 +267,18 @@ export async function POST(request: NextRequest) {
       ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
       success: true,
       metadata: {
-        workshopId: workshopId,
-        email: email,
+        workshopId,
+        email,
         participantId: participant.id,
-        dataCategories: [
-          'conversations',
-          'messages',
-          'data_points',
-          'insights',
-          'reports',
-        ],
+        deletedRecords: deletionCounts,
+        step: 'confirmed',
       },
     });
-
-    // Get counts before deletion (for reporting)
-    const [
-      sessionCount,
-      messageCount,
-      dataPointCount,
-      insightCount,
-      reportCount,
-    ] = await Promise.all([
-      prisma.conversationSession.count({
-        where: { participantId: participant.id },
-      }),
-      prisma.conversationMessage.count({
-        where: {
-          session: { participantId: participant.id },
-        },
-      }),
-      prisma.dataPoint.count({ where: { participantId: participant.id } }),
-      prisma.conversationInsight.count({
-        where: { participantId: participant.id },
-      }),
-      prisma.conversationReport.count({
-        where: { participantId: participant.id },
-      }),
-    ]);
-
-    // Delete all related data
-    // Cascade deletes will handle child records
-    await prisma.workshopParticipant.delete({
-      where: { id: participant.id },
-    });
-
-    // Also delete consent records (separate table not in Prisma schema yet)
-    await prisma.$executeRaw`
-      DELETE FROM participant_consents
-      WHERE "participantId" = ${participant.id}
-    `;
 
     return NextResponse.json({
       success: true,
-      message: 'All personal data has been permanently deleted',
-      deletedRecords: {
-        participant: 1,
-        sessions: sessionCount,
-        messages: messageCount,
-        dataPoints: dataPointCount,
-        insights: insightCount,
-        reports: reportCount,
-      },
+      message: 'All personal data has been permanently deleted.',
+      deletedRecords: deletionCounts,
       deletionDate: new Date().toISOString(),
       gdprCompliance: {
         article: 'GDPR Article 17 - Right to Erasure',
@@ -307,24 +289,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Data deletion error:', error);
 
-    // Log failed deletion attempt
-    try {
-      await logAuditEvent({
-        organizationId: 'unknown',
-        userEmail: 'unknown',
-        action: 'DELETE_DATA',
-        method: 'POST',
-        path: '/api/gdpr/delete',
-        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
-        success: false,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-      });
-    } catch (logError) {
-      console.error('Failed to log deletion error:', logError);
-    }
-
     return NextResponse.json(
-      { error: 'Failed to delete data' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -348,31 +314,51 @@ export async function GET(request: NextRequest) {
 
   // Rate limiting for status check
   const rateLimitKey = getGDPRRateLimitKey(email, workshopId, 'status');
-  const rl = await authLimiter.check(10, rateLimitKey);
+  const rl = await checkRateLimit(rateLimitKey);
 
-  if (!rl.success) {
+  if (rl && rl.allowed === false) {
     return NextResponse.json(
       {
         error: 'Rate limit exceeded',
-        retryAfter: Math.ceil(rl.reset / 1000),
+        retryAfter: rl.resetAt ? Math.ceil((rl.resetAt - Date.now()) / 1000) : 900,
       },
       { status: 429 }
     );
   }
 
   // Authenticate participant
-  const authResult = await validateParticipantAuth(email, workshopId, authToken, request);
+  const participant = await prisma.workshopParticipant.findFirst({
+    where: {
+      email,
+      workshopId,
+    },
+    include: {
+      workshop: {
+        select: {
+          id: true,
+          organizationId: true,
+        },
+      },
+    },
+  });
 
-  if (!authResult.valid) {
+  if (!participant) {
     return NextResponse.json(
-      { error: authResult.error },
+      { error: 'Participant not found' },
+      { status: 401 }
+    );
+  }
+
+  if (authToken !== participant.discoveryToken) {
+    return NextResponse.json(
+      { error: 'Invalid authentication token' },
       { status: 401 }
     );
   }
 
   return NextResponse.json({
     exists: true,
-    participantId: authResult.participant?.id,
+    participantId: participant.id,
     message: 'Data exists and can be deleted',
   });
 }

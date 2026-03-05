@@ -11,6 +11,7 @@ import {
   Globe,
   BarChart3,
   BookOpen,
+  Compass,
   Menu,
   X,
   ChevronLeft,
@@ -22,44 +23,55 @@ import {
 interface WorkshopSidebarProps {
   workshopId: string;
   workshopName: string;
+  domainPack?: string | null;
 }
 
-const NAV_SECTIONS = [
-  {
-    label: 'WORKFLOW',
-    items: [
-      { label: 'Setup', path: '', icon: Settings },
-      { label: 'Prep', path: '/prep', icon: FileText },
-      { label: 'Live Session', path: '/cognitive-guidance', icon: Radio },
-    ],
-  },
-  {
-    label: 'ANALYSE',
-    items: [
-      { label: 'Discovery', path: '/discovery', icon: Search },
-      { label: 'Hemisphere', path: '/hemisphere', icon: Globe },
-      { label: 'Spider', path: '/spider', icon: BarChart3 },
-    ],
-  },
-  {
-    label: 'OUTPUT',
-    items: [
-      { label: 'Scratchpad', path: '/scratchpad', icon: BookOpen },
-    ],
-  },
-];
+function buildNavSections(domainPack?: string | null) {
+  const analyseItems = [
+    { label: 'Discovery', path: '/discovery', icon: Search },
+    { label: 'Field Discovery', path: '/discovery/field', icon: Compass },
+    { label: 'Hemisphere', path: '/hemisphere', icon: Globe },
+    { label: 'Spider', path: '/spider', icon: BarChart3 },
+  ];
 
-export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarProps) {
+  return [
+    {
+      label: 'WORKFLOW',
+      items: [
+        { label: 'Setup', path: '', icon: Settings },
+        { label: 'Prep', path: '/prep', icon: FileText },
+        { label: 'Live Session', path: '/cognitive-guidance', icon: Radio },
+      ],
+    },
+    {
+      label: 'ANALYSE',
+      items: analyseItems,
+    },
+    {
+      label: 'OUTPUT',
+      items: [
+        { label: 'Scratchpad', path: '/scratchpad', icon: BookOpen },
+      ],
+    },
+  ];
+}
+
+export function WorkshopSidebar({ workshopId, workshopName, domainPack }: WorkshopSidebarProps) {
   const pathname = usePathname();
   const basePath = `/admin/workshops/${workshopId}`;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const navSections = buildNavSections(domainPack);
 
   const isActive = (itemPath: string) => {
     const fullPath = `${basePath}${itemPath}`;
     if (itemPath === '') {
-      // Setup page — exact match only
+      // Setup page - exact match only
       return pathname === basePath || pathname === `${basePath}/`;
+    }
+    if (itemPath === '/discovery') {
+      // Discovery - exact match to avoid matching /discovery/field
+      return pathname === fullPath || pathname === `${fullPath}/`;
     }
     return pathname.startsWith(fullPath);
   };
@@ -84,7 +96,7 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
 
       {/* Nav sections */}
       <div className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-        {NAV_SECTIONS.map((section) => (
+        {navSections.map((section) => (
           <div key={section.label}>
             <p className="px-3 mb-1 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
               {section.label}
@@ -125,11 +137,11 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
           Collapse
         </button>
         <Link
-          href="/login"
+          href="/dream"
           onClick={async (e) => {
             e.preventDefault();
-            await fetch('/api/auth/logout');
-            window.location.href = '/login';
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/dream';
           }}
           className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
         >
@@ -140,7 +152,7 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
     </nav>
   );
 
-  // ── Collapsed sidebar — icons only with tooltips ───────
+  // ── Collapsed sidebar - icons only with tooltips ───────
   const collapsedSidebar = (
     <nav className="flex flex-col h-full bg-card border-r items-center">
       {/* Back arrow */}
@@ -156,7 +168,7 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
 
       {/* Nav icons */}
       <div className="flex-1 overflow-y-auto py-3 px-1.5 space-y-1 w-full">
-        {NAV_SECTIONS.flatMap((section) =>
+        {navSections.flatMap((section) =>
           section.items.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
@@ -188,11 +200,11 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
           <ChevronsRight className="h-4 w-4" />
         </button>
         <Link
-          href="/login"
+          href="/dream"
           onClick={async (e) => {
             e.preventDefault();
-            await fetch('/api/auth/logout');
-            window.location.href = '/login';
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/dream';
           }}
           className="flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
           title="Logout"
@@ -222,7 +234,7 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
         />
       )}
 
-      {/* Mobile sidebar (slide-over — always expanded) */}
+      {/* Mobile sidebar (slide-over - always expanded) */}
       <aside
         className={`lg:hidden fixed inset-y-0 left-0 z-40 w-56 transform transition-transform duration-200 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
@@ -231,7 +243,7 @@ export function WorkshopSidebar({ workshopId, workshopName }: WorkshopSidebarPro
         {expandedSidebar}
       </aside>
 
-      {/* Desktop sidebar — collapsible */}
+      {/* Desktop sidebar - collapsible */}
       <aside
         className={`hidden lg:block shrink-0 transition-all duration-200 ${
           collapsed ? 'w-12' : 'w-56'

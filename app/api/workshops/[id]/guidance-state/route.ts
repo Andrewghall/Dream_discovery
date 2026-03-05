@@ -1,10 +1,10 @@
 /**
  * /api/workshops/[id]/guidance-state
  *
- * GET  — Returns current guidance state for the workshop
+ * GET  --Returns current guidance state for the workshop
  *        With ?init=true: also loads prep data (customQuestions, research, briefing)
  *        from the DB and populates prepContext in the in-memory guidance state.
- * POST — Updates guidance state (facilitator actions)
+ * POST --Updates guidance state (facilitator actions)
  *
  * This endpoint syncs facilitator-side state to the server so agents
  * can read it before invoking. Updates include: advance theme, modify
@@ -23,6 +23,8 @@ import {
 } from '@/lib/cognition/guidance-state';
 import type { DialoguePhase } from '@/lib/cognitive-guidance/pipeline';
 import type { WorkshopPrepResearch, WorkshopIntelligence } from '@/lib/cognition/agents/agent-types';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { readHistoricalMetricsFromJson } from '@/lib/historical-metrics/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +41,7 @@ async function authenticateWorkshop(workshopId: string) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// GET — Return current guidance state
+// GET --Return current guidance state
 // ══════════════════════════════════════════════════════════════
 
 export async function GET(
@@ -65,6 +67,8 @@ export async function GET(
         prepResearch: true,
         customQuestions: true,
         discoveryBriefing: true,
+        blueprint: true,
+        historicalMetrics: true,
       },
     });
 
@@ -72,8 +76,13 @@ export async function GET(
       // Ensure guidance state exists
       const state = getOrCreateGuidanceState(workshopId);
 
-      // Populate prepContext if not already set
+      // Parse blueprint and historical metrics from DB JSON
+      const blueprint = readBlueprintFromJson((workshop as any).blueprint);
+      const historicalMetrics = readHistoricalMetricsFromJson(workshop.historicalMetrics);
+
+      // Populate prepContext + blueprint + historicalMetrics if not already set
       if (!state.prepContext) {
+        const bpCoverage = blueprint?.questionPolicy?.coverageThresholdPercent;
         updateGuidanceState(workshopId, {
           prepContext: {
             clientName: workshop.clientName,
@@ -83,12 +92,24 @@ export async function GET(
             research: workshop.prepResearch as unknown as WorkshopPrepResearch | null,
             discoveryIntelligence: workshop.discoveryBriefing as unknown as WorkshopIntelligence | null,
           },
+          blueprint,
+          historicalMetrics,
+          ...(bpCoverage != null ? { coverageThreshold: bpCoverage } : {}),
         });
+      } else {
+        // Blueprint or metrics may have been generated/uploaded after the first init
+        if (!state.blueprint && blueprint) {
+          updateGuidanceState(workshopId, { blueprint });
+        }
+        if (!state.historicalMetrics && historicalMetrics) {
+          updateGuidanceState(workshopId, { historicalMetrics });
+        }
       }
 
       return NextResponse.json({
         guidanceState: getGuidanceState(workshopId),
         customQuestions: workshop.customQuestions || null,
+        blueprint,
       });
     }
   }
@@ -106,7 +127,7 @@ export async function GET(
 }
 
 // ══════════════════════════════════════════════════════════════
-// POST — Update guidance state
+// POST --Update guidance state
 // ══════════════════════════════════════════════════════════════
 
 export async function POST(
@@ -151,6 +172,13 @@ export async function POST(
 
   if (body.journeyCompletionState !== undefined) {
     updates.journeyCompletionState = body.journeyCompletionState;
+  }
+
+  if (body.coverageThreshold !== undefined) {
+    const raw = Number(body.coverageThreshold);
+    if (!Number.isNaN(raw)) {
+      updates.coverageThreshold = Math.max(50, Math.min(95, Math.round(raw)));
+    }
   }
 
   const updated = updateGuidanceState(workshopId, updates);

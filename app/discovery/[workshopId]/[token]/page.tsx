@@ -243,7 +243,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
       if (data.status === 'COMPLETED' && data.sessionId) {
         setIsPreparingReport(true);
-        const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(data.sessionId)}`);
+        const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(data.sessionId)}&token=${encodeURIComponent(token)}`);
         if (r.ok) {
           const reportData = await r.json();
           setReport({
@@ -452,7 +452,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       if (data.status === 'COMPLETED') {
         setSessionStatus('COMPLETED');
         setIsPreparingReport(true);
-        const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(sessionId)}`);
+        const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}`);
         if (r.ok) {
           const reportData = await r.json();
           setReport({
@@ -698,7 +698,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                       await fetch(`/api/conversation/update-preferences`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ sessionId, language: newLang }),
+                        body: JSON.stringify({ sessionId, token, language: newLang }),
                       });
                     }
                   }}
@@ -746,7 +746,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                         await fetch(`/api/conversation/update-preferences`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ sessionId, voiceEnabled: enabled }),
+                          body: JSON.stringify({ sessionId, token, voiceEnabled: enabled }),
                         });
                       }
 

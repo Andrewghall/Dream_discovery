@@ -13,6 +13,7 @@ import { computeAlignment } from '@/lib/discover-analysis/compute-alignment';
 import { computeNarrative } from '@/lib/discover-analysis/compute-narrative';
 import { computeConfidence } from '@/lib/discover-analysis/compute-confidence';
 import { computeConstraints } from '@/lib/discover-analysis/compute-constraints';
+import { rankTensionsDeterministic } from '@/lib/discover-analysis/compute-tensions';
 import { runDiscoverAnalysisAgent } from '@/lib/cognition/agents/discover-analysis-agent';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 import type { NarrativeLayer } from '@/lib/types/discover-analysis';
@@ -146,7 +147,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 (message) => emit('progress', { step: 'agent', message }),
               );
 
-              tensions = agentResult.tensions;
+              // Apply deterministic ranking formula to override GPT ordering
+              tensions = rankTensionsDeterministic(agentResult.tensions);
               updatedConstraints = {
                 constraints: agentResult.updatedConstraints,
                 relationships: agentResult.constraintRelationships,

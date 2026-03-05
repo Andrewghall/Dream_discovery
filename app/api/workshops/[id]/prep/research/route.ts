@@ -13,6 +13,8 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runResearchAgent } from '@/lib/cognition/agents/research-agent';
+import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
@@ -46,11 +48,17 @@ export async function POST(
     where: { id: workshopId },
     select: {
       id: true,
+      description: true,
+      businessContext: true,
       clientName: true,
       industry: true,
       companyWebsite: true,
       dreamTrack: true,
       targetDomain: true,
+      // Blueprint-relevant fields for regeneration after research
+      engagementType: true,
+      domainPack: true,
+      blueprint: true,
     },
   });
 
@@ -63,6 +71,8 @@ export async function POST(
 
   const context: PrepContext = {
     workshopId,
+    workshopPurpose: workshop.description,
+    desiredOutcomes: workshop.businessContext,
     clientName: workshop.clientName,
     industry: workshop.industry,
     companyWebsite: workshop.companyWebsite,
@@ -85,11 +95,17 @@ export async function POST(
       }
 
       // Emit opening orchestrator message
+      const purposeBlock = context.workshopPurpose
+        ? `\n\nWORKSHOP PURPOSE (WHY WE ARE HERE): ${context.workshopPurpose}`
+        : '';
+      const outcomesBlock = context.desiredOutcomes
+        ? `\nDESIRED OUTCOMES: ${context.desiredOutcomes}`
+        : '';
       const openingEntry: AgentConversationEntry = {
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'research-agent',
-        message: `Good morning. We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise — full end-to-end assessment.'} Could you please research the company and provide context that will help us tailor our approach?`,
+        message: `Good morning. We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise - full end-to-end assessment.'}${purposeBlock}${outcomesBlock}\n\nResearch Agent, could you please research the company and provide context that will help us tailor our approach? Keep the workshop purpose and desired outcomes front of mind - all research should serve why we are here.`,
         type: 'handoff',
       };
       sendEvent('agent.conversation', openingEntry);
@@ -100,10 +116,29 @@ export async function POST(
           sendEvent('agent.conversation', entry);
         });
 
-        // Store research in workshop
+        // Regenerate blueprint with research-derived journey stages and dimensions
+        const existingBp = readBlueprintFromJson(workshop.blueprint);
+        const updatedBlueprint = generateBlueprint({
+          industry: workshop.industry ?? null,
+          dreamTrack: (workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null) ?? null,
+          engagementType: workshop.engagementType?.toLowerCase() ?? null,
+          domainPack: workshop.domainPack ?? null,
+          purpose: workshop.description ?? null,
+          outcomes: workshop.businessContext ?? null,
+          clientName: workshop.clientName ?? null,
+          researchJourneyStages: research.journeyStages ?? null,
+          researchDimensions: research.industryDimensions ?? null,
+          researchActors: research.actorTaxonomy ?? null,
+          previousVersion: existingBp?.blueprintVersion ?? 0,
+        });
+
+        // Store research and regenerated blueprint
         await prisma.workshop.update({
           where: { id: workshopId },
-          data: { prepResearch: JSON.parse(JSON.stringify(research)) },
+          data: {
+            prepResearch: JSON.parse(JSON.stringify(research)),
+            blueprint: updatedBlueprint as any,
+          },
         });
 
         // Emit orchestrator acknowledgement
@@ -115,8 +150,8 @@ export async function POST(
           type: 'acknowledgement',
         } satisfies AgentConversationEntry);
 
-        // Emit completion event with full research
-        sendEvent('research.complete', { research });
+        // Emit completion event with full research and updated blueprint
+        sendEvent('research.complete', { research, blueprint: updatedBlueprint });
       } catch (error) {
         sendEvent('agent.conversation', {
           timestampMs: Date.now(),

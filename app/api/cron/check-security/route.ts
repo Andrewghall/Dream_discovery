@@ -13,11 +13,11 @@ import { checkFailedLoginPatterns } from '@/lib/monitoring/alerts';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Simple authorization check
+    // Fail-closed: reject if CRON_SECRET is not configured
     const authHeader = request.headers.get('authorization');
-    const expectedToken = process.env.CRON_SECRET || 'change-me-in-production';
+    const cronSecret = process.env.CRON_SECRET;
 
-    if (authHeader !== `Bearer ${expectedToken}`) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

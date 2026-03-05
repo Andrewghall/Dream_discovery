@@ -989,6 +989,12 @@ blockquote cite { display: block; font-size: 0.8rem; color: #6b7280; margin-top:
 .chip-critical .action { color: #b91c1c; }
 .pain-marker { font-size: 0.5rem; position: absolute; top: -4px; left: -4px; }
 .mot-marker { font-size: 0.5rem; position: absolute; top: -4px; right: -4px; }
+.agency-strip { display: flex; align-items: center; gap: 2px; margin-top: 4px; }
+.agency-badge { display: inline-flex; align-items: center; gap: 2px; padding: 1px 4px; border-radius: 9999px; font-size: 0.45rem; font-weight: 500; opacity: 0.25; }
+.agency-badge.active { opacity: 1; }
+.agency-badge.ab-human.active { background: #e2e8f0; color: #475569; }
+.agency-badge.ab-assisted.active { background: #dbeafe; color: #1d4ed8; }
+.agency-badge.ab-autonomous.active { background: #d1fae5; color: #047857; }
 
 .journey-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
 .journey-summary-card { background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
@@ -1533,10 +1539,16 @@ function renderJourneyMapCompact(journey: any): string {
           : interaction.sentiment === 'concerned' ? 'chip-concerned'
           : interaction.sentiment === 'critical' ? 'chip-critical'
           : 'chip-neutral';
+        const agency = interaction.aiAgencyNow || interaction.agency || '';
         html += `<div class="interaction-chip ${chipClass}">
           ${interaction.isPainPoint ? '<span class="pain-marker">&#128308;</span>' : ''}
           ${interaction.isMomentOfTruth ? '<span class="mot-marker">&#11088;</span>' : ''}
           <div class="action">${esc(interaction.action)}</div>
+          <div class="agency-strip">
+            <span class="agency-badge ab-human${agency === 'human' ? ' active' : ''}">&#128100;${agency === 'human' ? ' Human' : ''}</span>
+            <span class="agency-badge ab-assisted${agency === 'assisted' ? ' active' : ''}">&#129309;${agency === 'assisted' ? ' Assisted' : ''}</span>
+            <span class="agency-badge ab-autonomous${agency === 'autonomous' ? ' active' : ''}">&#129302;${agency === 'autonomous' ? ' Autonomous' : ''}</span>
+          </div>
         </div>`;
       }
       html += `</td>`;

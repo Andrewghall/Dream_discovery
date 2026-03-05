@@ -1,4 +1,5 @@
 import { ConversationPhase } from '@/lib/types/conversation';
+import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
 
 export const PHASE_ORDER: ConversationPhase[] = [
   'intro',
@@ -343,4 +344,193 @@ export function getFixedQuestionObject(
   questionSetVersion?: string | null
 ): FixedQuestion | null {
   return fixedQuestionsForVersion(questionSetVersion)[phase]?.[index] ?? null;
+}
+
+// ── Blueprint-driven Discovery helpers ────────────────────────
+
+/**
+ * Maps standard blueprint lens names to conversation phase keys.
+ * When a blueprint lens name is not in this map it is silently ignored,
+ * which means research-overridden non-standard lens names (e.g.
+ * "Agent Experience") gracefully fall through to the legacy path.
+ */
+const LENS_NAME_TO_PHASE: Record<string, ConversationPhase> = {
+  People: 'people',
+  Operations: 'corporate',
+  Organisation: 'corporate',
+  Customer: 'customer',
+  Technology: 'technology',
+  Regulation: 'regulation',
+};
+
+/**
+ * Derive the conversation phase order from blueprint lenses.
+ * Wraps the mapped lens phases with intro, prioritization, and summary.
+ * If no lenses map to standard phases, returns a safe default without
+ * regulation.
+ */
+export function getPhaseOrderFromBlueprint(
+  blueprint: WorkshopBlueprint,
+): ConversationPhase[] {
+  const lensPhases: ConversationPhase[] = [];
+  for (const lens of blueprint.lenses) {
+    const phase = LENS_NAME_TO_PHASE[lens.name];
+    if (phase && !lensPhases.includes(phase)) {
+      lensPhases.push(phase);
+    }
+  }
+  if (lensPhases.length === 0) {
+    return PHASE_ORDER.filter((p) => p !== 'regulation');
+  }
+  return ['intro', ...lensPhases, 'prioritization', 'summary'];
+}
+
+/**
+ * Build a question set by filtering FIXED_QUESTIONS to only the phases
+ * that match the blueprint's active lenses.
+ *
+ * Returns null when none of the blueprint lens names map to standard
+ * conversation phases (e.g. research-overridden custom dimension names).
+ * In that case the caller should fall through to legacy FIXED_QUESTIONS.
+ *
+ * Prioritization questions are rebuilt dynamically to list the blueprint
+ * lens names rather than the hardcoded area list.
+ */
+export function buildQuestionsFromBlueprint(
+  blueprint: WorkshopBlueprint,
+  questionSetVersion?: string | null,
+): Record<string, FixedQuestion[]> | null {
+  const lensPhases: ConversationPhase[] = [];
+  const lensLabels: string[] = [];
+
+  for (const lens of blueprint.lenses) {
+    const phase = LENS_NAME_TO_PHASE[lens.name];
+    if (phase && !lensPhases.includes(phase)) {
+      lensPhases.push(phase);
+      lensLabels.push(lens.name);
+    }
+  }
+
+  // If no blueprint lenses map to standard phases, gracefully degrade
+  if (lensPhases.length === 0) return null;
+
+  const base = fixedQuestionsForVersion(questionSetVersion);
+  const result: Record<string, FixedQuestion[]> = {};
+
+  // Always include intro
+  result.intro = [...base.intro];
+
+  // Include only phases matching blueprint lenses
+  for (const phase of lensPhases) {
+    result[phase] = [...base[phase]];
+  }
+
+  // Build prioritization with dynamic area list from blueprint lenses
+  const areaList = lensLabels.join(', ');
+  result.prioritization = [
+    {
+      text: `Of the areas we have discussed (${areaList}), which one gets in the way of your work the most?`,
+      tag: 'biggest_constraint' as FixedQuestionTag,
+    },
+    ...base.prioritization.slice(1),
+  ];
+
+  // Always include summary
+  result.summary = [...base.summary];
+
+  return result;
+}
+
+/**
+ * Derive includeRegulation from blueprint lenses.
+ * Returns true if a lens named 'Regulation' is present.
+ */
+export function includeRegulationFromBlueprint(
+  blueprint: WorkshopBlueprint,
+): boolean {
+  return blueprint.lenses.some((l) => l.name === 'Regulation');
+}
+
+// ── Custom Discovery question helpers ─────────────────────────
+
+/**
+ * Build a questions record from the workshop's discoveryQuestions JSON.
+ * Maps lens-based questions into phase-compatible format.
+ * Returns null if discoveryQuestions is not set or has no lenses.
+ */
+export function buildQuestionsFromDiscoverySet(
+  discoveryQuestions: any,
+): Record<string, FixedQuestion[]> | null {
+  if (!discoveryQuestions?.lenses?.length) return null;
+
+  const result: Record<string, FixedQuestion[]> = {};
+
+  // Intro phase - standard intro questions
+  result.intro = [
+    {
+      text: "Please describe your role, how long you've been in the organisation, and what you spend most of your time doing.",
+      tag: 'context' as FixedQuestionTag,
+    },
+    {
+      text: 'What is the best thing about working here? What keeps you going?',
+      tag: 'working' as FixedQuestionTag,
+    },
+    {
+      text: 'And what is the single most frustrating thing?',
+      tag: 'pain_points' as FixedQuestionTag,
+    },
+  ];
+
+  // Map each lens to a phase
+  for (const lens of discoveryQuestions.lenses) {
+    result[lens.key] = lens.questions.map((q: any) => ({
+      text: q.text,
+      tag: (q.tag || 'context') as FixedQuestionTag,
+      maturityScale: q.maturityScale,
+    }));
+  }
+
+  // Prioritization phase - dynamically list the lens labels
+  const lensLabels = discoveryQuestions.lenses.map((l: any) => l.label).join(', ');
+  result.prioritization = [
+    {
+      text: `Of the areas we have discussed (${lensLabels}), which one gets in the way of your work the most?`,
+      tag: 'biggest_constraint' as FixedQuestionTag,
+    },
+    {
+      text: 'Which area, if fixed, would make the biggest positive difference to your ability to do your job?',
+      tag: 'high_impact' as FixedQuestionTag,
+    },
+    {
+      text: 'Overall, do you believe this organisation can genuinely change for the better? What makes you think that?',
+      tag: 'optimism' as FixedQuestionTag,
+    },
+    {
+      text: "What else should we know? What question should we have asked but didn't?",
+      tag: 'final_thoughts' as FixedQuestionTag,
+    },
+  ];
+
+  // Summary phase
+  result.summary = [
+    {
+      text: 'Thank you for candidly sharing your experiences. Your input will help shape the workshop, and you will receive a summary report based on what you shared.',
+      tag: 'closing' as FixedQuestionTag,
+    },
+  ];
+
+  return result;
+}
+
+/**
+ * Get the phase order for a workshop with custom Discovery questions.
+ * Returns lens keys wrapped with intro, prioritization, summary.
+ */
+export function getPhaseOrderForDiscovery(
+  discoveryQuestions: any,
+): string[] {
+  if (!discoveryQuestions?.lenses?.length) return PHASE_ORDER as string[];
+
+  const lensKeys = discoveryQuestions.lenses.map((l: any) => l.key);
+  return ['intro', ...lensKeys, 'prioritization', 'summary'];
 }

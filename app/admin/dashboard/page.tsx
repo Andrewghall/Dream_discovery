@@ -21,7 +21,7 @@ export default async function AdminDashboardPage() {
   }
 
   const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
-  const isTenantAdmin = session.role === 'TENANT_ADMIN';
+  const twentyFourHoursAgo = new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
 
   // Scope queries for tenant admins to their organization
   const orgFilter = !isPlatformAdmin && session.organizationId
@@ -64,7 +64,7 @@ export default async function AdminDashboardPage() {
       where: {
         success: false,
         createdAt: {
-          gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          gte: twentyFourHoursAgo,
         },
         ...(isPlatformAdmin ? {} : { email: session.email }),
       },

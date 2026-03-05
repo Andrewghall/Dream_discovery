@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
+import { getDomainPack } from '@/lib/domain-packs';
+import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
+import type { EngagementType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+
+function toEngagementEnum(value: unknown): EngagementType | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const normalized = value.trim().toUpperCase();
+  const valid: EngagementType[] = [
+    'DIAGNOSTIC_BASELINE',
+    'OPERATIONAL_DEEP_DIVE',
+    'AI_ENABLEMENT',
+    'TRANSFORMATION_SPRINT',
+    'CULTURAL_ALIGNMENT',
+  ];
+  if (valid.includes(normalized as EngagementType)) {
+    return normalized as EngagementType;
+  }
+
+  // Accept UI keys like "operational_deep_dive"
+  const fromKey = normalized.replace(/[^A-Z0-9_]/g, '_');
+  if (valid.includes(fromKey as EngagementType)) {
+    return fromKey as EngagementType;
+  }
+  return undefined;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,7 +65,13 @@ export async function GET(request: NextRequest) {
         where,
         skip,
         take: limit,
-        include: {
+        select: {
+          id: true,
+          name: true,
+          workshopType: true,
+          status: true,
+          scheduledDate: true,
+          createdAt: true,
           participants: {
             select: {
               id: true,
@@ -74,6 +105,19 @@ export async function GET(request: NextRequest) {
       snapshotCount: workshop._count.liveSnapshots,
     }));
 
+    // When no workshops found for a filtered (non-platform-admin) query,
+    // check the global count so the client can show a helpful diagnostic.
+    let globalCount: number | undefined;
+    if (totalCount === 0 && !isPlatformAdmin) {
+      globalCount = await prisma.workshop.count();
+      console.warn('[workshops] Empty result for filtered user', {
+        role: session.role,
+        organizationId: orgId || null,
+        userId: session.userId,
+        globalWorkshopCount: globalCount,
+      });
+    }
+
     return NextResponse.json(
       {
         workshops: workshopsWithStats,
@@ -84,6 +128,7 @@ export async function GET(request: NextRequest) {
           totalPages: Math.ceil(totalCount / limit),
           hasMore: page * limit < totalCount,
         },
+        ...(globalCount !== undefined ? { _debug: { globalWorkshopCount: globalCount, userRole: session.role, userOrgId: orgId } } : {}),
       },
       { headers: { 'Cache-Control': 'no-store' } }
     );
@@ -106,6 +151,7 @@ export async function POST(request: NextRequest) {
       name, description, businessContext, workshopType,
       scheduledDate, responseDeadline, includeRegulation,
       clientName, industry, companyWebsite, dreamTrack, targetDomain,
+      engagementType, domainPack,
     } = body;
 
     // Determine which org this workshop belongs to
@@ -117,30 +163,70 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
     }
 
-    const workshop = await prisma.workshop.create({
-      data: {
-        name,
-        description,
-        businessContext,
-        workshopType: workshopType || 'CUSTOM',
-        includeRegulation: includeRegulation ?? true,
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
-        responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,
-        organizationId,
-        createdById: session.userId,
-        // DREAM prep fields
-        clientName: clientName || undefined,
-        industry: industry || undefined,
-        companyWebsite: companyWebsite || undefined,
-        dreamTrack: dreamTrack || undefined,
-        targetDomain: targetDomain || undefined,
-      },
+    const normalizedEngagementType = toEngagementEnum(engagementType);
+
+    // Generate domain-aware runtime blueprint from setup selections.
+    // clientName is included so industry detection (e.g. airline) can
+    // fire even when the industry field is not explicitly set.
+    const blueprint = generateBlueprint({
+      industry: industry || null,
+      dreamTrack: dreamTrack || null,
+      engagementType: engagementType || null,
+      domainPack: domainPack || null,
+      purpose: description || null,
+      outcomes: businessContext || null,
+      clientName: clientName || null,
     });
+
+    const workshopData = {
+      name,
+      description,
+      businessContext,
+      workshopType: workshopType || 'CUSTOM',
+      includeRegulation: includeRegulation ?? true,
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+      responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,
+      organizationId,
+      createdById: session.userId,
+      // DREAM prep fields
+      clientName: clientName || undefined,
+      industry: industry || undefined,
+      companyWebsite: companyWebsite || undefined,
+      dreamTrack: dreamTrack || undefined,
+      targetDomain: targetDomain || undefined,
+      // Field Discovery / Diagnostic extension
+      engagementType: normalizedEngagementType,
+      domainPack: domainPack || undefined,
+      domainPackConfig: domainPack ? (getDomainPack(domainPack) as any ?? undefined) : undefined,
+      // Runtime blueprint snapshot
+      blueprint: blueprint as any,
+    };
+
+    const workshop = await prisma.workshop.create({ data: workshopData });
 
     return NextResponse.json({ workshop });
   } catch (error: unknown) {
-    console.error('Error creating workshop:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const isSchemaError = message.toLowerCase().includes('does not exist in the current database')
+      || message.toLowerCase().includes('unknown field');
+    console.error(
+      '[workshop-create]',
+      isSchemaError ? 'SCHEMA DRIFT DETECTED' : 'Error creating workshop:',
+      message,
+    );
 
-    return NextResponse.json({ error: 'Failed to create workshop' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'Failed to create workshop',
+        details: {
+          message,
+          ...(isSchemaError && {
+            schemaDrift: true,
+            hint: 'The database schema is out of sync with the application. Run pending migrations.',
+          }),
+        },
+      },
+      { status: 500 },
+    );
   }
 }

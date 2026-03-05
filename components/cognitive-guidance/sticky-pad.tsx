@@ -22,6 +22,7 @@ const PAD_TYPE_COLORS: Record<PadType, { bg: string; text: string; accent: strin
   ENABLER_PROBE:       { bg: '#a7f3d0', text: '#064e3b', accent: '#6ee7b7', label: 'Enabler' },
   CUSTOMER_IMPACT:     { bg: '#ddd6fe', text: '#3b0764', accent: '#c4b5fd', label: 'Customer' },
   OWNERSHIP_ACTION:    { bg: '#e2e8f0', text: '#1e293b', accent: '#cbd5e1', label: 'Action' },
+  METRIC_CHALLENGE:    { bg: '#fef3c7', text: '#92400e', accent: '#fcd34d', label: 'Metric Check' },
 };
 
 /** Get colour scheme for a pad — prefer custom lens colors, then default lens, then type-based */

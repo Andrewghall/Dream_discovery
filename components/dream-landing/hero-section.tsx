@@ -53,15 +53,15 @@ export function HeroSection() {
         <ScrollReveal delay={500}>
           <p className="text-lg md:text-xl text-white/60 max-w-3xl mx-auto leading-relaxed mb-10">
             Built for leadership teams who must align strategy, cut through conflicting
-            priorities, and produce decisions executives can defend. DREAM captures how your
-            organisation really thinks and turns it into measurable strategic direction
-             -  with AI that augments human judgment, not replaces it.
+            priorities, and produce decisions executives can defend. Multiple agentic AI specialists
+            work in concert  -  capturing, synthesising, and analysing  -  to turn how your
+            organisation really thinks into measurable strategic direction.
           </p>
         </ScrollReveal>
 
         {/* CTAs */}
         <ScrollReveal delay={600}>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
             <CalendlyButton
               className="px-8 py-4 text-lg font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] shadow-lg shadow-[#5cf28e]/20 hover:bg-[#50c878] transition-all hover:shadow-xl hover:shadow-[#5cf28e]/30 cursor-pointer"
             >
@@ -74,6 +74,10 @@ export function HeroSection() {
               Take a 5-Minute Assessment
             </a>
           </div>
+          <p className="text-sm text-white/40 max-w-xl mx-auto mb-16">
+            Rate your readiness across People, Organisation, Customer, Technology
+            and Regulation and receive a personalised transformation score.
+          </p>
         </ScrollReveal>
 
         {/* Stats strip */}

@@ -4,9 +4,11 @@ import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Building2,
@@ -22,11 +24,20 @@ import {
   Pencil,
   Save,
   X,
+  MessageSquare,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import {
   AgentOrchestrationPanel,
   type AgentConversationEntry,
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
+import BlueprintPreviewPanel from '@/components/prep/blueprint-preview-panel';
+import HistoricalMetricsPanel from '@/components/prep/historical-metrics-panel';
+import { readBlueprintFromJson, type WorkshopBlueprint } from '@/lib/workshop/blueprint';
+import { readHistoricalMetricsFromJson, type HistoricalMetricsData } from '@/lib/historical-metrics/types';
+import { getDomainPack } from '@/lib/domain-packs/registry';
+import { toast } from 'sonner';
 
 // ══════════════════════════════════════════════════════════
 // TYPES
@@ -37,6 +48,8 @@ type PageProps = { params: Promise<{ id: string }> };
 type WorkshopPrep = {
   id: string;
   name: string;
+  description: string | null;
+  businessContext: string | null;
   clientName: string | null;
   industry: string | null;
   companyWebsite: string | null;
@@ -45,6 +58,9 @@ type WorkshopPrep = {
   prepResearch: Record<string, unknown> | null;
   customQuestions: Record<string, unknown> | null;
   discoveryBriefing: Record<string, unknown> | null;
+  domainPack: string | null;
+  blueprint: Record<string, unknown> | null;
+  historicalMetrics: Record<string, unknown> | null;
 };
 
 type FacilitationQuestion = {
@@ -123,6 +139,12 @@ export default function PrepPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Workshop purpose fields
+  const [description, setDescription] = useState('');
+  const [businessContext, setBusinessContext] = useState('');
+  const [savingPurpose, setSavingPurpose] = useState(false);
+  const [purposeSaved, setPurposeSaved] = useState(false);
+
   // Editable fields
   const [clientName, setClientName] = useState('');
   const [industry, setIndustry] = useState('');
@@ -169,8 +191,21 @@ export default function PrepPage({ params }: PageProps) {
   };
   const [briefingData, setBriefingData] = useState<BriefingOutput | null>(null);
 
+  // Discovery interview questions
+  const [discoveryQuestionsData, setDiscoveryQuestionsData] = useState<any>(null);
+  const [discoveryQuestionsLoading, setDiscoveryQuestionsLoading] = useState(false);
+  const [editingDiscoveryQId, setEditingDiscoveryQId] = useState<string | null>(null);
+  const [editingDiscoveryQText, setEditingDiscoveryQText] = useState('');
+  const [discoveryDirection, setDiscoveryDirection] = useState('');
+
+  // Blueprint and historical metrics
+  const [blueprintData, setBlueprintData] = useState<WorkshopBlueprint | null>(null);
+  const [metricsData, setMetricsData] = useState<HistoricalMetricsData | null>(null);
+  const [hasMetricReferences, setHasMetricReferences] = useState(false);
+
   // Collapsible output cards
   const [researchCollapsed, setResearchCollapsed] = useState(false);
+  const [discoveryQuestionsCollapsed, setDiscoveryQuestionsCollapsed] = useState(false);
   const [questionsCollapsed, setQuestionsCollapsed] = useState(false);
   const [briefingCollapsed, setBriefingCollapsed] = useState(false);
 
@@ -186,6 +221,8 @@ export default function PrepPage({ params }: PageProps) {
           const data = await res.json();
           const w = data.workshop as WorkshopPrep;
           setWorkshop(w);
+          setDescription(w.description || '');
+          setBusinessContext(w.businessContext || '');
           setClientName(w.clientName || '');
           setIndustry(w.industry || '');
           setCompanyWebsite(w.companyWebsite || '');
@@ -197,6 +234,38 @@ export default function PrepPage({ params }: PageProps) {
           setQuestionsData(w.customQuestions as Record<string, unknown> | null);
           setBriefingComplete(!!w.discoveryBriefing);
           setBriefingData(w.discoveryBriefing as BriefingOutput | null);
+
+          // Parse blueprint and metrics from workshop response
+          const bp = readBlueprintFromJson(data.workshop.blueprint);
+          if (bp) setBlueprintData(bp);
+          const hm = readHistoricalMetricsFromJson(data.workshop.historicalMetrics);
+          if (hm) setMetricsData(hm);
+
+          // Check if domain pack has metric references
+          if (w.domainPack) {
+            const pack = getDomainPack(w.domainPack);
+            if (pack && pack.metricReferences.length > 0) {
+              setHasMetricReferences(true);
+            }
+          }
+
+          // Fetch Discovery interview questions
+          if (w.domainPack) {
+            try {
+              const dqRes = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`);
+              if (dqRes.ok) {
+                const dqData = await dqRes.json();
+                if (dqData.discoveryQuestions) {
+                  setDiscoveryQuestionsData(dqData.discoveryQuestions);
+                  if (dqData.discoveryQuestions.facilitatorDirection) {
+                    setDiscoveryDirection(dqData.discoveryQuestions.facilitatorDirection);
+                  }
+                }
+              }
+            } catch {
+              // fail silently
+            }
+          }
         }
       } catch {
         // fail silently
@@ -207,6 +276,34 @@ export default function PrepPage({ params }: PageProps) {
     fetchWorkshop();
   }, [workshopId]);
 
+  // Gate: both purpose fields must be filled before agents can run
+  const purposeComplete = description.trim().length > 0 && businessContext.trim().length > 0;
+
+  // ── Save workshop purpose ──────────────────────────
+  const savePurpose = useCallback(async () => {
+    setSavingPurpose(true);
+    setPurposeSaved(false);
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description, businessContext }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Failed to save purpose');
+        return;
+      }
+      setPurposeSaved(true);
+      setTimeout(() => setPurposeSaved(false), 3000);
+    } catch (err) {
+      console.error('Save purpose failed:', err);
+      toast.error('Network error -- could not save');
+    } finally {
+      setSavingPurpose(false);
+    }
+  }, [workshopId, description, businessContext]);
+
   // ── Save client context ───────────────────────────
   const saveContext = useCallback(async () => {
     setSaving(true);
@@ -215,6 +312,8 @@ export default function PrepPage({ params }: PageProps) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          description,
+          businessContext,
           clientName,
           industry,
           companyWebsite,
@@ -227,7 +326,7 @@ export default function PrepPage({ params }: PageProps) {
     } finally {
       setSaving(false);
     }
-  }, [workshopId, clientName, industry, companyWebsite, dreamTrack, targetDomain]);
+  }, [workshopId, description, businessContext, clientName, industry, companyWebsite, dreamTrack, targetDomain]);
 
   // ── Trigger Research Agent via SSE ────────────────
   const runResearch = useCallback(async () => {
@@ -238,6 +337,8 @@ export default function PrepPage({ params }: PageProps) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          description,
+          businessContext,
           clientName,
           industry,
           companyWebsite,
@@ -295,8 +396,14 @@ export default function PrepPage({ params }: PageProps) {
                 setAgentConversation((prev) => [...prev, data as AgentConversationEntry]);
               } else if (eventType === 'research.complete') {
                 setResearchComplete(true);
-                if (data && typeof data === 'object' && 'research' in data) {
-                  setResearchData(data.research as ResearchOutput);
+                if (data && typeof data === 'object') {
+                  if ('research' in data) {
+                    setResearchData(data.research as ResearchOutput);
+                  }
+                  if ('blueprint' in data) {
+                    const bp = readBlueprintFromJson(data.blueprint);
+                    if (bp) setBlueprintData(bp);
+                  }
                 }
               }
             } catch {
@@ -532,6 +639,126 @@ export default function PrepPage({ params }: PageProps) {
     }
   }, [editingQuestionId, editingQuestionText, questionsData, workshopId]);
 
+  // ── Generate Discovery Interview Questions via SSE ──────
+  const generateDiscoveryQuestions = useCallback(async () => {
+    setDiscoveryQuestionsLoading(true);
+    try {
+      const response = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direction: discoveryDirection.trim() || null }),
+      });
+
+      if (!response.ok || !response.body) {
+        setDiscoveryQuestionsLoading(false);
+        setAgentConversation((prev) => [
+          ...prev,
+          {
+            timestampMs: Date.now(),
+            agent: 'prep-orchestrator',
+            to: '',
+            message: `Discovery question generation failed: ${response.statusText || 'Unknown error'}. Please try again.`,
+            type: 'info',
+          },
+        ]);
+        return;
+      }
+
+      // Read SSE stream (same pattern as research/briefing/questions)
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        let eventType = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ') && eventType) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (eventType === 'agent.conversation') {
+                setAgentConversation((prev) => [...prev, data as AgentConversationEntry]);
+              } else if (eventType === 'discovery-questions.generated') {
+                if (data && typeof data === 'object' && 'discoveryQuestions' in data) {
+                  setDiscoveryQuestionsData(data.discoveryQuestions);
+                }
+              }
+            } catch {
+              // Ignore parse errors
+            }
+            eventType = '';
+          } else if (line === '') {
+            eventType = '';
+          }
+        }
+      }
+
+      // Reload from server to be sure
+      const dqRes = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`);
+      if (dqRes.ok) {
+        const dqData = await dqRes.json();
+        if (dqData.discoveryQuestions) {
+          setDiscoveryQuestionsData(dqData.discoveryQuestions);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to generate Discovery questions:', err);
+      setAgentConversation((prev) => [
+        ...prev,
+        {
+          timestampMs: Date.now(),
+          agent: 'prep-orchestrator',
+          to: '',
+          message: `Discovery question generation failed: ${err instanceof Error ? err.message : 'Network error'}. Please try again.`,
+          type: 'info',
+        },
+      ]);
+    } finally {
+      setDiscoveryQuestionsLoading(false);
+    }
+  }, [workshopId, discoveryDirection]);
+
+  // ── Save Discovery question edit ──────────────────────
+  const saveDiscoveryQuestionEdit = useCallback(async () => {
+    if (!editingDiscoveryQId || !discoveryQuestionsData) return;
+
+    const updated = JSON.parse(JSON.stringify(discoveryQuestionsData));
+    for (const lens of updated.lenses) {
+      for (const q of lens.questions) {
+        if (q.id === editingDiscoveryQId) {
+          q.text = editingDiscoveryQText;
+          q.isEdited = true;
+          break;
+        }
+      }
+    }
+
+    try {
+      const res = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discoveryQuestions: updated }),
+      });
+
+      if (res.ok) {
+        setDiscoveryQuestionsData(updated);
+        setEditingDiscoveryQId(null);
+        setEditingDiscoveryQText('');
+      }
+    } catch (err) {
+      console.error('Failed to save Discovery question edit:', err);
+    }
+  }, [editingDiscoveryQId, editingDiscoveryQText, discoveryQuestionsData, workshopId]);
+
   // Parse questions data into typed structure
   const parsedQuestions: WorkshopQuestionSetData | null = (() => {
     if (!questionsData) return null;
@@ -590,6 +817,60 @@ export default function PrepPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-6">
+          {/* ── Workshop Purpose Card ────────────────────── */}
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-600/50 p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Target className="h-5 w-5 text-amber-600" />
+              <h2 className="text-base font-bold text-amber-900 dark:text-amber-200">Workshop Purpose</h2>
+            </div>
+            <p className="text-xs text-amber-700/70 dark:text-amber-400/60 mb-4">
+              This is the foundation for everything the agents will produce. Be specific.
+            </p>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="workshopWhy" className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Why are we running this workshop?
+                </Label>
+                <Textarea
+                  id="workshopWhy"
+                  rows={3}
+                  placeholder="What is the strategic reason for this session? What problem or opportunity has brought everyone together?"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="border-amber-200 dark:border-amber-700/50 focus-visible:ring-amber-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="workshopOutcomes" className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  What outcomes do you need to walk away with?
+                </Label>
+                <Textarea
+                  id="workshopOutcomes"
+                  rows={3}
+                  placeholder="What specific decisions, directions, or outputs must this workshop produce?"
+                  value={businessContext}
+                  onChange={(e) => setBusinessContext(e.target.value)}
+                  className="border-amber-200 dark:border-amber-700/50 focus-visible:ring-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 mt-4">
+              <Button onClick={savePurpose} disabled={savingPurpose || purposeSaved} variant="outline" size="sm" className={purposeSaved ? 'border-green-400 bg-green-50 text-green-700 dark:border-green-600 dark:bg-green-900/30 dark:text-green-400' : 'border-amber-300 hover:bg-amber-100 dark:border-amber-600 dark:hover:bg-amber-900/30'}>
+                {savingPurpose ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : purposeSaved ? <CheckCircle2 className="h-3 w-3 mr-2" /> : <Save className="h-3 w-3 mr-2" />}
+                {savingPurpose ? 'Saving...' : purposeSaved ? 'Saved' : 'Save Purpose'}
+              </Button>
+              {!purposeComplete && (
+                <span className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Both fields are required before agents can run
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* ── Client Context Card ──────────────────────── */}
           <div className="rounded-xl border bg-card p-6">
             <div className="flex items-center gap-2 mb-4">
@@ -693,9 +974,17 @@ export default function PrepPage({ params }: PageProps) {
           </div>
 
           {/* ── Agent Workflow Pipeline ────────────────────── */}
-          <div className="flex flex-col md:flex-row items-stretch gap-0">
+          {!purposeComplete && (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-700/50">
+              <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                Complete the <span className="font-semibold">Workshop Purpose</span> above before running agents.
+              </p>
+            </div>
+          )}
+          <div className={`flex flex-col md:flex-row items-stretch gap-0 transition-opacity ${!purposeComplete ? 'opacity-50 pointer-events-none' : ''}`}>
             {/* Step 1: Research */}
-            <div className="flex-1 rounded-xl border bg-card p-5">
+            <div className="flex-1 rounded-xl border bg-card p-5 flex flex-col">
               <div className="flex items-center gap-2 mb-1">
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-[10px] font-bold text-cyan-700 dark:text-cyan-300">1</span>
                 <Search className="h-4 w-4 text-cyan-600" />
@@ -707,9 +996,9 @@ export default function PrepPage({ params }: PageProps) {
               </p>
               <Button
                 onClick={runResearch}
-                disabled={researchRunning || !clientName}
+                disabled={researchRunning || !clientName || !purposeComplete}
                 size="sm"
-                className="w-full"
+                className="w-full mt-auto"
               >
                 {researchRunning ? (
                   <><Loader2 className="h-3 w-3 animate-spin mr-2" />Researching...</>
@@ -721,7 +1010,7 @@ export default function PrepPage({ params }: PageProps) {
               </Button>
             </div>
 
-            {/* Arrow 1→2 */}
+            {/* Arrow 1->2 */}
             <div className="hidden md:flex items-center justify-center px-1">
               <ArrowRight className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
             </div>
@@ -729,10 +1018,59 @@ export default function PrepPage({ params }: PageProps) {
               <ChevronDown className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
             </div>
 
-            {/* Step 2: Discovery Synthesis */}
-            <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
+            {/* Step 2: Discovery Interview Questions */}
+            {workshop?.domainPack ? (
+              <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">2</span>
+                  <MessageSquare className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold">Discovery Questions</h3>
+                  {discoveryQuestionsData && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
+                </div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Generates interview questions for participant Discovery sessions, organised by lens.
+                </p>
+                <textarea
+                  className="w-full text-xs p-2 border rounded-md bg-white dark:bg-slate-900 resize-none placeholder:text-muted-foreground/60 mb-2"
+                  rows={2}
+                  placeholder="Guide the question style, e.g. 'Focus on agent daily experience, not corporate strategy. These are frontline contact centre staff.'"
+                  value={discoveryDirection}
+                  onChange={(e) => setDiscoveryDirection(e.target.value)}
+                  disabled={discoveryQuestionsLoading}
+                />
+                <Button
+                  onClick={generateDiscoveryQuestions}
+                  disabled={discoveryQuestionsLoading || !researchData}
+                  size="sm"
+                  className="w-full mt-auto"
+                  variant={researchComplete ? 'default' : 'secondary'}
+                >
+                  {discoveryQuestionsLoading ? (
+                    <><Loader2 className="h-3 w-3 animate-spin mr-2" />Generating...</>
+                  ) : discoveryQuestionsData ? (
+                    'Regenerate'
+                  ) : (
+                    'Generate Questions'
+                  )}
+                </Button>
+              </div>
+            ) : (
+              /* No domain pack -- skip step 2, show synthesis as step 2 */
+              null
+            )}
+
+            {/* Arrow 2->3 (or 1->2 if no domainPack) */}
+            <div className="hidden md:flex items-center justify-center px-1">
+              <ArrowRight className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
+            </div>
+            <div className="flex md:hidden items-center justify-center py-1">
+              <ChevronDown className={`h-5 w-5 ${researchComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
+            </div>
+
+            {/* Step 3: Discovery Synthesis (or step 2 if no domainPack) */}
+            <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">2</span>
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">{workshop?.domainPack ? '3' : '2'}</span>
                 <Brain className="h-4 w-4 text-amber-600" />
                 <h3 className="text-sm font-semibold">Discovery Synthesis</h3>
                 {briefingComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
@@ -742,9 +1080,9 @@ export default function PrepPage({ params }: PageProps) {
               </p>
               <Button
                 onClick={runBriefing}
-                disabled={briefingRunning || !researchComplete}
+                disabled={briefingRunning || !researchComplete || !purposeComplete}
                 size="sm"
-                className="w-full"
+                className="w-full mt-auto"
                 variant={researchComplete ? 'default' : 'secondary'}
               >
                 {briefingRunning ? (
@@ -757,7 +1095,7 @@ export default function PrepPage({ params }: PageProps) {
               </Button>
             </div>
 
-            {/* Arrow 2→3 */}
+            {/* Arrow 3->4 (or 2->3 if no domainPack) */}
             <div className="hidden md:flex items-center justify-center px-1">
               <ArrowRight className={`h-5 w-5 ${briefingComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
             </div>
@@ -765,10 +1103,10 @@ export default function PrepPage({ params }: PageProps) {
               <ChevronDown className={`h-5 w-5 ${briefingComplete ? 'text-green-500' : 'text-muted-foreground/30'}`} />
             </div>
 
-            {/* Step 3: Workshop Questions */}
-            <div className={`flex-1 rounded-xl border bg-card p-5 transition-opacity ${!(researchComplete && briefingComplete) ? 'opacity-50' : ''}`}>
+            {/* Step 4: Workshop Questions (or step 3 if no domainPack) */}
+            <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!(researchComplete && briefingComplete) ? 'opacity-50' : ''}`}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">3</span>
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">{workshop?.domainPack ? '4' : '3'}</span>
                 <FileQuestion className="h-4 w-4 text-indigo-600" />
                 <h3 className="text-sm font-semibold">Workshop Questions</h3>
                 {questionsComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
@@ -778,9 +1116,9 @@ export default function PrepPage({ params }: PageProps) {
               </p>
               <Button
                 onClick={runQuestions}
-                disabled={questionsRunning || !(researchComplete && briefingComplete)}
+                disabled={questionsRunning || !(researchComplete && briefingComplete) || !purposeComplete}
                 size="sm"
-                className="w-full"
+                className="w-full mt-auto"
                 variant={researchComplete && briefingComplete ? 'default' : 'secondary'}
               >
                 {questionsRunning ? (
@@ -793,6 +1131,53 @@ export default function PrepPage({ params }: PageProps) {
               </Button>
             </div>
           </div>
+
+          {/* ── Blueprint Preview (gated on research completion) ── */}
+          {researchComplete && blueprintData ? (
+            <BlueprintPreviewPanel
+              blueprint={blueprintData}
+              onSave={async (updated) => {
+                try {
+                  const res = await fetch(`/api/admin/workshops/${workshopId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ blueprint: updated }),
+                  });
+                  if (res.ok) {
+                    setBlueprintData(updated);
+                  } else {
+                    console.error('Failed to save blueprint:', await res.text());
+                  }
+                } catch (err) {
+                  console.error('Failed to save blueprint:', err);
+                }
+              }}
+            />
+          ) : (
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <div className="flex items-center gap-3 p-4">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <h2 className="text-sm font-semibold text-muted-foreground">Blueprint Configuration</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {researchRunning
+                      ? 'Research Agent is analysing -- blueprint will be generated from findings...'
+                      : 'Run the Research Agent to generate your Blueprint Configuration'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Historical Metrics Upload ─────────────────── */}
+          {hasMetricReferences && workshop?.domainPack && (
+            <HistoricalMetricsPanel
+              workshopId={workshopId}
+              domainPack={workshop.domainPack}
+              existingMetrics={metricsData}
+              onMetricsUpdated={(updated) => setMetricsData(updated)}
+            />
+          )}
 
           {/* ── Research Output ─────────────────────────── */}
           {researchData && (
@@ -869,7 +1254,127 @@ export default function PrepPage({ params }: PageProps) {
             </div>
           )}
 
-          {/* ── Briefing Output (Step 2) ─────────────────── */}
+          {/* ── Discovery Interview Questions Output ─────────────── */}
+          {workshop?.domainPack && discoveryQuestionsData && (
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <button
+                onClick={() => setDiscoveryQuestionsCollapsed(!discoveryQuestionsCollapsed)}
+                className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-emerald-600" />
+                  <h2 className="text-sm font-semibold">Discovery Interview Questions</h2>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                </div>
+                {discoveryQuestionsCollapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+              </button>
+
+              {!discoveryQuestionsCollapsed && discoveryQuestionsData?.lenses && (
+                <div className="px-4 pb-4 space-y-4">
+                  {discoveryQuestionsData.lenses.map((lens: any, lensIdx: number) => (
+                    <div key={lens.key} className="border rounded-lg overflow-hidden">
+                      <div className="bg-slate-100 dark:bg-slate-800 px-4 py-2.5 flex items-center gap-2">
+                        <span className="text-sm font-semibold">{lens.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {lens.questions.length} questions
+                        </span>
+                      </div>
+                      <div className="divide-y">
+                        {lens.questions.map((q: any, qIdx: number) => (
+                          <div
+                            key={q.id}
+                            className="px-4 py-3 group hover:bg-slate-50 dark:hover:bg-slate-900/30 relative"
+                          >
+                            {editingDiscoveryQId === q.id ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  className="w-full min-h-[80px] p-2 text-sm border rounded-md bg-white dark:bg-slate-900"
+                                  value={editingDiscoveryQText}
+                                  onChange={(e) => setEditingDiscoveryQText(e.target.value)}
+                                />
+                                <div className="flex gap-2">
+                                  <Button size="sm" onClick={saveDiscoveryQuestionEdit}>Save</Button>
+                                  <Button size="sm" variant="ghost" onClick={() => { setEditingDiscoveryQId(null); setEditingDiscoveryQText(''); }}>Cancel</Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start gap-3">
+                                <span className="text-xs text-muted-foreground mt-0.5 shrink-0">
+                                  {qIdx + 1}.
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm whitespace-pre-wrap">{q.text}</p>
+                                  {q.purpose && (
+                                    <p className="text-xs text-muted-foreground mt-1 italic">
+                                      {q.purpose}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {q.tag === 'triple_rating' && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                        Maturity Rating
+                                      </span>
+                                    )}
+                                    {q.isEdited && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                        edited
+                                      </span>
+                                    )}
+                                  </div>
+                                  {q.tag === 'triple_rating' && q.maturityScale && Array.isArray(q.maturityScale) && q.maturityScale.length >= 2 && (
+                                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20 px-3 py-2 space-y-1">
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 mt-px shrink-0 w-4 text-center">1</span>
+                                        <span className="text-xs text-muted-foreground">{q.maturityScale[0]}</span>
+                                      </div>
+                                      {q.maturityScale.length >= 5 && (
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 mt-px shrink-0 w-4 text-center">3</span>
+                                          <span className="text-xs text-muted-foreground">{q.maturityScale[2]}</span>
+                                        </div>
+                                      )}
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 mt-px shrink-0 w-4 text-center">5</span>
+                                        <span className="text-xs text-muted-foreground">{q.maturityScale[q.maturityScale.length - 1]}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={() => { setEditingDiscoveryQId(q.id); setEditingDiscoveryQText(q.text); }}
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded shrink-0"
+                                  title="Edit question"
+                                >
+                                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                  {discoveryQuestionsData.facilitatorDirection && (
+                    <div className="mt-2 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                      <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-0.5">Facilitator Direction</p>
+                      <p className="text-xs text-blue-600 dark:text-blue-400">
+                        {discoveryQuestionsData.facilitatorDirection}
+                      </p>
+                    </div>
+                  )}
+
+                  {discoveryQuestionsData.agentRationale && (
+                    <p className="text-xs text-muted-foreground italic mt-2">
+                      {discoveryQuestionsData.agentRationale}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Briefing Output (Step 3) ─────────────────── */}
           {briefingData && (
             <div className="rounded-xl border bg-card overflow-hidden">
               <button

@@ -2,8 +2,171 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { getDomainPack } from '@/lib/domain-packs';
+import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
+import { readBlueprintFromJson, WorkshopBlueprintSchema } from '@/lib/workshop/blueprint';
+import type { EngagementType } from '@prisma/client';
+import type { WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
+
+function toEngagementEnum(value: unknown): EngagementType | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const normalized = value.trim().toUpperCase();
+  const valid: EngagementType[] = [
+    'DIAGNOSTIC_BASELINE',
+    'OPERATIONAL_DEEP_DIVE',
+    'AI_ENABLEMENT',
+    'TRANSFORMATION_SPRINT',
+    'CULTURAL_ALIGNMENT',
+  ];
+  if (valid.includes(normalized as EngagementType)) {
+    return normalized as EngagementType;
+  }
+  const fromKey = normalized.replace(/[^A-Z0-9_]/g, '_');
+  if (valid.includes(fromKey as EngagementType)) {
+    return fromKey as EngagementType;
+  }
+  return null;
+}
+
+function isLikelySchemaDriftError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes('does not exist') ||
+    message.includes('unknown arg') ||
+    message.includes('invalid invocation') ||
+    message.includes('column') ||
+    message.includes('engagement_type') ||
+    message.includes('domain_pack') ||
+    message.includes('blueprint') ||
+    message.includes('historical_metrics')
+  );
+}
+
+function isLikelyFkDeleteError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  const code = (error as { code?: string } | null)?.code;
+  return (
+    code === 'P2003' ||
+    message.includes('foreign key') ||
+    message.includes('constraint') ||
+    message.includes('violates')
+  );
+}
+
+function isSafeIdent(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
+async function runDeleteStep(
+  label: string,
+  step: () => Promise<unknown>
+): Promise<void> {
+  try {
+    await step();
+  } catch (error: unknown) {
+    if (!isLikelySchemaDriftError(error)) throw error;
+    console.warn(`[workshop-delete] skipped step due to schema drift: ${label}`, {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+type WorkshopFkRefRow = {
+  table_schema: string;
+  table_name: string;
+  column_name: string;
+  constraint_name: string;
+};
+
+async function listWorkshopFkRefs(): Promise<WorkshopFkRefRow[]> {
+  return prisma.$queryRaw<WorkshopFkRefRow[]>`
+    SELECT
+      tc.table_schema,
+      tc.table_name,
+      kcu.column_name,
+      tc.constraint_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON ccu.constraint_name = tc.constraint_name
+      AND ccu.table_schema = tc.table_schema
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND ccu.table_name = 'workshops'
+      AND ccu.table_schema = 'public'
+      AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+  `;
+}
+
+async function cleanupUnknownWorkshopRefs(workshopId: string): Promise<void> {
+  const refs = await listWorkshopFkRefs();
+
+  for (const ref of refs) {
+    const schema = ref.table_schema;
+    const table = ref.table_name;
+    const column = ref.column_name;
+    if (table === 'workshops') continue;
+    if (!isSafeIdent(schema) || !isSafeIdent(table) || !isSafeIdent(column)) continue;
+    try {
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM "${schema}"."${table}" WHERE "${column}" = $1`,
+        workshopId
+      );
+    } catch (error: unknown) {
+      // Keep trying other refs; parent delete pass will decide if anything still blocks.
+      console.warn('[workshop-delete] failed to clean discovered FK ref', {
+        schema,
+        table,
+        column,
+        constraint: ref.constraint_name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
+
+type WorkshopDeleteBlocker = {
+  schema: string;
+  table: string;
+  column: string;
+  constraint: string;
+  count: number;
+};
+
+async function detectWorkshopDeleteBlockers(workshopId: string): Promise<WorkshopDeleteBlocker[]> {
+  const refs = await listWorkshopFkRefs();
+  const blockers: WorkshopDeleteBlocker[] = [];
+  for (const ref of refs) {
+    const schema = ref.table_schema;
+    const table = ref.table_name;
+    const column = ref.column_name;
+    if (table === 'workshops') continue;
+    if (!isSafeIdent(schema) || !isSafeIdent(table) || !isSafeIdent(column)) continue;
+    try {
+      const rows = await prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(
+        `SELECT COUNT(*)::bigint AS count FROM "${schema}"."${table}" WHERE "${column}" = $1`,
+        workshopId
+      );
+      const raw = rows?.[0]?.count ?? 0;
+      const count = typeof raw === 'bigint' ? Number(raw) : Number(raw);
+      if (Number.isFinite(count) && count > 0) {
+        blockers.push({
+          schema,
+          table,
+          column,
+          constraint: ref.constraint_name,
+          count,
+        });
+      }
+    } catch {
+      // Ignore unreadable refs.
+    }
+  }
+  return blockers;
+}
 
 /**
  * GET /api/admin/workshops/[id]
@@ -74,39 +237,138 @@ export async function GET(
       return NextResponse.json({ error: validation.error }, { status: 403 });
     }
 
-    const workshop = await prisma.workshop.findUnique({
-      where: { id },
-      include: {
-        participants: {
-          orderBy: { createdAt: 'asc' },
-          select: {
-            id: true,
-            workshopId: true,
-            email: true,
-            name: true,
-            role: true,
-            department: true,
-            discoveryToken: true,
-            attributionPreference: true,
-            emailSentAt: true,
-            doNotSendAgain: true,
-            responseStartedAt: true,
-            responseCompletedAt: true,
-            reminderSentAt: true,
-            createdAt: true,
+    let workshop: Record<string, unknown> | null = null;
+    try {
+      workshop = await prisma.workshop.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          organizationId: true,
+          name: true,
+          description: true,
+          businessContext: true,
+          includeRegulation: true,
+          workshopType: true,
+          status: true,
+          scheduledDate: true,
+          responseDeadline: true,
+          clientName: true,
+          industry: true,
+          companyWebsite: true,
+          dreamTrack: true,
+          targetDomain: true,
+          prepResearch: true,
+          customQuestions: true,
+          discoveryBriefing: true,
+          engagementType: true,
+          domainPack: true,
+          domainPackConfig: true,
+          discoveryQuestions: true,
+          blueprint: true,
+          historicalMetrics: true,
+          participants: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              workshopId: true,
+              email: true,
+              name: true,
+              role: true,
+              department: true,
+              discoveryToken: true,
+              attributionPreference: true,
+              emailSentAt: true,
+              doNotSendAgain: true,
+              responseStartedAt: true,
+              responseCompletedAt: true,
+              reminderSentAt: true,
+              createdAt: true,
+            },
+          },
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              logoUrl: true,
+              primaryColor: true,
+              secondaryColor: true,
+            },
           },
         },
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            logoUrl: true,
-            primaryColor: true,
-            secondaryColor: true,
+      }) as unknown as Record<string, unknown> | null;
+    } catch (error: unknown) {
+      if (!isLikelySchemaDriftError(error)) throw error;
+      // Legacy DB compatibility: load only older fields then hydrate missing new fields as null.
+      const legacy = await prisma.workshop.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          organizationId: true,
+          name: true,
+          description: true,
+          businessContext: true,
+          includeRegulation: true,
+          workshopType: true,
+          status: true,
+          scheduledDate: true,
+          responseDeadline: true,
+          createdAt: true,
+          updatedAt: true,
+          participants: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              workshopId: true,
+              email: true,
+              name: true,
+              role: true,
+              department: true,
+              discoveryToken: true,
+              emailSentAt: true,
+              responseStartedAt: true,
+              responseCompletedAt: true,
+              reminderSentAt: true,
+              createdAt: true,
+            },
+          },
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              logoUrl: true,
+              primaryColor: true,
+              secondaryColor: true,
+            },
           },
         },
-      },
-    });
+      });
+      if (!legacy) {
+        workshop = null;
+      } else {
+        workshop = {
+          ...legacy,
+          clientName: null,
+          industry: null,
+          companyWebsite: null,
+          dreamTrack: null,
+          targetDomain: null,
+          prepResearch: null,
+          customQuestions: null,
+          discoveryBriefing: null,
+          engagementType: null,
+          domainPack: null,
+          domainPackConfig: null,
+          discoveryQuestions: null,
+          blueprint: null,
+          historicalMetrics: null,
+          participants: (legacy.participants || []).map((p) => ({
+            ...p,
+            attributionPreference: 'NAMED',
+            doNotSendAgain: false,
+          })),
+        };
+      }
+    }
 
     if (!workshop) {
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
@@ -212,10 +474,74 @@ export async function PATCH(
     if (typeof body.name === 'string') updateData.name = body.name;
     if (typeof body.description === 'string') updateData.description = body.description || null;
     if (typeof body.businessContext === 'string') updateData.businessContext = body.businessContext || null;
-    // JSON fields — stored directly
+    // JSON fields -- stored directly
     if (body.prepResearch !== undefined) updateData.prepResearch = body.prepResearch;
     if (body.customQuestions !== undefined) updateData.customQuestions = body.customQuestions;
     if (body.discoveryBriefing !== undefined) updateData.discoveryBriefing = body.discoveryBriefing;
+    // Field Discovery / Diagnostic extension
+    if (typeof body.engagementType === 'string') updateData.engagementType = toEngagementEnum(body.engagementType);
+    if (typeof body.domainPack === 'string') {
+      updateData.domainPack = body.domainPack || null;
+      updateData.domainPackConfig = body.domainPack ? (getDomainPack(body.domainPack) as any ?? undefined) : null;
+    }
+
+    // Direct blueprint override -- user edited the blueprint manually
+    const hasDirectBlueprint = body.blueprint && typeof body.blueprint === 'object' && !Array.isArray(body.blueprint);
+    if (hasDirectBlueprint) {
+      const parsed = WorkshopBlueprintSchema.safeParse(body.blueprint);
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: 'Invalid blueprint', details: parsed.error.flatten().fieldErrors },
+          { status: 400 }
+        );
+      }
+      updateData.blueprint = parsed.data as any;
+    }
+
+    // Recompose blueprint if any blueprint-relevant field changed (skip if direct override provided)
+    const blueprintFields = [
+      'engagementType', 'domainPack', 'dreamTrack',
+      'description', 'businessContext', 'industry', 'clientName',
+    ];
+    const blueprintFieldChanged = blueprintFields.some((f) => f in body);
+
+    if (blueprintFieldChanged && !hasDirectBlueprint) {
+      const current = await prisma.workshop.findUnique({
+        where: { id },
+        select: {
+          clientName: true,
+          industry: true,
+          dreamTrack: true,
+          engagementType: true,
+          domainPack: true,
+          description: true,
+          businessContext: true,
+          prepResearch: true,
+          blueprint: true,
+        },
+      });
+      if (current) {
+        // Extract research data if available
+        const research = current.prepResearch as WorkshopPrepResearch | null;
+        const existingBp = readBlueprintFromJson(current.blueprint);
+
+        const merged = {
+          industry: (updateData.industry as string | null) ?? current.industry ?? null,
+          dreamTrack: ((updateData.dreamTrack as string | null) ?? current.dreamTrack ?? null) as 'ENTERPRISE' | 'DOMAIN' | null,
+          engagementType: (updateData.engagementType as string | null)
+            ?? (current.engagementType ? current.engagementType.toLowerCase() : null),
+          domainPack: (updateData.domainPack as string | null) ?? current.domainPack ?? null,
+          purpose: (updateData.description as string | null) ?? current.description ?? null,
+          outcomes: (updateData.businessContext as string | null) ?? current.businessContext ?? null,
+          clientName: (updateData.clientName as string | null) ?? current.clientName ?? null,
+          researchJourneyStages: research?.journeyStages ?? null,
+          researchDimensions: research?.industryDimensions ?? null,
+          researchActors: research?.actorTaxonomy ?? null,
+          previousVersion: existingBp?.blueprintVersion ?? 0,
+        };
+        updateData.blueprint = generateBlueprint(merged) as any;
+      }
+    }
 
     const updated = await prisma.workshop.update({
       where: { id },
@@ -308,15 +634,101 @@ export async function DELETE(
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
     }
 
-    await prisma.workshop.delete({
-      where: { id },
-    });
+    // Defensive cleanup for environments where FK cascades or tables may lag schema.
+    // Deletes are ordered child -> parent. Missing-table/schema-drift errors are skipped.
+    await runDeleteStep('dataPointClassification', () =>
+      prisma.dataPointClassification.deleteMany({ where: { dataPoint: { workshopId: id } } })
+    );
+    await runDeleteStep('dataPointAnnotation', () =>
+      prisma.dataPointAnnotation.deleteMany({ where: { dataPoint: { workshopId: id } } })
+    );
+    await runDeleteStep('agenticAnalysis', () =>
+      prisma.agenticAnalysis.deleteMany({ where: { dataPoint: { workshopId: id } } })
+    );
+    await runDeleteStep('conversationMessage', () =>
+      prisma.conversationMessage.deleteMany({ where: { session: { workshopId: id } } })
+    );
+    await runDeleteStep('conversationInsight', () =>
+      prisma.conversationInsight.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('conversationReport', () =>
+      prisma.conversationReport.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('dataPoint', () =>
+      prisma.dataPoint.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('transcriptChunk', () =>
+      prisma.transcriptChunk.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('workshopEventOutbox', () =>
+      prisma.workshopEventOutbox.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('liveWorkshopSnapshot', () =>
+      prisma.liveWorkshopSnapshot.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('discoveryTheme', () =>
+      prisma.discoveryTheme.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('diagnosticSynthesis', () =>
+      prisma.diagnosticSynthesis.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('finding', () =>
+      prisma.finding.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('captureSegment', () =>
+      prisma.captureSegment.deleteMany({ where: { captureSession: { workshopId: id } } })
+    );
+    await runDeleteStep('captureSession', () =>
+      prisma.captureSession.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('conversationSession', () =>
+      prisma.conversationSession.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('workshopParticipant', () =>
+      prisma.workshopParticipant.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('workshopScratchpad', () =>
+      prisma.workshopScratchpad.deleteMany({ where: { workshopId: id } })
+    );
+    await runDeleteStep('workshopShare', () =>
+      prisma.workshopShare.deleteMany({ where: { workshopId: id } })
+    );
+
+    // Final parent delete. Use deleteMany (not delete) for legacy-schema compatibility:
+    // delete() returns the deleted row and can fail if newer columns (e.g. blueprint) are absent.
+    // deleteMany() only executes DELETE ... WHERE and returns count.
+    try {
+      const deleted = await prisma.workshop.deleteMany({ where: { id } });
+      if (deleted.count === 0) {
+        return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+      }
+    } catch (error: unknown) {
+      if (!isLikelyFkDeleteError(error)) throw error;
+      await cleanupUnknownWorkshopRefs(id);
+      try {
+        const deleted = await prisma.workshop.deleteMany({ where: { id } });
+        if (deleted.count === 0) {
+          return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+        }
+      } catch (retryError: unknown) {
+        if (!isLikelyFkDeleteError(retryError)) throw retryError;
+        const blockers = await detectWorkshopDeleteBlockers(id);
+        const summary = blockers.length
+          ? `Delete blocked by FK refs: ${blockers.map((b) => `${b.schema}.${b.table}.${b.column}(${b.count})`).join(', ')}`
+          : (retryError instanceof Error ? retryError.message : String(retryError));
+        return NextResponse.json(
+          { error: 'Failed to delete workshop', details: { message: summary, blockers } },
+          { status: 409 }
+        );
+      }
+    }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error deleting workshop:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to delete workshop' },
+      { error: 'Failed to delete workshop', details: { message } },
       { status: 500 }
     );
   }

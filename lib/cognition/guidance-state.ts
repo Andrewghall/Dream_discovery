@@ -1,5 +1,5 @@
 /**
- * Guidance State Store — globalThis-backed in-memory persistence
+ * Guidance State Store --globalThis-backed in-memory persistence
  *
  * Mirrors the CognitiveState store pattern. Tracks facilitator-side state
  * that agents need to know: active theme, theme queue, journey data,
@@ -11,9 +11,11 @@
 
 import type { DialoguePhase, Lens } from '@/lib/cognitive-guidance/pipeline';
 import type { WorkshopPrepResearch, WorkshopIntelligence } from './agents/agent-types';
+import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
+import type { HistoricalMetricsData } from '@/lib/historical-metrics/types';
 
 // ══════════════════════════════════════════════════════════
-// GUIDED THEME — agent-suggested or facilitator-created themes
+// GUIDED THEME --agent-suggested or facilitator-created themes
 // ══════════════════════════════════════════════════════════
 
 export type ThemeSource = 'seed' | 'ai' | 'facilitator';
@@ -32,7 +34,7 @@ export type GuidedTheme = {
 };
 
 // ══════════════════════════════════════════════════════════
-// CONSTRAINT FLAG — mapped to journey interactions
+// CONSTRAINT FLAG --mapped to journey interactions
 // ══════════════════════════════════════════════════════════
 
 export type ConstraintFlag = {
@@ -45,7 +47,7 @@ export type ConstraintFlag = {
 };
 
 // ══════════════════════════════════════════════════════════
-// JOURNEY COMPLETION — tracks journey map completeness
+// JOURNEY COMPLETION --tracks journey map completeness
 // ══════════════════════════════════════════════════════════
 
 export type JourneyGapType =
@@ -85,7 +87,7 @@ export type JourneyCompletionState = {
 };
 
 // ══════════════════════════════════════════════════════════
-// GUIDANCE STATE — facilitator-side state that agents read
+// GUIDANCE STATE --facilitator-side state that agents read
 // ══════════════════════════════════════════════════════════
 
 export type GuidanceState = {
@@ -106,6 +108,12 @@ export type GuidanceState = {
     discoveryIntelligence: WorkshopIntelligence | null;
   } | null;
 
+  // Workshop blueprint (loaded once at session init for agents to read)
+  blueprint: WorkshopBlueprint | null;
+
+  // Historical performance metrics (loaded once at session init for agents to read)
+  historicalMetrics: HistoricalMetricsData | null;
+
   // Current main question for "Peeling the Onion" model
   currentMainQuestion: {
     text: string;
@@ -118,12 +126,15 @@ export type GuidanceState = {
   // Journey completion tracking
   journeyCompletionState: JourneyCompletionState | null;
 
+  // Coverage threshold for auto-advance (persisted per workshop, 50-95)
+  coverageThreshold: number;
+
   // Agent orchestration tracking
   lastThemeCheckAtMs: number;
   lastPadGenerationAtMs: number;
   utterancesSinceLastPad: number;
 
-  // Surfaced pad tracking — prevents duplicate proposals
+  // Surfaced pad tracking --prevents duplicate proposals
   surfacedPadPrompts: string[];
 };
 
@@ -169,8 +180,11 @@ export function getOrCreateGuidanceState(
     dialoguePhase,
     lastUpdatedAtMs: Date.now(),
     prepContext: null,
+    blueprint: null,
+    historicalMetrics: null,
     currentMainQuestion: null,
     journeyCompletionState: null,
+    coverageThreshold: 70,
     lastThemeCheckAtMs: 0,
     lastPadGenerationAtMs: 0,
     utterancesSinceLastPad: 0,
@@ -185,7 +199,7 @@ export function updateGuidanceState(
   workshopId: string,
   updates: Partial<Pick<
     GuidanceState,
-    'activeThemeId' | 'themes' | 'freeflowMode' | 'dialoguePhase' | 'prepContext' | 'currentMainQuestion' | 'journeyCompletionState'
+    'activeThemeId' | 'themes' | 'freeflowMode' | 'dialoguePhase' | 'prepContext' | 'blueprint' | 'historicalMetrics' | 'currentMainQuestion' | 'journeyCompletionState' | 'coverageThreshold'
   >>,
 ): GuidanceState {
   const state = getOrCreateGuidanceState(workshopId);
@@ -195,8 +209,11 @@ export function updateGuidanceState(
   if (updates.freeflowMode !== undefined) state.freeflowMode = updates.freeflowMode;
   if (updates.dialoguePhase !== undefined) state.dialoguePhase = updates.dialoguePhase;
   if (updates.prepContext !== undefined) state.prepContext = updates.prepContext;
+  if (updates.blueprint !== undefined) state.blueprint = updates.blueprint;
+  if (updates.historicalMetrics !== undefined) state.historicalMetrics = updates.historicalMetrics;
   if (updates.currentMainQuestion !== undefined) state.currentMainQuestion = updates.currentMainQuestion;
   if (updates.journeyCompletionState !== undefined) state.journeyCompletionState = updates.journeyCompletionState;
+  if (updates.coverageThreshold !== undefined) state.coverageThreshold = updates.coverageThreshold;
 
   state.lastUpdatedAtMs = Date.now();
   return state;
@@ -207,7 +224,7 @@ export function removeGuidanceState(workshopId: string): void {
 }
 
 // ══════════════════════════════════════════════════════════
-// SEED THEMES — initial theme queue based on Discovery data
+// SEED THEMES --initial theme queue based on Discovery data
 // ══════════════════════════════════════════════════════════
 
 let _themeIdCounter = 0;
@@ -312,7 +329,7 @@ export function getSeedThemes(
     const genericThemes: Array<{ title: string; description: string; lens: Lens | null }> = [
       {
         title: 'Ideal Future State',
-        description: 'Paint a picture of success without constraints — what does the ideal look like?',
+        description: 'Paint a picture of success without constraints --what does the ideal look like?',
         lens: null,
       },
       {
@@ -340,8 +357,8 @@ export function getSeedThemes(
     // Domain track: weight toward target domain
     if (dreamTrack === 'DOMAIN' && targetDomain) {
       genericThemes.unshift({
-        title: `${targetDomain} — Current State`,
-        description: `Map the current state of ${targetDomain} — what works, what doesn\'t.`,
+        title: `${targetDomain} --Current State`,
+        description: `Map the current state of ${targetDomain} --what works, what doesn\'t.`,
         lens: null,
       });
     }

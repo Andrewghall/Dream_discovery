@@ -46,11 +46,18 @@ export async function runPrepOrchestrator(
 
   // ── Opening message ─────────────────────────────────
 
+  const purposeIntro = context.workshopPurpose
+    ? `\n\nWORKSHOP PURPOSE (WHY WE ARE HERE): ${context.workshopPurpose}`
+    : '';
+  const outcomesIntro = context.desiredOutcomes
+    ? `\nDESIRED OUTCOMES: ${context.desiredOutcomes}`
+    : '';
+
   onConversation?.({
     timestampMs: Date.now(),
     agent: 'prep-orchestrator',
     to: 'research-agent',
-    message: `Good morning, team. We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise — full end-to-end assessment.'} Research Agent, could you begin by investigating the company and providing context that will help us tailor our approach?`,
+    message: `Good morning, team. We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise - full end-to-end assessment.'}${purposeIntro}${outcomesIntro}\n\nResearch Agent, could you begin by investigating the company and providing context that will help us tailor our approach? Keep the workshop purpose and desired outcomes front of mind - all research should serve why we are here.`,
     type: 'handoff',
   });
 
@@ -65,11 +72,19 @@ export async function runPrepOrchestrator(
       data: { prepResearch: JSON.parse(JSON.stringify(research)) },
     });
 
+    const dimensionsNote = research.industryDimensions?.length
+      ? ` Research identified ${research.industryDimensions.length} industry-specific dimensions: ${research.industryDimensions.map(d => d.name).join(', ')}. Use these dimensions for question lenses, not generic defaults.`
+      : '';
+
+    const metricsNote = context.historicalMetrics
+      ? ` Historical performance data is available for ${context.historicalMetrics.series.length} operational metrics -- use get_historical_metrics() to reference real baselines in question grounding.`
+      : '';
+
     onConversation?.({
       timestampMs: Date.now(),
       agent: 'prep-orchestrator',
       to: 'question-set-agent',
-      message: `Thank you, Research Agent. The findings have been stored — ${research.keyPublicChallenges.length} key challenges and ${research.recentDevelopments.length} recent developments identified. Now, Question Set Agent — using this research context, could you design a set of workshop facilitation questions for the live session? These questions will guide the facilitator through Reimagine, Constraints, and Define Approach. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}, so weight the questions accordingly.` : 'This is an Enterprise-wide assessment.'} Discovery interviews are done — build on what participants already told us.`,
+      message: `Thank you, Research Agent. The findings have been stored - ${research.keyPublicChallenges.length} key challenges and ${research.recentDevelopments.length} recent developments identified.${dimensionsNote}${metricsNote} Now, Question Set Agent - using the research context, could you design a set of workshop facilitation questions for ${context.clientName || 'the client'}? These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. ${context.dreamTrack === 'DOMAIN' ? `Remember, the focus is ${context.targetDomain || 'the target domain'}.` : 'This is an Enterprise-wide assessment.'}${purposeIntro}${outcomesIntro}\n\nEvery question you design must serve the workshop purpose and drive toward the desired outcomes. These questions are for the live workshop session, not Discovery interviews.`,
       type: 'handoff',
     });
   } catch (error) {
@@ -80,7 +95,7 @@ export async function runPrepOrchestrator(
       timestampMs: Date.now(),
       agent: 'prep-orchestrator',
       to: 'question-set-agent',
-      message: `Unfortunately the Research Agent encountered an issue: ${msg}. Question Set Agent, please proceed with designing workshop facilitation questions based on the industry and client name we have.`,
+      message: `Unfortunately the Research Agent encountered an issue: ${msg}. Question Set Agent, please proceed with designing workshop facilitation questions based on what we know.${purposeIntro}${outcomesIntro}\n\nEven without research, every question must serve the workshop purpose and drive toward the desired outcomes.`,
       type: 'handoff',
     });
   }

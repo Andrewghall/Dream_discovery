@@ -124,18 +124,18 @@ export async function sendWelcomeEmail(params: {
   to: string;
   userName: string;
   userEmail: string;
-  temporaryPassword: string;
+  temporaryPassword?: string;
   loginUrl: string;
   setPasswordUrl?: string;
   role: string;
   organizationName?: string;
   maxSeats?: number;
-  from?: string; // override sender — defaults to org-derived address
+  from?: string; // override sender - defaults to org-derived address
 }) {
   const html = welcomeEmailTemplate({
     userName: params.userName,
     userEmail: params.userEmail,
-    temporaryPassword: params.temporaryPassword,
+    temporaryPassword: params.temporaryPassword || 'Use the Set Password link below',
     loginUrl: params.loginUrl,
     setPasswordUrl: params.setPasswordUrl,
     role: params.role,

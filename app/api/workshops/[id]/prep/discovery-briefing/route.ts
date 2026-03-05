@@ -11,6 +11,8 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runDiscoveryIntelligenceAgent } from '@/lib/cognition/agents/discovery-intelligence-agent';
+import { hasDiscoveryData } from '@/lib/cognition/agents/agent-types';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
@@ -42,12 +44,15 @@ export async function POST(
     where: { id: workshopId },
     select: {
       id: true,
+      description: true,
+      businessContext: true,
       clientName: true,
       industry: true,
       companyWebsite: true,
       dreamTrack: true,
       targetDomain: true,
       prepResearch: true,
+      blueprint: true,
     },
   });
 
@@ -60,11 +65,14 @@ export async function POST(
 
   const context: PrepContext = {
     workshopId,
+    workshopPurpose: workshop.description,
+    desiredOutcomes: workshop.businessContext,
     clientName: workshop.clientName,
     industry: workshop.industry,
     companyWebsite: workshop.companyWebsite,
     dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
     targetDomain: workshop.targetDomain,
+    blueprint: readBlueprintFromJson(workshop.blueprint),
   };
 
   const research = workshop.prepResearch as unknown as WorkshopPrepResearch | null;
@@ -77,11 +85,17 @@ export async function POST(
         try { controller.enqueue(encoder.encode(payload)); } catch { /* closed */ }
       }
 
+      const purposeBlock = context.workshopPurpose
+        ? `\n\nWORKSHOP PURPOSE (WHY WE ARE HERE): ${context.workshopPurpose}`
+        : '';
+      const outcomesBlock = context.desiredOutcomes
+        ? `\nDESIRED OUTCOMES: ${context.desiredOutcomes}`
+        : '';
       sendEvent('agent.conversation', {
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'discovery-intelligence-agent',
-        message: `Participants have completed their Discovery interviews. Discovery Intelligence Agent — could you synthesize their responses into a workshop briefing? This will seed the live facilitation agents with pre-workshop knowledge.`,
+        message: `Discovery Intelligence Agent - please check for completed Discovery interviews and synthesize any available responses into a workshop briefing. If interviews are available, this will seed the live facilitation agents with pre-workshop knowledge.${purposeBlock}${outcomesBlock}\n\nYour synthesis should be oriented around the workshop purpose - surface themes and insights that are relevant to why we are here and what we need to achieve.`,
         type: 'handoff',
       } satisfies AgentConversationEntry);
 
@@ -96,11 +110,14 @@ export async function POST(
           data: { discoveryBriefing: JSON.parse(JSON.stringify(intelligence)) },
         });
 
+        const discoveryPresent = hasDiscoveryData(intelligence);
         sendEvent('agent.conversation', {
           timestampMs: Date.now(),
           agent: 'prep-orchestrator',
           to: 'discovery-intelligence-agent',
-          message: `Thank you. The workshop briefing has been stored. ${intelligence.discoveryThemes.length} themes, ${intelligence.painPoints.length} pain points, ${intelligence.aspirations.length} aspirations identified. This intelligence will seed the live workshop agents.`,
+          message: discoveryPresent
+            ? `Thank you. The workshop briefing has been stored. ${intelligence.discoveryThemes.length} themes, ${intelligence.painPoints.length} pain points, ${intelligence.aspirations.length} aspirations identified from ${intelligence.participantCount} participants. This intelligence will seed the live workshop agents.`
+            : `Understood. No completed Discovery interviews were found. The workshop will proceed without pre-interview intelligence. The briefing status has been recorded.`,
           type: 'acknowledgement',
         } satisfies AgentConversationEntry);
 

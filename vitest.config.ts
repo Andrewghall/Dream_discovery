@@ -1,9 +1,7 @@
 import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
-  plugins: [react()],
   test: {
     globals: true,
     environment: 'jsdom',
@@ -23,8 +21,6 @@ export default defineConfig({
         '.next/**',
       ],
     },
-    mockReset: true,
-    restoreMocks: true,
     clearMocks: true,
   },
   resolve: {

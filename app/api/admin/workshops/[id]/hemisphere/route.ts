@@ -149,9 +149,9 @@ function shortLabel(text: string, maxWords: number = 8): string {
 }
 
 function layerForType(type: NodeType): HemisphereLayer {
-  if (type === 'VISION' || type === 'BELIEF') return 'H1';
-  if (type === 'CHALLENGE' || type === 'FRICTION') return 'H2';
-  if (type === 'CONSTRAINT' || type === 'ENABLER') return 'H3';
+  if (type === 'VISION' || type === 'BELIEF') return 'H1';     // Top: forward-looking, positive
+  if (type === 'ENABLER') return 'H2';                          // Middle: transformational, positive
+  if (type === 'CHALLENGE' || type === 'FRICTION' || type === 'CONSTRAINT') return 'H3'; // Bottom: challenges
   return 'H4';
 }
 
@@ -315,12 +315,24 @@ export async function GET(
     // Fetch prepResearch for dynamic industry dimensions
     const workshopMeta = await prisma.workshop.findUnique({
       where: { id: workshopId },
-      select: { prepResearch: true },
+      select: { prepResearch: true, blueprint: true },
     });
     const prepResearch = workshopMeta?.prepResearch as Record<string, unknown> | null;
-    const industryDimensions = Array.isArray(prepResearch?.industryDimensions)
-      ? (prepResearch.industryDimensions as Array<{ name: string; color: string; description: string; keywords: string[] }>)
-      : null;
+    const blueprint = workshopMeta?.blueprint as Record<string, unknown> | null;
+
+    // Prefer blueprint lenses over raw research dimensions
+    let industryDimensions: Array<{ name: string; color: string; description: string; keywords: string[] }> | null = null;
+
+    if (blueprint && Array.isArray(blueprint.lenses) && (blueprint.lenses as unknown[]).length > 0) {
+      industryDimensions = (blueprint.lenses as any[]).map(l => ({
+        name: l.name || '',
+        color: l.color || '#94a3b8',
+        description: l.description || '',
+        keywords: Array.isArray(l.keywords) ? l.keywords : [],
+      }));
+    } else if (Array.isArray(prepResearch?.industryDimensions)) {
+      industryDimensions = prepResearch.industryDimensions as Array<{ name: string; color: string; description: string; keywords: string[] }>;
+    }
 
     const source = request.nextUrl.searchParams.get('source');
     const snapshotIdParam = request.nextUrl.searchParams.get('snapshotId');

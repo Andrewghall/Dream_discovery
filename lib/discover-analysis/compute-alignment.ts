@@ -105,14 +105,17 @@ export async function computeAlignment(workshopId: string): Promise<AlignmentHea
     }
   }
 
-  // Get top themes and actors by frequency (max 10 each)
+  // Theme density normalisation: rank by density (mentions / total) not raw count
+  const totalThemeMentions = [...themeCounts.values()].reduce((s, c) => s + c, 0) || 1;
   const topThemes = [...themeCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => (b[1] / totalThemeMentions) - (a[1] / totalThemeMentions))
     .slice(0, 10)
     .map(([theme]) => theme);
 
+  // Actor normalisation: equalise actor influence regardless of mention volume
+  const totalActorMentions = [...actorCounts.values()].reduce((s, c) => s + c, 0) || 1;
   const topActors = [...actorCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => (b[1] / totalActorMentions) - (a[1] / totalActorMentions))
     .slice(0, 10)
     .map(([actor]) => actor);
 

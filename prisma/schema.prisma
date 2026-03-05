@@ -137,17 +137,29 @@ model Workshop {
   discoveryBriefing Json?                 @map("discovery_briefing")   // Discovery Intelligence Agent synthesis
   discoverAnalysis  Json?                 @map("discover_analysis")    // Organisational Analysis dashboard data
 
+  // Field Discovery / Diagnostic extension fields
+  engagementType      EngagementType?       @map("engagement_type")      // Diagnostic Baseline, Operational Deep Dive, etc.
+  domainPack          String?               @map("domain_pack")          // Key into domain pack registry (e.g. "contact_centre")
+  domainPackConfig    Json?                 @map("domain_pack_config")   // Resolved config snapshot at creation time
+  discoveryQuestions  Json?                 @map("discovery_questions")  // Per-lens Discovery interview questions (editable)
+  blueprint           Json?                 @map("blueprint")            // Composed WorkshopBlueprint snapshot (runtime config)
+  historicalMetrics   Json?                 @map("historical_metrics")   // Normalized metric time series from CSV upload
+
   insights          ConversationInsight[]
   sessions          ConversationSession[]
   dataPoints        DataPoint[]
   reports           ConversationReport[]
   themes            DiscoveryTheme[]
   liveSnapshots     LiveWorkshopSnapshot[]
+  sessionVersions   LiveSessionVersion[]
   eventOutbox       WorkshopEventOutbox[]
   transcriptChunks  TranscriptChunk[]
   participants      WorkshopParticipant[]
   scratchpad        WorkshopScratchpad?
   shares            WorkshopShare[]
+  captureSessions   CaptureSession[]
+  findings          Finding[]
+  diagnosticSynthesis DiagnosticSynthesis?
   createdBy         User                  @relation(fields: [createdById], references: [id])
   organization      Organization          @relation(fields: [organizationId], references: [id])
 
@@ -441,6 +453,23 @@ model LiveWorkshopSnapshot {
   @@map("live_workshop_snapshots")
 }
 
+model LiveSessionVersion {
+  id            String   @id @default(cuid())
+  workshopId    String
+  version       Int
+  dialoguePhase String
+  payload       Json
+  label         String?
+  sizeBytes     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@unique([workshopId, version])
+  @@index([workshopId, createdAt])
+  @@map("live_session_versions")
+}
+
 model WorkshopEventOutbox {
   id         String   @id @default(cuid())
   workshopId String
@@ -488,6 +517,9 @@ model WorkshopScratchpad {
   // Images
   clientLogoUrl      String?  // URL to uploaded client logo
   solutionImageUrl   String?  // URL to uploaded solution overview image
+
+  // Output Assessment (archetype classification from deterministic classifier)
+  outputAssessment   Json?    // { archetype, secondaryArchetypes, confidence, rationale, requiredSections }
 
   // Metadata
   generatedFromSnapshot String? // ID of LiveWorkshopSnapshot used to generate
@@ -616,4 +648,130 @@ model AuditLog {
   @@index([action])
   @@index([timestamp(sort: Desc)])
   @@map("audit_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Field Discovery / Diagnostic Extension
+// ═══════════════════════════════════════════════════════════════
+
+enum EngagementType {
+  DIAGNOSTIC_BASELINE
+  OPERATIONAL_DEEP_DIVE
+  AI_ENABLEMENT
+  TRANSFORMATION_SPRINT
+  CULTURAL_ALIGNMENT
+}
+
+enum CaptureType {
+  WALKAROUND
+  EXECUTIVE_INTERVIEW
+  MANAGER_INTERVIEW
+  OPERATIONAL_INTERVIEW
+}
+
+enum CaptureSessionStatus {
+  OPEN
+  RECORDING
+  PAUSED
+  UPLOADED
+  TRANSCRIBED
+  ANALYSED
+}
+
+enum FindingType {
+  CONSTRAINT
+  OPPORTUNITY
+  RISK
+  CONTRADICTION
+}
+
+enum SourceStream {
+  STREAM_A   // Remote / AI-led discovery (existing)
+  STREAM_B   // Field capture (new)
+}
+
+model CaptureSession {
+  id              String               @id @default(cuid())
+  workshopId      String
+  captureType     CaptureType
+  actorRole       String?              // From domain pack actor taxonomy
+  area            String?              // Department or physical area
+  department      String?
+  participantName String?              // Optional name (consent-dependent)
+  consentFlag     Boolean              @default(false)
+  status          CaptureSessionStatus @default(OPEN)
+  deviceType      String?              // "desktop" or "mobile"
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  segments        CaptureSegment[]
+  findings        Finding[]
+  workshop        Workshop             @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId])
+  @@index([workshopId, status])
+  @@index([workshopId, captureType])
+  @@map("capture_sessions")
+}
+
+model CaptureSegment {
+  id                  String   @id @default(cuid())
+  captureSessionId    String
+  segmentIndex        Int
+  startTimeMs         BigInt?
+  endTimeMs           BigInt?
+  audioReference      String?  // Storage path or URL for audio file
+  transcriptReference String?  // Storage path or URL for transcript
+  transcript          String?  // Full transcript text
+  status              String   @default("pending") // pending, uploaded, transcribed
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  captureSession CaptureSession @relation(fields: [captureSessionId], references: [id], onDelete: Cascade)
+
+  @@index([captureSessionId])
+  @@map("capture_segments")
+}
+
+model Finding {
+  id                  String       @id @default(cuid())
+  workshopId          String
+  captureSessionId    String?
+  sourceStream        SourceStream
+  lens                String       // People, Organisation, Customer, Technology, Regulation
+  type                FindingType
+  title               String
+  description         String
+  severityScore       Float?       // 0-10 scale
+  frequencyCount      Int          @default(1)
+  roleCoverage        String[]     // Which actor roles surfaced this
+  supportingQuotes    Json?        // Array of {text, sessionId, segmentIndex}
+  confidenceScore     Float?       // 0-1 scale
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  captureSession CaptureSession? @relation(fields: [captureSessionId], references: [id], onDelete: SetNull)
+  workshop       Workshop        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId])
+  @@index([workshopId, sourceStream])
+  @@index([workshopId, lens])
+  @@index([workshopId, type])
+  @@map("findings")
+}
+
+model DiagnosticSynthesis {
+  id                String   @id @default(cuid())
+  workshopId        String   @unique
+  lensSummaries     Json?    // Per-lens: themes, evidence density, severity, role distribution, quick wins
+  crossLens         Json?    // Structural weaknesses, systemic risks, contradictions, 30/90 day actions
+  streamComparison  Json?    // Per-lens: declared perception (A), observed reality (B), alignment gap
+  sessionsProcessed Int      @default(0)
+  version           Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@map("diagnostic_syntheses")
 }

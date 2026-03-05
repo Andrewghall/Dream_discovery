@@ -13,12 +13,12 @@ const DIFFERENTIATORS = [
   {
     icon: Brain,
     title: 'Agentic AI Engine',
-    tagline: 'Specialist SLMs and deterministic analytics. Not a chatbot wrapper.',
+    tagline: 'Multiple specialist agents orchestrated together. Not a chatbot wrapper.',
     colour: 'from-[#5cf28e] to-[#50c878]',
     details: [
-      'Agentic capture  -  AI-guided conversations explore five organisational domains in 15 minutes per participant',
-      'Real-time synthesis  -  specialist small language models cluster themes, score confidence, and surface patterns as the session unfolds',
-      'Deterministic intelligence  -  sentiment, bias, and balance scores are computed reproducibly, not hallucinated by an LLM',
+      'Discovery Agent  -  conducts structured AI conversations across five organisational domains, adapting questions in real-time',
+      'Facilitation Orchestrator  -  coordinates live workshop phases, handing off between specialist agents that generate questions, cluster themes, and synthesise insights',
+      'Deterministic analytics  -  sentiment, bias, and balance scores are computed reproducibly alongside the agentic layer, not hallucinated by an LLM',
     ],
     href: '/dream/technology',
     linkLabel: 'Explore EthentaFlow',
@@ -30,7 +30,7 @@ const DIFFERENTIATORS = [
     colour: 'from-purple-500 to-pink-500',
     details: [
       'Discover  -  AI-powered conversations capture every perspective across People, Organisation, Customer, Technology, and Regulation',
-      'Reimagine  -  collective vision-building guided by agentic AI, grounded in real discovery data',
+      'Reimagine  -  collective vision-building guided by a Facilitation Orchestrator and specialist agents, grounded in real discovery data',
       'Educate, Apply, Mobilise  -  structured phases that turn insight into constraint-aware, board-ready transformation plans',
     ],
     href: '/dream/methodology',
@@ -56,7 +56,7 @@ const DIFFERENTIATORS = [
     colour: 'from-amber-500 to-orange-500',
     details: [
       'Before  -  each participant has a 15-minute AI-guided conversation; insights, themes, and a facilitator briefing are ready before anyone enters the room',
-      'During  -  agentic AI generates live questions grounded in discovery data while the 360° Hemisphere builds on-screen in real-time',
+      'During  -  multiple specialist agents generate live questions and synthesise themes in real-time while the 360° Hemisphere builds on-screen',
       'After  -  the full analytical dashboard with seven deep views is available immediately. No waiting for consultants to write reports.',
     ],
     href: '/dream/how-it-works',
@@ -87,8 +87,8 @@ export function DifferentiatorsSection() {
         </ScrollReveal>
         <ScrollReveal delay={150}>
           <p className="text-lg text-slate-500 max-w-2xl mx-auto text-center mb-12">
-            DREAM combines agentic AI, specialist small language models, and deterministic
-            analytics into something that didn&apos;t exist before.
+            DREAM orchestrates multiple specialist AI agents, small language models, and
+            deterministic analytics into something that didn&apos;t exist before.
           </p>
         </ScrollReveal>
 

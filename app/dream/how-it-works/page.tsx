@@ -8,7 +8,7 @@ import { BreadcrumbJsonLd, FaqJsonLd } from '@/lib/dream-landing/seo';
 export const metadata: Metadata = {
   title: 'How It Works  -  From Conversation to Action',
   description:
-    'Three stages: AI Discovery before the workshop, live cognitive guidance during, and a full analytical intelligence dashboard after. Here is the complete DREAM journey.',
+    'Three stages powered by multiple specialist AI agents: AI Discovery before the workshop, live agentic cognitive guidance during, and a full analytical intelligence dashboard after.',
   alternates: { canonical: '/dream/how-it-works' },
   openGraph: {
     title: 'How DREAM Works  -  From Conversation to Action',
@@ -48,15 +48,15 @@ const STAGES = [
     timeline: '4-8 hours',
     paragraphs: [
       'The facilitator guides participants through three live phases: Reimagine (envision the ideal future), Constraints (identify what blocks the path), and Apply (design the transformation plan). AI cognitive guidance runs throughout.',
-      'Agentic AI generates questions grounded in Discovery data  -  not generic prompts, but specific questions driven by what participants actually said. The 360° Hemisphere builds live on-screen, giving everyone a visual map of the organisation\'s collective thinking.',
-      'Real-time synthesis means insights compound as the workshop progresses. By the time you reach the Apply phase, the AI has already mapped every constraint to the vision it blocks and can suggest where to focus transformation energy.',
+      'Multiple specialist AI agents coordinate in real-time. A Facilitation Orchestrator manages the session while a Question Set Agent generates questions grounded in Discovery data  -  not generic prompts, but specific questions driven by what participants actually said. The 360° Hemisphere builds live on-screen, giving everyone a visual map of the organisation\'s collective thinking.',
+      'As the workshop progresses, synthesis agents cluster themes and surface cross-participant patterns while the orchestrator adapts the flow. By the time you reach the Apply phase, the agents have already mapped every constraint to the vision it blocks and can suggest where to focus transformation energy.',
     ],
     capabilities: [
       'Three live phases: Reimagine, Constraints, Apply',
-      'AI cognitive guidance with dynamically generated questions',
-      'Questions grounded in real Discovery data  -  not generic templates',
+      'Multiple specialist AI agents coordinated by a Facilitation Orchestrator',
+      'Question Set Agent generates questions grounded in real Discovery data  -  not generic templates',
       'Live 360° Hemisphere builds on-screen in real-time',
-      'Real-time synthesis using Agentic AI facilitation',
+      'Synthesis agents cluster themes and surface patterns as the workshop unfolds',
       'Facilitator augmented, not replaced  -  AI handles analysis, humans lead the room',
     ],
   },
@@ -112,7 +112,7 @@ export default function HowItWorksPage() {
         eyebrow="The Journey"
         headline="From Conversation to"
         highlightText="Action"
-        subheadline="Three stages. One continuous intelligence pipeline. From AI-powered Discovery conversations to real-time workshop synthesis to immediate analytical output."
+        subheadline="Three stages. Multiple specialist AI agents. From Discovery Agent conversations to a live Facilitation Orchestrator coordinating synthesis and question generation to immediate analytical output."
         backgroundImage="/dream-heroes/hero-ethentaflow.jpg"
         imagePosition="right center"
       />

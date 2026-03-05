@@ -13,6 +13,8 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runPrepOrchestrator } from '@/lib/cognition/agents/prep-orchestrator';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { readHistoricalMetricsFromJson } from '@/lib/historical-metrics/types';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
@@ -46,11 +48,15 @@ export async function POST(
     where: { id: workshopId },
     select: {
       id: true,
+      description: true,
+      businessContext: true,
       clientName: true,
       industry: true,
       companyWebsite: true,
       dreamTrack: true,
       targetDomain: true,
+      blueprint: true,
+      historicalMetrics: true,
     },
   });
 
@@ -63,11 +69,15 @@ export async function POST(
 
   const context: PrepContext = {
     workshopId,
+    workshopPurpose: workshop.description,
+    desiredOutcomes: workshop.businessContext,
     clientName: workshop.clientName,
     industry: workshop.industry,
     companyWebsite: workshop.companyWebsite,
     dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
     targetDomain: workshop.targetDomain,
+    blueprint: readBlueprintFromJson(workshop.blueprint),
+    historicalMetrics: readHistoricalMetricsFromJson(workshop.historicalMetrics),
   };
 
   // ── SSE stream ─────────────────────────────────────

@@ -6,6 +6,8 @@ import type { TensionSurfaceData, TensionEntry } from '@/lib/types/discover-anal
 
 interface TensionSurfaceProps {
   data: TensionSurfaceData;
+  /** Cap the number of displayed tensions (default: unlimited) */
+  maxItems?: number;
 }
 
 const SEVERITY_STYLES: Record<string, { bg: string; text: string; icon: typeof AlertTriangle }> = {
@@ -24,7 +26,7 @@ const SENTIMENT_COLORS: Record<string, string> = {
 /**
  * Tension Surface — Ranked card list of unresolved organisational tensions
  */
-export function TensionSurface({ data }: TensionSurfaceProps) {
+export function TensionSurface({ data, maxItems }: TensionSurfaceProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (data.tensions.length === 0) {
@@ -35,9 +37,13 @@ export function TensionSurface({ data }: TensionSurfaceProps) {
     );
   }
 
+  const displayTensions = maxItems != null
+    ? data.tensions.slice(0, maxItems)
+    : data.tensions;
+
   return (
     <div className="space-y-3">
-      {data.tensions.map((tension) => (
+      {displayTensions.map((tension) => (
         <TensionCard
           key={tension.id}
           tension={tension}

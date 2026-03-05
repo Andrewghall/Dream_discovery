@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
 import { Button } from '@/components/ui/button';
 import { Monitor, Smartphone, X } from 'lucide-react';
+import type { Prisma } from '@prisma/client';
 
 export default async function ActiveSessionsPage() {
   const session = await getSession();
@@ -12,10 +13,9 @@ export default async function ActiveSessionsPage() {
   }
 
   const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
-  const isTenantAdmin = session.role === 'TENANT_ADMIN';
 
   // Get active sessions — scoped by org for tenant admins
-  const sessionWhere: any = {
+  const sessionWhere: Prisma.SessionWhereInput = {
     expiresAt: { gt: new Date() },
     revokedAt: null,
   };

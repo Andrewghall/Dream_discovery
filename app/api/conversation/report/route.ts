@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { sendDiscoveryReportEmail } from '@/lib/email/send-report';
-import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
+import { fixedQuestionsForVersion, FixedQuestion, buildQuestionsFromDiscoverySet } from '@/lib/conversation/fixed-questions';
 import { createHash } from 'crypto';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -146,9 +147,22 @@ function parseQuestionKey(questionKey: string): { phase: string; tag: string; in
   return { phase, tag, index, version: typeof maybeVersion === 'string' && maybeVersion ? maybeVersion : null };
 }
 
-function questionTextFromKey(questionKey: string): { phase: string | null; question: string; tag: string | null } {
+function questionTextFromKey(
+  questionKey: string,
+  customQs?: Record<string, FixedQuestion[]> | null,
+): { phase: string | null; question: string; tag: string | null } {
   const parsed = parseQuestionKey(questionKey);
   if (!parsed) return { phase: null, question: '', tag: null };
+
+  // Try custom questions first (for domain-pack Discovery), then fall back to versioned set
+  const customQ = customQs?.[parsed.phase]?.[parsed.index];
+  if (customQ) {
+    return {
+      phase: parsed.phase,
+      question: customQ.text,
+      tag: parsed.tag,
+    };
+  }
 
   const qs = fixedQuestionsForVersion(parsed.version);
   const phaseKey = parsed.phase as keyof typeof qs;
@@ -570,6 +584,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 });
     }
 
+    // ── Auth: admin cookie OR participant token ──────────────
+    const token = request.nextUrl.searchParams.get('token');
+    const adminUser = await getAuthenticatedUser();
+
+    if (!adminUser && !token) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const session = await prisma.conversationSession.findUnique({
       where: { id: sessionId },
       include: {
@@ -588,6 +610,16 @@ export async function GET(request: NextRequest) {
 
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    // Participant token path: verify token matches session owner
+    if (!adminUser && token) {
+      if (
+        !session.participant ||
+        session.participant.discoveryToken !== token
+      ) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     const qaPairs: Array<{ phase: string | null; question: string; answer: string; createdAt: Date; tag: string | null }> = [];
@@ -609,11 +641,14 @@ export async function GET(request: NextRequest) {
     const narrativeTexts: string[] = [];
     let introContext: string | null = null;
 
+    // Build custom Discovery questions for question-text lookups (null if not configured)
+    const reportCustomQs = buildQuestionsFromDiscoverySet((session.workshop as any)?.discoveryQuestions);
+
     if (session.dataPoints.length > 0) {
       for (const dp of session.dataPoints) {
         const key = dp.questionKey || '';
         if (!key) continue;
-        const meta = questionTextFromKey(key);
+        const meta = questionTextFromKey(key, reportCustomQs);
         const question = meta.question;
         const phase = meta.phase;
         const tag = meta.tag;
@@ -814,9 +849,16 @@ export async function GET(request: NextRequest) {
 
     const storedInputQuality = safeInputQuality(session.report?.inputQuality);
     const storedKeyInsights = safeKeyInsights(session.report?.keyInsights);
+    // Read fingerprint from the raw stored JSON (safeInputQuality strips extra fields)
+    const rawInputQuality =
+      session.report?.inputQuality &&
+      typeof session.report.inputQuality === 'object' &&
+      !Array.isArray(session.report.inputQuality)
+        ? (session.report.inputQuality as Record<string, unknown>)
+        : null;
     const storedFingerprint =
-      storedInputQuality && typeof (storedInputQuality as any).agenticFingerprint === 'string'
-        ? String((storedInputQuality as any).agenticFingerprint)
+      rawInputQuality && typeof rawInputQuality.agenticFingerprint === 'string'
+        ? String(rawInputQuality.agenticFingerprint)
         : null;
 
     const agenticConfigured = !!process.env.OPENAI_API_KEY;
@@ -846,6 +888,46 @@ export async function GET(request: NextRequest) {
         });
 
     const wordCloudThemes = canReuse && session.report?.wordCloudThemes ? session.report.wordCloudThemes : buildWordFrequencies(narrativeTexts);
+
+    // Persist report so the reuse path activates on subsequent calls
+    if (!canReuse) {
+      try {
+        const persistedInputQuality = {
+          ...reviewed.inputQuality,
+          agenticFingerprint: inputFingerprint,
+        };
+        const jsonKeyInsights = JSON.parse(JSON.stringify(reviewed.keyInsights));
+        const jsonPhaseInsights = JSON.parse(JSON.stringify(phaseInsights));
+        const jsonWordCloudThemes = JSON.parse(JSON.stringify(wordCloudThemes));
+        await prisma.conversationReport.upsert({
+          where: { sessionId: session.id },
+          create: {
+            sessionId: session.id,
+            workshopId: session.workshopId,
+            participantId: session.participantId,
+            executiveSummary: reviewed.executiveSummary,
+            tone: reviewed.tone,
+            feedback: reviewed.feedback,
+            inputQuality: persistedInputQuality,
+            keyInsights: jsonKeyInsights,
+            phaseInsights: jsonPhaseInsights,
+            wordCloudThemes: jsonWordCloudThemes,
+          },
+          update: {
+            executiveSummary: reviewed.executiveSummary,
+            tone: reviewed.tone,
+            feedback: reviewed.feedback,
+            inputQuality: persistedInputQuality,
+            keyInsights: jsonKeyInsights,
+            phaseInsights: jsonPhaseInsights,
+            wordCloudThemes: jsonWordCloudThemes,
+          },
+        });
+      } catch (persistErr) {
+        console.error('Failed to persist report:', persistErr);
+        // Non-fatal: report is still returned in the response
+      }
+    }
 
     if (!skipEmail) {
       try {

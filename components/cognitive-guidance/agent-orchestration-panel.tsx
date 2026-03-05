@@ -22,6 +22,9 @@ export type AgentConversationEntry = {
     sourceCount?: number;
     journeyStageCount?: number;
     dimensionCount?: number;
+    actorCount?: number;
+    lensSource?: 'research_dimensions' | 'domain_pack' | 'generic_fallback' | 'blueprint';
+    dataConfidence?: string;
   };
 };
 
@@ -34,7 +37,7 @@ type AgentOrchestrationPanelProps = {
 };
 
 // ══════════════════════════════════════════════════════════
-// AGENT STYLES — colours + icons for each agent type
+// AGENT STYLES - colours + icons for each agent type
 // ══════════════════════════════════════════════════════════
 
 const AGENT_STYLES: Record<string, { color: string; bg: string; darkBg: string; icon: string; label: string }> = {
@@ -241,7 +244,7 @@ export function AgentOrchestrationPanel({
                       </span>
                     </div>
 
-                    {/* Message text — with basic markdown rendering */}
+                    {/* Message text - with basic markdown rendering */}
                     <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
                       {entry.message.split('\n').map((line, li) => {
                         // Bold: **text**

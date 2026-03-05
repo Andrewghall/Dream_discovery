@@ -1,6 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getFixedQuestion, getFixedQuestionObject } from '@/lib/conversation/fixed-questions';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import {
+  getFixedQuestion,
+  getFixedQuestionObject,
+  buildQuestionsFromDiscoverySet,
+  buildQuestionsFromBlueprint,
+  includeRegulationFromBlueprint,
+  type FixedQuestion,
+} from '@/lib/conversation/fixed-questions';
+
+/**
+ * Resolve the question configuration for a new session using the
+ * three-tier cascade: discoveryQuestions > blueprint > legacy.
+ */
+function resolveSessionConfig(workshop: any, questionSetVersion: string) {
+  const customQs = buildQuestionsFromDiscoverySet(workshop.discoveryQuestions);
+  const blueprint = readBlueprintFromJson(workshop.blueprint);
+  const blueprintQs =
+    !customQs && blueprint
+      ? buildQuestionsFromBlueprint(blueprint, questionSetVersion)
+      : null;
+
+  const includeRegulation = blueprint
+    ? includeRegulationFromBlueprint(blueprint)
+    : (workshop.includeRegulation ?? true);
+
+  // First question is always intro[0]
+  const introQs = customQs?.intro || blueprintQs?.intro;
+  const firstMessage = introQs
+    ? introQs[0].text
+    : getFixedQuestion('intro', 0, includeRegulation, questionSetVersion);
+  const firstQuestionObj: FixedQuestion | null = introQs
+    ? introQs[0]
+    : getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
+
+  return { includeRegulation, firstMessage, firstQuestionObj };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,7 +95,8 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const includeRegulation = participant.workshop.includeRegulation ?? true;
+      const { includeRegulation, firstMessage, firstQuestionObj } =
+        resolveSessionConfig(participant.workshop, questionSetVersion);
 
       const createdSession = await (prisma as any).conversationSession.create({
         data: {
@@ -77,22 +114,19 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const firstMessage = getFixedQuestion('intro', 0, includeRegulation, questionSetVersion);
-      const qObj = getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
-
       await prisma.conversationMessage.create({
         data: {
           sessionId: createdSession.id,
           role: 'AI',
           content: firstMessage,
           phase: 'intro',
-          metadata: qObj
+          metadata: firstQuestionObj
             ? {
                 kind: 'question',
-                tag: qObj.tag,
+                tag: firstQuestionObj.tag,
                 index: 0,
                 phase: 'intro',
-                maturityScale: qObj.maturityScale,
+                maturityScale: firstQuestionObj.maturityScale,
               }
             : undefined,
         },
@@ -170,7 +204,9 @@ export async function POST(request: NextRequest) {
 
     // Create new session if no session exists for this run type.
     if (!session) {
-      const includeRegulation = participant.workshop.includeRegulation ?? true;
+      const { includeRegulation, firstMessage, firstQuestionObj } =
+        resolveSessionConfig(participant.workshop, questionSetVersion);
+
       session = await (prisma as any).conversationSession.create({
         data: {
           workshopId,
@@ -194,22 +230,19 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const firstMessage = getFixedQuestion('intro', 0, includeRegulation, questionSetVersion);
-      const qObj = getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
-
       await prisma.conversationMessage.create({
         data: {
           sessionId: session.id,
           role: 'AI',
           content: firstMessage,
           phase: 'intro',
-          metadata: qObj
+          metadata: firstQuestionObj
             ? {
                 kind: 'question',
-                tag: qObj.tag,
+                tag: firstQuestionObj.tag,
                 index: 0,
                 phase: 'intro',
-                maturityScale: qObj.maturityScale,
+                maturityScale: firstQuestionObj.maturityScale,
               }
             : undefined,
         },

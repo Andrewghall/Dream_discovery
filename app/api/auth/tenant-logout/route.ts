@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
   const cookieStore = await cookies();
   cookieStore.delete('session');
 
-  return NextResponse.redirect(new URL('/login', request.url));
+  return NextResponse.redirect(new URL('/dream', request.url));
 }
 
 // GET handler removed — logout must use POST to prevent CSRF via <img src> attacks
