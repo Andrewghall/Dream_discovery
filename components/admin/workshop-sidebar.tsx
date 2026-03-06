@@ -13,6 +13,7 @@ import {
   BookOpen,
   Compass,
   LayoutDashboard,
+  Send,
   Menu,
   X,
   ChevronLeft,
@@ -41,6 +42,7 @@ function buildNavSections(domainPack?: string | null) {
       items: [
         { label: 'Setup', path: '', icon: Settings },
         { label: 'Prep', path: '/prep', icon: FileText },
+        { label: 'Invite', path: '/invite', icon: Send },
         { label: 'Live Session', path: '/cognitive-guidance', icon: Radio },
       ],
     },

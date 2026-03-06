@@ -4,10 +4,8 @@ import { use, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Send, UserPlus, Copy, Check, Trash2 } from 'lucide-react';
+import { Send, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -71,13 +69,6 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     currentSessionId: string | null;
   }>(null);
   const [backfillErrors, setBackfillErrors] = useState<Array<{ sessionId: string; error: string }>>([]);
-  const [newParticipant, setNewParticipant] = useState({
-    name: '',
-    email: '',
-    role: '',
-    department: '',
-  });
-  const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [summaryDownloading, setSummaryDownloading] = useState(false);
   const [scratchpadPreparing, setScratchpadPreparing] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
@@ -103,72 +94,6 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     }
   };
 
-  const handleToggleDoNotSendAgain = async (participantId: string, nextValue: boolean) => {
-    const prevValue = workshop?.participants.find((p) => p.id === participantId)?.doNotSendAgain ?? false;
-
-    setWorkshop((w) =>
-      w
-        ? {
-            ...w,
-            participants: w.participants.map((p) =>
-              p.id === participantId ? { ...p, doNotSendAgain: nextValue } : p
-            ),
-          }
-        : w
-    );
-
-    try {
-      const response = await fetch(`/api/admin/workshops/${id}/participants`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participantId, doNotSendAgain: nextValue }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        const message = data?.error || 'Failed to update participant';
-        throw new Error(message);
-      }
-    } catch (error) {
-      console.error('Failed to update doNotSendAgain:', error);
-      setWorkshop((w) =>
-        w
-          ? {
-              ...w,
-              participants: w.participants.map((p) =>
-                p.id === participantId ? { ...p, doNotSendAgain: prevValue } : p
-              ),
-            }
-          : w
-      );
-      alert('Failed to update participant. Please try again.');
-    }
-  };
-
-  const handleRemoveParticipant = async (participantId: string, email: string) => {
-    if (!confirm(`Remove ${email} from this workshop? This will delete their discovery session data.`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/admin/workshops/${id}/participants`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participantId }),
-      });
-
-      if (response.ok) {
-        fetchWorkshop();
-      } else {
-        const data = await response.json().catch(() => null);
-        alert(data?.error || 'Failed to remove participant');
-      }
-    } catch (error) {
-      console.error('Failed to remove participant:', error);
-      alert('Failed to remove participant');
-    }
-  };
-
   const handleUpdateIncludeRegulation = async (value: boolean) => {
     try {
       setIncludeRegulation(value);
@@ -180,89 +105,6 @@ export default function WorkshopDetailPage({ params }: PageProps) {
       fetchWorkshop();
     } catch (error) {
       console.error('Failed to update workshop setting:', error);
-    }
-  };
-
-  const handleAddParticipant = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const response = await fetch(`/api/admin/workshops/${id}/participants`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newParticipant),
-      });
-
-      if (response.ok) {
-        setNewParticipant({ name: '', email: '', role: '', department: '' });
-        fetchWorkshop();
-      }
-    } catch (error) {
-      console.error('Failed to add participant:', error);
-    }
-  };
-
-  const handleClearEmailStatus = async () => {
-    if (!confirm('Clear email sent status for all participants? This will allow you to resend emails.')) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/admin/workshops/${id}/clear-email-status`, {
-        method: 'POST',
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        alert(`Cleared email status for ${data.clearedCount} participant(s)`);
-        fetchWorkshop();
-      }
-    } catch (error) {
-      console.error('Failed to clear email status:', error);
-      alert('Failed to clear email status');
-    }
-  };
-
-  const handleSendInvitations = async () => {
-    try {
-      const response = await fetch(`/api/admin/workshops/${id}/send-invitations`, {
-        method: 'POST',
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-
-        if (data.errors?.length) {
-          const errors: unknown = data.errors;
-          const list = Array.isArray(errors) ? errors : [];
-          const errorText = list
-            .map((e) => {
-              const rec = e && typeof e === 'object' ? (e as Record<string, unknown>) : {};
-              const email = typeof rec.email === 'string' ? rec.email : 'unknown';
-              const err = typeof rec.error === 'string' ? rec.error : '';
-              return `${email}: ${err}`;
-            })
-            .join('\n');
-          alert(`Some emails failed to send:\n\n${errorText}`);
-        }
-
-        if (data.emailsSent === 0 && data.message) {
-          setSuccessMessage(data.message);
-          setShowSuccessDialog(true);
-          fetchWorkshop();
-          return;
-        }
-
-        setSuccessMessage(`Invitations sent successfully to ${data.emailsSent} participant(s)!`);
-        setShowSuccessDialog(true);
-        fetchWorkshop();
-      } else {
-        const data = await response.json().catch(() => null);
-        const message = data?.details?.message || data?.error || 'Failed to send invitations';
-        alert(message);
-      }
-    } catch (error) {
-      console.error('Failed to send invitations:', error);
-      alert('Failed to send invitations');
     }
   };
 
@@ -292,13 +134,6 @@ export default function WorkshopDetailPage({ params }: PageProps) {
       console.error('Failed to delete workshop:', error);
       alert('Failed to delete workshop');
     }
-  };
-
-  const copyDiscoveryLink = (token: string) => {
-    const link = `${window.location.origin}/discovery/${id}/${token}`;
-    navigator.clipboard.writeText(link);
-    setCopiedToken(token);
-    setTimeout(() => setCopiedToken(null), 2000);
   };
 
   const downloadJson = (filename: string, payload: unknown) => {
@@ -541,13 +376,12 @@ export default function WorkshopDetailPage({ params }: PageProps) {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={handleClearEmailStatus} variant="outline" size="sm">
-                Clear Email Status
-              </Button>
-              <Button onClick={handleSendInvitations} size="sm">
-                <Send className="h-4 w-4 mr-2" />
-                Send Invitations
-              </Button>
+              <Link href={`/admin/workshops/${id}/invite`}>
+                <Button variant="outline" size="sm">
+                  <Send className="h-4 w-4 mr-2" />
+                  Manage Invitations
+                </Button>
+              </Link>
               <Button onClick={handleDeleteWorkshop} variant="destructive" size="sm">
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete Workshop
@@ -606,8 +440,8 @@ export default function WorkshopDetailPage({ params }: PageProps) {
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 gap-6">
+          <div className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle>Workshop Summary</CardTitle>
@@ -769,176 +603,25 @@ export default function WorkshopDetailPage({ params }: PageProps) {
               </CardContent>
             </Card>
 
+            {/* Invite link card */}
             <Card>
               <CardHeader>
-                <CardTitle>Participants</CardTitle>
+                <CardTitle>Participants &amp; Invitations</CardTitle>
                 <CardDescription>
-                  Manage workshop participants and send discovery invitations
+                  {workshop.participants.length > 0
+                    ? `${workshop.participants.length} participant${workshop.participants.length !== 1 ? 's' : ''} added — manage invitations on the Invite page.`
+                    : 'Add participants and send discovery invitations from the Invite page.'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {workshop.participants.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">
-                      No participants yet. Add participants to get started.
-                    </p>
-                  ) : (
-                    workshop.participants.map((participant) => (
-                      <div
-                        key={participant.id}
-                        className={`border rounded-lg p-4 hover:bg-muted/50 transition-colors ${
-                          participant.doNotSendAgain ? 'opacity-60' : ''
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-semibold">{participant.name}</h4>
-                              {participant.emailSentAt && (
-                                <Badge variant="outline" className="text-xs">
-                                  Email Sent
-                                </Badge>
-                              )}
-                              {participant.responseCompletedAt && (
-                                <Badge variant="secondary" className="text-xs">
-                                  ✓ Completed
-                                </Badge>
-                              )}
-                              {participant.responseStartedAt && !participant.responseCompletedAt && (
-                                <Badge variant="outline" className="text-xs">
-                                  In Progress
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground">{participant.email}</p>
-                            {(participant.role || participant.department) && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {participant.role}
-                                {participant.role && participant.department && ' • '}
-                                {participant.department}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <label
-                              htmlFor={`dns-${participant.id}`}
-                              className="flex items-center gap-2 text-xs text-muted-foreground"
-                            >
-                              <input
-                                id={`dns-${participant.id}`}
-                                type="checkbox"
-                                className="h-4 w-4"
-                                checked={!!participant.doNotSendAgain}
-                                onChange={(e) =>
-                                  void handleToggleDoNotSendAgain(participant.id, e.target.checked)
-                                }
-                              />
-                              Don&apos;t send again
-                            </label>
-                            <div className="flex items-center gap-1">
-                            <Link
-                              href={`/admin/workshops/${encodeURIComponent(id)}/participants/${encodeURIComponent(
-                                participant.id
-                              )}`}
-                            >
-                              <Button variant="ghost" size="sm">
-                                Review
-                              </Button>
-                            </Link>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => copyDiscoveryLink(participant.discoveryToken)}
-                            >
-                              {copiedToken === participant.discoveryToken ? (
-                                <Check className="h-4 w-4" />
-                              ) : (
-                                <Copy className="h-4 w-4" />
-                              )}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveParticipant(participant.id, participant.email)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Add Participant Form */}
-          <div>
-            <Card>
-              <CardHeader>
-                <CardTitle>Add Participant</CardTitle>
-                <CardDescription>Invite someone to the discovery session</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleAddParticipant} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Name *</Label>
-                    <Input
-                      id="name"
-                      placeholder="John Doe"
-                      value={newParticipant.name}
-                      onChange={(e) =>
-                        setNewParticipant({ ...newParticipant, name: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="john@company.com"
-                      value={newParticipant.email}
-                      onChange={(e) =>
-                        setNewParticipant({ ...newParticipant, email: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="role">Role</Label>
-                    <Input
-                      id="role"
-                      placeholder="Product Manager"
-                      value={newParticipant.role}
-                      onChange={(e) =>
-                        setNewParticipant({ ...newParticipant, role: e.target.value })
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="department">Department</Label>
-                    <Input
-                      id="department"
-                      placeholder="Engineering"
-                      value={newParticipant.department}
-                      onChange={(e) =>
-                        setNewParticipant({ ...newParticipant, department: e.target.value })
-                      }
-                    />
-                  </div>
-
-                  <Button type="submit" className="w-full">
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Add Participant
+                <Link href={`/admin/workshops/${id}/invite`}>
+                  <Button variant="outline" className="gap-2">
+                    <Send className="h-4 w-4" />
+                    {workshop.participants.length > 0
+                      ? 'Manage Participants & Send Invitations'
+                      : 'Add Participants & Send Invitations'}
                   </Button>
-                </form>
+                </Link>
               </CardContent>
             </Card>
           </div>
