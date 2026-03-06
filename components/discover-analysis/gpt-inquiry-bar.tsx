@@ -138,7 +138,15 @@ export function GptInquiryBar({ workshopId, hasAnalysis, analysis }: GptInquiryB
   return (
     <div ref={containerRef} className="w-full mb-6 scroll-mt-4">
       <div>
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl shadow-sm">
+          {/* Header label */}
+          <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+            <MessageSquare className="h-3.5 w-3.5 text-indigo-400" />
+            <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wider">GPT Interrogator</span>
+            <span className="text-xs text-indigo-400/70">
+              {hasAnalysis ? '— ask anything about this analysis' : '— generate analysis first to enable'}
+            </span>
+          </div>
           {/* Expanded message thread */}
           {isExpanded && messages.length > 0 && (
             <div className="border-b border-slate-100">
@@ -182,13 +190,11 @@ export function GptInquiryBar({ workshopId, hasAnalysis, analysis }: GptInquiryB
             {messages.length > 0 && !isExpanded && (
               <button
                 onClick={() => setIsExpanded(true)}
-                className="flex-shrink-0 text-slate-400 hover:text-slate-600 p-1"
+                className="flex-shrink-0 text-indigo-400 hover:text-indigo-600 p-1"
               >
                 <ChevronUp className="h-4 w-4" />
               </button>
             )}
-
-            <MessageSquare className="h-4 w-4 text-slate-300 flex-shrink-0" />
 
             <input
               ref={inputRef}
@@ -203,17 +209,17 @@ export function GptInquiryBar({ workshopId, hasAnalysis, analysis }: GptInquiryB
               }}
               placeholder={
                 hasAnalysis
-                  ? 'Ask about the analysis... e.g. "What are the biggest tensions?"'
-                  : 'Generate analysis first to enable inquiry'
+                  ? 'e.g. "What are the biggest tensions?" or "Which domain needs most attention?"'
+                  : 'Generate analysis above to enable inquiry'
               }
               disabled={!hasAnalysis || isStreaming}
-              className="flex-1 text-sm text-slate-700 placeholder:text-slate-300 bg-transparent border-0 outline-none disabled:opacity-50"
+              className="flex-1 text-sm text-slate-700 placeholder:text-slate-400 bg-transparent border-0 outline-none disabled:opacity-50"
             />
 
             <button
               onClick={handleSubmit}
               disabled={!input.trim() || isStreaming || !hasAnalysis}
-              className="flex-shrink-0 p-2 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="flex-shrink-0 p-2 rounded-lg bg-indigo-100 text-indigo-500 hover:bg-indigo-200 hover:text-indigo-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               {isStreaming ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
