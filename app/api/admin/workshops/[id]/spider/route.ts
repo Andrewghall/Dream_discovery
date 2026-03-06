@@ -442,6 +442,66 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         };
       });
 
+    // ── Fallback: if no scored axes, build from ConversationReport.phaseInsights ──
+    if (axisStats.length === 0) {
+      const reports = await prisma.conversationReport.findMany({
+        where: { workshopId },
+        select: { phaseInsights: true },
+      });
+
+      const phaseTodayScores: Record<string, Array<number | null>> = {};
+      const phaseTargetScores: Record<string, Array<number | null>> = {};
+
+      for (const report of reports) {
+        const insights = (report.phaseInsights as Array<{ phase?: string; currentScore?: number | null; targetScore?: number | null }>) || [];
+        for (const insight of insights) {
+          const phase = (insight.phase || '').toLowerCase();
+          if (!phase) continue;
+          if (!phaseTodayScores[phase]) phaseTodayScores[phase] = [];
+          if (!phaseTargetScores[phase]) phaseTargetScores[phase] = [];
+          phaseTodayScores[phase].push(typeof insight.currentScore === 'number' ? insight.currentScore : null);
+          phaseTargetScores[phase].push(typeof insight.targetScore === 'number' ? insight.targetScore : null);
+        }
+      }
+
+      const phaseLabels: Record<string, string> = {
+        people: 'People',
+        customer: 'Customer',
+        technology: 'Technology',
+        organisation: 'Organisation',
+        regulation: 'Regulation',
+      };
+
+      const phaseOrder = ['people', 'customer', 'technology', 'organisation', 'regulation'];
+
+      const fallbackAxisStats: AxisStats[] = phaseOrder
+        .filter((phase) => phaseTodayScores[phase] || phaseTargetScores[phase])
+        .map((phase) => ({
+          axisId: `report:${phase}`,
+          label: phaseLabels[phase] || phase,
+          questionText: phaseLabels[phase] || phase,
+          phase,
+          tag: 'phaseInsight',
+          questionIndex: 0,
+          today: stats(phaseTodayScores[phase] || []),
+          target: stats(phaseTargetScores[phase] || []),
+          projected: { median: null, min: null, max: null, n: 0 },
+        }));
+
+      return NextResponse.json({
+        ok: true,
+        workshopId,
+        runType,
+        focus,
+        includeRegulation,
+        generatedAt: new Date().toISOString(),
+        participantCount: reports.length,
+        axisStats: fallbackAxisStats,
+        individuals: [],
+        aggregation: { method: 'median' },
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       workshopId,

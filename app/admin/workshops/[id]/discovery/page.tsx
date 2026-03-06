@@ -3,7 +3,7 @@
 import React, { use, useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Users, BookOpen, TrendingUp, Layers, Loader2, RefreshCw, Compass } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, TrendingUp, Layers, Loader2, RefreshCw, Compass, ChevronDown, ChevronUp, BadgeCheck } from 'lucide-react';
 import { AlignmentHeatmap } from '@/components/discover-analysis/alignment-heatmap';
 import { TensionSurface } from '@/components/discover-analysis/tension-surface';
 import { NarrativeDivergence } from '@/components/discover-analysis/narrative-divergence';
@@ -53,6 +53,35 @@ type WorkshopSummary = {
     reportCount: number;
     dataPointCount: number;
   };
+};
+
+type KeyInsight = {
+  title: string;
+  insight: string;
+  confidence: 'high' | 'medium' | 'low';
+  evidence: string[];
+};
+
+type PhaseInsight = {
+  phase: string;
+  currentScore: number | null;
+  targetScore: number | null;
+  gaps: string[];
+  painPoints: string[];
+};
+
+type ParticipantReport = {
+  id: string;
+  participantId: string;
+  participantName: string;
+  participantRole: string | null;
+  participantDepartment: string | null;
+  executiveSummary: string;
+  feedback: string;
+  tone: string | null;
+  keyInsights: KeyInsight[] | null;
+  phaseInsights: PhaseInsight[] | null;
+  createdAt: string;
 };
 
 // ══════════════════════════════════════════════════════════
@@ -422,6 +451,10 @@ export default function DiscoveryPage({ params }: PageProps) {
   // ── Workshop domain pack (for conditional Field Discovery card) ──
   const [workshopDomainPack, setWorkshopDomainPack] = useState<string | null>(null);
 
+  // ── Participant reports ───────────────────────────────────
+  const [participantReports, setParticipantReports] = useState<ParticipantReport[]>([]);
+  const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
+
   // ── Discover Analysis state ──────────────────────────────
   const [analysis, setAnalysis] = useState<DiscoverAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -621,6 +654,25 @@ export default function DiscoveryPage({ params }: PageProps) {
     fetchSummary();
   }, [workshopId, isRetailDemo]);
 
+  // ── Fetch participant reports ─────────────────────────────
+  useEffect(() => {
+    async function fetchParticipantReports() {
+      try {
+        const res = await fetch(
+          `/api/admin/workshops/${encodeURIComponent(workshopId)}/participant-reports`,
+          { cache: 'no-store' }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.reports && data.reports.length > 0) {
+            setParticipantReports(data.reports);
+          }
+        }
+      } catch { /* fail silently */ }
+    }
+    fetchParticipantReports();
+  }, [workshopId]);
+
   // ── Radar chart data transform — 3 series: Today, Target, Projected ──
   const radarChartData = useMemo(() => {
     if (!spiderData) return null;
@@ -697,23 +749,11 @@ export default function DiscoveryPage({ params }: PageProps) {
             </div>
           </div>
         ) : summary ? (
-          <div className="space-y-6 mb-6">
-            {/* Vision Statement */}
-            <div className="rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-8">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp className="h-4 w-4 text-blue-600" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-blue-600">Vision Statement</h2>
-              </div>
-              <p className="text-lg leading-relaxed text-foreground font-medium">
-                {summary.visionStatement}
-              </p>
-            </div>
-
-            {/* Executive Summary */}
+          <div className="mb-6">
             <div className="rounded-xl border bg-card p-8">
               <div className="flex items-center gap-2 mb-4">
                 <BookOpen className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Executive Summary</h2>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">What Employees Said</h2>
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground">
                 {summary.executiveSummary}
@@ -787,6 +827,135 @@ export default function DiscoveryPage({ params }: PageProps) {
                   </p>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════ */}
+        {/* PARTICIPANT INTERVIEW REPORTS                             */}
+        {/* ══════════════════════════════════════════════════════════ */}
+
+        {participantReports.length > 0 && (
+          <div className="mt-10 pt-8 border-t">
+            <div className="flex items-center gap-2 mb-6">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
+                Individual Interview Reports
+              </h2>
+              <span className="ml-auto text-xs text-muted-foreground/60">{participantReports.length} interviews</span>
+            </div>
+            <div className="space-y-3">
+              {participantReports.map((report) => {
+                const isExpanded = expandedReportId === report.id;
+                const toneColor =
+                  report.tone === 'strategic' ? 'bg-blue-100 text-blue-700' :
+                  report.tone === 'visionary' ? 'bg-violet-100 text-violet-700' :
+                  report.tone === 'critical' ? 'bg-red-100 text-red-700' :
+                  report.tone === 'constructive' ? 'bg-emerald-100 text-emerald-700' :
+                  'bg-amber-100 text-amber-700';
+
+                return (
+                  <div key={report.id} className="rounded-xl border bg-card overflow-hidden">
+                    {/* Header — always visible */}
+                    <button
+                      className="w-full text-left px-6 py-4 flex items-center gap-4 hover:bg-muted/30 transition-colors"
+                      onClick={() => setExpandedReportId(isExpanded ? null : report.id)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="font-semibold text-sm">{report.participantName}</span>
+                          {report.participantRole && (
+                            <span className="text-xs text-muted-foreground">{report.participantRole}</span>
+                          )}
+                          {report.participantDepartment && (
+                            <span className="text-xs text-muted-foreground/60">&middot; {report.participantDepartment}</span>
+                          )}
+                          {report.tone && (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${toneColor}`}>
+                              {report.tone}
+                            </span>
+                          )}
+                        </div>
+                        {!isExpanded && (
+                          <p className="text-xs text-muted-foreground mt-1 truncate">{report.executiveSummary}</p>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-muted-foreground/50">
+                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </div>
+                    </button>
+
+                    {/* Expanded content */}
+                    {isExpanded && (
+                      <div className="px-6 pb-6 space-y-5 border-t bg-muted/10">
+                        {/* Executive summary */}
+                        <div className="pt-4">
+                          <p className="text-sm leading-relaxed text-muted-foreground">{report.executiveSummary}</p>
+                          {report.feedback && (
+                            <p className="text-xs mt-3 text-muted-foreground/70 italic">{report.feedback}</p>
+                          )}
+                        </div>
+
+                        {/* Phase scores */}
+                        {report.phaseInsights && report.phaseInsights.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Domain Scores</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                              {report.phaseInsights.map((pi) => {
+                                const phaseColor =
+                                  pi.phase === 'people' ? 'bg-violet-50 border-violet-200 text-violet-700' :
+                                  pi.phase === 'customer' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                                  pi.phase === 'technology' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                                  pi.phase === 'regulation' ? 'bg-red-50 border-red-200 text-red-700' :
+                                  'bg-amber-50 border-amber-200 text-amber-700';
+                                return (
+                                  <div key={pi.phase} className={`rounded-lg border p-3 text-center ${phaseColor}`}>
+                                    <p className="text-xs font-semibold capitalize mb-1">{pi.phase}</p>
+                                    <p className="text-xl font-bold">{pi.currentScore ?? '–'}</p>
+                                    {pi.targetScore !== null && (
+                                      <p className="text-xs opacity-70">&rarr; {pi.targetScore}</p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Key insights */}
+                        {report.keyInsights && report.keyInsights.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Key Insights</p>
+                            <div className="space-y-3">
+                              {report.keyInsights.map((insight, i) => (
+                                <div key={i} className="rounded-lg border bg-card p-4">
+                                  <div className="flex items-start gap-3">
+                                    <BadgeCheck className={`h-4 w-4 mt-0.5 shrink-0 ${
+                                      insight.confidence === 'high' ? 'text-emerald-500' :
+                                      insight.confidence === 'medium' ? 'text-amber-500' : 'text-slate-400'
+                                    }`} />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold">{insight.title}</p>
+                                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{insight.insight}</p>
+                                      {insight.evidence && insight.evidence.length > 0 && (
+                                        <ul className="mt-2 space-y-1">
+                                          {insight.evidence.map((e, j) => (
+                                            <li key={j} className="text-xs text-muted-foreground/70 pl-3 border-l-2 border-muted italic">{e}</li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
