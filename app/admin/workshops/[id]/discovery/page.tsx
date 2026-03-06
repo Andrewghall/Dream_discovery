@@ -1089,7 +1089,10 @@ export default function DiscoveryPage({ params }: PageProps) {
 
               {/* Section 1: Alignment Heatmap */}
               <div className="rounded-xl border bg-card p-6">
-                <h3 className="text-sm font-semibold mb-1">Alignment Heatmap</h3>
+                <div className="flex items-start justify-between mb-1">
+                  <h3 className="text-sm font-semibold">Alignment Heatmap</h3>
+                  <DataQualityBadge source={analysis.dataQuality?.source} />
+                </div>
                 <p className="text-xs text-muted-foreground mb-4">
                   Where do actors and themes align &mdash; or fracture?
                 </p>
@@ -1098,7 +1101,10 @@ export default function DiscoveryPage({ params }: PageProps) {
 
               {/* Section 2: Tension Surface */}
               <div className="rounded-xl border bg-card p-6">
-                <h3 className="text-sm font-semibold mb-1">Tension Surface</h3>
+                <div className="flex items-start justify-between mb-1">
+                  <h3 className="text-sm font-semibold">Tension Surface</h3>
+                  <DataQualityBadge source={analysis.dataQuality?.source} />
+                </div>
                 <p className="text-xs text-muted-foreground mb-4">
                   Unresolved tensions ranked by severity
                 </p>
@@ -1108,14 +1114,20 @@ export default function DiscoveryPage({ params }: PageProps) {
               {/* Section 3: Two-column — Narrative Divergence + Confidence */}
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 <div className="lg:col-span-3 rounded-xl border bg-card p-6">
-                  <h3 className="text-sm font-semibold mb-1">Narrative Divergence</h3>
+                  <div className="flex items-start justify-between mb-1">
+                    <h3 className="text-sm font-semibold">Narrative Divergence</h3>
+                    <DataQualityBadge source={analysis.dataQuality?.source} />
+                  </div>
                   <p className="text-xs text-muted-foreground mb-4">
                     How language and perception differ across organisational layers
                   </p>
                   <NarrativeDivergence data={analysis.narrative} />
                 </div>
                 <div className="lg:col-span-2 rounded-xl border bg-card p-6">
-                  <h3 className="text-sm font-semibold mb-1">Confidence Index</h3>
+                  <div className="flex items-start justify-between mb-1">
+                    <h3 className="text-sm font-semibold">Confidence Index</h3>
+                    <DataQualityBadge source={analysis.dataQuality?.source} />
+                  </div>
                   <p className="text-xs text-muted-foreground mb-4">
                     Certainty, hedging, and uncertainty distribution
                   </p>
@@ -1125,7 +1137,10 @@ export default function DiscoveryPage({ params }: PageProps) {
 
               {/* Section 4: Constraint Map */}
               <div className="rounded-xl border bg-card p-6">
-                <h3 className="text-sm font-semibold mb-1">Constraint Map</h3>
+                <div className="flex items-start justify-between mb-1">
+                  <h3 className="text-sm font-semibold">Constraint Map</h3>
+                  <DataQualityBadge source={analysis.dataQuality?.source} />
+                </div>
                 <p className="text-xs text-muted-foreground mb-4">
                   Weighted constraints and their dependencies
                 </p>
@@ -1153,6 +1168,36 @@ export default function DiscoveryPage({ params }: PageProps) {
       </div>
     </div>
   );
+}
+
+// ══════════════════════════════════════════════════════════
+// DATA QUALITY BADGE
+// ══════════════════════════════════════════════════════════
+
+function DataQualityBadge({ source }: { source?: string }) {
+  if (source === 'full_analysis') {
+    return (
+      <span
+        title="High confidence — derived from full agentic analysis"
+        className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 shrink-0"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+        High
+      </span>
+    );
+  }
+  if (source === 'interview_reports') {
+    return (
+      <span
+        title="Medium confidence — derived from interview report summaries. Run full agentic analysis for deeper statistical confidence."
+        className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 shrink-0"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+        Medium
+      </span>
+    );
+  }
+  return null;
 }
 
 // ══════════════════════════════════════════════════════════

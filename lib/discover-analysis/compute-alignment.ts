@@ -167,8 +167,7 @@ async function computeAlignmentFromReports(workshopId: string): Promise<Alignmen
   const reports = await prisma.conversationReport.findMany({
     where: { workshopId },
     select: {
-      tone: true,
-      keyInsights: true,
+      phaseInsights: true,
       participant: { select: { role: true } },
     },
   });
@@ -182,15 +181,18 @@ async function computeAlignmentFromReports(workshopId: string): Promise<Alignmen
 
   for (const report of reports) {
     const actor = groupRole((report.participant as { role?: string } | null)?.role ?? null);
-    const sentiment = toneToSentiment(report.tone as string | null);
-    const insights = (report.keyInsights as Array<{ title?: string }>) || [];
+    const phases = (report.phaseInsights as Array<{ phase?: string; currentScore?: number | null }>) || [];
 
     actorCounts.set(actor, (actorCounts.get(actor) || 0) + 1);
 
-    for (const insight of insights) {
-      const theme = insight.title?.trim();
+    for (const phase of phases) {
+      const theme = phase.phase?.trim();
       if (!theme) continue;
       themeCounts.set(theme, (themeCounts.get(theme) || 0) + 1);
+
+      // Derive sentiment from currentScore: <4 = negative, 4–6 = neutral, >6 = positive
+      const score = typeof phase.currentScore === 'number' ? phase.currentScore : 5;
+      const sentiment: 'positive' | 'negative' | 'neutral' = score < 4 ? 'negative' : score > 6 ? 'positive' : 'neutral';
 
       const key = `${theme}|||${actor}`;
       const cell = cellMap.get(key) || { theme, actor, positive: 0, negative: 0, neutral: 0, quotes: [] };
