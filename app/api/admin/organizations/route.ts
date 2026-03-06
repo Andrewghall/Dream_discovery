@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
           });
 
           // Send welcome email with credentials
-          const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/tenant/login`;
+          const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL}/tenant/login`;
           console.log('[org/create] Sending welcome email to', billingEmail.trim());
           await sendWelcomeEmail({
             to: billingEmail.trim(),

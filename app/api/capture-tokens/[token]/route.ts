@@ -11,9 +11,13 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-const CAPTURE_TOKEN_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || process.env.AUTH_SECRET || 'capture-fallback-secret'
-);
+function getCaptureSecret(): Uint8Array {
+  const secret = process.env.SESSION_SECRET || process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: SESSION_SECRET or AUTH_SECRET must be set. Refusing to use a fallback secret.');
+  }
+  return new TextEncoder().encode(secret);
+}
 
 export async function GET(
   _request: NextRequest,
@@ -25,7 +29,7 @@ export async function GET(
     // Verify the JWT signature and expiration
     let payload: jose.JWTPayload;
     try {
-      const result = await jose.jwtVerify(token, CAPTURE_TOKEN_SECRET, {
+      const result = await jose.jwtVerify(token, getCaptureSecret(), {
         issuer: 'dream-capture',
         audience: 'mobile-capture',
       });

@@ -5,30 +5,10 @@ import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-acces
 import { getDomainPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import { readBlueprintFromJson, WorkshopBlueprintSchema } from '@/lib/workshop/blueprint';
-import type { EngagementType } from '@prisma/client';
+import { toEngagementEnum } from '@/lib/utils/engagement-types';
 import type { WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
-
-function toEngagementEnum(value: unknown): EngagementType | null {
-  if (typeof value !== 'string' || !value.trim()) return null;
-  const normalized = value.trim().toUpperCase();
-  const valid: EngagementType[] = [
-    'DIAGNOSTIC_BASELINE',
-    'OPERATIONAL_DEEP_DIVE',
-    'AI_ENABLEMENT',
-    'TRANSFORMATION_SPRINT',
-    'CULTURAL_ALIGNMENT',
-  ];
-  if (valid.includes(normalized as EngagementType)) {
-    return normalized as EngagementType;
-  }
-  const fromKey = normalized.replace(/[^A-Z0-9_]/g, '_');
-  if (valid.includes(fromKey as EngagementType)) {
-    return fromKey as EngagementType;
-  }
-  return null;
-}
 
 function isLikelySchemaDriftError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();

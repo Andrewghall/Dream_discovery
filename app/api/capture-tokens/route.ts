@@ -12,9 +12,13 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 
 export const dynamic = 'force-dynamic';
 
-const CAPTURE_TOKEN_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || process.env.AUTH_SECRET || 'capture-fallback-secret'
-);
+function getCaptureSecret(): Uint8Array {
+  const secret = process.env.SESSION_SECRET || process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: SESSION_SECRET or AUTH_SECRET must be set. Refusing to use a fallback secret.');
+  }
+  return new TextEncoder().encode(secret);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,7 +49,7 @@ export async function POST(request: NextRequest) {
       .setIssuer('dream-capture')
       .setAudience('mobile-capture')
       .setExpirationTime('7d')
-      .sign(CAPTURE_TOKEN_SECRET);
+      .sign(getCaptureSecret());
 
     return NextResponse.json({
       token,

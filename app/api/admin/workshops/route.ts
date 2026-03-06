@@ -3,31 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
 import { getDomainPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
-import type { EngagementType } from '@prisma/client';
+import { toEngagementEnum } from '@/lib/utils/engagement-types';
 
 export const dynamic = 'force-dynamic';
-
-function toEngagementEnum(value: unknown): EngagementType | undefined {
-  if (typeof value !== 'string' || !value.trim()) return undefined;
-  const normalized = value.trim().toUpperCase();
-  const valid: EngagementType[] = [
-    'DIAGNOSTIC_BASELINE',
-    'OPERATIONAL_DEEP_DIVE',
-    'AI_ENABLEMENT',
-    'TRANSFORMATION_SPRINT',
-    'CULTURAL_ALIGNMENT',
-  ];
-  if (valid.includes(normalized as EngagementType)) {
-    return normalized as EngagementType;
-  }
-
-  // Accept UI keys like "operational_deep_dive"
-  const fromKey = normalized.replace(/[^A-Z0-9_]/g, '_');
-  if (valid.includes(fromKey as EngagementType)) {
-    return fromKey as EngagementType;
-  }
-  return undefined;
-}
 
 export async function GET(request: NextRequest) {
   try {

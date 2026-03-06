@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { apiLimiter } from '@/lib/rate-limit';
 import OpenAI from 'openai';
 import {
   FixedQuestion,
@@ -108,6 +109,16 @@ async function generateClarificationAnswer(params: {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 20 messages per minute per IP (AI-backed, expensive)
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rl = await apiLimiter.check(20, `conv-msg:${ip}`);
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429 },
+      );
+    }
+
     const { sessionId, userMessage } = await request.json();
 
     // Get session with all context

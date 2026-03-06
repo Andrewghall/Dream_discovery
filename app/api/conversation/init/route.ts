@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { apiLimiter } from '@/lib/rate-limit';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import {
   getFixedQuestion,
@@ -40,6 +41,16 @@ function resolveSessionConfig(workshop: any, questionSetVersion: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 10 session inits per minute per IP
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rl = await apiLimiter.check(10, `conv-init:${ip}`);
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429 },
+      );
+    }
+
     const body = await request.json();
     const { workshopId, token } = body as {
       workshopId: string;
