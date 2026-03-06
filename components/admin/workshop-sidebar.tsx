@@ -12,6 +12,7 @@ import {
   BarChart3,
   BookOpen,
   Compass,
+  LayoutDashboard,
   Menu,
   X,
   ChevronLeft,
@@ -51,6 +52,7 @@ function buildNavSections(domainPack?: string | null) {
       label: 'OUTPUT',
       items: [
         { label: 'Scratchpad', path: '/scratchpad', icon: BookOpen },
+        { label: 'Output', path: '/output', icon: LayoutDashboard },
       ],
     },
   ];
