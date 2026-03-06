@@ -195,6 +195,31 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       orderBy: { createdAt: 'asc' },
     });
 
+    // ── Fallback: no MANUAL dataPoints — aggregate from ConversationReport.wordCloudThemes ──
+    if (dps.length === 0) {
+      const reports = await prisma.conversationReport.findMany({
+        where: { workshopId },
+        select: { wordCloudThemes: true },
+      });
+
+      const counts = new Map<string, number>();
+      for (const report of reports) {
+        const themes = (report.wordCloudThemes as Array<{ text: string; value: number }>) || [];
+        for (const theme of themes) {
+          if (theme.text && typeof theme.value === 'number') {
+            counts.set(theme.text, (counts.get(theme.text) || 0) + theme.value);
+          }
+        }
+      }
+
+      const terms = [...counts.entries()]
+        .map(([text, count]) => ({ text, count }))
+        .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.text.localeCompare(b.text)))
+        .slice(0, 200);
+
+      return NextResponse.json({ ok: true, workshopId, terms });
+    }
+
     const counts = new Map<string, number>();
 
     for (const dp of dps) {
