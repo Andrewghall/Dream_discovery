@@ -1,0 +1,130 @@
+/**
+ * Engine 1: Discovery Validation Agent
+ *
+ * Compares pre-workshop discovery signals against live workshop findings
+ * to determine hypothesis accuracy, confirmed issues, new issues, and
+ * issues that were not supported by workshop evidence.
+ */
+
+import OpenAI from 'openai';
+import type { WorkshopSignals, DiscoveryValidation } from '../types';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const SCHEMA = `{
+  "confirmedIssues": [
+    {
+      "issue": "string — the issue identified in discovery",
+      "discoverySignal": "string — what the discovery phase surfaced",
+      "workshopEvidence": "string — how the workshop confirmed it",
+      "confidence": "high | medium | low"
+    }
+  ],
+  "newIssues": [
+    {
+      "issue": "string — new issue surfaced only in the workshop",
+      "workshopEvidence": "string — specific evidence from workshop pads or signals",
+      "significance": "string — why this matters for the organisation"
+    }
+  ],
+  "reducedIssues": [
+    {
+      "issue": "string — a discovery issue NOT well-supported by workshop",
+      "reason": "string — why the workshop evidence was weak or contradictory"
+    }
+  ],
+  "hypothesisAccuracy": 75,
+  "summary": "string — 2-3 paragraph synthesis of discovery vs workshop alignment"
+}`;
+
+function buildSignalDump(signals: WorkshopSignals): string {
+  const lines: string[] = [];
+
+  lines.push('=== DISCOVERY SIGNALS ===');
+  if (signals.discovery.themes.length > 0) {
+    lines.push(`Themes identified pre-workshop:\n${signals.discovery.themes.map((t) => `• ${t}`).join('\n')}`);
+  }
+  if (signals.discovery.tensions.length > 0) {
+    lines.push(`\nTensions surfaced:\n${signals.discovery.tensions.map((t) => `• ${t.topic} (${t.severity ?? 'unknown'}): ${t.perspectives.join(' vs ')}`).join('\n')}`);
+  }
+  if (signals.discovery.constraints.length > 0) {
+    lines.push(`\nConstraints identified:\n${signals.discovery.constraints.map((c) => `• ${c.title}${c.description ? ': ' + c.description : ''}`).join('\n')}`);
+  }
+  if (signals.discovery.alignment !== null) {
+    lines.push(`\nParticipant alignment score: ${signals.discovery.alignment}/100`);
+  }
+  if (signals.discovery.insights.length > 0) {
+    const sample = signals.discovery.insights.slice(0, 30);
+    lines.push(`\nParticipant insights (sample):\n${sample.map((i) => `• [${i.type}] ${i.text}`).join('\n')}`);
+  }
+
+  lines.push('\n=== WORKSHOP SIGNALS ===');
+  if (signals.liveSession.reimaginePads.length > 0) {
+    lines.push(`Reimagine pads:\n${signals.liveSession.reimaginePads.slice(0, 20).map((p) => `• ${p.text}`).join('\n')}`);
+  }
+  if (signals.liveSession.constraintPads.length > 0) {
+    lines.push(`\nConstraint pads:\n${signals.liveSession.constraintPads.slice(0, 20).map((p) => `• ${p.text}`).join('\n')}`);
+  }
+  if (signals.liveSession.defineApproachPads.length > 0) {
+    lines.push(`\nDefine approach pads:\n${signals.liveSession.defineApproachPads.slice(0, 20).map((p) => `• ${p.text}`).join('\n')}`);
+  }
+
+  if (signals.scratchpad.execSummary) {
+    lines.push(`\n=== SYNTHESISED EXECUTIVE SUMMARY ===\n${signals.scratchpad.execSummary}`);
+  }
+
+  return lines.join('\n');
+}
+
+export async function runDiscoveryValidationAgent(
+  signals: WorkshopSignals,
+  onProgress?: (msg: string) => void
+): Promise<DiscoveryValidation> {
+  onProgress?.('Discovery Validation: analysing hypothesis accuracy…');
+
+  const systemPrompt = `You are a senior transformation strategist generating Discovery Validation intelligence for a DREAM Workshop.
+
+Workshop Context:
+- Client: ${signals.context.clientName || 'Not specified'}
+- Industry: ${signals.context.industry || 'Not specified'}
+- Lenses: ${signals.context.lenses.join(', ')}
+- Participants: ${signals.discovery.participantCount}
+
+Rules:
+• Use ONLY the signals provided — never invent evidence
+• If evidence is weak or incomplete, state that explicitly
+• hypothesisAccuracy (0-100) reflects how well workshop findings matched discovery hypothesis
+• If no discovery signals exist, return a low hypothesisAccuracy with explanation
+• Output MUST be valid JSON matching the schema exactly — no commentary outside the JSON`;
+
+  const userMessage = `${buildSignalDump(signals)}
+
+Return JSON matching this schema exactly:
+${SCHEMA}`;
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        temperature: 0.3,
+        max_tokens: 3000,
+      });
+
+      const raw = response.choices[0]?.message?.content ?? '{}';
+      const parsed = JSON.parse(raw) as DiscoveryValidation;
+      onProgress?.('Discovery Validation: complete ✓');
+      return parsed;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+
+  throw lastError ?? new Error('Discovery Validation agent failed after 3 attempts');
+}

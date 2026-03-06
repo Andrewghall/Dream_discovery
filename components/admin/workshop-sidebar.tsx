@@ -20,6 +20,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   LogOut,
+  Brain,
 } from 'lucide-react';
 
 interface WorkshopSidebarProps {
@@ -55,6 +56,7 @@ function buildNavSections(domainPack?: string | null) {
       items: [
         { label: 'Scratchpad', path: '/scratchpad', icon: BookOpen },
         { label: 'Output', path: '/output', icon: LayoutDashboard },
+        { label: 'Intelligence', path: '/intelligence', icon: Brain },
       ],
     },
   ];

@@ -137,6 +137,9 @@ model Workshop {
   discoveryBriefing Json?                 @map("discovery_briefing")   // Discovery Intelligence Agent synthesis
   discoverAnalysis  Json?                 @map("discover_analysis")    // Organisational Analysis dashboard data
 
+  // DREAM Output Intelligence (5-stage AI pipeline output)
+  outputIntelligence  Json?                 @map("output_intelligence")  // WorkshopOutputIntelligence stored as JSON
+
   // Field Discovery / Diagnostic extension fields
   engagementType      EngagementType?       @map("engagement_type")      // Diagnostic Baseline, Operational Deep Dive, etc.
   domainPack          String?               @map("domain_pack")          // Key into domain pack registry (e.g. "contact_centre")
