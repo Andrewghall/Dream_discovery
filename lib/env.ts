@@ -18,7 +18,7 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   FROM_EMAIL: fromEmailSchema.optional(),
-  NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
+  NEXT_PUBLIC_APP_URL: z.string().url(),
   ZOOM_VIDEO_SDK_KEY: z.string().optional(),
   ZOOM_VIDEO_SDK_SECRET: z.string().optional(),
   TAVILY_API_KEY: z.string().optional(),
@@ -32,7 +32,7 @@ export const env: Env = parsed.success
   ? parsed.data
   : ({
       ...process.env,
-      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined),
     } as unknown as Env);
 
 export const envParseError = parsed.success ? null : parsed.error;

@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Send reset email
-    const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+    const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || `https://${process.env.VERCEL_URL}`}/reset-password?token=${token}`;
 
     try {
       await sendPasswordReset({

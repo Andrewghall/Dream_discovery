@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
     let emailSent = false;
     let emailError: string | null = null;
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${process.env.VERCEL_URL}`;
       const loginUrl = `${baseUrl}${role === 'PLATFORM_ADMIN' ? '/login' : '/tenant/login'}`;
       const setPasswordUrl = `${baseUrl}/reset-password?token=${resetToken}`;
       const emailResult = await sendWelcomeEmail({
