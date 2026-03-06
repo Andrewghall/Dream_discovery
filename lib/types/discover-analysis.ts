@@ -196,6 +196,15 @@ export interface ConfidenceIndexData {
 // Composite: Full Discover Analysis
 // ──────────────────────────────────────────────────────────────
 
+export interface DataQualityNote {
+  /** Where the structural data came from */
+  source: 'full_analysis' | 'interview_reports';
+  /** Number of interview reports used */
+  participantCount: number;
+  /** Human-readable caveat shown to the facilitator */
+  note: string;
+}
+
 export interface DiscoverAnalysis {
   workshopId: string;
   generatedAt: string;
@@ -210,4 +219,6 @@ export interface DiscoverAnalysis {
   constraints: ConstraintMapData;
   /** 5. Confidence Index data */
   confidence: ConfidenceIndexData;
+  /** Present when analysis was derived from interview reports rather than deep agentic analysis */
+  dataQuality?: DataQualityNote;
 }

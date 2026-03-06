@@ -98,8 +98,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         try {
           emit('progress', { step: 'starting', message: 'Starting organisational analysis...' });
 
+          // ── Check data sources available ──────────────────
+          const agenticCount = await prisma.agenticAnalysis.count({
+            where: { dataPoint: { workshopId } },
+          });
+          const reportCount = await prisma.conversationReport.count({ where: { workshopId } });
+          const usingReportFallback = agenticCount === 0 && reportCount > 0;
+
           // ── Step 1: Deterministic computations in parallel ──
-          emit('progress', { step: 'computing', message: 'Computing alignment, narrative, confidence, and constraints...' });
+          emit('progress', { step: 'computing', message: usingReportFallback
+            ? `Computing analysis from ${reportCount} interview reports...`
+            : 'Computing alignment, narrative, confidence, and constraints...' });
 
           const [alignment, narrative, constraintsBase] = await Promise.all([
             computeAlignment(workshopId),
@@ -169,6 +178,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             narrative,
             constraints: updatedConstraints,
             confidence,
+            ...(usingReportFallback && {
+              dataQuality: {
+                source: 'interview_reports' as const,
+                participantCount: reportCount,
+                note: `Analysis derived from ${reportCount} individual interview reports. Results are indicative — deeper agentic analysis (available once interview data is fully processed) will provide greater statistical confidence.`,
+              },
+            }),
           };
 
           await prisma.workshop.update({

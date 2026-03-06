@@ -98,6 +98,12 @@ export async function computeNarrative(
     },
   }) as unknown as AnalysisRow[];
 
+  // ── Fallback: ConversationReport data ───────────────────────
+  if (analyses.length === 0) {
+    const [layers, divergencePoints] = await buildNarrativeFromReports(workshopId, layerLookup, layerAssignments);
+    return { layerAssignments, layers, divergencePoints };
+  }
+
   // 4. Group analyses by layer
   const layerAnalyses: Record<NarrativeLayer, AnalysisRow[]> = {
     executive: [],
@@ -324,4 +330,141 @@ function getDominantSentiment(sentiments: string[]): string {
     if (c > max) { max = c; dominant = s; }
   }
   return dominant;
+}
+
+// ── ConversationReport fallback ──────────────────────────────
+
+async function buildNarrativeFromReports(
+  workshopId: string,
+  layerLookup: Map<string, NarrativeLayer>,
+  layerAssignments: ParticipantLayerAssignment[],
+): Promise<[NarrativeLayerData[], DivergencePoint[]]> {
+  const reports = await prisma.conversationReport.findMany({
+    where: { workshopId },
+    select: {
+      participantId: true,
+      tone: true,
+      wordCloudThemes: true,
+      executiveSummary: true,
+      keyInsights: true,
+    },
+  });
+
+  // Group reports by layer
+  const layerReports: Record<NarrativeLayer, typeof reports> = { executive: [], operational: [], frontline: [] };
+  for (const report of reports) {
+    if (!report.participantId) continue;
+    const layer = layerLookup.get(report.participantId) || 'frontline';
+    layerReports[layer].push(report);
+  }
+
+  // Build per-layer data
+  const layers: NarrativeLayerData[] = (['executive', 'operational', 'frontline'] as NarrativeLayer[]).map((layer) => {
+    const reps = layerReports[layer];
+    const termCounts = new Map<string, number>();
+    const sentimentCounts = { positive: 0, negative: 0, neutral: 0, mixed: 0 };
+    const temporalCounts = { past: 0, present: 0, future: 0 };
+    const samplePhrases: string[] = [];
+
+    for (const r of reps) {
+      const themes = (r.wordCloudThemes as Array<{ text: string; value: number }>) || [];
+      for (const t of themes) {
+        if (t.text) termCounts.set(t.text, (termCounts.get(t.text) || 0) + t.value);
+      }
+
+      const tone = (r.tone as string | null) || '';
+      const sentiment = toneToNarrativeSentiment(tone);
+      sentimentCounts[sentiment]++;
+
+      const temporal = toneToTemporal(tone);
+      temporalCounts[temporal]++;
+
+      if (samplePhrases.length < 3 && r.executiveSummary) {
+        samplePhrases.push((r.executiveSummary as string).slice(0, 150));
+      }
+    }
+
+    const sorted = [...termCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+    const maxCount = sorted[0]?.[1] || 1;
+    const topTerms: TermFrequency[] = sorted.map(([term, count]) => ({
+      term, count, normalised: Math.round((count / maxCount) * 100) / 100,
+    }));
+
+    const total = sentimentCounts.positive + sentimentCounts.negative + sentimentCounts.neutral;
+    let dominantSentiment: 'positive' | 'negative' | 'neutral' | 'mixed' = 'neutral';
+    if (total > 0) {
+      const posR = sentimentCounts.positive / total;
+      const negR = sentimentCounts.negative / total;
+      if (posR > 0.5) dominantSentiment = 'positive';
+      else if (negR > 0.5) dominantSentiment = 'negative';
+      else if (posR > 0.3 && negR > 0.3) dominantSentiment = 'mixed';
+    }
+
+    const totalT = temporalCounts.past + temporalCounts.present + temporalCounts.future || 1;
+
+    return {
+      layer,
+      participantCount: layerAssignments.filter((a) => a.layer === layer).length,
+      topTerms,
+      dominantSentiment,
+      temporalFocus: {
+        past: Math.round((temporalCounts.past / totalT) * 100) / 100,
+        present: Math.round((temporalCounts.present / totalT) * 100) / 100,
+        future: Math.round((temporalCounts.future / totalT) * 100) / 100,
+      },
+      samplePhrases,
+    };
+  });
+
+  // Build divergence points from keyInsights across layers
+  const topicLayerMap = new Map<string, Map<NarrativeLayer, string[]>>();
+  for (const report of reports) {
+    if (!report.participantId) continue;
+    const layer = layerLookup.get(report.participantId) || 'frontline';
+    const tone = (report.tone as string | null) || 'neutral';
+    const insights = (report.keyInsights as Array<{ title?: string }>) || [];
+    for (const insight of insights) {
+      const topic = insight.title?.trim();
+      if (!topic) continue;
+      if (!topicLayerMap.has(topic)) topicLayerMap.set(topic, new Map());
+      const lm = topicLayerMap.get(topic)!;
+      if (!lm.has(layer)) lm.set(layer, []);
+      lm.get(layer)!.push(tone);
+    }
+  }
+
+  const divergencePoints: DivergencePoint[] = [];
+  for (const [topic, lm] of topicLayerMap) {
+    if (lm.size < 2) continue;
+    const positions: { layer: NarrativeLayer; language: string; sentiment: string }[] = [];
+    const sentimentSet = new Set<string>();
+    for (const [layer, tones] of lm) {
+      const dominant = getDominantSentiment(tones);
+      sentimentSet.add(dominant);
+      positions.push({ layer, language: topic, sentiment: dominant });
+    }
+    if (sentimentSet.size >= 2) {
+      divergencePoints.push({ topic, layerPositions: positions });
+    }
+  }
+
+  return [
+    layers,
+    divergencePoints.sort((a, b) => b.layerPositions.length - a.layerPositions.length).slice(0, 8),
+  ];
+}
+
+function toneToNarrativeSentiment(tone: string): 'positive' | 'negative' | 'neutral' | 'mixed' {
+  const t = tone.toLowerCase();
+  if (t === 'strategic' || t === 'visionary') return 'positive';
+  if (t === 'critical') return 'negative';
+  if (t === 'constructive') return 'mixed';
+  return 'neutral';
+}
+
+function toneToTemporal(tone: string): 'past' | 'present' | 'future' {
+  const t = tone.toLowerCase();
+  if (t === 'visionary' || t === 'strategic') return 'future';
+  if (t === 'critical') return 'past';
+  return 'present';
 }

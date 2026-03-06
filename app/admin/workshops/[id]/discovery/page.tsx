@@ -3,7 +3,7 @@
 import React, { use, useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Users, BookOpen, TrendingUp, Layers, Loader2, RefreshCw, Compass, ChevronDown, ChevronUp, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, TrendingUp, Layers, Loader2, RefreshCw, Compass, ChevronDown, ChevronUp, BadgeCheck, Info } from 'lucide-react';
 import { AlignmentHeatmap } from '@/components/discover-analysis/alignment-heatmap';
 import { TensionSurface } from '@/components/discover-analysis/tension-surface';
 import { NarrativeDivergence } from '@/components/discover-analysis/narrative-divergence';
@@ -1044,6 +1044,14 @@ export default function DiscoveryPage({ params }: PageProps) {
           {/* Analysis content OR empty state */}
           {analysis ? (
             <div className="space-y-8">
+              {/* Data quality banner — shown when derived from interview reports */}
+              {analysis.dataQuality?.source === 'interview_reports' && (
+                <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <Info className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-700">{analysis.dataQuality.note}</p>
+                </div>
+              )}
+
               {/* Section 1: Alignment Heatmap */}
               <div className="rounded-xl border bg-card p-6">
                 <h3 className="text-sm font-semibold mb-1">Alignment Heatmap</h3>
