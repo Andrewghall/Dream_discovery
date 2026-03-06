@@ -136,6 +136,7 @@ model Workshop {
   customQuestions   Json?                 @map("custom_questions")     // Tailored question set (editable)
   discoveryBriefing Json?                 @map("discovery_briefing")   // Discovery Intelligence Agent synthesis
   discoverAnalysis  Json?                 @map("discover_analysis")    // Organisational Analysis dashboard data
+  discoverySummary  Json?                 @map("discovery_summary")    // Cached discovery summary (executive + lenses)
 
   // Field Discovery / Diagnostic extension fields
   engagementType      EngagementType?       @map("engagement_type")      // Diagnostic Baseline, Operational Deep Dive, etc.

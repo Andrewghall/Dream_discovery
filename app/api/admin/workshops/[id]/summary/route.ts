@@ -136,32 +136,52 @@ function fallbackSummary(workshopId: string, workshopName: string | null): Works
   };
 }
 
+// ── GET: Return cached summary (no GPT call) ─────────────────
+
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: workshopId } = await params;
     const user = await getAuthenticatedUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
-    if (!access.valid) {
-      return NextResponse.json({ error: access.error }, { status: 403 });
+    if (!access.valid) return NextResponse.json({ error: access.error }, { status: 403 });
+
+    const workshop = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: { discoverySummary: true },
+    });
+    if (!workshop) return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+
+    if (workshop.discoverySummary) {
+      return NextResponse.json({ summary: workshop.discoverySummary });
     }
+
+    return NextResponse.json({ summary: null });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch summary';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// ── POST: Generate summary via GPT and cache it ───────────────
+
+export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id: workshopId } = await params;
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
+    if (!access.valid) return NextResponse.json({ error: access.error }, { status: 403 });
+
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },
       select: { id: true, name: true, businessContext: true },
     });
-
-    if (!workshop) {
-      return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
-    }
+    if (!workshop) return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
 
     const reports = await prisma.conversationReport.findMany({
       where: { workshopId },
-      select: {
-        executiveSummary: true,
-        keyInsights: true,
-      },
+      select: { executiveSummary: true, keyInsights: true },
     });
 
     const dataPoints = await prisma.dataPoint.findMany({
@@ -173,7 +193,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     let liveSnapshotId: string | null = null;
     let liveTexts: string[] = [];
-
     try {
       const latest = await (prisma as any).liveWorkshopSnapshot.findFirst({
         where: { workshopId },
@@ -184,9 +203,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         liveSnapshotId = latest.id;
         liveTexts = extractLivePayloadStrings(latest.payload);
       }
-    } catch {
-      // ignore missing snapshots table
-    }
+    } catch { /* ignore */ }
 
     const reportSummaries = reports.map((r) => safeString(r.executiveSummary)).filter(Boolean);
     const reportInsights = reports.flatMap((r) =>
@@ -250,14 +267,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       workshopId,
       workshopName: workshop.name ?? null,
       generatedAt: new Date().toISOString(),
-      visionStatement: safeString(parsed.visionStatement) || 'Agentic synthesis unavailable (invalid model response).',
-      executiveSummary: safeString(parsed.executiveSummary) || 'Agentic synthesis unavailable (invalid model response).',
+      visionStatement: safeString(parsed.visionStatement) || 'Agentic synthesis unavailable.',
+      executiveSummary: safeString(parsed.executiveSummary) || 'Agentic synthesis unavailable.',
       lenses: {
-        People: safeString(lenses.People) || 'Agentic synthesis unavailable (invalid model response).',
-        Customer: safeString(lenses.Customer) || 'Agentic synthesis unavailable (invalid model response).',
-        Technology: safeString(lenses.Technology) || 'Agentic synthesis unavailable (invalid model response).',
-        Regulation: safeString(lenses.Regulation) || 'Agentic synthesis unavailable (invalid model response).',
-        Organisation: safeString(lenses.Organisation) || 'Agentic synthesis unavailable (invalid model response).',
+        People: safeString(lenses.People) || 'Agentic synthesis unavailable.',
+        Customer: safeString(lenses.Customer) || 'Agentic synthesis unavailable.',
+        Technology: safeString(lenses.Technology) || 'Agentic synthesis unavailable.',
+        Regulation: safeString(lenses.Regulation) || 'Agentic synthesis unavailable.',
+        Organisation: safeString(lenses.Organisation) || 'Agentic synthesis unavailable.',
       },
       sources: {
         liveSnapshotId,
@@ -265,6 +282,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         dataPointCount: dataPoints.length,
       },
     };
+
+    // Cache to DB
+    await prisma.workshop.update({
+      where: { id: workshopId },
+      data: { discoverySummary: JSON.parse(JSON.stringify(summary)) },
+    });
 
     return NextResponse.json({ summary });
   } catch (error) {

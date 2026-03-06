@@ -447,6 +447,7 @@ export default function DiscoveryPage({ params }: PageProps) {
   const [participantCount, setParticipantCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryGenerating, setSummaryGenerating] = useState(false);
 
   // ── Workshop domain pack (for conditional Field Discovery card) ──
   const [workshopDomainPack, setWorkshopDomainPack] = useState<string | null>(null);
@@ -623,13 +624,13 @@ export default function DiscoveryPage({ params }: PageProps) {
     fetchDiscoveryData();
   }, [workshopId, isRetailDemo]);
 
-  // ── Fetch summary (all workshops, retail demo fallback) ───────────────
+  // ── Fetch cached summary on load (GET = DB read only, no GPT) ───────
   useEffect(() => {
-    async function fetchSummary() {
+    async function fetchCachedSummary() {
       setSummaryLoading(true);
       try {
         const res = await fetch(
-          `/api/admin/workshops/${encodeURIComponent(workshopId)}/summary?ts=${Date.now()}`,
+          `/api/admin/workshops/${encodeURIComponent(workshopId)}/summary`,
           { cache: 'no-store' }
         );
         if (res.ok) {
@@ -640,19 +641,29 @@ export default function DiscoveryPage({ params }: PageProps) {
             return;
           }
         }
-      } catch {
-        // fall through to demo fallback
-      }
-
+      } catch { /* fall through */ }
       // Retail demo fallback
-      if (isRetailDemo) {
-        setSummary(DEMO_SUMMARY);
-      }
+      if (isRetailDemo) setSummary(DEMO_SUMMARY);
       setSummaryLoading(false);
     }
-
-    fetchSummary();
+    fetchCachedSummary();
   }, [workshopId, isRetailDemo]);
+
+  // ── Generate summary via GPT (POST = generate + cache) ───────────────
+  const generateSummary = async () => {
+    setSummaryGenerating(true);
+    try {
+      const res = await fetch(
+        `/api/admin/workshops/${encodeURIComponent(workshopId)}/summary`,
+        { method: 'POST', cache: 'no-store' }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.summary) setSummary(data.summary);
+      }
+    } catch { /* fail silently */ }
+    setSummaryGenerating(false);
+  };
 
   // ── Fetch participant reports ─────────────────────────────
   useEffect(() => {
@@ -745,15 +756,30 @@ export default function DiscoveryPage({ params }: PageProps) {
           <div className="rounded-xl border bg-card p-8 mb-6">
             <div className="flex items-center gap-3">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-              <span className="text-sm text-muted-foreground">Generating synthesis...</span>
+              <span className="text-sm text-muted-foreground">Loading summary...</span>
             </div>
           </div>
         ) : summary ? (
           <div className="mb-6">
             <div className="rounded-xl border bg-card p-8">
-              <div className="flex items-center gap-2 mb-4">
-                <BookOpen className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">What Employees Said</h2>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">What Employees Said</h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={generateSummary}
+                  disabled={summaryGenerating}
+                  className="text-xs text-muted-foreground/70 hover:text-muted-foreground"
+                >
+                  {summaryGenerating ? (
+                    <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Generating...</>
+                  ) : (
+                    <><RefreshCw className="h-3 w-3 mr-1.5" />Regenerate</>
+                  )}
+                </Button>
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground">
                 {summary.executiveSummary}
@@ -764,7 +790,21 @@ export default function DiscoveryPage({ params }: PageProps) {
               </div>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="rounded-xl border bg-card p-8 mb-6 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Discovery Summary</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Generate an AI synthesis of all participant feedback</p>
+            </div>
+            <Button size="sm" onClick={generateSummary} disabled={summaryGenerating}>
+              {summaryGenerating ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Generating...</>
+              ) : (
+                <><BookOpen className="h-3.5 w-3.5 mr-1.5" />Generate Summary</>
+              )}
+            </Button>
+          </div>
+        )}
 
         {/* Spider + Word Cloud */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
