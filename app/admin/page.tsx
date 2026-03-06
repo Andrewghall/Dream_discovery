@@ -112,11 +112,16 @@ export default function AdminDashboard() {
       })
       .then(data => {
         if (!data) return;
-        setUserRole(data.role || null);
+        const role = data.role || null;
+        setUserRole(role);
         setUserName(data.name || null);
         setOrgLogoUrl(data.orgLogoUrl || null);
         setOrgName(data.orgName || null);
         setUserEmail(data.email || null);
+        // PLATFORM_ADMIN has no access to workshop content — redirect to platform console
+        if (role === 'PLATFORM_ADMIN') {
+          router.replace('/admin/platform');
+        }
       })
       .catch(() => null);
     fetch('/api/admin/audit-logs?limit=10', { cache: 'no-store' })
