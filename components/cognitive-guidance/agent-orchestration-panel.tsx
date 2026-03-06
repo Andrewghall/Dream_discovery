@@ -12,7 +12,7 @@ export type AgentConversationEntry = {
   agent: string;
   to: string;
   message: string;
-  type: 'handoff' | 'request' | 'proposal' | 'verification' | 'verdict' | 'acknowledgement' | 'info' | 'challenge';
+  type: 'handoff' | 'request' | 'proposal' | 'verification' | 'verdict' | 'acknowledgement' | 'info' | 'challenge' | 'warning';
   metadata?: {
     beliefsCited?: number;
     toolsUsed?: string[];
@@ -25,6 +25,11 @@ export type AgentConversationEntry = {
     actorCount?: number;
     lensSource?: 'research_dimensions' | 'domain_pack' | 'generic_fallback' | 'blueprint';
     dataConfidence?: string;
+    // Clarification needed (company not verified)
+    clarificationNeeded?: boolean;
+    reason?: string;
+    whatWasFound?: string;
+    suggestedAction?: string;
   };
 };
 
@@ -77,8 +82,8 @@ function formatAgentName(agent: string): string {
 
 /** Curated mode hides internal tool queries, shows only agent-to-agent messages */
 function isCuratedEntry(entry: AgentConversationEntry): boolean {
-  // Always show handoffs, proposals, verdicts, acknowledgements, and challenges
-  if (['handoff', 'proposal', 'verdict', 'acknowledgement', 'challenge'].includes(entry.type)) return true;
+  // Always show handoffs, proposals, verdicts, acknowledgements, challenges, and warnings
+  if (['handoff', 'proposal', 'verdict', 'acknowledgement', 'challenge', 'warning'].includes(entry.type)) return true;
   // Show verification only if it contains a verdict
   if (entry.type === 'verification' && entry.metadata?.verdict) return true;
   // Show info messages that are substantive

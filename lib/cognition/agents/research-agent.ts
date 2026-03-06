@@ -18,6 +18,26 @@ import type { WorkshopPrepResearch, PrepContext, AgentConversationCallback, Agen
 import type { GuidanceState } from '../guidance-state';
 import { buildJourneyContextString } from '../journey-completion-state';
 
+// ══════════════════════════════════════════════════════════════
+// ERRORS
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Thrown when the Research Agent cannot verify the company exists.
+ * The API route catches this and emits a `clarification_needed` SSE event
+ * instead of an error — the user must supply the correct company name or URL.
+ */
+export class ResearchClarificationNeededError extends Error {
+  readonly type = 'clarification_needed' as const;
+  readonly whatWasFound: string;
+
+  constructor(reason: string, whatWasFound = '') {
+    super(reason);
+    this.name = 'ResearchClarificationNeededError';
+    this.whatWasFound = whatWasFound;
+  }
+}
+
 // ── Constants ───────────────────────────────────────────────
 
 const MAX_ITERATIONS = 12;        // Enough for thorough 4-phase research without dragging
@@ -32,6 +52,30 @@ const MIN_SEARCHES_DOMAIN_TRACK = 7;
 // ══════════════════════════════════════════════════════════════
 
 const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  // ── STEP 0 — must be called FIRST ───────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'verify_company',
+      description:
+        'MANDATORY FIRST STEP — call this BEFORE any other tool. Search for the company\'s official website to confirm it exists as a real, identifiable organisation. If you cannot find a clear, verified match for the exact company name provided, you MUST call request_clarification instead of proceeding with any research.',
+      parameters: {
+        type: 'object',
+        properties: {
+          searchQuery: {
+            type: 'string',
+            description:
+              'Search query to find the company — e.g. "Jo Air Transport Logistics official website Jordan", or use the companyWebsite if provided',
+          },
+          companyWebsite: {
+            type: 'string',
+            description: 'The company website URL if already provided — e.g. "https://www.joair.com"',
+          },
+        },
+        required: ['searchQuery'],
+      },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -179,12 +223,42 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  // ── STOP — call this when company cannot be verified ────────
+  {
+    type: 'function',
+    function: {
+      name: 'request_clarification',
+      description:
+        'Call this IMMEDIATELY when verify_company returns no confirmed match. This stops all research and asks the user to provide the correct company name or website. NEVER proceed with research on an unverified company — fabricating information about a company is strictly prohibited.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            description:
+              'Explain clearly what you searched for and why you could not confirm the company. E.g. "I searched for \'Jo Air Transport & Logistics\' but could not find any official website, Companies House registration, or verifiable public presence matching this exact company name. The search results returned information about unrelated companies (Jordan Aviation, Joby Aviation, EMO-Trans USA). Please provide the company\'s official website URL so I can research accurately."',
+          },
+          whatWasFound: {
+            type: 'string',
+            description:
+              'Briefly describe what the search DID return, so the user understands why it was rejected. E.g. "Search returned results for Jordan Aviation (an airline), Joby Aviation (a US eVTOL startup), and EMO-Trans USA — none of which match the company name provided."',
+          },
+          suggestedAction: {
+            type: 'string',
+            description:
+              'What the user should do next — e.g. "Please provide the official website URL, confirm the correct company name, or let me know if the company is not publicly listed."',
+          },
+        },
+        required: ['reason', 'whatWasFound'],
+      },
+    },
+  },
   {
     type: 'function',
     function: {
       name: 'commit_research',
       description:
-        'Commit your research findings. Call this ONLY after you have conducted thorough multi-phase research (minimum 6 searches). Each field must contain substantive, multi-paragraph content — not brief summaries. This ends your research loop.',
+        'Commit your research findings. Call this ONLY after you have (1) successfully verified the company exists via verify_company, AND (2) conducted thorough multi-phase research (minimum 6 searches). Each field must contain substantive, multi-paragraph content — not brief summaries. EVERY fact must have an inline citation [Source: title, URL]. This ends your research loop.',
       parameters: {
         type: 'object',
         properties: {
@@ -201,12 +275,12 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           keyPublicChallenges: {
             type: 'array',
             items: { type: 'string' },
-            description: '5-8 specific, detailed challenges. Each item should be a full sentence with context and evidence — not a bullet fragment. Example: "Declining law school enrollment (down 28% from peak in 2010) is putting revenue pressure on member institutions and reducing demand for LSAC services."',
+            description: '5-8 specific, detailed challenges. Each item MUST end with a citation in this exact format: [Source: Page Title, https://url]. ONLY include challenges that are supported by a specific search result you found. Do NOT invent or infer challenges without a cited source. Example: "Declining law school enrollment (down 28% from peak in 2010) is putting revenue pressure on member institutions. [Source: Law School Admissions Council Annual Report, https://lsac.org/report]"',
           },
           recentDevelopments: {
             type: 'array',
             items: { type: 'string' },
-            description: '4-6 recent developments, each with date/timeframe, description, and strategic implications. Example: "In January 2025, LSAC launched a new digital assessment platform, signalling a shift toward technology-enabled testing."',
+            description: '4-6 recent developments with dates, descriptions, and strategic implications. Each item MUST end with [Source: Page Title, https://url]. ONLY include developments you found in a specific search result. Do NOT invent or infer dates or events. Example: "In January 2025, LSAC launched a new digital assessment platform, signalling a shift toward technology-enabled testing. [Source: LSAC Press Release, https://lsac.org/press]"',
           },
           competitorLandscape: {
             type: 'string',
@@ -371,6 +445,79 @@ async function executeResearchTool(
   context: PrepContext,
 ): Promise<{ result: string; summary: string }> {
   switch (toolName) {
+    case 'verify_company': {
+      const searchQuery = String(args.searchQuery || `${context.clientName} official website`);
+      const providedWebsite = String(args.companyWebsite || context.companyWebsite || '');
+
+      if (useTavily()) {
+        try {
+          // Search specifically for the company's official website / confirmed existence
+          const query = providedWebsite
+            ? `${context.clientName} ${providedWebsite} official`
+            : `${searchQuery}`;
+          const tavily = await tavilySearch(query, { searchDepth: 'advanced', maxResults: 7 });
+          const results = tavily.results;
+
+          // Check whether any result clearly and unambiguously matches the company name
+          const companyName = (context.clientName || '').toLowerCase().trim();
+          const nameWords = companyName.split(/\s+/).filter((w) => w.length > 2);
+
+          // A result is a confirmed match if:
+          // - The provided website URL appears in the result URL, OR
+          // - The majority of the company name words appear in title+URL+snippet
+          const confirmedResults = results.filter((r) => {
+            const content = (r.title + ' ' + r.url + ' ' + r.content).toLowerCase();
+            if (providedWebsite && content.includes(providedWebsite.replace(/^https?:\/\//, '').replace(/\/$/, ''))) return true;
+            const matchCount = nameWords.filter((w) => content.includes(w)).length;
+            return matchCount >= Math.ceil(nameWords.length * 0.7);
+          });
+
+          const verified = confirmedResults.length > 0;
+          const sources = results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
+
+          const verificationSummary = verified
+            ? `✅ **Company verified**: Found ${confirmedResults.length} confirmed result(s) for "${context.clientName}".\n\nConfirmed sources:\n${confirmedResults.map((r) => `• ${r.title} — ${r.url}`).join('\n')}\n\nAll search results:\n${sources}`
+            : `🚨 **COMPANY NOT VERIFIED**: Could not find a confirmed match for "${context.clientName}".\n\nSearch query: "${query}"\nResults returned: ${results.length}\n\nWhat was found:\n${sources}\n\n⚠️ INSTRUCTION: You MUST call request_clarification now. Do NOT proceed with any other research tools. Do NOT synthesise or infer information about this company from unrelated results.`;
+
+          return {
+            result: JSON.stringify({
+              verified,
+              searchQuery: query,
+              providedWebsite,
+              confirmedCount: confirmedResults.length,
+              confirmedResults: confirmedResults.map((r) => ({ title: r.title, url: r.url })),
+              allResults: results.map((r) => ({ title: r.title, url: r.url, snippet: r.content.slice(0, 200) })),
+              instruction: verified
+                ? 'Company confirmed. Proceed with Phase 1 research using search_company_info.'
+                : 'STOP. Company not verified. You MUST call request_clarification immediately. Do not use any other search tools.',
+            }),
+            summary: verificationSummary,
+          };
+        } catch (err) {
+          console.error('[Research Agent] Tavily verify failed:', err instanceof Error ? err.message : err);
+          // If web search itself failed, we cannot verify — be honest about it
+          return {
+            result: JSON.stringify({
+              verified: false,
+              error: 'Web search unavailable',
+              instruction: 'Web search failed. Call request_clarification to inform the user.',
+            }),
+            summary: `⚠️ **Verification failed**: Web search returned an error — cannot verify "${context.clientName}". Call request_clarification.`,
+          };
+        }
+      }
+
+      // No Tavily — cannot verify
+      return {
+        result: JSON.stringify({
+          verified: false,
+          warning: 'No web search configured — cannot verify company existence via live search.',
+          instruction: 'Without web search, call request_clarification to ask the user to confirm the company details.',
+        }),
+        summary: `⚠️ **Cannot verify company**: No web search API configured. Cannot confirm "${context.clientName}" exists. Call request_clarification.`,
+      };
+    }
+
     case 'search_company_info': {
       const query = String(args.query || '');
       const focus = String(args.focus || 'overview');
@@ -715,9 +862,44 @@ ${context.desiredOutcomes ? `DESIRED OUTCOMES: ${context.desiredOutcomes}` : ''}
 ${context.workshopPurpose || context.desiredOutcomes ? '\nYour research MUST be oriented toward this purpose and these outcomes. Every section of your briefing should help the facilitator understand the context relevant to WHY this workshop is happening and WHAT it needs to produce.\n' : ''}
 SEARCH CAPABILITY: ${searchMode}
 
+═══════════════════════════════════════════
+⚠️  ABSOLUTE RULES — NEVER BREAK THESE  ⚠️
+═══════════════════════════════════════════
+
+1. VERIFY FIRST — NO EXCEPTIONS
+   Your VERY FIRST action must be to call verify_company. Do not call any other tool first.
+   If verify_company returns verified=false, you MUST call request_clarification immediately.
+   You MUST NOT proceed with any research on an unverified company under any circumstances.
+
+2. NO FABRICATION — ZERO TOLERANCE
+   You MUST NOT invent, guess, infer, or synthesise facts about the specific company.
+   If a search returns results about a different company with a similar name, those facts belong
+   to THAT company — not the client. Do NOT attribute them to the client.
+   If you cannot find information, say so — do not fill the gap with adjacent content.
+
+3. CITATIONS ARE MANDATORY ON EVERY CLAIM
+   Every factual claim about the company in companyOverview, competitorLandscape, and domainInsights
+   must include an inline citation: (Source: Page Title, https://url)
+   Every item in keyPublicChallenges and recentDevelopments must end with:
+   [Source: Page Title, https://url]
+   Industry-wide facts must be clearly labelled as industry-level, not company-specific.
+
+4. DISTINGUISH COMPANY FACTS FROM INDUSTRY FACTS
+   Clearly separate: "This company does X" (cited) vs "The industry trend is Y" (cited).
+   Never write industry-level data as if it describes the specific client.
+
+5. WHEN IN DOUBT — ASK, DO NOT GUESS
+   If you are not sure whether a search result applies to the client company, do not use it.
+   Call request_clarification if you cannot build a verified research picture.
+
 ═══ RESEARCH STRATEGY — PHASED APPROACH ═══
 
-Follow this phased research strategy. Do NOT skip phases or rush to commit.
+Follow this phased research strategy exactly. Do NOT skip phases or rush to commit.
+
+STEP 0: Company Verification (call verify_company FIRST — mandatory)
+- Call verify_company before anything else
+- If verified=false → call request_clarification immediately, do not continue
+- If verified=true → proceed to Phase 1
 
 PHASE 1: Company Foundation (3-4 searches)
 - Company history, founding story, mission, and what they actually do today
@@ -746,7 +928,7 @@ ${isDomain
 PHASE 4: Journey, Dimensions, and Actor Research (3-4 searches)
 - Customer/user lifecycle stages specific to this industry — NOT generic stages
 - Key strategic dimensions that matter for workshop analysis in this sector
-- Key roles and stakeholders: who works in this type of operation, who makes decisions, who is affected — from executive sponsors to front-line staff to external stakeholders. Be specific to the industry and domain.
+- Key roles and stakeholders: who works in this type of operation, who makes decisions, who is affected
 
 ═══ MINIMUM SEARCH REQUIREMENTS ═══
 
@@ -754,36 +936,34 @@ You MUST conduct at least ${minSearches} different searches before calling commi
 
 ═══ OUTPUT DEPTH REQUIREMENTS ═══
 
-When you call commit_research, EACH field must be SUBSTANTIVE:
+When you call commit_research, EACH field must be SUBSTANTIVE and CITED:
 
-- companyOverview: 3-4 detailed paragraphs minimum. Cover history and founding, what they do today in detail, market position and size, key products/services and business lines, recent strategic direction, leadership and organisational structure. A facilitator should be able to read this and deeply understand the company.
+- companyOverview: 3-4 detailed paragraphs minimum. Cover history and founding, what they do today in detail, market position and size, key products/services, recent strategic direction, leadership. Every specific fact must have an inline citation (Source: title, URL). ONLY include facts you verified for this exact company.
 
-- industryContext: 2-3 paragraphs minimum. Cover macro trends reshaping the industry, specific disruption forces (technology, regulation, competition, demographics), challenges facing organisations like this client, and a forward-looking 2-5 year outlook. Include specific data points and evidence — NOT "the industry is evolving".
+- industryContext: 2-3 paragraphs minimum. Cover macro trends reshaping the industry, disruption forces, challenges facing organisations like this client, and forward-looking outlook. Clearly label these as INDUSTRY-LEVEL facts, not company-specific. Include citations for all data points.
 
-- keyPublicChallenges: 5-8 specific, detailed challenges. Each challenge should be a full sentence with context and evidence — not a bullet fragment. For example: "Declining law school enrollment (down 28% from peak in 2010) is putting revenue pressure on member institutions and reducing demand for LSAC services."
+- keyPublicChallenges: 5-8 challenges. Each must be a full sentence with context and evidence, ending with [Source: title, URL]. ONLY include challenges found in verified search results. Distinguish company-specific challenges (cited to company sources) from industry-wide challenges (clearly labelled as such).
 
-- recentDevelopments: 4-6 developments with dates/timeframes, descriptions, and strategic implications. Not just "they launched X" but "In [date], they launched X, which signals Y because Z."
+- recentDevelopments: 4-6 developments with dates. Each must end with [Source: title, URL]. ONLY include developments you found in an actual search result for THIS company. Do not invent dates or events.
 
-- competitorLandscape: 2-3 paragraphs. Name specific competitors, explain how they differ in approach and positioning, what competitive advantages/disadvantages the client has, and how the competitive landscape is evolving.
+- competitorLandscape: 2-3 paragraphs. Name specific competitors, explain differentiation, competitive advantages/disadvantages. Include inline citations (Source: title, URL) for all competitor claims.
 
-${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${context.targetDomain || 'the domain'} in this industry, emerging trends and innovations, common pain points and failure modes, best practices from leading organisations, and transformation opportunities. This is the CENTREPIECE of a Domain track workshop — it must be the most thorough section.` : '- domainInsights: null for Enterprise track.'}
+${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${context.targetDomain || 'the domain'} in this industry, emerging trends, common pain points, best practices, transformation opportunities. Include citations. This is the CENTREPIECE of a Domain track workshop.` : '- domainInsights: null for Enterprise track.'}
 
 - journeyStages: 6-12 industry-specific stages with detailed descriptions (2-3 sentences each) and 3-5 specific touchpoints per stage.
 
-- industryDimensions: 4-6 dimensions with descriptive names, detailed descriptions (what it covers and why it matters), and 10-20 classification keywords each. Choose dimensions that matter for THIS industry.
+- industryDimensions: 4-6 dimensions with descriptive names, detailed descriptions, and 10-20 classification keywords each. Choose dimensions that matter for THIS industry.
 
-- actorTaxonomy: 8-15 roles covering executive sponsors, managers, front-line operational staff, and external stakeholders. Each role needs a specific title (not generic), a detailed description of what they do, a seniority level (executive/manager/operational/external), and a department. Be specific to this industry and domain — a retail contact centre has different actors than an airline contact centre or a law firm.
+- actorTaxonomy: 8-15 roles covering executive sponsors, managers, front-line operational staff, and external stakeholders. Be specific to this industry and domain.
 
 ═══ QUALITY STANDARDS ═══
 
-- Be factual. Only report what you can verify from search results.
-- Do NOT invent or speculate — if you can't find something, say so.
-- Include source URLs in your commit_research call for every finding.
+- Verify before you write. Every company-specific fact must come from a confirmed search result for this exact company.
+- Cite everything. No citation = do not include the claim.
+- Label industry vs company. Never present industry-wide trends as if they describe the specific client.
 - Prefer recent sources (2024-2026). Flag anything that might be outdated.
-- Each paragraph should contain SPECIFIC facts, numbers, or evidence — not just generalities.
 - Assign each dimension a distinct, accessible hex color for UI rendering (blues, greens, purples, oranges, teals — avoid red which is reserved for alerts).
-- Write as a colleague would brief another colleague — professional, thorough, and insightful.
-- Note confidence level for each finding and cite your sources.`;
+- Write as a colleague would brief another colleague — professional, thorough, and insightful.`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -806,14 +986,19 @@ export async function runResearchAgent(
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: `Begin your comprehensive, multi-phase research on ${context.clientName || 'the company'}. This research will brief a facilitator for a full-day strategic workshop with senior stakeholders — surface-level summaries will NOT be sufficient.
+      content: `Begin your research on ${context.clientName || 'the company'}.
 
-Follow the phased approach:
+⚠️ STEP 0 IS MANDATORY — call verify_company RIGHT NOW before anything else.
+${context.companyWebsite ? `The company website has been provided: ${context.companyWebsite} — use this in your verify_company call.` : 'No website has been provided — search for the company name to confirm it exists.'}
+
+If verify_company returns verified=false, you MUST call request_clarification immediately. Do not continue with any other research.
+
+If verify_company returns verified=true, then follow the phased approach:
 1. Phase 1: Company foundation — history, what they do, size, market position, strategic direction (3-4 searches)
 2. Phase 2: Industry and competitive landscape — macro trends, disruption forces, competitors (3-4 searches)
-${context.dreamTrack === 'DOMAIN' ? `3. Phase 3: Deep domain research — drill deep into "${context.targetDomain || 'the target domain'}" from multiple angles: current state, best practices, pain points, emerging trends, transformation opportunities (3-4 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)` : '3. Phase 3: Cross-functional challenges and digital transformation (1-2 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)'}
+${context.dreamTrack === 'DOMAIN' ? `3. Phase 3: Deep domain research — drill deep into "${context.targetDomain || 'the target domain'}" from multiple angles (3-4 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)` : '3. Phase 3: Cross-functional challenges and digital transformation (1-2 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)'}
 
-You must conduct at least ${context.dreamTrack === 'DOMAIN' ? '8' : '6'} different searches before committing. Each section of your final commit should be multiple detailed paragraphs with specific facts and evidence.`,
+Remember: every fact must be cited. Every challenge and development must end with [Source: title, URL]. Do not include any fact you cannot attribute to a real search result.`,
     },
   ];
 
@@ -878,6 +1063,31 @@ You must conduct at least ${context.dreamTrack === 'DOMAIN' ? '8' : '6'} differe
           fnArgs = JSON.parse(toolCall.function.arguments);
         } catch {
           fnArgs = {};
+        }
+
+        if (fnName === 'request_clarification') {
+          // ── Company not verified — stop and ask the user ──
+          const reason = String(fnArgs.reason || 'Company could not be verified via web search.');
+          const whatWasFound = String(fnArgs.whatWasFound || 'No relevant results found.');
+          const suggestedAction = String(fnArgs.suggestedAction || 'Please provide the official company website URL or confirm the company name.');
+
+          onConversation?.({
+            timestampMs: Date.now(),
+            agent: 'research-agent',
+            to: 'prep-orchestrator',
+            message: `⚠️ **Clarification Required — Research Cannot Proceed**\n\n**Why I stopped:** ${reason}\n\n**What the search found:** ${whatWasFound}\n\n**What to do next:** ${suggestedAction}`,
+            type: 'warning',
+            metadata: { clarificationNeeded: true, reason, whatWasFound, suggestedAction },
+          });
+
+          // Acknowledge the tool call so the message history is valid
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ status: 'acknowledged', action: 'stopping_research' }),
+          });
+
+          throw new ResearchClarificationNeededError(reason, whatWasFound);
         }
 
         if (fnName === 'commit_research') {
