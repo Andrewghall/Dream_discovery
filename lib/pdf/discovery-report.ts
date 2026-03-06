@@ -63,6 +63,36 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+// Deterministic per-word style based on text — gives consistent but varied look
+const CLOUD_PALETTE = [
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#8b5cf6', // violet
+  '#f97316', // orange
+  '#ef4444', // red
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+  '#f59e0b', // amber
+  '#ec4899', // pink
+  '#6366f1', // indigo
+  '#14b8a6', // teal
+  '#a855f7', // purple
+];
+
+function cloudWordStyle(text: string, weight: number): { color: string; rotate: number; marginTop: number; fontWeight: string } {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) + hash) ^ text.charCodeAt(i);
+    hash |= 0;
+  }
+  const h = Math.abs(hash);
+  const color = CLOUD_PALETTE[h % CLOUD_PALETTE.length];
+  const rotate = (h % 13) - 6;          // -6° to +6°
+  const marginTop = (h % 11) - 5;       // -5px to +5px
+  const fontWeight = weight > 0.6 ? '700' : weight > 0.3 ? '600' : '400';
+  return { color, rotate, marginTop, fontWeight };
+}
+
 function escapeHtml(input: string) {
   return input
     .replaceAll('&', '&amp;')
@@ -256,11 +286,9 @@ export async function generateDiscoveryReportPdf(params: {
         return themes
           .map((t) => {
             const w = (t.value - min) / span;
-            const font = 11 + w * 11;
-            const opacity = 0.55 + w * 0.35;
-            return `<span class="cloud-word" style="font-size:${font.toFixed(1)}px; opacity:${opacity.toFixed(2)}">${escapeHtml(
-              t.text
-            )}</span>`;
+            const font = 11 + w * 13;
+            const { color, rotate, marginTop, fontWeight } = cloudWordStyle(t.text, w);
+            return `<span class="cloud-word" style="font-size:${font.toFixed(1)}px; color:${color}; font-weight:${fontWeight}; transform:rotate(${rotate}deg); margin-top:${marginTop}px; display:inline-block;">${escapeHtml(t.text)}</span>`;
           })
           .join('');
       })()
@@ -338,8 +366,8 @@ export async function generateDiscoveryReportPdf(params: {
           .legend { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; font-size: 11px; color: #6b7280; }
           .legend-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
           .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
-          .cloud { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding-top: 2px; }
-          .cloud-word { display: inline-block; color: #374151; line-height: 1.15; }
+          .cloud { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 14px; padding: 6px 2px; }
+          .cloud-word { display: inline-block; line-height: 1.2; transform-origin: center center; cursor: default; }
           .phase-title { font-size: 13px; font-weight: 700; margin: 0 0 6px; }
           .scores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 12px; margin-bottom: 10px; }
           .block { margin-top: 8px; }
