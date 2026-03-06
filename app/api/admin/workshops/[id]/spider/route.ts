@@ -442,8 +442,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         };
       });
 
-    // ── Fallback: if no scored axes, build from ConversationReport.phaseInsights ──
-    if (axisStats.length === 0) {
+    // ── Fallback: if no axis has real data, build from ConversationReport.phaseInsights ──
+    if (!axisStats.some((a) => a.today.median !== null)) {
       const reports = await prisma.conversationReport.findMany({
         where: { workshopId },
         select: { phaseInsights: true },
