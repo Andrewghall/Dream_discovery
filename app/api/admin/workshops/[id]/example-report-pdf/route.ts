@@ -216,6 +216,31 @@ const LENS_CONTENT: Record<string, {
   },
 };
 
+// Maps lens display labels to the internal FIXED_QUESTIONS phase keys
+// Mirrors LENS_NAME_TO_PHASE in lib/conversation/fixed-questions.ts
+const LABEL_TO_PHASE_KEY: Record<string, string> = {
+  People: 'people',
+  Operations: 'corporate',
+  Organisation: 'corporate',
+  Corporate: 'corporate',
+  Customer: 'customer',
+  Technology: 'technology',
+  Regulation: 'regulation',
+};
+
+// Generic maturity scale used for custom lenses that have no FIXED_QUESTIONS entry
+const GENERIC_MATURITY_SCALE = [
+  'Ad hoc and inconsistent. Relies on individual effort. No clear standard or accountability.',
+  'Basic processes defined. Some consistency but depends on key people. Gaps are visible.',
+  'Standardised and repeatable. Clear accountability. Performance is tracked and improving.',
+  'Data-driven and proactive. AI-assisted where appropriate. Continuously optimised.',
+  'Intelligent and adaptive. Self-optimising. Considered industry-leading in this area.',
+];
+
+function genericMaturityQuestion(label: string): string {
+  return `When looking specifically at ${label}, rate the current maturity level in this area — where the organisation is today, where it should be, and where it will be if nothing changes.`;
+}
+
 // Generic fallback for lenses without specific content
 function genericLensContent(label: string, index: number): typeof LENS_CONTENT[string] {
   const scores = [
@@ -356,10 +381,24 @@ export async function GET(
 
     // ── Build phase insights from actual lenses ────────────────────────────
     const phaseInsights = lenses.map((lens, idx) => {
-      const key = lens.label.toLowerCase();
-      const content = LENS_CONTENT[key] ?? genericLensContent(lens.label, idx);
+      // Look up example narrative content by normalised label
+      const contentKey = lens.label.toLowerCase();
+      const content = LENS_CONTENT[contentKey] ?? genericLensContent(lens.label, idx);
+
+      // Map to the internal FIXED_QUESTIONS phase key so the maturity scale
+      // lookup in generateDiscoveryReportPdf works for standard lenses.
+      // For custom / unmapped lenses, fall back to the label itself and
+      // supply explicit override question + scale so the section always renders.
+      const phaseKey = LABEL_TO_PHASE_KEY[lens.label];
+      const isKnownPhase = !!phaseKey;
+
       return {
-        phase: lens.label, // Use label directly — phaseLabel() returns it as-is for unknowns
+        phase: isKnownPhase ? phaseKey : lens.label,
+        // For unknown lenses, always supply the colourful maturity section
+        ...(!isKnownPhase && {
+          overrideQuestion: genericMaturityQuestion(lens.label),
+          overrideMaturityScale: GENERIC_MATURITY_SCALE,
+        }),
         ...content,
       };
     });

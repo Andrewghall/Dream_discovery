@@ -20,6 +20,10 @@ type PhaseInsight = {
   currentScore: number | null;
   targetScore: number | null;
   projectedScore: number | null;
+  /** Override the triple-rating question text (used when phase key doesn't match FIXED_QUESTIONS) */
+  overrideQuestion?: string;
+  /** Override the 5-band maturity scale (used when phase key doesn't match FIXED_QUESTIONS) */
+  overrideMaturityScale?: string[];
   strengths?: string[];
   working?: string[];
   gaps?: string[];
@@ -304,13 +308,15 @@ export async function generateDiscoveryReportPdf(params: {
       </div>`;
 
       const triple = tripleRatingQuestionForPhase(p.phase);
-      const questionText = triple?.text ? `<div class="pre question">${escapeHtml(triple.text)}</div>` : '';
+      const resolvedQuestion = p.overrideQuestion ?? triple?.text;
+      const resolvedScale = p.overrideMaturityScale ?? triple?.maturityScale;
+      const questionText = resolvedQuestion ? `<div class="pre question">${escapeHtml(resolvedQuestion)}</div>` : '';
 
-      const maturityScale = Array.isArray(triple?.maturityScale) && triple!.maturityScale!.length === 5
+      const maturityScale = Array.isArray(resolvedScale) && resolvedScale.length === 5
         ? `
           <div class="maturity">
             <div class="maturity-caption muted">Maturity bands: 1–2 Reactive, 3–4 Emerging, 5–6 Defined, 7–8 Optimised, 9–10 Intelligent</div>
-            ${triple!.maturityScale!
+            ${resolvedScale
               .map((t, idx) => {
                 const band = MATURITY_BANDS[idx];
                 const bg = band?.bg || '#fff';
