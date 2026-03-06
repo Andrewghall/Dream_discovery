@@ -740,12 +740,38 @@ export default function DiscoveryPage({ params }: PageProps) {
               </p>
             </div>
           </div>
-          {participantCount > 0 && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Users className="h-4 w-4" />
-              <span>{participantCount} participants</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {participantCount > 0 && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Users className="h-4 w-4" />
+                <span>{participantCount} participants</span>
+              </div>
+            )}
+            {!summaryLoading && (
+              summary ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={generateSummary}
+                  disabled={summaryGenerating}
+                >
+                  {summaryGenerating ? (
+                    <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Generating...</>
+                  ) : (
+                    <><RefreshCw className="h-3.5 w-3.5 mr-1.5" />Regenerate</>
+                  )}
+                </Button>
+              ) : (
+                <Button size="sm" onClick={generateSummary} disabled={summaryGenerating}>
+                  {summaryGenerating ? (
+                    <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Generating...</>
+                  ) : (
+                    <><BookOpen className="h-3.5 w-3.5 mr-1.5" />Generate Summary</>
+                  )}
+                </Button>
+              )
+            )}
+          </div>
         </div>
 
         {/* GPT Inquiry Bar — ask about the analysis */}
@@ -753,58 +779,27 @@ export default function DiscoveryPage({ params }: PageProps) {
 
         {/* Executive Summary */}
         {summaryLoading ? (
-          <div className="rounded-xl border bg-card p-8 mb-6">
+          <div className="rounded-xl border bg-card p-6 mb-6">
             <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
               <span className="text-sm text-muted-foreground">Loading summary...</span>
             </div>
           </div>
         ) : summary ? (
-          <div className="mb-6">
-            <div className="rounded-xl border bg-card p-8">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">What Employees Said</h2>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={generateSummary}
-                  disabled={summaryGenerating}
-                  className="text-xs text-muted-foreground/70 hover:text-muted-foreground"
-                >
-                  {summaryGenerating ? (
-                    <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Generating...</>
-                  ) : (
-                    <><RefreshCw className="h-3 w-3 mr-1.5" />Regenerate</>
-                  )}
-                </Button>
-              </div>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {summary.executiveSummary}
-              </p>
-              <div className="flex items-center gap-4 mt-4 pt-4 border-t text-xs text-muted-foreground/60">
-                <span>{summary.sources.reportCount} interview report{summary.sources.reportCount !== 1 ? 's' : ''}</span>
-                <span>{summary.sources.dataPointCount} data points</span>
-              </div>
+          <div className="rounded-xl border bg-card p-6 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Executive Summary</h2>
+            </div>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {summary.executiveSummary}
+            </p>
+            <div className="flex items-center gap-4 mt-4 pt-3 border-t text-xs text-muted-foreground/60">
+              <span>{summary.sources.reportCount} interview report{summary.sources.reportCount !== 1 ? 's' : ''}</span>
+              <span>{summary.sources.dataPointCount} data points</span>
             </div>
           </div>
-        ) : (
-          <div className="rounded-xl border bg-card p-8 mb-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Discovery Summary</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Generate an AI synthesis of all participant feedback</p>
-            </div>
-            <Button size="sm" onClick={generateSummary} disabled={summaryGenerating}>
-              {summaryGenerating ? (
-                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Generating...</>
-              ) : (
-                <><BookOpen className="h-3.5 w-3.5 mr-1.5" />Generate Summary</>
-              )}
-            </Button>
-          </div>
-        )}
+        ) : null}
 
         {/* Spider + Word Cloud */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
