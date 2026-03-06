@@ -19,6 +19,8 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  Download,
+  FileText,
   MessageSquare,
   Pencil,
   Send,
@@ -133,6 +135,7 @@ export default function InvitePage({ params }: PageProps) {
   // Send state
   const [sending, setSending] = useState(false);
   const [clearingStatus, setClearingStatus] = useState(false);
+  const [downloadingExample, setDownloadingExample] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -299,6 +302,25 @@ export default function InvitePage({ params }: PageProps) {
     }
   };
 
+  const handleDownloadExampleReport = async () => {
+    setDownloadingExample(true);
+    try {
+      const res = await fetch(`/api/admin/workshops/${id}/example-report-pdf`);
+      if (!res.ok) throw new Error('Failed to generate example report');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'example-discovery-report.pdf';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    } catch {
+      alert('Failed to generate example report. Please try again.');
+    } finally {
+      setDownloadingExample(false);
+    }
+  };
+
   const handleClearEmailStatus = async () => {
     if (!confirm('Clear email sent status for all participants? This allows invitations to be resent.')) return;
     setClearingStatus(true);
@@ -359,6 +381,35 @@ export default function InvitePage({ params }: PageProps) {
           <p className="text-sm text-muted-foreground">
             Review the interview questions, add participants, then send invitations.
           </p>
+        </div>
+
+        {/* Example report download */}
+        <div className="mb-5 flex items-center justify-between p-4 rounded-lg border border-slate-200 bg-slate-50">
+          <div className="flex items-start gap-3">
+            <FileText className="h-5 w-5 text-slate-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-slate-800">Example Discovery Report</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Download a sample of the personalised PDF report each participant receives on completion.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-4 shrink-0 gap-2"
+            onClick={() => void handleDownloadExampleReport()}
+            disabled={downloadingExample}
+          >
+            {downloadingExample ? (
+              'Generating…'
+            ) : (
+              <>
+                <Download className="h-3.5 w-3.5" />
+                Download Example
+              </>
+            )}
+          </Button>
         </div>
 
         {/* Gate warning if no questions */}
