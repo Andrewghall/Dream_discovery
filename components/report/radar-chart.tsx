@@ -124,19 +124,23 @@ export function RadarChart({
           const stroke = chartColor(idx);
           const fillOpacity = idx === 0 ? 0.18 : idx === 1 ? 0.14 : 0.1;
           return (
-            <g key={s.name}>
-              <polygon
-                points={s.polygon}
-                fill={stroke}
-                opacity={fillOpacity}
-                stroke={stroke}
-                strokeWidth={2}
-              />
-              {s.points.map((p, i) => (
-                <circle key={i} cx={p.x} cy={p.y} r={3} fill={stroke} />
-              ))}
-            </g>
+            <polygon
+              key={s.name}
+              points={s.polygon}
+              fill={stroke}
+              opacity={fillOpacity}
+              stroke={stroke}
+              strokeWidth={2}
+            />
           );
+        })}
+
+        {[...seriesPolygons].reverse().map((s, ridx) => {
+          const idx = seriesPolygons.length - 1 - ridx;
+          const stroke = chartColor(idx);
+          return s.points.map((p, i) => (
+            <circle key={`${s.name}-${i}`} cx={p.x} cy={p.y} r={idx === 0 ? 4 : 3} fill={stroke} />
+          ));
         })}
 
         {baseData.map((d, i) => {
