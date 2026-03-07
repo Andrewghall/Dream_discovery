@@ -240,7 +240,7 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="bg-red-50 rounded-xl overflow-hidden shadow-md border-2 border-red-100">
             <div className="w-full h-48 bg-red-100 flex items-center justify-center overflow-hidden">
-              <img src="/PAMWellness/house-old.png" alt="The Old House" className="w-full h-full object-contain" />
+              <img src="/framework/house-old.png" alt="The Old House" className="w-full h-full object-contain" />
             </div>
             <div className="p-6 space-y-2">
               <h3 className="font-bold text-lg text-gray-900">The Old House</h3>
@@ -251,7 +251,7 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
           </div>
           <div className="bg-orange-50 rounded-xl overflow-hidden shadow-md border-2 border-orange-100">
             <div className="w-full h-48 bg-orange-100 flex items-center justify-center overflow-hidden">
-              <img src="/PAMWellness/house-refreshed.png" alt="The Refreshed House" className="w-full h-full object-contain" />
+              <img src="/framework/house-refreshed.png" alt="The Refreshed House" className="w-full h-full object-contain" />
             </div>
             <div className="p-6 space-y-2">
               <h3 className="font-bold text-lg text-gray-900">The Refreshed House</h3>
@@ -262,7 +262,7 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
           </div>
           <div className="bg-green-50 rounded-xl overflow-hidden shadow-md border-2 border-green-100">
             <div className="w-full h-48 bg-green-100 flex items-center justify-center overflow-hidden">
-              <img src="/PAMWellness/house-ideal.png" alt="The Ideal House" className="w-full h-full object-contain" />
+              <img src="/framework/house-ideal.png" alt="The Ideal House" className="w-full h-full object-contain" />
             </div>
             <div className="p-6 space-y-2">
               <h3 className="font-bold text-lg text-gray-900">The Ideal House</h3>

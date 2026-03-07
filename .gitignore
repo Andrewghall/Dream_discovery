@@ -44,3 +44,6 @@ next-env.d.ts
 
 # agentic eval drift snapshots
 .agentic-evals/
+
+# PAMWellness client assets — never commit to git
+public/PAMWellness/

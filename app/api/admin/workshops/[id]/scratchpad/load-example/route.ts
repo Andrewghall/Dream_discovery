@@ -24,6 +24,14 @@ export async function POST(
     const examplePath = path.join(process.cwd(), 'example-scratchpad-output.json');
     const exampleData = JSON.parse(await fs.readFile(examplePath, 'utf-8'));
 
+    // Fetch workshop name for the generic vision statement
+    const workshop = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: { name: true },
+    });
+    const workshopName = workshop?.name ?? 'this organisation';
+    const visionStatement = `Transform ${workshopName} through a connected, insight-driven operating model that empowers people and delivers measurable value to customers.`;
+
     // Check if scratchpad exists
     const existing = await prisma.workshopScratchpad.findUnique({
       where: { workshopId },
@@ -36,7 +44,7 @@ export async function POST(
         data: {
           discoveryOutput: exampleData,
           execSummary: {
-            visionStatement: 'Transform PAM Wellness into a unified digital care platform that empowers employees, delights employers, and positions the organization as a market leader in preventive wellness.',
+            visionStatement,
             strategicShifts: exampleData.strategicShifts,
           },
           reimagineContent: {
@@ -100,7 +108,7 @@ export async function POST(
           workshopId,
           discoveryOutput: exampleData,
           execSummary: {
-            visionStatement: 'Transform PAM Wellness into a unified digital care platform that empowers employees, delights employers, and positions the organization as a market leader in preventive wellness.',
+            visionStatement,
             strategicShifts: exampleData.strategicShifts,
           },
           reimagineContent: {

@@ -23,7 +23,7 @@ export function ThreeHousesFramework() {
           <CardContent className="space-y-3">
             <div className="relative w-full h-48 mb-4">
               <Image
-                src="/PAMWellness/house-old.png"
+                src="/framework/house-old.png"
                 alt="The Old House - Today's Constrained Reality"
                 fill
                 className="object-contain"
@@ -53,7 +53,7 @@ export function ThreeHousesFramework() {
           <CardContent className="space-y-3">
             <div className="relative w-full h-48 mb-4">
               <Image
-                src="/PAMWellness/house-refreshed.png"
+                src="/framework/house-refreshed.png"
                 alt="The Refreshed House - Incremental Changes"
                 fill
                 className="object-contain"
@@ -83,7 +83,7 @@ export function ThreeHousesFramework() {
           <CardContent className="space-y-3">
             <div className="relative w-full h-48 mb-4">
               <Image
-                src="/PAMWellness/house-ideal.png"
+                src="/framework/house-ideal.png"
                 alt="The Ideal House - True Reimagination"
                 fill
                 className="object-contain"

@@ -472,11 +472,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
-      // Build phase labels dynamically from this workshop's lens names
+      // Derive phase order from whatever keys are actually in the stored data (backward-compatible).
+      // Attempt to match each stored key to a blueprint lens name for a proper display label;
+      // fall back to capitalising the stored key when no match is found.
+      const phaseOrder = Object.keys(phaseTodayScores);
       const phaseLabels: Record<string, string> = Object.fromEntries(
-        lensNames.map((name) => [name.toLowerCase(), name]),
+        phaseOrder.map((phase) => {
+          const match = lensNames.find(
+            (n) =>
+              n.toLowerCase() === phase ||
+              n.toLowerCase().startsWith(phase) ||
+              phase.startsWith(n.toLowerCase()),
+          );
+          return [phase, match ?? (phase.charAt(0).toUpperCase() + phase.slice(1))];
+        }),
       );
-      const phaseOrder = lensNames.map((name) => name.toLowerCase());
 
       const fallbackAxisStats: AxisStats[] = phaseOrder
         .filter((phase) => phaseTodayScores[phase] || phaseTargetScores[phase])

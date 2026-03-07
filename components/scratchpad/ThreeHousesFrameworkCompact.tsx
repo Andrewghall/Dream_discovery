@@ -29,7 +29,7 @@ export function ThreeHousesFrameworkCompact() {
             <div className="flex gap-6">
               <div className="relative w-48 h-48 flex-shrink-0">
                 <Image
-                  src="/PAMWellness/house-old.png"
+                  src="/framework/house-old.png"
                   alt="The Old House"
                   fill
                   className="object-contain"
@@ -66,7 +66,7 @@ export function ThreeHousesFrameworkCompact() {
             <div className="flex gap-6">
               <div className="relative w-48 h-48 flex-shrink-0">
                 <Image
-                  src="/PAMWellness/house-refreshed.png"
+                  src="/framework/house-refreshed.png"
                   alt="The Refreshed House"
                   fill
                   className="object-contain"
@@ -103,7 +103,7 @@ export function ThreeHousesFrameworkCompact() {
             <div className="flex gap-6">
               <div className="relative w-48 h-48 flex-shrink-0">
                 <Image
-                  src="/PAMWellness/house-ideal.png"
+                  src="/framework/house-ideal.png"
                   alt="The Ideal House"
                   fill
                   className="object-contain"

@@ -320,9 +320,9 @@ async function generateStaticHTMLPackage(workshop: any, commercialPasswordHash: 
     Promise.all([
       fetchImageAsBase64(logoUrl),
       fetchImageAsBase64(solutionImageUrl),
-      readLocalImageAsBase64('PAMWellness/house-old.png'),
-      readLocalImageAsBase64('PAMWellness/house-refreshed.png'),
-      readLocalImageAsBase64('PAMWellness/house-ideal.png'),
+      readLocalImageAsBase64('framework/house-old.png'),
+      readLocalImageAsBase64('framework/house-refreshed.png'),
+      readLocalImageAsBase64('framework/house-ideal.png'),
     ]),
     generateSectionSummaries(
       workshop.name,
