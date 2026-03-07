@@ -1587,6 +1587,18 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   useEffect(() => { void fetchSessionVersions(); }, [fetchSessionVersions]);
 
+  // ── Auto-restore: load latest session version on first visit (no live session) ──
+  const hasAutoRestoredRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoRestoredRef.current) return;           // only once per mount
+    if (listening) return;                             // don't interrupt a live session
+    if (cogNodes.size > 0) return;                    // real-time data already present
+    if (Object.keys(hemisphereNodes).length > 0) return; // already restored
+    if (sessionVersions.length === 0) return;          // nothing to restore yet
+    hasAutoRestoredRef.current = true;
+    void restoreFromVersion(sessionVersions[0].id);
+  }, [sessionVersions]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const autoSaveVersion = useCallback(async () => {
     // Build permanent hemisphere nodes (filter out live: streaming nodes)
     const permanentNodes: Record<string, HemisphereNodeDatum> = {};
