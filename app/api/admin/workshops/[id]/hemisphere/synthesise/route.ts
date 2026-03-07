@@ -9,7 +9,7 @@
  * 3. Constraint Agent reviews risk and constraint landscape
  * 4. Research Agent provides external context (from prep)
  * 5. Guardian validates data quality and coverage
- * 6. GPT-4o synthesises comprehensive report from all agent inputs
+ * 6. Synthesis Agent generates comprehensive report from all agent inputs
  * 7. Guardian reviews output quality
  * 8. Scratchpad saved to database
  *
@@ -120,8 +120,14 @@ function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
       }
     }
 
-    // Domains
-    const domains = Array.isArray(node.agenticAnalysis?.domains) ? node.agenticAnalysis!.domains : [];
+    // Domains — prefer agenticAnalysis.domains, fall back to top-level lens field
+    const rawDomains = Array.isArray(node.agenticAnalysis?.domains) ? node.agenticAnalysis!.domains : [];
+    const domains: Array<{ domain: string; relevance: number; reasoning: string }> =
+      rawDomains.length > 0
+        ? rawDomains
+        : typeof (node as any).lens === 'string' && (node as any).lens.trim()
+          ? [{ domain: (node as any).lens.trim(), relevance: 0.8, reasoning: 'inferred from lens field' }]
+          : [];
     for (const d of domains) {
       const domain = safeStr(d.domain);
       if (!domain) continue;
@@ -502,7 +508,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // ── Pre-stream validation ───────────────────────────
   const workshop = await prisma.workshop.findUnique({
     where: { id: workshopId },
-    select: { id: true, name: true, organizationId: true, prepResearch: true, industry: true, dreamTrack: true, targetDomain: true },
+    select: { id: true, name: true, organizationId: true, prepResearch: true, industry: true, dreamTrack: true, targetDomain: true, blueprint: true },
   });
   if (!workshop) {
     return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
@@ -593,7 +599,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         emit(
           'orchestrator',
           'theme-agent',
-          `Initiating report synthesis for workshop **"${workshop.name}"**. Snapshot ${snapshot!.id.slice(0, 8)} loaded. I need all agents to analyse their respective domains before we hand off to GPT-4o for the final synthesis.`,
+          `Initiating report synthesis for workshop **"${workshop.name}"**. Snapshot ${snapshot!.id.slice(0, 8)} loaded. I need all agents to analyse their respective domains before we hand off to the Synthesis Agent for the final report.`,
           'handoff',
         );
 
@@ -699,11 +705,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         emit(
           'orchestrator',
           'guardian',
-          `All agent analyses received. Guardian — verify data quality before we proceed to GPT-4o synthesis.`,
+          `All agent analyses received. Guardian — verify data quality before we proceed to final synthesis.`,
           'request',
         );
 
-        const totalExpectedDomains = domainNames.length || 5;
+        // Use blueprint lens count as expected domain count (no hardcoded fallback)
+        const blueprintLensCount = (() => {
+          const bp = workshop.blueprint as Record<string, unknown> | null;
+          if (bp && Array.isArray(bp.lenses) && (bp.lenses as unknown[]).length > 0) return (bp.lenses as unknown[]).length;
+          return domainNames.length || 1;
+        })();
+        const totalExpectedDomains = blueprintLensCount;
         const coveragePct = ((domainNames.length / totalExpectedDomains) * 100).toFixed(0);
         const lowConfPct = aggregated.totalNodes > 0
           ? ((aggregated.lowConfidenceCount / aggregated.totalNodes) * 100).toFixed(1)
@@ -718,24 +730,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         );
 
         // ════════════════════════════════════════════════════
-        // STEP 7: GPT-4o comprehensive synthesis
+        // STEP 7: Synthesis Agent — comprehensive report generation
         // ════════════════════════════════════════════════════
         emit(
           'orchestrator',
           'facilitation-agent',
-          `Quality checks passed. Handing off to **GPT-4o** for comprehensive report synthesis. Theme Agent's analysis and Constraint Agent's assessment will be included in the synthesis prompt alongside all workshop data. Generating all 8 scratchpad tabs.`,
+          `Quality checks passed. Handing off to the **Synthesis Agent** for comprehensive report generation. Theme Agent's analysis and Constraint Agent's assessment will be included alongside all workshop data. Generating all 8 scratchpad tabs.`,
           'handoff',
         );
 
         emit(
           'facilitation-agent',
           'orchestrator',
-          `Acknowledged. Beginning GPT-4o synthesis with:\n• ${aggregated.totalNodes} data points\n• Theme Agent's thematic analysis\n• Constraint Agent's risk assessment\n${researchContext ? '• Research Agent\'s external context\n' : ''}• Guardian's quality validation\n\nGenerating: Executive Summary, Discovery, Reimagine, Constraints, Solution, Commercial, Customer Journey, Summary. Estimated time: 30-60 seconds.`,
+          `Acknowledged. Beginning synthesis with:\n• ${aggregated.totalNodes} data points\n• Theme Agent's thematic analysis\n• Constraint Agent's risk assessment\n${researchContext ? '• Research Agent\'s external context\n' : ''}• Guardian's quality validation\n\nGenerating: Executive Summary, Discovery, Reimagine, Constraints, Solution, Commercial, Customer Journey, Summary. Estimated time: 30-60 seconds.`,
           'acknowledgement',
         );
 
         const prompt = buildSynthesisPrompt(workshop.name || 'Workshop', aggregated, themeAnalysis, constraintAnalysis, researchContext);
-        console.log(`[synthesise] Prompt length: ${prompt.length} chars. Calling GPT-4o for workshop ${workshopId} (${aggregated.totalNodes} nodes)...`);
+        console.log(`[synthesise] Prompt length: ${prompt.length} chars. Running synthesis for workshop ${workshopId} (${aggregated.totalNodes} nodes)...`);
 
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o',
@@ -748,7 +760,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         const raw = completion.choices[0]?.message?.content;
         if (!raw) {
-          emit('facilitation-agent', 'orchestrator', 'GPT-4o returned an empty response. Synthesis failed.', 'challenge');
+          emit('facilitation-agent', 'orchestrator', 'Synthesis Agent returned an empty response. Synthesis failed.', 'challenge');
           sendEvent('synthesis.error', { error: 'AI returned empty response' });
           controller.close();
           return;
@@ -770,7 +782,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           synthesised = JSON.parse(raw);
         } catch {
           console.error('[synthesise] Failed to parse GPT response:', raw.slice(0, 500));
-          emit('guardian', 'orchestrator', '**REJECTED**: GPT-4o returned invalid JSON. Report cannot be saved.', 'verdict', { verdict: 'reject' });
+          emit('guardian', 'orchestrator', '**REJECTED**: Synthesis Agent returned invalid JSON. Report cannot be saved.', 'verdict', { verdict: 'reject' });
           sendEvent('synthesis.error', { error: 'AI returned invalid JSON' });
           controller.close();
           return;
@@ -917,7 +929,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         emit(
           'orchestrator',
           'orchestrator',
-          `**Report synthesis complete.**\n\n• **Theme Agent**: Identified ${aggregated.topThemes.length} themes, mapped cross-domain narrative\n• **Constraint Agent**: Assessed ${domainNames.reduce((s, d) => s + aggregated.byDomain[d].constraints.length, 0)} constraints across ${domainNames.filter(d => aggregated.byDomain[d].constraints.length > 0).length} domains\n• **Research Agent**: ${researchContext ? 'External context injected' : 'No prep research available'}\n• **Guardian**: Quality approved, metrics verified\n• **GPT-4o**: ${presentSections.length}/8 tabs synthesised (${(raw.length / 1000).toFixed(1)}KB)\n• **Database**: Scratchpad ${existing ? 'updated' : 'created'} — Status: DRAFT\n\nThe report is ready for review in the Scratchpad.`,
+          `**Report synthesis complete.**\n\n• **Theme Agent**: Identified ${aggregated.topThemes.length} themes, mapped cross-domain narrative\n• **Constraint Agent**: Assessed ${domainNames.reduce((s, d) => s + aggregated.byDomain[d].constraints.length, 0)} constraints across ${domainNames.filter(d => aggregated.byDomain[d].constraints.length > 0).length} domains\n• **Research Agent**: ${researchContext ? 'External context injected' : 'No prep research available'}\n• **Guardian**: Quality approved, metrics verified\n• **Synthesis Agent**: ${presentSections.length}/8 tabs synthesised (${(raw.length / 1000).toFixed(1)}KB)\n• **Database**: Scratchpad ${existing ? 'updated' : 'created'} — Status: DRAFT\n\nThe report is ready for review in the Scratchpad.`,
           'info',
         );
 
