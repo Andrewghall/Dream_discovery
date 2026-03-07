@@ -2451,7 +2451,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
             onClick={(e) => { if (e.target === e.currentTarget) setHemisphereExpanded(false); }}
           >
-            <div className="relative w-[90vw] max-w-4xl bg-card rounded-xl shadow-2xl border overflow-hidden">
+            <div className="relative w-[96vw] max-w-6xl bg-card rounded-xl shadow-2xl border overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/30">
                 <h2 className="text-sm font-semibold">Hemisphere — All Contributions</h2>
                 <button
@@ -2461,7 +2461,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <div className="p-4" style={{ height: '70vh' }}>
+              <div className="p-4">
                 <HemisphereNodes
                   nodes={hemisphereNodeArray}
                   originTimeMs={null}

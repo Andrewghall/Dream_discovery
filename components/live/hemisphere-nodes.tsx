@@ -137,6 +137,37 @@ function buildDomainAngles(lensNames: string[]): Record<string, number> {
   return angles;
 }
 
+/**
+ * Fuzzy domain → angle lookup:
+ * 1. Exact match (case-insensitive)
+ * 2. One is a prefix of the other (e.g. "Customer" ↔ "Customer Experience")
+ * 3. Best word-overlap match (e.g. "Operations" ↔ "Operations & Oversight")
+ */
+function findAngleForDomain(domain: string, domainAngles: Record<string, number>): number | undefined {
+  const lower = domain.toLowerCase().trim();
+  // 1. Exact case-insensitive
+  for (const [key, angle] of Object.entries(domainAngles)) {
+    if (key.toLowerCase() === lower) return angle;
+  }
+  // 2. Prefix (either direction)
+  for (const [key, angle] of Object.entries(domainAngles)) {
+    const kl = key.toLowerCase();
+    if (kl.startsWith(lower) || lower.startsWith(kl)) return angle;
+  }
+  // 3. Word overlap (ignore short words / stop words)
+  const skip = new Set(['&', 'and', 'the', 'of', 'in', 'for']);
+  const domWords = new Set(lower.split(/[\s&+]+/).filter(w => w.length > 2 && !skip.has(w)));
+  let bestScore = 0;
+  let bestAngle: number | undefined;
+  for (const [key, angle] of Object.entries(domainAngles)) {
+    const kWords = key.toLowerCase().split(/[\s&+]+/).filter(w => w.length > 2 && !skip.has(w));
+    let hits = 0;
+    for (const w of kWords) if (domWords.has(w)) hits++;
+    if (hits > bestScore) { bestScore = hits; bestAngle = angle; }
+  }
+  return bestScore > 0 ? bestAngle : undefined;
+}
+
 export const HemisphereNodes = memo(function HemisphereNodes(props: {
   nodes: HemisphereNodeDatum[];
   originTimeMs: number | null;
@@ -181,8 +212,8 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   };
 
   const positioned = useMemo<PositionedNode[]>(() => {
-    const W = 1000;
-    const H = 520;
+    const W = 1200;
+    const H = 530;
     const pad = 32;
     const cx = W / 2;
     const cy = H - pad;
@@ -220,7 +251,8 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         let bestAngle: number | null = null;
         let bestRelevance = -1;
         for (const d of allDomains) {
-          const angle = domainAngles[d.domain];
+          // Use fuzzy matching — handles "Customer" vs "Customer Experience", etc.
+          const angle = findAngleForDomain(d.domain, domainAngles);
           if (angle != null && d.relevance > bestRelevance) {
             bestAngle = angle;
             bestRelevance = d.relevance;
@@ -362,8 +394,8 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   }, [positioned, themeAttractors]);
 
   const backdrop = useMemo(() => {
-    const W = 1000;
-    const H = 520;
+    const W = 1200;
+    const H = 530;
     const pad = 32;
     const cx = W / 2;
     const cy = H - pad;
@@ -388,7 +420,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
 
   return (
     <div ref={containerRef} className={className} style={{ position: 'relative' }}>
-      <svg viewBox={`0 0 ${backdrop.W} ${backdrop.H}`} className="w-full h-full">
+      <svg viewBox={`0 0 ${backdrop.W} ${backdrop.H}`} className="w-full" style={{ display: 'block' }}>
         <defs>
           <style>{`
             @keyframes hemispherePulse {
@@ -426,23 +458,35 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
             Later
           </text>
 
-          {/* Domain zone labels — positioned along the arc */}
+          {/* Domain zone labels — positioned along the arc with smart anchoring */}
           {Object.entries(buildDomainAngles(activeLenses)).map(([name, theta]) => {
-            const r = backdrop.R * 1.04;
-            const x = backdrop.cx + r * Math.cos(theta);
-            const y = backdrop.cy - r * Math.sin(theta);
-            const shortLabel = name.length > 12 ? name.slice(0, 11) + '\u2026' : name;
+            // Place label just outside the arc edge
+            const labelR = backdrop.R * 1.06;
+            const x = backdrop.cx + labelR * Math.cos(theta);
+            const y = backdrop.cy - labelR * Math.sin(theta);
+            // Smart text anchor: left third → start, right third → end, center → middle
+            const anchor: 'start' | 'middle' | 'end' =
+              theta > (2 * Math.PI) / 3 ? 'start' : theta < Math.PI / 3 ? 'end' : 'middle';
+            // Split name on " & " or " and " for two-line labels
+            const parts = name.split(/\s*[&]\s*/);
             return (
               <text
                 key={`domain-${name}`}
                 x={x}
                 y={y}
                 fontSize={11}
-                fill="rgba(99,102,241,0.7)"
-                textAnchor="middle"
+                fill="rgba(99,102,241,0.8)"
+                textAnchor={anchor}
                 fontWeight={600}
               >
-                {shortLabel}
+                {parts.length > 1 ? (
+                  <>
+                    <tspan x={x} dy={0}>{parts[0]} &amp;</tspan>
+                    <tspan x={x} dy={14}>{parts[1]}</tspan>
+                  </>
+                ) : (
+                  name
+                )}
               </text>
             );
           })}
