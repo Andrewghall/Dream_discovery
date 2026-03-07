@@ -120,26 +120,26 @@ export function RadarChart({
           );
         })}
 
+        {/* Pass 1: fills only, forward order (Today under Target under Projected) */}
         {seriesPolygons.map((s, idx) => {
-          const stroke = chartColor(idx);
-          const fillOpacity = idx === 0 ? 0.18 : idx === 1 ? 0.14 : 0.1;
-          return (
-            <polygon
-              key={s.name}
-              points={s.polygon}
-              fill={stroke}
-              opacity={fillOpacity}
-              stroke={stroke}
-              strokeWidth={2}
-            />
-          );
+          const fill = chartColor(idx);
+          const fo = idx === 0 ? 0.18 : idx === 1 ? 0.14 : 0.08;
+          return <polygon key={`fill-${s.name}`} points={s.polygon} fill={fill} fillOpacity={fo} stroke="none" />;
         })}
 
+        {/* Pass 2: strokes only, reverse order (Today stroke on top) */}
         {[...seriesPolygons].reverse().map((s, ridx) => {
           const idx = seriesPolygons.length - 1 - ridx;
           const stroke = chartColor(idx);
+          const so = idx === 0 ? 0.9 : idx === 1 ? 0.85 : 0.65;
+          return <polygon key={`stroke-${s.name}`} points={s.polygon} fill="none" stroke={stroke} strokeWidth={2} strokeOpacity={so} />;
+        })}
+
+        {/* Pass 3: dots, forward order (Projected on top of Today when values overlap) */}
+        {seriesPolygons.map((s, idx) => {
+          const fill = chartColor(idx);
           return s.points.map((p, i) => (
-            <circle key={`${s.name}-${i}`} cx={p.x} cy={p.y} r={idx === 0 ? 4 : 3} fill={stroke} />
+            <circle key={`dot-${s.name}-${i}`} cx={p.x} cy={p.y} r={idx === 0 ? 4 : 3} fill={fill} />
           ));
         })}
 
