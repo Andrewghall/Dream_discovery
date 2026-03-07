@@ -141,6 +141,15 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
             } else if (eventType === 'engine.error') {
               const engine = data.engine as EngineKey;
               setEngineStatuses((prev) => ({ ...prev, [engine]: 'error' }));
+              // Surface the actual error message so we can diagnose
+              const errDetail = String(data.error ?? '');
+              if (errDetail) setStatusMessage(`Engine error (${engine}): ${errDetail}`);
+            } else if (eventType === 'partial.errors') {
+              const errs = data.errors as Record<string, string> | undefined;
+              if (errs) {
+                const msgs = Object.entries(errs).map(([k, v]) => `${k}: ${v}`).join(' | ');
+                setStatusMessage(`Partial errors — ${msgs}`);
+              }
             } else if (eventType === 'complete') {
               const incoming = data as {
                 intelligence: WorkshopOutputIntelligence;
@@ -156,12 +165,13 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
               };
               setStored(newStored);
               setStatusMessage('Intelligence generated ✓');
-              setEngineStatuses({
-                discoveryValidation: 'complete',
-                rootCause: 'complete',
-                futureState: 'complete',
-                roadmap: 'complete',
-                strategicImpact: 'complete',
+              // Only promote 'running' engines to 'complete' — leave 'error' statuses as-is
+              setEngineStatuses((prev) => {
+                const next = { ...prev };
+                for (const k of Object.keys(next) as EngineKey[]) {
+                  if (next[k] === 'running' || next[k] === 'idle') next[k] = 'complete';
+                }
+                return next;
               });
             } else if (eventType === 'error') {
               setStatusMessage(`Error: ${String(data.message ?? 'Unknown error')}`);

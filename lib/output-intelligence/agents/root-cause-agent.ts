@@ -7,9 +7,10 @@
  */
 
 import OpenAI from 'openai';
+import { env } from '@/lib/env';
 import type { WorkshopSignals, RootCauseIntelligence } from '../types';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
 
 const SCHEMA = `{
   "rootCauses": [
@@ -128,6 +129,8 @@ Rules:
 
 Return JSON matching this schema exactly:
 ${SCHEMA}`;
+
+  if (!openai) throw new Error('OPENAI_API_KEY is not configured');
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
