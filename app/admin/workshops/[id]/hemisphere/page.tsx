@@ -1011,20 +1011,12 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       // Handle result
       if (synthesisResult && synthesisResult.ok) {
         setHasScratchpad(true);
-        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
+        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/output`, '_blank');
       } else if (synthesisResult?.error) {
-        if (hasScratchpad) {
-          window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
-        } else {
-          alert(synthesisResult.error);
-        }
+        alert(`Synthesis failed: ${synthesisResult.error}`);
       }
     } catch (e) {
-      if (hasScratchpad) {
-        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
-      } else {
-        alert('Failed to generate report');
-      }
+      alert('Failed to generate report. Check the console for details.');
     } finally {
       setGenerating(false);
     }

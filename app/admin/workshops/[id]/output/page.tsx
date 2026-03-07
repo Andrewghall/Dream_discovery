@@ -36,6 +36,7 @@ import {
   Cpu,
   DollarSign,
   Building2,
+  RefreshCw,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1020,6 +1021,7 @@ export default function OutputDashboardPage({ params }: PageProps) {
   // Scratchpad
   const [scratchpad, setScratchpad] = useState<ScratchpadData>({});
   const [journeyData, setJourneyData] = useState<LiveJourneyData | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Hemisphere snapshots
   const [snapshots, setSnapshots] = useState<PhaseSnapshot[]>([]);
@@ -1044,30 +1046,41 @@ export default function OutputDashboardPage({ params }: PageProps) {
     void fetchWorkshop();
   }, [workshopId]);
 
-  useEffect(() => {
-    const fetchScratchpad = async () => {
-      try {
-        const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`);
-        const json = await r.json().catch(() => null);
-        if (json?.scratchpad) {
-          const sp = json.scratchpad;
-          setScratchpad({
-            execSummary: sp.execSummary || null,
-            discoveryOutput: sp.discoveryOutput || null,
-            reimagineContent: sp.reimagineContent || null,
-            constraintsContent: sp.constraintsContent || null,
-            potentialSolution: sp.potentialSolution || null,
-            summaryContent: sp.summaryContent || null,
-            customerJourney: sp.customerJourney || null,
-          });
-          if (sp.customerJourney?.journeyData) {
-            setJourneyData(sp.customerJourney.journeyData);
-          }
+  const fetchScratchpad = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setIsRefreshing(true);
+    try {
+      const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`);
+      const json = await r.json().catch(() => null);
+      if (json?.scratchpad) {
+        const sp = json.scratchpad;
+        setScratchpad({
+          execSummary: sp.execSummary || null,
+          discoveryOutput: sp.discoveryOutput || null,
+          reimagineContent: sp.reimagineContent || null,
+          constraintsContent: sp.constraintsContent || null,
+          potentialSolution: sp.potentialSolution || null,
+          summaryContent: sp.summaryContent || null,
+          customerJourney: sp.customerJourney || null,
+        });
+        if (sp.customerJourney?.journeyData) {
+          setJourneyData(sp.customerJourney.journeyData);
         }
-      } catch (e) { console.warn('[Output] Scratchpad fetch failed:', e); }
-    };
-    void fetchScratchpad();
+      }
+    } catch (e) { console.warn('[Output] Scratchpad fetch failed:', e); }
+    finally { setIsRefreshing(false); }
   }, [workshopId]);
+
+  // Initial load
+  useEffect(() => { void fetchScratchpad(); }, [fetchScratchpad]);
+
+  // Auto-refresh when tab becomes visible (e.g. after running synthesis in Hemisphere tab)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void fetchScratchpad();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchScratchpad]);
 
   useEffect(() => {
     const fetchSnapshots = async () => {
@@ -1091,6 +1104,16 @@ export default function OutputDashboardPage({ params }: PageProps) {
             <h1 className="text-lg font-semibold text-slate-900">Output</h1>
             <p className="text-xs text-slate-500 mt-0.5">Synthesised workshop output</p>
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => fetchScratchpad(true)}
+            disabled={isRefreshing}
+            className="gap-1.5 text-xs text-slate-500 border-slate-200"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </div>
 
         {/* ── Top-nav tab bar ───────────────────────────────────────────── */}
