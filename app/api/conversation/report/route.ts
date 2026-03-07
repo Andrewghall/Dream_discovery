@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { sendDiscoveryReportEmail } from '@/lib/email/send-report';
 import { fixedQuestionsForVersion, FixedQuestion, buildQuestionsFromDiscoverySet } from '@/lib/conversation/fixed-questions';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { getDimensionNames } from '@/lib/cognition/workshop-dimensions';
 import { createHash } from 'crypto';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 
@@ -802,25 +804,74 @@ export async function GET(request: NextRequest) {
     }
 
     const includeRegulation = session.includeRegulation ?? session.workshop?.includeRegulation ?? true;
-    const phases = includeRegulation
-      ? ['people', 'corporate', 'customer', 'technology', 'regulation']
-      : ['people', 'corporate', 'customer', 'technology'];
 
-    const phaseInsights = phases.map((phase) => ({
-      phase,
-      currentScore: currentByPhase[phase] ?? null,
-      targetScore: targetByPhase[phase] ?? null,
-      projectedScore: projectedByPhase[phase] ?? null,
-      strengths: strengthsByPhase[phase] || [],
-      working: workingByPhase[phase] || [],
-      gaps: gapsByPhase[phase] || [],
-      painPoints: painPointsByPhase[phase] || [],
-      frictions: frictionsByPhase[phase] || [],
-      barriers: barriersByPhase[phase] || [],
-      constraint: constraintByPhase[phase] || [],
-      future: futureTextByPhase[phase] || [],
-      support: supportByPhase[phase] || [],
-    }));
+    // ── Derive phase labels from workshop blueprint lenses ───────────────────────
+    // phaseInsights must use the workshop's actual lens names (e.g. "Customer Experience",
+    // "People & Workforce") rather than hardcoded internal keys ("customer", "people").
+    // For each lens name we fuzzy-match the best key in the collected conversation data,
+    // so old session data (keyed by "customer", "organisation", etc.) is correctly mapped.
+    const workshopForReport = session.workshop as any;
+    const reportBlueprint = readBlueprintFromJson(workshopForReport?.blueprint);
+    const reportLensNames: string[] = reportBlueprint?.lenses?.length
+      ? reportBlueprint.lenses.map((l: { name: string }) => l.name)
+      : getDimensionNames(workshopForReport?.prepResearch);
+
+    // All conversation data keys actually present (e.g. "people", "corporate", "customer", ...)
+    const collectedPhaseKeys = Object.keys(currentByPhase);
+
+    // Known legacy phase key aliases: old internal keys that don't fuzzy-match lens names
+    // e.g. 'corporate' was the old key for Operations/Organisation questions
+    const LEGACY_PHASE_ALIASES: Record<string, string[]> = {
+      corporate: ['operations', 'organis', 'organiz'],
+    };
+
+    // Helper: find the best-matching collected key for a given lens display name.
+    // Handles both new sessions (m.phase = blueprint lens name) and old sessions
+    // (m.phase = legacy internal key like 'people', 'corporate', 'customer').
+    function findDataKey(lensName: string): string | null {
+      const ll = lensName.toLowerCase();
+      // 1. Exact match (covers new sessions where m.phase IS the lens name)
+      let match = collectedPhaseKeys.find((k) => k.toLowerCase() === ll);
+      if (match) return match;
+      // 2. Prefix / substring match (e.g. "Customer Experience" ↔ "customer")
+      match = collectedPhaseKeys.find((k) => {
+        const kl = k.toLowerCase();
+        return ll.startsWith(kl) || kl.startsWith(ll) || ll.includes(kl) || kl.includes(ll);
+      });
+      if (match) return match;
+      // 3. First-word match (e.g. "People & Workforce" first word "people" → key "people")
+      const firstWord = ll.split(/[\s&]/)[0];
+      match = collectedPhaseKeys.find((k) => {
+        const kl = k.toLowerCase();
+        return kl.startsWith(firstWord) || firstWord.startsWith(kl);
+      });
+      if (match) return match;
+      // 4. Legacy alias check (e.g. "Operations" lens → old "corporate" key)
+      match = collectedPhaseKeys.find((k) => {
+        const aliases = LEGACY_PHASE_ALIASES[k.toLowerCase()];
+        return aliases ? aliases.some((alias) => ll.startsWith(alias) || alias.startsWith(firstWord)) : false;
+      });
+      return match ?? null;
+    }
+
+    const phaseInsights = reportLensNames.map((lensName) => {
+      const key = findDataKey(lensName);
+      return {
+        phase: lensName,
+        currentScore: key ? (currentByPhase[key] ?? null) : null,
+        targetScore: key ? (targetByPhase[key] ?? null) : null,
+        projectedScore: key ? (projectedByPhase[key] ?? null) : null,
+        strengths: key ? (strengthsByPhase[key] || []) : [],
+        working: key ? (workingByPhase[key] || []) : [],
+        gaps: key ? (gapsByPhase[key] || []) : [],
+        painPoints: key ? (painPointsByPhase[key] || []) : [],
+        frictions: key ? (frictionsByPhase[key] || []) : [],
+        barriers: key ? (barriersByPhase[key] || []) : [],
+        constraint: key ? (constraintByPhase[key] || []) : [],
+        future: key ? (futureTextByPhase[key] || []) : [],
+        support: key ? (supportByPhase[key] || []) : [],
+      };
+    });
 
     const prioritization: {
       biggestConstraint?: string;
