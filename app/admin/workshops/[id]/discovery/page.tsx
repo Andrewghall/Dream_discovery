@@ -41,13 +41,7 @@ type WorkshopSummary = {
   generatedAt: string;
   visionStatement: string;
   executiveSummary: string;
-  lenses: {
-    People: string;
-    Customer: string;
-    Technology: string;
-    Regulation: string;
-    Organisation: string;
-  };
+  lenses: Record<string, string>;
   sources: {
     liveSnapshotId?: string | null;
     reportCount: number;
@@ -94,6 +88,17 @@ const DEMO_SPIDER_DATA: SpiderAxisStat[] = [
   { axisId: 'customer',     label: 'Customer',      today: { median: 4.8 }, target: { median: 9.0 }, projected: { median: 4.0 } },
   { axisId: 'technology',   label: 'Technology',    today: { median: 3.5 }, target: { median: 8.5 }, projected: { median: 3.0 } },
   { axisId: 'regulation',   label: 'Regulation',    today: { median: 6.2 }, target: { median: 8.0 }, projected: { median: 5.8 } },
+];
+
+// Rotating palette for dynamic lens badges — works for any number of lenses
+const LENS_PALETTE = [
+  'bg-violet-100 text-violet-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-blue-100 text-blue-700',
+  'bg-red-100 text-red-700',
+  'bg-amber-100 text-amber-700',
+  'bg-pink-100 text-pink-700',
+  'bg-cyan-100 text-cyan-700',
 ];
 
 const DEMO_WORD_CLOUD: WordCloudItem[] = [
@@ -870,16 +875,10 @@ export default function DiscoveryPage({ params }: PageProps) {
           <div className="space-y-4">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Domain Perspectives</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {Object.entries(summary.lenses).map(([lens, text]) => (
+              {Object.entries(summary.lenses).map(([lens, text], i) => (
                 <div key={lens} className="rounded-xl border bg-card p-5">
                   <div className="flex items-center gap-2 mb-3">
-                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold ${
-                      lens === 'People' ? 'bg-violet-100 text-violet-700' :
-                      lens === 'Customer' ? 'bg-emerald-100 text-emerald-700' :
-                      lens === 'Technology' ? 'bg-blue-100 text-blue-700' :
-                      lens === 'Regulation' ? 'bg-red-100 text-red-700' :
-                      'bg-amber-100 text-amber-700'
-                    }`}>
+                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold ${LENS_PALETTE[i % LENS_PALETTE.length]}`}>
                       {lens.charAt(0)}
                     </span>
                     <h3 className="text-sm font-semibold">{lens}</h3>

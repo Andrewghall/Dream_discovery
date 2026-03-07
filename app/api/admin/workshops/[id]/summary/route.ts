@@ -3,14 +3,8 @@ import OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
-
-type SummaryLens = {
-  People: string;
-  Customer: string;
-  Technology: string;
-  Regulation: string;
-  Organisation: string;
-};
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { getDimensionNames } from '@/lib/cognition/workshop-dimensions';
 
 type WorkshopSummary = {
   workshopId: string;
@@ -18,7 +12,7 @@ type WorkshopSummary = {
   generatedAt: string;
   visionStatement: string;
   executiveSummary: string;
-  lenses: SummaryLens;
+  lenses: Record<string, string>;
   sources: {
     liveSnapshotId?: string | null;
     reportCount: number;
@@ -115,16 +109,10 @@ function buildSummaryText(params: {
   return parts.join('\n\n').trim();
 }
 
-function fallbackSummary(workshopId: string, workshopName: string | null): WorkshopSummary {
+function fallbackSummary(workshopId: string, workshopName: string | null, lensNames: string[]): WorkshopSummary {
   const vision = 'Agentic vision unavailable. Enable OPENAI_API_KEY to generate a full vision narrative.';
   const exec = 'Agentic executive summary unavailable. Enable OPENAI_API_KEY to generate a summary.';
-  const lenses: SummaryLens = {
-    People: vision,
-    Customer: vision,
-    Technology: vision,
-    Regulation: vision,
-    Organisation: vision,
-  };
+  const lenses: Record<string, string> = Object.fromEntries(lensNames.map(n => [n, vision]));
   return {
     workshopId,
     workshopName,
@@ -175,9 +163,15 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
 
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },
-      select: { id: true, name: true, businessContext: true },
+      select: { id: true, name: true, businessContext: true, prepResearch: true, blueprint: true },
     });
     if (!workshop) return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+
+    // Derive lens names from blueprint → research → default dimensions
+    const blueprint = readBlueprintFromJson((workshop as any).blueprint);
+    const lensNames: string[] = blueprint?.lenses?.length
+      ? blueprint.lenses.map((l) => l.name)
+      : getDimensionNames((workshop as any).prepResearch as Parameters<typeof getDimensionNames>[0]);
 
     const reports = await prisma.conversationReport.findMany({
       where: { workshopId },
@@ -227,22 +221,40 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     });
 
     if (!process.env.OPENAI_API_KEY) {
-      const fallback = fallbackSummary(workshopId, workshop.name);
+      const fallback = fallbackSummary(workshopId, workshop.name, lensNames);
       fallback.sources.reportCount = reports.length;
       fallback.sources.dataPointCount = dataPoints.length;
       fallback.sources.liveSnapshotId = liveSnapshotId;
       return NextResponse.json({ summary: fallback });
     }
 
+    const lensSchemaLines = lensNames.map((n) => `    "${n}": string`).join(',\n');
+    const systemPrompt = [
+      'You are a discovery analyst synthesising verbatim feedback from employees and stakeholders who completed an AI-guided discovery interview. Your job is to faithfully reflect what participants actually said — their real challenges, frustrations, pain points, and aspirations. This is NOT a corporate vision or future-state narrative. It is a 360-degree organisational health view grounded entirely in what the people who work here told you.',
+      '',
+      'Rules:',
+      '- Ground every sentence in the source material. Never invent, project, or aspirationalise beyond what participants said.',
+      '- Write in clear, direct language that reflects the voices of front-line staff, managers, and leadership equally — not board-level corporate language.',
+      '- The "visionStatement" field should be a 2-3 sentence synthesis of the dominant challenges and opportunities participants raised, framed as what the organisation most needs to address — not a future aspiration.',
+      '- The "executiveSummary" field should summarise the key patterns, tensions and themes across all participant responses — what people consistently said, where views diverge, and what the data suggests about organisational health.',
+      `- Each lens (${lensNames.join(', ')}) should summarise what participants said about that domain — specific pain points, systemic issues, and where things are working.`,
+      '- Never use phrases like "we envision", "we will achieve", "our organisation will" or any aspirational future-tense framing. Write in the present tense about what participants reported.',
+      '',
+      'Return ONLY valid JSON with this schema:',
+      '{',
+      '  "visionStatement": string,',
+      '  "executiveSummary": string,',
+      '  "lenses": {',
+      lensSchemaLines,
+      '  }',
+      '}',
+    ].join('\n');
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.2,
       messages: [
-        {
-          role: 'system',
-          content:
-            'You are a discovery analyst synthesising verbatim feedback from employees and stakeholders who completed an AI-guided discovery interview. Your job is to faithfully reflect what participants actually said — their real challenges, frustrations, pain points, and aspirations. This is NOT a corporate vision or future-state narrative. It is a 360-degree organisational health view grounded entirely in what the people who work here told you.\n\nRules:\n- Ground every sentence in the source material. Never invent, project, or aspirationalise beyond what participants said.\n- Write in clear, direct language that reflects the voices of front-line staff, managers, and leadership equally — not board-level corporate language.\n- The "visionStatement" field should be a 2-3 sentence synthesis of the dominant challenges and opportunities participants raised, framed as what the organisation most needs to address — not a future aspiration.\n- The "executiveSummary" field should summarise the key patterns, tensions and themes across all participant responses — what people consistently said, where views diverge, and what the data suggests about organisational health.\n- Each lens (People, Customer, Technology, Regulation, Organisation) should summarise what participants said about that domain — specific pain points, systemic issues, and where things are working.\n- Never use phrases like "we envision", "we will achieve", "our organisation will" or any aspirational future-tense framing. Write in the present tense about what participants reported.\n\nReturn ONLY valid JSON with this schema:\n{\n  "visionStatement": string,\n  "executiveSummary": string,\n  "lenses": {\n    "People": string,\n    "Customer": string,\n    "Technology": string,\n    "Regulation": string,\n    "Organisation": string\n  }\n}',
-        },
+        { role: 'system', content: systemPrompt },
         {
           role: 'user',
           content: `Discovery interview source material (${reportSummaries.length} participant reports, ${dataPointTexts.length} data points):\n\n${notes}`,
@@ -259,9 +271,14 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       parsed = {};
     }
 
-    const lenses = parsed.lenses && typeof parsed.lenses === 'object'
+    const rawLenses = parsed.lenses && typeof parsed.lenses === 'object'
       ? (parsed.lenses as Record<string, unknown>)
       : {};
+
+    // Build lenses dynamically from the workshop-derived lens names
+    const resolvedLenses: Record<string, string> = Object.fromEntries(
+      lensNames.map((name) => [name, safeString(rawLenses[name]) || 'Agentic synthesis unavailable.']),
+    );
 
     const summary: WorkshopSummary = {
       workshopId,
@@ -269,13 +286,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       generatedAt: new Date().toISOString(),
       visionStatement: safeString(parsed.visionStatement) || 'Agentic synthesis unavailable.',
       executiveSummary: safeString(parsed.executiveSummary) || 'Agentic synthesis unavailable.',
-      lenses: {
-        People: safeString(lenses.People) || 'Agentic synthesis unavailable.',
-        Customer: safeString(lenses.Customer) || 'Agentic synthesis unavailable.',
-        Technology: safeString(lenses.Technology) || 'Agentic synthesis unavailable.',
-        Regulation: safeString(lenses.Regulation) || 'Agentic synthesis unavailable.',
-        Organisation: safeString(lenses.Organisation) || 'Agentic synthesis unavailable.',
-      },
+      lenses: resolvedLenses,
       sources: {
         liveSnapshotId,
         reportCount: reports.length,
