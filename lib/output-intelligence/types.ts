@@ -186,6 +186,7 @@ export interface StoredOutputIntelligence {
   lensesUsed: string[];
   signalsHash: string;
   intelligence: WorkshopOutputIntelligence;
+  errors?: Partial<Record<EngineKey, string>>;
 }
 
 // ── SSE Event Types ───────────────────────────────────────────────────────────

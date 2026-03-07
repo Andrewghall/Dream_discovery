@@ -120,6 +120,7 @@ export async function POST(
           lensesUsed: intelligence.lensesUsed,
           signalsHash,
           intelligence,
+          errors: Object.keys(errors).length > 0 ? errors : undefined,
         };
 
         await prisma.workshop.update({

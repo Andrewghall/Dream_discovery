@@ -80,6 +80,9 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
     roadmap: 'idle',
     strategicImpact: 'idle',
   });
+  const [engineErrors, setEngineErrors] = useState<Partial<Record<EngineKey, string>>>(
+    initialStored?.errors ?? {}
+  );
 
   const intelligence: WorkshopOutputIntelligence | null = stored?.intelligence ?? null;
 
@@ -93,6 +96,7 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
       roadmap: 'idle',
       strategicImpact: 'idle',
     });
+    setEngineErrors({});
 
     try {
       const response = await fetch(`/api/admin/workshops/${workshopId}/output-intelligence`, {
@@ -141,15 +145,11 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
             } else if (eventType === 'engine.error') {
               const engine = data.engine as EngineKey;
               setEngineStatuses((prev) => ({ ...prev, [engine]: 'error' }));
-              // Surface the actual error message so we can diagnose
               const errDetail = String(data.error ?? '');
-              if (errDetail) setStatusMessage(`Engine error (${engine}): ${errDetail}`);
+              if (errDetail) setEngineErrors((prev) => ({ ...prev, [engine]: errDetail }));
             } else if (eventType === 'partial.errors') {
               const errs = data.errors as Record<string, string> | undefined;
-              if (errs) {
-                const msgs = Object.entries(errs).map(([k, v]) => `${k}: ${v}`).join(' | ');
-                setStatusMessage(`Partial errors — ${msgs}`);
-              }
+              if (errs) setEngineErrors((prev) => ({ ...prev, ...errs }));
             } else if (eventType === 'complete') {
               const incoming = data as {
                 intelligence: WorkshopOutputIntelligence;
@@ -343,6 +343,12 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
               )}
               {intelligence && tab.key === 'strategicImpact' && (
                 <StrategicImpactPanel data={intelligence.strategicImpact} />
+              )}
+              {engineErrors[tab.key] && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-xs font-semibold text-amber-700 mb-1">Engine failed — showing fallback data</p>
+                  <p className="text-xs text-amber-600 font-mono break-all">{engineErrors[tab.key]}</p>
+                </div>
               )}
             </EngineShell>
           );
