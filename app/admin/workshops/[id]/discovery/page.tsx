@@ -747,13 +747,15 @@ export default function DiscoveryPage({ params }: PageProps) {
     };
     const projectedSeries = {
       name: 'Projected (do nothing)',
-      data: spiderData.map((a) => ({ label: fmt(a), value: a.projected?.median ?? a.today.median ?? 0 })),
+      // Never fall back to today value — null projected means no projection exists, shown as 0 (centre).
+      data: spiderData.map((a) => ({ label: fmt(a), value: a.projected?.median ?? 0 })),
     };
 
-    // Only include a series if it has at least one non-zero score
+    // Only include a series if it has at least one non-zero score sourced from real data.
     const series = [todaySeries];
     if (targetSeries.data.some((d) => d.value > 0)) series.push(targetSeries);
-    if (projectedSeries.data.some((d) => d.value > 0)) series.push(projectedSeries);
+    // Projected is only shown when actual projectedScore data exists (not a today fallback).
+    if (spiderData.some((a) => a.projected?.median != null && a.projected.median > 0)) series.push(projectedSeries);
 
     return series.length > 1 ? series : undefined;
   }, [spiderData]);

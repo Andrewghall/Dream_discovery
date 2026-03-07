@@ -507,16 +507,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       const phaseTodayScores: Record<string, Array<number | null>> = {};
       const phaseTargetScores: Record<string, Array<number | null>> = {};
+      const phaseProjectedScores: Record<string, Array<number | null>> = {};
 
       for (const report of reports) {
-        const insights = (report.phaseInsights as Array<{ phase?: string; currentScore?: number | null; targetScore?: number | null }>) || [];
+        const insights = (report.phaseInsights as Array<{ phase?: string; currentScore?: number | null; targetScore?: number | null; projectedScore?: number | null }>) || [];
         for (const insight of insights) {
           const phase = (insight.phase || '').toLowerCase();
           if (!phase) continue;
           if (!phaseTodayScores[phase]) phaseTodayScores[phase] = [];
           if (!phaseTargetScores[phase]) phaseTargetScores[phase] = [];
+          if (!phaseProjectedScores[phase]) phaseProjectedScores[phase] = [];
           phaseTodayScores[phase].push(typeof insight.currentScore === 'number' ? insight.currentScore : null);
           phaseTargetScores[phase].push(typeof insight.targetScore === 'number' ? insight.targetScore : null);
+          phaseProjectedScores[phase].push(typeof insight.projectedScore === 'number' ? insight.projectedScore : null);
         }
       }
 
@@ -554,7 +557,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           questionIndex: idx,
           today: stats(matchKey ? phaseTodayScores[matchKey] : []),
           target: stats(matchKey ? phaseTargetScores[matchKey] : []),
-          projected: { median: null, min: null, max: null, n: 0 },
+          projected: stats(matchKey ? phaseProjectedScores[matchKey] : []),
         };
       });
 

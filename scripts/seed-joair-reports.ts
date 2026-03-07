@@ -29,6 +29,7 @@ interface ReportData {
     phase: string;
     currentScore: number | null;
     targetScore: number | null;
+    projectedScore?: number | null;
     strengths: string[];
     gaps: string[];
     painPoints: string[];
@@ -1859,11 +1860,12 @@ type PhaseInsightRow = ReportData['phaseInsights'][number];
 function missingLensInsights(name: string): PhaseInsightRow[] {
   const tier = getLensTier(name);
 
-  const scores: Record<string, Record<'exec' | 'senior' | 'manager' | 'agent', { c: number; t: number }>> = {
-    operations: { exec: { c: 3, t: 8 }, senior: { c: 3, t: 7 }, manager: { c: 2, t: 7 }, agent: { c: 2, t: 7 } },
-    training:   { exec: { c: 3, t: 8 }, senior: { c: 3, t: 7 }, manager: { c: 2, t: 7 }, agent: { c: 2, t: 7 } },
-    regulation: { exec: { c: 5, t: 7 }, senior: { c: 4, t: 7 }, manager: { c: 4, t: 7 }, agent: { c: 3, t: 6 } },
-    culture:    { exec: { c: 3, t: 8 }, senior: { c: 3, t: 8 }, manager: { c: 3, t: 8 }, agent: { c: 4, t: 9 } },
+  // c = currentScore, t = targetScore, p = projectedScore (do nothing — decay from current)
+  const scores: Record<string, Record<'exec' | 'senior' | 'manager' | 'agent', { c: number; t: number; p: number }>> = {
+    operations: { exec: { c: 3, t: 8, p: 2 }, senior: { c: 3, t: 7, p: 2 }, manager: { c: 2, t: 7, p: 1 }, agent: { c: 2, t: 7, p: 1 } },
+    training:   { exec: { c: 3, t: 8, p: 2 }, senior: { c: 3, t: 7, p: 2 }, manager: { c: 2, t: 7, p: 1 }, agent: { c: 2, t: 7, p: 1 } },
+    regulation: { exec: { c: 5, t: 7, p: 4 }, senior: { c: 4, t: 7, p: 3 }, manager: { c: 4, t: 7, p: 3 }, agent: { c: 3, t: 6, p: 2 } },
+    culture:    { exec: { c: 3, t: 8, p: 2 }, senior: { c: 3, t: 8, p: 2 }, manager: { c: 3, t: 8, p: 2 }, agent: { c: 4, t: 9, p: 3 } },
   };
 
   return [
@@ -1871,6 +1873,7 @@ function missingLensInsights(name: string): PhaseInsightRow[] {
       phase: 'Operations',
       currentScore: scores.operations[tier].c,
       targetScore:  scores.operations[tier].t,
+      projectedScore: scores.operations[tier].p,
       strengths: tier === 'exec' ? ['Board commitment to operational transformation'] : ['Team resilience under pressure'],
       gaps: ['Routing matched to contact type and disruption volume', 'Real-time capacity model'],
       painPoints: ['Queue instability is the daily operational reality', 'Disruption handling overwhelms standard processes'],
@@ -1885,6 +1888,7 @@ function missingLensInsights(name: string): PhaseInsightRow[] {
       phase: 'Training & Capability',
       currentScore: scores.training[tier].c,
       targetScore:  scores.training[tier].t,
+      projectedScore: scores.training[tier].p,
       strengths: ['Agent willingness to develop', 'Clear improvement aspiration from leadership'],
       gaps: ['Coaching framework linked to empathy KPIs', 'Recovery skills training at scale'],
       painPoints: ['Six-week onboarding leaves agents unprepared for disruption', 'Coaching deficits at team leader level'],
@@ -1899,6 +1903,7 @@ function missingLensInsights(name: string): PhaseInsightRow[] {
       phase: 'Regulation & Compliance',
       currentScore: scores.regulation[tier].c,
       targetScore:  scores.regulation[tier].t,
+      projectedScore: scores.regulation[tier].p,
       strengths: tier === 'exec' ? ['Board-level regulatory awareness'] : ['Awareness of core compliance obligations'],
       gaps: ['Cargo regulatory compliance training for agents', 'Consistent awareness across all sites'],
       painPoints: tier === 'agent' ? ['Compliance requirements cited as reason for script rigidity'] : ['Regulatory training not integrated into agent empowerment model'],
@@ -1913,6 +1918,7 @@ function missingLensInsights(name: string): PhaseInsightRow[] {
       phase: 'Culture',
       currentScore: scores.culture[tier].c,
       targetScore:  scores.culture[tier].t,
+      projectedScore: scores.culture[tier].p,
       strengths: tier === 'agent' ? ['Genuine care for customers despite system constraints'] : ['Premium cabin team as proof of concept for empathy culture'],
       gaps: ['Empathy-first culture across all agent tiers', 'Metrics aligned to cultural values'],
       painPoints: ['KPI culture drives efficiency over care', 'Script rigidity suppresses agent empathy'],
@@ -1966,6 +1972,16 @@ async function main() {
       continue;
     }
 
+    // For original phaseInsights that predate the projectedScore field, compute a
+    // honest "do nothing" projection: 1 point below current (min 1), or null if no current.
+    const enrichedInsights = reportData.phaseInsights.map((pi) => ({
+      ...pi,
+      projectedScore: pi.projectedScore !== undefined
+        ? pi.projectedScore
+        : (pi.currentScore != null ? Math.max(1, pi.currentScore - 1) : null),
+    }));
+    const fullPhaseInsights = [...enrichedInsights, ...missingLensInsights(participant.name || '')];
+
     await prisma.conversationReport.upsert({
       where: { sessionId: session.id },
       create: {
@@ -1976,7 +1992,7 @@ async function main() {
         feedback: reportData.feedback,
         tone: reportData.tone,
         keyInsights: reportData.keyInsights,
-        phaseInsights: [...reportData.phaseInsights, ...missingLensInsights(participant.name || '')],
+        phaseInsights: fullPhaseInsights,
         wordCloudThemes: reportData.wordCloudThemes,
         inputQuality: {
           score: 75,
@@ -1993,7 +2009,7 @@ async function main() {
         feedback: reportData.feedback,
         tone: reportData.tone,
         keyInsights: reportData.keyInsights,
-        phaseInsights: [...reportData.phaseInsights, ...missingLensInsights(participant.name || '')],
+        phaseInsights: fullPhaseInsights,
         wordCloudThemes: reportData.wordCloudThemes,
         modelVersion: 'assessment-v1',
       },
