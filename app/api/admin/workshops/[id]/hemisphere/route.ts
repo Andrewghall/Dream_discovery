@@ -375,7 +375,14 @@ export async function GET(
         const mappedType = mapLivePrimaryTypeToNodeType(primaryType);
 
         const customDimNames = industryDimensions?.map(d => d.name) || null;
-        const phaseTags = phaseTagsFromDomains(agenticAnalysis?.domains, customDimNames);
+        let phaseTags = phaseTagsFromDomains(agenticAnalysis?.domains, customDimNames);
+
+        // Fallback: if no tags resolved from domains, use the top-level `lens` field
+        // (set by seed scripts and signal-generated nodes)
+        if (phaseTags.length === 0 && typeof datum.lens === 'string' && datum.lens.trim()) {
+          const lensTag = datum.lens.trim().toLowerCase().replace(/\s+/g, '_');
+          phaseTags = [lensTag];
+        }
 
         const confidence = (agenticAnalysis && typeof agenticAnalysis.overallConfidence === 'number')
           ? clamp01(agenticAnalysis.overallConfidence)
@@ -412,6 +419,26 @@ export async function GET(
       }
 
       let allNodes: HemisphereNode[] = [...nodesById.values()].sort((a, b) => b.weight - a.weight);
+
+      // If blueprint lenses are absent, infer industryDimensions from node phaseTags + datum.lens fields
+      if (!industryDimensions) {
+        const lensTagsSeen = new Map<string, string>(); // tag → original name
+        for (const [, datum] of Object.entries(liveNodes)) {
+          if (datum && typeof datum.lens === 'string' && datum.lens.trim()) {
+            const name = datum.lens.trim();
+            const tag = name.toLowerCase().replace(/\s+/g, '_');
+            if (!lensTagsSeen.has(tag)) lensTagsSeen.set(tag, name);
+          }
+        }
+        if (lensTagsSeen.size > 0) {
+          industryDimensions = Array.from(lensTagsSeen.values()).map(name => ({
+            name,
+            color: '#94a3b8',
+            description: '',
+            keywords: [],
+          }));
+        }
+      }
 
       // Compute edges using Jaccard similarity (same logic as session-based flow)
       const nodesForSimilarity = allNodes.slice(0, 140);
