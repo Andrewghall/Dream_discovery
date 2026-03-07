@@ -1069,9 +1069,9 @@ export default function OutputDashboardPage({ params }: PageProps) {
   useEffect(() => {
     const fetchSnapshots = async () => {
       try {
-        const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?listSnapshots=true`);
+        const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/live/snapshots`);
         const json = await r.json().catch(() => null);
-        if (json?.snapshots) setSnapshots(json.snapshots);
+        if (json?.ok && Array.isArray(json.snapshots)) setSnapshots(json.snapshots);
       } catch (e) { console.warn('[Output] Snapshots fetch failed:', e); }
     };
     void fetchSnapshots();
