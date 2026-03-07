@@ -124,8 +124,8 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
 
   const da = safeJson<DiscoverAnalysis>(workshop.discoverAnalysis);
 
-  const tensions = da?.tensions ?? [];
-  const constraints = da?.constraints ?? [];
+  const tensions = Array.isArray(da?.tensions) ? da.tensions : [];
+  const constraints = Array.isArray(da?.constraints) ? da.constraints : [];
   const alignment = da?.alignment?.score ?? null;
   const narrativeDivergence = da?.narrativeDivergence ?? null;
 
