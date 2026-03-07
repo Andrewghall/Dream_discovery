@@ -180,11 +180,16 @@ export function ConstraintMap({ data, showImpactScore, lensColors }: ConstraintM
         const pos = positions.get(hoveredId);
         if (!constraint || !pos) return null;
 
+        // Clamp tooltip so it never overflows the left edge (tooltip max-w-xs = 320px)
+        const TOOLTIP_W = 320;
+        const rawLeft = pos.x + pos.width / 2;
+        // If centering would push us left of the container, pin to left edge + small gap
+        const safeLeft = rawLeft - TOOLTIP_W / 2 < 8 ? TOOLTIP_W / 2 + 8 : rawLeft;
         return (
           <div
             className="absolute z-50 bg-white border border-slate-200 rounded-lg shadow-lg p-3 max-w-xs pointer-events-none"
             style={{
-              left: pos.x + pos.width / 2,
+              left: safeLeft,
               top: pos.y - 10,
               transform: 'translate(-50%, -100%)',
             }}

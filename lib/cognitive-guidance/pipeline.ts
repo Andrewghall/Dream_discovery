@@ -573,10 +573,11 @@ export function applyLensMapping(
 /**
  * Calculate lens coverage from all nodes.
  */
-export function calculateLensCoverage(nodes: CogNode[]): Map<Lens, LensCoverage> {
+export function calculateLensCoverage(nodes: CogNode[], effectiveLenses?: string[]): Map<Lens, LensCoverage> {
   const coverage = new Map<Lens, LensCoverage>();
+  const lensesToCheck = effectiveLenses?.length ? effectiveLenses : ALL_LENSES;
 
-  for (const lens of ALL_LENSES) {
+  for (const lens of lensesToCheck) {
     const lensNodes = nodes.filter(n => n.lenses.some(l => l.lens === lens));
     const typeBreakdown: Partial<Record<CogNodeType, number>> = {};
     let totalConf = 0;
@@ -644,7 +645,9 @@ export function detectSignals(
   nodes: CogNode[],
   contradictions: Array<{ id: string; beliefA: string; beliefB: string; resolved: boolean }>,
   nowMs: number,
+  effectiveLenses?: string[],
 ): Signal[] {
+  const lensesToCheck = effectiveLenses?.length ? effectiveLenses : ALL_LENSES;
   const signals: Signal[] = [];
   const totalNodes = nodes.length;
   if (totalNodes < 3) return signals;
@@ -674,7 +677,7 @@ export function detectSignals(
 
   // --- Missing dimension: lens with 0 nodes after ≥10 total ---
   if (totalNodes >= 10) {
-    for (const lens of ALL_LENSES) {
+    for (const lens of lensesToCheck) {
       const lensNodes = nodes.filter(n => n.lenses.some(l => l.lens === lens));
       if (lensNodes.length === 0) {
         signals.push({
@@ -704,7 +707,7 @@ export function detectSignals(
   }
 
   // --- High-frequency constraints per lens ---
-  for (const lens of ALL_LENSES) {
+  for (const lens of lensesToCheck) {
     const constraintNodes = nodes.filter(
       n => (n.nodeType === 'CONSTRAINT' || n.nodeType === 'FRICTION') &&
         n.lenses.some(l => l.lens === lens)
@@ -752,7 +755,7 @@ export function detectSignals(
   }
 
   // --- Weak enabler coverage per lens ---
-  for (const lens of ALL_LENSES) {
+  for (const lens of lensesToCheck) {
     const lensConstraints = nodes.filter(
       n => (n.nodeType === 'CONSTRAINT' || n.nodeType === 'FRICTION') &&
         n.lenses.some(l => l.lens === lens)

@@ -1100,11 +1100,11 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     const nodesArr = nodes;
 
     // Stage 3: Gap & Signal Detection
-    const detectedSignals = detectSignals(nodesArr, contradictionsRef.current, nowMs);
+    const detectedSignals = detectSignals(nodesArr, contradictionsRef.current, nowMs, blueprintLensNamesRef.current.length ? blueprintLensNamesRef.current : undefined);
     setSignals(detectedSignals);
 
     // Stage 3 also: Lens Coverage
-    const coverage = calculateLensCoverage(nodesArr);
+    const coverage = calculateLensCoverage(nodesArr, blueprintLensNamesRef.current.length ? blueprintLensNamesRef.current : undefined);
     setLensCoverage(coverage);
 
     // Stage 4: Sticky Pad Generation (phase-aware) — only for signal-generated pads
