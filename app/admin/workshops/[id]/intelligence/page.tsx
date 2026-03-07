@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
-import { WorkshopSidebar } from '@/components/admin/workshop-sidebar';
 import { IntelligenceHub } from '@/components/output-intelligence/IntelligenceHub';
 import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
 
@@ -35,18 +34,11 @@ export default async function IntelligencePage({ params }: Props) {
     : null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <WorkshopSidebar
+    <div className="h-full overflow-hidden bg-background">
+      <IntelligenceHub
         workshopId={workshopId}
-        workshopName={workshop.name}
-        domainPack={workshop.domainPack}
+        initialStored={stored}
       />
-      <main className="flex-1 overflow-hidden">
-        <IntelligenceHub
-          workshopId={workshopId}
-          initialStored={stored}
-        />
-      </main>
     </div>
   );
 }
