@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { generateLiveWorkshopReportPdf } from '@/lib/pdf/live-workshop-report';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { getDimensionNames } from '@/lib/cognition/workshop-dimensions';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -19,13 +21,7 @@ type LiveReportPayload = {
   visionStatement: string;
   executiveSummary: string;
   narrative: string;
-  domainLenses: {
-    People: string;
-    Customer: string;
-    Technology: string;
-    Regulation: string;
-    Organisation: string;
-  };
+  domainLenses: Record<string, string>;
   constraints: string;
   opportunities: string;
   approach: string;
@@ -143,12 +139,15 @@ function buildPrompt(params: {
   notes: string;
   themes: string[];
   pressure: string[];
+  lensNames: string[];
 }) {
   const phaseFocus = params.phase === 'REIMAGINE'
     ? 'Anchor the narrative in the future-state vision created in the live session.'
     : params.phase === 'CONSTRAINTS'
       ? 'Emphasize constraints, risks, blockers, and structural limits uncovered in the live session.'
       : 'Emphasize the proposed operating approach, enablers, and methods surfaced in the live session.';
+
+  const lensSchemaLines = params.lensNames.map((n) => `    "${n}": string`).join(',\n');
 
   return `You are writing a long-form, agentic workshop report for a live facilitation session. The report must be detailed, executive-grade, and 2+ A4 pages (aim for 1200-1800 words). ${phaseFocus}
 
@@ -158,11 +157,7 @@ Return ONLY valid JSON with this schema:
   "executiveSummary": string,
   "narrative": string,
   "domainLenses": {
-    "People": string,
-    "Customer": string,
-    "Technology": string,
-    "Regulation": string,
-    "Organisation": string
+${lensSchemaLines}
   },
   "constraints": string,
   "opportunities": string,
@@ -219,8 +214,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },
-      select: { name: true },
+      select: { name: true, blueprint: true, prepResearch: true },
     });
+
+    // Derive lens names from blueprint → research → default dimensions
+    const blueprint = readBlueprintFromJson(workshop?.blueprint ?? null);
+    const lensNames: string[] = blueprint?.lenses?.length
+      ? blueprint.lenses.map((l) => l.name)
+      : getDimensionNames((workshop as any)?.prepResearch as Parameters<typeof getDimensionNames>[0]);
 
     const snapshot = await (prisma as any).liveWorkshopSnapshot.findFirst({
       where: { workshopId, dialoguePhase: phaseParam },
@@ -319,13 +320,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           ? `Key insights from the workshop:\n\n${synthesis.crossDomainInsights.slice(0, 3).map((i: any) => `• ${i.insight || ''}`).join('\n\n')}`
           : 'Executive summary not available from synthesis.',
         narrative: `This workshop explored themes across ${Object.keys(byDomain).length} key domains, revealing ${aspirations.length} aspirations, ${constraints.length} constraints, and ${opportunities.length} opportunities.`,
-        domainLenses: {
-          People: extractDomainLens(byDomain, 'People'),
-          Customer: extractDomainLens(byDomain, 'Customer'),
-          Technology: extractDomainLens(byDomain, 'Technology'),
-          Regulation: extractDomainLens(byDomain, 'Regulation'),
-          Organisation: extractDomainLens(byDomain, 'Operations'), // Map Operations to Organisation
-        },
+        domainLenses: Object.fromEntries(
+          lensNames.map((name) => [name, extractDomainLens(byDomain, name)]),
+        ),
         constraints: constraints.length > 0
           ? constraints.map((c, i) => `${i + 1}. ${c}`).join('\n\n')
           : 'No constraints identified in synthesis.',
@@ -353,6 +350,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               notes,
               themes: extracted.themes,
               pressure: extracted.pressure,
+              lensNames,
             }),
           },
         ],
@@ -367,7 +365,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    const domainLenses = parsed.domainLenses && typeof parsed.domainLenses === 'object'
+    const rawDomainLenses = parsed.domainLenses && typeof parsed.domainLenses === 'object'
       ? (parsed.domainLenses as Record<string, unknown>)
       : {};
 
@@ -378,13 +376,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       visionStatement: safeString(parsed.visionStatement) || 'Agentic synthesis unavailable (invalid model response).',
       executiveSummary: safeString(parsed.executiveSummary) || 'Agentic synthesis unavailable (invalid model response).',
       narrative: safeString(parsed.narrative) || 'Agentic synthesis unavailable (invalid model response).',
-      domainLenses: {
-        People: safeString(domainLenses.People) || 'Agentic synthesis unavailable (invalid model response).',
-        Customer: safeString(domainLenses.Customer) || 'Agentic synthesis unavailable (invalid model response).',
-        Technology: safeString(domainLenses.Technology) || 'Agentic synthesis unavailable (invalid model response).',
-        Regulation: safeString(domainLenses.Regulation) || 'Agentic synthesis unavailable (invalid model response).',
-        Organisation: safeString(domainLenses.Organisation) || 'Agentic synthesis unavailable (invalid model response).',
-      },
+      domainLenses: Object.fromEntries(
+        lensNames.map((name) => [
+          name,
+          safeString(rawDomainLenses[name]) || 'Agentic synthesis unavailable (invalid model response).',
+        ]),
+      ),
       constraints: safeString(parsed.constraints),
       opportunities: safeString(parsed.opportunities),
       approach: safeString(parsed.approach),

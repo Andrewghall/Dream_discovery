@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { fixedQuestionsForVersion, getPhaseOrder } from '@/lib/conversation/fixed-questions';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { getDimensionNames } from '@/lib/cognition/workshop-dimensions';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -214,6 +216,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const includeRegulation = workshop.includeRegulation ?? true;
     const phases = getPhaseOrder(includeRegulation).filter((p) => p !== 'summary');
+
+    // Derive lens names from blueprint → research → default dimensions
+    const blueprint = readBlueprintFromJson(workshop.blueprint);
+    const lensNames: string[] = blueprint?.lenses?.length
+      ? blueprint.lenses.map((l) => l.name)
+      : getDimensionNames((workshop as any).prepResearch as Parameters<typeof getDimensionNames>[0]);
 
     const sessionsAll = await prisma.conversationSession.findMany({
       where: {
@@ -464,15 +472,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
-      const phaseLabels: Record<string, string> = {
-        people: 'People',
-        customer: 'Customer',
-        technology: 'Technology',
-        organisation: 'Organisation',
-        regulation: 'Regulation',
-      };
-
-      const phaseOrder = ['people', 'customer', 'technology', 'organisation', 'regulation'];
+      // Build phase labels dynamically from this workshop's lens names
+      const phaseLabels: Record<string, string> = Object.fromEntries(
+        lensNames.map((name) => [name.toLowerCase(), name]),
+      );
+      const phaseOrder = lensNames.map((name) => name.toLowerCase());
 
       const fallbackAxisStats: AxisStats[] = phaseOrder
         .filter((phase) => phaseTodayScores[phase] || phaseTargetScores[phase])

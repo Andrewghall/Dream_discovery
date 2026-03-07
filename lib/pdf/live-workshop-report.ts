@@ -4,14 +4,6 @@ import puppeteerCore from 'puppeteer-core';
 // @ts-ignore - puppeteer may not be installed in production
 import puppeteerFull from 'puppeteer';
 
-type DomainLens = {
-  People: string;
-  Customer: string;
-  Technology: string;
-  Regulation: string;
-  Organisation: string;
-};
-
 type LiveWorkshopReport = {
   title: string;
   subtitle: string;
@@ -19,7 +11,7 @@ type LiveWorkshopReport = {
   visionStatement: string;
   executiveSummary: string;
   narrative: string;
-  domainLenses: DomainLens;
+  domainLenses: Record<string, string>;
   constraints: string;
   opportunities: string;
   approach: string;
@@ -97,11 +89,7 @@ export async function generateLiveWorkshopReportPdf(params: LiveWorkshopReport):
           <div class="section">
             <div class="section-title">Domain Lenses</div>
             <div class="lens-grid">
-              ${lensBlock('People', params.domainLenses.People)}
-              ${lensBlock('Customer', params.domainLenses.Customer)}
-              ${lensBlock('Technology', params.domainLenses.Technology)}
-              ${lensBlock('Regulation', params.domainLenses.Regulation)}
-              ${lensBlock('Organisation', params.domainLenses.Organisation)}
+              ${Object.entries(params.domainLenses).map(([name, body]) => lensBlock(name, body)).join('')}
             </div>
           </div>
 
