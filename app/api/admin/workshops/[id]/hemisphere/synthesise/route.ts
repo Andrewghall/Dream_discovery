@@ -608,6 +608,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         // ════════════════════════════════════════════════════
         const aggregated = aggregateNodes(rawNodes as Record<string, SnapshotNode>);
 
+        // If no actors found in node agenticAnalysis, fall back to liveJourney.actors
+        // (seeded workshops store actors centrally at the snapshot root, not per-node)
+        if (aggregated.topActors.length === 0 && payload && typeof payload === 'object') {
+          const lj = (payload as Record<string, unknown>).liveJourney;
+          if (lj && typeof lj === 'object' && !Array.isArray(lj)) {
+            const ljActors = (lj as Record<string, unknown>).actors;
+            if (Array.isArray(ljActors)) {
+              const merged = (ljActors as Array<Record<string, unknown>>)
+                .filter((a) => typeof a.name === 'string' && a.name)
+                .map((a) => ({
+                  name: String(a.name),
+                  role: typeof a.role === 'string' ? a.role : '',
+                  mentions: typeof a.mentionCount === 'number' ? a.mentionCount : 1,
+                  interactions: [] as Array<{ withActor: string; action: string; sentiment: string; context: string }>,
+                }))
+                .sort((a, b) => b.mentions - a.mentions)
+                .slice(0, 20);
+              aggregated.topActors.push(...merged);
+            }
+          }
+        }
+
         if (aggregated.totalNodes === 0) {
           emit('orchestrator', 'orchestrator', 'Snapshot contains zero analysable data points. Cannot proceed.', 'info');
           sendEvent('synthesis.error', { error: 'Snapshot has no analysable data' });
