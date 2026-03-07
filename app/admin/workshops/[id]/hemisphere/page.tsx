@@ -12,6 +12,7 @@ import {
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
 import { HemisphereDiagnosticPanel } from '@/components/hemisphere/hemisphere-diagnostic';
 import type { HemisphereDiagnostic, DiagnosticDelta } from '@/lib/types/hemisphere-diagnostic';
+import { HemisphereGuide } from '@/components/help/HemisphereGuide';
 import {
   DEMO_DIAGNOSTIC_BEFORE,
   DEMO_DIAGNOSTIC_AFTER,
@@ -1666,6 +1667,8 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
               </Button>
             </Link>
           )}
+          <div className="h-4 w-px bg-white/15" />
+          <HemisphereGuide />
         </div>
       </div>
 

@@ -7,6 +7,7 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Users, MessageSquare, TrendingUp, ShieldCheck, Trash2, Share2 } from 'lucide-react';
+import { WelcomeSplash } from '@/components/admin/WelcomeSplash';
 import {
   Dialog,
   DialogContent,
@@ -60,6 +61,7 @@ export default function AdminDashboard() {
   const [userName, setUserName] = useState<string | null>(null);
   const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string | null>(null);
+  const [orgPrimaryColor, setOrgPrimaryColor] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [workshopDebug, setWorkshopDebug] = useState<{ globalWorkshopCount?: number; userRole?: string; userOrgId?: string } | null>(null);
   const [auditLogs, setAuditLogs] = useState<Array<{
@@ -117,6 +119,7 @@ export default function AdminDashboard() {
         setUserName(data.name || null);
         setOrgLogoUrl(data.orgLogoUrl || null);
         setOrgName(data.orgName || null);
+        setOrgPrimaryColor(data.orgPrimaryColor || null);
         setUserEmail(data.email || null);
         // PLATFORM_ADMIN has no access to workshop content — redirect to platform console
         if (role === 'PLATFORM_ADMIN') {
@@ -342,6 +345,13 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-transparent">
+      {/* Welcome splash — shown on first visit */}
+      <WelcomeSplash
+        userName={userName}
+        orgLogoUrl={orgLogoUrl}
+        orgPrimaryColor={orgPrimaryColor}
+        orgName={orgName}
+      />
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="no-print flex items-center justify-between mb-8">
@@ -803,6 +813,14 @@ export default function AdminDashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* Footer */}
+        <div className="mt-16 pb-8 flex items-center justify-center gap-6 text-xs text-muted-foreground">
+          <span>© {new Date().getFullYear()} Ethenta Ltd. All rights reserved.</span>
+          <Link href="/terms" className="hover:text-foreground transition-colors underline underline-offset-2">
+            Terms &amp; Conditions
+          </Link>
+        </div>
       </div>
     </div>
   );

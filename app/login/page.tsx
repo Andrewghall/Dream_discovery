@@ -155,8 +155,11 @@ export default function LoginPage() {
             </LoadingButton>
           </form>
 
-          <div className="mt-8 text-center text-sm text-white/30">
-            <p>&copy; 2026 DREAM Discovery Platform</p>
+          <div className="mt-8 text-center text-sm text-white/30 flex items-center justify-center gap-4">
+            <p>&copy; {new Date().getFullYear()} Ethenta Ltd.</p>
+            <Link href="/terms" className="hover:text-white/60 transition-colors underline underline-offset-2">
+              Terms &amp; Conditions
+            </Link>
           </div>
         </div>
       </div>
