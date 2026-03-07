@@ -520,37 +520,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
-      // Use ALL blueprint lenses as canonical axes so every domain the workshop
-      // knows about appears on the spider — even if some have no phaseInsights yet.
-      // For each lens, do a fuzzy match against stored phaseInsights keys; unmatched
-      // lenses get null scores (shown at the chart centre / as "no data").
-      // If no blueprint lenses exist (very old workshops), fall back to whatever keys
-      // the stored data provides.
-      const canonicalPhases: string[] =
-        lensNames.length > 0
-          ? lensNames
-          : Object.keys(phaseTodayScores).map(
-              (p) => p.charAt(0).toUpperCase() + p.slice(1),
-            );
+      // Use canonicalLenses (discoveryQuestions > blueprint > getDimensionNames) as
+      // the authoritative axis list so the spider always matches the workshop config.
+      // For each lens, fuzzy-match its label against stored phaseInsights keys so
+      // both old lowercase keys ("customer") and new display labels ("Customer Experience")
+      // resolve correctly. Unmatched lenses get null scores (shown at chart centre).
+      const fallbackAxes: Array<{ key: string; label: string }> =
+        canonicalLenses.length > 0
+          ? canonicalLenses
+          : Object.keys(phaseTodayScores).map((p) => ({
+              key: p,
+              label: p.charAt(0).toUpperCase() + p.slice(1),
+            }));
 
-      const fallbackAxisStats: AxisStats[] = canonicalPhases.map((lensName, idx) => {
-        const lensLower = lensName.toLowerCase();
-        // Find the best-matching stored phase key for this lens name
-        const matchKey = Object.keys(phaseTodayScores).find((k) => {
-          const kl = k.toLowerCase();
-          return (
-            kl === lensLower ||
-            lensLower.startsWith(kl) ||
-            kl.startsWith(lensLower) ||
-            lensLower.includes(kl) ||
-            kl.includes(lensLower)
-          );
-        });
+      const fallbackAxisStats: AxisStats[] = fallbackAxes.map(({ key, label }, idx) => {
+        const lensLower = label.toLowerCase();
+        const keyLower = key.toLowerCase();
+        // Fuzzy match: prefer exact label match, then exact key match, then prefix checks.
+        const storedKeys = Object.keys(phaseTodayScores);
+        const matchKey =
+          storedKeys.find((k) => k.toLowerCase() === lensLower) ??
+          storedKeys.find((k) => k.toLowerCase() === keyLower) ??
+          storedKeys.find((k) => {
+            const kl = k.toLowerCase();
+            return lensLower.startsWith(kl) || kl.startsWith(lensLower) || kl.startsWith(keyLower) || keyLower.startsWith(kl);
+          });
         return {
-          axisId: `report:${lensLower.replace(/\s+/g, '_')}`,
-          label: lensName,
-          questionText: lensName,
-          phase: lensLower,
+          axisId: `report:${keyLower.replace(/\s+/g, '_')}`,
+          label,
+          questionText: label,
+          phase: keyLower,
           tag: 'phaseInsight',
           questionIndex: idx,
           today: stats(matchKey ? phaseTodayScores[matchKey] : []),

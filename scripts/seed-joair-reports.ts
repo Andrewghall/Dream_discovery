@@ -1829,6 +1829,103 @@ const REPORTS: ReportData[] = [
   },
 ];
 
+// ─── MISSING LENS ENRICHMENT ─────────────────────────────────────────────────
+// The 4 lenses below were added to the Jo Air workshop AFTER the seed was
+// originally written. We add them here so the spider and discovery output
+// reflect all 8 configured lenses without rewriting every REPORTS entry.
+//
+// Scores are calibrated to the Jo Air airline contact-centre context and vary
+// by participant seniority (exec / senior-manager / manager / agent).
+
+const EXECUTIVES = new Set([
+  'Sarah Morrison', 'James Whitfield', 'Rachel Hughes', 'David Palmer', 'Fiona Lawson',
+]);
+const SENIOR_MANAGERS = new Set([
+  'Tom Hendricks', 'Angela Ward', 'Chris Barker', 'Priya Sharma', "Mark O'Brien", 'Louise Carter', 'Simon Reed',
+]);
+const AGENTS = new Set([
+  'Natalie Price', 'Jamie Walsh', 'Aisha Okafor', 'Ryan Mitchell', 'Charlotte Davies', 'Tariq Hassan',
+]);
+
+function getLensTier(name: string): 'exec' | 'senior' | 'manager' | 'agent' {
+  if (EXECUTIVES.has(name)) return 'exec';
+  if (SENIOR_MANAGERS.has(name)) return 'senior';
+  if (AGENTS.has(name)) return 'agent';
+  return 'manager';
+}
+
+type PhaseInsightRow = ReportData['phaseInsights'][number];
+
+function missingLensInsights(name: string): PhaseInsightRow[] {
+  const tier = getLensTier(name);
+
+  const scores: Record<string, Record<'exec' | 'senior' | 'manager' | 'agent', { c: number; t: number }>> = {
+    operations: { exec: { c: 3, t: 8 }, senior: { c: 3, t: 7 }, manager: { c: 2, t: 7 }, agent: { c: 2, t: 7 } },
+    training:   { exec: { c: 3, t: 8 }, senior: { c: 3, t: 7 }, manager: { c: 2, t: 7 }, agent: { c: 2, t: 7 } },
+    regulation: { exec: { c: 5, t: 7 }, senior: { c: 4, t: 7 }, manager: { c: 4, t: 7 }, agent: { c: 3, t: 6 } },
+    culture:    { exec: { c: 3, t: 8 }, senior: { c: 3, t: 8 }, manager: { c: 3, t: 8 }, agent: { c: 4, t: 9 } },
+  };
+
+  return [
+    {
+      phase: 'Operations',
+      currentScore: scores.operations[tier].c,
+      targetScore:  scores.operations[tier].t,
+      strengths: tier === 'exec' ? ['Board commitment to operational transformation'] : ['Team resilience under pressure'],
+      gaps: ['Routing matched to contact type and disruption volume', 'Real-time capacity model'],
+      painPoints: ['Queue instability is the daily operational reality', 'Disruption handling overwhelms standard processes'],
+      frictions: ['Legacy routing logic not updated for current contact mix'],
+      barriers: tier === 'exec' ? ['Foundational data investment not yet approved'] : ['Tooling limitations'],
+      constraint: tier === 'exec' ? ['24-month ROI window'] : [],
+      future: ['Elastic disruption-ready operation', 'Right agent to right contact every time'],
+      working: tier === 'exec' ? ['Premium cabin operational model'] : [],
+      support: [],
+    },
+    {
+      phase: 'Training & Capability',
+      currentScore: scores.training[tier].c,
+      targetScore:  scores.training[tier].t,
+      strengths: ['Agent willingness to develop', 'Clear improvement aspiration from leadership'],
+      gaps: ['Coaching framework linked to empathy KPIs', 'Recovery skills training at scale'],
+      painPoints: ['Six-week onboarding leaves agents unprepared for disruption', 'Coaching deficits at team leader level'],
+      frictions: ['Speed metrics override quality — training follows the wrong incentives'],
+      barriers: ['Coaching infrastructure not built for empathy at scale'],
+      constraint: tier === 'exec' ? ['ROI pressure on soft-skill investment'] : [],
+      future: ['Empathy and recovery embedded in all agent development', 'Team leaders as active coaches'],
+      working: tier === 'exec' ? ['Premium cabin recovery team as internal benchmark'] : [],
+      support: [],
+    },
+    {
+      phase: 'Regulation & Compliance',
+      currentScore: scores.regulation[tier].c,
+      targetScore:  scores.regulation[tier].t,
+      strengths: tier === 'exec' ? ['Board-level regulatory awareness'] : ['Awareness of core compliance obligations'],
+      gaps: ['Cargo regulatory compliance training for agents', 'Consistent awareness across all sites'],
+      painPoints: tier === 'agent' ? ['Compliance requirements cited as reason for script rigidity'] : ['Regulatory training not integrated into agent empowerment model'],
+      frictions: ['Compliance requirements used to justify inflexible scripting'],
+      barriers: [],
+      constraint: [],
+      future: ['Compliance embedded in empowerment model, not opposed to it'],
+      working: tier === 'exec' ? ['Board-level regulatory awareness'] : [],
+      support: [],
+    },
+    {
+      phase: 'Culture',
+      currentScore: scores.culture[tier].c,
+      targetScore:  scores.culture[tier].t,
+      strengths: tier === 'agent' ? ['Genuine care for customers despite system constraints'] : ['Premium cabin team as proof of concept for empathy culture'],
+      gaps: ['Empathy-first culture across all agent tiers', 'Metrics aligned to cultural values'],
+      painPoints: ['KPI culture drives efficiency over care', 'Script rigidity suppresses agent empathy'],
+      frictions: ['Performance management rewards speed, not customer outcomes'],
+      barriers: ['Cultural change requires sustained leadership commitment'],
+      constraint: tier === 'exec' ? ['ROI window creates pressure inconsistent with cultural transformation'] : [],
+      future: ['Empathy and customer care as core cultural values, measured and rewarded', 'Agents empowered to do the right thing'],
+      working: tier === 'exec' ? ['Premium cabin recovery culture as internal model'] : [],
+      support: [],
+    },
+  ];
+}
+
 // ─── MAIN ───────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1879,7 +1976,7 @@ async function main() {
         feedback: reportData.feedback,
         tone: reportData.tone,
         keyInsights: reportData.keyInsights,
-        phaseInsights: reportData.phaseInsights,
+        phaseInsights: [...reportData.phaseInsights, ...missingLensInsights(participant.name || '')],
         wordCloudThemes: reportData.wordCloudThemes,
         inputQuality: {
           score: 75,
@@ -1896,7 +1993,7 @@ async function main() {
         feedback: reportData.feedback,
         tone: reportData.tone,
         keyInsights: reportData.keyInsights,
-        phaseInsights: reportData.phaseInsights,
+        phaseInsights: [...reportData.phaseInsights, ...missingLensInsights(participant.name || '')],
         wordCloudThemes: reportData.wordCloudThemes,
         modelVersion: 'assessment-v1',
       },

@@ -44,7 +44,7 @@ export function RadarChart({
   max?: number;
   className?: string;
 }) {
-  const padding = 70;
+  const padding = 90;
   const cx = size / 2;
   const cy = size / 2;
   const radius = (size - padding * 2) / 2;
@@ -89,7 +89,7 @@ export function RadarChart({
 
   return (
     <div className={cn('w-full', className)}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img">
+      <svg width="100%" style={{ aspectRatio: '1 / 1', maxWidth: size }} viewBox={`0 0 ${size} ${size}`} role="img">
         {rings.map((r, idx) => (
           <circle
             key={idx}

@@ -847,7 +847,9 @@ export default function DiscoveryPage({ params }: PageProps) {
               </div>
             ) : radarChartData && radarChartData.length > 0 ? (
               <div className="flex justify-center">
-                <LazyRadarChart data={radarChartData} series={radarSeries} />
+                <div style={{ width: '100%', maxWidth: 440 }}>
+                  <LazyRadarChart data={radarChartData} series={radarSeries} />
+                </div>
               </div>
             ) : (
               <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
@@ -1264,7 +1266,7 @@ function LazyRadarChart({
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
       </div>
     );
-  return <RadarChart data={data} series={series} size={300} max={10} />;
+  return <RadarChart data={data} series={series} size={380} max={10} />;
 }
 
 function LazyWordCloud({ words }: { words: Array<{ text: string; value: number }> }) {

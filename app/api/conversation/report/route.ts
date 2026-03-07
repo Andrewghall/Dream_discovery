@@ -547,6 +547,56 @@ function buildSyntheticResponse(includeRegulation: boolean) {
   };
 }
 
+// ── AI lens scoring for discovery sessions with narrative-only DataPoints ────────
+// Called when a session has no per-lens DataPoint scores (e.g. discovery sessions
+// where all DataPoints use generic "discovery" / "intro" phase tags).
+// Reads the conversation transcript and asks GPT-4o to infer current + target
+// maturity scores for every configured lens. Fully dynamic — lens list comes
+// from discoveryQuestions.lenses, never hardcoded.
+async function synthesiseLensScores(params: {
+  lenses: Array<{ key: string; label?: string }>;
+  transcript: string;
+}): Promise<Array<{ key: string; currentScore: number; targetScore: number }>> {
+  if (!process.env.OPENAI_API_KEY || !params.transcript.trim()) return [];
+
+  const lensListStr = params.lenses
+    .map((l) => `- key: "${l.key}", label: "${l.label || l.key}"`)
+    .join('\n');
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    temperature: 0.1,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are analysing a discovery interview transcript to infer current-state and target-state maturity scores for specific organisational lenses. ' +
+          'Score each lens on a 1–10 scale based solely on evidence in the transcript. ' +
+          'Omit any lens for which there is no relevant evidence. ' +
+          'Return ONLY valid JSON: { "scores": [ { "key": string, "currentScore": number, "targetScore": number } ] }. ' +
+          'currentScore = where the organisation is today. targetScore = where the participant wants or expects to be. ' +
+          'Scores must be integers 1–10. Do not invent scores.',
+      },
+      {
+        role: 'user',
+        content: `Lenses to score:\n${lensListStr}\n\nTranscript:\n${params.transcript.slice(0, 12000)}`,
+      },
+    ],
+  });
+
+  const raw = completion.choices?.[0]?.message?.content?.trim() || '';
+  const parsed = safeParseJson<{ scores: Array<{ key: string; currentScore: number; targetScore: number }> }>(raw);
+  if (!parsed?.scores || !Array.isArray(parsed.scores)) return [];
+
+  return parsed.scores.filter(
+    (s) =>
+      typeof s.key === 'string' &&
+      Number.isInteger(s.currentScore) && s.currentScore >= 1 && s.currentScore <= 10 &&
+      Number.isInteger(s.targetScore) && s.targetScore >= 1 && s.targetScore <= 10,
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const sessionId = request.nextUrl.searchParams.get('sessionId');
@@ -804,6 +854,46 @@ export async function GET(request: NextRequest) {
     }
 
     const includeRegulation = session.includeRegulation ?? session.workshop?.includeRegulation ?? true;
+
+    // ── AI synthesis scoring for discovery sessions ───────────────────────────────
+    // Build a flat transcript from the collected Q&A pairs. Used only when the
+    // session has no per-lens DataPoint scores (all-narrative discovery sessions).
+    const transcriptForScoring = qaPairs
+      .filter((qa) => qa.answer?.trim())
+      .map((qa) => (qa.question ? `Q: ${qa.question}\nA: ${qa.answer}` : qa.answer))
+      .join('\n\n');
+
+    // Read discoveryQuestions early so the guard below can check it before the
+    // main phaseInsights block reads it again further down.
+    const workshopForScoring = session.workshop as any;
+    const discoveryQsForScoring = workshopForScoring?.discoveryQuestions as {
+      lenses?: Array<{ key: string; label?: string }>;
+    } | null | undefined;
+
+    // Fire AI scoring only when:
+    //  1. The workshop has discoveryQuestions lenses (Path 1 will run below)
+    //  2. No per-lens DataPoint scores exist for ANY configured lens
+    //  3. OPENAI_API_KEY is available
+    // The guard is all-or-nothing: if even one lens already has a score we leave
+    // the DataPoint-derived values intact and skip synthesis entirely.
+    if (
+      discoveryQsForScoring?.lenses?.length &&
+      process.env.OPENAI_API_KEY &&
+      discoveryQsForScoring.lenses.every((lens) => currentByPhase[lens.key] == null)
+    ) {
+      try {
+        const aiScores = await synthesiseLensScores({
+          lenses: discoveryQsForScoring.lenses,
+          transcript: transcriptForScoring,
+        });
+        for (const score of aiScores) {
+          if (currentByPhase[score.key] == null) currentByPhase[score.key] = score.currentScore;
+          if (targetByPhase[score.key] == null) targetByPhase[score.key] = score.targetScore;
+        }
+      } catch (err) {
+        console.error('[report] AI lens scoring failed (non-fatal):', err);
+      }
+    }
 
     // ── Build phaseInsights from the workshop's dynamic lens definition ──────────
     //
