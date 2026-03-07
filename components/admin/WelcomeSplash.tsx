@@ -4,11 +4,8 @@ import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   PlusCircle,
   Brain,
@@ -16,20 +13,16 @@ import {
   Radio,
   Globe,
   FileText,
-  ChevronRight,
   HelpCircle,
   X,
 } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 
 interface WelcomeSplashProps {
-  /** User's first name for personalisation */
   userName?: string | null;
-  /** Org logo URL */
   orgLogoUrl?: string | null;
-  /** Org primary colour for accent */
   orgPrimaryColor?: string | null;
-  /** Org name */
   orgName?: string | null;
 }
 
@@ -40,61 +33,55 @@ const STEPS = [
     icon: PlusCircle,
     step: '1',
     title: 'Create a Workshop',
-    desc: 'Set up your discovery session with a title, context, and objectives. Choose the workshop type (Discovery, Reimagine, or Full Cycle) to shape the AI\'s focus.',
-    tip: 'Add rich context — the more the AI knows about your organisation, the sharper the insights.',
+    action: 'New Workshop → fill in title, context, and objectives.',
     color: 'text-violet-600',
     bg: 'bg-violet-50',
-    border: 'border-violet-100',
+    dot: 'bg-violet-500',
   },
   {
     icon: Brain,
     step: '2',
     title: 'Run AI Prep',
-    desc: 'Once created, open the workshop and click Run Prep. The AI Research Agent builds your discovery blueprint: question sets, actor taxonomy, journey stages, and lens categories.',
-    tip: 'Prep takes 60–90 seconds. Review the blueprint before going live — edit lens names or actors to match your organisation.',
+    action: 'Open the workshop → Run Prep. Generates blueprint, questions, actors, and lenses in ~90 seconds.',
     color: 'text-blue-600',
     bg: 'bg-blue-50',
-    border: 'border-blue-100',
+    dot: 'bg-blue-500',
   },
   {
     icon: Users,
     step: '3',
     title: 'Invite Participants',
-    desc: 'Share the Capture link with workshop participants. They join on their own devices — mobile-friendly. Each participant registers with a name and role.',
-    tip: 'You can run individual discovery calls or group sessions. The capture link stays open until you close it.',
+    action: 'Share the Capture link. Participants join on any device, register their name and role.',
     color: 'text-emerald-600',
     bg: 'bg-emerald-50',
-    border: 'border-emerald-100',
+    dot: 'bg-emerald-500',
   },
   {
     icon: Radio,
     step: '4',
-    title: 'Facilitate Live Session',
-    desc: 'Open Cognitive Guidance to run your live session. Main questions guide the conversation, AI-generated sub-questions help you dig deeper, and nodes capture every insight in real time.',
-    tip: 'Speak naturally — the AI tags lens coverage, detects contradictions, and builds the journey map as you go.',
+    title: 'Facilitate Live',
+    action: 'Open Cognitive Guidance. Questions, sub-questions, and node capture all happen in real time.',
     color: 'text-orange-600',
     bg: 'bg-orange-50',
-    border: 'border-orange-100',
+    dot: 'bg-orange-500',
   },
   {
     icon: Globe,
     step: '5',
-    title: 'Synthesise with Hemisphere',
-    desc: 'Open the Hemisphere page to see all insights visualised as a 3D node network. Click Generate Report — the AI synthesises themes, constraints, actors, and strategic signals into structured output.',
-    tip: 'Use lens filters and the Diagnostic tab to explore contradictions and coverage gaps before generating.',
+    title: 'Synthesise',
+    action: 'Open Hemisphere → Generate Report. AI synthesises every insight into structured strategic output.',
     color: 'text-cyan-600',
     bg: 'bg-cyan-50',
-    border: 'border-cyan-100',
+    dot: 'bg-cyan-500',
   },
   {
     icon: FileText,
     step: '6',
-    title: 'Review Output Report',
-    desc: 'The Output page contains your full AI-generated report: Executive Summary, Discovery Insights, Constraints Analysis, Potential Solutions, Commercial Impact, and Customer Journey narrative.',
-    tip: 'Use View Output → after synthesis completes. Each section can be copied or exported as a standalone HTML package.',
+    title: 'Review Output',
+    action: 'View Output → full report with Executive Summary, Insights, Constraints, Solutions, and Journey Map.',
     color: 'text-rose-600',
     bg: 'bg-rose-50',
-    border: 'border-rose-100',
+    dot: 'bg-rose-500',
   },
 ];
 
@@ -103,10 +90,8 @@ export function WelcomeSplash({ userName, orgLogoUrl, orgPrimaryColor, orgName }
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
   useEffect(() => {
-    // Show on first visit or if not permanently dismissed
     const dismissed = localStorage.getItem(STORAGE_KEY);
     if (!dismissed) {
-      // Small delay so the dashboard loads first
       const t = setTimeout(() => setOpen(true), 800);
       return () => clearTimeout(t);
     }
@@ -123,7 +108,7 @@ export function WelcomeSplash({ userName, orgLogoUrl, orgPrimaryColor, orgName }
 
   return (
     <>
-      {/* Trigger button — always accessible */}
+      {/* Trigger — always accessible from dashboard header */}
       <Button
         variant="ghost"
         size="sm"
@@ -136,11 +121,15 @@ export function WelcomeSplash({ userName, orgLogoUrl, orgPrimaryColor, orgName }
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0">
-          {/* Brand header */}
+        <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
+
+          {/* Header */}
           <div
-            className="relative px-8 py-7 rounded-t-lg"
-            style={{ background: `linear-gradient(135deg, ${accentColor}22 0%, #0d0d0d 100%)`, borderBottom: `2px solid ${accentColor}33` }}
+            className="relative px-7 py-6"
+            style={{
+              background: `linear-gradient(135deg, ${accentColor}22 0%, #0d0d0d 100%)`,
+              borderBottom: `2px solid ${accentColor}33`,
+            }}
           >
             <button
               onClick={() => setOpen(false)}
@@ -150,106 +139,76 @@ export function WelcomeSplash({ userName, orgLogoUrl, orgPrimaryColor, orgName }
               <X className="h-4 w-4" />
             </button>
 
-            <div className="flex items-center gap-4 mb-3">
+            {/* Logo / org name */}
+            <div className="flex items-center gap-3 mb-3">
               {orgLogoUrl ? (
-                <div className="relative h-10 w-28">
-                  <Image src={orgLogoUrl} alt={orgName || 'Organisation logo'} fill className="object-contain object-left" />
+                <div className="relative h-8 w-24">
+                  <Image src={orgLogoUrl} alt={orgName || 'Organisation'} fill className="object-contain object-left" />
                 </div>
               ) : orgName ? (
-                <span className="text-white font-bold text-lg">{orgName}</span>
+                <span className="text-white font-semibold text-sm">{orgName}</span>
               ) : null}
-
-              <Badge className="text-[10px] font-semibold" style={{ backgroundColor: `${accentColor}33`, color: accentColor, border: `1px solid ${accentColor}44` }}>
+              <span
+                className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: `${accentColor}30`, color: accentColor }}
+              >
                 DREAM Discovery
-              </Badge>
+              </span>
             </div>
 
-            <DialogHeader>
-              <DialogTitle className="text-white text-2xl font-bold">
-                {userName ? `Welcome, ${userName} 👋` : 'Welcome to DREAM Discovery'}
-              </DialogTitle>
-              <p className="text-white/60 text-sm mt-1">
-                Here's how to get from a blank workshop to a fully synthesised strategic output — in six steps.
-              </p>
-            </DialogHeader>
+            <h2 className="text-white text-xl font-bold leading-tight">
+              {userName ? `Welcome, ${userName}` : 'Welcome to DREAM Discovery'}
+            </h2>
+            <p className="text-white/50 text-xs mt-1">Six steps from blank workshop to fully synthesised strategic output.</p>
           </div>
 
-          {/* Workflow steps */}
-          <div className="px-8 py-6">
-            <div className="grid grid-cols-1 gap-4">
+          {/* Steps — 2 column grid */}
+          <div className="px-7 py-5 bg-white">
+            <div className="grid grid-cols-2 gap-3">
               {STEPS.map((s) => {
                 const Icon = s.icon;
                 return (
-                  <div key={s.step} className={`flex gap-4 p-4 rounded-xl border ${s.border} ${s.bg}`}>
-                    {/* Step number + icon */}
-                    <div className="flex-shrink-0 flex flex-col items-center gap-1">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.bg} border ${s.border}`}>
+                  <div key={s.step} className={`flex gap-3 p-3.5 rounded-xl ${s.bg}`}>
+                    <div className="flex-shrink-0 mt-0.5">
+                      <div className="relative">
                         <Icon className={`h-4 w-4 ${s.color}`} />
+                        <span
+                          className={`absolute -top-1.5 -right-2 text-[9px] font-bold text-white w-3.5 h-3.5 rounded-full flex items-center justify-center leading-none ${s.dot}`}
+                        >
+                          {s.step}
+                        </span>
                       </div>
-                      <span className="text-[10px] font-bold text-slate-400">{s.step}</span>
                     </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-sm font-semibold text-slate-800">{s.title}</h3>
-                        <ChevronRight className="h-3 w-3 text-slate-300" />
-                      </div>
-                      <p className="text-xs text-slate-600 leading-relaxed mb-2">{s.desc}</p>
-                      <p className="text-xs text-slate-500 italic flex items-start gap-1">
-                        <span className={`font-bold not-italic ${s.color}`}>Tip:</span>
-                        {s.tip}
-                      </p>
+                    <div className="min-w-0">
+                      <p className={`text-xs font-semibold mb-0.5 ${s.color}`}>{s.title}</p>
+                      <p className="text-xs text-slate-600 leading-relaxed">{s.action}</p>
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            {/* Quick reference */}
-            <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-              <p className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wide">Quick Reference — Where to find things</p>
-              <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
-                <div className="flex items-start gap-2">
-                  <span className="text-slate-400 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-700">Dashboard</strong> — All workshops, create new</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-slate-400 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-700">Workshop → Prep</strong> — AI blueprint generation</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-slate-400 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-700">Workshop → Live Session</strong> — Cognitive guidance</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-slate-400 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-700">Workshop → Hemisphere</strong> — 3D synthesis + generate</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-slate-400 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-700">Workshop → Output</strong> — Generated report</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-slate-400 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-700">Workshop → Discover</strong> — Deep analysis charts</span>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Footer */}
-          <div className="px-8 py-5 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-lg">
-            <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                className="rounded"
-                checked={dontShowAgain}
-                onChange={(e) => setDontShowAgain(e.target.checked)}
-              />
-              Don't show this again
-            </label>
-
+          <div className="px-7 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={dontShowAgain}
+                  onChange={(e) => setDontShowAgain(e.target.checked)}
+                />
+                Don&apos;t show this again
+              </label>
+              <Link
+                href="/terms"
+                target="_blank"
+                className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors"
+              >
+                Terms &amp; Conditions
+              </Link>
+            </div>
             <Button
               onClick={handleClose}
               style={{ backgroundColor: accentColor, color: '#0d0d0d' }}
