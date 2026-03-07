@@ -218,10 +218,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const phases = getPhaseOrder(includeRegulation).filter((p) => p !== 'summary');
 
     // Derive lens names from blueprint → research → default dimensions
+    const workshopAny = workshop as any;
     const blueprint = readBlueprintFromJson(workshop.blueprint);
     const lensNames: string[] = blueprint?.lenses?.length
       ? blueprint.lenses.map((l) => l.name)
-      : getDimensionNames((workshop as any).prepResearch as Parameters<typeof getDimensionNames>[0]);
+      : getDimensionNames(workshopAny.prepResearch as Parameters<typeof getDimensionNames>[0]);
+
+    // Canonical lens list: discoveryQuestions > blueprint > getDimensionNames
+    // This is the authoritative set of lenses the spider must always display.
+    const discoveryQs = workshopAny.discoveryQuestions as {
+      lenses?: Array<{ key: string; label?: string }>;
+    } | null | undefined;
+    const canonicalLenses: Array<{ key: string; label: string }> =
+      discoveryQs?.lenses?.length
+        ? discoveryQs.lenses.map((l) => ({ key: l.key, label: l.label || l.key }))
+        : blueprint?.lenses?.length
+        ? blueprint.lenses.map((l: { name: string }) => ({ key: l.name, label: l.name }))
+        : getDimensionNames(workshopAny.prepResearch).map((n: string) => ({ key: n, label: n }));
 
     const sessionsAll = await prisma.conversationSession.findMany({
       where: {
@@ -437,9 +450,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         return a.questionIndex - b.questionIndex;
       })
       .map((axis) => {
+        // Prefer canonical lens label over derived question-text label
+        const canonicalLabel = canonicalLenses.find(
+          (l) => l.key.toLowerCase() === axis.phase.toLowerCase()
+        )?.label;
         return {
           axisId: axis.axisId,
-          label: axisLabelFromQuestionText(axis.questionText),
+          label: canonicalLabel ?? axisLabelFromQuestionText(axis.questionText),
           questionText: axis.questionText,
           phase: axis.phase,
           tag: axis.tag,
@@ -449,6 +466,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           projected: stats(byAxisProjected.get(axis.axisId) || []),
         };
       });
+
+    // ── Augment: ensure every configured lens appears even if sessions haven't covered it yet ──
+    if (canonicalLenses.length > 0) {
+      const coveredPhases = new Set(axisStats.map((a) => a.phase.toLowerCase()));
+      for (let i = 0; i < canonicalLenses.length; i++) {
+        const lens = canonicalLenses[i];
+        const lk = lens.key.toLowerCase();
+        if (coveredPhases.has(lk)) continue;
+        axisStats.push({
+          axisId: `lens:${lk}`,
+          label: lens.label,
+          questionText: lens.label,
+          phase: lk,
+          tag: 'lens',
+          questionIndex: i,
+          today: { median: null, min: null, max: null, n: 0 },
+          target: { median: null, min: null, max: null, n: 0 },
+          projected: { median: null, min: null, max: null, n: 0 },
+        });
+      }
+      // Re-sort to canonical lens order
+      const lensOrder = canonicalLenses.map((l) => l.key.toLowerCase());
+      axisStats.sort((a, b) => {
+        const ia = lensOrder.indexOf(a.phase.toLowerCase());
+        const ib = lensOrder.indexOf(b.phase.toLowerCase());
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        if (ia !== -1) return -1;
+        if (ib !== -1) return 1;
+        return 0;
+      });
+    }
 
     // ── Fallback: if no axis has real data, build from ConversationReport.phaseInsights ──
     if (!axisStats.some((a) => a.today.median !== null)) {
