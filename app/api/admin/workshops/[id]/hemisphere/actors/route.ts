@@ -243,6 +243,35 @@ export async function GET(
           );
         }
       }
+
+      // Fallback: if nodes had no actors, read from snapshot's liveJourney
+      if (actorMap.size === 0) {
+        const payload = (snapshot as any)?.payload as Record<string, unknown> | null;
+        const liveJourney = payload?.liveJourney;
+        if (liveJourney && typeof liveJourney === 'object' && !Array.isArray(liveJourney)) {
+          const journey = liveJourney as Record<string, unknown>;
+          const actors = Array.isArray(journey.actors) ? journey.actors as Array<{ name: string; role: string; mentionCount?: number }> : [];
+          const interactions = Array.isArray(journey.interactions) ? journey.interactions as Array<Record<string, unknown>> : [];
+          for (const actor of actors) {
+            const name = (actor.name || '').trim();
+            if (!name) continue;
+            const actorInteractions = interactions.filter((ix) => typeof ix.actor === 'string' && ix.actor.trim() === name);
+            actorMap.set(name, {
+              mentions: typeof actor.mentionCount === 'number' ? actor.mentionCount : actorInteractions.length || 1,
+              roles: new Set(actor.role ? [actor.role] : []),
+              domains: new Set(actorInteractions.map((ix) => typeof ix.stage === 'string' ? ix.stage : '').filter(Boolean)),
+              sentiments: actorInteractions.map((ix) => typeof ix.sentiment === 'string' ? ix.sentiment : '').filter(Boolean),
+              interactions: actorInteractions.map((ix) => ({
+                withActor: '',
+                action: typeof ix.action === 'string' ? ix.action : '',
+                sentiment: typeof ix.sentiment === 'string' ? ix.sentiment : '',
+                context: typeof ix.context === 'string' ? ix.context : '',
+                utteranceText: typeof ix.action === 'string' ? ix.action : '',
+              })),
+            });
+          }
+        }
+      }
     } else {
       // ── Path B: load all AgenticAnalysis records for the workshop ──
       const analyses = await prisma.agenticAnalysis.findMany({
@@ -262,6 +291,64 @@ export async function GET(
           utteranceText,
           actorMap,
         );
+      }
+    }
+
+    // ── Fallback: read liveJourney from LiveSessionVersion or LiveWorkshopSnapshot ──
+    // This handles seeded/demo workshops where no AgenticAnalysis records exist
+    // but liveJourney.actors + interactions are rich in the session payload.
+    if (actorMap.size === 0) {
+      const sessionVersion = await (prisma as any).liveSessionVersion.findFirst({
+        where: { workshopId },
+        orderBy: { createdAt: 'desc' },
+        select: { payload: true },
+      });
+      const snapshotFallback = !sessionVersion
+        ? await (prisma as any).liveWorkshopSnapshot.findFirst({
+            where: { workshopId },
+            orderBy: { createdAt: 'desc' },
+            select: { payload: true },
+          })
+        : null;
+
+      const liveJourney = (sessionVersion?.payload as Record<string, unknown> | null)?.liveJourney
+        ?? (snapshotFallback?.payload as Record<string, unknown> | null)?.liveJourney;
+
+      if (liveJourney && typeof liveJourney === 'object' && !Array.isArray(liveJourney)) {
+        const journey = liveJourney as Record<string, unknown>;
+        const actors = Array.isArray(journey.actors) ? journey.actors as Array<{ name: string; role: string; mentionCount?: number }> : [];
+        const interactions = Array.isArray(journey.interactions) ? journey.interactions as Array<Record<string, unknown>> : [];
+
+        for (const actor of actors) {
+          const name = (actor.name || '').trim();
+          if (!name) continue;
+
+          // Gather this actor's interactions from the journey
+          const actorInteractions = interactions.filter(
+            (ix) => typeof ix.actor === 'string' && ix.actor.trim() === name,
+          );
+          const sentiments = actorInteractions
+            .map((ix) => (typeof ix.sentiment === 'string' ? ix.sentiment : ''))
+            .filter(Boolean);
+          const domains = Array.from(
+            new Set(actorInteractions.map((ix) => typeof ix.stage === 'string' ? ix.stage : '').filter(Boolean)),
+          );
+          const interactionEntries: ActorInteraction[] = actorInteractions.map((ix) => ({
+            withActor: '',
+            action: typeof ix.action === 'string' ? ix.action : '',
+            sentiment: typeof ix.sentiment === 'string' ? ix.sentiment : '',
+            context: typeof ix.context === 'string' ? ix.context : '',
+            utteranceText: typeof ix.action === 'string' ? ix.action : '',
+          }));
+
+          actorMap.set(name, {
+            mentions: typeof actor.mentionCount === 'number' ? actor.mentionCount : actorInteractions.length || 1,
+            roles: new Set(actor.role ? [actor.role] : []),
+            domains: new Set(domains),
+            sentiments,
+            interactions: interactionEntries,
+          });
+        }
       }
     }
 
