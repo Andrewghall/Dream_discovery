@@ -207,32 +207,32 @@ export function WelcomeSplash({ userName, orgLogoUrl, orgPrimaryColor, orgName }
             </div>
 
             {/* Quick reference */}
-            <div className="mt-6 p-4 bg-slate-800 rounded-xl">
-              <p className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wide">Quick Reference — Where to find things</p>
-              <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
+            <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <p className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wide">Quick Reference — Where to find things</p>
+              <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
                 <div className="flex items-start gap-2">
-                  <span className="text-slate-500 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-300">Dashboard</strong> — All workshops, create new</span>
+                  <span className="text-slate-400 font-mono mt-0.5">›</span>
+                  <span><strong className="text-slate-700">Dashboard</strong> — All workshops, create new</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-slate-500 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-300">Workshop → Prep</strong> — AI blueprint generation</span>
+                  <span className="text-slate-400 font-mono mt-0.5">›</span>
+                  <span><strong className="text-slate-700">Workshop → Prep</strong> — AI blueprint generation</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-slate-500 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-300">Workshop → Live Session</strong> — Cognitive guidance</span>
+                  <span className="text-slate-400 font-mono mt-0.5">›</span>
+                  <span><strong className="text-slate-700">Workshop → Live Session</strong> — Cognitive guidance</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-slate-500 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-300">Workshop → Hemisphere</strong> — 3D synthesis + generate</span>
+                  <span className="text-slate-400 font-mono mt-0.5">›</span>
+                  <span><strong className="text-slate-700">Workshop → Hemisphere</strong> — 3D synthesis + generate</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-slate-500 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-300">Workshop → Output</strong> — Generated report</span>
+                  <span className="text-slate-400 font-mono mt-0.5">›</span>
+                  <span><strong className="text-slate-700">Workshop → Output</strong> — Generated report</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-slate-500 font-mono mt-0.5">›</span>
-                  <span><strong className="text-slate-300">Workshop → Discover</strong> — Deep analysis charts</span>
+                  <span className="text-slate-400 font-mono mt-0.5">›</span>
+                  <span><strong className="text-slate-700">Workshop → Discover</strong> — Deep analysis charts</span>
                 </div>
               </div>
             </div>
