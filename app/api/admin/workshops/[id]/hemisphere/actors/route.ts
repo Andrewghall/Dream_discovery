@@ -297,7 +297,12 @@ export async function GET(
     // ── Fallback: read liveJourney from LiveSessionVersion or LiveWorkshopSnapshot ──
     // This handles seeded/demo workshops where no AgenticAnalysis records exist
     // but liveJourney.actors + interactions are rich in the session payload.
-    if (actorMap.size === 0) {
+    // Also triggers when actorMap is populated but ALL mentions are 0 — this happens when
+    // the snapshot liveJourney uses blueprint actors (mentionCount: 0 placeholder) instead
+    // of computed session actors. In that case, prefer the session version's richer data.
+    const allMentionsZero = actorMap.size > 0 && [...actorMap.values()].every((v) => v.mentions === 0);
+    if (actorMap.size === 0 || allMentionsZero) {
+      if (allMentionsZero) actorMap.clear();
       const sessionVersion = await (prisma as any).liveSessionVersion.findFirst({
         where: { workshopId },
         orderBy: { createdAt: 'desc' },

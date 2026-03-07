@@ -10,13 +10,16 @@ import type { AlignmentHeatmapData, AlignmentCell } from '@/lib/types/discover-a
 
 type ThemeEntry = { label: string; category?: string; confidence?: number; reasoning?: string };
 type ActorEntry = { name: string; role?: string; interactions?: Array<{ withActor?: string; action?: string; sentiment?: string; context?: string }> };
+type DomainEntry = string | { label?: string; name?: string; domain?: string };
 
 interface AnalysisRow {
   sentimentTone: string;
   themes: unknown;
   actors: unknown;
+  domains: unknown;
   dataPoint: {
     rawText: string;
+    participant: { role: string | null } | null;
   };
 }
 
@@ -25,9 +28,12 @@ interface AnalysisRow {
  *
  * Builds a theme×actor matrix from AgenticAnalysis data, computing
  * sentiment-based alignment scores for each cell.
+ * Actor columns = stakeholder group derived from the SPEAKER's participant role,
+ * not from actors mentioned in the utterance. This gives proper cross-stakeholder
+ * distribution rather than clustering everything in one column.
  */
 export async function computeAlignment(workshopId: string): Promise<AlignmentHeatmapData> {
-  // Fetch all agentic analyses for this workshop
+  // Fetch all agentic analyses for this workshop — include participant role for speaker grouping
   const analyses = await prisma.agenticAnalysis.findMany({
     where: {
       dataPoint: { workshopId },
@@ -36,8 +42,12 @@ export async function computeAlignment(workshopId: string): Promise<AlignmentHea
       sentimentTone: true,
       themes: true,
       actors: true,
+      domains: true,
       dataPoint: {
-        select: { rawText: true },
+        select: {
+          rawText: true,
+          participant: { select: { role: true } },
+        },
       },
     },
   }) as unknown as AnalysisRow[];
@@ -67,13 +77,14 @@ export async function computeAlignment(workshopId: string): Promise<AlignmentHea
       .map((t) => t.label?.trim())
       .filter((l): l is string => !!l);
 
-    // Extract actor names
-    const actorNames = actors
-      .map((ac) => ac.name?.trim())
-      .filter((n): n is string => !!n);
-
-    // If no actors found, use "General" as catch-all
-    const effectiveActors = actorNames.length > 0 ? actorNames : ['General'];
+    // Use domains from agentic analysis as actor columns — gives semantic distribution
+    // (e.g. "Customer Experience", "Technology") rather than bucketing everyone by speaker role.
+    // Falls back to the speaker's stakeholder group when no domains are present.
+    const domains = parseJsonArray<DomainEntry>(a.domains)
+      .map(parseDomainLabel)
+      .filter((d): d is string => !!d);
+    const speakerRole = a.dataPoint.participant?.role ?? null;
+    const effectiveActors = domains.length > 0 ? domains : [groupRole(speakerRole)];
 
     for (const theme of themeLabels) {
       themeCounts.set(theme, (themeCounts.get(theme) || 0) + 1);
@@ -255,6 +266,15 @@ function toneToSentiment(tone: string | null): 'positive' | 'negative' | 'neutra
 }
 
 // ── Helpers ──────────────────────────────────────────────────
+
+function parseDomainLabel(d: DomainEntry): string | null {
+  if (typeof d === 'string') return d.trim() || null;
+  const label = (d as { label?: string; name?: string; domain?: string }).label
+    ?? (d as { label?: string; name?: string; domain?: string }).domain
+    ?? (d as { label?: string; name?: string; domain?: string }).name
+    ?? '';
+  return label.trim() || null;
+}
 
 function parseJsonArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value as T[];
