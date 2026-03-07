@@ -836,8 +836,10 @@ export function generateStickyPads(
   existingPads: StickyPad[],
   nowMs: number,
   phase: DialoguePhase = 'REIMAGINE',
+  blueprintReimagineSet?: Set<string>,
 ): StickyPad[] {
   const allowedSignals = PHASE_ALLOWED_SIGNALS[phase];
+  const reimagineLensFilter = blueprintReimagineSet ?? REIMAGINE_LENSES;
 
   const pads = existingPads
     .filter(p => p.status !== 'dismissed')
@@ -855,7 +857,7 @@ export function generateStickyPads(
 
     // In REIMAGINE, missing_dimension only fires for People/Customer/Organisation
     if (phase === 'REIMAGINE' && signal.type === 'missing_dimension') {
-      const signalLensesInPhase = signal.lenses.filter(l => REIMAGINE_LENSES.has(l));
+      const signalLensesInPhase = signal.lenses.filter(l => reimagineLensFilter.has(l));
       if (signalLensesInPhase.length === 0) continue;
     }
 
