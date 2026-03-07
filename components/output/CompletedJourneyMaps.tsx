@@ -33,7 +33,7 @@ import { EmptyState } from './shared';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { AlignmentHeatmapData } from '@/lib/types/discover-analysis';
 import type { ActorAlignmentEntry, NormalizationResult } from '@/lib/types/output-dashboard';
-import { PHASE_TEMPLATES } from '@/lib/output/journey-template-data';
+// PHASE_TEMPLATES removed — Output now shows real session data or an empty state with a hint
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -121,25 +121,28 @@ function filterForPhase(
   data: LiveJourneyData | null,
   phase: PhaseConfig,
 ): { filtered: LiveJourneyData; hasPhaseData: boolean; isTemplate: boolean } {
-  // No real journey data at all → show the template for this phase
+  const EMPTY: LiveJourneyData = {
+    stages: data?.stages ?? [],
+    actors: data?.actors ?? [],
+    interactions: [],
+  };
+
+  // No real journey data at all
   if (!data || data.interactions.length === 0) {
-    return {
-      filtered: PHASE_TEMPLATES[phase.key],
-      hasPhaseData: false,
-      isTemplate: true,
-    };
+    return { filtered: EMPTY, hasPhaseData: false, isTemplate: false };
   }
 
   if (phase.dreamPhase === null) {
-    // Discovery: baseline — interactions added in synthesis (no phaseAdded)
+    // Discovery: baseline — interactions with no phaseAdded (captured before phase was tracked)
+    // or tagged SYNTHESIS. If none, show all interactions as the baseline view.
     const baseline = data.interactions.filter(
-      (i) => !i.phaseAdded || i.phaseAdded === 'SYNTHESIS' as any,
+      (i) => !i.phaseAdded || (i.phaseAdded as string) === 'SYNTHESIS',
     );
     if (baseline.length > 0) {
       return { filtered: { ...data, interactions: baseline }, hasPhaseData: true, isTemplate: false };
     }
-    // No SYNTHESIS-tagged interactions → use full journey as discovery view
-    return { filtered: data, hasPhaseData: false, isTemplate: false };
+    // All interactions have phaseAdded (session fully tracked) — show all as discovery baseline
+    return { filtered: data, hasPhaseData: true, isTemplate: false };
   }
 
   let matched = data.interactions.filter((i) => i.phaseAdded === phase.dreamPhase);
@@ -159,12 +162,8 @@ function filterForPhase(
     return { filtered: { ...data, interactions: matched }, hasPhaseData: true, isTemplate: false };
   }
 
-  // No phase-specific interactions yet → show template with a note
-  return {
-    filtered: PHASE_TEMPLATES[phase.key],
-    hasPhaseData: false,
-    isTemplate: true,
-  };
+  // No phase-specific interactions yet — show empty state
+  return { filtered: EMPTY, hasPhaseData: false, isTemplate: false };
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -276,15 +275,9 @@ export function CompletedJourneyMaps({
         {stats.withConstraints > 0 && (
           <span className="text-orange-600"><span className="font-semibold">{stats.withConstraints}</span> constraint flags</span>
         )}
-        {isTemplate && (
-          <span className="ml-auto inline-flex items-center gap-1 text-slate-400 italic">
-            <span className="h-1.5 w-1.5 rounded-full bg-slate-300 inline-block" />
-            Template — will update from live session data
-          </span>
-        )}
-        {!isTemplate && !hasPhaseData && (
+        {!hasPhaseData && (
           <span className="ml-auto text-amber-600 italic">
-            Showing full journey — no {currentPhase.label} interactions captured yet
+            {currentPhase.emptyHint}
           </span>
         )}
       </div>
@@ -321,16 +314,15 @@ export function CompletedJourneyMaps({
 
         {innerTab === 'journey' && (
           <div className="p-4">
-            {isTemplate && (
-              <div className="mb-4 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 flex items-start gap-2">
-                <span className="mt-0.5">💡</span>
-                <span>
-                  <strong>Template view</strong> — this is an example journey to illustrate the {currentPhase.label} phase.
-                  It will be replaced automatically once the live session data is synthesised.
-                </span>
+            {!hasPhaseData && filtered.interactions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+                <span className="text-4xl">🗺️</span>
+                <p className="text-sm font-medium text-slate-600">{currentPhase.label} journey not yet captured</p>
+                <p className="text-xs text-slate-400 max-w-sm">{currentPhase.emptyHint}</p>
               </div>
+            ) : (
+              <LiveJourneyMap data={filtered} expanded mode="output" />
             )}
-            <LiveJourneyMap data={filtered} expanded mode="output" />
           </div>
         )}
 

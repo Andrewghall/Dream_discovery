@@ -1148,6 +1148,7 @@ export function buildLiveJourney(
   nodes: CogNode[],
   existingData: LiveJourneyData,
   defaultStages: string[],
+  phase?: DialoguePhase,
 ): LiveJourneyData {
   const stages = existingData.stages.length > 0 ? existingData.stages : defaultStages;
   const actorsMap = new Map<string, LiveJourneyActor>();
@@ -1204,6 +1205,7 @@ export function buildLiveJourney(
           sourceNodeIds: [node.id],
           addedBy: 'ai',
           createdAtMs: node.createdAtMs,
+          phaseAdded: phase,
         });
       }
     }

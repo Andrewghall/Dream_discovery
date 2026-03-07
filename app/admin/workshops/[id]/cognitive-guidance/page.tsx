@@ -780,25 +780,23 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Phase change → swap seed pads + journey stages ─────
   const handlePhaseChange = useCallback((phase: DialoguePhase) => {
     setDialoguePhase((prevPhase) => {
-      // Phase transition snapshot: REIMAGINE → CONSTRAINTS
-      // Copy current intensity values to idealIntensity fields
-      if (prevPhase === 'REIMAGINE' && phase === 'CONSTRAINTS') {
-        setLiveJourney((prevJourney) => ({
-          ...prevJourney,
-          stages: getBlueprintJourneyStages(phase, blueprintStagesRef.current),
-          interactions: prevJourney.interactions.map((i) => ({
-            ...i,
+      setLiveJourney((prevJourney) => {
+        // Stamp phaseAdded on any interactions that don't yet have it
+        const stamped = prevJourney.interactions.map((i) => ({
+          ...i,
+          phaseAdded: i.phaseAdded ?? prevPhase,
+          // When leaving REIMAGINE, snapshot ideal intensity values for comparison in later phases
+          ...(prevPhase === 'REIMAGINE' && !i.idealBusinessIntensity ? {
             idealBusinessIntensity: i.businessIntensity,
             idealCustomerIntensity: i.customerIntensity,
-          })),
+          } : {}),
         }));
-      } else if (!listening) {
-        // Only replace stages if not listening (no real data yet)
-        setLiveJourney((prevJourney) => ({
+        return {
           ...prevJourney,
           stages: getBlueprintJourneyStages(phase, blueprintStagesRef.current),
-        }));
-      }
+          interactions: stamped,
+        };
+      });
       return phase;
     });
 
@@ -1126,7 +1124,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     });
 
     // Stage 5: Live Journey Construction (progressive, preserves facilitator edits)
-    setLiveJourney(prev => buildLiveJourney(nodesArr, prev, getBlueprintJourneyStages(dialoguePhase, blueprintStagesRef.current)));
+    // phaseAdded is stamped on each new interaction so Output can filter by phase
+    setLiveJourney(prev => buildLiveJourney(nodesArr, prev, getBlueprintJourneyStages(dialoguePhase, blueprintStagesRef.current), dialoguePhase));
 
     // Session confidence
     const confidence = calculateSessionConfidence(
