@@ -805,73 +805,101 @@ export async function GET(request: NextRequest) {
 
     const includeRegulation = session.includeRegulation ?? session.workshop?.includeRegulation ?? true;
 
-    // ── Derive phase labels from workshop blueprint lenses ───────────────────────
-    // phaseInsights must use the workshop's actual lens names (e.g. "Customer Experience",
-    // "People & Workforce") rather than hardcoded internal keys ("customer", "people").
-    // For each lens name we fuzzy-match the best key in the collected conversation data,
-    // so old session data (keyed by "customer", "organisation", etc.) is correctly mapped.
+    // ── Build phaseInsights from the workshop's dynamic lens definition ──────────
+    //
+    // Priority (mirrors session init / message routing):
+    //
+    // 1. discoveryQuestions lenses  — the authoritative source when present.
+    //    Each lens has a .key (the phase tag used in sessions, e.g. "Customer")
+    //    and a .label (the display name, e.g. "Customer Experience").
+    //    We read collected data by key and store phaseInsights under the label.
+    //    No mapping or fuzzy-matching needed.
+    //
+    // 2. Blueprint lenses only      — blueprint exists but no discoveryQuestions.
+    //    LENS_NAME_TO_PHASE maps standard lens names to conversation phase keys.
+    //    Custom lens names that don't match keep their name as the phase label
+    //    and attempt an exact / prefix lookup in collected data.
+    //
+    // 3. Legacy fallback            — no blueprint, no discoveryQuestions.
+    //    Uses the hardcoded default dimension names from getDimensionNames().
+    //    Data is keyed by the old hardcoded phase keys; we still do prefix
+    //    matching so 'people'→People, 'customer'→Customer, etc.
+
     const workshopForReport = session.workshop as any;
+    const discoveryQs = workshopForReport?.discoveryQuestions as {
+      lenses?: Array<{ key: string; label?: string }>;
+    } | null | undefined;
+
     const reportBlueprint = readBlueprintFromJson(workshopForReport?.blueprint);
-    const reportLensNames: string[] = reportBlueprint?.lenses?.length
-      ? reportBlueprint.lenses.map((l: { name: string }) => l.name)
-      : getDimensionNames(workshopForReport?.prepResearch);
 
-    // All conversation data keys actually present (e.g. "people", "corporate", "customer", ...)
-    const collectedPhaseKeys = Object.keys(currentByPhase);
-
-    // Known legacy phase key aliases: old internal keys that don't fuzzy-match lens names
-    // e.g. 'corporate' was the old key for Operations/Organisation questions
-    const LEGACY_PHASE_ALIASES: Record<string, string[]> = {
-      corporate: ['operations', 'organis', 'organiz'],
-    };
-
-    // Helper: find the best-matching collected key for a given lens display name.
-    // Handles both new sessions (m.phase = blueprint lens name) and old sessions
-    // (m.phase = legacy internal key like 'people', 'corporate', 'customer').
-    function findDataKey(lensName: string): string | null {
-      const ll = lensName.toLowerCase();
-      // 1. Exact match (covers new sessions where m.phase IS the lens name)
-      let match = collectedPhaseKeys.find((k) => k.toLowerCase() === ll);
-      if (match) return match;
-      // 2. Prefix / substring match (e.g. "Customer Experience" ↔ "customer")
-      match = collectedPhaseKeys.find((k) => {
-        const kl = k.toLowerCase();
-        return ll.startsWith(kl) || kl.startsWith(ll) || ll.includes(kl) || kl.includes(ll);
-      });
-      if (match) return match;
-      // 3. First-word match (e.g. "People & Workforce" first word "people" → key "people")
-      const firstWord = ll.split(/[\s&]/)[0];
-      match = collectedPhaseKeys.find((k) => {
-        const kl = k.toLowerCase();
-        return kl.startsWith(firstWord) || firstWord.startsWith(kl);
-      });
-      if (match) return match;
-      // 4. Legacy alias check (e.g. "Operations" lens → old "corporate" key)
-      match = collectedPhaseKeys.find((k) => {
-        const aliases = LEGACY_PHASE_ALIASES[k.toLowerCase()];
-        return aliases ? aliases.some((alias) => ll.startsWith(alias) || alias.startsWith(firstWord)) : false;
-      });
-      return match ?? null;
+    function dataFor(key: string) {
+      return {
+        currentScore: currentByPhase[key] ?? null,
+        targetScore: targetByPhase[key] ?? null,
+        projectedScore: projectedByPhase[key] ?? null,
+        strengths: strengthsByPhase[key] || [],
+        working: workingByPhase[key] || [],
+        gaps: gapsByPhase[key] || [],
+        painPoints: painPointsByPhase[key] || [],
+        frictions: frictionsByPhase[key] || [],
+        barriers: barriersByPhase[key] || [],
+        constraint: constraintByPhase[key] || [],
+        future: futureTextByPhase[key] || [],
+        support: supportByPhase[key] || [],
+      };
     }
 
-    const phaseInsights = reportLensNames.map((lensName) => {
-      const key = findDataKey(lensName);
-      return {
-        phase: lensName,
-        currentScore: key ? (currentByPhase[key] ?? null) : null,
-        targetScore: key ? (targetByPhase[key] ?? null) : null,
-        projectedScore: key ? (projectedByPhase[key] ?? null) : null,
-        strengths: key ? (strengthsByPhase[key] || []) : [],
-        working: key ? (workingByPhase[key] || []) : [],
-        gaps: key ? (gapsByPhase[key] || []) : [],
-        painPoints: key ? (painPointsByPhase[key] || []) : [],
-        frictions: key ? (frictionsByPhase[key] || []) : [],
-        barriers: key ? (barriersByPhase[key] || []) : [],
-        constraint: key ? (constraintByPhase[key] || []) : [],
-        future: key ? (futureTextByPhase[key] || []) : [],
-        support: key ? (supportByPhase[key] || []) : [],
-      };
-    });
+    let phaseInsights: Array<ReturnType<typeof dataFor> & { phase: string }>;
+
+    if (discoveryQs?.lenses?.length) {
+      // ── Path 1: discoveryQuestions — fully dynamic, no mapping ──────────────
+      // lens.key is exactly what the session tagged messages with; lens.label is
+      // the display name to store. Direct lookup, zero fuzzy matching.
+      phaseInsights = discoveryQs.lenses.map((lens) => ({
+        phase: lens.label || lens.key,
+        ...dataFor(lens.key),
+      }));
+
+    } else if (reportBlueprint?.lenses?.length) {
+      // ── Path 2: blueprint-only — best-effort match of lens name to data key ──
+      // Covers workshops that have a blueprint but haven't had discoveryQuestions
+      // generated yet.  Includes a first-word prefix check so "People & Workforce"
+      // finds data under the key "people", etc.
+      const collectedKeys = Object.keys(currentByPhase);
+      phaseInsights = reportBlueprint.lenses.map((lens: { name: string }) => {
+        const ll = lens.name.toLowerCase();
+        const firstWord = ll.split(/[\s&]/)[0];
+        const key =
+          collectedKeys.find((k) => k.toLowerCase() === ll) ??
+          collectedKeys.find((k) => {
+            const kl = k.toLowerCase();
+            return ll.startsWith(kl) || kl.startsWith(ll);
+          }) ??
+          collectedKeys.find((k) => {
+            const kl = k.toLowerCase();
+            return kl.startsWith(firstWord) || firstWord.startsWith(kl);
+          }) ??
+          null;
+        return { phase: lens.name, ...dataFor(key ?? '') };
+      });
+
+    } else {
+      // ── Path 3: legacy — hardcoded dimension names, prefix match to old keys ──
+      const legacyNames = getDimensionNames(workshopForReport?.prepResearch);
+      const collectedKeys = Object.keys(currentByPhase);
+      phaseInsights = legacyNames.map((name) => {
+        const ll = name.toLowerCase();
+        const firstWord = ll.split(/[\s&]/)[0];
+        const key =
+          collectedKeys.find((k) => k.toLowerCase() === ll) ??
+          collectedKeys.find((k) => {
+            const kl = k.toLowerCase();
+            return ll.startsWith(kl) || kl.startsWith(ll) || kl.startsWith(firstWord) || firstWord.startsWith(kl);
+          }) ??
+          null;
+        return { phase: name, ...dataFor(key ?? '') };
+      });
+    }
 
     const prioritization: {
       biggestConstraint?: string;
