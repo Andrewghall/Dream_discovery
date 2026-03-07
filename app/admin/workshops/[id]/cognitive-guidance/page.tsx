@@ -492,6 +492,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const dialoguePhaseRef = useRef<DialoguePhase>('REIMAGINE');
   const blueprintStagesRef = useRef<Array<{ name: string }> | null>(null);
   const blueprintLensNamesRef = useRef<string[]>([]);
+  const [blueprintLensNames, setBlueprintLensNames] = useState<string[]>([]);
   const customKeywordMapRef = useRef<[string, RegExp][] | null>(null);
   const customLensToDomainRef = useRef<Record<string, string> | null>(null);
 
@@ -982,7 +983,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
         // Populate lens names + keyword maps from blueprint
         if (bp?.lenses?.length) {
-          blueprintLensNamesRef.current = bp.lenses.map(l => l.name);
+          const names = bp.lenses.map(l => l.name);
+          blueprintLensNamesRef.current = names;
+          setBlueprintLensNames(names);
           const customDimensions = bp.lenses.map(l => ({ name: l.name, keywords: l.keywords }));
           customKeywordMapRef.current = buildKeywordLensMap(customDimensions);
           customLensToDomainRef.current = buildLensToDomain(bp.lenses.map(l => l.name));
@@ -2415,7 +2418,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 nodes={hemisphereNodeArray}
                 originTimeMs={null}
                 onNodeClick={(node) => setExpandedNode(node)}
-                lensNames={blueprintLensNamesRef.current}
+                lensNames={blueprintLensNames}
               />
             </div>
           </div>
@@ -2466,7 +2469,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                   nodes={hemisphereNodeArray}
                   originTimeMs={null}
                   onNodeClick={(node) => { setExpandedNode(node); }}
-                  lensNames={blueprintLensNamesRef.current}
+                  lensNames={blueprintLensNames}
                 />
               </div>
             </div>

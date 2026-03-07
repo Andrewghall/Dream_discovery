@@ -104,16 +104,7 @@ type PageProps = { params: Promise<{ id: string }> };
 
 /* ─────────────────────────── Constants ─────────────────────────── */
 
-const DEFAULT_DOMAIN_TABS: { key: string; label: string; color: string }[] = [
-  { key: 'all', label: 'All Domains', color: '#94a3b8' },
-  { key: 'people', label: 'People', color: '#a78bfa' },
-  { key: 'corporate', label: 'Operations', color: '#f97316' },
-  { key: 'customer', label: 'Customer', color: '#60a5fa' },
-  { key: 'technology', label: 'Technology', color: '#34d399' },
-  { key: 'regulation', label: 'Regulation', color: '#fb7185' },
-];
-
-const DEFAULT_ALL_PHASES = ['people', 'corporate', 'customer', 'technology', 'regulation'];
+const ALL_DOMAIN_TAB: { key: string; label: string; color: string } = { key: 'all', label: 'All Lenses', color: '#94a3b8' };
 const ALL_TYPES: NodeType[] = ['VISION', 'BELIEF', 'CHALLENGE', 'FRICTION', 'CONSTRAINT', 'ENABLER'];
 
 const STOPWORDS = new Set([
@@ -563,7 +554,7 @@ function DomainSynthesisCard({
 
 /* ─────────────────────────── Actor Journey Panel ─────────────────────────── */
 
-function ActorJourneyPanel({ workshopId, snapshotId }: { workshopId: string; snapshotId?: string }) {
+function ActorJourneyPanel({ workshopId, snapshotId, domainTabs }: { workshopId: string; snapshotId?: string; domainTabs: Array<{ key: string; label: string; color: string }> }) {
   const [data, setData] = useState<ActorJourneyResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -687,7 +678,7 @@ function ActorJourneyPanel({ workshopId, snapshotId }: { workshopId: string; sna
               {actor.domains.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2">
                   {actor.domains.map((d) => {
-                    const tab = DEFAULT_DOMAIN_TABS.find((t) => t.key === d);
+                    const tab = domainTabs.find((t) => t.key === d);
                     return (
                       <span key={d} className="rounded-full px-1.5 py-0.5 text-[10px] text-slate-300 capitalize" style={{ backgroundColor: `${tab?.color || '#94a3b8'}20`, border: `1px solid ${tab?.color || '#94a3b8'}40` }}>
                         {tab?.label || d}
@@ -804,9 +795,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const transitionRef = useRef<{ startMs: number; from: Map<string, NodePose> } | null>(null);
   const prevPositionsRef = useRef<Map<string, NodePose>>(new Map());
 
-  const [phaseFilter, setPhaseFilter] = useState<Record<string, boolean>>({
-    people: true, corporate: true, customer: true, technology: true, regulation: true,
-  });
+  const [phaseFilter, setPhaseFilter] = useState<Record<string, boolean>>({});
   const [typeFilter, setTypeFilter] = useState<Record<NodeType, boolean>>({
     VISION: true, BELIEF: true, CHALLENGE: true, FRICTION: true, CONSTRAINT: true, ENABLER: true, EVIDENCE: false,
   });
@@ -1047,11 +1036,12 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const maxWeight = useMemo(() => nodes.reduce((m, n) => Math.max(m, n.weight || 0), 1), [nodes]);
 
-  // Dynamic domain tabs from research dimensions (falls back to defaults)
+  // Domain tabs — built from blueprint/research lenses returned by the API.
+  // No hardcoded list: if the API returns no industryDimensions, only "All" is shown.
   const domainTabs = useMemo(() => {
     if (data?.industryDimensions?.length) {
       return [
-        { key: 'all', label: 'All Dimensions', color: '#94a3b8' },
+        ALL_DOMAIN_TAB,
         ...data.industryDimensions.map(d => ({
           key: d.name.toLowerCase().replace(/\s+/g, '_'),
           label: d.name,
@@ -1059,7 +1049,8 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         })),
       ];
     }
-    return DEFAULT_DOMAIN_TABS;
+    // Data not loaded yet or workshop has no blueprint lenses — show only "All"
+    return [ALL_DOMAIN_TAB];
   }, [data?.industryDimensions]);
 
   const allPhases = useMemo(() => domainTabs.filter(t => t.key !== 'all').map(t => t.key), [domainTabs]);
@@ -1928,6 +1919,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
               <ActorJourneyPanel
                 workshopId={workshopId}
                 snapshotId={selectedSnapshotId || undefined}
+                domainTabs={domainTabs}
               />
             ) : (
               <HemisphereDiagnosticPanel

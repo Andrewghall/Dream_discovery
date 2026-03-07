@@ -99,7 +99,7 @@ const PHASE_QUESTIONS: Record<Phase, string[]> = {
 };
 
 function nodeTypeForPhaseAndIndex(phase: Phase, index: number): string {
-  if (phase === 'REIMAGINE') return index <= 12 ? 'VISION' : 'INSIGHT';
+  if (phase === 'REIMAGINE') return index <= 12 ? 'VISIONARY' : 'INSIGHT';
   if (phase === 'CONSTRAINTS') return index <= 10 ? 'CONSTRAINT' : 'RISK';
   return index <= 8 ? 'ENABLER' : 'ACTION'; // DEFINE_APPROACH
 }
@@ -373,6 +373,10 @@ async function main() {
 
   // ── Build nodesById for LiveWorkshopSnapshot ─────────────────────────────────
   const now = Date.now();
+  const totalNodes = allStatements.reduce((s, a) => s + a.statements.length, 0);
+  // Spread timestamps evenly: oldest node = now-10h, newest = now-1min
+  const SPAN_MS = 10 * 60 * 60 * 1000;
+  const END_MS = now - 60_000;
   let speakerIdx = 0;
   let nodeIdx = 0;
 
@@ -402,7 +406,14 @@ async function main() {
       suggestedArea: string | null;
       updatedAt: string;
     };
-    agenticAnalysis: null;
+    agenticAnalysis: {
+      domains: Array<{ domain: string; relevance: number; reasoning: string }>;
+      themes: Array<{ label: string; category: string; confidence: number; reasoning: string }>;
+      actors: never[];
+      semanticMeaning: string;
+      sentimentTone: string;
+      overallConfidence: number;
+    };
   };
   const hemisphereNodes: Record<string, HemisphereNodeLike> = {};
 
@@ -413,7 +424,8 @@ async function main() {
       const id = `node_${uid()}_${nodeIdx}`;
       const speaker = SPEAKERS[speakerIdx % SPEAKERS.length];
       const primaryType = nodeTypeForPhaseAndIndex(spec.phase, si);
-      const createdAtMs = now - (1200 - nodeIdx) * 30_000; // spread ~10h back
+      // Even spread: oldest at now-10h, newest at now-1min. All in the past.
+      const createdAtMs = Math.round(END_MS - ((totalNodes - 1 - nodeIdx) / Math.max(1, totalNodes - 1)) * SPAN_MS);
 
       const snapshotNode: SnapshotNode = {
         rawText: statements[si],
@@ -440,7 +452,14 @@ async function main() {
           suggestedArea: null,
           updatedAt: new Date(createdAtMs).toISOString(),
         },
-        agenticAnalysis: null,
+        agenticAnalysis: {
+          domains: [{ domain: spec.lens, relevance: 0.92, reasoning: `Generated for ${spec.lens} lens perspective` }],
+          themes: [],
+          actors: [],
+          semanticMeaning: statements[si].slice(0, 120),
+          sentimentTone: spec.phase === 'REIMAGINE' ? 'positive' : spec.phase === 'CONSTRAINTS' ? 'concerned' : 'neutral',
+          overallConfidence: 0.88,
+        },
       };
       hemisphereNodes[id] = hemisphereNode;
 

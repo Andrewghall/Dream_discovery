@@ -123,8 +123,6 @@ function intentColor(intent: string) {
   return palette[Math.max(0, Math.min(palette.length - 1, i))];
 }
 
-const DEFAULT_LENS_NAMES = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
-
 function buildDomainAngles(lensNames: string[]): Record<string, number> {
   const angles: Record<string, number> = {};
   const count = lensNames.length;
@@ -188,7 +186,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   className?: string;
 }) {
   const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, themeAttractors, links, lensNames, className } = props;
-  const activeLenses = lensNames?.length ? lensNames : DEFAULT_LENS_NAMES;
+  const activeLenses = lensNames ?? [];
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
