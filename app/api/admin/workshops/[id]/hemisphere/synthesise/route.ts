@@ -703,7 +703,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           'request',
         );
 
-        const coveragePct = ((domainNames.length / 5) * 100).toFixed(0);
+        const totalExpectedDomains = domainNames.length || 5;
+        const coveragePct = ((domainNames.length / totalExpectedDomains) * 100).toFixed(0);
         const lowConfPct = aggregated.totalNodes > 0
           ? ((aggregated.lowConfidenceCount / aggregated.totalNodes) * 100).toFixed(1)
           : '0';
@@ -711,7 +712,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         emit(
           'guardian',
           'orchestrator',
-          `Data quality assessment:\n• **Coverage**: ${coveragePct}% domain coverage (${domainNames.length}/5 DREAM domains)\n• **Confidence**: ${lowConfPct}% of data points below 50% confidence threshold\n• **Phase balance**: ${phaseBreakdown}\n• **Actor depth**: ${aggregated.topActors.length} unique actors, top contributor has ${aggregated.topActors[0]?.mentions || 0} mentions\n\n${Number(lowConfPct) > 30 ? '⚠️ High proportion of low-confidence data — synthesis quality may be affected.' : '✓ Data quality is acceptable for synthesis.'}`,
+          `Data quality assessment:\n• **Coverage**: ${coveragePct}% domain coverage (${domainNames.length}/${totalExpectedDomains} domains)\n• **Confidence**: ${lowConfPct}% of data points below 50% confidence threshold\n• **Phase balance**: ${phaseBreakdown}\n• **Actor depth**: ${aggregated.topActors.length} unique actors, top contributor has ${aggregated.topActors[0]?.mentions || 0} mentions\n\n${Number(lowConfPct) > 30 ? '⚠️ High proportion of low-confidence data — synthesis quality may be affected.' : '✓ Data quality is acceptable for synthesis.'}`,
           'verification',
           { verdict: Number(lowConfPct) > 50 ? 'modify' : 'approve', reasoning: `${lowConfPct}% low-confidence data points` },
         );

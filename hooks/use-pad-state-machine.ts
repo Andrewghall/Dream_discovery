@@ -250,9 +250,7 @@ export function usePadStateMachine(
     // Fallback: generate starter sub-pads from the question itself
     const prep = prepRef.current;
     const wp = dialoguePhaseToWorkshopPhase(dialoguePhase);
-    const phaseLenses = wp && prep?.phases?.[wp]?.lensOrder
-      ? prep.phases[wp].lensOrder
-      : ['People', 'Customer', 'Organisation'];
+    const phaseLenses = (wp && prep?.phases?.[wp]?.lensOrder) ? prep.phases[wp].lensOrder : [];
 
     const qLens = question.lens || 'General';
     const otherLenses = phaseLenses.filter((l) => l !== qLens).slice(0, 2);

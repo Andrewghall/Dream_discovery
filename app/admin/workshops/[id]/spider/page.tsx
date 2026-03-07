@@ -73,7 +73,7 @@ type AssumptionsApiResponse = {
 };
 
 type DimensionMedians = {
-  key: 'People' | 'Organisation' | 'Customer' | 'Technology' | 'Regulation';
+  key: string;
   current_median: number;
   target_median: number;
   projected_median: number;

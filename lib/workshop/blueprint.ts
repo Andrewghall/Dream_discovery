@@ -333,7 +333,7 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
   // Note: pipeline.ts REIMAGINE_LENSES uses 'Organisation', workshop-dimensions
   // uses 'Operations'. Both are included for compatibility until normalised.
   phaseLensPolicy: {
-    REIMAGINE: ['People', 'Customer', 'Organisation'],
+    REIMAGINE: DEFAULT_DIMENSIONS.map((d) => d.name),
     CONSTRAINTS: DEFAULT_DIMENSIONS.map((d) => d.name),
     DEFINE_APPROACH: DEFAULT_DIMENSIONS.map((d) => d.name),
   },
@@ -523,10 +523,8 @@ export function composeBlueprint(input: ComposeInput): WorkshopBlueprint {
 
       // Update phase lens policy to match available lenses
       const lensNames = bp.lenses.map((l) => l.name);
-      // REIMAGINE restricts to people/customer/org dimensions
-      const reimagineSet = new Set(['People', 'Customer', 'Organisation', 'Operations']);
       bp.phaseLensPolicy = {
-        REIMAGINE: lensNames.filter((n) => reimagineSet.has(n)),
+        REIMAGINE: [...lensNames],
         CONSTRAINTS: [...lensNames],
         DEFINE_APPROACH: [...lensNames],
       };

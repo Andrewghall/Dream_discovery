@@ -44,7 +44,7 @@ setInterval(() => {
 
 /* ── Validation ───────────────────────────────────────────── */
 
-const VALID_DOMAINS = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+// Domain validation is open — accepts any non-empty string from the assessment quiz
 const VALID_LEVELS = ['Ad Hoc', 'Emerging', 'Defined', 'Managed', 'Leading'];
 
 interface DomainScore {
@@ -87,7 +87,7 @@ function validatePayload(body: unknown): SubmissionPayload | string {
     const levelDescriptor = String(s.levelDescriptor || '');
     const nextLevelName = String(s.nextLevelName || '');
     const nextLevelDescriptor = String(s.nextLevelDescriptor || '');
-    if (!VALID_DOMAINS.includes(domain)) return null;
+    if (!domain) return null;
     if (score < 1 || score > 5) return null;
     if (!VALID_LEVELS.includes(levelName)) return null;
     return { domain, score, levelName, levelDescriptor, nextLevelName, nextLevelDescriptor };

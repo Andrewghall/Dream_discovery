@@ -260,7 +260,8 @@ function buildAnalysisSummary(
 const MODEL = 'gpt-4o';
 const MAX_ITERATIONS = 4;
 
-const SYSTEM_PROMPT = `You are an organisational discovery analyst for DREAM diagnostic workshops.
+function buildSystemPrompt(lensNames: string[]): string {
+  return `You are an organisational discovery analyst for DREAM diagnostic workshops.
 
 You have been given a statistical summary of a structured data file. Your job is to:
 1. Understand what this data represents — what organisation, people, systems, or processes it describes
@@ -268,12 +269,7 @@ You have been given a statistical summary of a structured data file. Your job is
 3. Extract these as structured diagnostic findings using the DREAM framework
 
 Each finding must be classified as:
-- **lens**: One of People, Organisation, Customer, Technology, Regulation
-  - People: human factors, capacity, skills, culture, wellbeing, absence, development
-  - Organisation: structure, processes, performance management, governance, efficiency
-  - Customer: service delivery, customer experience, satisfaction, outcomes
-  - Technology: systems, tools, data quality, automation
-  - Regulation: compliance, policy, legal exposure, risk
+- **lens**: One of ${lensNames.join(', ')}
 
 - **type**: One of constraint, opportunity, risk, contradiction
   - constraint: a barrier, blocker, or limitation holding the org back
@@ -295,8 +291,10 @@ Guidelines:
 - Identify contradictions — where the data tells a different story from what management would expect
 - Be specific: name the groups, quote the numbers, show the gap
 - Avoid generic observations — every finding must be grounded in the data summary provided`;
+}
 
-const tools: OpenAI.ChatCompletionTool[] = [
+function buildTools(lensNames: string[]): OpenAI.ChatCompletionTool[] {
+  return [
   {
     type: 'function',
     function: {
@@ -316,7 +314,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
               properties: {
                 lens: {
                   type: 'string',
-                  enum: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'],
+                  enum: lensNames,
                 },
                 type: {
                   type: 'string',
@@ -339,7 +337,8 @@ const tools: OpenAI.ChatCompletionTool[] = [
       },
     },
   },
-];
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Main export
@@ -353,6 +352,7 @@ export async function analyseCsvAndExtractFindings(params: {
   csvText: string;
   fileName: string;
   userContext?: string;
+  lensNames?: string[];
 }): Promise<CsvImportResult> {
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -369,7 +369,7 @@ export async function analyseCsvAndExtractFindings(params: {
   );
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: buildSystemPrompt(params.lensNames ?? []) },
     {
       role: 'user',
       content: `Please analyse the following data summary and extract diagnostic findings using the submit_findings tool.\n\n---\n\n${summary}\n\n---`,
@@ -383,7 +383,7 @@ export async function analyseCsvAndExtractFindings(params: {
     const response = await openai.chat.completions.create({
       model: MODEL,
       messages,
-      tools,
+      tools: buildTools(params.lensNames ?? []),
       tool_choice: i === 0 ? { type: 'function', function: { name: 'submit_findings' } } : 'auto',
     });
 

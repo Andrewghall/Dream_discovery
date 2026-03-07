@@ -7,6 +7,7 @@ interface ConstraintMapProps {
   data: ConstraintMapData;
   /** When true, show computed impact score instead of raw weight */
   showImpactScore?: boolean;
+  lensColors?: Record<string, { bg: string }>;
 }
 
 // Domain colours (muted executive-grade palette)
@@ -31,7 +32,7 @@ const SEVERITY_STROKE: Record<string, string> = {
  * Layout: left-to-right hierarchy. Root constraints (no deps) on the left,
  * dependent constraints flowing right.
  */
-export function ConstraintMap({ data, showImpactScore }: ConstraintMapProps) {
+export function ConstraintMap({ data, showImpactScore, lensColors }: ConstraintMapProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   // Layout computation
@@ -119,7 +120,7 @@ export function ConstraintMap({ data, showImpactScore }: ConstraintMapProps) {
           const pos = positions.get(constraint.id);
           if (!pos) return null;
 
-          const fill = DOMAIN_COLORS[constraint.domain] || DOMAIN_COLORS.General;
+          const fill = lensColors?.[constraint.domain]?.bg || DOMAIN_COLORS[constraint.domain] || DOMAIN_COLORS.General;
           const stroke = SEVERITY_STROKE[constraint.severity] || SEVERITY_STROKE.moderate;
           const isHovered = hoveredId === constraint.id;
           const isConnected = hoveredId !== null && data.relationships.some(

@@ -14,6 +14,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { analyseCsvAndExtractFindings } from '@/lib/field-discovery/csv-analysis-agent';
+import { prisma } from '@/lib/prisma';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,12 +69,18 @@ export async function POST(
       return NextResponse.json({ error: 'CSV file is empty' }, { status: 400 });
     }
 
+    // Load blueprint lenses for this workshop
+    const workshop = await prisma.workshop.findUnique({ where: { id: workshopId }, select: { blueprint: true } });
+    const bp = readBlueprintFromJson(workshop?.blueprint);
+    const lensNames = bp?.lenses?.map((l) => l.name) ?? [];
+
     // Run the agent
     const result = await analyseCsvAndExtractFindings({
       workshopId,
       csvText,
       fileName: file.name,
       userContext: context || undefined,
+      lensNames,
     });
 
     return NextResponse.json(result, { status: 201 });

@@ -447,7 +447,15 @@ async function main() {
         dialoguePhase: spec.phase,
         classification: {
           primaryType,
-          confidence: 0.82 + Math.random() * 0.15,
+          confidence: (() => {
+            // Spread across the full radial range so dots fill centre → outer
+            // Weight: most nodes mid-range (0.35–0.75), tail at both ends
+            const r = Math.random();
+            if (r < 0.15) return 0.08 + Math.random() * 0.20;   // 15% near centre (0.08–0.28)
+            if (r < 0.45) return 0.30 + Math.random() * 0.30;   // 30% inner-mid (0.30–0.60)
+            if (r < 0.80) return 0.55 + Math.random() * 0.30;   // 35% outer-mid (0.55–0.85)
+            return 0.82 + Math.random() * 0.15;                  // 20% outer ring (0.82–0.97)
+          })(),
           keywords: [],
           suggestedArea: null,
           updatedAt: new Date(createdAtMs).toISOString(),

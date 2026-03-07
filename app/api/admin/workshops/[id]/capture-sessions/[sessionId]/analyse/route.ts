@@ -10,6 +10,8 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { getCaptureSession } from '@/lib/field-discovery/capture-session-manager';
 import { extractFindings } from '@/lib/field-discovery/field-extraction-agent';
+import { prisma } from '@/lib/prisma';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,12 +40,17 @@ export async function POST(
       );
     }
 
+    const workshop = await prisma.workshop.findUnique({ where: { id: workshopId }, select: { blueprint: true } });
+    const bp = readBlueprintFromJson(workshop?.blueprint);
+    const lensNames = bp?.lenses?.map((l) => l.name) ?? [];
+
     const result = await extractFindings({
       sessionId,
       workshopId,
       captureType: session.captureType,
       actorRole: session.actorRole,
       area: session.area,
+      lensNames,
     });
 
     return NextResponse.json({ result });

@@ -295,6 +295,20 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   // ── Agentic facilitation state ──────────────────────────────
   const [blueprint, setBlueprint] = useState<WorkshopBlueprint | null>(null);
+
+  // Derived from blueprint — single source of truth for all lens lists and colors
+  const blueprintLensNames = useMemo<string[]>(
+    () => blueprint?.lenses?.map((l) => l.name) ?? [],
+    [blueprint],
+  );
+  const customLensColors = useMemo<Record<string, { bg: string }> | undefined>(() => {
+    if (!blueprint?.lenses?.length) return undefined;
+    const colors: Record<string, { bg: string }> = {};
+    for (const lens of blueprint.lenses) {
+      colors[lens.name] = { bg: lens.color };
+    }
+    return colors;
+  }, [blueprint]);
   const [prepQuestions, setPrepQuestions] = useState<PrepQuestionSet | null>(null);
   const [coverageThreshold, setCoverageThreshold] = useState(70);
   const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
@@ -1100,12 +1114,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
     const cy = H - pad;
     const R = Math.min(cx - pad, cy - pad);
 
-    const domainAngles: Record<LiveDomain, number> = {
-      People: (5 * Math.PI) / 6,
-      Operations: (3 * Math.PI) / 4,
-      Customer: Math.PI / 2,
-      Technology: Math.PI / 3,
-      Regulation: Math.PI / 6,
+    const N = blueprintLensNames.length || 1;
+    const getDomainAngle = (domain: string) => {
+      const idx = blueprintLensNames.indexOf(domain);
+      return idx >= 0 ? Math.PI * (N - idx) / (N + 1) : Math.PI / 2;
     };
 
     const intentRadius = (intentType: string) => {
@@ -1118,7 +1130,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       return 0.62;
     };
 
-    const theta = domainAngles[params.domain] + (hash01(params.themeId) - 0.5) * 0.32;
+    const theta = getDomainAngle(params.domain) + (hash01(params.themeId) - 0.5) * 0.32;
     const radial = R * intentRadius(params.intentType) + (hash01(`r:${params.themeId}`) - 0.5) * 24;
     return {
       x: cx + radial * Math.cos(theta),
@@ -1134,15 +1146,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
     const cy = H - pad;
     const R = Math.min(cx - pad, cy - pad);
 
-    const domainAngles: Record<LiveDomain, number> = {
-      People: (5 * Math.PI) / 6,
-      Operations: (3 * Math.PI) / 4,
-      Customer: Math.PI / 2,
-      Technology: Math.PI / 3,
-      Regulation: Math.PI / 6,
-    };
-
-    const theta = domainAngles[domain];
+    const N2 = blueprintLensNames.length || 1;
+    const idx2 = blueprintLensNames.indexOf(domain);
+    const theta = idx2 >= 0 ? Math.PI * (N2 - idx2) / (N2 + 1) : Math.PI / 2;
     const radial = R * 0.64;
     return {
       x: cx + radial * Math.cos(theta),
@@ -1719,13 +1725,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
     if (viaEdges.length) return viaEdges;
 
-    const counts: Record<LiveDomain, { constraintCount: number; aspirationCount: number }> = {
-      People: { constraintCount: 0, aspirationCount: 0 },
-      Operations: { constraintCount: 0, aspirationCount: 0 },
-      Customer: { constraintCount: 0, aspirationCount: 0 },
-      Technology: { constraintCount: 0, aspirationCount: 0 },
-      Regulation: { constraintCount: 0, aspirationCount: 0 },
-    };
+    const counts: Record<string, { constraintCount: number; aspirationCount: number }> = Object.fromEntries(
+      blueprintLensNames.map((l) => [l, { constraintCount: 0, aspirationCount: 0 }]),
+    );
 
     for (const n of utteranceNodes) {
       const i = interpretLiveUtterance(n.rawText);
@@ -1734,11 +1736,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const isAspiration =
         i.temporalIntent === 'FUTURE' &&
         (i.cognitiveTypes.includes('VISION') || i.cognitiveTypes.includes('OUTCOME') || i.cognitiveTypes.includes('OPPORTUNITY'));
-      if (isConstraint) counts[d].constraintCount += 1;
-      if (isAspiration) counts[d].aspirationCount += 1;
+      if (counts[d]) {
+        if (isConstraint) counts[d].constraintCount += 1;
+        if (isAspiration) counts[d].aspirationCount += 1;
+      }
     }
 
-    return (Object.keys(counts) as LiveDomain[])
+    return (Object.keys(counts))
       .map((d) => {
         const c = counts[d];
         const delta = c.constraintCount - c.aspirationCount;
@@ -1756,7 +1760,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       .filter((p) => p.constraintCount >= 1)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
-  }, [dependencyEdgesById, utteranceNodes]);
+  }, [blueprintLensNames, dependencyEdgesById, utteranceNodes]);
 
   const synthesisByDomain = useMemo(() => {
     type SynthesisItem = {
@@ -1776,13 +1780,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
       opportunities: [] as SynthesisItem[],
     });
 
-    const out: Record<LiveDomain, ReturnType<typeof empty>> = {
-      People: empty(),
-      Operations: empty(),
-      Customer: empty(),
-      Technology: empty(),
-      Regulation: empty(),
-    };
+    const out: Record<string, ReturnType<typeof empty>> = Object.fromEntries(
+      blueprintLensNames.map((l) => [l, empty()]),
+    );
 
     const nodeById: Record<string, HemisphereNodeDatum> = {};
     const baseToVirtualIds: Record<string, string[]> = {};
@@ -1860,7 +1860,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
         .sort((a, b) => b.weight - a.weight)
         .slice(0, 3);
 
-    for (const d of Object.keys(out) as LiveDomain[]) {
+    for (const d of Object.keys(out)) {
       out[d] = {
         aspirations: sortAndSlice(out[d].aspirations),
         constraints: sortAndSlice(out[d].constraints),
@@ -1869,7 +1869,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       };
     }
 
-    const synthesisTotal = (Object.keys(out) as LiveDomain[]).reduce(
+    const synthesisTotal = Object.keys(out).reduce(
       (acc, d) =>
         acc +
         (out[d].aspirations.length || 0) +
@@ -1931,23 +1931,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
         };
       }
 
-      const out2: Record<LiveDomain, ReturnType<typeof empty>> = {
-        People: empty(),
-        Operations: empty(),
-        Customer: empty(),
-        Technology: empty(),
-        Regulation: empty(),
-      };
+      const out2: Record<string, ReturnType<typeof empty>> = Object.fromEntries(
+        blueprintLensNames.map((l) => [l, empty()]),
+      );
 
       for (const g of Object.values(groups)) {
         const parts = g.themeId.split(':');
-        const domain = (parts[1] as LiveDomain) || 'Operations';
+        const domain = parts[1] || blueprintLensNames[0] || '';
         const bucket = (parts[2] as Bucket) || null;
         if (!bucket || !out2[domain]) continue;
         out2[domain][bucket].push(g);
       }
 
-      for (const d of Object.keys(out2) as LiveDomain[]) {
+      for (const d of Object.keys(out2)) {
         out2[d] = {
           aspirations: sortAndSlice(out2[d].aspirations),
           constraints: sortAndSlice(out2[d].constraints),
@@ -1960,7 +1956,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
 
     return out;
-  }, [effectiveThemesById, interpretedNodes, usingDerivedThemes, utteranceNodes]);
+  }, [blueprintLensNames, effectiveThemesById, interpretedNodes, usingDerivedThemes, utteranceNodes]);
 
   const lensInsights = useMemo(() => {
     if (!lensDomain) return null;
@@ -2004,8 +2000,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
   }, [dependencyEdgesById, lensDomain, synthesisByDomain]);
 
   const visionNarrative = useMemo(() => {
-    const picks: Array<{ domain: LiveDomain; label: string; example?: string | null }> = [];
-    for (const d of ['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[]) {
+    const picks: Array<{ domain: string; label: string; example?: string | null }> = [];
+    for (const d of blueprintLensNames) {
       const top = (synthesisByDomain[d]?.aspirations || [])[0] ?? (synthesisByDomain[d]?.opportunities || [])[0] ?? null;
       if (!top) continue;
       picks.push({ domain: d, label: top.label, example: top.examples?.[0] ?? null });
@@ -2026,7 +2022,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
     const text = `Future state narrative (draft): The group repeatedly described a future state anchored by ${headline}. Key phrases by domain: ${lines.join(' • ')}.`;
     return text;
-  }, [synthesisByDomain]);
+  }, [blueprintLensNames, synthesisByDomain]);
 
   const revealReadiness = useMemo(() => {
     const total = utteranceNodes.length;
@@ -2040,7 +2036,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     const intentExtractionReady = total > 0 && confidentEnough >= Math.min(total, 10);
     const dependencyInferenceReady = total > 0 && dependencyProcessedCount >= Math.min(total, 12);
 
-    const synthesisTotal = (['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[]).reduce(
+    const synthesisTotal = blueprintLensNames.reduce(
       (acc, d) => {
         const s = synthesisByDomain[d];
         return (
@@ -2072,10 +2068,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
         visionNarrativeReady,
       },
     };
-  }, [dependencyLinks.length, dependencyProcessedCount, pressurePoints.length, synthesisByDomain, utteranceNodes, visionNarrative]);
+  }, [blueprintLensNames, dependencyLinks.length, dependencyProcessedCount, pressurePoints.length, synthesisByDomain, utteranceNodes, visionNarrative]);
 
   const domainNarratives = useMemo(() => {
-    const domains = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[];
+    const domains = blueprintLensNames;
 
     const joinLabels = (items: Array<{ label: string }>) =>
       items
@@ -2103,7 +2099,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
         hasAny: Boolean(lines.length),
       };
     });
-  }, [synthesisByDomain]);
+  }, [blueprintLensNames, synthesisByDomain]);
 
   const keyDependencies = useMemo(() => {
     return Object.values(dependencyEdgesById)
@@ -2114,13 +2110,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   }, [dependencyEdgesById]);
 
   const domainCounts = useMemo(() => {
-    const counts: Record<LiveDomain, number> = {
-      People: 0,
-      Operations: 0,
-      Customer: 0,
-      Technology: 0,
-      Regulation: 0,
-    };
+    const counts: Record<string, number> = Object.fromEntries(blueprintLensNames.map((l) => [l, 0]));
 
     const now = Date.now();
     const tauMs = 10 * 60 * 1000;
@@ -2153,7 +2143,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       }
     }
     return counts;
-  }, [utteranceNodes]);
+  }, [blueprintLensNames, utteranceNodes]);
 
   const originTimeMs = useMemo(
     () => (utteranceNodes.length ? utteranceNodes[0].createdAtMs : null),
@@ -3531,12 +3521,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                           className="rounded-md border p-3 text-sm"
                           style={{
                             borderLeftWidth: 3,
-                            borderLeftColor: pad.lens === 'People' ? '#93c5fd'
-                              : pad.lens === 'Organisation' ? '#6ee7b7'
-                              : pad.lens === 'Customer' ? '#c4b5fd'
-                              : pad.lens === 'Technology' ? '#fdba74'
-                              : pad.lens === 'Regulation' ? '#fca5a5'
-                              : '#cbd5e1',
+                            borderLeftColor: (pad.lens && customLensColors?.[pad.lens]?.bg) || '#cbd5e1',
                           }}
                         >
                           <div className="flex items-center justify-between mb-1">
@@ -4091,11 +4076,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">None</SelectItem>
-                        <SelectItem value="People">People</SelectItem>
-                        <SelectItem value="Operations">Operations</SelectItem>
-                        <SelectItem value="Customer">Customer</SelectItem>
-                        <SelectItem value="Technology">Technology</SelectItem>
-                        <SelectItem value="Regulation">Regulation</SelectItem>
+                        {blueprintLensNames.map((l) => (
+                          <SelectItem key={l} value={l}>{l}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -4209,7 +4192,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   <CardDescription>Dominant themes by domain (weighted by repetition and recency)</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {(['People', 'Operations', 'Customer', 'Technology', 'Regulation'] as LiveDomain[]).map((d) => {
+                  {blueprintLensNames.map((d) => {
                     const s = synthesisByDomain[d];
                     const hasAny =
                       (s?.aspirations?.length || 0) +
@@ -4319,11 +4302,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
               <Card>
                 <CardHeader>
                   <CardTitle>Live spider (domains)</CardTitle>
-                  <CardDescription>Distribution across People / Operations / Customer / Technology / Regulation</CardDescription>
+                  <CardDescription>Distribution across workshop lenses</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="min-w-0">
-                    <LiveDomainRadar counts={domainCounts} />
+                    <LiveDomainRadar lensNames={blueprintLensNames} counts={domainCounts} />
                   </div>
                 </CardContent>
               </Card>

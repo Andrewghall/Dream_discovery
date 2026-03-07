@@ -1,4 +1,4 @@
-export type DimensionKey = 'People' | 'Organisation' | 'Customer' | 'Technology' | 'Regulation';
+export type DimensionKey = string;
 
 export type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
 
@@ -27,9 +27,9 @@ export type InsightFeatures = {
   highest_gap: { key: DimensionKey; value: number };
   strongest_current: { key: DimensionKey; value: number };
   chain: {
-    weakest_enabler_for_customer: { key: Exclude<DimensionKey, 'Customer'>; value: number };
-    weakest_enabler_for_technology: { key: 'People' | 'Organisation'; value: number };
-    weakest_enabler_for_organisation: { key: 'People'; value: number };
+    weakest_enabler_for_customer: { key: string; value: number };
+    weakest_enabler_for_technology: { key: string; value: number };
+    weakest_enabler_for_organisation: { key: string; value: number };
   };
   dependency_gaps: Array<{ from: DimensionKey; to: DimensionKey; delta: number }>;
 };
@@ -61,7 +61,7 @@ function range(vals: number[]): number {
 }
 
 export function computeInsightFeatures(input: DimensionMedians[]): InsightFeatures {
-  const dims: DimensionKey[] = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+  const dims = input.map((x) => x.key);
 
   const byDimension = {} as InsightFeatures['byDimension'];
   for (const d of dims) {
@@ -92,39 +92,30 @@ export function computeInsightFeatures(input: DimensionMedians[]): InsightFeatur
   const strongestKey = dims.reduce((acc, d) => (byDimension[d].current > byDimension[acc].current ? d : acc), dims[0]);
   const highestGapKey = dims.reduce((acc, d) => (byDimension[d].gap_to_target > byDimension[acc].gap_to_target ? d : acc), dims[0]);
 
-  const weakest_enabler_for_customer = (() => {
-    const xs: Array<{ key: Exclude<DimensionKey, 'Customer'>; value: number }> = [
-      { key: 'People', value: byDimension.People.current },
-      { key: 'Organisation', value: byDimension.Organisation.current },
-      { key: 'Technology', value: byDimension.Technology.current },
-      { key: 'Regulation', value: byDimension.Regulation.current },
-    ];
-    return xs.reduce((acc, x) => (x.value < acc.value ? x : acc), xs[0]);
-  })();
+  const minAmong = (exclude: string): { key: string; value: number } => {
+    const candidates = dims.filter((d) => d !== exclude).map((k) => ({ key: k, value: byDimension[k].current }));
+    if (!candidates.length) return { key: dims[0] ?? '', value: 0 };
+    return candidates.reduce((acc, x) => (x.value < acc.value ? x : acc), candidates[0]);
+  };
 
-  const weakest_enabler_for_technology = (() => {
-    const xs: Array<{ key: 'People' | 'Organisation'; value: number }> = [
-      { key: 'People', value: byDimension.People.current },
-      { key: 'Organisation', value: byDimension.Organisation.current },
-    ];
-    return xs.reduce((acc, x) => (x.value < acc.value ? x : acc), xs[0]);
-  })();
-
-  const weakest_enabler_for_organisation = { key: 'People' as const, value: byDimension.People.current };
+  const weakest_enabler_for_customer = minAmong('Customer');
+  const weakest_enabler_for_technology = minAmong('Technology');
+  const weakest_enabler_for_organisation = minAmong('Organisation');
 
   const dependency_gaps: InsightFeatures['dependency_gaps'] = [];
   const depThreshold = 1.5;
-  const addGap = (from: DimensionKey, to: DimensionKey, delta: number) => {
+  const addGap = (from: string, to: string, delta: number) => {
     if (round1(delta) >= depThreshold) dependency_gaps.push({ from, to, delta: round1(delta) });
   };
 
-  // People → Organisation → Technology → Customer
-  addGap('Organisation', 'People', byDimension.Organisation.target - byDimension.People.current);
-  addGap('Technology', 'Organisation', byDimension.Technology.target - byDimension.Organisation.current);
-  addGap('Technology', 'People', byDimension.Technology.target - byDimension.People.current);
-  addGap('Customer', 'Technology', byDimension.Customer.target - byDimension.Technology.current);
-  addGap('Customer', 'Organisation', byDimension.Customer.target - byDimension.Organisation.current);
-  addGap('Customer', 'People', byDimension.Customer.target - byDimension.People.current);
+  // Pairwise dependency gaps across all dims
+  for (const fromDim of dims) {
+    for (const toDim of dims) {
+      if (fromDim !== toDim) {
+        addGap(fromDim, toDim, byDimension[fromDim].target - byDimension[toDim].current);
+      }
+    }
+  }
 
   return {
     byDimension,
@@ -178,7 +169,7 @@ export function buildRuleBackedBullets(params: {
     });
   }
 
-  const stagnators = (Object.keys(d) as DimensionKey[])
+  const stagnators = Object.keys(d)
     .map((k) => ({ k, v: d[k].projected_delta }))
     .sort((a, b) => (a.v === b.v ? a.k.localeCompare(b.k) : a.v - b.v));
   const worst = stagnators[0];
@@ -190,7 +181,7 @@ export function buildRuleBackedBullets(params: {
     });
   }
 
-  const planToExecuteGap = (Object.keys(d) as DimensionKey[])
+  const planToExecuteGap = Object.keys(d)
     .map((k) => ({ k, v: d[k].target_vs_projected_gap }))
     .sort((a, b) => (a.v === b.v ? a.k.localeCompare(b.k) : b.v - a.v))[0];
   if (planToExecuteGap && planToExecuteGap.v >= 1.2) {
@@ -225,7 +216,7 @@ export function buildRuleBackedBullets(params: {
   return out.slice(0, 6);
 }
 
-function primaryDimensionForFocus(focus: Focus): DimensionKey {
+function primaryDimensionForFocus(focus: Focus): string {
   if (focus === 'D1') return 'People';
   if (focus === 'D2') return 'Organisation';
   if (focus === 'D3') return 'Customer';
@@ -251,7 +242,7 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
 
   const focusDim = primaryDimensionForFocus(params.focus);
 
-  const ENABLERS_FOR_OUTCOME: Record<DimensionKey, DimensionKey[]> = {
+  const ENABLERS_FOR_OUTCOME: Record<string, string[]> = {
     Customer: ['Organisation', 'Technology', 'People', 'Regulation'],
     Technology: ['Organisation', 'People', 'Regulation'],
     Organisation: ['People', 'Technology', 'Regulation'],
@@ -264,8 +255,8 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
   const outcomeTarget = d[outcome].target;
 
   const enablers = outcomeIsMaster
-    ? (['People', 'Organisation', 'Technology', 'Regulation'] as DimensionKey[])
-    : (ENABLERS_FOR_OUTCOME[outcome] || (Object.keys(d) as DimensionKey[]).filter((k) => k !== outcome));
+    ? Object.keys(d).filter((k) => k !== outcome)
+    : (ENABLERS_FOR_OUTCOME[outcome] || Object.keys(d).filter((k) => k !== outcome));
 
   const gaps = enablers
     .map((k) => ({ k, gap: round1(outcomeTarget - d[k].current) }))
@@ -301,7 +292,7 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
     }
   }
 
-  const stagnators = (Object.keys(d) as DimensionKey[])
+  const stagnators = Object.keys(d)
     .filter((k) => d[k].stagnation)
     .sort((a, b) => (d[a].projected_delta === d[b].projected_delta ? a.localeCompare(b) : d[a].projected_delta - d[b].projected_delta));
   if (stagnators.length) {
@@ -312,7 +303,7 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
     supporting.push('Uneven capability increases execution risk across the dependency chain.');
   }
 
-  const planGap = (Object.keys(d) as DimensionKey[])
+  const planGap = Object.keys(d)
     .map((k) => ({ k, v: d[k].target_vs_projected_gap }))
     .sort((a, b) => (b.v === a.v ? a.k.localeCompare(b.k) : b.v - a.v))[0];
   if (planGap && planGap.v >= 1.2) {
@@ -323,7 +314,7 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
     supporting.push(`${chosenEnablers[0]} is materially behind the level implied by the selected outcome ambition.`);
   }
 
-  const focusEvidencePairs: Array<{ a: DimensionKey; aLabel: 'target' | 'projected' | 'current'; b: DimensionKey; bLabel: 'current' | 'target' | 'projected' }> = [];
+  const focusEvidencePairs: Array<{ a: string; aLabel: 'target' | 'projected' | 'current'; b: string; bLabel: 'current' | 'target' | 'projected' }> = [];
   if (outcomeIsMaster) {
     focusEvidencePairs.push({ a: 'Customer', aLabel: 'target', b: 'Organisation', bLabel: 'current' });
     focusEvidencePairs.push({ a: 'Customer', aLabel: 'target', b: 'Technology', bLabel: 'current' });
@@ -339,7 +330,7 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
     evidence.push(`${p.a} ${p.aLabel} ${av} vs ${p.b} ${p.bLabel} ${bv}`);
   }
 
-  const worstDelta = (Object.keys(d) as DimensionKey[])
+  const worstDelta = Object.keys(d)
     .map((k) => ({ k, v: d[k].projected_delta }))
     .sort((a, b) => (a.v === b.v ? a.k.localeCompare(b.k) : a.v - b.v))[0];
   if (worstDelta) evidence.push(`Projected improvement delta ${worstDelta.v} in ${worstDelta.k}`);

@@ -50,6 +50,8 @@ interface FindingsExplorerProps {
   workshopId: string;
   findings: FindingItem[];
   onRefresh?: () => void;
+  lensNames?: string[];
+  lensColors?: Record<string, { bg: string }>;
 }
 
 interface EditFormState {
@@ -72,7 +74,7 @@ interface AddFormState {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_LENSES = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+// DEFAULT_LENSES removed — lensNames prop used instead
 const ALL_TYPES = ['CONSTRAINT', 'OPPORTUNITY', 'RISK', 'CONTRADICTION'] as const;
 const STREAM_OPTIONS = ['All', 'STREAM_A', 'STREAM_B'] as const;
 
@@ -80,8 +82,8 @@ const STREAM_OPTIONS = ['All', 'STREAM_A', 'STREAM_B'] as const;
 // Helpers
 // ---------------------------------------------------------------------------
 
-function lensAccentDot(lens: string): string {
-  return LENS_COLORS[lens]?.bg ?? '#e2e8f0';
+function lensAccentDot(lens: string, lensColors?: Record<string, { bg: string }>): string {
+  return lensColors?.[lens]?.bg ?? LENS_COLORS[lens]?.bg ?? '#e2e8f0';
 }
 
 function severityBarColor(score: number): string {
@@ -120,9 +122,10 @@ function formatDate(iso: string): string {
   }
 }
 
-function deriveLensOptions(findings: FindingItem[]): string[] {
+function deriveLensOptions(findings: FindingItem[], blueprintLenses?: string[]): string[] {
   const fromData = Array.from(new Set(findings.map((f) => f.lens).filter(Boolean)));
-  const merged = new Set([...DEFAULT_LENSES, ...fromData]);
+  const base = blueprintLenses?.length ? blueprintLenses : [];
+  const merged = new Set([...base, ...fromData]);
   return Array.from(merged);
 }
 
@@ -134,6 +137,8 @@ export function FindingsExplorer({
   workshopId,
   findings,
   onRefresh,
+  lensNames,
+  lensColors,
 }: FindingsExplorerProps) {
   // Filter state
   const [streamFilter, setStreamFilter] = useState<string>('All');
@@ -183,7 +188,7 @@ export function FindingsExplorer({
   const activeFindings = localFindings ?? findings;
 
   // Derive lens options from actual data
-  const lensOptions = useMemo(() => deriveLensOptions(activeFindings), [activeFindings]);
+  const lensOptions = useMemo(() => deriveLensOptions(activeFindings, lensNames), [activeFindings, lensNames]);
 
   // Filter + sort
   const filtered = useMemo(() => {
@@ -468,6 +473,7 @@ export function FindingsExplorer({
                 form={addForm}
                 setForm={setAddForm}
                 lensOptions={lensOptions}
+                lensColors={lensColors}
                 saving={addSaving}
                 onSave={saveNewFinding}
                 onCancel={resetAddForm}
@@ -545,7 +551,7 @@ export function FindingsExplorer({
                       <span className="flex items-center gap-2">
                         <span
                           className="inline-block w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: lensAccentDot(lens) }}
+                          style={{ backgroundColor: lensAccentDot(lens, lensColors) }}
                         />
                         {lens}
                       </span>
@@ -624,6 +630,7 @@ export function FindingsExplorer({
               form={addForm}
               setForm={setAddForm}
               lensOptions={lensOptions}
+              lensColors={lensColors}
               saving={addSaving}
               onSave={saveNewFinding}
               onCancel={resetAddForm}
@@ -712,7 +719,7 @@ export function FindingsExplorer({
                 {/* Lens dot */}
                 <span
                   className="inline-block w-3 h-3 rounded-full"
-                  style={{ backgroundColor: lensAccentDot(finding.lens) }}
+                  style={{ backgroundColor: lensAccentDot(finding.lens, lensColors) }}
                 />
 
                 {/* Title */}
@@ -844,7 +851,7 @@ export function FindingsExplorer({
                                   <span className="flex items-center gap-2">
                                     <span
                                       className="inline-block w-2.5 h-2.5 rounded-full"
-                                      style={{ backgroundColor: lensAccentDot(lens) }}
+                                      style={{ backgroundColor: lensAccentDot(lens, lensColors) }}
                                     />
                                     {lens}
                                   </span>
@@ -1008,6 +1015,7 @@ function AddFindingForm({
   form,
   setForm,
   lensOptions,
+  lensColors,
   saving,
   onSave,
   onCancel,
@@ -1015,6 +1023,7 @@ function AddFindingForm({
   form: AddFormState;
   setForm: React.Dispatch<React.SetStateAction<AddFormState>>;
   lensOptions: string[];
+  lensColors?: Record<string, { bg: string }>;
   saving: boolean;
   onSave: () => void;
   onCancel: () => void;
@@ -1084,7 +1093,7 @@ function AddFindingForm({
                   <span className="flex items-center gap-2">
                     <span
                       className="inline-block w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: lensAccentDot(lens) }}
+                      style={{ backgroundColor: lensAccentDot(lens, lensColors) }}
                     />
                     {lens}
                   </span>

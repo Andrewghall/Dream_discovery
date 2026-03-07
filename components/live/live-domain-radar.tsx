@@ -4,23 +4,16 @@ import { useMemo } from 'react';
 
 import { RadarChart, type RadarDatum } from '@/components/report/radar-chart';
 
-export type LiveDomain = 'People' | 'Operations' | 'Customer' | 'Technology' | 'Regulation';
-
 export function LiveDomainRadar(props: {
-  counts: Record<LiveDomain, number>;
+  lensNames: string[];
+  counts: Record<string, number>;
   className?: string;
 }) {
-  const { counts, className } = props;
+  const { lensNames, counts, className } = props;
 
   const data = useMemo<RadarDatum[]>(() => {
-    return [
-      { label: 'People', value: counts.People || 0 },
-      { label: 'Organisation', value: counts.Operations || 0 },
-      { label: 'Customer', value: counts.Customer || 0 },
-      { label: 'Technology', value: counts.Technology || 0 },
-      { label: 'Regulation', value: counts.Regulation || 0 },
-    ];
-  }, [counts]);
+    return lensNames.map((label) => ({ label, value: counts[label] || 0 }));
+  }, [lensNames, counts]);
 
   const max = useMemo(() => {
     const m = Math.max(1, ...data.map((d) => d.value));

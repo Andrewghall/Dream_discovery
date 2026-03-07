@@ -48,13 +48,14 @@ interface ExtractedFinding {
 const MODEL = 'gpt-4o-mini';
 const MAX_ITERATIONS = 4;
 
-const SYSTEM_PROMPT = `You are a field discovery analyst for DREAM diagnostic workshops.
+function buildSystemPrompt(lensNames: string[]): string {
+  return `You are a field discovery analyst for DREAM diagnostic workshops.
 
 You are given the transcript of a field capture session (interview or walkaround observation).
 Your job is to extract structured findings from the transcript.
 
 Each finding must be classified by:
-- **lens**: One of People, Organisation, Customer, Technology, Regulation
+- **lens**: One of ${lensNames.join(', ')}
 - **type**: One of constraint, opportunity, risk, contradiction
 - **title**: A concise title (under 10 words)
 - **description**: 2-3 sentence description of the finding with context
@@ -71,12 +72,14 @@ Guidelines:
 - Be specific and evidence-based
 - Use the speaker's own words where possible
 - Do NOT invent findings that are not supported by the transcript`;
+}
 
 // ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
 
-const tools: OpenAI.ChatCompletionTool[] = [
+function buildTools(lensNames: string[]): OpenAI.ChatCompletionTool[] {
+  return [
   {
     type: 'function',
     function: {
@@ -92,7 +95,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
               properties: {
                 lens: {
                   type: 'string',
-                  enum: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'],
+                  enum: lensNames,
                 },
                 type: {
                   type: 'string',
@@ -112,7 +115,8 @@ const tools: OpenAI.ChatCompletionTool[] = [
       },
     },
   },
-];
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Main function
@@ -127,6 +131,7 @@ export async function extractFindings(params: {
   captureType: string;
   actorRole: string | null;
   area: string | null;
+  lensNames?: string[];
 }): Promise<ExtractionResult> {
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -153,7 +158,7 @@ export async function extractFindings(params: {
   ].filter(Boolean).join('\n');
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: buildSystemPrompt(params.lensNames ?? []) },
     {
       role: 'user',
       content: `${contextHeader}\n\n---\n\nTRANSCRIPT:\n\n${fullTranscript}\n\n---\n\nPlease analyse this transcript and extract all relevant findings using the submit_findings tool.`,
@@ -167,7 +172,7 @@ export async function extractFindings(params: {
     const response = await openai.chat.completions.create({
       model: MODEL,
       messages,
-      tools,
+      tools: buildTools(params.lensNames ?? []),
       tool_choice: i === 0 ? { type: 'function', function: { name: 'submit_findings' } } : 'auto',
     });
 

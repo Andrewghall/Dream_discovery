@@ -38,13 +38,14 @@ const SIGNAL_LABELS: Record<SignalType, string> = {
 type Props = {
   signals: Signal[];
   sessionConfidence: SessionConfidence;
+  lensColors?: Record<string, { bg: string; text: string }>;
 };
 
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(0)}%`;
 }
 
-export default function SignalClusterPanel({ signals, sessionConfidence }: Props) {
+export default function SignalClusterPanel({ signals, sessionConfidence, lensColors }: Props) {
   const [showAll, setShowAll] = useState(false);
   const sorted = [...signals].sort((a, b) => b.strength - a.strength);
   const visible = showAll ? sorted : sorted.slice(0, MAX_VISIBLE_SIGNALS);
@@ -100,8 +101,9 @@ export default function SignalClusterPanel({ signals, sessionConfidence }: Props
                         <span
                           key={lens}
                           className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            LENS_BADGE_COLORS[lens] ?? 'bg-gray-100 text-gray-600'
+                            !lensColors?.[lens] ? (LENS_BADGE_COLORS[lens] ?? 'bg-gray-100 text-gray-600') : ''
                           }`}
+                          style={lensColors?.[lens] ? { backgroundColor: lensColors[lens].bg + '33', color: lensColors[lens].text } : undefined}
                         >
                           {lens}
                         </span>

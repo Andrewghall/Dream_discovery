@@ -25,6 +25,7 @@ interface MainQuestionCardProps {
   onPrevious: () => void;
   onNext: () => void;
   completionPercent?: number;  // 0-100 blended completion
+  lensColors?: Record<string, { bg: string }>;
 }
 
 // ── Progress bar colour — matches sticky pad coverage bar logic ──
@@ -42,6 +43,7 @@ export function MainQuestionCard({
   onPrevious,
   onNext,
   completionPercent,
+  lensColors,
 }: MainQuestionCardProps) {
   const isFirst = questionIndex === 0;
   const isLast = questionIndex === totalQuestions - 1;
@@ -127,7 +129,7 @@ export function MainQuestionCard({
             <div key={lens} className="flex items-center gap-1">
               <div
                 className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: LENS_DOT_COLORS[lens] || '#94a3b8' }}
+                style={{ backgroundColor: lensColors?.[lens]?.bg || LENS_DOT_COLORS[lens] || '#94a3b8' }}
               />
               <span className="text-[10px] font-medium" style={{ color: '#92400e', opacity: 0.6 }}>
                 {lens}

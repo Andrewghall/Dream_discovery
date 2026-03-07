@@ -13,7 +13,7 @@ export type CognitiveType =
 
 export type ConfidenceWeight = 'low' | 'mid' | 'high';
 
-export type LiveDomain = 'People' | 'Operations' | 'Customer' | 'Technology' | 'Regulation';
+export type LiveDomain = string;
 
 export type LiveInterpretation = {
   temporalIntent: TemporalIntent;

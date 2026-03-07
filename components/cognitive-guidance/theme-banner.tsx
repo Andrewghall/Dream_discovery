@@ -3,21 +3,9 @@
 import { useState } from 'react';
 import { ChevronRight, Play, Pause, Plus, Zap, ZapOff } from 'lucide-react';
 import type { GuidedTheme } from '@/lib/cognition/guidance-state';
-import type { Lens } from '@/lib/cognitive-guidance/pipeline';
+import type { Lens } from '@/lib/cognitive-guidance/pipeline'; // Lens = string
 
-// ══════════════════════════════════════════════════════════
-// LENS COLOURS
-// ══════════════════════════════════════════════════════════
-
-const LENS_COLORS: Record<Lens, { bg: string; text: string; border: string }> = {
-  People:       { bg: 'bg-blue-900/30',   text: 'text-blue-400',    border: 'border-blue-700' },
-  Organisation: { bg: 'bg-purple-900/30',  text: 'text-purple-400',  border: 'border-purple-700' },
-  Customer:     { bg: 'bg-green-900/30',   text: 'text-green-400',   border: 'border-green-700' },
-  Technology:   { bg: 'bg-amber-900/30',   text: 'text-amber-400',   border: 'border-amber-700' },
-  Regulation:   { bg: 'bg-red-900/30',     text: 'text-red-400',     border: 'border-red-700' },
-};
-
-function LensBadge({ lens }: { lens: Lens | null }) {
+function LensBadge({ lens, lensColors }: { lens: Lens | null; lensColors?: Record<string, { bg: string; text: string }> }) {
   if (!lens) {
     return (
       <span className="inline-flex items-center text-[10px] font-mono px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
@@ -25,9 +13,19 @@ function LensBadge({ lens }: { lens: Lens | null }) {
       </span>
     );
   }
-  const c = LENS_COLORS[lens] || LENS_COLORS.People;
+  const c = lensColors?.[lens];
+  if (c) {
+    return (
+      <span
+        className="inline-flex items-center text-[10px] font-mono px-2 py-0.5 rounded-full border"
+        style={{ backgroundColor: c.bg + '33', color: c.text, borderColor: c.bg + '99' }}
+      >
+        {lens}
+      </span>
+    );
+  }
   return (
-    <span className={`inline-flex items-center text-[10px] font-mono px-2 py-0.5 rounded-full ${c.bg} ${c.text} border ${c.border}`}>
+    <span className="inline-flex items-center text-[10px] font-mono px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
       {lens}
     </span>
   );
@@ -44,6 +42,7 @@ type ThemeBannerProps = {
   onAdvanceTheme: () => void;
   onToggleFreeflow: () => void;
   onAddTheme: (title: string) => void;
+  lensColors?: Record<string, { bg: string; text: string }>;
 };
 
 // ══════════════════════════════════════════════════════════
@@ -57,6 +56,7 @@ export function ThemeBanner({
   onAdvanceTheme,
   onToggleFreeflow,
   onAddTheme,
+  lensColors,
 }: ThemeBannerProps) {
   const [showAddInput, setShowAddInput] = useState(false);
   const [newThemeTitle, setNewThemeTitle] = useState('');
@@ -107,7 +107,7 @@ export function ThemeBanner({
               <div>
                 <div className="flex items-center gap-2 mb-0.5">
                   <p className="text-sm font-semibold text-gray-100">{activeTheme.title}</p>
-                  <LensBadge lens={activeTheme.lens} />
+                  <LensBadge lens={activeTheme.lens} lensColors={lensColors} />
                 </div>
                 <p className="text-xs text-gray-500">{activeTheme.description}</p>
               </div>
@@ -173,7 +173,10 @@ export function ThemeBanner({
                 className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-gray-900 text-gray-400 border border-gray-800 flex-shrink-0"
               >
                 {theme.lens && (
-                  <span className={`w-1.5 h-1.5 rounded-full ${LENS_COLORS[theme.lens]?.bg || 'bg-gray-700'}`} />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: lensColors?.[theme.lens]?.bg || '#374151' }}
+                  />
                 )}
                 {theme.title.length > 30 ? theme.title.substring(0, 30) + '...' : theme.title}
                 {theme.source === 'ai' && <span className="text-purple-500">AI</span>}

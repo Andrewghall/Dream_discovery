@@ -119,7 +119,7 @@ export type TailoredQuestionSet = WorkshopQuestionSet;
 // WORKSHOP INTELLIGENCE - Output of Discovery Intelligence Agent
 // ══════════════════════════════════════════════════════════
 
-export type LensName = 'People' | 'Organisation' | 'Customer' | 'Technology' | 'Regulation';
+export type LensName = string;
 
 /** Tracks where the workshop lens/dimension set originated. */
 export type LensSource = 'research_dimensions' | 'domain_pack' | 'generic_fallback' | 'blueprint';
