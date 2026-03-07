@@ -219,13 +219,17 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
     const rMin = R * 0.25;
 
     const t0 = originTimeMs ?? Math.min(...nodes.map((n) => n.createdAtMs));
+    // Scale timeScaleMs to 1/4 of the actual session span so nodes spread across the arc
+    const tMax = Math.max(...nodes.map((n) => n.createdAtMs));
+    const sessionSpan = Math.max(tMax - t0, 1);
+    const effectiveTimeScale = Math.max(timeScaleMs, sessionSpan / 4);
 
     // Domain angles — nodes are pulled toward their classified domain zone
     const domainAngles = buildDomainAngles(activeLenses);
 
     return nodes.map((n) => {
       const dt = Math.max(0, n.createdAtMs - t0);
-      const u = 1 - Math.exp(-dt / Math.max(1, timeScaleMs));
+      const u = 1 - Math.exp(-dt / effectiveTimeScale);
       const baseTheta = Math.PI - clamp01(u) * Math.PI;
 
       // Layer 1: Dialogue phase bias
@@ -257,9 +261,14 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
           }
         }
         if (bestAngle != null) {
-          theta = lerp(thetaAfterPhase, bestAngle, 0.9);
+          // 0.6 pull: strong enough to cluster to lens zone, weak enough for natural spread
+          theta = lerp(thetaAfterPhase, bestAngle, 0.6);
         }
       }
+
+      // Angular jitter — spreads nodes within their lens zone organically
+      const angularJitter = (hash01(`aj:${n.dataPointId}`) - 0.5) * 0.38;
+      theta += angularJitter;
 
       const clsType = n.classification?.primaryType ?? null;
       const clsConf = typeof n.classification?.confidence === 'number' ? n.classification.confidence : null;
@@ -268,7 +277,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       // Clamp theta to valid semicircle range [0.05, π-0.05] to prevent dots escaping
       theta = Math.max(0.05, Math.min(Math.PI - 0.05, theta));
 
-      const jitter = (hash01(n.dataPointId) - 0.5) * 12;
+      const jitter = (hash01(n.dataPointId) - 0.5) * 28;
       const radial = Math.min(R, rMin + radialConf * (R - rMin) + jitter);
 
       const baseX = cx + radial * Math.cos(theta);

@@ -1,34 +1,29 @@
 'use client';
 
-import type { Lens, LensCoverage } from '@/lib/cognitive-guidance/pipeline';
-import { ALL_LENSES } from '@/lib/cognitive-guidance/pipeline';
-
-const LENS_COLORS: Record<Lens, string> = {
-  People: '#a78bfa',
-  Organisation: '#f97316',
-  Customer: '#60a5fa',
-  Technology: '#34d399',
-  Regulation: '#fb7185',
-};
+import type { LensCoverage } from '@/lib/cognitive-guidance/pipeline';
 
 type Props = {
-  coverage: Map<Lens, LensCoverage>;
+  coverage: Map<string, LensCoverage>;
+  lensNames: string[];
+  lensColors?: Record<string, { bg: string }>;
 };
 
-export default function LensCoverageBar({ coverage }: Props) {
+export default function LensCoverageBar({ coverage, lensNames, lensColors }: Props) {
+  if (!lensNames.length) return null;
+
   const maxNodes = Math.max(
     1,
-    ...ALL_LENSES.map((l) => coverage.get(l)?.nodeCount ?? 0),
+    ...lensNames.map((l) => coverage.get(l)?.nodeCount ?? 0),
   );
 
   return (
     <div className="flex gap-1 w-full max-h-[60px]">
-      {ALL_LENSES.map((lens) => {
+      {lensNames.map((lens) => {
         const lc = coverage.get(lens);
         const count = lc?.nodeCount ?? 0;
         const gapScore = lc?.gapScore ?? 0;
         const fillFraction = count / maxNodes;
-        const color = LENS_COLORS[lens];
+        const color = lensColors?.[lens]?.bg ?? '#94a3b8';
         const isEmpty = count === 0;
 
         return (

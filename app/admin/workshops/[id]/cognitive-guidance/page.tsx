@@ -2254,7 +2254,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
         {/* Lens Coverage Bar + Gap Indicators */}
         <div className="mt-3">
-          <LensCoverageBar coverage={lensCoverage} />
+          <LensCoverageBar coverage={lensCoverage} lensNames={blueprintLensNames} lensColors={customLensColors} />
         </div>
         <GapIndicatorStrip signals={signals} />
 
