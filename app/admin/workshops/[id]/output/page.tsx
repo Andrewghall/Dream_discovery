@@ -24,7 +24,6 @@ import {
   Sparkles,
   Rocket,
   CheckSquare,
-  ArrowLeft,
   TrendingUp,
   Users,
   Zap,
@@ -155,7 +154,7 @@ function ExecSummarySection({
       )}
 
       {!hasData ? (
-        <EmptyState message="No synthesis data yet. Run 'Generate Report' from the Hemisphere page to populate this section." />
+        <EmptyState message="No synthesis data yet. Run Synthesise from the Hemisphere page to generate this content." />
       ) : (
         <>
           {/* Hero overview */}
@@ -485,7 +484,7 @@ function InsightsSection({ discoveryOutput }: { discoveryOutput: any }) {
   const sections: any[] = Array.isArray(discoveryOutput?.sections) ? discoveryOutput.sections : [];
 
   if (sections.length === 0) {
-    return <EmptyState message="No insight data yet. Run 'Generate Report' from the Hemisphere page to populate this section." />;
+    return <EmptyState message="No insight data yet. Run Synthesise from the Hemisphere page to generate this content." />;
   }
 
   return (
@@ -583,7 +582,7 @@ function ReimagineSection({ reimagineContent }: { reimagineContent: any }) {
   const data = reimagineContent?.reimagineContent ?? reimagineContent;
 
   if (!data || typeof data !== 'object') {
-    return <EmptyState message="No reimagine vision yet. Run 'Generate Report' from the Hemisphere page to populate this section." />;
+    return <EmptyState message="No reimagine vision yet. Run Synthesise from the Hemisphere page to generate this content." />;
   }
 
   const primaryThemes: any[] = Array.isArray(data.primaryThemes) ? data.primaryThemes : [];
@@ -729,7 +728,7 @@ function TransformationSection({
   const hasSolution = potentialSolution && typeof potentialSolution === 'object';
 
   if (!hasConstraints && !hasSolution) {
-    return <EmptyState message="No transformation data yet. Run 'Generate Report' from the Hemisphere page to populate this section." />;
+    return <EmptyState message="No transformation data yet. Run Synthesise from the Hemisphere page to generate this content." />;
   }
 
   const CONSTRAINT_CATS = ['regulatory', 'technical', 'commercial', 'organizational'] as const;
@@ -904,7 +903,7 @@ function DefineApproachSection({
   const hasData = summaryContent && typeof summaryContent === 'object';
 
   if (!hasData) {
-    return <EmptyState message="No define approach data yet. Run 'Generate Report' from the Hemisphere page to populate this section." />;
+    return <EmptyState message="No define approach data yet. Run Synthesise from the Hemisphere page to generate this content." />;
   }
 
   const keyFindings: any[] = Array.isArray(summaryContent.keyFindings) ? summaryContent.keyFindings : [];
@@ -1086,64 +1085,39 @@ export default function OutputDashboardPage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* ── Page header ─────────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4">
-        <div className="max-w-screen-xl mx-auto">
-          <Link
-            href={`/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere`}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors mb-2"
-          >
-            <ArrowLeft className="h-3 w-3" />
-            Back to Hemisphere
-          </Link>
+      <div className="bg-white border-b border-slate-200 px-6 pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900">Output</h1>
+            <p className="text-xs text-slate-500 mt-0.5">Synthesised workshop output</p>
+          </div>
+        </div>
 
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-xl font-bold text-slate-900 leading-tight">
-                {workshopName || 'Workshop Output'}
-              </h1>
-              {orgName && (
-                <p className="text-sm text-slate-500 mt-0.5">{orgName}</p>
-              )}
-            </div>
-
-            {/* Synthesis prompt if no data */}
-            {!scratchpad.execSummary && (
-              <Link
-                href={`/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere`}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5 hover:bg-amber-100 transition-colors"
+        {/* ── Top-nav tab bar ───────────────────────────────────────────── */}
+        <div className="flex gap-0 border-b border-slate-200 -mb-px overflow-x-auto">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                  isActive
+                    ? `border-slate-900 text-slate-900`
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                }`}
               >
-                <Zap className="h-3 w-3" />
-                Run synthesis to populate output
-              </Link>
-            )}
-          </div>
-
-          {/* ── Top-nav tab bar ───────────────────────────────────────────── */}
-          <div className="flex gap-0 mt-4 border-b border-slate-200 -mb-4 overflow-x-auto">
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
-                    isActive
-                      ? `border-slate-900 text-slate-900`
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  <Icon className={`h-4 w-4 ${isActive ? tab.color : 'text-slate-400'}`} />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+                <Icon className={`h-4 w-4 ${isActive ? tab.color : 'text-slate-400'}`} />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* ── Main content ──────────────────────────────────────────────────────── */}
-      <main className="max-w-screen-xl mx-auto px-6 py-8">
+      <main className="px-6 py-8">
 
         {activeTab === 'exec-summary' && (
           <ExecSummarySection
