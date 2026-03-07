@@ -24,7 +24,13 @@ const ADMIN_NAV: NavItem[] = [
     label: 'Dashboard',
     href: '/admin',
     icon: <LayoutDashboard className="h-4 w-4" />,
-    roles: ['PLATFORM_ADMIN', 'TENANT_ADMIN'],
+    roles: ['TENANT_ADMIN'],
+  },
+  {
+    label: 'Platform',
+    href: '/admin/platform',
+    icon: <LayoutDashboard className="h-4 w-4" />,
+    roles: ['PLATFORM_ADMIN'],
   },
   {
     label: 'Organizations',
@@ -100,7 +106,9 @@ export function AdminHeader({ section }: AdminHeaderProps) {
   };
 
   const navItems = section === 'admin' ? ADMIN_NAV : TENANT_NAV;
-  const dashboardHref = section === 'admin' ? '/admin' : '/tenant/dashboard';
+  const dashboardHref = section === 'admin'
+    ? (role === 'PLATFORM_ADMIN' ? '/admin/platform' : '/admin')
+    : '/tenant/dashboard';
   const src = logoUrl || process.env.NEXT_PUBLIC_PLATFORM_LOGO || null;
 
   // Hide header on workshop sub-pages — sidebar handles navigation there

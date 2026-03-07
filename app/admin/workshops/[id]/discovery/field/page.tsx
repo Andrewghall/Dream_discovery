@@ -77,13 +77,13 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
   const fetchSessions = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/workshops/${workshopId}/capture-sessions`);
-      if (!res.ok) throw new Error('Failed to load sessions');
+      if (!res.ok) return; // no sessions yet — fail silently, just show empty state
       const data = await res.json();
       setSessions(data.sessions ?? []);
       setProgress(data.progress ?? null);
     } catch (err) {
       console.error('Error loading sessions:', err);
-      setError('Could not load capture sessions.');
+      // Don't surface as a page-level error — just leave sessions empty
     }
   }, [workshopId]);
 

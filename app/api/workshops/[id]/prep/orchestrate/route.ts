@@ -13,6 +13,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runPrepOrchestrator } from '@/lib/cognition/agents/prep-orchestrator';
+import { ResearchClarificationNeededError } from '@/lib/cognition/agents/research-agent';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { readHistoricalMetricsFromJson } from '@/lib/historical-metrics/types';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
@@ -111,17 +112,33 @@ export async function POST(
           hasQuestions: !!result.questionSet,
         });
       } catch (error) {
-        sendEvent('agent.conversation', {
-          timestampMs: Date.now(),
-          agent: 'prep-orchestrator',
-          to: '',
-          message: `Prep orchestration failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          type: 'info',
-        } satisfies AgentConversationEntry);
+        if (error instanceof ResearchClarificationNeededError) {
+          sendEvent('agent.conversation', {
+            timestampMs: Date.now(),
+            agent: 'prep-orchestrator',
+            to: '',
+            message: `Prep has been paused. The Research Agent could not verify the company. Please update the workshop with the correct company name and official website URL, then try again.`,
+            type: 'warning',
+          } satisfies AgentConversationEntry);
 
-        sendEvent('error', {
-          message: error instanceof Error ? error.message : 'Prep orchestration failed',
-        });
+          sendEvent('clarification_needed', {
+            reason: error.message,
+            whatWasFound: error.whatWasFound,
+            suggestedAction: `Please go back to the workshop setup and provide the official website URL, or correct the company name, then re-run prep.`,
+          });
+        } else {
+          sendEvent('agent.conversation', {
+            timestampMs: Date.now(),
+            agent: 'prep-orchestrator',
+            to: '',
+            message: `Prep orchestration failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            type: 'info',
+          } satisfies AgentConversationEntry);
+
+          sendEvent('error', {
+            message: error instanceof Error ? error.message : 'Prep orchestration failed',
+          });
+        }
       } finally {
         controller.close();
       }

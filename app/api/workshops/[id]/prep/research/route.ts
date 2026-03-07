@@ -12,7 +12,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
-import { runResearchAgent } from '@/lib/cognition/agents/research-agent';
+import { runResearchAgent, ResearchClarificationNeededError } from '@/lib/cognition/agents/research-agent';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
@@ -153,17 +153,34 @@ export async function POST(
         // Emit completion event with full research and updated blueprint
         sendEvent('research.complete', { research, blueprint: updatedBlueprint });
       } catch (error) {
-        sendEvent('agent.conversation', {
-          timestampMs: Date.now(),
-          agent: 'prep-orchestrator',
-          to: '',
-          message: `Research encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
-          type: 'info',
-        } satisfies AgentConversationEntry);
+        if (error instanceof ResearchClarificationNeededError) {
+          // ── Company could not be verified — surface this cleanly to the UI ──
+          sendEvent('agent.conversation', {
+            timestampMs: Date.now(),
+            agent: 'prep-orchestrator',
+            to: '',
+            message: `Research has been paused. The Research Agent could not verify that "${context.clientName}" exists as a known company. Please update the workshop with the correct company name and official website URL, then try again.`,
+            type: 'warning',
+          } satisfies AgentConversationEntry);
 
-        sendEvent('error', {
-          message: error instanceof Error ? error.message : 'Research agent failed',
-        });
+          sendEvent('clarification_needed', {
+            reason: error.message,
+            whatWasFound: error.whatWasFound,
+            suggestedAction: `Please go back to the workshop setup and provide the official website URL for "${context.clientName}", or correct the company name, then re-run research.`,
+          });
+        } else {
+          sendEvent('agent.conversation', {
+            timestampMs: Date.now(),
+            agent: 'prep-orchestrator',
+            to: '',
+            message: `Research encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+            type: 'info',
+          } satisfies AgentConversationEntry);
+
+          sendEvent('error', {
+            message: error instanceof Error ? error.message : 'Research agent failed',
+          });
+        }
       } finally {
         controller.close();
       }

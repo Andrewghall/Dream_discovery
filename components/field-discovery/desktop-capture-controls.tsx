@@ -19,7 +19,9 @@ import {
   Radio,
   Loader2,
   AlertCircle,
+  WifiOff,
 } from 'lucide-react';
+import { savePendingUpload } from '@/lib/field-discovery/offline-store';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,6 +42,10 @@ type SegmentData = {
 type DesktopCaptureControlsProps = {
   sessionId: string;
   workshopId: string;
+  /** When set, uses token-based routes. Segments fall back to IndexedDB when offline. */
+  captureToken?: string;
+  /** True when session was created locally offline — all segments go to IndexedDB. */
+  isLocalSession?: boolean;
   onSegmentComplete?: (segmentIndex: number) => void;
   onSessionComplete?: (analysisResult?: unknown) => void;
 };
@@ -66,6 +72,8 @@ function truncateText(text: string, maxLen: number): string {
 export function DesktopCaptureControls({
   sessionId,
   workshopId,
+  captureToken,
+  isLocalSession = false,
   onSegmentComplete,
   onSessionComplete,
 }: DesktopCaptureControlsProps) {
@@ -157,13 +165,24 @@ export function DesktopCaptureControls({
   // Background transcription
   // -----------------------------------------------------------------------
 
+  // Build API base path depending on auth mode
+  const analyseUrl = captureToken
+    ? `/api/capture/${captureToken}/sessions/${sessionId}/analyse`
+    : `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/analyse`;
+
+  const transcribeUrl = captureToken
+    ? `/api/capture/${captureToken}/sessions/${sessionId}/segments/transcribe`
+    : `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/segments/transcribe`;
+
   const triggerAnalysis = React.useCallback(async () => {
+    // Skip server analysis for local (offline) sessions — will run after sync
+    if (isLocalSession) {
+      onSessionComplete?.();
+      return;
+    }
     setAnalysing(true);
     try {
-      const res = await fetch(
-        `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/analyse`,
-        { method: 'POST' }
-      );
+      const res = await fetch(analyseUrl, { method: 'POST' });
       let analysisResult: unknown = undefined;
       if (res.ok) {
         try {
@@ -174,17 +193,15 @@ export function DesktopCaptureControls({
       }
       setAnalysing(false);
       setAnalysisComplete(true);
-      // Brief delay so the user sees the success state
       setTimeout(() => {
         setAnalysisComplete(false);
         onSessionComplete?.(analysisResult);
       }, 1500);
     } catch {
-      // Analysis failure is non-blocking -- still complete the session
       setAnalysing(false);
       onSessionComplete?.();
     }
-  }, [workshopId, sessionId, onSessionComplete]);
+  }, [analyseUrl, isLocalSession, onSessionComplete]);
 
   const checkAllTranscriptionsComplete = React.useCallback(() => {
     if (!sessionFinishingRef.current) return;
@@ -210,6 +227,27 @@ export function DesktopCaptureControls({
         )
       );
 
+      // For local (offline) sessions, save to IndexedDB and treat as queued
+      if (isLocalSession || !navigator.onLine) {
+        await savePendingUpload(`${sessionId}-seg-${segmentIndex}`, blob, {
+          sessionId,
+          workshopId,
+          segmentIndex,
+          startedAt,
+          stoppedAt,
+        }).catch(() => { /* best effort */ });
+        setSegments((prev) =>
+          prev.map((seg) =>
+            seg.index === segmentIndex
+              ? { ...seg, transcribing: false, transcript: '(queued — will upload when online)' }
+              : seg,
+          ),
+        );
+        pendingTranscriptionsRef.current.delete(segmentIndex);
+        checkAllTranscriptionsComplete();
+        return;
+      }
+
       try {
         const formData = new FormData();
         formData.append('audio', blob, `segment-${segmentIndex}.webm`);
@@ -217,13 +255,7 @@ export function DesktopCaptureControls({
         formData.append('startedAt', new Date(startedAt).toISOString());
         formData.append('stoppedAt', new Date(stoppedAt).toISOString());
 
-        const res = await fetch(
-          `/api/admin/workshops/${workshopId}/capture-sessions/${sessionId}/segments/transcribe`,
-          {
-            method: 'POST',
-            body: formData,
-          }
-        );
+        const res = await fetch(transcribeUrl, { method: 'POST', body: formData });
 
         if (!res.ok) {
           const errorText = await res.text().catch(() => 'Transcription failed');
@@ -269,7 +301,7 @@ export function DesktopCaptureControls({
         checkAllTranscriptionsComplete();
       }
     },
-    [workshopId, sessionId, checkAllTranscriptionsComplete]
+    [transcribeUrl, isLocalSession, sessionId, workshopId, checkAllTranscriptionsComplete]
   );
 
   // -----------------------------------------------------------------------
@@ -722,6 +754,14 @@ export function DesktopCaptureControls({
               </span>
             </CardContent>
           </Card>
+        )}
+
+        {/* Offline / local session notice */}
+        {isLocalSession && (
+          <div className="flex items-center gap-2 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+            <WifiOff className="size-4 shrink-0" />
+            Recording offline — segments are saved locally and will upload when you&apos;re back online.
+          </div>
         )}
 
         {/* Error display */}

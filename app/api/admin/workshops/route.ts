@@ -36,7 +36,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
+    // PLATFORM_ADMIN: no access to workshop data (GDPR — workshops are tenant-owned)
+    if (session.role === 'PLATFORM_ADMIN') {
+      return NextResponse.json(
+        { error: 'Platform administrators cannot access workshop data' },
+        { status: 403 }
+      );
+    }
+
     const isTenantAdmin = session.role === 'TENANT_ADMIN';
     const orgId = session.organizationId;
 
@@ -45,19 +52,17 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
     const skip = (page - 1) * limit;
 
-    // PLATFORM_ADMIN sees all; TENANT_ADMIN sees all in their org;
+    // TENANT_ADMIN sees all in their org;
     // TENANT_USER sees their own + workshops shared with them
-    const where = isPlatformAdmin
-      ? {}
-      : isTenantAdmin
-        ? { organizationId: orgId! }
-        : {
-            organizationId: orgId!,
-            OR: [
-              { createdById: session.userId },
-              { shares: { some: { userId: session.userId } } },
-            ],
-          };
+    const where = isTenantAdmin
+      ? { organizationId: orgId! }
+      : {
+          organizationId: orgId!,
+          OR: [
+            { createdById: session.userId },
+            { shares: { some: { userId: session.userId } } },
+          ],
+        };
 
     const [totalCount, workshops] = await Promise.all([
       prisma.workshop.count({ where }),
@@ -105,10 +110,9 @@ export async function GET(request: NextRequest) {
       snapshotCount: workshop._count.liveSnapshots,
     }));
 
-    // When no workshops found for a filtered (non-platform-admin) query,
-    // check the global count so the client can show a helpful diagnostic.
+    // When no workshops found, check the global count so the client can show a helpful diagnostic.
     let globalCount: number | undefined;
-    if (totalCount === 0 && !isPlatformAdmin) {
+    if (totalCount === 0) {
       globalCount = await prisma.workshop.count();
       console.warn('[workshops] Empty result for filtered user', {
         role: session.role,
@@ -146,6 +150,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // PLATFORM_ADMIN: cannot create workshops (GDPR — workshops are tenant-owned)
+    if (session.role === 'PLATFORM_ADMIN') {
+      return NextResponse.json(
+        { error: 'Platform administrators cannot create workshops' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const {
       name, description, businessContext, workshopType,
@@ -154,10 +166,7 @@ export async function POST(request: NextRequest) {
       engagementType, domainPack,
     } = body;
 
-    // Determine which org this workshop belongs to
-    const organizationId = session.role === 'PLATFORM_ADMIN'
-      ? (body.organizationId || session.organizationId)
-      : session.organizationId!;
+    const organizationId = session.organizationId!;
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
