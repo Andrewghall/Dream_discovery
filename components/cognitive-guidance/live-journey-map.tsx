@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, Sparkles, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, RefreshCw, Sparkles, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
   LiveJourneyData,
@@ -51,14 +51,17 @@ type Props = {
   onToggleExpand?: () => void;
   /** 'live' = full editing controls (default), 'output' = read-only clean display */
   mode?: 'live' | 'output';
+  /** Called when user clicks Regenerate — parent handles API call */
+  onRegenerate?: () => Promise<void>;
 };
 
 // ══════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════
 
-export default function LiveJourneyMap({ data, onChange, expanded = true, onToggleExpand, mode = 'live' }: Props) {
+export default function LiveJourneyMap({ data, onChange, expanded = true, onToggleExpand, mode = 'live', onRegenerate }: Props) {
   const isOutput = mode === 'output';
+  const [regenerating, setRegenerating] = useState(false);
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<LiveJourneyInteraction>>({});
   const [addingActor, setAddingActor] = useState(false);
@@ -302,15 +305,32 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
               </div>
             </div>
             {!isOutput && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs"
-                onClick={() => setAddingActor(true)}
-              >
-                <Plus className="h-3 w-3 mr-1" />
-                Add Actor
-              </Button>
+              <div className="flex items-center gap-2">
+                {onRegenerate && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={regenerating}
+                    onClick={async () => {
+                      setRegenerating(true);
+                      try { await onRegenerate(); } finally { setRegenerating(false); }
+                    }}
+                  >
+                    <RefreshCw className={`h-3 w-3 mr-1 ${regenerating ? 'animate-spin' : ''}`} />
+                    {regenerating ? 'Regenerating…' : 'Regenerate'}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setAddingActor(true)}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Actor
+                </Button>
+              </div>
             )}
           </div>
 

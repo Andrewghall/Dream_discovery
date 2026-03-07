@@ -569,6 +569,21 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── UI state ───────────────────────────────────────────
   const [selectedPadId, setSelectedPadId] = useState<string | null>(null);
   const [journeyExpanded, setJourneyExpanded] = useState(true);
+
+  const handleRegenerateJourney = async () => {
+    const res = await fetch(
+      `/api/admin/workshops/${encodeURIComponent(workshopId)}/journey/regenerate`,
+      { method: 'POST' },
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error('Journey regenerate failed:', err);
+      return;
+    }
+    const { liveJourney: newJourney } = await res.json();
+    if (newJourney) setLiveJourney(newJourney);
+  };
+
   const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
   // Keep ref in sync for the audio capture hook (avoids stale closure)
   useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
@@ -662,7 +677,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     const wp = dialoguePhaseToWorkshopPhase(dialoguePhase);
     const phaseLenses = wp && prep?.phases?.[wp]?.lensOrder
       ? prep.phases[wp].lensOrder
-      : ['People', 'Customer', 'Organisation'];
+      : blueprintLensNamesRef.current.slice(0, 3);
 
     // Pick the question's own lens + 1-2 from phase lens order
     const qLens = question.lens || 'General';
@@ -1097,7 +1112,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     // Stage 4: Sticky Pad Generation (phase-aware) — only for signal-generated pads
     setStickyPads(prev => {
       // Generate new signal pads
-      const withSignals = generateStickyPads(detectedSignals, prev, nowMs, dialoguePhase);
+      const bpReimagineSet = blueprintLensNamesRef.current.length
+        ? new Set(blueprintLensNamesRef.current)
+        : undefined;
+      const withSignals = generateStickyPads(detectedSignals, prev, nowMs, dialoguePhase, bpReimagineSet);
 
       // Calculate coverage for all sub-pads (prep, agent, signal — not seeds)
       return withSignals.map((pad) => {
@@ -1301,7 +1319,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         setCogNodes(prev => {
           const existing = prev.get(dataPointId);
           if (!existing) return prev;
-          const updated = applyLensMapping(existing, analysis);
+          const updated = applyLensMapping(existing, analysis, {
+            effectiveLenses: blueprintLensNamesRef.current.length ? blueprintLensNamesRef.current : undefined,
+            keywordMap: customKeywordMapRef.current ?? undefined,
+          });
           const next = new Map(prev);
           next.set(dataPointId, updated);
           return next;
@@ -1869,7 +1890,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             setCogNodes(prev => {
               const existing = prev.get(dataPointId);
               if (!existing) return prev;
-              const updated = applyLensMapping(existing, analysis);
+              const updated = applyLensMapping(existing, analysis, {
+                effectiveLenses: blueprintLensNamesRef.current.length ? blueprintLensNamesRef.current : undefined,
+                keywordMap: customKeywordMapRef.current ?? undefined,
+              });
               const next = new Map(prev);
               next.set(dataPointId, updated);
               return next;
@@ -2435,6 +2459,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             onChange={setLiveJourney}
             expanded={journeyExpanded}
             onToggleExpand={() => setJourneyExpanded(e => !e)}
+            onRegenerate={handleRegenerateJourney}
           />
         </div>
 
