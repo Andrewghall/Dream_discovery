@@ -267,13 +267,17 @@ function HemispheresSection({
         const json = await r.json().catch(() => null);
         setGraphs(prev => ({ ...prev, DISCOVERY: json?.hemisphereGraph || null }));
       } else {
-        // Find snapshot matching this phase
-        const match = snapshots.find(s => s.dialoguePhase === phase);
-        if (!match) {
+        // Prefer a snapshot whose dialoguePhase matches exactly; fall back to any snapshot
+        // with a dialoguePhaseFilter query param so the hemisphere API filters nodes by phase.
+        const exactMatch = snapshots.find(s => s.dialoguePhase === phase);
+        const anySnapshot = snapshots[0] ?? null;
+        if (!anySnapshot) {
           setGraphs(prev => ({ ...prev, [phase]: null }));
         } else {
+          const snapshotId = exactMatch ? exactMatch.id : anySnapshot.id;
+          const phaseFilter = exactMatch ? '' : `&dialoguePhaseFilter=${encodeURIComponent(phase)}`;
           const r = await fetch(
-            `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?source=snapshot&snapshotId=${encodeURIComponent(match.id)}&bust=${Date.now()}`,
+            `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?source=snapshot&snapshotId=${encodeURIComponent(snapshotId)}${phaseFilter}&bust=${Date.now()}`,
           );
           const json = await r.json().catch(() => null);
           setGraphs(prev => ({ ...prev, [phase]: json?.hemisphereGraph || null }));

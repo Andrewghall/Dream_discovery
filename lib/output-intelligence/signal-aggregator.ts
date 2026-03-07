@@ -174,6 +174,39 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       }));
     }
 
+    // Fallback: derive journey stages from liveJourney.interactions (seeded workshops)
+    if (journey.length === 0) {
+      const lj = (latestSnapshot.payload as Record<string, unknown> | null)?.liveJourney;
+      if (lj && typeof lj === 'object' && !Array.isArray(lj)) {
+        const interactions = (lj as Record<string, unknown>).interactions;
+        if (Array.isArray(interactions)) {
+          const stageMap = new Map<string, { actions: string[]; painPoints: string[]; aiScores: number[] }>();
+          for (const ix of interactions as Array<Record<string, unknown>>) {
+            const stage = typeof ix.stage === 'string' ? ix.stage : '';
+            if (!stage) continue;
+            if (!stageMap.has(stage)) stageMap.set(stage, { actions: [], painPoints: [], aiScores: [] });
+            const entry = stageMap.get(stage)!;
+            if (typeof ix.action === 'string' && ix.action) entry.actions.push(truncate(ix.action, 200));
+            if (ix.isPainPoint && typeof ix.action === 'string') entry.painPoints.push(truncate(ix.action, 150));
+            if (ix.aiAgencyNow === 'autonomous') entry.aiScores.push(0.9);
+            else if (ix.aiAgencyNow === 'assisted') entry.aiScores.push(0.5);
+            else entry.aiScores.push(0.1);
+          }
+          for (const [stage, data] of stageMap) {
+            const avgAiScore = data.aiScores.length > 0
+              ? data.aiScores.reduce((a, b) => a + b, 0) / data.aiScores.length
+              : undefined;
+            journey.push({
+              stage,
+              description: data.actions.slice(0, 2).join(' '),
+              aiScore: avgAiScore,
+              painPoints: data.painPoints.slice(0, 3),
+            });
+          }
+        }
+      }
+    }
+
     hemisphereShift = payload?.hemisphereShift ?? null;
   }
 

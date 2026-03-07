@@ -336,6 +336,7 @@ export async function GET(
 
     const source = request.nextUrl.searchParams.get('source');
     const snapshotIdParam = request.nextUrl.searchParams.get('snapshotId');
+    const dialoguePhaseFilter = request.nextUrl.searchParams.get('dialoguePhaseFilter')?.toUpperCase() ?? null;
 
     // ── Snapshot-based flow ──────────────────────────────────────────────
     if (source === 'snapshot') {
@@ -363,6 +364,9 @@ export async function GET(
 
       for (const [dataPointId, datum] of Object.entries(liveNodes)) {
         if (!datum || typeof datum !== 'object') continue;
+        // Filter by dialoguePhase when caller requests a phase-specific view
+        if (dialoguePhaseFilter && typeof datum.dialoguePhase === 'string' &&
+            datum.dialoguePhase.toUpperCase() !== dialoguePhaseFilter) continue;
         const rawText = typeof datum.rawText === 'string' ? datum.rawText.trim() : '';
         if (!rawText) continue;
 

@@ -669,6 +669,14 @@ async function main() {
 
   console.log('   ✅ LiveSessionVersion created (v1 — DEFINE_APPROACH, Q4 active)\n');
 
+  // ── Clear stale outputIntelligence so it is regenerated fresh ────────────────
+  await prisma.workshop.update({
+    where: { id: WORKSHOP_ID },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: { outputIntelligence: null as any },
+  });
+  console.log('   ✅ Cleared stale outputIntelligence (will be regenerated on next visit)\n');
+
   // ── Summary ───────────────────────────────────────────────────────────────────
   console.log('═══════════════════════════════════════════════════════');
   console.log('✅ Jo Air dense seed complete');
