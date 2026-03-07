@@ -90,15 +90,16 @@ const DEMO_SPIDER_DATA: SpiderAxisStat[] = [
   { axisId: 'regulation',   label: 'Regulation',    today: { median: 6.2 }, target: { median: 8.0 }, projected: { median: 5.8 } },
 ];
 
-// Rotating palette for dynamic lens badges — works for any number of lenses
-const LENS_PALETTE = [
-  'bg-violet-100 text-violet-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-blue-100 text-blue-700',
-  'bg-red-100 text-red-700',
-  'bg-amber-100 text-amber-700',
-  'bg-pink-100 text-pink-700',
-  'bg-cyan-100 text-cyan-700',
+// Rotating palette for dynamic lens cards — works for any number of lenses
+const LENS_PALETTE: { badge: string; border: string; header: string }[] = [
+  { badge: 'bg-violet-100 text-violet-700', border: 'border-l-violet-400', header: 'bg-violet-50 dark:bg-violet-950/20' },
+  { badge: 'bg-emerald-100 text-emerald-700', border: 'border-l-emerald-400', header: 'bg-emerald-50 dark:bg-emerald-950/20' },
+  { badge: 'bg-blue-100 text-blue-700', border: 'border-l-blue-400', header: 'bg-blue-50 dark:bg-blue-950/20' },
+  { badge: 'bg-red-100 text-red-700', border: 'border-l-red-400', header: 'bg-red-50 dark:bg-red-950/20' },
+  { badge: 'bg-amber-100 text-amber-700', border: 'border-l-amber-400', header: 'bg-amber-50 dark:bg-amber-950/20' },
+  { badge: 'bg-pink-100 text-pink-700', border: 'border-l-pink-400', header: 'bg-pink-50 dark:bg-pink-950/20' },
+  { badge: 'bg-cyan-100 text-cyan-700', border: 'border-l-cyan-400', header: 'bg-cyan-50 dark:bg-cyan-950/20' },
+  { badge: 'bg-orange-100 text-orange-700', border: 'border-l-orange-400', header: 'bg-orange-50 dark:bg-orange-950/20' },
 ];
 
 const DEMO_WORD_CLOUD: WordCloudItem[] = [
@@ -718,36 +719,38 @@ export default function DiscoveryPage({ params }: PageProps) {
 
   // ── Radar chart data transform — 3 series: Today, Target, Projected ──
   const radarChartData = useMemo(() => {
-    if (!spiderData) return null;
-    return spiderData
-      .filter((a) => a.today.median !== null)
-      .map((a) => ({
-        label: a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label,
-        value: a.today.median ?? 0,
-      }));
+    if (!spiderData || spiderData.length === 0) return null;
+    // Include ALL axes (so all domains show on the chart even if some have no data yet).
+    // Null scores are rendered at 0 (axis is visible but shape point is at centre).
+    const hasAnyScore = spiderData.some((a) => a.today.median !== null);
+    if (!hasAnyScore) return null;
+    return spiderData.map((a) => ({
+      label: a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label,
+      value: a.today.median ?? 0,
+    }));
   }, [spiderData]);
 
   const radarSeries = useMemo(() => {
-    if (!spiderData) return undefined;
+    if (!spiderData || spiderData.length === 0) return undefined;
 
-    const axes = spiderData.filter((a) => a.today.median !== null);
+    // Use ALL axes so labels match radarChartData; nulls become 0 at the centre.
     const fmt = (a: SpiderAxisStat) =>
       a.label.length > 20 ? a.label.slice(0, 18) + '...' : a.label;
 
     const todaySeries = {
       name: 'Today',
-      data: axes.map((a) => ({ label: fmt(a), value: a.today.median ?? 0 })),
+      data: spiderData.map((a) => ({ label: fmt(a), value: a.today.median ?? 0 })),
     };
     const targetSeries = {
       name: 'Target',
-      data: axes.map((a) => ({ label: fmt(a), value: a.target.median ?? 0 })),
+      data: spiderData.map((a) => ({ label: fmt(a), value: a.target.median ?? 0 })),
     };
     const projectedSeries = {
       name: 'Projected (do nothing)',
-      data: axes.map((a) => ({ label: fmt(a), value: a.projected?.median ?? a.today.median ?? 0 })),
+      data: spiderData.map((a) => ({ label: fmt(a), value: a.projected?.median ?? a.today.median ?? 0 })),
     };
 
-    // Only include series that have data
+    // Only include a series if it has at least one non-zero score
     const series = [todaySeries];
     if (targetSeries.data.some((d) => d.value > 0)) series.push(targetSeries);
     if (projectedSeries.data.some((d) => d.value > 0)) series.push(projectedSeries);
@@ -872,22 +875,32 @@ export default function DiscoveryPage({ params }: PageProps) {
 
         {/* Domain Lenses */}
         {summary?.lenses && (
-          <div className="space-y-4">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Domain Perspectives</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {Object.entries(summary.lenses).map(([lens, text], i) => (
-                <div key={lens} className="rounded-xl border bg-card p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold ${LENS_PALETTE[i % LENS_PALETTE.length]}`}>
-                      {lens.charAt(0)}
-                    </span>
-                    <h3 className="text-sm font-semibold">{lens}</h3>
+          <div className="space-y-5">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Domain Perspectives</h2>
+              <span className="text-xs font-medium text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full">
+                {Object.keys(summary.lenses).length} domains
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Object.entries(summary.lenses).map(([lens, text], i) => {
+                const palette = LENS_PALETTE[i % LENS_PALETTE.length];
+                return (
+                  <div key={lens} className={`rounded-xl overflow-hidden border border-border bg-card border-l-4 ${palette.border}`}>
+                    <div className={`px-5 py-3.5 ${palette.header} border-b border-border/50 flex items-center gap-3`}>
+                      <span className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-sm font-bold flex-shrink-0 ${palette.badge}`}>
+                        {lens.charAt(0).toUpperCase()}
+                      </span>
+                      <h3 className="text-sm font-semibold leading-snug">{lens}</h3>
+                    </div>
+                    <div className="px-5 py-4">
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        {text}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    {text}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

@@ -472,35 +472,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
-      // Derive phase order from whatever keys are actually in the stored data (backward-compatible).
-      // Attempt to match each stored key to a blueprint lens name for a proper display label;
-      // fall back to capitalising the stored key when no match is found.
-      const phaseOrder = Object.keys(phaseTodayScores);
-      const phaseLabels: Record<string, string> = Object.fromEntries(
-        phaseOrder.map((phase) => {
-          const match = lensNames.find(
-            (n) =>
-              n.toLowerCase() === phase ||
-              n.toLowerCase().startsWith(phase) ||
-              phase.startsWith(n.toLowerCase()),
-          );
-          return [phase, match ?? (phase.charAt(0).toUpperCase() + phase.slice(1))];
-        }),
-      );
+      // Use ALL blueprint lenses as canonical axes so every domain the workshop
+      // knows about appears on the spider — even if some have no phaseInsights yet.
+      // For each lens, do a fuzzy match against stored phaseInsights keys; unmatched
+      // lenses get null scores (shown at the chart centre / as "no data").
+      // If no blueprint lenses exist (very old workshops), fall back to whatever keys
+      // the stored data provides.
+      const canonicalPhases: string[] =
+        lensNames.length > 0
+          ? lensNames
+          : Object.keys(phaseTodayScores).map(
+              (p) => p.charAt(0).toUpperCase() + p.slice(1),
+            );
 
-      const fallbackAxisStats: AxisStats[] = phaseOrder
-        .filter((phase) => phaseTodayScores[phase] || phaseTargetScores[phase])
-        .map((phase) => ({
-          axisId: `report:${phase}`,
-          label: phaseLabels[phase] || phase,
-          questionText: phaseLabels[phase] || phase,
-          phase,
+      const fallbackAxisStats: AxisStats[] = canonicalPhases.map((lensName, idx) => {
+        const lensLower = lensName.toLowerCase();
+        // Find the best-matching stored phase key for this lens name
+        const matchKey = Object.keys(phaseTodayScores).find((k) => {
+          const kl = k.toLowerCase();
+          return (
+            kl === lensLower ||
+            lensLower.startsWith(kl) ||
+            kl.startsWith(lensLower) ||
+            lensLower.includes(kl) ||
+            kl.includes(lensLower)
+          );
+        });
+        return {
+          axisId: `report:${lensLower.replace(/\s+/g, '_')}`,
+          label: lensName,
+          questionText: lensName,
+          phase: lensLower,
           tag: 'phaseInsight',
-          questionIndex: 0,
-          today: stats(phaseTodayScores[phase] || []),
-          target: stats(phaseTargetScores[phase] || []),
+          questionIndex: idx,
+          today: stats(matchKey ? phaseTodayScores[matchKey] : []),
+          target: stats(matchKey ? phaseTargetScores[matchKey] : []),
           projected: { median: null, min: null, max: null, n: 0 },
-        }));
+        };
+      });
 
       return NextResponse.json({
         ok: true,
