@@ -135,8 +135,8 @@ function renderPanel(
   workshopId: string,
   discoveryOutputData: any,
 ): React.ReactNode {
-  // Output Analysis is always available (uses its own data sources)
-  if (!intelligence && sectionId !== 'output-analysis' && sectionId !== 'customer-journey') {
+  // These tabs have their own data sources — always accessible without synthesis
+  if (!intelligence && sectionId !== 'output-analysis' && sectionId !== 'discovery-output' && sectionId !== 'customer-journey') {
     return <NotSynthesisedYet workshopId={workshopId} />;
   }
 
@@ -219,16 +219,23 @@ function renderPanel(
       return <StrategicImpactPanel data={intel.strategicImpact} />;
 
     case 'output-analysis':
-      return (
-        <div className="space-y-6">
-          {/* Live hemisphere / brain map */}
-          <HemisphereOutputTab workshopId={workshopId} />
-          {/* Domain-level discovery analysis (from synthesis) */}
-          {discoveryOutputData && Object.keys(discoveryOutputData).length > 0 && (
-            <DiscoveryOutputTab data={discoveryOutputData} />
-          )}
-        </div>
-      );
+      return <HemisphereOutputTab workshopId={workshopId} />;
+
+    case 'discovery-output':
+      if (!discoveryOutputData || Object.keys(discoveryOutputData).length === 0) {
+        return (
+          <div className="flex flex-col items-center justify-center h-48 gap-3 text-center p-6">
+            <p className="text-sm text-muted-foreground">
+              Domain-level discovery analysis is generated when you run{' '}
+              <strong>✦ Synthesise</strong> on the Insight Map.
+            </p>
+            <Link href={`/admin/workshops/${workshopId}/hemisphere`}>
+              <Button variant="outline" size="sm">Go to Insight Map</Button>
+            </Link>
+          </div>
+        );
+      }
+      return <DiscoveryOutputTab data={discoveryOutputData} />;
 
     default:
       return (
@@ -368,16 +375,18 @@ export default function DownloadReportPage({ params }: PageProps) {
     );
   }
 
-  // ── Sections — 7 core + Output Analysis (always shown) ─────────────────
+  // ── Sections — 7 core + Output Analysis + Discovery Output (always shown) ──
 
   const coreSections = [...SECTION_REGISTRY].sort((a, b) => a.priority - b.priority);
 
-  // Insert "Output Analysis" after exec-summary (between priority 0 and 10)
-  const OUTPUT_ANALYSIS = { id: 'output-analysis', title: 'Output Analysis' };
+  // Insert extra tabs after exec-summary
+  const OUTPUT_ANALYSIS    = { id: 'output-analysis',    title: 'Insight Map' };
+  const DISCOVERY_OUTPUT   = { id: 'discovery-output',   title: 'Discovery Output' };
   const execIdx = coreSections.findIndex((s) => s.id === 'exec-summary');
   const sections = [
     ...coreSections.slice(0, execIdx + 1),
     OUTPUT_ANALYSIS,
+    DISCOVERY_OUTPUT,
     ...coreSections.slice(execIdx + 1),
   ];
 
