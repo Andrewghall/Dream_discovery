@@ -85,6 +85,17 @@ const STEPS = [
   },
 ];
 
+/** Returns white or dark text depending on the luminance of a hex background colour */
+function getContrastColor(hex: string): string {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return '#ffffff';
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? '#0d0d0d' : '#ffffff';
+}
+
 export function WelcomeSplash({ userName, orgLogoUrl, orgPrimaryColor, orgName }: WelcomeSplashProps) {
   const [open, setOpen] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
@@ -211,7 +222,7 @@ export function WelcomeSplash({ userName, orgLogoUrl, orgPrimaryColor, orgName }
             </div>
             <Button
               onClick={handleClose}
-              style={{ backgroundColor: accentColor, color: '#0d0d0d' }}
+              style={{ backgroundColor: accentColor, color: getContrastColor(accentColor) }}
               className="font-semibold hover:opacity-90 text-sm"
             >
               Get Started →
