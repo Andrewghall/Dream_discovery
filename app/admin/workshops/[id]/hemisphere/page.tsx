@@ -766,7 +766,6 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
   // Report generation
   const [generating, setGenerating] = useState(false);
-  const [hasScratchpad, setHasScratchpad] = useState(false);
 
   // Agent orchestration panel for synthesis
   const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
@@ -931,17 +930,6 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rightTab, workshopId, selectedSnapshotId, isRetailDemo]);
 
-  // Check if scratchpad exists
-  useEffect(() => {
-    const checkScratchpad = async () => {
-      try {
-        const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`);
-        const json = await r.json().catch(() => null);
-        setHasScratchpad(!!json?.scratchpad);
-      } catch { /* ignore */ }
-    };
-    void checkScratchpad();
-  }, [workshopId]);
 
   // Generate report handler — streams agent conversation via SSE
   const handleGenerateReport = async () => {
@@ -960,11 +948,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       if (!res.ok || !res.body) {
         // Non-streaming error — try parse JSON
         const json = await res.json().catch(() => null);
-        if (hasScratchpad) {
-          window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
-        } else {
-          alert(json?.error || 'Failed to generate report');
-        }
+        alert(json?.error || 'Failed to generate report');
         setGenerating(false);
         return;
       }
@@ -1011,8 +995,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
       // Handle result
       if (synthesisResult && synthesisResult.ok) {
-        setHasScratchpad(true);
-        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/output`, '_blank');
+        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
       } else if (synthesisResult?.error) {
         alert(`Synthesis failed: ${synthesisResult.error}`);
       }
@@ -1655,18 +1638,11 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
           >
             {generating ? 'Generating…' : '✦ Generate Report'}
           </Button>
-          <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/output`} target="_blank">
+          <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`} target="_blank">
             <Button size="sm" variant="outline" className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs">
-              View Output →
+              Download Report →
             </Button>
           </Link>
-          {hasScratchpad && (
-            <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`} target="_blank">
-              <Button size="sm" variant="outline" className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs">
-                Scratchpad →
-              </Button>
-            </Link>
-          )}
           <div className="h-4 w-px bg-white/15" />
           <HemisphereGuide />
         </div>
