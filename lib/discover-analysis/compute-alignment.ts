@@ -154,8 +154,11 @@ export async function computeAlignment(workshopId: string): Promise<AlignmentHea
     });
   }
 
-  // ── Fallback: ConversationReport data ───────────────────
-  if (analyses.length === 0) {
+  // ── Fallback / supplement: ConversationReport data ───────────────────
+  // Trigger when: no agentic analyses at all, OR too few distinct actors
+  // (< 3) to produce a meaningful heatmap from agentic data alone.
+  const distinctActors = new Set(cells.map((c) => c.actor)).size;
+  if (analyses.length === 0 || distinctActors < 3) {
     return computeAlignmentFromReports(workshopId);
   }
 

@@ -1861,11 +1861,16 @@ function missingLensInsights(name: string): PhaseInsightRow[] {
   const tier = getLensTier(name);
 
   // c = currentScore, t = targetScore, p = projectedScore (do nothing — decay from current)
+  //
+  // Scores are deliberately stratified by tier to surface the key organisational truth:
+  // Leadership perceives the organisation as functioning (scores 6-7) while Management
+  // and Frontline experience daily operational chaos (scores 2-3). This creates visible
+  // divergence in the alignment heatmap — the core finding of this discovery.
   const scores: Record<string, Record<'exec' | 'senior' | 'manager' | 'agent', { c: number; t: number; p: number }>> = {
-    operations: { exec: { c: 3, t: 8, p: 2 }, senior: { c: 3, t: 7, p: 2 }, manager: { c: 2, t: 7, p: 1 }, agent: { c: 2, t: 7, p: 1 } },
-    training:   { exec: { c: 3, t: 8, p: 2 }, senior: { c: 3, t: 7, p: 2 }, manager: { c: 2, t: 7, p: 1 }, agent: { c: 2, t: 7, p: 1 } },
-    regulation: { exec: { c: 5, t: 7, p: 4 }, senior: { c: 4, t: 7, p: 3 }, manager: { c: 4, t: 7, p: 3 }, agent: { c: 3, t: 6, p: 2 } },
-    culture:    { exec: { c: 3, t: 8, p: 2 }, senior: { c: 3, t: 8, p: 2 }, manager: { c: 3, t: 8, p: 2 }, agent: { c: 4, t: 9, p: 3 } },
+    operations: { exec: { c: 7, t: 9, p: 5 }, senior: { c: 5, t: 8, p: 3 }, manager: { c: 3, t: 7, p: 2 }, agent: { c: 2, t: 7, p: 1 } },
+    training:   { exec: { c: 6, t: 9, p: 4 }, senior: { c: 5, t: 8, p: 3 }, manager: { c: 3, t: 7, p: 2 }, agent: { c: 2, t: 7, p: 1 } },
+    regulation: { exec: { c: 7, t: 9, p: 5 }, senior: { c: 6, t: 8, p: 4 }, manager: { c: 4, t: 7, p: 3 }, agent: { c: 3, t: 7, p: 2 } },
+    culture:    { exec: { c: 7, t: 9, p: 5 }, senior: { c: 5, t: 9, p: 3 }, manager: { c: 3, t: 8, p: 2 }, agent: { c: 2, t: 9, p: 1 } },
   };
 
   return [
