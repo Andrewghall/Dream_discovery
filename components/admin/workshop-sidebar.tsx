@@ -43,7 +43,7 @@ function buildNavSections(_domainPack?: string | null) {
       label: 'Output Analysis',
       items: [
         { label: 'Insight Map', path: '/hemisphere', icon: Globe },
-        { label: 'Synthesised Output', path: '/intelligence', icon: Brain },
+        { label: 'Brain Scan', path: '/intelligence', icon: Brain },
         { label: 'Discovery Output', path: '/discovery-output', icon: BarChart2 },
         { label: 'Download Report', path: '/scratchpad', icon: BookOpen },
       ],

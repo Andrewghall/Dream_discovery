@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Sparkles, RefreshCw, Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { Brain, Sparkles, RefreshCw, Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EngineShell, type EngineStatus } from './EngineShell';
 import { DiscoveryValidationPanel } from './DiscoveryValidationPanel';
@@ -20,6 +20,7 @@ import type {
 interface Tab {
   key: EngineKey;
   label: string;
+  cognitiveFunction: string;
   description: string;
 }
 
@@ -27,26 +28,31 @@ const TABS: Tab[] = [
   {
     key: 'discoveryValidation',
     label: 'Discovery Validation',
+    cognitiveFunction: 'Perception',
     description: 'How well did workshop findings match the discovery hypothesis?',
   },
   {
     key: 'rootCause',
     label: 'Root Cause',
+    cognitiveFunction: 'Inhibition',
     description: 'Systemic causes behind the organisation\'s challenges',
   },
   {
     key: 'futureState',
     label: 'Future State',
+    cognitiveFunction: 'Imagination',
     description: 'Target operating model and AI/human redesign',
   },
   {
     key: 'roadmap',
     label: 'Roadmap',
+    cognitiveFunction: 'Execution',
     description: 'Phased transformation plan from vision to delivery',
   },
   {
     key: 'strategicImpact',
     label: 'Strategic Impact',
+    cognitiveFunction: 'Vision',
     description: 'Automation potential, efficiency gains, and business case',
   },
 ];
@@ -203,11 +209,11 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
       <div className="shrink-0 px-6 py-4 border-b border-slate-200 bg-white flex items-center justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-indigo-500" />
-            Intelligence
+            <Brain className="h-5 w-5 text-indigo-500" />
+            Organisational Brain Scan
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            5-stage agentic analysis of your workshop signals
+            Five cognitive signals derived from your workshop
           </p>
         </div>
 
@@ -293,19 +299,22 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`relative flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                className={`relative flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
                   active
                     ? 'border-indigo-500 text-indigo-600'
                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                 }`}
               >
                 {status === 'running' && (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400 shrink-0" />
                 )}
                 {status === 'complete' && intelligence && (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                 )}
-                {tab.label}
+                <span className="flex flex-col items-start leading-tight">
+                  <span className="text-sm font-medium whitespace-nowrap">{tab.label}</span>
+                  <span className={`text-[10px] font-normal whitespace-nowrap ${active ? 'text-indigo-400' : 'text-slate-400'}`}>{tab.cognitiveFunction}</span>
+                </span>
               </button>
             );
           })}
@@ -314,6 +323,56 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
 
       {/* Panel content */}
       <div className="flex-1 overflow-y-auto p-6">
+
+        {/* Transformation Thesis + Organisational Tension — shown when intelligence is available */}
+        {intelligence && (
+          <div className="mb-6 space-y-3">
+            {/* Transformation Thesis */}
+            <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-purple-50 p-4">
+              <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wider mb-1">
+                Transformation Thesis
+              </p>
+              <p className="text-sm text-slate-700 leading-relaxed">
+                {intelligence.strategicImpact.businessCaseSummary}
+              </p>
+            </div>
+
+            {/* Perception vs Vision Tension Bar */}
+            <div className="rounded-xl border border-slate-100 bg-white p-4">
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                Organisational Tension — Perception vs Vision
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="text-right min-w-[80px]">
+                  <p className="text-[10px] text-slate-500">Perception</p>
+                  <p className="text-lg font-bold text-indigo-600">
+                    {intelligence.discoveryValidation.hypothesisAccuracy}%
+                  </p>
+                </div>
+                <div className="flex-1 relative h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="absolute left-0 top-0 h-full bg-indigo-400 rounded-full"
+                    style={{ width: `${intelligence.discoveryValidation.hypothesisAccuracy}%` }}
+                  />
+                  <div
+                    className="absolute right-0 top-0 h-full bg-purple-400 rounded-full"
+                    style={{ width: `${intelligence.strategicImpact.confidenceScore}%` }}
+                  />
+                </div>
+                <div className="min-w-[80px]">
+                  <p className="text-[10px] text-slate-500">Vision</p>
+                  <p className="text-lg font-bold text-purple-600">
+                    {intelligence.strategicImpact.confidenceScore}%
+                  </p>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-2 text-center">
+                Gap reveals the energy driving transformation
+              </p>
+            </div>
+          </div>
+        )}
+
         {TABS.map((tab) => {
           if (tab.key !== activeTab) return null;
           const status: EngineStatus = !hasIntelligence
