@@ -224,7 +224,7 @@ function actorSummary(topActors: Array<{ name: string; role: string; mentions: n
 
 // ── GPT Prompts ────────────────────────────────────────────────────────
 
-function buildSynthesisPrompt(workshopName: string, data: ReturnType<typeof aggregateNodes>, themeAnalysis: string, constraintAnalysis: string, researchContext: string | null): string {
+function buildSynthesisPrompt(workshopName: string, data: ReturnType<typeof aggregateNodes>, themeAnalysis: string, constraintAnalysis: string, researchContext: string | null, participantNames: string[] = []): string {
   const domainText = domainSummary(data.byDomain);
   const actorText = actorSummary(data.topActors);
   const keywordText = data.topKeywords.slice(0, 30).map(k => `${k.word} (${k.count})`).join(', ');
@@ -254,7 +254,7 @@ Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components
   "execSummary": {
     "overview": "string — 3-5 sentence executive overview of the workshop findings and strategic direction",
     "metrics": {
-      "participantsEngaged": ${data.topActors.length},
+      "participantsEngaged": ${participantNames.length || data.topActors.length},
       "domainsExplored": ${domainNames.length},
       "insightsGenerated": ${data.totalNodes},
       "transformationalIdeas": ${data.transformationalCount}
@@ -269,7 +269,7 @@ Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components
   },
   "discoveryOutput": {
     "_aiSummary": "string — 3-5 sentence PROFOUND executive synthesis of the discovery findings. Go beyond restating findings — identify the deeper strategic implications, non-obvious connections, and the 'so what' a CEO would care about. Write with McKinsey-partner precision.",
-    "participants": ${JSON.stringify(data.topActors.slice(0, 8).map(a => a.name))},
+    "participants": ${JSON.stringify(participantNames.length > 0 ? participantNames : data.topActors.slice(0, 8).map(a => a.name))},
     "totalUtterances": ${data.totalNodes},
     "sections": [
 ${domainNames.map((dn, i) => {
@@ -549,6 +549,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Snapshot has no node data' }, { status: 400 });
   }
 
+  // Fetch actual participants who completed discovery — used for the participant count
+  // stat in discoveryOutput (replaces the hemisphere actor count which only reflects
+  // speakers in the snapshot nodes, not the full discovery cohort).
+  const discoveryParticipants = await prisma.workshopParticipant.findMany({
+    where: { workshopId, responseCompletedAt: { not: null } },
+    select: { name: true },
+    orderBy: { name: 'asc' },
+  });
+
   // Extract research context from prep phase (including journey + dimensions)
   let researchContext: string | null = null;
   if (workshop.prepResearch && typeof workshop.prepResearch === 'object' && workshop.prepResearch !== null) {
@@ -777,7 +786,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           'acknowledgement',
         );
 
-        const prompt = buildSynthesisPrompt(workshop.name || 'Workshop', aggregated, themeAnalysis, constraintAnalysis, researchContext);
+        const prompt = buildSynthesisPrompt(workshop.name || 'Workshop', aggregated, themeAnalysis, constraintAnalysis, researchContext, discoveryParticipants.map(p => p.name));
         console.log(`[synthesise] Prompt length: ${prompt.length} chars. Running synthesis for workshop ${workshopId} (${aggregated.totalNodes} nodes)...`);
 
         const completion = await openai.chat.completions.create({
@@ -838,16 +847,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           const es = synthesised.execSummary as Record<string, unknown>;
           if (!es.metrics || typeof es.metrics !== 'object') es.metrics = {};
           const m = es.metrics as Record<string, unknown>;
-          m.participantsEngaged = aggregated.topActors.length;
+          const actualCount = discoveryParticipants.length || aggregated.topActors.length;
+          m.participantsEngaged = actualCount;
           m.domainsExplored = Object.keys(aggregated.byDomain).length;
           m.insightsGenerated = aggregated.totalNodes;
           m.transformationalIdeas = aggregated.transformationalCount;
         }
 
+        // Also patch discoveryOutput.participants if it exists in the synthesised output
+        if (synthesised.discoveryOutput && typeof synthesised.discoveryOutput === 'object') {
+          const dOut = synthesised.discoveryOutput as Record<string, unknown>;
+          if (discoveryParticipants.length > 0) {
+            dOut.participants = discoveryParticipants.map(p => p.name);
+          }
+        }
+
+        const actualCount = discoveryParticipants.length || aggregated.topActors.length;
         emit(
           'guardian',
           'orchestrator',
-          `Metrics force-overwritten with computed values to prevent hallucination: **${aggregated.topActors.length}** participants, **${Object.keys(aggregated.byDomain).length}** domains, **${aggregated.totalNodes}** insights, **${aggregated.transformationalCount}** transformational ideas. Report is verified — proceed to save.`,
+          `Metrics force-overwritten with computed values to prevent hallucination: **${actualCount}** participants (${discoveryParticipants.length} discovery + ${aggregated.topActors.length} actors), **${Object.keys(aggregated.byDomain).length}** domains, **${aggregated.totalNodes}** insights, **${aggregated.transformationalCount}** transformational ideas. Report is verified — proceed to save.`,
           'info',
         );
 
