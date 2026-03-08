@@ -114,13 +114,35 @@ function JourneyDownloadBar({ workshopId }: { workshopId: string }) {
 
 // ── Panel renderer ──────────────────────────────────────────────────────────
 
+// Inline placeholder for tabs that need intelligence data
+function NotSynthesisedYet({ workshopId }: { workshopId: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-48 gap-3 text-center p-6">
+      <p className="text-sm text-muted-foreground">
+        This section is populated after synthesis. Go to the Insight Map and click <strong>✦ Synthesise</strong>.
+      </p>
+      <Link href={`/admin/workshops/${workshopId}/hemisphere`}>
+        <Button variant="outline" size="sm">Go to Insight Map</Button>
+      </Link>
+    </div>
+  );
+}
+
 function renderPanel(
   sectionId: string,
-  intelligence: WorkshopOutputIntelligence,
+  intelligence: WorkshopOutputIntelligence | null,
   liveJourneyData: LiveJourneyData | null,
   workshopId: string,
   discoveryOutputData: any,
 ): React.ReactNode {
+  // Output Analysis is always available (uses its own data sources)
+  if (!intelligence && sectionId !== 'output-analysis' && sectionId !== 'customer-journey') {
+    return <NotSynthesisedYet workshopId={workshopId} />;
+  }
+
+  // Safe cast: null case is handled by the early return above for all intel-dependent tabs
+  const intel = intelligence as WorkshopOutputIntelligence;
+
   switch (sectionId) {
     case 'exec-summary':
       return (
@@ -129,15 +151,15 @@ function renderPanel(
           <div className="grid grid-cols-3 gap-4">
             <StatCard
               label="Hypothesis Accuracy"
-              value={`${intelligence.discoveryValidation.hypothesisAccuracy}%`}
+              value={`${intel.discoveryValidation.hypothesisAccuracy}%`}
             />
             <StatCard
               label="Automation Potential"
-              value={`${intelligence.strategicImpact.automationPotential.percentage}%`}
+              value={`${intel.strategicImpact.automationPotential.percentage}%`}
             />
             <StatCard
               label="Confidence Score"
-              value={`${intelligence.strategicImpact.confidenceScore}%`}
+              value={`${intel.strategicImpact.confidenceScore}%`}
             />
           </div>
 
@@ -145,7 +167,7 @@ function renderPanel(
           <div className="rounded-xl border border-border bg-card p-6 space-y-3">
             <h2 className="text-base font-semibold text-foreground">Business Case</h2>
             <p className="text-base leading-relaxed text-foreground">
-              {intelligence.strategicImpact.businessCaseSummary}
+              {intel.strategicImpact.businessCaseSummary}
             </p>
           </div>
 
@@ -153,23 +175,23 @@ function renderPanel(
           <div className="rounded-xl border border-border bg-muted/20 p-6">
             <h3 className="text-sm font-semibold text-foreground mb-2">Discovery Summary</h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              {intelligence.discoveryValidation.summary}
+              {intel.discoveryValidation.summary}
             </p>
           </div>
         </div>
       );
 
     case 'discovery':
-      return <DiscoveryValidationPanel data={intelligence.discoveryValidation} />;
+      return <DiscoveryValidationPanel data={intel.discoveryValidation} />;
 
     case 'reimagine':
-      return <FutureStatePanel data={intelligence.futureState} />;
+      return <FutureStatePanel data={intel.futureState} />;
 
     case 'constraints':
-      return <RootCausePanel data={intelligence.rootCause} />;
+      return <RootCausePanel data={intel.rootCause} />;
 
     case 'solution':
-      return <ExecutionRoadmapPanel data={intelligence.roadmap} />;
+      return <ExecutionRoadmapPanel data={intel.roadmap} />;
 
     case 'customer-journey':
       if (!liveJourneyData) {
@@ -194,7 +216,7 @@ function renderPanel(
       );
 
     case 'summary':
-      return <StrategicImpactPanel data={intelligence.strategicImpact} />;
+      return <StrategicImpactPanel data={intel.strategicImpact} />;
 
     case 'output-analysis':
       return (
@@ -407,45 +429,43 @@ export default function DownloadReportPage({ params }: PageProps) {
 
       {/* Body */}
       <div className="container mx-auto px-4 py-6">
-        {!intelligence ? (
-          /* ── Empty state ── */
-          <div className="flex flex-col items-center justify-center h-64 gap-4 text-center">
-            <div className="rounded-full bg-muted p-4">
-              <Sparkles className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="font-medium text-foreground">No report generated yet</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Run synthesis on the Insight Map to generate intelligence for this report.
+        {/* Banner when no synthesis yet — shown above tabs, not instead of them */}
+        {!intelligence && (
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 mb-6">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-4 w-4 text-amber-600 shrink-0" />
+              <p className="text-sm text-amber-800">
+                <span className="font-semibold">Intelligence not yet generated.</span>{' '}
+                Run synthesis on the Insight Map to populate the report tabs.
               </p>
             </div>
             <Link href={`/admin/workshops/${workshopId}/hemisphere`}>
-              <Button variant="outline" size="sm">
-                Go to Insight Map → Synthesise
+              <Button variant="outline" size="sm" className="shrink-0 border-amber-300 text-amber-800 hover:bg-amber-100">
+                Go to Insight Map →
               </Button>
             </Link>
           </div>
-        ) : (
-          /* ── Intelligence tabs ── */
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList
-              className="grid w-full mb-6"
-              style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}
-            >
-              {sections.map((section) => (
-                <TabsTrigger key={section.id} value={section.id} className="text-xs">
-                  {section.title}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-
-            {sections.map((section) => (
-              <TabsContent key={section.id} value={section.id}>
-                {renderPanel(section.id, intelligence, liveJourneyData, workshopId, discoveryOutputData)}
-              </TabsContent>
-            ))}
-          </Tabs>
         )}
+
+        {/* Always show all tabs — Output Analysis is available regardless of synthesis */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList
+            className="grid w-full mb-6"
+            style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}
+          >
+            {sections.map((section) => (
+              <TabsTrigger key={section.id} value={section.id} className="text-xs">
+                {section.title}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {sections.map((section) => (
+            <TabsContent key={section.id} value={section.id}>
+              {renderPanel(section.id, intelligence, liveJourneyData, workshopId, discoveryOutputData)}
+            </TabsContent>
+          ))}
+        </Tabs>
       </div>
     </div>
   );
