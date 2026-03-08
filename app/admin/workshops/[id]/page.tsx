@@ -70,7 +70,6 @@ export default function WorkshopDetailPage({ params }: PageProps) {
   }>(null);
   const [backfillErrors, setBackfillErrors] = useState<Array<{ sessionId: string; error: string }>>([]);
   const [summaryDownloading, setSummaryDownloading] = useState(false);
-  const [scratchpadPreparing, setScratchpadPreparing] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -173,33 +172,7 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     }
   };
 
-  const handlePrepareForScratchpad = async () => {
-    if (scratchpadPreparing) return;
-    try {
-      setScratchpadPreparing(true);
-      const response = await fetch(`/api/admin/workshops/${encodeURIComponent(id)}/prepare-scratchpad`, {
-        method: 'POST',
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        const message = data?.error || `Failed to prepare scratchpad (HTTP ${response.status})`;
-        throw new Error(message);
-      }
-      const payload = await response.json();
-      const ts = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `scratchpad-content-${id}-${ts}.json`;
-      downloadJson(filename, payload.orderedContent);
-      setSuccessMessage('Scratchpad content prepared and downloaded successfully!');
-      setShowSuccessDialog(true);
-    } catch (error) {
-      console.error(error);
-      alert(error instanceof Error ? error.message : 'Failed to prepare scratchpad');
-    } finally {
-      setScratchpadPreparing(false);
-    }
-  };
-
-  const handleBackfillReports = async () => {
+const handleBackfillReports = async () => {
     if (backfillRunning) return;
 
     if (
@@ -444,14 +417,14 @@ export default function WorkshopDetailPage({ params }: PageProps) {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Workshop Summary</CardTitle>
+                <CardTitle>Outputs & Reports</CardTitle>
                 <CardDescription>
-                  Agentic vision statement, executive summary, and domain lenses (People, Customer, Technology, Regulation, Organisation).
+                  Download a raw workshop summary or view the full synthesised intelligence report.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="text-sm text-muted-foreground">
-                  Generates a corporate future-state narrative from live workshop signals and discovery reports.
+                  Run synthesis on the Insight Map to generate the intelligence report, then open Download Report to review and export it.
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -459,19 +432,17 @@ export default function WorkshopDetailPage({ params }: PageProps) {
                     onClick={() => void handleDownloadSummary()}
                     disabled={summaryDownloading || workshop.status !== 'COMPLETED'}
                   >
-                    {summaryDownloading ? 'Generating summary…' : 'Download Summary'}
+                    {summaryDownloading ? 'Generating…' : 'Download Summary'}
                   </Button>
-                  <Button
-                    variant="default"
-                    onClick={() => void handlePrepareForScratchpad()}
-                    disabled={scratchpadPreparing || workshop.status !== 'COMPLETED'}
-                  >
-                    {scratchpadPreparing ? 'Preparing…' : 'Prepare for Scratchpad'}
-                  </Button>
+                  <Link href={`/admin/workshops/${id}/scratchpad`}>
+                    <Button variant="default" disabled={workshop.status !== 'COMPLETED'}>
+                      Download Report →
+                    </Button>
+                  </Link>
                 </div>
                 {workshop.status !== 'COMPLETED' && (
                   <p className="text-xs text-muted-foreground">
-                    Summary and scratchpad preparation will be available when workshop is completed.
+                    Outputs will be available when the workshop is completed.
                   </p>
                 )}
               </CardContent>
