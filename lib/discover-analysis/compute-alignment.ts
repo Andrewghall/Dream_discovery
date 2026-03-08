@@ -10,13 +10,11 @@ import type { AlignmentHeatmapData, AlignmentCell } from '@/lib/types/discover-a
 
 type ThemeEntry = { label: string; category?: string; confidence?: number; reasoning?: string };
 type ActorEntry = { name: string; role?: string; interactions?: Array<{ withActor?: string; action?: string; sentiment?: string; context?: string }> };
-type DomainEntry = string | { label?: string; name?: string; domain?: string };
 
 interface AnalysisRow {
   sentimentTone: string;
   themes: unknown;
   actors: unknown;
-  domains: unknown;
   dataPoint: {
     rawText: string;
     participant: { role: string | null } | null;
@@ -42,7 +40,6 @@ export async function computeAlignment(workshopId: string): Promise<AlignmentHea
       sentimentTone: true,
       themes: true,
       actors: true,
-      domains: true,
       dataPoint: {
         select: {
           rawText: true,
@@ -77,14 +74,11 @@ export async function computeAlignment(workshopId: string): Promise<AlignmentHea
       .map((t) => t.label?.trim())
       .filter((l): l is string => !!l);
 
-    // Use domains from agentic analysis as actor columns — gives semantic distribution
-    // (e.g. "Customer Experience", "Technology") rather than bucketing everyone by speaker role.
-    // Falls back to the speaker's stakeholder group when no domains are present.
-    const domains = parseJsonArray<DomainEntry>(a.domains)
-      .map(parseDomainLabel)
-      .filter((d): d is string => !!d);
+    // Always use the speaker's stakeholder group as the actor column.
+    // This gives meaningful cross-stakeholder columns (Leadership / Management / etc.)
+    // rather than domain labels that scatter data and obscure the alignment story.
     const speakerRole = a.dataPoint.participant?.role ?? null;
-    const effectiveActors = domains.length > 0 ? domains : [groupRole(speakerRole)];
+    const effectiveActors = [groupRole(speakerRole)];
 
     for (const theme of themeLabels) {
       themeCounts.set(theme, (themeCounts.get(theme) || 0) + 1);
@@ -257,24 +251,7 @@ function groupRole(role: string | null): string {
   return 'General Staff';
 }
 
-function toneToSentiment(tone: string | null): 'positive' | 'negative' | 'neutral' {
-  if (!tone) return 'neutral';
-  const t = tone.toLowerCase();
-  if (t === 'strategic' || t === 'visionary') return 'positive';
-  if (t === 'critical') return 'negative';
-  return 'neutral';
-}
-
 // ── Helpers ──────────────────────────────────────────────────
-
-function parseDomainLabel(d: DomainEntry): string | null {
-  if (typeof d === 'string') return d.trim() || null;
-  const label = (d as { label?: string; name?: string; domain?: string }).label
-    ?? (d as { label?: string; name?: string; domain?: string }).domain
-    ?? (d as { label?: string; name?: string; domain?: string }).name
-    ?? '';
-  return label.trim() || null;
-}
 
 function parseJsonArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value as T[];
@@ -292,7 +269,7 @@ function parseJsonArray<T>(value: unknown): T[] {
 function normaliseSentiment(tone: string | null | undefined): 'positive' | 'negative' | 'neutral' {
   if (!tone) return 'neutral';
   const t = tone.toLowerCase();
-  if (t === 'positive' || t === 'optimistic' || t === 'enthusiastic') return 'positive';
-  if (t === 'negative' || t === 'critical' || t === 'concerned' || t === 'frustrated') return 'negative';
+  if (t === 'positive' || t === 'optimistic' || t === 'enthusiastic' || t === 'strategic' || t === 'visionary') return 'positive';
+  if (t === 'negative' || t === 'critical' || t === 'concerned' || t === 'frustrated' || t === 'worried' || t === 'dissatisfied') return 'negative';
   return 'neutral';
 }

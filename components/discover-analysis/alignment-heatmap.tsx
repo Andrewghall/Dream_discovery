@@ -52,25 +52,27 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
   const svgHeight = LABEL_TOP + themes.length * (CELL_H + GAP) + 20;
 
   function getCellColor(score: number): string {
-    if (score > 0) {
-      // Green channel: 0 → 1 maps to white → green
+    if (score > 0.05) {
+      // Green: white → green as score → 1
       const g = Math.round(180 + (1 - score) * 75);
       const r = Math.round(255 - score * 130);
       const b = Math.round(255 - score * 130);
       return `rgb(${r}, ${g}, ${b})`;
-    } else if (score < 0) {
-      // Red channel: 0 → -1 maps to white → red
+    } else if (score < -0.05) {
+      // Red: white → red as score → -1
       const absScore = Math.abs(score);
       const r = Math.round(180 + (1 - absScore) * 75);
       const g = Math.round(255 - absScore * 130);
       const b = Math.round(255 - absScore * 130);
       return `rgb(${r}, ${g}, ${b})`;
     }
-    return 'rgb(248, 250, 252)'; // slate-50
+    // Neutral: visible slate-300 so it doesn't disappear against white background
+    return 'rgb(203, 213, 225)';
   }
 
   function getCellOpacity(utteranceCount: number): number {
-    return 0.3 + 0.7 * (utteranceCount / maxUtterance);
+    // Minimum 0.65 so even single-utterance cells are clearly visible
+    return 0.65 + 0.35 * (utteranceCount / maxUtterance);
   }
 
   if (themes.length === 0 || actors.length === 0) {
@@ -196,7 +198,7 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
         <g transform={`translate(${LABEL_LEFT}, ${svgHeight - 14})`}>
           <rect x={0} y={0} width={12} height={12} rx={2} fill="rgb(125, 180, 125)" />
           <text x={16} y={10} fontSize={9} className="fill-slate-500">Aligned</text>
-          <rect x={70} y={0} width={12} height={12} rx={2} fill="rgb(248, 250, 252)" />
+          <rect x={70} y={0} width={12} height={12} rx={2} fill="rgb(203, 213, 225)" />
           <text x={86} y={10} fontSize={9} className="fill-slate-500">Neutral</text>
           <rect x={140} y={0} width={12} height={12} rx={2} fill="rgb(180, 125, 125)" />
           <text x={156} y={10} fontSize={9} className="fill-slate-500">Divergent</text>

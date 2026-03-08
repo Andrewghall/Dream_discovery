@@ -54,9 +54,9 @@ function buildNavSections(domainPack?: string | null) {
     {
       label: 'OUTPUT',
       items: [
-        { label: 'Scratchpad', path: '/scratchpad', icon: BookOpen },
         { label: 'Output', path: '/output', icon: LayoutDashboard },
         { label: 'Intelligence', path: '/intelligence', icon: Brain },
+        { label: 'Scratchpad', path: '/scratchpad', icon: BookOpen },
       ],
     },
   ];
