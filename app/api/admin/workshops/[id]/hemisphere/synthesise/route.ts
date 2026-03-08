@@ -235,7 +235,7 @@ function buildSynthesisPrompt(workshopName: string, data: ReturnType<typeof aggr
     'regulation': '📋', 'default': '🔍',
   };
 
-  return `You are a senior strategy consultant writing a comprehensive workshop output report. This is a premium deliverable (clients pay £10,000+ for this). Write with executive authority, evidence-grounded insight, and strategic clarity.
+  return `You are the DREAM Organisational Brain Scanner — a system that scans and interprets the organisational brain, revealing how a company thinks, what it wants to achieve, what blocks progress, and how it can transform. Your output is strategic intelligence, not a workshop report. Every insight must be derived from the workshop signals and grounded in evidence. If signal strength is insufficient, say so rather than generating filler.
 
 Workshop: "${workshopName}"
 Total data points analysed: ${data.totalNodes}
@@ -268,7 +268,7 @@ Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components
     ]
   },
   "discoveryOutput": {
-    "_aiSummary": "string — 3-5 sentence PROFOUND executive synthesis of the discovery findings. Go beyond restating findings — identify the deeper strategic implications, non-obvious connections, and the 'so what' a CEO would care about. Write with McKinsey-partner precision.",
+    "_aiSummary": "string — 3-5 sentence PERCEPTION SIGNAL summary. This is how the organisation currently sees itself and its environment. Identify: operational friction patterns, capability maturity signals, actor misalignment, and mindset distribution. State the dominant perception the organisation holds — and where that perception diverges from reality. Be specific and evidence-grounded.",
     "participants": ${JSON.stringify(participantNames.length > 0 ? participantNames : data.topActors.slice(0, 8).map(a => a.name))},
     "totalUtterances": ${data.totalNodes},
     "sections": [
@@ -291,7 +291,7 @@ ${domainNames.map((dn, i) => {
     ]
   },
   "reimagineContent": {
-    "_aiSummary": "string — 3-5 sentence executive synthesis of the reimagine vision. Capture the transformational shifts identified, why they matter, and the strategic imperative they create. Be profound, not generic.",
+    "_aiSummary": "string — 3-5 sentence IMAGINATION SIGNAL summary. This is what future the organisation believes is possible. Identify: ambition clusters, desired outcomes, transformation opportunities, and innovation signals. What does this organisation dare to imagine? What does that ambition reveal about its aspirations and self-belief? Be specific and evidence-grounded.",
     "reimagineContent": {
       "title": "string — compelling title for the reimagine output",
       "description": "string — 2-3 sentence overview of what the reimagine session revealed",
@@ -332,7 +332,7 @@ ${domainNames.map((dn, i) => {
     }
   },
   "constraintsContent": {
-    "_aiSummary": "string — 3-5 sentence executive synthesis of the constraint landscape. Which constraints are truly blocking vs manageable? What does the mitigation picture look like? What must be resolved first?",
+    "_aiSummary": "string — 3-5 sentence INHIBITION SIGNAL summary. These are the forces preventing transformation. Identify: governance barriers, technology fragmentation, decision bottlenecks, cross-team friction, and knowledge silos. What is the primary inhibition pattern? Which constraint, if removed first, would unlock the most momentum? Be specific and evidence-grounded.",
     "regulatory": [
       {"title": "string", "description": "string — 1-2 sentences", "impact": "Critical or High or Medium or Low", "mitigation": "string — mitigation strategy"}
     ],
@@ -347,7 +347,7 @@ ${domainNames.map((dn, i) => {
     ]
   },
   "potentialSolution": {
-    "_aiSummary": "string — 3-5 sentence executive synthesis of the solution thesis. What makes this approach compelling? How does it address the core constraints? What is the implementation logic?",
+    "_aiSummary": "string — 3-5 sentence EXECUTION SIGNAL summary. This is how transformation can actually happen. Identify: initiative clusters, dependency chains, transformation horizons, and capability development pathways. What is the logical sequence? What must be built first? What are the critical enablers? Be specific and evidence-grounded.",
     "overview": "string — 1-2 paragraphs on the proposed solution approach",
     "enablers": [
       {"title": "string", "domain": "string", "priority": "HIGH or MEDIUM or LOW", "description": "string", "dependencies": ["string array"]}
@@ -357,7 +357,7 @@ ${domainNames.map((dn, i) => {
     ]
   },
   "commercialContent": {
-    "_aiSummary": "string — 3-5 sentence executive synthesis of the investment case. Frame the ROI narrative, the phasing logic, and the risk-adjusted value proposition.",
+    "_aiSummary": "string — 3-5 sentence VISION SIGNAL summary. This is the organisation's ideal future self — quantified. Identify: the future operating model, new capabilities, AI-enabled decision intelligence, and the measurable value of transformation. What does success look like in concrete terms? Be specific and evidence-grounded.",
     "investmentSummary": {
       "totalInvestment": "string — e.g. £1.8M",
       "fiveYearROI": "string — e.g. 340%",
@@ -372,8 +372,8 @@ ${domainNames.map((dn, i) => {
     ]
   },
   "customerJourney": {
-    "_aiSummary": "string — 3-5 sentence executive synthesis of customer journey insights. Where do the critical pain points cluster? What are the moments of truth? What does this mean for transformation priorities?",
-    "stages": ["6-8 journey stage names in order — use researched stages if available in research context, otherwise infer from data"],
+    "_aiSummary": "string — 3-5 sentence actor journey summary. Where do pain points cluster across the journey? Which actors carry the highest friction burden? What are the moments of truth that define the organisation's relationship with its customers and staff? What does this reveal about transformation priorities?",
+    "stages": ["Use the journey stages from the research context if available. Otherwise infer from the data. Include 8-10 stages covering the full lifecycle."],
     "actors": [{"name": "string", "role": "string"}],
     "interactions": [
       {"actor": "string (must match an actor name)", "stage": "string (must match a stage name)", "action": "string", "sentiment": "positive or neutral or concerned or critical", "context": "string", "isPainPoint": false, "isMomentOfTruth": false}
@@ -382,7 +382,7 @@ ${domainNames.map((dn, i) => {
     "momentOfTruthSummary": "string — narrative on critical moments"
   },
   "summaryContent": {
-    "_aiSummary": "string — 3-5 sentence final synthesis pulling together the entire workshop narrative arc from discovery through to recommended next steps. This is the concluding executive insight.",
+    "_aiSummary": "string — 3-5 sentence TRANSFORMATION THESIS. This is the strategic spine connecting all five cognitive signals. State: what the organisation is (Perception), what it wants to become (Vision), what blocks the path (Inhibition), what it dares to imagine (Imagination), and how it will execute. This single paragraph should capture the complete organisational story revealed by the DREAM workshop.",
     "keyFindings": [
       {"category": "string — e.g. Customer Impact", "findings": ["3-5 findings in this category"]}
     ],
@@ -399,7 +399,7 @@ CRITICAL RULES:
 - Use ONLY the source material below. Do not invent facts.
 - Be CONCISE. Keep descriptions to 1-2 sentences. Do NOT write essays.
 - Write in confident, board-level language suitable for C-suite audiences.
-- _aiSummary fields: These are EXECUTIVE INSIGHT summaries shown at the top of each output page. They must be PROFOUND — go beyond restating findings. Identify deeper strategic implications, non-obvious connections between themes, and the "so what" that a CEO would care about. Reference specific evidence from the data. Write with McKinsey-partner precision. Every sentence must carry weight. NEVER use generic consulting filler.
+- _aiSummary fields: Each is a COGNITIVE SIGNAL summary framed through the DREAM Organisational Brain model. Every summary must be a specific signal reading — not a generic summary. Reference evidence from the data. Identify what the signal reveals about how this organisation thinks. Every sentence must carry weight. NEVER use generic consulting filler or restate findings without interpretation.
 - execSummary.keyFindings: 5-7 findings. metrics values must be NUMBERS not strings.
 - discoveryOutput.sections: exactly ${domainNames.length} sections. Each needs 8-10 wordCloud items (size 1-4). Sentiment MUST sum to 100.
 - reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes.

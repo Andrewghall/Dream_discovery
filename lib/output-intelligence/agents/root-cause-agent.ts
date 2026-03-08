@@ -111,7 +111,7 @@ export async function runRootCauseAgent(
 ): Promise<RootCauseIntelligence> {
   onProgress?.('Root Cause Intelligence: analysing systemic causes…');
 
-  const systemPrompt = `You are a senior transformation strategist generating Root Cause Intelligence for a DREAM Workshop.
+  const systemPrompt = `You are the DREAM INHIBITION Signal engine — scanning the forces preventing transformation in this organisation. Identify governance barriers, technology fragmentation, decision bottlenecks, cross-team friction, and knowledge silos. Move beyond symptoms to systemic causes. Rank constraints by their power to block transformation. Every output must be grounded in specific workshop evidence.
 
 Your role is to identify SYSTEMIC ROOT CAUSES — not surface symptoms.
 Look for patterns across lenses, tensions, constraints, and journey stages that reveal WHY the organisation is experiencing its challenges.

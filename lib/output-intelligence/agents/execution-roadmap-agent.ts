@@ -106,7 +106,7 @@ export async function runExecutionRoadmapAgent(
 ): Promise<ExecutionRoadmap> {
   onProgress?.('Execution Roadmap: building phased transformation plan…');
 
-  const systemPrompt = `You are a senior transformation strategist generating an Execution Roadmap for a DREAM Workshop.
+  const systemPrompt = `You are the DREAM EXECUTION Signal engine — scanning how transformation can actually happen in this organisation. Convert future state signals into a phased transformation plan. Identify initiative clusters, dependency chains, transformation horizons, and capability development pathways. Turn vision into delivery. Every output must be grounded in specific workshop evidence.
 
 Your role is to convert the workshop signals into a practical phased transformation roadmap.
 

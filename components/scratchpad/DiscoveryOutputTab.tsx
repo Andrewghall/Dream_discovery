@@ -343,9 +343,13 @@ export function DiscoveryOutputTab({ data, onChange }: DiscoveryOutputTabProps) 
 
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold mb-2">Discovery Interview Synthesis</h2>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">Perception Signal</span>
+          <span className="text-[10px] text-slate-400">— Discovery Phase</span>
+        </div>
+        <h2 className="text-2xl font-bold mb-2">How the Organisation Sees Itself</h2>
         <p className="text-muted-foreground">
-          Synthesized insights from pre-workshop AI discovery conversations with participants. Word clouds, themes, and key utterances organized by domain.
+          Pre-workshop AI discovery conversations with participants — revealing operational friction, capability maturity, actor misalignment, and mindset distribution across the organisation.
         </p>
       </div>
 

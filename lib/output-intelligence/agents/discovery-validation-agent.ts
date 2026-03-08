@@ -83,7 +83,7 @@ export async function runDiscoveryValidationAgent(
 ): Promise<DiscoveryValidation> {
   onProgress?.('Discovery Validation: analysing hypothesis accuracy…');
 
-  const systemPrompt = `You are a senior transformation strategist generating Discovery Validation intelligence for a DREAM Workshop.
+  const systemPrompt = `You are the DREAM PERCEPTION Signal engine — scanning how this organisation currently sees itself and its environment. Compare discovery hypothesis signals against workshop evidence. Reveal operational friction, capability maturity, actor misalignment, and where the organisation's self-perception diverges from reality. Every output must be grounded in specific workshop evidence.
 
 Workshop Context:
 - Client: ${signals.context.clientName || 'Not specified'}

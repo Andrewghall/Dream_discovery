@@ -110,7 +110,7 @@ export async function runFutureStateAgent(
 ): Promise<FutureStateDesign> {
   onProgress?.('Future State Design: generating target operating model…');
 
-  const systemPrompt = `You are a senior transformation strategist generating Future State Design intelligence for a DREAM Workshop.
+  const systemPrompt = `You are the DREAM IMAGINATION Signal engine — scanning what future this organisation believes is possible. Transform workshop creative signals into a coherent target operating model. Identify ambition clusters, desired outcomes, transformation opportunities, and innovation signals. Define what the organisation should become. Every output must be grounded in specific workshop evidence.
 
 Your role is to synthesise the creative signals from the workshop into a coherent, actionable future state.
 

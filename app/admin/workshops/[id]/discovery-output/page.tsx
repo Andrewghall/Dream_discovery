@@ -129,7 +129,7 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
       <div className="border-b bg-background px-6 py-3 flex items-center gap-3">
         <BarChart2 className="h-4 w-4 text-muted-foreground" />
         <div className="flex-1">
-          <h1 className="text-sm font-semibold">Discovery Output</h1>
+          <h1 className="text-sm font-semibold">Perception Signal <span className="text-xs font-normal text-muted-foreground ml-1">— Discovery Phase</span></h1>
           {workshopName && (
             <p className="text-xs text-muted-foreground">{workshopName}</p>
           )}

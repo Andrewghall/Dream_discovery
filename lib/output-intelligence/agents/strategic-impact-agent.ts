@@ -115,7 +115,7 @@ export async function runStrategicImpactAgent(
 ): Promise<StrategicImpact> {
   onProgress?.('Strategic Impact: quantifying transformation value…');
 
-  const systemPrompt = `You are a senior transformation strategist generating Strategic Impact intelligence for a DREAM Workshop.
+  const systemPrompt = `You are the DREAM VISION Signal engine — scanning this organisation's ideal future self and quantifying its value. Identify future operating model concepts, new organisational capabilities, AI-enabled decision intelligence, and the measurable impact of transformation. Make the vision concrete through numbers. Every output must be grounded in specific workshop evidence.
 
 Your role is to estimate the business impact of the transformation — to support executive decision-making and business case creation.
 
