@@ -1708,6 +1708,32 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
           {/* Filter overlay (bottom-left of canvas) */}
           <div className="pointer-events-none absolute inset-0">
+
+            {/* Zone annotations — explains the vertical spatial meaning of the sphere */}
+            <div className="absolute left-5 top-[9%] flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <div className="h-px w-3 bg-blue-400/60" />
+                <span className="text-[9px] font-semibold text-blue-400/75 uppercase tracking-[0.12em]">Aspiration</span>
+              </div>
+              <span className="pl-[18px] text-[8px] text-blue-300/40">Vision · Beliefs · Future goals</span>
+            </div>
+
+            <div className="absolute left-5 top-1/2 -translate-y-1/2 flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <div className="h-px w-3 bg-emerald-400/60" />
+                <span className="text-[9px] font-semibold text-emerald-400/75 uppercase tracking-[0.12em]">Enablers</span>
+              </div>
+              <span className="pl-[18px] text-[8px] text-emerald-300/40">Action · Transformation</span>
+            </div>
+
+            <div className="absolute left-5 bottom-[14%] flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <div className="h-px w-3 bg-red-400/60" />
+                <span className="text-[9px] font-semibold text-red-400/75 uppercase tracking-[0.12em]">Friction</span>
+              </div>
+              <span className="pl-[18px] text-[8px] text-red-300/40">Constraints · Barriers</span>
+            </div>
+
             <div className="pointer-events-auto absolute left-3 bottom-3">
               <Button
                 size="sm"

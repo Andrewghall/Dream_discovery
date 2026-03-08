@@ -17,6 +17,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
+  const [orgPrimaryColor, setOrgPrimaryColor] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +38,8 @@ export default function LoginPage() {
         // Show welcome message using the name from the response
         const name = data.user?.name || data.user?.email?.split('@')[0] || 'back';
         setWelcomeMessage(`Welcome ${name} to DREAM`);
+        setOrgLogoUrl(data.user?.organization?.logoUrl || null);
+        setOrgPrimaryColor(data.user?.organization?.primaryColor || null);
         setLoading(false);
 
         // Redirect after 1.5 seconds
@@ -54,18 +58,27 @@ export default function LoginPage() {
   };
 
   // Show welcome screen while redirecting
+  const accentHex = orgPrimaryColor?.replace('#', '') || '5cf28e';
+  const accentR = parseInt(accentHex.slice(0, 2), 16) || 92;
+  const accentG = parseInt(accentHex.slice(2, 4), 16) || 242;
+  const accentB = parseInt(accentHex.slice(4, 6), 16) || 142;
+
   if (welcomeMessage) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0d0d0d] relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background:
-              'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(92, 242, 142, 0.08), transparent)',
+            background: `radial-gradient(ellipse 60% 50% at 50% 50%, rgba(${accentR}, ${accentG}, ${accentB}, 0.08), transparent)`,
           }}
         />
         <div className="relative z-10 text-center">
-          <Image src="/ethenta-logo.png" alt="Ethenta" width={80} height={80} className="mx-auto mb-6" />
+          {orgLogoUrl && (
+            <div className="mb-6 flex justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={orgLogoUrl} alt="Organisation" className="h-16 w-auto object-contain" />
+            </div>
+          )}
           <h1 className="text-4xl font-bold text-white mb-3">{welcomeMessage}</h1>
           <p className="text-white/50">Taking you to your dashboard...</p>
         </div>
