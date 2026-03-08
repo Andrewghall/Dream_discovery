@@ -15,6 +15,8 @@ import { FutureStatePanel } from '@/components/output-intelligence/FutureStatePa
 import { ExecutionRoadmapPanel } from '@/components/output-intelligence/ExecutionRoadmapPanel';
 import { StrategicImpactPanel } from '@/components/output-intelligence/StrategicImpactPanel';
 import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
+import { DiscoveryOutputTab } from '@/components/scratchpad/DiscoveryOutputTab';
+import { HemisphereOutputTab } from '@/components/scratchpad/HemisphereOutputTab';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -43,6 +45,73 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+// ── Journey download bar ────────────────────────────────────────────────────
+
+function JourneyDownloadBar({ workshopId }: { workshopId: string }) {
+  const [downloading, setDownloading] = useState<'pdf' | 'png' | null>(null);
+
+  const download = async (format: 'pdf' | 'png') => {
+    setDownloading(format);
+    try {
+      const res = await fetch(
+        `/api/admin/workshops/${workshopId}/export-journey?format=${format}`
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Export failed' }));
+        throw new Error(err.error || 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `journey-map.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      // Surface error via toast if sonner is available, else log
+      console.error('Journey export failed:', err);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-end gap-2 px-4 pb-3 pt-1">
+      <span className="text-xs text-muted-foreground mr-1">Download:</span>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        onClick={() => download('pdf')}
+        disabled={!!downloading}
+      >
+        {downloading === 'pdf' ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Download className="h-3 w-3" />
+        )}
+        PDF (Landscape)
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        onClick={() => download('png')}
+        disabled={!!downloading}
+      >
+        {downloading === 'png' ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Download className="h-3 w-3" />
+        )}
+        PNG
+      </Button>
+    </div>
+  );
+}
+
 // ── Panel renderer ──────────────────────────────────────────────────────────
 
 function renderPanel(
@@ -50,6 +119,7 @@ function renderPanel(
   intelligence: WorkshopOutputIntelligence,
   liveJourneyData: LiveJourneyData | null,
   workshopId: string,
+  discoveryOutputData: any,
 ): React.ReactNode {
   switch (sectionId) {
     case 'exec-summary':
@@ -116,10 +186,27 @@ function renderPanel(
           </div>
         );
       }
-      return <LiveJourneyMap data={liveJourneyData} mode="output" />;
+      return (
+        <div>
+          <JourneyDownloadBar workshopId={workshopId} />
+          <LiveJourneyMap data={liveJourneyData} mode="output" />
+        </div>
+      );
 
     case 'summary':
       return <StrategicImpactPanel data={intelligence.strategicImpact} />;
+
+    case 'output-analysis':
+      return (
+        <div className="space-y-6">
+          {/* Live hemisphere / brain map */}
+          <HemisphereOutputTab workshopId={workshopId} />
+          {/* Domain-level discovery analysis (from synthesis) */}
+          {discoveryOutputData && Object.keys(discoveryOutputData).length > 0 && (
+            <DiscoveryOutputTab data={discoveryOutputData} />
+          )}
+        </div>
+      );
 
     default:
       return (
@@ -137,6 +224,7 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [intelligence, setIntelligence] = useState<WorkshopOutputIntelligence | null>(null);
   const [liveJourneyData, setLiveJourneyData] = useState<LiveJourneyData | null>(null);
+  const [discoveryOutputData, setDiscoveryOutputData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('exec-summary');
   const [exporting, setExporting] = useState(false);
@@ -150,10 +238,11 @@ export default function DownloadReportPage({ params }: PageProps) {
     try {
       setLoading(true);
 
-      // Parallel: workshop details + intelligence
-      const [workshopRes, intelligenceRes] = await Promise.all([
+      // Parallel: workshop details + intelligence + scratchpad (non-fatal)
+      const [workshopRes, intelligenceRes, scratchpadRes] = await Promise.all([
         fetch(`/api/admin/workshops/${workshopId}`),
         fetch(`/api/admin/workshops/${workshopId}/output-intelligence`),
+        fetch(`/api/admin/workshops/${workshopId}/scratchpad`),
       ]);
 
       if (workshopRes.ok) {
@@ -167,6 +256,15 @@ export default function DownloadReportPage({ params }: PageProps) {
         const stored = intelligenceData.intelligence;
         if (stored?.intelligence) {
           setIntelligence(stored.intelligence);
+        }
+      }
+
+      // Scratchpad discoveryOutput — used for Output Analysis tab (non-fatal)
+      if (scratchpadRes.ok) {
+        const scratchpadData = await scratchpadRes.json();
+        const discoveryOutput = scratchpadData.scratchpad?.discoveryOutput;
+        if (discoveryOutput && Object.keys(discoveryOutput).length > 0) {
+          setDiscoveryOutputData(discoveryOutput);
         }
       }
 
@@ -248,9 +346,19 @@ export default function DownloadReportPage({ params }: PageProps) {
     );
   }
 
-  // ── Sections (7 fixed, always shown) ────────────────────────────────────
+  // ── Sections — 7 core + Output Analysis (always shown) ─────────────────
 
-  const sections = [...SECTION_REGISTRY].sort((a, b) => a.priority - b.priority);
+  const coreSections = [...SECTION_REGISTRY].sort((a, b) => a.priority - b.priority);
+
+  // Insert "Output Analysis" after exec-summary (between priority 0 and 10)
+  const OUTPUT_ANALYSIS = { id: 'output-analysis', title: 'Output Analysis' };
+  const execIdx = coreSections.findIndex((s) => s.id === 'exec-summary');
+  const sections = [
+    ...coreSections.slice(0, execIdx + 1),
+    OUTPUT_ANALYSIS,
+    ...coreSections.slice(execIdx + 1),
+  ];
+
   const colCount = sections.length;
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -333,7 +441,7 @@ export default function DownloadReportPage({ params }: PageProps) {
 
             {sections.map((section) => (
               <TabsContent key={section.id} value={section.id}>
-                {renderPanel(section.id, intelligence, liveJourneyData, workshopId)}
+                {renderPanel(section.id, intelligence, liveJourneyData, workshopId, discoveryOutputData)}
               </TabsContent>
             ))}
           </Tabs>
