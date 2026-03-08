@@ -362,18 +362,20 @@ export default function ScratchpadPage({ params }: PageProps) {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-6">
-            {(scratchpad?.clientLogoUrl || workshop?.organization?.logoUrl) ? (
+          <div className="flex items-center gap-4">
+            {(scratchpad?.clientLogoUrl || workshop?.organization?.logoUrl) && (
               <img
                 src={scratchpad?.clientLogoUrl || workshop?.organization?.logoUrl || ''}
                 alt={workshop?.organization?.name || 'Organization'}
-                className="h-10 w-auto"
+                className="h-8 w-auto"
               />
-            ) : (
-              <span className="text-lg font-semibold text-muted-foreground">
-                {workshop?.organization?.name || workshop?.name || 'Workshop'}
-              </span>
             )}
+            <div>
+              <h1 className="text-lg font-bold tracking-tight">Download Report</h1>
+              <p className="text-xs text-muted-foreground">
+                {workshop?.organization?.name || workshop?.name || 'Workshop'} — editable output ready to export
+              </p>
+            </div>
           </div>
 
           <div className="flex gap-2">
@@ -422,13 +424,6 @@ export default function ScratchpadPage({ params }: PageProps) {
               }}
             >
               🎯 Load Demo Data
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowSetPasswordDialog(true)}
-            >
-              <Lock className="h-4 w-4 mr-2" />
-              Set Commercial Password
             </Button>
             {/* Auto-save status indicator */}
             {saveStatus === 'saving' && (

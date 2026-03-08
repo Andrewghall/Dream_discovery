@@ -7,12 +7,9 @@ import {
   Settings,
   FileText,
   Radio,
-  Search,
   Globe,
-  BarChart3,
   BookOpen,
   Compass,
-  LayoutDashboard,
   Send,
   Menu,
   X,
@@ -29,34 +26,24 @@ interface WorkshopSidebarProps {
   domainPack?: string | null;
 }
 
-function buildNavSections(domainPack?: string | null) {
-  const analyseItems = [
-    { label: 'Discovery', path: '/discovery', icon: Search },
-    { label: 'Field Discovery', path: '/discovery/field', icon: Compass },
-    { label: 'Hemisphere', path: '/hemisphere', icon: Globe },
-    { label: 'Spider', path: '/spider', icon: BarChart3 },
-  ];
-
+function buildNavSections(_domainPack?: string | null) {
   return [
     {
-      label: 'WORKFLOW',
+      label: 'Workflow',
       items: [
         { label: 'Setup', path: '', icon: Settings },
         { label: 'Prep', path: '/prep', icon: FileText },
         { label: 'Invite', path: '/invite', icon: Send },
         { label: 'Live Session', path: '/cognitive-guidance', icon: Radio },
+        { label: 'Field Discovery', path: '/discovery/field', icon: Compass },
       ],
     },
     {
-      label: 'ANALYSE',
-      items: analyseItems,
-    },
-    {
-      label: 'OUTPUT',
+      label: 'Output Analysis',
       items: [
-        { label: 'Output', path: '/output', icon: LayoutDashboard },
-        { label: 'Intelligence', path: '/intelligence', icon: Brain },
-        { label: 'Scratchpad', path: '/scratchpad', icon: BookOpen },
+        { label: 'Insight Map', path: '/hemisphere', icon: Globe },
+        { label: 'Synthesised Output', path: '/intelligence', icon: Brain },
+        { label: 'Download Report', path: '/scratchpad', icon: BookOpen },
       ],
     },
   ];
@@ -104,7 +91,7 @@ export function WorkshopSidebar({ workshopId, workshopName, domainPack }: Worksh
       <div className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
         {navSections.map((section) => (
           <div key={section.label}>
-            <p className="px-3 mb-1 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
+            <p className="px-3 mb-1 text-[10px] font-semibold text-muted-foreground/70 tracking-wide">
               {section.label}
             </p>
             <div className="space-y-0.5">

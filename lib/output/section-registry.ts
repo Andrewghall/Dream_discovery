@@ -1,16 +1,9 @@
 /**
  * Section Registry
  *
- * Defines the available output sections and their inclusion rules.
- * The output composer uses the archetype classification + section context
- * to determine which tabs appear in the scratchpad dashboard.
- *
- * Each section has:
- *  - A stable ID that maps to the scratchpad data field
- *  - A display title for the tab
- *  - A priority (lower = shown first)
- *  - A core flag (always included regardless of archetype)
- *  - A when() predicate for conditional inclusion
+ * Defines the 7 fixed sections for the Download Report.
+ * All sections are always shown — this is the definitive output document.
+ * Sections ordered by priority (ascending).
  */
 
 import type { WorkshopArchetype } from './archetype-classifier';
@@ -20,7 +13,6 @@ import type { WorkshopArchetype } from './archetype-classifier';
 // ================================================================
 
 export interface SectionContext {
-  /** Whether the scratchpad has any data in this field */
   hasExecSummary: boolean;
   hasDiscoveryOutput: boolean;
   hasReimagineContent: boolean;
@@ -30,8 +22,6 @@ export interface SectionContext {
   hasCustomerJourney: boolean;
   hasSummaryContent: boolean;
   hasHemisphereData: boolean;
-
-  /** Counts from the classifier input */
   constraintCount: number;
   enablerCount: number;
 }
@@ -39,28 +29,20 @@ export interface SectionContext {
 export interface SectionDefinition {
   id: string;
   title: string;
-  /** Maps to the ScratchpadData field key */
   dataKey: string;
   priority: number;
-  /** Core sections are always shown regardless of archetype */
   core: boolean;
-  /** Returns true if this section should be included */
   when: (archetype: WorkshopArchetype, context: SectionContext) => boolean;
 }
 
 // ================================================================
-// Registry
+// Registry — 7 fixed sections, always shown
 // ================================================================
 
-/**
- * Master section registry. Priority determines tab order (ascending).
- * Core sections appear for all archetypes. Non-core sections use the
- * when() predicate to determine visibility.
- */
 export const SECTION_REGISTRY: SectionDefinition[] = [
   {
     id: 'exec-summary',
-    title: 'Exec Summary',
+    title: 'Executive Summary',
     dataKey: 'execSummary',
     priority: 0,
     core: true,
@@ -79,66 +61,32 @@ export const SECTION_REGISTRY: SectionDefinition[] = [
     title: 'Reimagine',
     dataKey: 'reimagineContent',
     priority: 20,
-    core: false,
-    when: (archetype, ctx) => {
-      // Reimagine is relevant for all archetypes except pure compliance remediation
-      if (archetype === 'compliance_risk_remediation') return false;
-      return ctx.hasReimagineContent;
-    },
+    core: true,
+    when: () => true,
   },
   {
     id: 'constraints',
     title: 'Constraints',
     dataKey: 'constraintsContent',
     priority: 30,
-    core: false,
-    when: (_archetype, ctx) => {
-      return ctx.constraintCount > 0 || ctx.hasConstraintsContent;
-    },
+    core: true,
+    when: () => true,
   },
   {
     id: 'solution',
-    title: 'Solution',
+    title: 'Solution Output',
     dataKey: 'potentialSolution',
     priority: 40,
-    core: false,
-    when: (archetype, ctx) => {
-      // Solution tab most relevant for agentic blueprints and hybrid
-      if (archetype === 'agentic_tooling_blueprint' || archetype === 'hybrid') return true;
-      return ctx.hasPotentialSolution;
-    },
-  },
-  {
-    id: 'commercial',
-    title: 'Commercial',
-    dataKey: 'commercialContent',
-    priority: 50,
-    core: false,
-    when: (_archetype, ctx) => {
-      return ctx.hasCommercialContent;
-    },
+    core: true,
+    when: () => true,
   },
   {
     id: 'customer-journey',
     title: 'Journey Map',
     dataKey: 'customerJourney',
     priority: 60,
-    core: false,
-    when: (archetype, ctx) => {
-      // Journey map most relevant for operational and hybrid archetypes
-      if (!ctx.hasCustomerJourney) return false;
-      return archetype === 'operational_contact_centre_improvement' || archetype === 'hybrid';
-    },
-  },
-  {
-    id: 'hemisphere',
-    title: 'Hemisphere',
-    dataKey: '_hemisphere',
-    priority: 65,
-    core: false,
-    when: (_archetype, ctx) => {
-      return ctx.hasHemisphereData;
-    },
+    core: true,
+    when: () => true,
   },
   {
     id: 'summary',
@@ -155,24 +103,18 @@ export const SECTION_REGISTRY: SectionDefinition[] = [
 // ================================================================
 
 /**
- * Computes the active sections for the output dashboard based on
- * the workshop archetype and available data context.
- *
- * Returns sections sorted by priority (ascending), with core sections
- * always included and conditional sections filtered by their when() predicate.
+ * Returns all 7 sections sorted by priority.
+ * archetype and context params retained for API compatibility.
  */
 export function composeActiveSections(
-  archetype: WorkshopArchetype,
-  context: SectionContext,
+  _archetype: WorkshopArchetype,
+  _context: SectionContext,
 ): SectionDefinition[] {
-  return SECTION_REGISTRY
-    .filter((section) => section.core || section.when(archetype, context))
-    .sort((a, b) => a.priority - b.priority);
+  return [...SECTION_REGISTRY].sort((a, b) => a.priority - b.priority);
 }
 
 /**
  * Builds a SectionContext from scratchpad data.
- * Checks each field for non-null, non-empty content.
  */
 export function buildSectionContext(
   scratchpadData: Record<string, unknown>,
