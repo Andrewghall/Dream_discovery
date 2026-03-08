@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Loader2, ArrowLeft, Sparkles } from 'lucide-react';
@@ -250,12 +251,13 @@ function renderPanel(
 
 export default function DownloadReportPage({ params }: PageProps) {
   const { id: workshopId } = use(params);
+  const searchParams = useSearchParams();
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [intelligence, setIntelligence] = useState<WorkshopOutputIntelligence | null>(null);
   const [liveJourneyData, setLiveJourneyData] = useState<LiveJourneyData | null>(null);
   const [discoveryOutputData, setDiscoveryOutputData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('exec-summary');
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') ?? 'exec-summary');
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
