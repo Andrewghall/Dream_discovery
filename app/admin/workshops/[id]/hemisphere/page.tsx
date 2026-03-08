@@ -1512,7 +1512,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                     </button>
                   ))}
                   {workshopsWithoutSnapshots.length > 0 && workshopsWithSnapshots.length > 0 && (
-                    <div className="text-[10px] text-slate-600 uppercase tracking-wider px-2 pt-3 pb-1">Other workshops (no hemisphere data yet)</div>
+                    <div className="text-[10px] text-slate-600 uppercase tracking-wider px-2 pt-3 pb-1">Other workshops (no Insight Map data yet)</div>
                   )}
                   {workshopsWithoutSnapshots.map(w => (
                     <button
@@ -1546,7 +1546,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
             </Button>
           </Link>
           <div className="h-4 w-px bg-white/15" />
-          <h1 className="text-sm font-semibold text-slate-100">Workshop Output</h1>
+          <h1 className="text-sm font-semibold text-slate-100">Insight Map</h1>
           {data?.generatedAt && (
             <span className="text-[11px] text-slate-500">
               Generated {new Date(data.generatedAt).toLocaleString()}
@@ -1636,7 +1636,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
             onClick={handleGenerateReport}
             disabled={generating}
           >
-            {generating ? 'Generating…' : '✦ Generate Report'}
+            {generating ? 'Synthesising…' : '✦ Synthesise'}
           </Button>
           <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`} target="_blank">
             <Button size="sm" variant="outline" className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs">
@@ -1656,7 +1656,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
             collapsed={agentPanelCollapsed}
             onToggleCollapse={() => setAgentPanelCollapsed(!agentPanelCollapsed)}
             isLive={generating}
-            title="REPORT SYNTHESIS"
+            title="SYNTHESIS"
           />
         </div>
       )}
