@@ -995,7 +995,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
       // Handle result
       if (synthesisResult && synthesisResult.ok) {
-        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`, '_blank');
+        window.open(`/admin/workshops/${encodeURIComponent(workshopId)}/intelligence`, '_blank');
       } else if (synthesisResult?.error) {
         alert(`Synthesis failed: ${synthesisResult.error}`);
       }
@@ -1628,21 +1628,16 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
             </>
           )}
 
-          {/* Report generation */}
+          {/* Primary action */}
           <div className="h-4 w-px bg-white/15" />
           <Button
             size="sm"
-            className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
+            className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4"
             onClick={handleGenerateReport}
             disabled={generating}
           >
             {generating ? 'Synthesising…' : '✦ Synthesise'}
           </Button>
-          <Link href={`/admin/workshops/${encodeURIComponent(workshopId)}/scratchpad`} target="_blank">
-            <Button size="sm" variant="outline" className="bg-black/30 text-slate-200 border-white/20 hover:bg-white/10 text-xs">
-              Download Report →
-            </Button>
-          </Link>
           <div className="h-4 w-px bg-white/15" />
           <HemisphereGuide />
         </div>
