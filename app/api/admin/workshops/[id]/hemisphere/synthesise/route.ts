@@ -177,6 +177,15 @@ function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
     .slice(0, 20)
     .map(([name, data]) => ({ name, ...data }));
 
+  // If agenticAnalysis.themes was absent on all nodes (e.g. seeded/imported data),
+  // derive synthetic themes from the top keywords so the Theme Agent has substance to work with.
+  if (allThemes.size === 0 && allKeywords.size > 0) {
+    const sorted = [...allKeywords.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
+    for (const [word, count] of sorted) {
+      allThemes.set(word, { category: 'General', count, totalConfidence: 0.7 });
+    }
+  }
+
   // Theme density normalisation: ThemeWeight = ThemeMentions / TotalMentionsAllThemes
   const totalThemeMentions = [...allThemes.values()].reduce((s, t) => s + t.count, 0) || 1;
   const topThemes = [...allThemes.entries()]
