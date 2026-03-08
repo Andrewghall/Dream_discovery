@@ -65,27 +65,33 @@ export function CustomerJourneyTab({ data, onChange }: CustomerJourneyTabProps) 
     momentOfTruthSummary: data.momentOfTruthSummary || '',
   };
 
-  // Adapter: convert scratchpad JourneyData → LiveJourneyData for the output map
+  // Adapter: convert JourneyData → LiveJourneyData for the output map.
+  // Preserves rich live-session fields (businessIntensity, aiAgency, etc.) if already present,
+  // falling back to sensible defaults for simpler scratchpad-only data.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const liveJourneyData: LiveJourneyData = useMemo(() => ({
     stages: journey.stages,
-    actors: journey.actors.map((a) => ({ name: a.name, role: a.role, mentionCount: 0 })),
-    interactions: journey.interactions.map((i, idx): LiveJourneyInteraction => ({
-      id: `scratchpad-${idx}`,
+    actors: journey.actors.map((a: any) => ({
+      name: a.name,
+      role: a.role,
+      mentionCount: a.mentionCount ?? 0,
+    })),
+    interactions: journey.interactions.map((i: any, idx): LiveJourneyInteraction => ({
+      id: i.id ?? `scratchpad-${idx}`,
       actor: i.actor,
       stage: i.stage,
       action: i.action,
       context: i.context || '',
       sentiment: i.sentiment,
-      businessIntensity: 0.5,
-      customerIntensity: 0.5,
-      aiAgencyNow: 'human',
-      aiAgencyFuture: 'assisted',
+      businessIntensity: i.businessIntensity ?? 0.5,
+      customerIntensity: i.customerIntensity ?? 0.5,
+      aiAgencyNow: i.aiAgencyNow ?? 'human',
+      aiAgencyFuture: i.aiAgencyFuture ?? 'assisted',
       isPainPoint: !!i.isPainPoint,
       isMomentOfTruth: !!i.isMomentOfTruth,
-      sourceNodeIds: [],
-      addedBy: 'ai',
-      createdAtMs: Date.now(),
+      sourceNodeIds: i.sourceNodeIds ?? [],
+      addedBy: i.addedBy ?? 'ai',
+      createdAtMs: i.createdAtMs ?? Date.now(),
     })),
   }), [journey.stages, journey.actors, journey.interactions]);
 

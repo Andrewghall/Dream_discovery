@@ -102,6 +102,7 @@ export default function ScratchpadPage({ params }: PageProps) {
   const [newCommercialPassword, setNewCommercialPassword] = useState('');
   const [confirmCommercialPassword, setConfirmCommercialPassword] = useState('');
   const [saveVersion, setSaveVersion] = useState(0);
+  const [liveJourneyData, setLiveJourneyData] = useState<any>(null);
 
   useEffect(() => {
     fetchData();
@@ -111,15 +112,17 @@ export default function ScratchpadPage({ params }: PageProps) {
     try {
       setLoading(true);
 
-      // Fetch workshop details
-      const workshopRes = await fetch(`/api/admin/workshops/${workshopId}`);
+      // Fetch workshop details, scratchpad, and live journey in parallel
+      const [workshopRes, scratchpadRes] = await Promise.all([
+        fetch(`/api/admin/workshops/${workshopId}`),
+        fetch(`/api/admin/workshops/${workshopId}/scratchpad`),
+      ]);
+
       if (workshopRes.ok) {
         const workshopData = await workshopRes.json();
         setWorkshop(workshopData.workshop);
       }
 
-      // Fetch scratchpad data
-      const scratchpadRes = await fetch(`/api/admin/workshops/${workshopId}/scratchpad`);
       if (scratchpadRes.ok) {
         const data = await scratchpadRes.json();
         setScratchpad(data.scratchpad);
@@ -128,6 +131,29 @@ export default function ScratchpadPage({ params }: PageProps) {
         if (!data.hasCommercialPassword) {
           setCommercialUnlocked(true);
         }
+      }
+
+      // Fetch latest live session version to get real journey data
+      try {
+        const versionsRes = await fetch(`/api/admin/workshops/${workshopId}/live/session-versions?limit=1`);
+        if (versionsRes.ok) {
+          const versionsData = await versionsRes.json();
+          const latestVersion = versionsData.versions?.[0];
+          if (latestVersion?.id) {
+            const versionRes = await fetch(
+              `/api/admin/workshops/${workshopId}/live/session-versions/${latestVersion.id}`
+            );
+            if (versionRes.ok) {
+              const versionData = await versionRes.json();
+              const liveJourney = versionData.version?.payload?.liveJourney;
+              if (liveJourney?.stages?.length && liveJourney?.interactions?.length) {
+                setLiveJourneyData(liveJourney);
+              }
+            }
+          }
+        }
+      } catch {
+        // Non-fatal — fall back to scratchpad.customerJourney
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -491,6 +517,7 @@ export default function ScratchpadPage({ params }: PageProps) {
           hasPassword={hasPassword}
           commercialUnlocked={commercialUnlocked}
           handleCommercialAccess={handleCommercialAccess}
+          liveJourneyData={liveJourneyData}
         />
       </div>
 
@@ -596,6 +623,7 @@ function renderSectionContent(
   handleTabChange: (field: keyof ScratchpadData) => (updated: any) => void,
   commercialUnlocked: boolean,
   handleCommercialAccess: () => void,
+  liveJourneyData: any,
 ): React.ReactNode {
   switch (sectionId) {
     case 'exec-summary':
@@ -624,7 +652,7 @@ function renderSectionContent(
         </Card>
       );
     case 'customer-journey':
-      return <CustomerJourneyTab data={scratchpad.customerJourney} onChange={handleTabChange('customerJourney')} />;
+      return <CustomerJourneyTab data={liveJourneyData ?? scratchpad.customerJourney} onChange={handleTabChange('customerJourney')} />;
     case 'hemisphere':
       return <HemisphereOutputTab workshopId={workshopId} />;
     case 'summary':
@@ -643,6 +671,7 @@ interface DynamicScratchpadTabsProps {
   hasPassword: boolean;
   commercialUnlocked: boolean;
   handleCommercialAccess: () => void;
+  liveJourneyData?: any;
 }
 
 function DynamicScratchpadTabs({
@@ -654,6 +683,7 @@ function DynamicScratchpadTabs({
   hasPassword,
   commercialUnlocked,
   handleCommercialAccess,
+  liveJourneyData,
 }: DynamicScratchpadTabsProps) {
   // Build section context from current scratchpad data
   const assessment = scratchpad.outputAssessment;
@@ -729,6 +759,7 @@ function DynamicScratchpadTabs({
             handleTabChange,
             commercialUnlocked,
             handleCommercialAccess,
+            liveJourneyData,
           )}
         </TabsContent>
       ))}
