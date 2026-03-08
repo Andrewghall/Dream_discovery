@@ -122,23 +122,46 @@ async function handleExport(
       );
     }
 
-    if (!workshop.scratchpad) {
+    // Extract outputIntelligence (scalar JSON field, auto-included by Prisma)
+    const intelligenceStored = (workshop as any).outputIntelligence as any;
+    const intelligence = intelligenceStored?.intelligence ?? null;
+
+    // Require at least one data source
+    if (!workshop.scratchpad && !intelligence) {
       return NextResponse.json(
-        { error: 'No scratchpad found for this workshop. Please prepare scratchpad first.' },
+        { error: 'No report data found. Run Synthesis on the Insight Map first, or create a scratchpad.' },
         { status: 400 }
       );
     }
 
-    // If a commercial password is set on the scratchpad, generate a SHA-256 hash for client-side verification
+    // Fetch latest live session for journey map (used in the intelligence path)
+    let liveJourney: any = null;
+    if (intelligence) {
+      try {
+        const latestVersion = await prisma.liveSessionVersion.findFirst({
+          where: { workshopId },
+          orderBy: { createdAt: 'desc' },
+          select: { payload: true },
+        });
+        const payload = latestVersion?.payload as any;
+        if (payload?.liveJourney?.stages?.length && payload?.liveJourney?.interactions?.length) {
+          liveJourney = payload.liveJourney;
+        }
+      } catch {
+        // Non-fatal — journey tab will show empty state
+      }
+    }
+
+    // Commercial password hash (legacy scratchpad path only)
     let commercialPasswordHash: string | null = null;
-    if (workshop.scratchpad.commercialPassword && commercialPasswordPlain) {
+    if (workshop.scratchpad?.commercialPassword && commercialPasswordPlain) {
       commercialPasswordHash = crypto
         .createHash('sha256')
         .update(commercialPasswordPlain)
         .digest('hex');
     }
 
-    const htmlPackage = await generateStaticHTMLPackage(workshop, commercialPasswordHash);
+    const htmlPackage = await generateStaticHTMLPackage(workshop, commercialPasswordHash, intelligence, liveJourney);
 
     const zip = new JSZip();
     Object.entries(htmlPackage.files).forEach(([filename, content]) => {
@@ -293,12 +316,404 @@ CRITICAL: Do NOT use generic consulting language. Every claim must be traceable 
 }
 
 /* ================================================================
-   GENERATE STATIC HTML PACKAGE
+   INTELLIGENCE HTML PACKAGE (new path — uses outputIntelligence)
    ================================================================ */
 
-async function generateStaticHTMLPackage(workshop: any, commercialPasswordHash: string | null) {
+/** Build the full HTML package from intelligence data */
+async function buildIntelligenceHTMLPackage(
+  workshop: any,
+  intelligence: any,
+  liveJourney: any,
+): Promise<{ files: Record<string, string> }> {
+  const organization = workshop.organization;
+  const primaryColor = organization?.primaryColor || '#1E40AF';
+  const secondaryColor = organization?.secondaryColor || '#3B82F6';
+  const logoUrl = organization?.logoUrl || '';
+  const orgName = organization?.name || workshop.name;
+
+  const logoBase64 = logoUrl ? await fetchImageAsBase64(logoUrl) : null;
+
+  const tabsHTML = [
+    { id: 'exec-summary',     label: 'Executive Summary', content: renderIntelligenceExecSummary(intelligence) },
+    { id: 'discovery',        label: 'Discovery',          content: renderIntelligenceDiscovery(intelligence.discoveryValidation) },
+    { id: 'reimagine',        label: 'Reimagine',          content: renderIntelligenceFutureState(intelligence.futureState) },
+    { id: 'constraints',      label: 'Constraints',        content: renderIntelligenceRootCause(intelligence.rootCause) },
+    { id: 'solution',         label: 'Solution Output',    content: renderIntelligenceRoadmap(intelligence.roadmap) },
+    { id: 'customer-journey', label: 'Journey Map',        content: renderIntelligenceJourney(liveJourney) },
+    { id: 'summary',          label: 'Summary',            content: renderIntelligenceStrategicImpact(intelligence.strategicImpact) },
+  ];
+
+  const tabButtons = tabsHTML.map((t, i) =>
+    `<button class="tab-btn${i === 0 ? ' active' : ''}" data-tab="${t.id}" onclick="switchTab('${t.id}')">${esc(t.label)}</button>`
+  ).join('\n          ');
+
+  const tabPanels = tabsHTML.map((t, i) =>
+    `<div id="tab-${t.id}" class="tab-panel${i === 0 ? ' active' : ''}">${t.content}</div>`
+  ).join('\n      ');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${esc(workshop.name)} - Workshop Report</title>
+  <style>${generateCSS(primaryColor, secondaryColor)}</style>
+</head>
+<body>
+  <header class="report-header">
+    <div class="header-inner">
+      ${logoBase64 ? `<img src="${logoBase64}" alt="${esc(orgName)}" class="org-logo">` : `<h1 class="org-name">${esc(orgName)}</h1>`}
+      <div class="header-text">
+        <h2>${esc(workshop.name)}</h2>
+        <p class="header-date">Workshop Report &middot; ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tab-nav">
+    <div class="tab-nav-inner">
+      ${tabButtons}
+    </div>
+  </nav>
+
+  <main class="report-main">
+    ${tabPanels}
+  </main>
+
+  <footer class="report-footer">
+    <p>&copy; ${new Date().getFullYear()} ${esc(orgName)}. All rights reserved.</p>
+  </footer>
+
+  <script>${generateJS()}</script>
+</body>
+</html>`;
+
+  return {
+    files: {
+      'index.html': html,
+      'README.txt': `${workshop.name} - Workshop Report\n===============================================\n\nThis package contains a complete, self-contained workshop report.\n\nDEPLOYMENT:\n-----------\n1. Extract this ZIP file\n2. Upload the index.html file to your web server\n3. Navigate to index.html — that's it!\n\nGenerated: ${new Date().toISOString()}\nWorkshop: ${workshop.name}\nOrganization: ${orgName}\n`,
+    },
+  };
+}
+
+// ── Intelligence render helpers ─────────────────────────────────────────────
+
+function renderIntelligenceExecSummary(intelligence: any): string {
+  const disc = intelligence.discoveryValidation || {};
+  const impact = intelligence.strategicImpact || {};
+  return `
+    <div class="section-card">
+      <h2>Executive Summary</h2>
+      <div class="metrics-grid">
+        <div class="metric-card blue">
+          <span class="metric-value">${esc(disc.hypothesisAccuracy ?? '—')}${typeof disc.hypothesisAccuracy === 'number' ? '%' : ''}</span>
+          <div class="metric-label">Hypothesis Accuracy</div>
+        </div>
+        <div class="metric-card green">
+          <span class="metric-value">${esc(impact.automationPotential?.percentage ?? '—')}${typeof impact.automationPotential?.percentage === 'number' ? '%' : ''}</span>
+          <div class="metric-label">Automation Potential</div>
+        </div>
+        <div class="metric-card purple">
+          <span class="metric-value">${esc(impact.confidenceScore ?? '—')}${typeof impact.confidenceScore === 'number' ? '%' : ''}</span>
+          <div class="metric-label">Confidence Score</div>
+        </div>
+      </div>
+      ${impact.businessCaseSummary ? `
+      <div class="exec-hero">
+        <h3 style="color:white;margin-bottom:0.75rem;font-size:1.2rem;">Business Case</h3>
+        <p>${esc(impact.businessCaseSummary)}</p>
+      </div>` : ''}
+      ${disc.summary ? `
+      <div class="finding-card" style="margin-top:1rem;">
+        <div class="finding-title" style="margin-bottom:0.5rem;">Discovery Summary</div>
+        <p style="color:#374151;line-height:1.7;">${esc(disc.summary)}</p>
+      </div>` : ''}
+    </div>`;
+}
+
+function renderIntelligenceDiscovery(dv: any): string {
+  if (!dv) return '<div class="section-card"><h2>Discovery</h2><p>No data available.</p></div>';
+
+  const confirmed = (dv.confirmedIssues || []).map((ci: any) => `
+    <div class="finding-card">
+      <div class="finding-header">
+        <span class="finding-title">${esc(ci.issue)}</span>
+        <span class="badge badge-${ci.confidence === 'high' ? 'low' : ci.confidence === 'medium' ? 'medium' : 'high'}" style="background:${ci.confidence === 'high' ? '#dcfce7' : ci.confidence === 'medium' ? '#fef9c3' : '#f1f5f9'};color:${ci.confidence === 'high' ? '#166534' : ci.confidence === 'medium' ? '#854d0e' : '#475569'};border:none;">${esc(ci.confidence)}</span>
+      </div>
+      <p style="font-size:0.875rem;color:#374151;margin-bottom:0.5rem;">${esc(ci.workshopEvidence)}</p>
+      ${ci.discoverySignal ? `<p style="font-size:0.8rem;color:#6b7280;font-style:italic;">Signal: ${esc(ci.discoverySignal)}</p>` : ''}
+    </div>`).join('');
+
+  const newIssues = (dv.newIssues || []).map((ni: any) => `
+    <div class="finding-card" style="border-color:#fde68a;">
+      <div class="finding-title">${esc(ni.issue)}</div>
+      <p style="font-size:0.875rem;color:#374151;margin-top:0.5rem;">${esc(ni.workshopEvidence)}</p>
+      ${ni.significance ? `<p style="font-size:0.8rem;color:#92400e;margin-top:0.25rem;">${esc(ni.significance)}</p>` : ''}
+    </div>`).join('');
+
+  const reduced = (dv.reducedIssues || []).map((ri: any) => `
+    <div class="finding-card" style="opacity:0.75;">
+      <div class="finding-title" style="text-decoration:line-through;color:#6b7280;">${esc(ri.issue)}</div>
+      <p style="font-size:0.875rem;color:#6b7280;margin-top:0.25rem;">${esc(ri.reason)}</p>
+    </div>`).join('');
+
+  return `
+    <div class="section-card">
+      <h2>Discovery Validation</h2>
+      <div class="metrics-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:2rem;">
+        <div class="metric-card blue"><span class="metric-value">${esc(dv.hypothesisAccuracy ?? '—')}${typeof dv.hypothesisAccuracy === 'number' ? '%' : ''}</span><div class="metric-label">Hypothesis Accuracy</div></div>
+        <div class="metric-card green"><span class="metric-value">${(dv.confirmedIssues || []).length}</span><div class="metric-label">Confirmed Issues</div></div>
+        <div class="metric-card orange"><span class="metric-value">${(dv.newIssues || []).length}</span><div class="metric-label">New Issues Found</div></div>
+      </div>
+      ${dv.summary ? `<div class="finding-card" style="background:#f0f9ff;border-color:#bae6fd;margin-bottom:1.5rem;"><p style="color:#0369a1;line-height:1.7;">${esc(dv.summary)}</p></div>` : ''}
+      ${confirmed ? `<h3 style="margin-bottom:1rem;color:#111827;">Confirmed Issues</h3>${confirmed}` : ''}
+      ${newIssues ? `<h3 style="margin-top:1.5rem;margin-bottom:1rem;color:#111827;">Newly Identified Issues</h3>${newIssues}` : ''}
+      ${reduced ? `<h3 style="margin-top:1.5rem;margin-bottom:1rem;color:#6b7280;">Reduced / Resolved Issues</h3>${reduced}` : ''}
+    </div>`;
+}
+
+function renderIntelligenceFutureState(fs: any): string {
+  if (!fs) return '<div class="section-card"><h2>Reimagine</h2><p>No data available.</p></div>';
+
+  const aiHumanRows = (fs.aiHumanModel || []).map((t: any) => {
+    const recColor = t.recommendation === 'AI Only' ? '#dcfce7' : t.recommendation === 'AI Assisted' ? '#dbeafe' : '#f1f5f9';
+    const recText = t.recommendation === 'AI Only' ? '#166534' : t.recommendation === 'AI Assisted' ? '#1e40af' : '#374151';
+    return `<tr>
+      <td style="padding:0.75rem;border-bottom:1px solid #e5e7eb;">${esc(t.task)}</td>
+      <td style="padding:0.75rem;border-bottom:1px solid #e5e7eb;"><span style="background:${recColor};color:${recText};padding:0.2rem 0.6rem;border-radius:9999px;font-size:0.75rem;font-weight:600;">${esc(t.recommendation)}</span></td>
+      <td style="padding:0.75rem;border-bottom:1px solid #e5e7eb;font-size:0.85rem;color:#6b7280;">${esc(t.rationale)}</td>
+    </tr>`;
+  }).join('');
+
+  const changes = (fs.operatingModelChanges || []).map((c: any) => `
+    <div class="finding-card">
+      <div class="finding-title">${esc(c.area)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:0.75rem;">
+        <div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:0.25rem;">Current</div><p style="font-size:0.875rem;color:#374151;">${esc(c.currentState)}</p></div>
+        <div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#059669;margin-bottom:0.25rem;">Future</div><p style="font-size:0.875rem;color:#374151;">${esc(c.futureState)}</p></div>
+      </div>
+      ${c.enabler ? `<p style="font-size:0.8rem;color:#6b7280;margin-top:0.5rem;font-style:italic;">Enabler: ${esc(c.enabler)}</p>` : ''}
+    </div>`).join('');
+
+  const principles = (fs.redesignPrinciples || []).map((p: string) =>
+    `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:0.75rem 1rem;font-size:0.875rem;color:#166534;">✓ ${esc(p)}</div>`
+  ).join('');
+
+  return `
+    <div class="section-card">
+      <h2>Future State Design</h2>
+      ${fs.narrative ? `<div class="finding-card" style="background:#faf5ff;border-color:#e9d5ff;margin-bottom:1.5rem;"><p style="color:#6b21a8;line-height:1.7;">${esc(fs.narrative)}</p></div>` : ''}
+      ${fs.targetOperatingModel ? `<div style="margin-bottom:1.5rem;"><h3 style="margin-bottom:0.75rem;">Target Operating Model</h3><p style="line-height:1.7;color:#374151;">${esc(fs.targetOperatingModel)}</p></div>` : ''}
+      ${aiHumanRows ? `<h3 style="margin-bottom:0.75rem;">AI / Human Task Allocation</h3><div style="overflow:auto;margin-bottom:1.5rem;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="padding:0.75rem;text-align:left;background:#f9fafb;font-size:0.875rem;border-bottom:2px solid #e5e7eb;">Task</th><th style="padding:0.75rem;text-align:left;background:#f9fafb;font-size:0.875rem;border-bottom:2px solid #e5e7eb;">Recommendation</th><th style="padding:0.75rem;text-align:left;background:#f9fafb;font-size:0.875rem;border-bottom:2px solid #e5e7eb;">Rationale</th></tr></thead><tbody>${aiHumanRows}</tbody></table></div>` : ''}
+      ${changes ? `<h3 style="margin-bottom:1rem;">Operating Model Changes</h3>${changes}` : ''}
+      ${principles ? `<h3 style="margin-top:1.5rem;margin-bottom:0.75rem;">Redesign Principles</h3><div style="display:flex;flex-direction:column;gap:0.5rem;">${principles}</div>` : ''}
+    </div>`;
+}
+
+function renderIntelligenceRootCause(rc: any): string {
+  if (!rc) return '<div class="section-card"><h2>Constraints</h2><p>No data available.</p></div>';
+
+  const causes = (rc.rootCauses || []).map((c: any) => {
+    const sevColor = c.severity === 'critical' ? '#fee2e2' : c.severity === 'significant' ? '#ffedd5' : '#fef9c3';
+    const sevText = c.severity === 'critical' ? '#991b1b' : c.severity === 'significant' ? '#9a3412' : '#854d0e';
+    const evidence = (c.evidence || []).map((e: string) => `<li style="font-size:0.8rem;color:#6b7280;margin-bottom:0.25rem;">${esc(e)}</li>`).join('');
+    return `
+      <div class="finding-card">
+        <div class="finding-header">
+          <span class="finding-title">#${c.rank} — ${esc(c.cause)}</span>
+          <span style="background:${sevColor};color:${sevText};padding:0.2rem 0.6rem;border-radius:9999px;font-size:0.75rem;font-weight:600;">${esc(c.severity)}</span>
+        </div>
+        <div style="font-size:0.8rem;color:#6b7280;margin-bottom:0.5rem;">${esc(c.category)}</div>
+        ${c.journeyStages?.length ? `<div style="font-size:0.8rem;color:#374151;margin-bottom:0.5rem;">Stages: ${esc(c.journeyStages.join(', '))}</div>` : ''}
+        ${evidence ? `<ul style="margin:0.5rem 0 0 1rem;padding:0;">${evidence}</ul>` : ''}
+      </div>`;
+  }).join('');
+
+  const frictionBars = (rc.frictionMap || []).map((f: any) => {
+    const pct = Math.min(100, Math.round((f.frictionLevel / 10) * 100));
+    const color = pct >= 70 ? '#ef4444' : pct >= 40 ? '#f97316' : '#22c55e';
+    return `
+      <div style="margin-bottom:0.75rem;">
+        <div style="display:flex;justify-content:space-between;font-size:0.875rem;margin-bottom:0.25rem;">
+          <span>${esc(f.stage)}</span>
+          <span style="color:${color};font-weight:600;">${f.frictionLevel}/10</span>
+        </div>
+        <div class="consensus-bar"><div class="consensus-fill" style="width:${pct}%;background:${color};"></div></div>
+        ${f.primaryCause ? `<div style="font-size:0.75rem;color:#6b7280;margin-top:0.2rem;">${esc(f.primaryCause)}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="section-card">
+      <h2>Root Cause Intelligence</h2>
+      ${rc.systemicPattern ? `<div class="finding-card" style="background:#fff7ed;border-color:#fed7aa;margin-bottom:1.5rem;"><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#c2410c;margin-bottom:0.5rem;font-weight:600;">Systemic Pattern</div><p style="color:#374151;line-height:1.7;">${esc(rc.systemicPattern)}</p></div>` : ''}
+      ${causes ? `<h3 style="margin-bottom:1rem;">Root Causes (Ranked)</h3>${causes}` : ''}
+      ${frictionBars ? `<h3 style="margin-top:1.5rem;margin-bottom:1rem;">Friction Map</h3><div>${frictionBars}</div>` : ''}
+    </div>`;
+}
+
+function renderIntelligenceRoadmap(roadmap: any): string {
+  if (!roadmap) return '<div class="section-card"><h2>Solution Output</h2><p>No data available.</p></div>';
+
+  const phaseColors = ['#2563eb', '#059669', '#9333ea'];
+  const phases = (roadmap.phases || []).map((p: any, i: number) => {
+    const color = phaseColors[i] || '#6b7280';
+    const initiatives = (p.initiatives || []).map((init: any) => `
+      <div style="border-left:3px solid ${color};padding:0.75rem 1rem;margin-bottom:0.5rem;background:#f9fafb;border-radius:0 8px 8px 0;">
+        <div style="font-weight:600;font-size:0.875rem;margin-bottom:0.25rem;">${esc(init.title)}</div>
+        <p style="font-size:0.8rem;color:#374151;margin-bottom:0.25rem;">${esc(init.description)}</p>
+        ${init.outcome ? `<p style="font-size:0.75rem;color:${color};font-style:italic;">${esc(init.outcome)}</p>` : ''}
+      </div>`).join('');
+
+    const capabilities = (p.capabilities || []).map((c: string) =>
+      `<span style="background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;border-radius:9999px;padding:0.2rem 0.6rem;font-size:0.75rem;">${esc(c)}</span>`
+    ).join('');
+
+    return `
+      <div class="finding-card" style="border-color:${color}30;margin-bottom:1.5rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+          <div style="width:32px;height:32px;border-radius:50%;background:${color};color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.875rem;flex-shrink:0;">${i + 1}</div>
+          <div>
+            <div style="font-weight:700;color:${color};font-size:1rem;">${esc(p.phase)}</div>
+            <div style="font-size:0.8rem;color:#6b7280;">${esc(p.timeframe)}</div>
+          </div>
+        </div>
+        ${initiatives}
+        ${capabilities ? `<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem;">${capabilities}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  const risks = (roadmap.keyRisks || []).map((r: string) =>
+    `<div style="display:flex;gap:0.5rem;align-items:flex-start;margin-bottom:0.5rem;"><span style="color:#ef4444;font-weight:700;flex-shrink:0;">!</span><span style="font-size:0.875rem;color:#374151;">${esc(r)}</span></div>`
+  ).join('');
+
+  return `
+    <div class="section-card">
+      <h2>Execution Roadmap</h2>
+      ${roadmap.criticalPath ? `<div class="finding-card" style="background:#f0fdf4;border-color:#bbf7d0;margin-bottom:1.5rem;"><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#059669;margin-bottom:0.5rem;font-weight:600;">Critical Path</div><p style="color:#374151;line-height:1.7;">${esc(roadmap.criticalPath)}</p></div>` : ''}
+      ${phases}
+      ${risks ? `<div class="finding-card" style="border-color:#fca5a5;background:#fff5f5;"><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.75rem;font-weight:600;">Key Risks</div>${risks}</div>` : ''}
+    </div>`;
+}
+
+function renderIntelligenceJourney(liveJourney: any): string {
+  if (!liveJourney?.stages?.length || !liveJourney?.interactions?.length) {
+    return `
+      <div class="section-card">
+        <h2>Journey Map</h2>
+        <p style="color:#6b7280;">No journey map data available. Complete a live session to generate the journey map.</p>
+      </div>`;
+  }
+
+  const { stages, actors, interactions } = liveJourney;
+
+  // Build grid: actors × stages
+  const rows = (actors || []).map((actor: any) => {
+    const cells = stages.map((stage: string) => {
+      const cellInteractions = (interactions || []).filter(
+        (i: any) => i.actor?.toLowerCase() === actor.name?.toLowerCase() && i.stage?.toLowerCase() === stage?.toLowerCase()
+      );
+      if (!cellInteractions.length) return `<td style="padding:0.75rem;border:1px solid #e5e7eb;background:#fafafa;min-width:140px;"></td>`;
+
+      const cellContent = cellInteractions.map((i: any) => {
+        const sentColor = i.sentiment === 'positive' ? '#dcfce7' : i.sentiment === 'critical' ? '#fee2e2' : i.sentiment === 'concerned' ? '#fef9c3' : '#f1f5f9';
+        const sentBorder = i.sentiment === 'positive' ? '#86efac' : i.sentiment === 'critical' ? '#fca5a5' : i.sentiment === 'concerned' ? '#fde047' : '#e2e8f0';
+        return `<div style="background:${sentColor};border:1px solid ${sentBorder};border-radius:6px;padding:0.5rem;margin-bottom:0.375rem;font-size:0.75rem;">
+          ${i.isPainPoint ? '<span style="font-size:0.6rem;font-weight:700;color:#dc2626;text-transform:uppercase;">⚠ Pain</span><br>' : ''}
+          ${i.isMomentOfTruth ? '<span style="font-size:0.6rem;font-weight:700;color:#d97706;text-transform:uppercase;">★ MoT</span><br>' : ''}
+          <span style="color:#374151;">${esc(i.action?.substring(0, 80) || '')}</span>
+        </div>`;
+      }).join('');
+
+      return `<td style="padding:0.5rem;border:1px solid #e5e7eb;vertical-align:top;min-width:140px;">${cellContent}</td>`;
+    }).join('');
+
+    return `<tr>
+      <td style="padding:0.75rem;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;font-size:0.8rem;white-space:nowrap;vertical-align:middle;">
+        ${esc(actor.name)}<br><span style="font-weight:400;color:#6b7280;font-size:0.7rem;">${esc(actor.role || '')}</span>
+      </td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  const headers = stages.map((s: string) =>
+    `<th style="padding:0.75rem;text-align:left;background:#1e3a5f;color:white;font-size:0.8rem;white-space:nowrap;">${esc(s)}</th>`
+  ).join('');
+
+  const painCount = (interactions || []).filter((i: any) => i.isPainPoint).length;
+  const motCount = (interactions || []).filter((i: any) => i.isMomentOfTruth).length;
+
+  return `
+    <div class="section-card">
+      <h2>Journey Map</h2>
+      <div class="metrics-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:1.5rem;">
+        <div class="metric-card blue"><span class="metric-value">${(actors || []).length}</span><div class="metric-label">Actors</div></div>
+        <div class="metric-card orange"><span class="metric-value">${painCount}</span><div class="metric-label">Pain Points</div></div>
+        <div class="metric-card purple"><span class="metric-value">${motCount}</span><div class="metric-label">Moments of Truth</div></div>
+      </div>
+      <div style="overflow:auto;">
+        <table style="width:100%;border-collapse:collapse;min-width:600px;">
+          <thead><tr><th style="padding:0.75rem;text-align:left;background:#1e3a5f;color:white;font-size:0.8rem;">Actor</th>${headers}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function renderIntelligenceStrategicImpact(si: any): string {
+  if (!si) return '<div class="section-card"><h2>Summary</h2><p>No data available.</p></div>';
+
+  const effGains = (si.efficiencyGains || []).map((g: any) => `
+    <div class="finding-card">
+      <div class="finding-title">${esc(g.metric)}</div>
+      <div style="font-size:1.25rem;font-weight:700;color:#059669;margin:0.5rem 0;">${esc(g.estimated)}</div>
+      <p style="font-size:0.8rem;color:#6b7280;">${esc(g.basis)}</p>
+    </div>`).join('');
+
+  const expImprovements = (si.experienceImprovements || []).map((e: any) => `
+    <div class="finding-card">
+      <div class="finding-title">${esc(e.dimension)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:0.75rem 0;">
+        <div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:0.25rem;">Current</div><p style="font-size:0.875rem;color:#374151;">${esc(e.currentState)}</p></div>
+        <div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#059669;margin-bottom:0.25rem;">Future</div><p style="font-size:0.875rem;color:#374151;">${esc(e.futureState)}</p></div>
+      </div>
+      ${e.impact ? `<p style="font-size:0.8rem;color:#6b7280;font-style:italic;">${esc(e.impact)}</p>` : ''}
+    </div>`).join('');
+
+  return `
+    <div class="section-card">
+      <h2>Strategic Impact</h2>
+      ${si.businessCaseSummary ? `<div class="exec-hero" style="margin-bottom:1.5rem;"><h3 style="color:white;margin-bottom:0.75rem;font-size:1.2rem;">Business Case</h3><p>${esc(si.businessCaseSummary)}</p></div>` : ''}
+      <div class="metrics-grid" style="margin-bottom:1.5rem;">
+        <div class="metric-card green"><span class="metric-value">${esc(si.automationPotential?.percentage ?? '—')}${typeof si.automationPotential?.percentage === 'number' ? '%' : ''}</span><div class="metric-label">Automation Potential</div><div style="font-size:0.75rem;color:#374151;margin-top:0.25rem;">${esc(si.automationPotential?.description || '')}</div></div>
+        <div class="metric-card blue"><span class="metric-value">${esc(si.aiAssistedWork?.percentage ?? '—')}${typeof si.aiAssistedWork?.percentage === 'number' ? '%' : ''}</span><div class="metric-label">AI-Assisted Work</div><div style="font-size:0.75rem;color:#374151;margin-top:0.25rem;">${esc(si.aiAssistedWork?.description || '')}</div></div>
+        <div class="metric-card indigo"><span class="metric-value">${esc(si.humanOnlyWork?.percentage ?? '—')}${typeof si.humanOnlyWork?.percentage === 'number' ? '%' : ''}</span><div class="metric-label">Human-Only Work</div><div style="font-size:0.75rem;color:#374151;margin-top:0.25rem;">${esc(si.humanOnlyWork?.description || '')}</div></div>
+        <div class="metric-card purple"><span class="metric-value">${esc(si.confidenceScore ?? '—')}${typeof si.confidenceScore === 'number' ? '%' : ''}</span><div class="metric-label">Confidence Score</div></div>
+      </div>
+      ${effGains ? `<h3 style="margin-bottom:1rem;">Efficiency Gains</h3>${effGains}` : ''}
+      ${expImprovements ? `<h3 style="margin-top:1.5rem;margin-bottom:1rem;">Experience Improvements</h3>${expImprovements}` : ''}
+    </div>`;
+}
+
+/* ================================================================
+   GENERATE STATIC HTML PACKAGE (legacy scratchpad path)
+   ================================================================ */
+
+async function generateStaticHTMLPackage(
+  workshop: any,
+  commercialPasswordHash: string | null,
+  intelligence: any = null,
+  liveJourney: any = null,
+) {
   const sp = workshop.scratchpad;
   const organization = workshop.organization;
+
+  // ── Intelligence path (new) ─────────────────────────────────────────────
+  if (intelligence) {
+    return buildIntelligenceHTMLPackage(workshop, intelligence, liveJourney);
+  }
+
+  // ── Legacy scratchpad path (unchanged) ─────────────────────────────────
 
   const execSummary = sp.execSummary || {};
   const discoveryOutput = sp.discoveryOutput || {};
