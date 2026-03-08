@@ -1149,11 +1149,19 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
           const ta = tokenById2.get(a.id) || new Set<string>();
           const tb = tokenById2.get(b.id) || new Set<string>();
           const sim = jaccard(ta, tb);
-          if (sim < 0.30) continue;
+          if (sim < 0.22) continue;
+
+          // Containment check: if one label's tokens are ≥80% inside the other, treat as duplicate
+          const smaller = ta.size <= tb.size ? ta : tb;
+          const larger  = ta.size <= tb.size ? tb : ta;
+          const contained = smaller.size >= 3
+            ? [...smaller].filter((t) => larger.has(t)).length / smaller.size
+            : 0;
+          const okContainment = contained >= 0.80;
 
           const ov = evidenceOverlap(a, b);
           const okEvidence = ov.inter >= 2 || (ov.inter >= 1 && ov.score >= 0.65);
-          const okSim = sim >= 0.36 || (sim >= 0.32 && okEvidence);
+          const okSim = sim >= 0.28 || (sim >= 0.24 && okEvidence) || okContainment;
           if (!okSim) continue;
 
           union(a.id, b.id);
