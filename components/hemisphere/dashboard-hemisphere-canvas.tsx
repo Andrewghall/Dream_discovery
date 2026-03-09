@@ -161,18 +161,6 @@ export function DashboardHemisphereCanvas({
       const cs = Math.cos(spin);
       const sn = Math.sin(spin);
 
-      // Zone separator rings (H1/H2 and H2/H3 boundaries)
-      const ZONE_PHI = [0.30, 0.62];
-      ctx.strokeStyle = 'rgba(148,163,184,0.07)';
-      ctx.lineWidth = dpr;
-      for (const zp of ZONE_PHI) {
-        const ringY = cy - R * Math.cos(Math.PI * zp);
-        const ringR = R * Math.sin(Math.PI * zp);
-        ctx.beginPath();
-        ctx.ellipse(cx, ringY, ringR, ringR * 0.25, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
       // Zone labels (left side)
       const zones = [
         { phi: 0.15, label: 'ASPIRATION',  sub: 'Vision · Beliefs',  color: 'rgba(147,197,253,0.7)'  },
