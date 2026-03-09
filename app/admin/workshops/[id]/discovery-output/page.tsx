@@ -101,56 +101,91 @@ const COLOR_CLASSES: Record<string, { card: string; label: string; bar: string; 
 
 // ── Going In Brain component ──────────────────────────────────
 
-function GoingInBrain({ discoveryOutput, discoverAnalysis }: { discoveryOutput: any; discoverAnalysis: DiscoverAnalysis | null }) {
+function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }: {
+  discoveryOutput: any;
+  discoverAnalysis: DiscoverAnalysis | null;
+  conversationReports: any[];
+}) {
   const [activeSignal, setActiveSignal] = useState<string | null>(null);
 
   const sections: any[] = discoveryOutput?.sections ?? [];
   const hasSections = sections.length > 0;
   const hasAnalysis = discoverAnalysis != null;
+  const hasReports = conversationReports.length > 0;
 
-  if (!hasSections && !hasAnalysis) {
+  if (!hasSections && !hasAnalysis && !hasReports) {
     return (
       <Card className="p-8 text-center">
         <Brain className="h-6 w-6 text-slate-300 mx-auto mb-3" />
         <p className="text-sm font-medium text-slate-600">No discovery signal data yet</p>
         <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-          Run <strong>Signal Analysis</strong> or <strong>Generate Discovery Intelligence</strong> to activate the Going In Brain.
+          Complete discovery interviews to activate the Going In Brain — no analysis required.
         </p>
       </Card>
     );
   }
 
-  // ── Compute signal strengths from best available source ────────
-  // Primary: discoveryOutput.sections (consensus + sentiment)
-  // Fallback: discoverAnalysis (alignment, confidence, narrative)
+  // ── Compute signal strengths — priority: sections → analysis → reports ──
   const strengths: Record<string, number> = { perception: 0, inhibition: 0, imagination: 0, vision: 0, execution: 0 };
+  let dataSource = 'discovery interviews';
 
   if (hasSections) {
+    // Best source: hemisphere synthesis sections with consensus + sentiment
     strengths.perception  = Math.round(sections.reduce((s: number, x: any) => s + (x.consensusLevel || 0), 0) / sections.length);
     strengths.inhibition  = Math.round(sections.reduce((s: number, x: any) => s + (x.sentiment?.concerned || 0), 0) / sections.length);
     strengths.imagination = Math.round(sections.reduce((s: number, x: any) => s + (x.sentiment?.optimistic || 0), 0) / sections.length);
+    dataSource = 'discovery interviews';
   } else if (hasAnalysis) {
-    // PERCEPTION — from alignment: map avg alignmentScore (-1..1) to (0..100)
+    // Second: discoverAnalysis (alignment heatmap, confidence index, narrative)
     const cells = discoverAnalysis!.alignment?.cells ?? [];
     if (cells.length > 0) {
       const avg = cells.reduce((s: number, c: any) => s + c.alignmentScore, 0) / cells.length;
       strengths.perception = Math.round(((avg + 1) / 2) * 100);
     }
-    // INHIBITION — from confidence: uncertain % signals friction
     const conf = discoverAnalysis!.confidence?.overall;
     if (conf) {
       const total = (conf.certain + conf.hedging + conf.uncertain) || 1;
       strengths.inhibition = Math.round((conf.uncertain / total) * 100);
     }
-    // IMAGINATION — from narrative: avg future temporal focus across layers
     const layers = discoverAnalysis!.narrative?.layers ?? [];
     if (layers.length > 0) {
       const avgFuture = layers.reduce((s: number, l: any) => s + (l.temporalFocus?.future || 0), 0) / layers.length;
       strengths.imagination = Math.round(avgFuture * 100);
     }
+    dataSource = 'signal analysis';
+  } else if (hasReports) {
+    // Third: raw conversation reports — tone + phaseInsights lens scores
+    // PERCEPTION — avg current lens score across all participants (1-10 → 0-100)
+    const allCurrentScores: number[] = conversationReports.flatMap((r: any) =>
+      Object.values((r.phaseInsights ?? {}) as Record<string, any>)
+        .map((v: any) => typeof v?.currentScore === 'number' ? v.currentScore : null)
+        .filter((v): v is number => v !== null)
+    );
+    if (allCurrentScores.length > 0) {
+      const avg = allCurrentScores.reduce((s, x) => s + x, 0) / allCurrentScores.length;
+      strengths.perception = Math.round((avg / 10) * 100);
+    }
+    // INHIBITION — % of participants with concerned or negative tone
+    const concernedCount = conversationReports.filter((r: any) =>
+      r.tone === 'concerned' || r.tone === 'negative' || r.tone === 'critical'
+    ).length;
+    strengths.inhibition = Math.round((concernedCount / conversationReports.length) * 100);
+    // IMAGINATION — avg aspiration gap (targetScore - currentScore), max gap = 9 on 1-10 scale
+    const allGaps: number[] = conversationReports.flatMap((r: any) =>
+      Object.values((r.phaseInsights ?? {}) as Record<string, any>)
+        .map((v: any) =>
+          typeof v?.targetScore === 'number' && typeof v?.currentScore === 'number'
+            ? Math.max(0, v.targetScore - v.currentScore)
+            : null
+        )
+        .filter((v): v is number => v !== null)
+    );
+    if (allGaps.length > 0) {
+      const avgGap = allGaps.reduce((s, x) => s + x, 0) / allGaps.length;
+      strengths.imagination = Math.round((avgGap / 9) * 100);
+    }
+    dataSource = `${conversationReports.length} interview${conversationReports.length > 1 ? 's' : ''}`;
   }
-
-  const dataSource = hasSections ? 'discovery interviews' : 'signal analysis';
 
   return (
     <div className="space-y-5">
@@ -363,6 +398,7 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [discoveryOutput, setDiscoveryOutput] = useState<any>(null);
   const [discoverAnalysis, setDiscoverAnalysis] = useState<DiscoverAnalysis | null>(null);
+  const [conversationReports, setConversationReports] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [workshopName, setWorkshopName] = useState<string>('');
 
@@ -383,10 +419,11 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
   useEffect(() => {
     const load = async () => {
       try {
-        const [scratchpadRes, workshopRes, analysisRes] = await Promise.all([
+        const [scratchpadRes, workshopRes, analysisRes, reportsRes] = await Promise.all([
           fetch(`/api/admin/workshops/${workshopId}/scratchpad`),
           fetch(`/api/admin/workshops/${workshopId}`),
           fetch(`/api/admin/workshops/${workshopId}/discover-analysis`),
+          fetch(`/api/admin/workshops/${workshopId}/participant-reports`),
         ]);
 
         if (!scratchpadRes.ok) {
@@ -408,6 +445,13 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
           const analysisData = await analysisRes.json();
           if (analysisData.analysis) {
             setDiscoverAnalysis(analysisData.analysis);
+          }
+        }
+
+        if (reportsRes.ok) {
+          const reportsData = await reportsRes.json();
+          if (reportsData.ok && reportsData.reports?.length > 0) {
+            setConversationReports(reportsData.reports);
           }
         }
       } catch (e) {
@@ -647,7 +691,7 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
             {/* ── Tab 2: Going In Brain ────────────────────────────── */}
             <TabsContent value="going-in-brain" className="mt-0 p-6">
-              <GoingInBrain discoveryOutput={discoveryOutput} discoverAnalysis={discoverAnalysis} />
+              <GoingInBrain discoveryOutput={discoveryOutput} discoverAnalysis={discoverAnalysis} conversationReports={conversationReports} />
             </TabsContent>
 
             {/* ── Tab 3: Signal Analysis ───────────────────────────── */}
