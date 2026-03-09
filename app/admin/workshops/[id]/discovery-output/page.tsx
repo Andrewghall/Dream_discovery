@@ -101,22 +101,56 @@ const COLOR_CLASSES: Record<string, { card: string; label: string; bar: string; 
 
 // ── Going In Brain component ──────────────────────────────────
 
-function GoingInBrain({ discoveryOutput }: { discoveryOutput: any }) {
+function GoingInBrain({ discoveryOutput, discoverAnalysis }: { discoveryOutput: any; discoverAnalysis: DiscoverAnalysis | null }) {
   const [activeSignal, setActiveSignal] = useState<string | null>(null);
 
-  if (!discoveryOutput?.sections?.length) {
+  const sections: any[] = discoveryOutput?.sections ?? [];
+  const hasSections = sections.length > 0;
+  const hasAnalysis = discoverAnalysis != null;
+
+  if (!hasSections && !hasAnalysis) {
     return (
       <Card className="p-8 text-center">
         <Brain className="h-6 w-6 text-slate-300 mx-auto mb-3" />
-        <p className="text-sm font-medium text-slate-600">Perception Signal analysis needed first</p>
-        <p className="text-xs text-slate-400 mt-1">
-          Generate Discovery Intelligence on the Perception Signal tab to activate the Going In Brain.
+        <p className="text-sm font-medium text-slate-600">No discovery signal data yet</p>
+        <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+          Run <strong>Signal Analysis</strong> or <strong>Generate Discovery Intelligence</strong> to activate the Going In Brain.
         </p>
       </Card>
     );
   }
 
-  const sections: any[] = discoveryOutput.sections;
+  // ── Compute signal strengths from best available source ────────
+  // Primary: discoveryOutput.sections (consensus + sentiment)
+  // Fallback: discoverAnalysis (alignment, confidence, narrative)
+  const strengths: Record<string, number> = { perception: 0, inhibition: 0, imagination: 0, vision: 0, execution: 0 };
+
+  if (hasSections) {
+    strengths.perception  = Math.round(sections.reduce((s: number, x: any) => s + (x.consensusLevel || 0), 0) / sections.length);
+    strengths.inhibition  = Math.round(sections.reduce((s: number, x: any) => s + (x.sentiment?.concerned || 0), 0) / sections.length);
+    strengths.imagination = Math.round(sections.reduce((s: number, x: any) => s + (x.sentiment?.optimistic || 0), 0) / sections.length);
+  } else if (hasAnalysis) {
+    // PERCEPTION — from alignment: map avg alignmentScore (-1..1) to (0..100)
+    const cells = discoverAnalysis!.alignment?.cells ?? [];
+    if (cells.length > 0) {
+      const avg = cells.reduce((s: number, c: any) => s + c.alignmentScore, 0) / cells.length;
+      strengths.perception = Math.round(((avg + 1) / 2) * 100);
+    }
+    // INHIBITION — from confidence: uncertain % signals friction
+    const conf = discoverAnalysis!.confidence?.overall;
+    if (conf) {
+      const total = (conf.certain + conf.hedging + conf.uncertain) || 1;
+      strengths.inhibition = Math.round((conf.uncertain / total) * 100);
+    }
+    // IMAGINATION — from narrative: avg future temporal focus across layers
+    const layers = discoverAnalysis!.narrative?.layers ?? [];
+    if (layers.length > 0) {
+      const avgFuture = layers.reduce((s: number, l: any) => s + (l.temporalFocus?.future || 0), 0) / layers.length;
+      strengths.imagination = Math.round(avgFuture * 100);
+    }
+  }
+
+  const dataSource = hasSections ? 'discovery interviews' : 'signal analysis';
 
   return (
     <div className="space-y-5">
@@ -127,12 +161,14 @@ function GoingInBrain({ discoveryOutput }: { discoveryOutput: any }) {
           <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
             Going In Brain — Pre-Workshop State
           </p>
+          <span className="ml-auto text-[9px] text-slate-500 uppercase tracking-wider">
+            Derived from {dataSource}
+          </span>
         </div>
         <p className="text-sm text-slate-300 leading-relaxed mb-1">
-          Signal intelligence derived purely from pre-workshop discovery conversations.
-          This is the cognitive state of the organisation before the workshop begins.
+          Signal intelligence before the workshop begins — the organisation's cognitive state going in.
         </p>
-        {discoveryOutput.finalDiscoverySummary && (
+        {discoveryOutput?.finalDiscoverySummary && (
           <p className="text-sm text-slate-100 leading-relaxed mt-3 pt-3 border-t border-slate-700">
             {discoveryOutput.finalDiscoverySummary}
           </p>
@@ -142,7 +178,7 @@ function GoingInBrain({ discoveryOutput }: { discoveryOutput: any }) {
       {/* Signal cards */}
       <div className="grid grid-cols-5 gap-3">
         {GOING_IN_SIGNALS.map((sig) => {
-          const strength = sig.derive(sections);
+          const strength = strengths[sig.key];
           const colors = COLOR_CLASSES[sig.color];
           const isActive = activeSignal === sig.key;
           const isLive = strength > 0;
@@ -183,8 +219,8 @@ function GoingInBrain({ discoveryOutput }: { discoveryOutput: any }) {
         const sig = GOING_IN_SIGNALS.find(s => s.key === activeSignal);
         if (!sig) return null;
         const colors = COLOR_CLASSES[sig.color];
-        const strength = sig.derive(sections);
-        const detailText = (sig as any).detail(sections, discoveryOutput);
+        const strength = strengths[sig.key];
+        const detailText = hasSections ? (sig as any).detail(sections, discoveryOutput) : null;
 
         return (
           <div className={`rounded-xl border-2 ${colors.card} bg-white p-5`}>
@@ -204,20 +240,17 @@ function GoingInBrain({ discoveryOutput }: { discoveryOutput: any }) {
               <p className="text-sm text-slate-400 italic">No signal data available for this domain.</p>
             )}
 
-            {/* Domain breakdown for PERCEPTION */}
-            {activeSignal === 'perception' && sections.length > 0 && (
+            {/* ── Section-based breakdowns (when sections available) ── */}
+
+            {/* PERCEPTION — domain consensus bars */}
+            {activeSignal === 'perception' && hasSections && (
               <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Domain Consensus
-                </p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Domain Consensus</p>
                 {sections.map((s: any, i: number) => (
                   <div key={i} className="flex items-center gap-3">
                     <p className="text-xs text-slate-500 w-28 truncate">{s.domain}</p>
                     <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-indigo-400 rounded-full"
-                        style={{ width: `${s.consensusLevel || 0}%` }}
-                      />
+                      <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${s.consensusLevel || 0}%` }} />
                     </div>
                     <p className="text-xs text-slate-400 w-8 text-right">{s.consensusLevel || 0}%</p>
                   </div>
@@ -225,53 +258,97 @@ function GoingInBrain({ discoveryOutput }: { discoveryOutput: any }) {
               </div>
             )}
 
-            {/* Domain breakdown for INHIBITION */}
-            {activeSignal === 'inhibition' && sections.length > 0 && (
+            {/* INHIBITION — concern by domain */}
+            {activeSignal === 'inhibition' && hasSections && (
               <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Concern Level by Domain
-                </p>
-                {sections
-                  .slice()
-                  .sort((a: any, b: any) => (b.sentiment?.concerned || 0) - (a.sentiment?.concerned || 0))
-                  .map((s: any, i: number) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <p className="text-xs text-slate-500 w-28 truncate">{s.domain}</p>
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-rose-400 rounded-full"
-                          style={{ width: `${s.sentiment?.concerned || 0}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-slate-400 w-8 text-right">{s.sentiment?.concerned || 0}%</p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Concern Level by Domain</p>
+                {sections.slice().sort((a: any, b: any) => (b.sentiment?.concerned || 0) - (a.sentiment?.concerned || 0)).map((s: any, i: number) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <p className="text-xs text-slate-500 w-28 truncate">{s.domain}</p>
+                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-rose-400 rounded-full" style={{ width: `${s.sentiment?.concerned || 0}%` }} />
                     </div>
-                  ))}
+                    <p className="text-xs text-slate-400 w-8 text-right">{s.sentiment?.concerned || 0}%</p>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Domain breakdown for IMAGINATION */}
-            {activeSignal === 'imagination' && sections.length > 0 && (
+            {/* IMAGINATION — optimism by domain */}
+            {activeSignal === 'imagination' && hasSections && (
               <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Optimism Level by Domain
-                </p>
-                {sections
-                  .slice()
-                  .sort((a: any, b: any) => (b.sentiment?.optimistic || 0) - (a.sentiment?.optimistic || 0))
-                  .map((s: any, i: number) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <p className="text-xs text-slate-500 w-28 truncate">{s.domain}</p>
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-violet-400 rounded-full"
-                          style={{ width: `${s.sentiment?.optimistic || 0}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-slate-400 w-8 text-right">{s.sentiment?.optimistic || 0}%</p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Optimism Level by Domain</p>
+                {sections.slice().sort((a: any, b: any) => (b.sentiment?.optimistic || 0) - (a.sentiment?.optimistic || 0)).map((s: any, i: number) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <p className="text-xs text-slate-500 w-28 truncate">{s.domain}</p>
+                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-violet-400 rounded-full" style={{ width: `${s.sentiment?.optimistic || 0}%` }} />
                     </div>
-                  ))}
+                    <p className="text-xs text-slate-400 w-8 text-right">{s.sentiment?.optimistic || 0}%</p>
+                  </div>
+                ))}
               </div>
             )}
+
+            {/* ── Analysis-based breakdowns (when only discoverAnalysis available) ── */}
+
+            {/* PERCEPTION — top alignment divergence actors */}
+            {activeSignal === 'perception' && !hasSections && hasAnalysis && (() => {
+              const divergent = (discoverAnalysis!.alignment?.cells ?? [])
+                .filter((c: any) => c.alignmentScore < -0.05 && c.utteranceCount >= 2)
+                .sort((a: any, b: any) => a.alignmentScore - b.alignmentScore)
+                .slice(0, 6);
+              if (divergent.length === 0) return null;
+              return (
+                <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Alignment Divergence</p>
+                  {divergent.map((c: any, i: number) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-slate-300 text-xs mt-0.5">·</span>
+                      <p className="text-xs text-slate-600"><span className="font-medium">{c.actor}</span> on &ldquo;{c.theme}&rdquo; — score {c.alignmentScore.toFixed(2)}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* INHIBITION — top constraints */}
+            {activeSignal === 'inhibition' && !hasSections && hasAnalysis && (() => {
+              const constraints = (discoverAnalysis!.constraints?.constraints ?? [])
+                .sort((a: any, b: any) => b.weight - a.weight).slice(0, 5);
+              if (constraints.length === 0) return null;
+              return (
+                <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Top Constraints</p>
+                  {constraints.map((c: any, i: number) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-slate-300 text-xs mt-0.5">·</span>
+                      <p className="text-xs text-slate-600">{c.description} <span className="text-slate-400">({c.domain}, {c.severity})</span></p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* IMAGINATION — narrative future focus by layer */}
+            {activeSignal === 'imagination' && !hasSections && hasAnalysis && (() => {
+              const layers = discoverAnalysis!.narrative?.layers ?? [];
+              if (layers.length === 0) return null;
+              return (
+                <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Future Focus by Layer</p>
+                  {layers.map((l: any, i: number) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <p className="text-xs text-slate-500 w-28 capitalize">{l.layer}</p>
+                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-violet-400 rounded-full" style={{ width: `${Math.round((l.temporalFocus?.future || 0) * 100)}%` }} />
+                      </div>
+                      <p className="text-xs text-slate-400 w-8 text-right">{Math.round((l.temporalFocus?.future || 0) * 100)}%</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
@@ -570,7 +647,7 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
             {/* ── Tab 2: Going In Brain ────────────────────────────── */}
             <TabsContent value="going-in-brain" className="mt-0 p-6">
-              <GoingInBrain discoveryOutput={discoveryOutput} />
+              <GoingInBrain discoveryOutput={discoveryOutput} discoverAnalysis={discoverAnalysis} />
             </TabsContent>
 
             {/* ── Tab 3: Signal Analysis ───────────────────────────── */}
