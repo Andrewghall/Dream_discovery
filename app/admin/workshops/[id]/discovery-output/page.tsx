@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, BarChart2, RefreshCw, Info, Brain, TrendingUp, Eye, Zap, SendHorizontal, Search, X } from 'lucide-react';
+import { Loader2, BarChart2, RefreshCw, Info, Brain, TrendingUp, Eye, Zap, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -494,7 +494,7 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
           >
             {searchStreaming
               ? <Loader2 className="h-3 w-3 animate-spin" />
-              : <SendHorizontal className="h-3 w-3" />}
+              : <span className="text-xs">✦</span>}
             Ask
           </button>
         </div>
