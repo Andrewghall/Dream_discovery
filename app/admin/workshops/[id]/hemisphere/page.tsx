@@ -311,7 +311,7 @@ function MiniHemisphere({
   );
 }
 
-/* ─────────────────────────── Domain Synthesis Card ─────────────────────────── */
+/* ─────────────────────────── Insight Interpretation Panel ─────────────────────────── */
 
 function DomainSynthesisCard({
   domain,
@@ -326,229 +326,215 @@ function DomainSynthesisCard({
   allNodes: HemisphereNode[];
   domainTabs: { key: string; label: string; color: string }[];
 }) {
-  const domainLabel = domainTabs.find((d) => d.key === domain)?.label || 'All Domains';
-  const nonEvidence = nodes.filter((n) => n.type !== 'EVIDENCE');
+  const nonEvidence = useMemo(() => nodes.filter((n) => n.type !== 'EVIDENCE'), [nodes]);
 
-  // Group by type for breakdown
-  const typeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const n of nonEvidence) {
-      counts[n.type] = (counts[n.type] || 0) + 1;
+  const visionNodes = useMemo(
+    () => nonEvidence.filter((n) => n.type === 'VISION' || n.type === 'BELIEF')
+      .sort((a, b) => (b.weight || 0) - (a.weight || 0)),
+    [nonEvidence],
+  );
+  const enablerNodes = useMemo(
+    () => nonEvidence.filter((n) => n.type === 'ENABLER')
+      .sort((a, b) => (b.weight || 0) - (a.weight || 0)),
+    [nonEvidence],
+  );
+  const frictionNodes = useMemo(
+    () => nonEvidence.filter((n) => n.type === 'CONSTRAINT' || n.type === 'FRICTION')
+      .sort((a, b) => (b.weight || 0) - (a.weight || 0)),
+    [nonEvidence],
+  );
+  const challengeNodes = useMemo(
+    () => nonEvidence.filter((n) => n.type === 'CHALLENGE')
+      .sort((a, b) => (b.weight || 0) - (a.weight || 0)),
+    [nonEvidence],
+  );
+
+  // ── 1. Organisational Mindset ──
+  const mindsetInsight = useMemo(() => {
+    const total = Math.max(1, nonEvidence.length);
+    const vPct = Math.round((visionNodes.length / total) * 100);
+    const ePct = Math.round((enablerNodes.length / total) * 100);
+    const fPct = Math.round(((frictionNodes.length + challengeNodes.length) / total) * 100);
+    const top2 = (arr: HemisphereNode[]) => arr.slice(0, 2).map((n) => n.label).filter(Boolean);
+
+    if (vPct >= fPct && vPct >= ePct && visionNodes.length > 0) {
+      const tv = top2(visionNodes);
+      return `Participant thinking is strongly oriented toward future possibility — ${vPct}% of signals describe aspirational states.${tv.length ? ` The clearest ambitions centre on ${tv.join(' and ')}.` : ''}${fPct > 30 ? ' Significant friction exists alongside this ambition.' : ' Enabling signals suggest confidence in delivery capability.'}`;
     }
-    return counts;
-  }, [nonEvidence]);
+    if (ePct >= fPct && enablerNodes.length > 0) {
+      const te = top2(enablerNodes);
+      return `The organisation's thinking is grounded in operational capability${te.length ? `, particularly ${te.join(' and ')}` : ''}.${vPct > 20 ? ' Vision signals are present but secondary to practical enablement thinking.' : ' Aspirational thinking is limited — participants focus on what is achievable now rather than what is possible.'}`;
+    }
+    if (frictionNodes.length + challengeNodes.length > 0) {
+      const tf = top2(frictionNodes);
+      return `Participant thinking is dominated by friction and constraint — ${fPct}% of signals identify barriers rather than possibilities${tf.length ? `, principally ${tf.join(' and ')}` : ''}.${vPct > 15 ? ' Some aspirational signal exists but is outweighed by systemic concern.' : ' Vision signals are weak, suggesting the organisation struggles to look beyond immediate problems.'}`;
+    }
+    return 'Insufficient signal to determine dominant organisational mindset.';
+  }, [visionNodes, enablerNodes, frictionNodes, challengeNodes, nonEvidence]);
 
-  // Cluster themes using edges
-  const themes = useMemo(() => {
-    const nodeIds = new Set(nonEvidence.map((n) => n.id));
-    const parent = new Map<string, string>();
-    const find = (x: string): string => {
-      const p = parent.get(x);
-      if (!p || p === x) { parent.set(x, x); return x; }
-      const r = find(p); parent.set(x, r); return r;
+  // ── 2. Primary Frictions ──
+  const topFrictions = useMemo(
+    () => [...frictionNodes, ...challengeNodes]
+      .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+      .slice(0, 4),
+    [frictionNodes, challengeNodes],
+  );
+
+  // ── 3. Vision Signals ──
+  const topVisions = useMemo(() => visionNodes.slice(0, 4), [visionNodes]);
+
+  // ── 4. Transformation Readiness ──
+  const readiness = useMemo(() => {
+    const forward = visionNodes.length + enablerNodes.length;
+    const friction = frictionNodes.length + challengeNodes.length;
+    const ratio = forward / Math.max(1, friction);
+    const en0 = enablerNodes[0]?.label;
+    if (ratio >= 1.8)
+      return {
+        level: 'Strong Potential',
+        color: '#10b981',
+        bg: 'rgba(16,185,129,0.12)',
+        border: 'rgba(16,185,129,0.25)',
+        text: `Enabling and aspirational signals outweigh barriers${en0 ? ` — "${en0}" represents genuine operational capability to act` : ''}. The organisation demonstrates real transformation potential.`,
+      };
+    if (ratio >= 0.8)
+      return {
+        level: 'Moderate Readiness',
+        color: '#f59e0b',
+        bg: 'rgba(245,158,11,0.12)',
+        border: 'rgba(245,158,11,0.25)',
+        text: 'Vision and friction signals are in close balance. Genuine transformation ambition exists but structural barriers will slow delivery — execution will require deliberate focus on resolving constraints before scaling change.',
+      };
+    return {
+      level: 'Structural Resistance',
+      color: '#ef4444',
+      bg: 'rgba(239,68,68,0.12)',
+      border: 'rgba(239,68,68,0.25)',
+      text: "Friction and constraint signals significantly outweigh forward-looking signals. The organisation's capacity for self-directed transformation appears limited — systemic barriers must be addressed before vision can be meaningfully pursued.",
     };
-    const union = (a: string, b: string) => {
-      const ra = find(a); const rb = find(b);
-      if (ra !== rb) parent.set(ra, rb);
-    };
+  }, [visionNodes, enablerNodes, frictionNodes, challengeNodes]);
 
-    for (const n of nonEvidence) parent.set(n.id, n.id);
-    for (const e of edges) {
-      if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue;
-      if (e.strength >= 0.2) union(e.source, e.target);
-    }
-
-    const groups = new Map<string, HemisphereNode[]>();
-    for (const n of nonEvidence) {
-      const root = find(n.id);
-      const arr = groups.get(root) || [];
-      arr.push(n);
-      groups.set(root, arr);
-    }
-
-    return [...groups.values()]
-      .filter((g) => g.length >= 1)
-      .sort((a, b) => b.length - a.length)
-      .slice(0, 8)
-      .map((group) => {
-        const rep = group.sort((a, b) => (b.weight || 0) - (a.weight || 0))[0];
-        return { label: rep.label, count: group.length, type: rep.type, nodes: group };
-      });
-  }, [nonEvidence, edges]);
-
-  // Cross-domain connections
-  const crossDomainLinks = useMemo(() => {
-    if (domain === 'all') return [];
+  // ── 5. Critical Dependency — most-connected friction/challenge node ──
+  const criticalDep = useMemo(() => {
+    const frAll = [...frictionNodes, ...challengeNodes];
+    if (frAll.length === 0) return null;
     const nodeIds = new Set(nonEvidence.map((n) => n.id));
-    const connections = new Map<string, number>();
+    const degree = new Map<string, number>();
     for (const e of edges) {
-      const sourceIn = nodeIds.has(e.source);
-      const targetIn = nodeIds.has(e.target);
-      if (sourceIn && !targetIn) {
-        const otherNode = allNodes.find((n) => n.id === e.target);
-        if (otherNode) {
-          const otherDomains = (otherNode.phaseTags || []).map((t) => String(t).toLowerCase());
-          for (const d of otherDomains) {
-            if (d !== domain) connections.set(d, (connections.get(d) || 0) + 1);
-          }
-        }
-      } else if (!sourceIn && targetIn) {
-        const otherNode = allNodes.find((n) => n.id === e.source);
-        if (otherNode) {
-          const otherDomains = (otherNode.phaseTags || []).map((t) => String(t).toLowerCase());
-          for (const d of otherDomains) {
-            if (d !== domain) connections.set(d, (connections.get(d) || 0) + 1);
-          }
-        }
-      }
+      if (nodeIds.has(e.source)) degree.set(e.source, (degree.get(e.source) || 0) + 1);
+      if (nodeIds.has(e.target)) degree.set(e.target, (degree.get(e.target) || 0) + 1);
     }
-    return [...connections.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [domain, nonEvidence, edges, allNodes]);
-
-  // Top insights by weight
-  const topInsights = nonEvidence
-    .sort((a, b) => (b.weight || 0) - (a.weight || 0))
-    .slice(0, 6);
-
-  // Sentiment distribution from evidence
-  const sentimentDist = useMemo(() => {
-    let positive = 0, neutral = 0, concerned = 0, critical = 0;
-    for (const n of nonEvidence) {
-      if (n.type === 'VISION' || n.type === 'BELIEF' || n.type === 'ENABLER') positive++;
-      else if (n.type === 'CHALLENGE' || n.type === 'FRICTION') concerned++;
-      else if (n.type === 'CONSTRAINT') critical++;
-      else neutral++;
-    }
-    const total = Math.max(1, positive + neutral + concerned + critical);
-    return { positive: positive / total, neutral: neutral / total, concerned: concerned / total, critical: critical / total };
-  }, [nonEvidence]);
+    return frAll.sort((a, b) => (degree.get(b.id) || 0) - (degree.get(a.id) || 0))[0];
+  }, [frictionNodes, challengeNodes, edges, nonEvidence]);
 
   if (nonEvidence.length === 0) {
     return (
       <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-        <div className="text-sm text-slate-400">No data points in {domainLabel}</div>
+        <div className="text-sm text-slate-400">
+          No signals in {domainTabs.find((d) => d.key === domain)?.label || 'this domain'}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-          <div className="text-[11px] text-slate-400">Nodes</div>
-          <div className="text-lg font-semibold text-slate-50">{nonEvidence.length}</div>
+    <div className="space-y-3">
+
+      {/* ── 1. Organisational Mindset ── */}
+      <div className="rounded-lg border border-white/10 bg-white/5 p-3.5">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[11px] text-violet-400">◈</span>
+          <span className="text-[10px] font-bold tracking-widest text-slate-300 uppercase">Organisational Mindset</span>
         </div>
-        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-          <div className="text-[11px] text-slate-400">Themes</div>
-          <div className="text-lg font-semibold text-slate-50">{themes.length}</div>
+        <p className="text-[10px] text-slate-500 mb-2.5">What the organisation collectively thinks about most</p>
+        <p className="text-xs text-slate-200 leading-relaxed">{mindsetInsight}</p>
+        <div className="flex gap-1.5 mt-3 flex-wrap">
+          {visionNodes.length > 0 && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300">
+              {visionNodes.length} vision signal{visionNodes.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          {enablerNodes.length > 0 && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300">
+              {enablerNodes.length} enabler{enablerNodes.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          {(frictionNodes.length + challengeNodes.length) > 0 && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-300">
+              {frictionNodes.length + challengeNodes.length} friction signal{(frictionNodes.length + challengeNodes.length) !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
-        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-          <div className="text-[11px] text-slate-400">Connections</div>
-          <div className="text-lg font-semibold text-slate-50">
-            {edges.filter((e) => {
-              const ns = new Set(nonEvidence.map((n) => n.id));
-              return ns.has(e.source) && ns.has(e.target);
-            }).length}
+      </div>
+
+      {/* ── 2. Primary Frictions ── */}
+      {topFrictions.length > 0 && (
+        <div className="rounded-lg border border-white/10 bg-white/5 p-3.5">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11px] text-red-400">▲</span>
+            <span className="text-[10px] font-bold tracking-widest text-slate-300 uppercase">Primary Frictions</span>
           </div>
-        </div>
-      </div>
-
-      {/* Sentiment bar */}
-      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-        <div className="mb-1.5 text-[11px] font-medium text-slate-300">Sentiment Distribution</div>
-        <div className="flex h-3 overflow-hidden rounded-full">
-          {sentimentDist.positive > 0 && <div className="bg-emerald-500" style={{ width: `${sentimentDist.positive * 100}%` }} />}
-          {sentimentDist.neutral > 0 && <div className="bg-slate-500" style={{ width: `${sentimentDist.neutral * 100}%` }} />}
-          {sentimentDist.concerned > 0 && <div className="bg-amber-500" style={{ width: `${sentimentDist.concerned * 100}%` }} />}
-          {sentimentDist.critical > 0 && <div className="bg-red-500" style={{ width: `${sentimentDist.critical * 100}%` }} />}
-        </div>
-        <div className="mt-1.5 flex gap-3 text-[10px] text-slate-400">
-          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />Positive</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-500" />Neutral</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />Concerned</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />Critical</span>
-        </div>
-      </div>
-
-      {/* Type breakdown */}
-      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-        <div className="mb-2 text-[11px] font-medium text-slate-300">Type Breakdown</div>
-        <div className="flex flex-wrap gap-1.5">
-          {Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
-            const c = colorForType(type as NodeType);
-            return (
-              <div key={type} className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: c.fill }} />
-                <span className="text-[11px] text-slate-200">{labelForType(type as NodeType)}</span>
-                <span className="text-[11px] font-medium text-slate-400">{count}</span>
+          <p className="text-[10px] text-slate-500 mb-2.5">Where the organisation is blocked</p>
+          <div>
+            {topFrictions.map((n) => (
+              <div key={n.id} className="flex items-start gap-2 py-1.5 border-t border-white/5 first:border-t-0">
+                <span className="w-1.5 h-1.5 rounded-full mt-[5px] flex-shrink-0 bg-red-400" />
+                <span className="text-xs text-slate-300 leading-snug">{n.summary || n.label}</span>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Key themes */}
-      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-        <div className="mb-2 text-[11px] font-medium text-slate-300">Key Themes</div>
-        <div className="space-y-1.5">
-          {themes.slice(0, 6).map((theme, idx) => {
-            const c = colorForType(theme.type);
-            return (
-              <div key={idx} className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="inline-block h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.fill }} />
-                  <span className="text-xs text-slate-200 truncate">{theme.label}</span>
-                </div>
-                <Badge variant="outline" className="h-4 border-white/15 px-1.5 text-[10px] text-slate-300 flex-shrink-0">
-                  {theme.count} node{theme.count !== 1 ? 's' : ''}
-                </Badge>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Top insights */}
-      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-        <div className="mb-2 text-[11px] font-medium text-slate-300">Top Insights</div>
-        <div className="space-y-2">
-          {topInsights.map((node) => {
-            const c = colorForType(node.type);
-            return (
-              <div key={node.id} className="rounded-md border border-white/10 bg-black/30 px-2.5 py-2">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: c.fill }} />
-                  <span className="text-[11px] font-medium text-slate-300">{labelForType(node.type)}</span>
-                  {typeof node.confidence === 'number' && (
-                    <span className="text-[10px] text-slate-500">{Math.round(node.confidence * 100)}%</span>
-                  )}
-                </div>
-                <div className="text-xs text-slate-200 line-clamp-2">{node.summary || node.label}</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Cross-domain connections */}
-      {crossDomainLinks.length > 0 && (
-        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-          <div className="mb-2 text-[11px] font-medium text-slate-300">Cross-Domain Connections</div>
-          <div className="space-y-1">
-            {crossDomainLinks.map(([otherDomain, count]) => {
-              const tab = domainTabs.find((d) => d.key === otherDomain);
-              return (
-                <div key={otherDomain} className="flex items-center gap-2 text-xs">
-                  <span className="inline-block h-1.5 w-8 rounded-full" style={{ backgroundColor: tab?.color || '#94a3b8', opacity: 0.6 }} />
-                  <span className="text-slate-200 capitalize">{tab?.label || otherDomain}</span>
-                  <span className="text-slate-500">{count} link{count !== 1 ? 's' : ''}</span>
-                </div>
-              );
-            })}
+            ))}
           </div>
         </div>
       )}
+
+      {/* ── 3. Vision Signals ── */}
+      {topVisions.length > 0 && (
+        <div className="rounded-lg border border-white/10 bg-white/5 p-3.5">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11px] text-emerald-400">◎</span>
+            <span className="text-[10px] font-bold tracking-widest text-slate-300 uppercase">Vision Signals</span>
+          </div>
+          <p className="text-[10px] text-slate-500 mb-2.5">What the organisation wants to become</p>
+          <div>
+            {topVisions.map((n) => (
+              <div key={n.id} className="flex items-start gap-2 py-1.5 border-t border-white/5 first:border-t-0">
+                <span className="w-1.5 h-1.5 rounded-full mt-[5px] flex-shrink-0 bg-emerald-400" />
+                <span className="text-xs text-slate-300 leading-snug">{n.summary || n.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 4. Transformation Readiness ── */}
+      <div className="rounded-lg border border-white/10 bg-white/5 p-3.5">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[11px]" style={{ color: readiness.color }}>≡</span>
+          <span className="text-[10px] font-bold tracking-widest text-slate-300 uppercase">Transformation Readiness</span>
+        </div>
+        <p className="text-[10px] text-slate-500 mb-2.5">Whether the organisation appears capable of change</p>
+        <div className="mb-2.5">
+          <span
+            className="text-[10px] font-bold px-2.5 py-0.5 rounded-full"
+            style={{ backgroundColor: readiness.bg, color: readiness.color, border: `1px solid ${readiness.border}` }}
+          >
+            {readiness.level}
+          </span>
+        </div>
+        <p className="text-xs text-slate-200 leading-relaxed">{readiness.text}</p>
+      </div>
+
+      {/* ── 5. Critical Dependency ── */}
+      {criticalDep && (
+        <div className="rounded-lg border border-white/10 bg-white/5 p-3.5">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11px] text-amber-400">⊕</span>
+            <span className="text-[10px] font-bold tracking-widest text-slate-300 uppercase">Critical Dependency</span>
+          </div>
+          <p className="text-[10px] text-slate-500 mb-2.5">The most important prerequisite for achieving the vision</p>
+          <p className="text-xs text-slate-200 leading-relaxed">{criticalDep.summary || criticalDep.label}</p>
+        </div>
+      )}
+
     </div>
   );
 }
