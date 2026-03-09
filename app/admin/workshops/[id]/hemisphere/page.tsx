@@ -75,32 +75,6 @@ type HemisphereResponse = {
 
 type Snapshot = { id: string; name: string; dialoguePhase: string; createdAt: string };
 
-type ActorJourneyStep = {
-  order: number;
-  action: string;
-  channel?: string;
-  actors: string[];
-  sentiment: string;
-  insights: string[];
-  painPoints: string[];
-};
-
-type ActorSummary = {
-  name: string;
-  role: string;
-  mentionCount: number;
-  domains: string[];
-  sentimentBreakdown: Record<string, number>;
-  keyInteractions: Array<{ withActor: string; frequency: number; primaryAction: string; primarySentiment: string }>;
-};
-
-type ActorJourneyResponse = {
-  ok: boolean;
-  journey: { centralActor: string; steps: ActorJourneyStep[] } | null;
-  actors: ActorSummary[];
-  generatedAt: string;
-};
-
 type PageProps = { params: Promise<{ id: string }> };
 
 /* ─────────────────────────── Constants ─────────────────────────── */
@@ -539,188 +513,6 @@ function DomainSynthesisCard({
   );
 }
 
-/* ─────────────────────────── Actor Journey Panel ─────────────────────────── */
-
-function ActorJourneyPanel({ workshopId, snapshotId, domainTabs }: { workshopId: string; snapshotId?: string; domainTabs: Array<{ key: string; label: string; color: string }> }) {
-  const [data, setData] = useState<ActorJourneyResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchActors = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const params = new URLSearchParams();
-        if (snapshotId) params.set('snapshotId', snapshotId);
-        const r = await fetch(
-          `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere/actors?${params.toString()}`,
-          { cache: 'no-store' }
-        );
-        const json = (await r.json().catch(() => null)) as ActorJourneyResponse | null;
-        if (!r.ok || !json?.ok) {
-          setError('Failed to load actor journey');
-          return;
-        }
-        setData(json);
-      } catch {
-        setError('Failed to load actor journey');
-      } finally {
-        setLoading(false);
-      }
-    };
-    void fetchActors();
-  }, [workshopId, snapshotId]);
-
-  if (loading) return <div className="flex items-center justify-center py-12"><div className="text-sm text-slate-400">Synthesising actor journey...</div></div>;
-  if (error) return <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>;
-  if (!data?.actors?.length) return <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-400">No actors detected in workshop data. Actors are extracted from live workshop conversations about business roles and personas.</div>;
-
-  const journey = data.journey;
-  const actors = data.actors;
-
-  return (
-    <div className="space-y-4">
-      {/* Journey Flow */}
-      {journey && journey.steps.length > 0 && (
-        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-3">
-          <div className="mb-3 text-[11px] font-medium text-slate-300">
-            Customer Journey Flow
-          </div>
-          <div className="relative pl-4">
-            {/* Vertical spine line */}
-            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gradient-to-b from-blue-400/50 via-slate-500/30 to-slate-500/10" />
-
-            {journey.steps.map((step, idx) => (
-              <div key={idx} className="relative mb-4 last:mb-0">
-                {/* Dot on the spine */}
-                <div
-                  className="absolute -left-[9px] top-1 h-3 w-3 rounded-full border-2 border-black"
-                  style={{ backgroundColor: sentimentColor(step.sentiment) }}
-                />
-
-                <div className="ml-3 rounded-md border border-white/10 bg-black/30 px-3 py-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-medium text-slate-200">{step.order}. {step.action}</span>
-                    {step.channel && (
-                      <Badge variant="outline" className="h-4 border-white/15 px-1 text-[9px] text-slate-400">
-                        {step.channel}
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-1 mb-1">
-                    {step.actors.map((a) => (
-                      <span key={a} className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-slate-300">
-                        {a}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-1 mb-1">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sentimentColor(step.sentiment) }} />
-                    <span className="text-[10px] text-slate-400 capitalize">{step.sentiment}</span>
-                  </div>
-
-                  {step.insights.length > 0 && (
-                    <div className="mt-1 space-y-0.5">
-                      {step.insights.slice(0, 2).map((ins, i) => (
-                        <div key={i} className="text-[10px] text-slate-400 italic">&quot;{ins}&quot;</div>
-                      ))}
-                    </div>
-                  )}
-
-                  {step.painPoints.length > 0 && (
-                    <div className="mt-1 space-y-0.5">
-                      {step.painPoints.slice(0, 2).map((pp, i) => (
-                        <div key={i} className="text-[10px] text-red-400/80">! {pp}</div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Actor Cards */}
-      <div className="space-y-3">
-        <div className="text-[11px] font-medium text-slate-300">Actor Summary</div>
-        {actors.map((actor) => {
-          const total = Object.values(actor.sentimentBreakdown || {}).reduce((a, b) => a + b, 0);
-          return (
-            <div key={actor.name} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5">
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-slate-100">{actor.name}</span>
-                  <Badge variant="outline" className="h-4 border-white/15 px-1.5 text-[10px] text-slate-400">
-                    {actor.mentionCount} mention{actor.mentionCount !== 1 ? 's' : ''}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="text-[11px] text-slate-400 mb-2">{actor.role}</div>
-
-              {actor.domains.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {actor.domains.map((d) => {
-                    const tab = domainTabs.find((t) => t.key === d);
-                    return (
-                      <span key={d} className="rounded-full px-1.5 py-0.5 text-[10px] text-slate-300 capitalize" style={{ backgroundColor: `${tab?.color || '#94a3b8'}20`, border: `1px solid ${tab?.color || '#94a3b8'}40` }}>
-                        {tab?.label || d}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Sentiment bar */}
-              {total > 0 && (
-                <div className="mb-2">
-                  <div className="flex h-2 overflow-hidden rounded-full bg-black/20">
-                    {Object.entries(actor.sentimentBreakdown).map(([sentiment, count]) => (
-                      <div
-                        key={sentiment}
-                        className="h-full"
-                        style={{ width: `${(count / total) * 100}%`, backgroundColor: sentimentColor(sentiment) }}
-                      />
-                    ))}
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-500">
-                    {Object.entries(actor.sentimentBreakdown).map(([sentiment, count]) => (
-                      <span key={sentiment} className="flex items-center gap-0.5">
-                        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sentimentColor(sentiment) }} />
-                        {sentiment}: {count}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Key interactions */}
-              {actor.keyInteractions?.length > 0 && (
-                <div className="space-y-1">
-                  <div className="text-[10px] text-slate-500">Key Interactions</div>
-                  {actor.keyInteractions.slice(0, 3).map((ki, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5 text-[11px]">
-                      <span className="inline-block h-1 w-1 rounded-full" style={{ backgroundColor: sentimentColor(ki.primarySentiment) }} />
-                      <span className="text-slate-300">{ki.primaryAction}</span>
-                      <span className="text-slate-500">with</span>
-                      <span className="text-slate-300">{ki.withActor}</span>
-                      <span className="text-slate-500">({ki.frequency}x)</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /* ─────────────────────────── Main Page Component ─────────────────────────── */
 
 type AccessibleWorkshop = {
@@ -759,7 +551,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
 
   // Domain tabs — dynamic from research dimensions
   const [activeDomain, setActiveDomain] = useState<string>('all');
-  const [rightTab, setRightTab] = useState<'synthesis' | 'actors' | 'diagnostic'>('synthesis');
+  const [rightTab, setRightTab] = useState<'synthesis' | 'diagnostic'>('synthesis');
 
   // Diagnostic state
   const [diagnosticBefore, setDiagnosticBefore] = useState<HemisphereDiagnostic | null>(null);
@@ -1855,7 +1647,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
             ))}
           </div>
 
-          {/* Synthesis / Actors / Diagnostic toggle */}
+          {/* Synthesis / Diagnostic toggle */}
           <div className="flex border-b border-white/10">
             <button
               onClick={() => setRightTab('synthesis')}
@@ -1864,14 +1656,6 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
               }`}
             >
               Synthesis
-            </button>
-            <button
-              onClick={() => setRightTab('actors')}
-              className={`flex-1 py-2 text-xs font-medium transition-all ${
-                rightTab === 'actors' ? 'text-white border-b-2 border-purple-500' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Actors
             </button>
             <button
               onClick={() => setRightTab('diagnostic')}
@@ -1891,12 +1675,6 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
                 nodes={activeDomain === 'all' ? nodes.filter((n) => n.type !== 'EVIDENCE') : (nodesPerDomain[activeDomain] || []).filter((n) => n.type !== 'EVIDENCE')}
                 edges={edges}
                 allNodes={nodes}
-                domainTabs={domainTabs}
-              />
-            ) : rightTab === 'actors' ? (
-              <ActorJourneyPanel
-                workshopId={workshopId}
-                snapshotId={selectedSnapshotId || undefined}
                 domainTabs={domainTabs}
               />
             ) : (

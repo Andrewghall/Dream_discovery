@@ -19,6 +19,7 @@ import {
   LogOut,
   Brain,
   BarChart2,
+  Route,
 } from 'lucide-react';
 
 interface WorkshopSidebarProps {
@@ -44,6 +45,7 @@ function buildNavSections(_domainPack?: string | null) {
       items: [
         { label: 'Discovery Output', path: '/discovery-output', icon: BarChart2 },
         { label: 'Insight Map', path: '/hemisphere', icon: Globe },
+        { label: 'Actor Journey', path: '/actor-journey', icon: Route },
         { label: 'Brain Scan', path: '/intelligence', icon: Brain },
         { label: 'Download Report', path: '/scratchpad', icon: BookOpen },
       ],
