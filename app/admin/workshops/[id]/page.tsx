@@ -69,7 +69,6 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     currentSessionId: string | null;
   }>(null);
   const [backfillErrors, setBackfillErrors] = useState<Array<{ sessionId: string; error: string }>>([]);
-  const [summaryDownloading, setSummaryDownloading] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -149,28 +148,6 @@ export default function WorkshopDetailPage({ params }: PageProps) {
     }
   };
 
-  const handleDownloadSummary = async () => {
-    if (summaryDownloading) return;
-    try {
-      setSummaryDownloading(true);
-      const response = await fetch(`/api/admin/workshops/${encodeURIComponent(id)}/summary?ts=${Date.now()}`);
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        const message = data?.error || `Failed to generate summary (HTTP ${response.status})`;
-        throw new Error(message);
-      }
-      const payload = (await response.json().catch(() => null)) as { summary?: unknown } | null;
-      if (!payload?.summary) throw new Error('Summary response missing payload');
-      const ts = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `workshop-summary-${id}-${ts}.json`;
-      downloadJson(filename, payload.summary);
-    } catch (error) {
-      console.error(error);
-      alert(error instanceof Error ? error.message : 'Failed to download summary');
-    } finally {
-      setSummaryDownloading(false);
-    }
-  };
 
 const handleBackfillReports = async () => {
     if (backfillRunning) return;
@@ -415,39 +392,6 @@ const handleBackfillReports = async () => {
 
         <div className="grid grid-cols-1 gap-6">
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Outputs & Reports</CardTitle>
-                <CardDescription>
-                  Download a raw workshop summary or view the full synthesised intelligence report.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="text-sm text-muted-foreground">
-                  Run synthesis on the Insight Map to generate the intelligence report, then open Download Report to review and export it.
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => void handleDownloadSummary()}
-                    disabled={summaryDownloading || workshop.status !== 'COMPLETED'}
-                  >
-                    {summaryDownloading ? 'Generating…' : 'Download Summary'}
-                  </Button>
-                  <Link href={`/admin/workshops/${id}/scratchpad`}>
-                    <Button variant="default" disabled={workshop.status !== 'COMPLETED'}>
-                      Download Report →
-                    </Button>
-                  </Link>
-                </div>
-                {workshop.status !== 'COMPLETED' && (
-                  <p className="text-xs text-muted-foreground">
-                    Outputs will be available when the workshop is completed.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
             <Card>
               <CardHeader>
                 <CardTitle>Workshop Settings</CardTitle>
