@@ -1,17 +1,53 @@
 'use client';
 
-import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { MessageSquare, Users, TrendingUp, Brain } from 'lucide-react';
-import { EditableText } from './EditableText';
-import { EditableList } from './EditableList';
+import { Brain, ChevronDown } from 'lucide-react';
 import { AiInsightCard } from './AiInsightCard';
 
 interface DiscoveryOutputTabProps {
   data: any;
   onChange?: (data: any) => void;
 }
+
+/* ── Executive Intelligence sections ─────────────────────────── */
+
+const INTEL_SECTIONS = [
+  {
+    key: 'operationalReality',
+    label: 'OPERATIONAL REALITY',
+    subtitle: 'How this organisation actually operates',
+    dotColor: '#4f46e5',
+    borderColor: 'border-indigo-100',
+    labelColor: 'text-indigo-600',
+  },
+  {
+    key: 'organisationalMisalignment',
+    label: 'ORGANISATIONAL MISALIGNMENT',
+    subtitle: 'Where the organisation is fractured',
+    dotColor: '#e11d48',
+    borderColor: 'border-rose-100',
+    labelColor: 'text-rose-600',
+  },
+  {
+    key: 'systemicFriction',
+    label: 'SYSTEMIC FRICTION',
+    subtitle: 'What is slowing transformation',
+    dotColor: '#d97706',
+    borderColor: 'border-amber-100',
+    labelColor: 'text-amber-600',
+  },
+  {
+    key: 'transformationReadiness',
+    label: 'TRANSFORMATION READINESS',
+    subtitle: 'Whether the organisation can change',
+    dotColor: '#059669',
+    borderColor: 'border-emerald-100',
+    labelColor: 'text-emerald-600',
+  },
+] as const;
+
+/* ── Domain color map (kept for Workshop Signals accordion) ──── */
 
 const colorMap: Record<string, { border: string; bg: string; text: string; hex: string }> = {
   blue:   { border: 'border-blue-200',   bg: 'bg-blue-50',   text: 'text-blue-600',   hex: '#2563eb' },
@@ -22,540 +58,210 @@ const colorMap: Record<string, { border: string; bg: string; text: string; hex: 
   pink:   { border: 'border-pink-200',   bg: 'bg-pink-50',   text: 'text-pink-600',   hex: '#db2777' },
 };
 
-/* ── Radar / spider chart (pure SVG, no deps) ────────────────── */
-
-function clampVal(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
-
-function RadarChart({ sections }: { sections: any[] }) {
-  const size = 500;
-  const cx = size / 2;
-  const cy = size / 2;
-  const padding = 110;
-  const radius = (size - padding * 2) / 2;
-  const n = sections.length;
-  if (n < 3) return null;
-
-  const rings = [0.25, 0.5, 0.75, 1];
-  const maxConsensus = 100;
-
-  // Compute angles for each domain
-  const points = sections.map((s: any, i: number) => {
-    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-    return { angle, section: s };
-  });
-
-  // Utility: polar to cartesian
-  const ptc = (r: number, angle: number) => ({
-    x: cx + r * Math.cos(angle),
-    y: cy + r * Math.sin(angle),
-  });
-
-  // Build polygon points for consensus values
-  const consensusPolygon = points.map(({ angle, section }) => {
-    const v = Math.min(section.consensusLevel || 0, maxConsensus);
-    const r = (v / maxConsensus) * radius;
-    return ptc(r, angle);
-  });
-
-  // Build polygon points for utterance share (normalised)
-  const maxUtt = Math.max(...sections.map((s: any) => s.utteranceCount || 0), 1);
-  const uttPolygon = points.map(({ angle, section }) => {
-    const v = (section.utteranceCount || 0) / maxUtt;
-    const r = v * radius;
-    return ptc(r, angle);
-  });
-
-  return (
-    <svg
-      width="100%"
-      viewBox={`0 0 ${size} ${size}`}
-      className="max-w-lg mx-auto"
-      role="img"
-      aria-label="Radar chart showing domain coverage and consensus"
-    >
-      {/* Background rings */}
-      {rings.map((t, i) => (
-        <circle
-          key={i}
-          cx={cx}
-          cy={cy}
-          r={t * radius}
-          fill="none"
-          stroke="#e5e7eb"
-          strokeWidth="1"
-        />
-      ))}
-
-      {/* Ring labels */}
-      {rings.map((t, i) => (
-        <text
-          key={`rl-${i}`}
-          x={cx + 4}
-          y={cy - t * radius + 12}
-          fontSize="9"
-          fill="#9ca3af"
-        >
-          {Math.round(t * 100)}%
-        </text>
-      ))}
-
-      {/* Axes */}
-      {points.map(({ angle }, i) => {
-        const end = ptc(radius, angle);
-        return (
-          <line
-            key={`ax-${i}`}
-            x1={cx}
-            y1={cy}
-            x2={end.x}
-            y2={end.y}
-            stroke="#d1d5db"
-            strokeWidth="1"
-          />
-        );
-      })}
-
-      {/* Utterance volume polygon (fill area) */}
-      <polygon
-        points={uttPolygon.map(p => `${p.x},${p.y}`).join(' ')}
-        fill="#818cf8"
-        fillOpacity={0.1}
-        stroke="#818cf8"
-        strokeWidth="1.5"
-        strokeDasharray="4 2"
-      />
-
-      {/* Consensus polygon (main filled area) */}
-      <polygon
-        points={consensusPolygon.map(p => `${p.x},${p.y}`).join(' ')}
-        fill="#6366f1"
-        fillOpacity={0.25}
-        stroke="#6366f1"
-        strokeWidth="2"
-      />
-
-      {/* Dots on consensus polygon */}
-      {consensusPolygon.map((p, i) => (
-        <circle key={`cd-${i}`} cx={p.x} cy={p.y} r="5" fill="#6366f1" stroke="white" strokeWidth="2" />
-      ))}
-
-      {/* Domain labels — clamped to stay within SVG bounds */}
-      {points.map(({ angle, section }, i) => {
-        const labelR = radius + 36;
-        const lp = ptc(labelR, angle);
-        const anchor =
-          Math.abs(Math.cos(angle)) < 0.15
-            ? 'middle'
-            : Math.cos(angle) > 0
-            ? 'start'
-            : 'end';
-        const colors = colorMap[section.color] || colorMap.blue;
-        const domainLabel = section.domain || '';
-        const subLabel = `${section.consensusLevel || 0}% · ${section.utteranceCount || 0} insights`;
-        const longest = Math.max(domainLabel.length, subLabel.length);
-        const estWidth = longest * 12 * 0.6;
-        const minPad = 6;
-        let x = lp.x;
-        if (anchor === 'start') {
-          x = clampVal(x, minPad, size - estWidth - minPad);
-        } else if (anchor === 'end') {
-          x = clampVal(x, estWidth + minPad, size - minPad);
-        } else {
-          x = clampVal(x, estWidth / 2 + minPad, size - estWidth / 2 - minPad);
-        }
-        const y = clampVal(lp.y, 18, size - minPad);
-        return (
-          <g key={`lb-${i}`}>
-            <text
-              x={x}
-              y={y - 6}
-              textAnchor={anchor}
-              dominantBaseline="middle"
-              fontSize="12"
-              fontWeight="600"
-              fill={colors.hex}
-            >
-              {domainLabel}
-            </text>
-            <text
-              x={x}
-              y={y + 8}
-              textAnchor={anchor}
-              dominantBaseline="middle"
-              fontSize="10"
-              fill="#6b7280"
-            >
-              {subLabel}
-            </text>
-          </g>
-        );
-      })}
-
-      {/* Legend */}
-      <rect x="10" y={size - 34} width="10" height="10" fill="#6366f1" fillOpacity="0.25" stroke="#6366f1" strokeWidth="1" rx="2" />
-      <text x="24" y={size - 25} fontSize="10" fill="#6b7280">Consensus</text>
-      <rect x="100" y={size - 34} width="10" height="10" fill="#818cf8" fillOpacity="0.15" stroke="#818cf8" strokeWidth="1" strokeDasharray="3 1" rx="2" />
-      <text x="114" y={size - 25} fontSize="10" fill="#6b7280">Insight Volume</text>
-    </svg>
-  );
-}
-
-/* ── Word Cloud (CSS-based, with variety) ─────────────────────── */
-
-const CLOUD_COLORS = [
-  '#2563eb', '#9333ea', '#16a34a', '#ea580c', '#4f46e5', '#db2777',
-  '#0891b2', '#7c3aed', '#059669', '#d97706', '#6366f1', '#e11d48',
-];
-
-function WordCloud({ words, domainColor }: { words: any[]; domainColor?: string }) {
-  // Deterministic "random" using word index for rotation and colour
-  const items = useMemo(() => {
-    if (!words?.length) return [];
-    return words.map((w: any, i: number) => {
-      const size = Math.min(w.size || 1, 4);
-      // Font size: 14px for size 1 → 36px for size 4
-      const fontSize = 12 + size * 7;
-      const fontWeight = size >= 3 ? 700 : size >= 2 ? 600 : 400;
-      // Slight rotation variety: -15° to 15° based on position
-      const rotation = ((i * 37) % 7 - 3) * 4;
-      // Pick color from palette or use domain color
-      const color = domainColor || CLOUD_COLORS[i % CLOUD_COLORS.length];
-      const opacity = 0.55 + size * 0.12;
-      return { word: w.word, fontSize, fontWeight, rotation, color, opacity };
-    });
-  }, [words, domainColor]);
-
-  if (!items.length) return null;
-
-  return (
-    <div className="bg-white p-6 rounded-lg border">
-      <h4 className="font-semibold mb-4">Key Themes</h4>
-      <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-center min-h-[80px]">
-        {items.map((item, i) => (
-          <span
-            key={i}
-            className="inline-block transition-transform hover:scale-110 cursor-default select-none"
-            style={{
-              fontSize: `${item.fontSize}px`,
-              fontWeight: item.fontWeight,
-              color: item.color,
-              opacity: item.opacity,
-              transform: `rotate(${item.rotation}deg)`,
-              lineHeight: 1.2,
-            }}
-          >
-            {item.word}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── Combined Word Cloud (all domains) ────────────────────────── */
-
-function CombinedWordCloud({ sections }: { sections: any[] }) {
-  const allWords = useMemo(() => {
-    const merged: { word: string; size: number; color: string }[] = [];
-    sections.forEach((s: any) => {
-      const colors = colorMap[s.color] || colorMap.blue;
-      (s.wordCloud || []).forEach((w: any) => {
-        merged.push({ word: w.word, size: w.size, color: colors.hex });
-      });
-    });
-    // Sort by size descending, then shuffle a bit for visual variety
-    merged.sort((a, b) => b.size - a.size);
-    // Interleave: take big words and spread small ones between them
-    const result: typeof merged = [];
-    const big = merged.filter(w => w.size >= 3);
-    const small = merged.filter(w => w.size < 3);
-    let si = 0;
-    for (const b of big) {
-      result.push(b);
-      if (si < small.length) result.push(small[si++]);
-      if (si < small.length) result.push(small[si++]);
-    }
-    while (si < small.length) result.push(small[si++]);
-    return result;
-  }, [sections]);
-
-  if (!allWords.length) return null;
-
-  return (
-    <Card className="p-6 border-2 border-violet-100">
-      <h3 className="font-bold text-lg mb-4">Combined Theme Cloud — All Domains</h3>
-      <div className="flex flex-wrap gap-x-5 gap-y-2 items-center justify-center min-h-[120px] p-4 bg-gradient-to-br from-slate-50 to-violet-50 rounded-lg">
-        {allWords.map((item, i) => {
-          const fontSize = 11 + (item.size || 1) * 7;
-          const fontWeight = item.size >= 3 ? 700 : item.size >= 2 ? 600 : 400;
-          const rotation = ((i * 31) % 9 - 4) * 3;
-          const opacity = 0.5 + (item.size || 1) * 0.13;
-          return (
-            <span
-              key={i}
-              className="inline-block transition-transform hover:scale-110 cursor-default select-none"
-              style={{
-                fontSize: `${fontSize}px`,
-                fontWeight,
-                color: item.color,
-                opacity,
-                transform: `rotate(${rotation}deg)`,
-                lineHeight: 1.2,
-              }}
-            >
-              {item.word}
-            </span>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
 /* ── Main Component ───────────────────────────────────────────── */
 
-export function DiscoveryOutputTab({ data, onChange }: DiscoveryOutputTabProps) {
-  const update = (fn: (d: any) => void) => {
-    if (!onChange) return;
-    const clone = JSON.parse(JSON.stringify(data));
-    fn(clone);
-    onChange(clone);
-  };
-
-  if (!data || !data.sections) {
+export function DiscoveryOutputTab({ data, onChange: _onChange }: DiscoveryOutputTabProps) {
+  if (!data) {
     return (
       <Card className="p-8 text-center">
         <p className="text-muted-foreground">
-          No discovery interview data yet. Click &quot;🎯 Load Complete Demo&quot; to populate this tab.
+          No discovery data yet. Run <strong>✦ Synthesise</strong> on the Insight Map to generate analysis.
         </p>
       </Card>
     );
   }
 
-  const consensusPercentage = data.sections?.length > 0
-    ? Math.round(data.sections.reduce((sum: number, s: any) => sum + (s.consensusLevel || 0), 0) / data.sections.length)
-    : 0;
+  const sections: any[] = data.sections || [];
+  const hasExecutiveIntelligence = Boolean(data.operationalReality?.insight);
 
   return (
-    <div className="space-y-6">
-      {/* AI Executive Insight */}
-      {data._aiSummary && <AiInsightCard summary={data._aiSummary} />}
+    <div className="space-y-5">
 
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center gap-2 mb-1">
           <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">Perception Signal</span>
           <span className="text-[10px] text-slate-400">— Discovery Phase</span>
         </div>
-        <h2 className="text-2xl font-bold mb-2">How the Organisation Sees Itself</h2>
-        <p className="text-muted-foreground">
-          Pre-workshop AI discovery conversations with participants — revealing operational friction, capability maturity, actor misalignment, and mindset distribution across the organisation.
-        </p>
+        <h2 className="text-xl font-bold text-slate-900 mb-2">How the Organisation Sees Itself</h2>
+
+        {/* Small factual stat chips */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {data.participants?.length > 0 && (
+            <span className="text-xs text-slate-500">{data.participants.length} participants</span>
+          )}
+          {data.participants?.length > 0 && data.totalUtterances > 0 && (
+            <span className="text-slate-200 text-xs">|</span>
+          )}
+          {data.totalUtterances > 0 && (
+            <span className="text-xs text-slate-500">{data.totalUtterances} insights captured</span>
+          )}
+          {sections.length > 0 && data.totalUtterances > 0 && (
+            <span className="text-slate-200 text-xs">|</span>
+          )}
+          {sections.length > 0 && (
+            <span className="text-xs text-slate-500">{sections.length} domains explored</span>
+          )}
+        </div>
       </div>
 
-      {/* Overview Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="p-4 border-2 border-blue-100">
-          <Users className="h-6 w-6 text-blue-600 mb-2" />
-          <div className="text-2xl font-bold text-blue-600">{data.participants?.length || 0}</div>
-          <div className="text-sm text-muted-foreground">Participants</div>
-        </Card>
-        <Card className="p-4 border-2 border-purple-100">
-          <MessageSquare className="h-6 w-6 text-purple-600 mb-2" />
-          <div className="text-2xl font-bold text-purple-600">{data.totalUtterances || 0}</div>
-          <div className="text-sm text-muted-foreground">Insights Captured</div>
-        </Card>
-        <Card className="p-4 border-2 border-green-100">
-          <Brain className="h-6 w-6 text-green-600 mb-2" />
-          <div className="text-2xl font-bold text-green-600">{data.sections?.length || 0}</div>
-          <div className="text-sm text-muted-foreground">Perspectives</div>
-        </Card>
-        <Card className="p-4 border-2 border-orange-100">
-          <TrendingUp className="h-6 w-6 text-orange-600 mb-2" />
-          <div className="text-2xl font-bold text-orange-600">{consensusPercentage}%</div>
-          <div className="text-sm text-muted-foreground">Alignment</div>
-        </Card>
-      </div>
+      {/* ── AI Perception Summary ───────────────────────────────── */}
+      {data._aiSummary && <AiInsightCard summary={data._aiSummary} />}
 
-      {/* Spider Diagram - Consensus by Domain */}
-      {data.sections?.length >= 3 && (
-        <Card className="p-6 border-2 border-indigo-100">
-          <h3 className="font-bold text-lg mb-1">Domain Coverage &amp; Consensus</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Radar chart showing consensus alignment and insight volume across all explored domains
+      {/* ── Executive Intelligence Sections ────────────────────── */}
+      {hasExecutiveIntelligence ? (
+        <>
+          <div className="space-y-4">
+            {INTEL_SECTIONS.map((section) => {
+              const intel = data[section.key];
+              if (!intel?.insight) return null;
+              const evidence: string[] = intel.evidence || [];
+              return (
+                <div
+                  key={section.key}
+                  className={`rounded-xl border ${section.borderColor} bg-white p-6`}
+                >
+                  {/* Section label */}
+                  <div className="flex items-center gap-2 mb-1">
+                    <div
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: section.dotColor }}
+                    />
+                    <p className={`text-[10px] font-bold tracking-widest uppercase ${section.labelColor}`}>
+                      {section.label}
+                    </p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium mb-4 pl-4">{section.subtitle}</p>
+
+                  {/* Insight paragraph */}
+                  <p className="text-sm text-slate-700 leading-relaxed mb-5">{intel.insight}</p>
+
+                  {/* Evidence bullets */}
+                  {evidence.length > 0 && (
+                    <div className="border-t border-slate-50 pt-4">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
+                        Evidence from workshop signals
+                      </p>
+                      <ul className="space-y-2">
+                        {evidence.map((e: string, i: number) => (
+                          <li key={i} className="flex items-start gap-2.5">
+                            <span className="text-slate-300 mt-0.5 text-sm flex-shrink-0">·</span>
+                            <span className="text-sm text-slate-600 leading-snug">{e}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Final Discovery Summary ─────────────────────────── */}
+          {data.finalDiscoverySummary && (
+            <div className="rounded-xl bg-gradient-to-r from-slate-900 to-slate-800 p-6">
+              <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase mb-3">
+                Final Discovery Summary
+              </p>
+              <p className="text-sm leading-relaxed text-slate-100">
+                {data.finalDiscoverySummary}
+              </p>
+            </div>
+          )}
+        </>
+      ) : (
+        /* Fallback when old synthesis data lacks executive intelligence sections */
+        <Card className="p-6 border border-dashed border-slate-200 text-center">
+          <Brain className="h-6 w-6 text-slate-300 mx-auto mb-3" />
+          <p className="text-sm font-medium text-slate-600">Executive intelligence analysis not yet generated</p>
+          <p className="text-xs text-slate-400 mt-1">
+            Run <strong>✦ Synthesise</strong> on the Insight Map to generate Operational Reality, Misalignment, Friction, and Readiness analysis.
           </p>
-          <RadarChart sections={data.sections} />
         </Card>
       )}
 
-      {/* Combined Word Cloud */}
-      <CombinedWordCloud sections={data.sections || []} />
+      {/* ── Workshop Signals — collapsed domain breakdown ──────── */}
+      {sections.length > 0 && (
+        <details className="group">
+          <summary className="flex items-center gap-2 cursor-pointer list-none py-3 px-4 rounded-lg border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors">
+            <ChevronDown className="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-180" />
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Workshop Signals — Domain Breakdown
+            </span>
+            <span className="text-xs text-slate-400 ml-auto">{sections.length} domains</span>
+          </summary>
 
-      {/* Domain Synthesis - Collapsible */}
-      <Accordion type="multiple" className="w-full space-y-4">
-        <div className="text-xl font-bold mb-2">Themes by Domain</div>
-
-        {data.sections?.map((section: any, idx: number) => {
-          const colors = colorMap[section.color] || colorMap.blue;
-
-          return (
-            <AccordionItem
-              key={idx}
-              value={`domain-${idx}`}
-              className={`border-2 ${colors.border} ${colors.bg} rounded-lg px-6`}
-            >
-              <AccordionTrigger className="hover:no-underline">
-                <div className="flex items-center gap-4">
-                  <div className="text-4xl">{section.icon}</div>
-                  <div className="text-left">
-                    <div className="font-bold text-lg">
-                      {onChange ? (
-                        <EditableText
-                          value={section.domain}
-                          onChange={(v) => update((d) => { d.sections[idx].domain = v; })}
-                          className="font-bold text-lg"
-                        />
-                      ) : (
-                        section.domain
-                      )}
-                    </div>
-                    <div className="text-sm opacity-70">
-                      {section.utteranceCount} insights • Top themes:{' '}
-                      {onChange ? (
-                        <EditableList
-                          items={section.topThemes || []}
-                          onChange={(items) => update((d) => { d.sections[idx].topThemes = items; })}
-                          itemClassName="text-sm opacity-70"
-                          addLabel="+ Add theme"
-                        />
-                      ) : (
-                        section.topThemes?.join(', ')
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="space-y-4 pt-4">
-                  {/* Word Cloud per domain */}
-                  {section.wordCloud && (
-                    <WordCloud words={section.wordCloud} domainColor={colors.hex} />
-                  )}
-
-                  {/* Key Quotes */}
-                  {section.quotes && (
-                    <div>
-                      <h4 className="font-semibold mb-3">Representative Quotes</h4>
-                      <div className="space-y-3">
-                        {section.quotes.map((quote: any, i: number) => (
-                          <Card key={i} className={`p-4 border-l-4 ${colors.border.replace('border-', 'border-l-')} bg-white`}>
-                            {onChange ? (
-                              <>
-                                <p className="text-sm italic mb-2">
-                                  &ldquo;
-                                  <EditableText
-                                    value={quote.text}
-                                    onChange={(v) => update((d) => { d.sections[idx].quotes[i].text = v; })}
-                                    className="text-sm italic"
-                                    multiline
-                                  />
-                                  &rdquo;
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  —{' '}
-                                  <EditableText
-                                    value={quote.author}
-                                    onChange={(v) => update((d) => { d.sections[idx].quotes[i].author = v; })}
-                                    className="text-xs text-muted-foreground"
-                                  />
-                                </p>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-sm italic mb-2">&ldquo;{quote.text}&rdquo;</p>
-                                <p className="text-xs text-muted-foreground">— {quote.author}</p>
-                              </>
-                            )}
-                          </Card>
-                        ))}
+          <div className="mt-3">
+            <Accordion type="multiple" className="w-full space-y-2">
+              {sections.map((section: any, idx: number) => {
+                const colors = colorMap[section.color] || colorMap.blue;
+                return (
+                  <AccordionItem
+                    key={idx}
+                    value={`domain-${idx}`}
+                    className={`border ${colors.border} rounded-lg px-4 bg-white`}
+                  >
+                    <AccordionTrigger className="hover:no-underline py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">{section.icon}</span>
+                        <div className="text-left">
+                          <p className={`text-sm font-semibold ${colors.text}`}>{section.domain}</p>
+                          <p className="text-[11px] text-slate-400">
+                            {section.utteranceCount} insights
+                            {section.topThemes?.length > 0 && ` · ${section.topThemes.slice(0, 3).join(', ')}`}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="space-y-3 pb-3 pt-1">
+                        {/* Representative Quotes */}
+                        {section.quotes?.length > 0 && (
+                          <div className="space-y-2">
+                            {section.quotes.map((quote: any, i: number) => (
+                              <div
+                                key={i}
+                                className={`p-3 border-l-2 bg-slate-50 rounded-r-lg`}
+                                style={{ borderLeftColor: colors.hex }}
+                              >
+                                <p className="text-xs italic text-slate-600 mb-1">&ldquo;{quote.text}&rdquo;</p>
+                                <p className="text-[10px] text-slate-400">— {quote.author}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
-                  {/* Sentiment Analysis */}
-                  {section.sentiment && (
-                    <div className="bg-gradient-to-r from-red-50 via-yellow-50 to-green-50 p-4 rounded-lg">
-                      <h4 className="font-semibold mb-2">Sentiment Distribution</h4>
-                      <div className="flex items-center gap-0">
-                        {section.sentiment.concerned > 0 && (
-                          <div
-                            className="bg-red-200 h-6 rounded-l"
-                            style={{width: `${section.sentiment.concerned}%`}}
-                          ></div>
-                        )}
-                        {section.sentiment.neutral > 0 && (
-                          <div
-                            className="bg-yellow-200 h-6"
-                            style={{width: `${section.sentiment.neutral}%`}}
-                          ></div>
-                        )}
-                        {section.sentiment.optimistic > 0 && (
-                          <div
-                            className="bg-green-200 h-6 rounded-r"
-                            style={{width: `${section.sentiment.optimistic}%`}}
-                          ></div>
+                        {/* Sentiment bar */}
+                        {section.sentiment && (
+                          <div>
+                            <p className="text-[10px] text-slate-400 mb-1.5">Sentiment distribution</p>
+                            <div className="flex h-1.5 rounded-full overflow-hidden gap-px">
+                              {section.sentiment.concerned > 0 && (
+                                <div className="bg-rose-300" style={{ width: `${section.sentiment.concerned}%` }} />
+                              )}
+                              {section.sentiment.neutral > 0 && (
+                                <div className="bg-amber-200" style={{ width: `${section.sentiment.neutral}%` }} />
+                              )}
+                              {section.sentiment.optimistic > 0 && (
+                                <div className="bg-emerald-300" style={{ width: `${section.sentiment.optimistic}%` }} />
+                              )}
+                            </div>
+                            <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+                              <span>{section.sentiment.concerned}% concerned</span>
+                              <span>{section.sentiment.neutral}% neutral</span>
+                              <span>{section.sentiment.optimistic}% optimistic</span>
+                            </div>
+                          </div>
                         )}
                       </div>
-                      <div className="flex justify-between text-xs mt-2 text-muted-foreground">
-                        {onChange ? (
-                          <>
-                            <span>
-                              Concerned (
-                              <EditableText
-                                value={String(section.sentiment.concerned)}
-                                onChange={(v) => update((d) => { d.sections[idx].sentiment.concerned = v; })}
-                                type="number"
-                                className="text-xs text-muted-foreground inline w-12"
-                              />
-                              %)
-                            </span>
-                            <span>
-                              Neutral (
-                              <EditableText
-                                value={String(section.sentiment.neutral)}
-                                onChange={(v) => update((d) => { d.sections[idx].sentiment.neutral = v; })}
-                                type="number"
-                                className="text-xs text-muted-foreground inline w-12"
-                              />
-                              %)
-                            </span>
-                            <span>
-                              Optimistic (
-                              <EditableText
-                                value={String(section.sentiment.optimistic)}
-                                onChange={(v) => update((d) => { d.sections[idx].sentiment.optimistic = v; })}
-                                type="number"
-                                className="text-xs text-muted-foreground inline w-12"
-                              />
-                              %)
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span>Concerned ({section.sentiment.concerned}%)</span>
-                            <span>Neutral ({section.sentiment.neutral}%)</span>
-                            <span>Optimistic ({section.sentiment.optimistic}%)</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          );
-        })}
-      </Accordion>
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
+          </div>
+        </details>
+      )}
     </div>
   );
 }

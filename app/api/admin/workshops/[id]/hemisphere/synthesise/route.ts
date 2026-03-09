@@ -288,7 +288,24 @@ ${domainNames.map((dn, i) => {
         "consensusLevel": 0-100
       }`;
 }).join(',\n')}
-    ]
+    ],
+    "operationalReality": {
+      "insight": "string — 3-4 sentences describing how this organisation actually operates day-to-day. Ground every sentence in workshop signals: operational bottlenecks, workflow gaps, process failures, volume pressure, systemic inefficiency. No generic language — name the specific patterns this workshop revealed.",
+      "evidence": ["string — specific workshop signal, theme, or friction point (4 items total)", "signal 2", "signal 3", "signal 4"]
+    },
+    "organisationalMisalignment": {
+      "insight": "string — 3-4 sentences on where this organisation is fractured. Actor conflicts, decision bottlenecks, cross-team failure points, misaligned priorities, siloed knowledge. Ground in actor signals and interaction data from this workshop.",
+      "evidence": ["signal 1 — name specific actors or teams involved", "signal 2", "signal 3", "signal 4"]
+    },
+    "systemicFriction": {
+      "insight": "string — 3-4 sentences on what is actively slowing transformation. Technology debt, process rigidity, governance blocks, capability gaps, leadership bottlenecks. Identify the friction that appears most frequently across multiple actors and domains.",
+      "evidence": ["signal 1 — cite specific constraints raised", "signal 2", "signal 3", "signal 4"]
+    },
+    "transformationReadiness": {
+      "insight": "string — 3-4 sentences on whether this organisation is capable of change. Identify positive signals (ambition, champions, quick wins visible) and risk signals (resistance, dependencies, capability gaps). What does the balance of signals suggest about transformation velocity?",
+      "evidence": ["signal 1 — specific readiness indicator or risk", "signal 2", "signal 3", "signal 4"]
+    },
+    "finalDiscoverySummary": "string — 2-3 sentence executive diagnosis. The strategic spine of this discovery. State: what the workshop most clearly revealed about this organisation's operational reality, and what that means for transformation. Be direct — not a summary of summaries."
   },
   "reimagineContent": {
     "_aiSummary": "string — 3-5 sentence IMAGINATION SIGNAL summary. This is what future the organisation believes is possible. Identify: ambition clusters, desired outcomes, transformation opportunities, and innovation signals. What does this organisation dare to imagine? What does that ambition reveal about its aspirations and self-belief? Be specific and evidence-grounded.",
@@ -402,6 +419,7 @@ CRITICAL RULES:
 - _aiSummary fields: Each is a COGNITIVE SIGNAL summary framed through the DREAM Organisational Brain model. Every summary must be a specific signal reading — not a generic summary. Reference evidence from the data. Identify what the signal reveals about how this organisation thinks. Every sentence must carry weight. NEVER use generic consulting filler or restate findings without interpretation.
 - execSummary.keyFindings: 5-7 findings. metrics values must be NUMBERS not strings.
 - discoveryOutput.sections: exactly ${domainNames.length} sections. Each needs 8-10 wordCloud items (size 1-4). Sentiment MUST sum to 100.
+- discoveryOutput must include: operationalReality, organisationalMisalignment, systemicFriction, transformationReadiness (each with insight string + evidence array of exactly 4 strings grounded in workshop signals), and finalDiscoverySummary string. These are the primary executive intelligence outputs — do not use generic language.
 - reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes.
 - constraintsContent: 2-3 items per category.
 - potentialSolution.enablers: 5-8 items. implementationPath: 3 phases.
