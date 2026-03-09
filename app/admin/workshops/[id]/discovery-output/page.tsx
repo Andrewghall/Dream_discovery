@@ -289,6 +289,9 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
   const [workshopName, setWorkshopName] = useState<string>('');
 
+  // Tab control
+  const [activeTab, setActiveTab] = useState('perception');
+
   // Analysis generation state
   const [generatingAnalysis, setGeneratingAnalysis] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState<string | null>(null);
@@ -377,6 +380,7 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
                 setAnalysisProgress(data.message || 'Processing...');
               } else if (currentEvent === 'analysis.complete') {
                 setDiscoverAnalysis(data.analysis);
+                setActiveTab('going-in-brain');
               } else if (currentEvent === 'error') {
                 setAnalysisProgress(`Error: ${data.message}`);
               }
@@ -527,7 +531,7 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
       {/* Tabs */}
       {!loading && !error && (
-        <Tabs defaultValue="perception" className="flex flex-col h-[calc(100vh-57px)]">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-[calc(100vh-57px)]">
           {/* Tab navigation — pinned at top */}
           <div className="border-b bg-background px-6 pt-3">
             <TabsList className="bg-transparent p-0 h-auto gap-0 border-0">
