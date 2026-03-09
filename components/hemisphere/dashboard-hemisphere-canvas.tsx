@@ -56,6 +56,25 @@ function hash01(s: string): number {
   return ((h >>> 0) % 10_000) / 10_000;
 }
 
+/**
+ * Map node type → phi band (0=north pole, 1=south pole)
+ *  H1 / ASPIRATION:  VISION, BELIEF       → top   0.04–0.28
+ *  H2 / ENABLERS:    ENABLER, EVIDENCE    → middle 0.32–0.60
+ *  H3 / FRICTION:    FRICTION, CONSTRAINT → bottom 0.64–0.95
+ *  CHALLENGE sits in H2/H3 boundary for emphasis
+ */
+function phiBandForType(type: NodeType, jitter: number): number {
+  switch (type) {
+    case 'VISION':      return 0.04 + jitter * 0.22;   // top
+    case 'BELIEF':      return 0.06 + jitter * 0.20;
+    case 'ENABLER':     return 0.32 + jitter * 0.26;   // middle
+    case 'EVIDENCE':    return 0.34 + jitter * 0.24;
+    case 'CHALLENGE':   return 0.55 + jitter * 0.20;   // lower-middle
+    case 'FRICTION':    return 0.64 + jitter * 0.28;   // bottom
+    case 'CONSTRAINT':  return 0.68 + jitter * 0.26;
+  }
+}
+
 function colorForType(type: NodeType): string {
   switch (type) {
     case 'VISION': return '#60a5fa';
@@ -139,6 +158,39 @@ export function DashboardHemisphereCanvas({
       const cs = Math.cos(spin);
       const sn = Math.sin(spin);
 
+      // Zone separator rings (H1/H2 and H2/H3 boundaries)
+      const ZONE_PHI = [0.30, 0.62];
+      ctx.strokeStyle = 'rgba(148,163,184,0.07)';
+      ctx.lineWidth = dpr;
+      for (const zp of ZONE_PHI) {
+        const ringY = cy - R * Math.cos(Math.PI * zp);
+        const ringR = R * Math.sin(Math.PI * zp);
+        ctx.beginPath();
+        ctx.ellipse(cx, ringY, ringR, ringR * 0.25, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Zone labels (left side)
+      const zones = [
+        { phi: 0.15, label: 'ASPIRATION',  sub: 'Vision · Beliefs',  color: 'rgba(147,197,253,0.7)'  },
+        { phi: 0.46, label: 'ENABLERS',    sub: 'Action · Change',   color: 'rgba(52,211,153,0.7)'   },
+        { phi: 0.80, label: 'FRICTION',    sub: 'Constraints · Barriers', color: 'rgba(251,113,133,0.7)' },
+      ];
+      for (const z of zones) {
+        const zy = cy - R * Math.cos(Math.PI * z.phi);
+        const labelX = cx - R - 14 * dpr;
+        ctx.globalAlpha = 0.75;
+        ctx.font = `bold ${9 * dpr}px sans-serif`;
+        ctx.fillStyle = z.color;
+        ctx.textAlign = 'right';
+        ctx.fillText('— ' + z.label, labelX, zy - 7 * dpr);
+        ctx.font = `${8 * dpr}px sans-serif`;
+        ctx.fillStyle = 'rgba(148,163,184,0.55)';
+        ctx.fillText(z.sub, labelX, zy + 4 * dpr);
+      }
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'left';
+
       // Draw edges first (thin lines, low opacity)
       if (edges.length > 0) {
         ctx.strokeStyle = 'rgba(148,163,184,0.06)';
@@ -149,9 +201,9 @@ export function DashboardHemisphereCanvas({
         for (const n of nodes) {
           if (n.id === coreTruthNodeId) continue;
           const u = hash01(`u:${n.id}`);
-          const v = hash01(`v:${n.id}`);
+          const jitter = hash01(`j:${n.id}`);
           const theta = u * Math.PI * 2;
-          const phi = Math.PI * clamp01(0.05 + v * 0.9);
+          const phi = Math.PI * clamp01(phiBandForType(n.type, jitter));
           const radial = Math.sin(phi);
           const py = Math.cos(phi);
           const px = Math.cos(theta) * radial;
@@ -189,9 +241,9 @@ export function DashboardHemisphereCanvas({
       for (const n of nodes) {
         if (n.id === coreTruthNodeId) continue;
         const u = hash01(`u:${n.id}`);
-        const v = hash01(`v:${n.id}`);
+        const jitter = hash01(`j:${n.id}`);
         const theta = u * Math.PI * 2;
-        const phi = Math.PI * clamp01(0.05 + v * 0.9);
+        const phi = Math.PI * clamp01(phiBandForType(n.type, jitter));
         const radial = Math.sin(phi);
         const py = Math.cos(phi);
         const px = Math.cos(theta) * radial;
@@ -245,7 +297,7 @@ export function DashboardHemisphereCanvas({
       <canvas
         ref={canvasRef}
         className="w-full"
-        style={{ height: 340 }}
+        style={{ height: 420 }}
       />
       {/* Label overlay */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-black/60 border-t border-white/5">
