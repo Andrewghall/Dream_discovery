@@ -4,13 +4,14 @@ import { use, useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Mic, RefreshCcw, Loader2, AlertCircle, Smartphone, Link2, Copy, Check, UploadCloud, Sparkles, CheckCircle2, XCircle } from 'lucide-react';
+import { Mic, RefreshCcw, Loader2, AlertCircle, Smartphone, Link2, Copy, Check, UploadCloud, Sparkles, CheckCircle2, XCircle, Download } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { CaptureSessionForm } from '@/components/field-discovery/capture-session-form';
 import type { DomainPack, SessionFormData } from '@/components/field-discovery/capture-session-form';
 import { DesktopCaptureControls } from '@/components/field-discovery/desktop-capture-controls';
 import { CaptureInbox } from '@/components/field-discovery/capture-inbox';
 import type { CaptureSessionItem } from '@/components/field-discovery/capture-inbox';
+import QRCode from 'react-qr-code';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -202,6 +203,38 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
     await navigator.clipboard.writeText(captureLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  // ---- Download QR code as PNG ----
+  function handleDownloadQR() {
+    const svgEl = document.querySelector('#capture-qr svg') as SVGSVGElement | null;
+    if (!svgEl) return;
+
+    const serialised = new XMLSerializer().serializeToString(svgEl);
+    const blob = new Blob([serialised], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+
+    const img = new Image();
+    img.onload = () => {
+      const SIZE = 600;
+      const canvas = document.createElement('canvas');
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, SIZE, SIZE);
+      ctx.drawImage(img, 0, 0, SIZE, SIZE);
+      URL.revokeObjectURL(url);
+
+      canvas.toBlob((pngBlob) => {
+        if (!pngBlob) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(pngBlob);
+        a.download = `capture-qr-${workshopId.slice(0, 8)}.png`;
+        a.click();
+      }, 'image/png');
+    };
+    img.src = url;
   }
 
   // ---- Derived progress values ----
@@ -434,6 +467,20 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
                     Copied!
                   </span>
                 )}
+              </div>
+
+              {/* QR Code */}
+              <div className="flex flex-col items-center gap-3 pt-2">
+                <div
+                  id="capture-qr"
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <QRCode value={captureLink} size={180} />
+                </div>
+                <Button variant="outline" size="sm" onClick={handleDownloadQR}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download QR Code
+                </Button>
               </div>
             </div>
           )}
