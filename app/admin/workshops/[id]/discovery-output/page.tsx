@@ -248,6 +248,8 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
     [discoverAnalysis, discoveryOutput, conversationReports],
   );
 
+  const [nodeScale, setNodeScale] = useState(1.4);
+
   if (!hasSections && !hasAnalysis && !hasReports) {
     return (
       <Card className="p-8 text-center">
@@ -526,11 +528,26 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
       {/* ── Discovery Globe ──────────────────────────────────── */}
       {globeNodes.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-              Discovery Signal Map
-            </p>
-            <span className="text-[9px] text-slate-400">— pre-workshop cognitive landscape</span>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+                Discovery Signal Map
+              </p>
+              <span className="text-[9px] text-slate-400">— pre-workshop cognitive landscape</span>
+            </div>
+            {/* Node size slider */}
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] text-slate-400 uppercase tracking-wider">Node size</span>
+              <input
+                type="range"
+                min={0.6}
+                max={3.0}
+                step={0.1}
+                value={nodeScale}
+                onChange={e => setNodeScale(Number(e.target.value))}
+                className="w-20 accent-indigo-500"
+              />
+            </div>
           </div>
           <DashboardHemisphereCanvas
             nodes={globeNodes}
@@ -539,6 +556,7 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
             nodeCount={globeNodes.length}
             edgeCount={globeEdges.length}
             balanceLabel={balanceLabel}
+            nodeScale={nodeScale}
             className="w-full"
           />
           {/* Node type legend */}

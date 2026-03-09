@@ -37,6 +37,8 @@ export interface DashboardHemisphereCanvasProps {
   nodeCount: number;
   edgeCount?: number;
   balanceLabel?: string;
+  /** Multiplier applied to every node radius. Default 1.0. Pass e.g. 1.5 for larger nodes. */
+  nodeScale?: number;
   className?: string;
 }
 
@@ -97,6 +99,7 @@ export function DashboardHemisphereCanvas({
   nodeCount,
   edgeCount,
   balanceLabel,
+  nodeScale = 1,
   className = '',
 }: DashboardHemisphereCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -256,7 +259,7 @@ export function DashboardHemisphereCanvas({
 
         const sx = cx + rx * R * persp;
         const sy = cy - py * R * persp;
-        const r = (1.2 + Math.sqrt(Math.max(1, n.weight || 1)) * 0.5) * dpr * persp;
+        const r = (1.2 + Math.sqrt(Math.max(1, n.weight || 1)) * 0.5) * dpr * persp * nodeScale;
 
         const alpha = 0.35 + depth * 0.55;
         ctx.globalAlpha = alpha;
@@ -290,7 +293,26 @@ export function DashboardHemisphereCanvas({
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [nodes, edges, coreTruthNodeId]);
+  }, [nodes, edges, coreTruthNodeId, nodeScale]);
+
+  // ── Zone breakdown (computed from nodes, displayed in footer) ──
+  const aspirationCount = nodes.filter(n => n.type === 'VISION' || n.type === 'BELIEF').length;
+  const enablerCount    = nodes.filter(n => n.type === 'ENABLER' || n.type === 'EVIDENCE').length;
+  const frictionCount   = nodes.filter(n => n.type === 'FRICTION' || n.type === 'CONSTRAINT' || n.type === 'CHALLENGE').length;
+  const total           = aspirationCount + enablerCount + frictionCount || 1;
+
+  const pct = (n: number) => Math.round((n / total) * 100);
+
+  const dispositionLabel = balanceLabel
+    ? balanceLabel.charAt(0).toUpperCase() + balanceLabel.slice(1)
+    : null;
+
+  const dispositionColor =
+    balanceLabel === 'aligned' || balanceLabel === 'innovation-dominated'
+      ? { text: 'text-emerald-300', bg: 'bg-emerald-500/20' }
+      : balanceLabel === 'fragmented' || balanceLabel === 'defensive'
+        ? { text: 'text-red-300', bg: 'bg-red-500/20' }
+        : { text: 'text-amber-300', bg: 'bg-amber-500/20' };
 
   return (
     <div className={`relative flex flex-col rounded-xl border border-white/10 bg-black/40 overflow-hidden ${className}`}>
@@ -299,25 +321,58 @@ export function DashboardHemisphereCanvas({
         className="w-full"
         style={{ height: 420 }}
       />
-      {/* Label overlay */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-black/60 border-t border-white/5">
-        <div>
-          <div className="text-sm font-semibold text-slate-200">{label}</div>
-          <div className="text-xs text-slate-400 mt-0.5">
-            {nodeCount.toLocaleString()} nodes{edgeCount != null && ` · ${edgeCount.toLocaleString()} edges`}
+
+      {/* Footer — zone breakdown */}
+      <div className="bg-black/60 border-t border-white/5 px-4 py-3 space-y-2">
+        {/* Top row: label + overall disposition */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-200">{label}</span>
+            <span className="text-[10px] text-slate-500">
+              {nodeCount.toLocaleString()} signals{edgeCount != null && ` · ${edgeCount.toLocaleString()} connections`}
+            </span>
+          </div>
+          {dispositionLabel && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-slate-500">Disposition:</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${dispositionColor.bg} ${dispositionColor.text}`}>
+                {dispositionLabel}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Zone proportion bar */}
+        <div className="space-y-1.5">
+          <div className="flex h-1.5 w-full rounded-full overflow-hidden gap-px">
+            <div className="bg-blue-400/70 transition-all" style={{ width: `${pct(aspirationCount)}%` }} />
+            <div className="bg-emerald-400/70 transition-all" style={{ width: `${pct(enablerCount)}%` }} />
+            <div className="bg-rose-400/70 transition-all" style={{ width: `${pct(frictionCount)}%` }} />
+          </div>
+          <div className="flex items-center gap-5">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400/70" />
+              <span className="text-[10px] text-slate-400">
+                Aspiration <span className="text-slate-300 font-medium">{aspirationCount}</span>
+                <span className="text-slate-500 ml-1">({pct(aspirationCount)}%)</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/70" />
+              <span className="text-[10px] text-slate-400">
+                Enablers <span className="text-slate-300 font-medium">{enablerCount}</span>
+                <span className="text-slate-500 ml-1">({pct(enablerCount)}%)</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-rose-400/70" />
+              <span className="text-[10px] text-slate-400">
+                Friction <span className="text-slate-300 font-medium">{frictionCount}</span>
+                <span className="text-slate-500 ml-1">({pct(frictionCount)}%)</span>
+              </span>
+            </div>
           </div>
         </div>
-        {balanceLabel && (
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-            balanceLabel === 'aligned' || balanceLabel === 'innovation-dominated'
-              ? 'bg-emerald-500/20 text-emerald-300'
-              : balanceLabel === 'fragmented' || balanceLabel === 'defensive'
-                ? 'bg-red-500/20 text-red-300'
-                : 'bg-amber-500/20 text-amber-300'
-          }`}>
-            {balanceLabel.charAt(0).toUpperCase() + balanceLabel.slice(1)}
-          </span>
-        )}
       </div>
     </div>
   );
