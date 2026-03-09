@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useCallback, useRef } from 'react';
+import { use, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Loader2, BarChart2, RefreshCw, Info, Brain, TrendingUp, Eye, Zap, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { ConstraintMap } from '@/components/discover-analysis/constraint-map';
 import { ConfidenceIndex } from '@/components/discover-analysis/confidence-index';
 import { NarrativeDivergence } from '@/components/discover-analysis/narrative-divergence';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
+import { DashboardHemisphereCanvas, type DashboardHemisphereNode, type DashboardHemisphereEdge } from '@/components/hemisphere/dashboard-hemisphere-canvas';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -99,6 +100,135 @@ const COLOR_CLASSES: Record<string, { card: string; label: string; bar: string; 
   amber:  { card: 'border-amber-100',  label: 'text-amber-600',  bar: 'bg-amber-400',  icon: 'text-amber-400',  ring: 'ring-amber-200'  },
 };
 
+// ── Discovery globe node synthesis ───────────────────────────
+// Builds hemisphere nodes from discovery data without a new API call.
+
+function buildDiscoveryGlobe(
+  discoverAnalysis: DiscoverAnalysis | null,
+  discoveryOutput: any,
+  conversationReports: any[],
+): { nodes: DashboardHemisphereNode[]; edges: DashboardHemisphereEdge[]; balanceLabel: string } {
+  const nodes: DashboardHemisphereNode[] = [];
+  const edges: DashboardHemisphereEdge[] = [];
+
+  // ── 1. Constraints → CONSTRAINT / FRICTION nodes ─────────────
+  if (discoverAnalysis?.constraints?.constraints) {
+    for (const c of discoverAnalysis.constraints.constraints) {
+      nodes.push({
+        id: `constraint:${c.id}`,
+        type: c.severity === 'critical' ? 'CONSTRAINT' : 'FRICTION',
+        label: c.description.split(' ').slice(0, 5).join(' '),
+        weight: c.weight,
+        phaseTags: [c.domain.toLowerCase().replace(/\s+/g, '_')],
+      });
+    }
+    // Constraint relationships → edges
+    for (const rel of discoverAnalysis.constraints.relationships ?? []) {
+      edges.push({
+        id: `edge:${rel.source}:${rel.target}`,
+        source: `constraint:${rel.source}`,
+        target: `constraint:${rel.target}`,
+        strength: rel.type === 'blocks' ? 0.8 : 0.4,
+      });
+    }
+  }
+
+  // ── 2. Tensions → CHALLENGE nodes ────────────────────────────
+  if (discoverAnalysis?.tensions?.tensions) {
+    for (const t of discoverAnalysis.tensions.tensions) {
+      nodes.push({
+        id: `tension:${t.id}`,
+        type: 'CHALLENGE',
+        label: t.topic.split(' ').slice(0, 5).join(' '),
+        weight: Math.round(t.tensionIndex * 3) + 1,
+        phaseTags: [t.domain.toLowerCase().replace(/\s+/g, '_')],
+      });
+    }
+  }
+
+  // ── 3. Alignment cells — positive → VISION, negative → CHALLENGE ──
+  if (discoverAnalysis?.alignment?.cells) {
+    const sorted = [...discoverAnalysis.alignment.cells].sort(
+      (a, b) => b.alignmentScore - a.alignmentScore,
+    );
+    // Top aligned → VISION
+    for (const cell of sorted.filter(c => c.alignmentScore > 0.25).slice(0, 12)) {
+      nodes.push({
+        id: `align:pos:${cell.theme}:${cell.actor}`,
+        type: 'VISION',
+        label: cell.theme.split(' ').slice(0, 4).join(' '),
+        weight: cell.utteranceCount,
+        phaseTags: [],
+      });
+    }
+    // Most divergent → CHALLENGE
+    for (const cell of sorted.filter(c => c.alignmentScore < -0.25).slice(-8)) {
+      nodes.push({
+        id: `align:neg:${cell.theme}:${cell.actor}`,
+        type: 'CHALLENGE',
+        label: cell.theme.split(' ').slice(0, 4).join(' '),
+        weight: cell.utteranceCount,
+        phaseTags: [],
+      });
+    }
+  }
+
+  // ── 4. Discovery sections (hemisphere synthesis) ─────────────
+  const sections: any[] = discoveryOutput?.sections ?? [];
+  for (const section of sections) {
+    // High optimistic → ENABLER
+    if ((section.sentiment?.optimistic || 0) > 25) {
+      for (const theme of (section.topThemes ?? []).slice(0, 3)) {
+        nodes.push({
+          id: `section:enable:${section.domain}:${theme}`,
+          type: 'ENABLER',
+          label: String(theme).split(' ').slice(0, 4).join(' '),
+          weight: Math.round((section.sentiment.optimistic / 100) * 5) + 1,
+          phaseTags: [section.domain.toLowerCase().replace(/\s+/g, '_')],
+        });
+      }
+    }
+    // High concerned → FRICTION
+    if ((section.sentiment?.concerned || 0) > 25) {
+      for (const theme of (section.topThemes ?? []).slice(0, 2)) {
+        nodes.push({
+          id: `section:friction:${section.domain}:${theme}`,
+          type: 'FRICTION',
+          label: String(theme).split(' ').slice(0, 4).join(' '),
+          weight: Math.round((section.sentiment.concerned / 100) * 4) + 1,
+          phaseTags: [section.domain.toLowerCase().replace(/\s+/g, '_')],
+        });
+      }
+    }
+  }
+
+  // ── 5. Conversation reports → BELIEF nodes (one per participant) ──
+  for (const report of conversationReports.slice(0, 20)) {
+    const summary = report.executiveSummary || '';
+    if (!summary) continue;
+    nodes.push({
+      id: `report:${report.participantId}`,
+      type: 'BELIEF',
+      label: (report.participantName || 'Participant').split(' ')[0],
+      weight: report.tone === 'optimistic' ? 3 : report.tone === 'concerned' ? 2 : 1,
+      phaseTags: [],
+    });
+  }
+
+  // ── Balance label ─────────────────────────────────────────────
+  const frictionCount = nodes.filter(n => n.type === 'FRICTION' || n.type === 'CONSTRAINT' || n.type === 'CHALLENGE').length;
+  const enablerCount  = nodes.filter(n => n.type === 'ENABLER' || n.type === 'VISION' || n.type === 'BELIEF').length;
+  const total = frictionCount + enablerCount || 1;
+  const frictionRatio = frictionCount / total;
+  const balanceLabel =
+    frictionRatio > 0.6 ? 'defensive' :
+    frictionRatio > 0.4 ? 'fragmented' :
+    enablerCount > frictionCount * 1.5 ? 'innovation-dominated' :
+    'aligned';
+
+  return { nodes, edges, balanceLabel };
+}
+
 // ── Going In Brain component ──────────────────────────────────
 
 function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }: {
@@ -112,6 +242,11 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
   const hasSections = sections.length > 0;
   const hasAnalysis = discoverAnalysis != null;
   const hasReports = conversationReports.length > 0;
+
+  const { nodes: globeNodes, edges: globeEdges, balanceLabel } = useMemo(
+    () => buildDiscoveryGlobe(discoverAnalysis, discoveryOutput, conversationReports),
+    [discoverAnalysis, discoveryOutput, conversationReports],
+  );
 
   if (!hasSections && !hasAnalysis && !hasReports) {
     return (
@@ -387,6 +522,43 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
           </div>
         );
       })()}
+
+      {/* ── Discovery Globe ──────────────────────────────────── */}
+      {globeNodes.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+              Discovery Signal Map
+            </p>
+            <span className="text-[9px] text-slate-400">— pre-workshop cognitive landscape</span>
+          </div>
+          <DashboardHemisphereCanvas
+            nodes={globeNodes}
+            edges={globeEdges}
+            label="Discovery Phase"
+            nodeCount={globeNodes.length}
+            edgeCount={globeEdges.length}
+            balanceLabel={balanceLabel}
+            className="w-full"
+          />
+          {/* Node type legend */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3 px-1">
+            {[
+              { type: 'VISION',      color: '#60a5fa', label: 'Aligned signal'   },
+              { type: 'BELIEF',      color: '#a78bfa', label: 'Participant view'  },
+              { type: 'ENABLER',     color: '#34d399', label: 'Enabler'           },
+              { type: 'CHALLENGE',   color: '#fb7185', label: 'Tension'           },
+              { type: 'FRICTION',    color: '#f97316', label: 'Friction'          },
+              { type: 'CONSTRAINT',  color: '#ef4444', label: 'Constraint'        },
+            ].map(({ color, label }) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                <span className="text-[10px] text-slate-400">{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
