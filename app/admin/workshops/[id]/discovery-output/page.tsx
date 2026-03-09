@@ -234,6 +234,177 @@ function buildDiscoveryGlobe(
 
 // ── Going In Brain component ──────────────────────────────────
 
+// ── Executive Diagnostic Panel ────────────────────────────────────────────────
+
+const DIAGNOSTIC_CARDS = [
+  {
+    key: 'operationalReality',
+    title: 'Operational Reality',
+    subtitle: 'How the organisation actually operates day-to-day',
+    borderColor: 'border-l-slate-400',
+  },
+  {
+    key: 'organisationalMisalignment',
+    title: 'Leadership Alignment Risk',
+    subtitle: 'Where the organisation is structurally fractured',
+    borderColor: 'border-l-amber-400',
+  },
+  {
+    key: 'systemicFriction',
+    title: 'Systemic Friction',
+    subtitle: 'What is slowing or preventing transformation',
+    borderColor: 'border-l-red-400',
+  },
+  {
+    key: 'transformationReadiness',
+    title: 'Transformation Readiness',
+    subtitle: 'Whether the organisation appears capable of change',
+    borderColor: 'border-l-emerald-400',
+  },
+] as const;
+
+function ExecDiagnosticPanel({
+  discoveryOutput,
+  workshopId,
+  onGenerated,
+}: {
+  discoveryOutput: any;
+  workshopId: string;
+  onGenerated: (updated: any) => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  const hasInsights = DIAGNOSTIC_CARDS.some(({ key }) => !!discoveryOutput?.[key]);
+
+  const generate = async () => {
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}/discovery-intelligence`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.discoveryOutput) onGenerated(json.discoveryOutput);
+    } catch {
+      setGenError('Generation failed. Please try again.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  if (!discoveryOutput) {
+    return (
+      <Card className="p-8 text-center">
+        <p className="text-sm text-muted-foreground">
+          Complete discovery interviews to generate the Executive Diagnostic.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Executive Diagnostic</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            The organisational condition based on discovery signals — readable in under 10 seconds.
+          </p>
+        </div>
+        <button
+          onClick={generate}
+          disabled={generating}
+          className="shrink-0 flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-50 pt-1"
+        >
+          <RefreshCw className={`h-3 w-3 ${generating ? 'animate-spin' : ''}`} />
+          {generating ? 'Generating…' : hasInsights ? 'Regenerate' : ''}
+        </button>
+      </div>
+
+      {/* Hero summary */}
+      {discoveryOutput.finalDiscoverySummary && (
+        <div className="rounded-xl bg-slate-900 text-white px-6 py-5">
+          <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase mb-2">
+            Diagnostic Summary
+          </p>
+          <p className="text-sm leading-relaxed text-slate-100">
+            {discoveryOutput.finalDiscoverySummary}
+          </p>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!hasInsights && !generating && (
+        <Card className="p-8 flex flex-col items-center gap-4 text-center border-dashed">
+          <div className="rounded-full bg-indigo-50 p-3">
+            <BarChart2 className="h-6 w-6 text-indigo-500" />
+          </div>
+          <div>
+            <p className="font-semibold text-slate-800">Generate your Executive Diagnostic</p>
+            <p className="text-sm text-slate-500 mt-1 max-w-sm">
+              Synthesise discovery signals into a concise organisational diagnosis.
+              Each section is immediately understandable by a senior executive.
+            </p>
+          </div>
+          <Button onClick={generate} disabled={generating}>
+            {generating ? (
+              <><Loader2 className="h-4 w-4 animate-spin mr-2" />Generating…</>
+            ) : (
+              '✦ Generate Executive Diagnostic'
+            )}
+          </Button>
+        </Card>
+      )}
+
+      {generating && !hasInsights && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-indigo-50 border border-indigo-100">
+          <Loader2 className="h-4 w-4 animate-spin text-indigo-600 shrink-0" />
+          <p className="text-sm text-indigo-700">Synthesising discovery signals into diagnostic insights…</p>
+        </div>
+      )}
+
+      {genError && (
+        <p className="text-sm text-red-600">{genError}</p>
+      )}
+
+      {/* 4 insight cards */}
+      {hasInsights && (
+        <div className="space-y-4">
+          {DIAGNOSTIC_CARDS.map(({ key, title, subtitle, borderColor }) => {
+            const section = discoveryOutput[key] as { insight: string; evidence?: string[] } | undefined;
+            if (!section?.insight) return null;
+            return (
+              <div
+                key={key}
+                className={`rounded-lg border border-slate-100 border-l-4 ${borderColor} bg-white p-5 shadow-sm`}
+              >
+                <h3 className="font-bold text-slate-900 text-[15px] leading-snug">{title}</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5 mb-3">{subtitle}</p>
+                <p className="text-sm text-slate-700 leading-relaxed">{section.insight}</p>
+                {(section.evidence?.length ?? 0) > 0 && (
+                  <ul className="mt-3 space-y-1.5">
+                    {section.evidence!.slice(0, 3).map((ev, i) => (
+                      <li key={i} className="flex items-start gap-2 text-xs text-slate-500">
+                        <span className="mt-1.5 w-1 h-1 rounded-full bg-slate-300 flex-shrink-0" />
+                        {ev}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Organisational State (formerly Going In Brain) ────────────────────────────
+
 function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }: {
   discoveryOutput: any;
   discoverAnalysis: DiscoverAnalysis | null;
@@ -252,6 +423,20 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
     () => buildDiscoveryGlobe(discoverAnalysis, discoveryOutput, conversationReports),
     [discoverAnalysis, discoveryOutput, conversationReports],
   );
+
+  // Signal distribution — computed from globe node types
+  const signalDistribution = useMemo(() => {
+    const friction = globeNodes.filter((n) => ['CONSTRAINT', 'FRICTION', 'CHALLENGE'].includes(n.type)).length;
+    const aspiration = globeNodes.filter((n) => ['VISION', 'BELIEF'].includes(n.type)).length;
+    const enabler = globeNodes.filter((n) => n.type === 'ENABLER').length;
+    const total = Math.max(1, friction + aspiration + enabler);
+    const frictionPct = Math.round((friction / total) * 100);
+    const aspirationPct = Math.round((aspiration / total) * 100);
+    const enablerPct = 100 - frictionPct - aspirationPct;
+    const dominant = frictionPct >= aspirationPct && frictionPct >= enablerPct ? 'friction'
+      : aspirationPct >= enablerPct ? 'aspiration' : 'enabler';
+    return { frictionPct, aspirationPct, enablerPct, dominant };
+  }, [globeNodes]);
 
   // Per-role disposition — groups reports by participantRole, classifies each group
   const roleDispositions = useMemo(() => {
@@ -286,7 +471,7 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
         <Brain className="h-6 w-6 text-slate-300 mx-auto mb-3" />
         <p className="text-sm font-medium text-slate-600">No discovery signal data yet</p>
         <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-          Complete discovery interviews to activate the Going In Brain — no analysis required.
+          Complete discovery interviews to activate Organisational State — no analysis required.
         </p>
       </Card>
     );
@@ -361,20 +546,15 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
         <div className="flex items-center gap-2 mb-2">
           <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
           <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-            Going In Brain — Pre-Workshop State
+            Organisational State — Pre-Workshop Cognitive Signal
           </p>
           <span className="ml-auto text-[9px] text-slate-500 uppercase tracking-wider">
             Derived from {dataSource}
           </span>
         </div>
-        <p className="text-sm text-slate-300 leading-relaxed mb-1">
-          Signal intelligence before the workshop begins — the organisation's cognitive state going in.
+        <p className="text-sm text-slate-300 leading-relaxed">
+          The cognitive condition of the organisation entering the workshop. What signals dominate collective thinking.
         </p>
-        {discoveryOutput?.finalDiscoverySummary && (
-          <p className="text-sm text-slate-100 leading-relaxed mt-3 pt-3 border-t border-slate-700">
-            {discoveryOutput.finalDiscoverySummary}
-          </p>
-        )}
       </div>
 
       {/* Two-column: Globe left, Insights right */}
@@ -382,6 +562,37 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
 
         {/* LEFT — Discovery Signal Globe */}
         <div>
+          {/* Signal distribution bar */}
+          {globeNodes.length > 0 && (
+            <div className="mb-4 rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
+              <p className="text-[9px] font-bold tracking-widest text-slate-400 uppercase mb-2">
+                Discovery Signal Distribution
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all ${
+                  signalDistribution.dominant === 'friction'
+                    ? 'bg-red-100 text-red-700 ring-1 ring-red-300'
+                    : 'bg-red-50 text-red-500'
+                }`}>
+                  Operational Friction — {signalDistribution.frictionPct}%
+                </span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all ${
+                  signalDistribution.dominant === 'aspiration'
+                    ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300'
+                    : 'bg-emerald-50 text-emerald-600'
+                }`}>
+                  Aspiration — {signalDistribution.aspirationPct}%
+                </span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all ${
+                  signalDistribution.dominant === 'enabler'
+                    ? 'bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300'
+                    : 'bg-indigo-50 text-indigo-500'
+                }`}>
+                  Enablers — {signalDistribution.enablerPct}%
+                </span>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-2 mb-3">
             <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
               Discovery Signal Map
@@ -715,7 +926,7 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
   const [workshopName, setWorkshopName] = useState<string>('');
 
   // Tab control
-  const [activeTab, setActiveTab] = useState('perception');
+  const [activeTab, setActiveTab] = useState('executive-diagnostic');
 
   // Analysis generation state
   const [generatingAnalysis, setGeneratingAnalysis] = useState(false);
@@ -969,22 +1180,28 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
           <div className="border-b bg-background px-6 pt-3">
             <TabsList className="bg-transparent p-0 h-auto gap-0 border-0">
               <TabsTrigger
+                value="executive-diagnostic"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-indigo-500 data-[state=active]:text-indigo-600 data-[state=active]:bg-transparent bg-transparent px-4 pb-3 pt-0 text-sm font-medium text-slate-500 hover:text-slate-700"
+              >
+                Executive Diagnostic
+              </TabsTrigger>
+              <TabsTrigger
                 value="perception"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-indigo-500 data-[state=active]:text-indigo-600 data-[state=active]:bg-transparent bg-transparent px-4 pb-3 pt-0 text-sm font-medium text-slate-500 hover:text-slate-700"
               >
-                Perception Signal
+                Perception
               </TabsTrigger>
               <TabsTrigger
                 value="going-in-brain"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-indigo-500 data-[state=active]:text-indigo-600 data-[state=active]:bg-transparent bg-transparent px-4 pb-3 pt-0 text-sm font-medium text-slate-500 hover:text-slate-700"
               >
-                Going In Brain
+                Organisational State
               </TabsTrigger>
               <TabsTrigger
                 value="signal-analysis"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-indigo-500 data-[state=active]:text-indigo-600 data-[state=active]:bg-transparent bg-transparent px-4 pb-3 pt-0 text-sm font-medium text-slate-500 hover:text-slate-700"
               >
-                Signal Analysis
+                Structural Analysis
               </TabsTrigger>
             </TabsList>
           </div>
@@ -992,7 +1209,16 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
           {/* Tab content — scrollable within this area */}
           <div className="flex-1 overflow-y-auto">
 
-            {/* ── Tab 1: Perception Signal ─────────────────────────── */}
+            {/* ── Tab 1: Executive Diagnostic ──────────────────────── */}
+            <TabsContent value="executive-diagnostic" className="mt-0 p-6">
+              <ExecDiagnosticPanel
+                discoveryOutput={discoveryOutput}
+                workshopId={workshopId}
+                onGenerated={(updated) => setDiscoveryOutput(updated)}
+              />
+            </TabsContent>
+
+            {/* ── Tab 2: Perception ─────────────────────────────────── */}
             <TabsContent value="perception" className="mt-0 p-6">
               <DiscoveryOutputTab
                 data={discoveryOutput}
@@ -1001,20 +1227,20 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
               />
             </TabsContent>
 
-            {/* ── Tab 2: Going In Brain ────────────────────────────── */}
+            {/* ── Tab 3: Organisational State ───────────────────────── */}
             <TabsContent value="going-in-brain" className="mt-0 p-6">
               <GoingInBrain discoveryOutput={discoveryOutput} discoverAnalysis={discoverAnalysis} conversationReports={conversationReports} />
             </TabsContent>
 
-            {/* ── Tab 3: Signal Analysis ───────────────────────────── */}
+            {/* ── Tab 4: Structural Analysis ────────────────────────── */}
             <TabsContent value="signal-analysis" className="mt-0 p-6">
               <div className="space-y-8">
                 {/* Header + generate button */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-bold">Signal Analysis</h2>
+                    <h2 className="text-xl font-bold">Structural Analysis</h2>
                     <p className="text-sm text-muted-foreground mt-0.5">
-                      Alignment heatmap, constraint map, tensions and confidence — derived directly from discovery data
+                      Where the organisation is structurally fractured — domain misalignment, actor divergence, tensions and constraints
                     </p>
                   </div>
                   <Button
@@ -1066,21 +1292,11 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
                       </div>
                     )}
 
-                    {(discoverAnalysis.alignment?.themes?.length ?? 0) > 0 && (
-                      <Card className="p-6">
-                        <h3 className="font-bold text-lg mb-1">Alignment Heatmap</h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Actor × theme alignment and divergence across the organisation
-                        </p>
-                        <AlignmentHeatmap data={discoverAnalysis.alignment} showSampleSize />
-                      </Card>
-                    )}
-
                     {(discoverAnalysis.tensions?.tensions?.length ?? 0) > 0 && (
                       <Card className="p-6">
-                        <h3 className="font-bold text-lg mb-1">Tension Surface</h3>
+                        <h3 className="font-bold text-lg mb-1">Transformation Constraints</h3>
                         <p className="text-sm text-muted-foreground mb-4">
-                          Ranked unresolved tensions and competing perspectives
+                          Ranked unresolved tensions and competing perspectives — what is slowing or preventing transformation
                         </p>
                         <TensionSurface data={discoverAnalysis.tensions} />
                       </Card>
@@ -1088,11 +1304,21 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
                     {(discoverAnalysis.constraints?.constraints?.length ?? 0) > 0 && (
                       <Card className="p-6">
-                        <h3 className="font-bold text-lg mb-1">Constraint Map</h3>
+                        <h3 className="font-bold text-lg mb-1">Structural Barriers</h3>
                         <p className="text-sm text-muted-foreground mb-4">
-                          Weighted constraints and their dependencies
+                          Weighted constraints and dependencies — system fragmentation, capability gaps, operational instability
                         </p>
                         <ConstraintMap data={discoverAnalysis.constraints} />
+                      </Card>
+                    )}
+
+                    {(discoverAnalysis.alignment?.themes?.length ?? 0) > 0 && (
+                      <Card className="p-6">
+                        <h3 className="font-bold text-lg mb-1">Domain Misalignment</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Actor × theme alignment and divergence — where leadership and operational thinking diverge
+                        </p>
+                        <AlignmentHeatmap data={discoverAnalysis.alignment} showSampleSize />
                       </Card>
                     )}
 
@@ -1100,7 +1326,7 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
                       <Card className="p-6">
                         <h3 className="font-bold text-lg mb-1">Narrative Divergence</h3>
                         <p className="text-sm text-muted-foreground mb-4">
-                          Language and sentiment differences across organisational layers
+                          Language and sentiment differences across organisational layers — executive vs operational vs frontline
                         </p>
                         <NarrativeDivergence data={discoverAnalysis.narrative} />
                       </Card>
@@ -1108,9 +1334,9 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
                     {discoverAnalysis.confidence && (
                       <Card className="p-6">
-                        <h3 className="font-bold text-lg mb-1">Confidence Index</h3>
+                        <h3 className="font-bold text-lg mb-1">Transformation Readiness</h3>
                         <p className="text-sm text-muted-foreground mb-4">
-                          Certainty, hedging, and uncertainty distribution across domains
+                          Certainty, hedging and uncertainty across domains — signals of organisational confidence to execute change
                         </p>
                         <ConfidenceIndex data={discoverAnalysis.confidence} />
                       </Card>
