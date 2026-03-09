@@ -1,7 +1,7 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
-import { Loader2, BarChart2, RefreshCw, Info, Brain, TrendingUp, Eye, Zap } from 'lucide-react';
+import { use, useState, useEffect, useCallback, useRef } from 'react';
+import { Loader2, BarChart2, RefreshCw, Info, Brain, TrendingUp, Eye, Zap, SendHorizontal, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -293,6 +293,13 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
   const [generatingAnalysis, setGeneratingAnalysis] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState<string | null>(null);
 
+  // Discovery search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchAnswer, setSearchAnswer] = useState('');
+  const [searchStreaming, setSearchStreaming] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchAnswerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -387,6 +394,58 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
     }
   }, [workshopId]);
 
+  const handleSearch = useCallback(async (q?: string) => {
+    const query = (q ?? searchQuery).trim();
+    if (!query || searchStreaming) return;
+    setSearchAnswer('');
+    setSearchError(null);
+    setSearchStreaming(true);
+
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}/discovery-search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No stream');
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') break;
+          try {
+            const { text, error } = JSON.parse(payload);
+            if (error) throw new Error(error);
+            if (text) {
+              setSearchAnswer(prev => {
+                const next = prev + text;
+                // Scroll to answer
+                setTimeout(() => searchAnswerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 10);
+                return next;
+              });
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setSearchStreaming(false);
+    }
+  }, [workshopId, searchQuery, searchStreaming]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Page header */}
@@ -401,6 +460,54 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
             <p className="text-xs text-muted-foreground">{workshopName}</p>
           )}
         </div>
+      </div>
+
+      {/* Discovery search bar — persistent above tabs */}
+      <div className="border-b bg-slate-50/60 px-6 py-3">
+        <div className="flex items-center gap-2">
+          <Search className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') void handleSearch(); }}
+            placeholder="Ask anything about this discovery… e.g. What did the Technology team say about legacy systems?"
+            className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none"
+            disabled={searchStreaming}
+          />
+          {searchAnswer && !searchStreaming && (
+            <button
+              onClick={() => { setSearchAnswer(''); setSearchQuery(''); setSearchError(null); }}
+              className="text-slate-300 hover:text-slate-500 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => void handleSearch()}
+            disabled={!searchQuery.trim() || searchStreaming}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {searchStreaming
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : <SendHorizontal className="h-3 w-3" />}
+            Ask
+          </button>
+        </div>
+
+        {/* Answer panel */}
+        {(searchAnswer || searchError) && (
+          <div ref={searchAnswerRef} className="mt-3 rounded-lg bg-white border border-slate-100 px-4 py-3">
+            {searchError ? (
+              <p className="text-xs text-rose-500">{searchError}</p>
+            ) : (
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                {searchAnswer}
+                {searchStreaming && <span className="inline-block w-1 h-3.5 bg-indigo-400 ml-0.5 animate-pulse align-text-bottom" />}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Loading */}
