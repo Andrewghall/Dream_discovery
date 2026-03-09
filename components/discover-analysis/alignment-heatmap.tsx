@@ -25,11 +25,11 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
   } | null>(null);
 
   // Layout constants
-  const CELL_W = 90;
+  const CELL_W = 96;
   const CELL_H = 40;
-  const LABEL_LEFT = 160;
-  const LABEL_TOP = 80;
-  const GAP = 2;
+  const LABEL_LEFT = 168;
+  const LABEL_TOP = 96;
+  const GAP = 3;
 
   const { themes, actors, cells } = data;
 
@@ -106,24 +106,35 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
         className="font-sans"
       >
         {/* Actor labels (top) */}
-        {actors.map((actor, col) => (
-          <text
-            key={`actor-${col}`}
-            x={LABEL_LEFT + col * (CELL_W + GAP) + CELL_W / 2}
-            y={LABEL_TOP - 12}
-            textAnchor="middle"
-            className="fill-slate-600"
-            fontSize={11}
-            fontWeight={500}
-          >
-            {truncate(actor, 12)}
-            {showSampleSize && (
-              <tspan className="fill-slate-400" fontSize={9}>
-                {' '}(n={actorSampleSizes.get(actor) || 0})
-              </tspan>
-            )}
-          </text>
-        ))}
+        {actors.map((actor, col) => {
+          const cx = LABEL_LEFT + col * (CELL_W + GAP) + CELL_W / 2;
+          const n = actorSampleSizes.get(actor) || 0;
+          return (
+            <g key={`actor-${col}`}>
+              <text
+                x={cx}
+                y={LABEL_TOP - (showSampleSize ? 18 : 10)}
+                textAnchor="middle"
+                className="fill-slate-600"
+                fontSize={11}
+                fontWeight={600}
+              >
+                {truncate(toTitleCase(actor), 16)}
+              </text>
+              {showSampleSize && (
+                <text
+                  x={cx}
+                  y={LABEL_TOP - 6}
+                  textAnchor="middle"
+                  className="fill-slate-400"
+                  fontSize={9}
+                >
+                  n={n}
+                </text>
+              )}
+            </g>
+          );
+        })}
 
         {/* Theme labels (left) + cells */}
         {themes.map((theme, row) => (
@@ -137,7 +148,7 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
               fontSize={11}
               fontWeight={500}
             >
-              {truncate(theme, 22)}
+              {truncate(toTitleCase(theme), 24)}
             </text>
 
             {/* Cells */}
@@ -162,33 +173,22 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
               }
 
               return (
-                <g key={`cell-${row}-${col}`}>
-                  <rect
-                    x={x} y={y}
-                    width={CELL_W} height={CELL_H}
-                    rx={4}
-                    fill={getCellColor(cell.alignmentScore)}
-                    stroke="rgb(203, 213, 225)"
-                    strokeWidth={0.5}
-                    opacity={getCellOpacity(cell.utteranceCount)}
-                    className="cursor-pointer transition-opacity hover:opacity-100"
-                    onMouseEnter={(e) => {
-                      const rect = (e.target as SVGRectElement).getBoundingClientRect();
-                      setTooltip({ cell, x: rect.x + rect.width / 2, y: rect.y });
-                    }}
-                    onMouseLeave={() => setTooltip(null)}
-                  />
-                  {/* Utterance count */}
-                  <text
-                    x={x + CELL_W / 2}
-                    y={y + CELL_H / 2 + 4}
-                    textAnchor="middle"
-                    className="fill-slate-500 pointer-events-none"
-                    fontSize={10}
-                  >
-                    {cell.utteranceCount}
-                  </text>
-                </g>
+                <rect
+                  key={`cell-${row}-${col}`}
+                  x={x} y={y}
+                  width={CELL_W} height={CELL_H}
+                  rx={5}
+                  fill={getCellColor(cell.alignmentScore)}
+                  stroke="rgb(226, 232, 240)"
+                  strokeWidth={0.5}
+                  opacity={getCellOpacity(cell.utteranceCount)}
+                  className="cursor-pointer transition-opacity hover:opacity-100"
+                  onMouseEnter={(e) => {
+                    const rect = (e.target as SVGRectElement).getBoundingClientRect();
+                    setTooltip({ cell, x: rect.x + rect.width / 2, y: rect.y });
+                  }}
+                  onMouseLeave={() => setTooltip(null)}
+                />
               );
             })}
           </g>
@@ -244,4 +244,11 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
 
 function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max - 1) + '\u2026' : text;
+}
+
+/** Capitalise the first letter of each word (handles existing ALL-CAPS gracefully) */
+function toTitleCase(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/(?:^|\s|&|-)\S/g, (ch) => ch.toUpperCase());
 }
