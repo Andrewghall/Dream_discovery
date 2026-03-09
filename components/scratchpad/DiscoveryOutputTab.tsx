@@ -1,12 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Brain, ChevronDown } from 'lucide-react';
+import { Brain, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import { AiInsightCard } from './AiInsightCard';
 
 interface DiscoveryOutputTabProps {
   data: any;
+  workshopId?: string;
+  onGenerated?: (updated: any) => void;
   onChange?: (data: any) => void;
 }
 
@@ -60,12 +63,33 @@ const colorMap: Record<string, { border: string; bg: string; text: string; hex: 
 
 /* ── Main Component ───────────────────────────────────────────── */
 
-export function DiscoveryOutputTab({ data, onChange: _onChange }: DiscoveryOutputTabProps) {
+export function DiscoveryOutputTab({ data, workshopId, onGenerated, onChange: _onChange }: DiscoveryOutputTabProps) {
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    if (!workshopId) return;
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}/discovery-intelligence`, {
+        method: 'POST',
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to generate');
+      onGenerated?.(json.discoveryOutput);
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   if (!data) {
     return (
       <Card className="p-8 text-center">
         <p className="text-muted-foreground">
-          No discovery data yet. Run <strong>✦ Synthesise</strong> on the Insight Map to generate analysis.
+          No discovery data found. Run discovery interviews first.
         </p>
       </Card>
     );
@@ -170,14 +194,29 @@ export function DiscoveryOutputTab({ data, onChange: _onChange }: DiscoveryOutpu
           )}
         </>
       ) : (
-        /* Fallback when old synthesis data lacks executive intelligence sections */
-        <Card className="p-6 border border-dashed border-slate-200 text-center">
-          <Brain className="h-6 w-6 text-slate-300 mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-600">Executive intelligence analysis not yet generated</p>
-          <p className="text-xs text-slate-400 mt-1">
-            Run <strong>✦ Synthesise</strong> on the Insight Map to generate Operational Reality, Misalignment, Friction, and Readiness analysis.
+        /* Generate button — works from discovery data alone, no synthesis needed */
+        <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/30 p-6 text-center">
+          <Brain className="h-6 w-6 text-indigo-300 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-700 mb-1">Discovery Intelligence not yet generated</p>
+          <p className="text-xs text-slate-500 mb-4 max-w-sm mx-auto">
+            Generate executive intelligence from discovery interview data — no workshop required.
+            Produces Operational Reality, Misalignment, Friction, and Readiness analysis.
           </p>
-        </Card>
+          {generateError && (
+            <p className="text-xs text-rose-500 mb-3">{generateError}</p>
+          )}
+          <button
+            onClick={handleGenerate}
+            disabled={generating || !workshopId}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {generating ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" />Generating...</>
+            ) : (
+              <><Sparkles className="h-3.5 w-3.5" />Generate Discovery Intelligence</>
+            )}
+          </button>
+        </div>
       )}
 
       {/* ── Workshop Signals — collapsed domain breakdown ──────── */}
