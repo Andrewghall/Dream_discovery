@@ -1,42 +1,92 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import type { ConstraintMapData, ConstraintNode, ConstraintRelationship } from '@/lib/types/discover-analysis';
+import { useMemo } from 'react';
+import type { ConstraintMapData } from '@/lib/types/discover-analysis';
 
 interface ConstraintMapProps {
   data: ConstraintMapData;
-  /** When true, show computed impact score instead of raw weight */
   showImpactScore?: boolean;
   lensColors?: Record<string, { bg: string }>;
 }
 
-// Domain colours (muted executive-grade palette)
-const DOMAIN_COLORS: Record<string, string> = {
-  People: '#93c5fd',        // blue-300
-  Technology: '#fdba74',    // orange-300
-  Customer: '#c4b5fd',      // violet-300
-  Organisation: '#6ee7b7',  // emerald-300
-  Regulation: '#fca5a5',    // red-300
-  General: '#cbd5e1',       // slate-300
+// Domain chip colours
+const DOMAIN_COLORS: Record<string, { bg: string; text: string }> = {
+  People:       { bg: '#dbeafe', text: '#1d4ed8' },
+  Technology:   { bg: '#ffedd5', text: '#c2410c' },
+  Customer:     { bg: '#ede9fe', text: '#6d28d9' },
+  Organisation: { bg: '#d1fae5', text: '#065f46' },
+  Regulation:   { bg: '#fee2e2', text: '#b91c1c' },
+  General:      { bg: '#f1f5f9', text: '#475569' },
 };
 
-const SEVERITY_STROKE: Record<string, string> = {
-  critical: '#ef4444',
-  significant: '#f59e0b',
-  moderate: '#94a3b8',
-};
+const SEVERITY_CONFIG = {
+  critical: {
+    label: 'Critical',
+    bar: '#ef4444',
+    badge: { bg: '#fee2e2', text: '#b91c1c' },
+    dot: '#ef4444',
+  },
+  significant: {
+    label: 'Significant',
+    bar: '#f59e0b',
+    badge: { bg: '#fef3c7', text: '#92400e' },
+    dot: '#f59e0b',
+  },
+  moderate: {
+    label: 'Moderate',
+    bar: '#94a3b8',
+    badge: { bg: '#f1f5f9', text: '#475569' },
+    dot: '#94a3b8',
+  },
+} as const;
+
+const SEVERITY_ORDER: Array<'critical' | 'significant' | 'moderate'> = [
+  'critical',
+  'significant',
+  'moderate',
+];
 
 /**
- * Constraint Map — SVG directed graph of constraints and dependencies
+ * Constraint Map — Ranked readable list of organisational constraints.
  *
- * Layout: left-to-right hierarchy. Root constraints (no deps) on the left,
- * dependent constraints flowing right.
+ * Groups constraints by severity, shows full descriptions, weight bars,
+ * and blocking/amplifying relationships in plain English.
  */
 export function ConstraintMap({ data, showImpactScore, lensColors }: ConstraintMapProps) {
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const { grouped, maxWeight, blockMap, ampMap } = useMemo(() => {
+    const maxWeight = Math.max(1, ...data.constraints.map((c) => c.weight));
 
-  // Layout computation
-  const layout = useMemo(() => computeLayout(data), [data]);
+    // Map: constraintId → list of constraint descriptions it blocks
+    const blockMap = new Map<string, string[]>();
+    // Map: constraintId → list of constraint descriptions it amplifies
+    const ampMap = new Map<string, string[]>();
+
+    const descById = new Map(data.constraints.map((c) => [c.id, c.description]));
+
+    for (const rel of data.relationships) {
+      if (rel.type === 'blocks') {
+        const targets = blockMap.get(rel.source) ?? [];
+        const targetDesc = descById.get(rel.target);
+        if (targetDesc) targets.push(targetDesc);
+        blockMap.set(rel.source, targets);
+      } else if (rel.type === 'amplifies') {
+        const targets = ampMap.get(rel.source) ?? [];
+        const targetDesc = descById.get(rel.target);
+        if (targetDesc) targets.push(targetDesc);
+        ampMap.set(rel.source, targets);
+      }
+    }
+
+    // Group by severity, sorted by weight desc within each group
+    const grouped = SEVERITY_ORDER.map((severity) => ({
+      severity,
+      constraints: data.constraints
+        .filter((c) => c.severity === severity)
+        .sort((a, b) => b.weight - a.weight),
+    })).filter((g) => g.constraints.length > 0);
+
+    return { grouped, maxWeight, blockMap, ampMap };
+  }, [data]);
 
   if (data.constraints.length === 0) {
     return (
@@ -46,278 +96,112 @@ export function ConstraintMap({ data, showImpactScore, lensColors }: ConstraintM
     );
   }
 
-  const { positions, svgWidth, svgHeight } = layout;
-
   return (
-    <div className="relative overflow-x-auto">
-      <svg
-        width={svgWidth}
-        height={svgHeight}
-        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-        className="font-sans"
-      >
-        {/* Edges first (behind nodes) */}
-        {data.relationships.map((rel, i) => {
-          const from = positions.get(rel.source);
-          const to = positions.get(rel.target);
-          if (!from || !to) return null;
-
-          const strokeColor =
-            rel.type === 'blocks' ? '#ef4444' :
-            rel.type === 'amplifies' ? '#f59e0b' :
-            '#94a3b8';
-
-          const isDashed = rel.type === 'amplifies';
-
-          return (
-            <g key={`edge-${i}`}>
-              <line
-                x1={from.x + from.width}
-                y1={from.y + from.height / 2}
-                x2={to.x}
-                y2={to.y + to.height / 2}
-                stroke={strokeColor}
-                strokeWidth={1.5}
-                strokeDasharray={isDashed ? '4,3' : undefined}
-                markerEnd={`url(#arrow-${rel.type})`}
-                opacity={
-                  hoveredId === null ? 0.5 :
-                  hoveredId === rel.source || hoveredId === rel.target ? 0.9 : 0.15
-                }
-                className="transition-opacity"
-              />
-            </g>
-          );
-        })}
-
-        {/* Arrow markers */}
-        <defs>
-          {['depends_on', 'blocks', 'amplifies'].map((type) => (
-            <marker
-              key={type}
-              id={`arrow-${type}`}
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth={6}
-              markerHeight={6}
-              orient="auto"
-            >
-              <path
-                d="M 0 0 L 10 5 L 0 10 z"
-                fill={
-                  type === 'blocks' ? '#ef4444' :
-                  type === 'amplifies' ? '#f59e0b' :
-                  '#94a3b8'
-                }
-              />
-            </marker>
-          ))}
-        </defs>
-
-        {/* Nodes */}
-        {data.constraints.map((constraint) => {
-          const pos = positions.get(constraint.id);
-          if (!pos) return null;
-
-          const fill = lensColors?.[constraint.domain]?.bg || DOMAIN_COLORS[constraint.domain] || DOMAIN_COLORS.General;
-          const stroke = SEVERITY_STROKE[constraint.severity] || SEVERITY_STROKE.moderate;
-          const isHovered = hoveredId === constraint.id;
-          const isConnected = hoveredId !== null && data.relationships.some(
-            (r) => (r.source === hoveredId && r.target === constraint.id) ||
-                   (r.target === hoveredId && r.source === constraint.id),
-          );
-          const isDimmed = hoveredId !== null && !isHovered && !isConnected;
-
-          return (
-            <g
-              key={constraint.id}
-              onMouseEnter={() => setHoveredId(constraint.id)}
-              onMouseLeave={() => setHoveredId(null)}
-              className="cursor-pointer"
-              opacity={isDimmed ? 0.25 : 1}
-            >
-              <rect
-                x={pos.x}
-                y={pos.y}
-                width={pos.width}
-                height={pos.height}
-                rx={8}
-                fill={fill}
-                stroke={stroke}
-                strokeWidth={isHovered ? 2 : 1}
-                opacity={0.85}
-              />
-              {/* Description text (truncated) */}
-              <text
-                x={pos.x + pos.width / 2}
-                y={pos.y + pos.height / 2 - 4}
-                textAnchor="middle"
-                className="fill-slate-700"
-                fontSize={10}
-                fontWeight={500}
-              >
-                {truncate(constraint.description, 25)}
-              </text>
-              {/* Weight + domain */}
-              <text
-                x={pos.x + pos.width / 2}
-                y={pos.y + pos.height / 2 + 10}
-                textAnchor="middle"
-                className="fill-slate-500"
-                fontSize={8}
-              >
-                {constraint.domain} &middot; {showImpactScore ? 'impact' : 'w'}:{constraint.weight}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-
-      {/* Tooltip for hovered node */}
-      {hoveredId && (() => {
-        const constraint = data.constraints.find((c) => c.id === hoveredId);
-        const pos = positions.get(hoveredId);
-        if (!constraint || !pos) return null;
-
-        // Clamp tooltip so it never overflows the left edge (tooltip max-w-xs = 320px)
-        const TOOLTIP_W = 320;
-        const rawLeft = pos.x + pos.width / 2;
-        // If centering would push us left of the container, pin to left edge + small gap
-        const safeLeft = rawLeft - TOOLTIP_W / 2 < 8 ? TOOLTIP_W / 2 + 8 : rawLeft;
+    <div className="space-y-8">
+      {grouped.map(({ severity, constraints }) => {
+        const config = SEVERITY_CONFIG[severity];
         return (
-          <div
-            className="absolute z-50 bg-white border border-slate-200 rounded-lg shadow-lg p-3 max-w-xs pointer-events-none"
-            style={{
-              left: safeLeft,
-              top: pos.y - 10,
-              transform: 'translate(-50%, -100%)',
-            }}
-          >
-            <p className="text-sm font-medium text-slate-800 mb-1">{constraint.description}</p>
-            <div className="text-xs text-slate-500 space-y-0.5">
-              <div>Domain: {constraint.domain}</div>
-              <div>Severity: {constraint.severity}</div>
-              <div>Frequency: {constraint.frequency} mentions</div>
-              <div>Weight: {constraint.weight}</div>
+          <div key={severity}>
+            {/* Severity section header */}
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: config.dot }} />
+              <span
+                className="text-[10px] font-bold tracking-widest uppercase"
+                style={{ color: config.dot }}
+              >
+                {config.label}
+              </span>
+              <span className="text-[10px] text-slate-400">
+                — {constraints.length} constraint{constraints.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {constraints.map((c) => {
+                const domainStyle = lensColors?.[c.domain]
+                  ? { bg: lensColors[c.domain].bg, text: '#1e293b' }
+                  : DOMAIN_COLORS[c.domain] ?? DOMAIN_COLORS.General;
+
+                const weightPct = Math.round((c.weight / maxWeight) * 100);
+                const blockedBy = blockMap.get(c.id) ?? [];
+                const amplifies = ampMap.get(c.id) ?? [];
+
+                return (
+                  <div
+                    key={c.id}
+                    className="rounded-xl border border-slate-100 bg-white p-4 hover:border-slate-200 transition-colors"
+                  >
+                    {/* Top row: description + domain chip */}
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <p className="text-sm font-medium text-slate-800 leading-snug flex-1">
+                        {c.description}
+                      </p>
+                      <span
+                        className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap"
+                        style={{ backgroundColor: domainStyle.bg, color: domainStyle.text }}
+                      >
+                        {c.domain}
+                      </span>
+                    </div>
+
+                    {/* Weight bar */}
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                          {showImpactScore ? 'Impact score' : 'Weight'}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {c.weight} &nbsp;·&nbsp; ×{c.frequency} mentions
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${weightPct}%`, backgroundColor: config.bar }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Relationships in plain English */}
+                    {(blockedBy.length > 0 || amplifies.length > 0) && (
+                      <div className="border-t border-slate-50 pt-3 space-y-2">
+                        {blockedBy.length > 0 && (
+                          <div className="flex items-start gap-2">
+                            <span className="shrink-0 text-[10px] font-semibold text-red-500 uppercase tracking-wider mt-0.5">
+                              Blocks
+                            </span>
+                            <div className="flex flex-col gap-1">
+                              {blockedBy.map((desc, i) => (
+                                <span key={i} className="text-xs text-slate-600">
+                                  {desc}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {amplifies.length > 0 && (
+                          <div className="flex items-start gap-2">
+                            <span className="shrink-0 text-[10px] font-semibold text-amber-600 uppercase tracking-wider mt-0.5">
+                              Amplifies
+                            </span>
+                            <div className="flex flex-col gap-1">
+                              {amplifies.map((desc, i) => (
+                                <span key={i} className="text-xs text-slate-600">
+                                  {desc}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
-      })()}
-
-      {/* Legend */}
-      <div className="flex items-center gap-4 mt-3 px-2">
-        <div className="flex items-center gap-1.5">
-          <div className="w-6 h-0.5 bg-slate-400" />
-          <span className="text-xs text-slate-400">depends on</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-6 h-0.5 bg-red-400" />
-          <span className="text-xs text-slate-400">blocks</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-6 h-0.5 bg-amber-400" style={{ borderBottom: '1.5px dashed #f59e0b' }} />
-          <span className="text-xs text-slate-400">amplifies</span>
-        </div>
-      </div>
+      })}
     </div>
   );
-}
-
-// ── Layout computation ───────────────────────────────────────
-
-interface NodePosition {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-function computeLayout(data: ConstraintMapData): {
-  positions: Map<string, NodePosition>;
-  svgWidth: number;
-  svgHeight: number;
-} {
-  const NODE_W = 180;
-  const NODE_H = 44;
-  const GAP_X = 60;
-  const GAP_Y = 20;
-  const PADDING = 30;
-
-  const positions = new Map<string, NodePosition>();
-  const { constraints, relationships } = data;
-
-  if (constraints.length === 0) {
-    return { positions, svgWidth: 400, svgHeight: 200 };
-  }
-
-  // Build adjacency: which nodes does each depend on?
-  const dependsOn = new Map<string, Set<string>>();
-  for (const c of constraints) {
-    dependsOn.set(c.id, new Set());
-  }
-  for (const rel of relationships) {
-    if (rel.type === 'depends_on' && dependsOn.has(rel.source)) {
-      dependsOn.get(rel.source)!.add(rel.target);
-    }
-  }
-
-  // Topological layering: assign depth based on dependencies
-  const depths = new Map<string, number>();
-  const visited = new Set<string>();
-
-  function getDepth(id: string): number {
-    if (depths.has(id)) return depths.get(id)!;
-    if (visited.has(id)) return 0; // Cycle protection
-    visited.add(id);
-
-    const deps = dependsOn.get(id);
-    if (!deps || deps.size === 0) {
-      depths.set(id, 0);
-      return 0;
-    }
-
-    let maxDepDep = 0;
-    for (const dep of deps) {
-      maxDepDep = Math.max(maxDepDep, getDepth(dep) + 1);
-    }
-    depths.set(id, maxDepDep);
-    return maxDepDep;
-  }
-
-  for (const c of constraints) {
-    getDepth(c.id);
-  }
-
-  // Group by depth (column)
-  const columns = new Map<number, string[]>();
-  for (const c of constraints) {
-    const d = depths.get(c.id) || 0;
-    if (!columns.has(d)) columns.set(d, []);
-    columns.get(d)!.push(c.id);
-  }
-
-  // Position nodes
-  const maxCol = Math.max(0, ...columns.keys());
-  let maxY = 0;
-
-  for (let col = 0; col <= maxCol; col++) {
-    const ids = columns.get(col) || [];
-    const x = PADDING + col * (NODE_W + GAP_X);
-
-    for (let row = 0; row < ids.length; row++) {
-      const y = PADDING + row * (NODE_H + GAP_Y);
-      positions.set(ids[row], { x, y, width: NODE_W, height: NODE_H });
-      maxY = Math.max(maxY, y + NODE_H);
-    }
-  }
-
-  const svgWidth = PADDING * 2 + (maxCol + 1) * NODE_W + maxCol * GAP_X;
-  const svgHeight = maxY + PADDING;
-
-  return { positions, svgWidth: Math.max(svgWidth, 400), svgHeight: Math.max(svgHeight, 200) };
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max - 1) + '\u2026' : text;
 }
