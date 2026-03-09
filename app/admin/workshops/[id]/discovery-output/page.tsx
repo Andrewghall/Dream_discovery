@@ -176,8 +176,8 @@ function buildDiscoveryGlobe(
   // ── 4. Discovery sections (hemisphere synthesis) ─────────────
   const sections: any[] = discoveryOutput?.sections ?? [];
   for (const section of sections) {
-    // High optimistic → ENABLER
-    if ((section.sentiment?.optimistic || 0) > 25) {
+    // High optimistic → ENABLER (threshold lowered to 10 to capture more signal)
+    if ((section.sentiment?.optimistic || 0) > 10) {
       for (const theme of (section.topThemes ?? []).slice(0, 3)) {
         nodes.push({
           id: `section:enable:${section.domain}:${theme}`,
@@ -202,16 +202,19 @@ function buildDiscoveryGlobe(
     }
   }
 
-  // ── 5. Conversation reports → BELIEF nodes (one per participant) ──
+  // ── 5. Conversation reports → ENABLER (optimistic) / BELIEF (other) nodes ──
+  // Optimistic-tone participants map to ENABLER (middle zone) — they signal organisational capacity.
+  // All others map to BELIEF (aspiration zone) — they represent cognitive worldview going in.
   for (const report of conversationReports.slice(0, 20)) {
-    const summary = report.executiveSummary || '';
-    if (!summary) continue;
+    const isOptimistic = report.tone === 'optimistic' || report.tone === 'positive';
     nodes.push({
       id: `report:${report.participantId}`,
-      type: 'BELIEF',
+      type: isOptimistic ? 'ENABLER' : 'BELIEF',
       label: (report.participantName || 'Participant').split(' ')[0],
-      weight: report.tone === 'optimistic' ? 3 : report.tone === 'concerned' ? 2 : 1,
-      phaseTags: [],
+      weight: isOptimistic ? 3 : (report.tone === 'concerned' || report.tone === 'critical') ? 2 : 1,
+      phaseTags: report.participantRole
+        ? [report.participantRole.toLowerCase().replace(/\s+/g, '_')]
+        : [],
     });
   }
 
@@ -237,18 +240,45 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
   conversationReports: any[];
 }) {
   const [activeSignal, setActiveSignal] = useState<string | null>(null);
+  const [activeInsightTab, setActiveInsightTab] = useState<'signals' | 'disposition'>('signals');
+  const [nodeScale, setNodeScale] = useState(1.4);
 
   const sections: any[] = discoveryOutput?.sections ?? [];
   const hasSections = sections.length > 0;
   const hasAnalysis = discoverAnalysis != null;
   const hasReports = conversationReports.length > 0;
 
-  const { nodes: globeNodes, edges: globeEdges, balanceLabel } = useMemo(
+  const { nodes: globeNodes, edges: globeEdges } = useMemo(
     () => buildDiscoveryGlobe(discoverAnalysis, discoveryOutput, conversationReports),
     [discoverAnalysis, discoveryOutput, conversationReports],
   );
 
-  const [nodeScale, setNodeScale] = useState(1.4);
+  // Per-role disposition — groups reports by participantRole, classifies each group
+  const roleDispositions = useMemo(() => {
+    const roleGroups = new Map<string, any[]>();
+    for (const report of conversationReports) {
+      const role = report.participantRole || report.participantDepartment || 'Unknown';
+      if (!roleGroups.has(role)) roleGroups.set(role, []);
+      roleGroups.get(role)!.push(report);
+    }
+    return Array.from(roleGroups.entries())
+      .map(([role, reports]) => {
+        const concerned = reports.filter((r: any) =>
+          ['concerned', 'negative', 'critical'].includes(r.tone ?? ''),
+        ).length;
+        const optimistic = reports.filter((r: any) =>
+          ['optimistic', 'positive'].includes(r.tone ?? ''),
+        ).length;
+        const neutral = reports.length - concerned - optimistic;
+        const frictionRatio = concerned / (reports.length || 1);
+        const disposition =
+          frictionRatio > 0.6 ? 'Defensive' :
+          frictionRatio > 0.4 ? 'Fragmented' :
+          optimistic > reports.length / 2 ? 'Aligned' : 'Neutral';
+        return { role, count: reports.length, concerned, optimistic, neutral, frictionRatio, disposition };
+      })
+      .sort((a, b) => b.frictionRatio - a.frictionRatio);
+  }, [conversationReports]);
 
   if (!hasSections && !hasAnalysis && !hasReports) {
     return (
@@ -347,195 +377,15 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
         )}
       </div>
 
-      {/* Signal cards */}
-      <div className="grid grid-cols-5 gap-3">
-        {GOING_IN_SIGNALS.map((sig) => {
-          const strength = strengths[sig.key];
-          const colors = COLOR_CLASSES[sig.color];
-          const isActive = activeSignal === sig.key;
-          const isLive = strength > 0;
+      {/* Two-column: Globe left, Insights right */}
+      <div className="grid grid-cols-[55fr_45fr] gap-5 items-start">
 
-          return (
-            <button
-              key={sig.key}
-              onClick={() => setActiveSignal(isActive ? null : sig.key)}
-              className={`rounded-xl border p-4 text-left transition-all ${colors.card} bg-white hover:shadow-sm ${
-                isActive ? `ring-2 ${colors.ring} shadow-sm` : ''
-              } ${!isLive ? 'opacity-60' : ''}`}
-            >
-              <p className={`text-[9px] font-bold tracking-widest uppercase mb-2 ${colors.label}`}>
-                {sig.label}
-              </p>
-              <div className="mb-3">
-                {isLive ? (
-                  <p className={`text-2xl font-bold ${colors.label}`}>{strength}%</p>
-                ) : (
-                  <p className="text-xs text-slate-400 font-medium">—</p>
-                )}
-              </div>
-              {/* Signal strength bar */}
-              <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${colors.bar}`}
-                  style={{ width: `${strength}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-2 leading-snug">{sig.description}</p>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Expanded detail panel */}
-      {activeSignal && (() => {
-        const sig = GOING_IN_SIGNALS.find(s => s.key === activeSignal);
-        if (!sig) return null;
-        const colors = COLOR_CLASSES[sig.color];
-        const strength = strengths[sig.key];
-        const detailText = hasSections ? (sig as any).detail(sections, discoveryOutput) : null;
-
-        return (
-          <div className={`rounded-xl border-2 ${colors.card} bg-white p-5`}>
-            <div className="flex items-center gap-2 mb-3">
-              <div className={`w-2 h-2 rounded-full ${colors.bar}`} />
-              <p className={`text-[10px] font-bold tracking-widest uppercase ${colors.label}`}>
-                {sig.label} Signal — {strength > 0 ? `${strength}% strength` : 'Pre-workshop'}
-              </p>
-            </div>
-            <p className="text-xs text-slate-400 mb-3">{sig.description}</p>
-
-            {detailText ? (
-              <p className="text-sm text-slate-700 leading-relaxed">{detailText}</p>
-            ) : sig.empty ? (
-              <p className="text-sm text-slate-400 italic">{sig.empty}</p>
-            ) : (
-              <p className="text-sm text-slate-400 italic">No signal data available for this domain.</p>
-            )}
-
-            {/* ── Section-based breakdowns (when sections available) ── */}
-
-            {/* PERCEPTION — domain consensus bars */}
-            {activeSignal === 'perception' && hasSections && (
-              <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Domain Consensus</p>
-                {sections.map((s: any, i: number) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <p className="text-xs text-slate-500 w-28 truncate">{s.domain}</p>
-                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${s.consensusLevel || 0}%` }} />
-                    </div>
-                    <p className="text-xs text-slate-400 w-8 text-right">{s.consensusLevel || 0}%</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* INHIBITION — concern by domain */}
-            {activeSignal === 'inhibition' && hasSections && (
-              <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Concern Level by Domain</p>
-                {sections.slice().sort((a: any, b: any) => (b.sentiment?.concerned || 0) - (a.sentiment?.concerned || 0)).map((s: any, i: number) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <p className="text-xs text-slate-500 w-28 truncate">{s.domain}</p>
-                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-rose-400 rounded-full" style={{ width: `${s.sentiment?.concerned || 0}%` }} />
-                    </div>
-                    <p className="text-xs text-slate-400 w-8 text-right">{s.sentiment?.concerned || 0}%</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* IMAGINATION — optimism by domain */}
-            {activeSignal === 'imagination' && hasSections && (
-              <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Optimism Level by Domain</p>
-                {sections.slice().sort((a: any, b: any) => (b.sentiment?.optimistic || 0) - (a.sentiment?.optimistic || 0)).map((s: any, i: number) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <p className="text-xs text-slate-500 w-28 truncate">{s.domain}</p>
-                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-violet-400 rounded-full" style={{ width: `${s.sentiment?.optimistic || 0}%` }} />
-                    </div>
-                    <p className="text-xs text-slate-400 w-8 text-right">{s.sentiment?.optimistic || 0}%</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* ── Analysis-based breakdowns (when only discoverAnalysis available) ── */}
-
-            {/* PERCEPTION — top alignment divergence actors */}
-            {activeSignal === 'perception' && !hasSections && hasAnalysis && (() => {
-              const divergent = (discoverAnalysis!.alignment?.cells ?? [])
-                .filter((c: any) => c.alignmentScore < -0.05 && c.utteranceCount >= 2)
-                .sort((a: any, b: any) => a.alignmentScore - b.alignmentScore)
-                .slice(0, 6);
-              if (divergent.length === 0) return null;
-              return (
-                <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Alignment Divergence</p>
-                  {divergent.map((c: any, i: number) => (
-                    <div key={i} className="flex items-start gap-2">
-                      <span className="text-slate-300 text-xs mt-0.5">·</span>
-                      <p className="text-xs text-slate-600"><span className="font-medium">{c.actor}</span> on &ldquo;{c.theme}&rdquo; — score {c.alignmentScore.toFixed(2)}</p>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-
-            {/* INHIBITION — top constraints */}
-            {activeSignal === 'inhibition' && !hasSections && hasAnalysis && (() => {
-              const constraints = (discoverAnalysis!.constraints?.constraints ?? [])
-                .sort((a: any, b: any) => b.weight - a.weight).slice(0, 5);
-              if (constraints.length === 0) return null;
-              return (
-                <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Top Constraints</p>
-                  {constraints.map((c: any, i: number) => (
-                    <div key={i} className="flex items-start gap-2">
-                      <span className="text-slate-300 text-xs mt-0.5">·</span>
-                      <p className="text-xs text-slate-600">{c.description} <span className="text-slate-400">({c.domain}, {c.severity})</span></p>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-
-            {/* IMAGINATION — narrative future focus by layer */}
-            {activeSignal === 'imagination' && !hasSections && hasAnalysis && (() => {
-              const layers = discoverAnalysis!.narrative?.layers ?? [];
-              if (layers.length === 0) return null;
-              return (
-                <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Future Focus by Layer</p>
-                  {layers.map((l: any, i: number) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <p className="text-xs text-slate-500 w-28 capitalize">{l.layer}</p>
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-violet-400 rounded-full" style={{ width: `${Math.round((l.temporalFocus?.future || 0) * 100)}%` }} />
-                      </div>
-                      <p className="text-xs text-slate-400 w-8 text-right">{Math.round((l.temporalFocus?.future || 0) * 100)}%</p>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-        );
-      })()}
-
-      {/* ── Discovery Globe ──────────────────────────────────── */}
-      {globeNodes.length > 0 && (
+        {/* LEFT — Discovery Signal Globe */}
         <div>
           <div className="flex items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
-              <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-                Discovery Signal Map
-              </p>
-              <span className="text-[9px] text-slate-400">— pre-workshop cognitive landscape</span>
-            </div>
-            {/* Node size slider */}
+            <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+              Discovery Signal Map
+            </p>
             <div className="flex items-center gap-2">
               <span className="text-[9px] text-slate-400 uppercase tracking-wider">Node size</span>
               <input
@@ -549,34 +399,306 @@ function GoingInBrain({ discoveryOutput, discoverAnalysis, conversationReports }
               />
             </div>
           </div>
-          <DashboardHemisphereCanvas
-            nodes={globeNodes}
-            edges={globeEdges}
-            label="Discovery Phase"
-            nodeCount={globeNodes.length}
-            edgeCount={globeEdges.length}
-            balanceLabel={balanceLabel}
-            nodeScale={nodeScale}
-            className="w-full"
-          />
-          {/* Node type legend */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3 px-1">
-            {[
-              { type: 'VISION',      color: '#60a5fa', label: 'Aligned signal'   },
-              { type: 'BELIEF',      color: '#a78bfa', label: 'Participant view'  },
-              { type: 'ENABLER',     color: '#34d399', label: 'Enabler'           },
-              { type: 'CHALLENGE',   color: '#fb7185', label: 'Tension'           },
-              { type: 'FRICTION',    color: '#f97316', label: 'Friction'          },
-              { type: 'CONSTRAINT',  color: '#ef4444', label: 'Constraint'        },
-            ].map(({ color, label }) => (
-              <div key={label} className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                <span className="text-[10px] text-slate-400">{label}</span>
+          {globeNodes.length > 0 ? (
+            <>
+              <DashboardHemisphereCanvas
+                nodes={globeNodes}
+                edges={globeEdges}
+                label="Discovery Phase"
+                nodeCount={globeNodes.length}
+                edgeCount={globeEdges.length}
+                nodeScale={nodeScale}
+                className="w-full"
+              />
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3 px-1">
+                {[
+                  { color: '#60a5fa', label: 'Aligned signal' },
+                  { color: '#a78bfa', label: 'Participant view' },
+                  { color: '#34d399', label: 'Enabler' },
+                  { color: '#fb7185', label: 'Tension' },
+                  { color: '#f97316', label: 'Friction' },
+                  { color: '#ef4444', label: 'Constraint' },
+                ].map(({ color, label }) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                    <span className="text-[10px] text-slate-400">{label}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          ) : (
+            <div
+              className="rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-center"
+              style={{ height: 420 }}
+            >
+              <p className="text-sm text-slate-400">No signal data for globe yet</p>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* RIGHT — Insights panel with tabs */}
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          {/* Tab header */}
+          <div className="flex border-b border-slate-100">
+            <button
+              onClick={() => setActiveInsightTab('signals')}
+              className={`flex-1 px-4 py-2.5 text-[10px] font-bold tracking-wider uppercase transition-colors ${
+                activeInsightTab === 'signals'
+                  ? 'text-indigo-600 border-b-2 border-indigo-500 bg-indigo-50/50'
+                  : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              Signal Strengths
+            </button>
+            <button
+              onClick={() => setActiveInsightTab('disposition')}
+              className={`flex-1 px-4 py-2.5 text-[10px] font-bold tracking-wider uppercase transition-colors ${
+                activeInsightTab === 'disposition'
+                  ? 'text-indigo-600 border-b-2 border-indigo-500 bg-indigo-50/50'
+                  : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              Disposition by Role
+            </button>
+          </div>
+
+          {/* ── Signals tab ───────────────────────────── */}
+          {activeInsightTab === 'signals' && (
+            <div className="p-4 space-y-1.5">
+              {GOING_IN_SIGNALS.map((sig) => {
+                const strength = strengths[sig.key as keyof typeof strengths];
+                const colors = COLOR_CLASSES[sig.color];
+                const isActive = activeSignal === sig.key;
+                const isLive = strength > 0;
+                return (
+                  <div key={sig.key}>
+                    <button
+                      onClick={() => setActiveSignal(isActive ? null : sig.key)}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border transition-all text-left
+                        ${colors.card} bg-white hover:bg-slate-50
+                        ${isActive ? `ring-2 ${colors.ring}` : ''}
+                        ${!isLive ? 'opacity-50' : ''}`}
+                    >
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${colors.bar}`} />
+                      <p className={`text-[9px] font-bold tracking-widest uppercase ${colors.label} w-20 shrink-0`}>
+                        {sig.label}
+                      </p>
+                      <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${colors.bar}`}
+                          style={{ width: `${strength}%` }}
+                        />
+                      </div>
+                      <p className={`text-sm font-bold ${colors.label} w-9 text-right shrink-0`}>
+                        {isLive ? `${strength}%` : '—'}
+                      </p>
+                    </button>
+
+                    {/* Inline expanded detail */}
+                    {isActive && (() => {
+                      const detailText = hasSections
+                        ? (sig as any).detail(sections, discoveryOutput)
+                        : null;
+                      return (
+                        <div className={`rounded-lg border ${colors.card} bg-slate-50 p-3 mt-1`}>
+                          <p className="text-[10px] text-slate-400 mb-2 italic">{sig.description}</p>
+                          {detailText ? (
+                            <p className="text-xs text-slate-700 leading-relaxed mb-2">{detailText}</p>
+                          ) : sig.empty ? (
+                            <p className="text-xs text-slate-400 italic mb-2">{sig.empty}</p>
+                          ) : null}
+
+                          {/* PERCEPTION — domain consensus bars */}
+                          {sig.key === 'perception' && hasSections && (
+                            <div className="space-y-1.5">
+                              <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Domain Consensus</p>
+                              {sections.map((s: any, i: number) => (
+                                <div key={i} className="flex items-center gap-2">
+                                  <p className="text-[10px] text-slate-500 w-24 truncate">{s.domain}</p>
+                                  <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                                    <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${s.consensusLevel || 0}%` }} />
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 w-7 text-right">{s.consensusLevel || 0}%</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* PERCEPTION — alignment divergence (analysis fallback) */}
+                          {sig.key === 'perception' && !hasSections && hasAnalysis && (() => {
+                            const divergent = (discoverAnalysis!.alignment?.cells ?? [])
+                              .filter((c: any) => c.alignmentScore < -0.05 && c.utteranceCount >= 2)
+                              .sort((a: any, b: any) => a.alignmentScore - b.alignmentScore)
+                              .slice(0, 5);
+                            if (divergent.length === 0) return null;
+                            return (
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Alignment Divergence</p>
+                                {divergent.map((c: any, i: number) => (
+                                  <div key={i} className="flex items-start gap-1.5">
+                                    <span className="text-slate-300 text-[10px] mt-0.5">·</span>
+                                    <p className="text-[10px] text-slate-600">
+                                      <span className="font-medium">{c.actor}</span> on &ldquo;{c.theme}&rdquo; — {c.alignmentScore.toFixed(2)}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
+
+                          {/* INHIBITION — concern by domain */}
+                          {sig.key === 'inhibition' && hasSections && (
+                            <div className="space-y-1.5">
+                              <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Concern Level by Domain</p>
+                              {sections.slice().sort((a: any, b: any) => (b.sentiment?.concerned || 0) - (a.sentiment?.concerned || 0)).map((s: any, i: number) => (
+                                <div key={i} className="flex items-center gap-2">
+                                  <p className="text-[10px] text-slate-500 w-24 truncate">{s.domain}</p>
+                                  <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                                    <div className="h-full bg-rose-400 rounded-full" style={{ width: `${s.sentiment?.concerned || 0}%` }} />
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 w-7 text-right">{s.sentiment?.concerned || 0}%</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* INHIBITION — top constraints (analysis fallback) */}
+                          {sig.key === 'inhibition' && !hasSections && hasAnalysis && (() => {
+                            const constraints = (discoverAnalysis!.constraints?.constraints ?? [])
+                              .sort((a: any, b: any) => b.weight - a.weight).slice(0, 4);
+                            if (constraints.length === 0) return null;
+                            return (
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Top Constraints</p>
+                                {constraints.map((c: any, i: number) => (
+                                  <div key={i} className="flex items-start gap-1.5">
+                                    <span className="text-slate-300 text-[10px] mt-0.5">·</span>
+                                    <p className="text-[10px] text-slate-600">{c.description} <span className="text-slate-400">({c.severity})</span></p>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
+
+                          {/* IMAGINATION — optimism by domain */}
+                          {sig.key === 'imagination' && hasSections && (
+                            <div className="space-y-1.5">
+                              <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Optimism Level by Domain</p>
+                              {sections.slice().sort((a: any, b: any) => (b.sentiment?.optimistic || 0) - (a.sentiment?.optimistic || 0)).map((s: any, i: number) => (
+                                <div key={i} className="flex items-center gap-2">
+                                  <p className="text-[10px] text-slate-500 w-24 truncate">{s.domain}</p>
+                                  <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                                    <div className="h-full bg-violet-400 rounded-full" style={{ width: `${s.sentiment?.optimistic || 0}%` }} />
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 w-7 text-right">{s.sentiment?.optimistic || 0}%</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* IMAGINATION — narrative future focus (analysis fallback) */}
+                          {sig.key === 'imagination' && !hasSections && hasAnalysis && (() => {
+                            const layers = discoverAnalysis!.narrative?.layers ?? [];
+                            if (layers.length === 0) return null;
+                            return (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Future Focus by Layer</p>
+                                {layers.map((l: any, i: number) => (
+                                  <div key={i} className="flex items-center gap-2">
+                                    <p className="text-[10px] text-slate-500 w-24 capitalize">{l.layer}</p>
+                                    <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                                      <div className="h-full bg-violet-400 rounded-full" style={{ width: `${Math.round((l.temporalFocus?.future || 0) * 100)}%` }} />
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 w-7 text-right">{Math.round((l.temporalFocus?.future || 0) * 100)}%</p>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Disposition by Role tab ───────────────── */}
+          {activeInsightTab === 'disposition' && (
+            <div className="p-4 space-y-3">
+              {roleDispositions.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-sm text-slate-400">No participant role data</p>
+                  <p className="text-xs text-slate-300 mt-1">Complete discovery interviews to see disposition by role</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold">
+                    {conversationReports.length} participant{conversationReports.length !== 1 ? 's' : ''} across {roleDispositions.length} role{roleDispositions.length !== 1 ? 's' : ''}
+                  </p>
+                  {roleDispositions.map((rd) => {
+                    const dc =
+                      rd.disposition === 'Defensive'
+                        ? { badge: 'bg-red-100 text-red-700', row: 'bg-red-50', opt: 'bg-emerald-400', con: 'bg-rose-400' }
+                        : rd.disposition === 'Fragmented'
+                        ? { badge: 'bg-amber-100 text-amber-700', row: 'bg-amber-50', opt: 'bg-emerald-400', con: 'bg-amber-400' }
+                        : rd.disposition === 'Aligned'
+                        ? { badge: 'bg-emerald-100 text-emerald-700', row: 'bg-emerald-50', opt: 'bg-emerald-400', con: 'bg-rose-300' }
+                        : { badge: 'bg-slate-100 text-slate-600', row: 'bg-slate-50', opt: 'bg-emerald-400', con: 'bg-rose-400' };
+                    const total = rd.count || 1;
+                    return (
+                      <div key={rd.role} className={`rounded-lg ${dc.row} px-3 py-2.5`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="text-xs font-semibold text-slate-700">{rd.role}</p>
+                            <p className="text-[9px] text-slate-400">{rd.count} participant{rd.count !== 1 ? 's' : ''}</p>
+                          </div>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${dc.badge}`}>
+                            {rd.disposition}
+                          </span>
+                        </div>
+                        {/* Sentiment proportion bar */}
+                        <div className="flex h-1.5 rounded-full overflow-hidden gap-px">
+                          {rd.optimistic > 0 && (
+                            <div className={dc.opt} style={{ width: `${(rd.optimistic / total) * 100}%` }} />
+                          )}
+                          {rd.neutral > 0 && (
+                            <div className="bg-slate-200" style={{ width: `${(rd.neutral / total) * 100}%` }} />
+                          )}
+                          {rd.concerned > 0 && (
+                            <div className={dc.con} style={{ width: `${(rd.concerned / total) * 100}%` }} />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          {rd.optimistic > 0 && (
+                            <div className="flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              <span className="text-[9px] text-slate-400">{rd.optimistic} positive</span>
+                            </div>
+                          )}
+                          {rd.neutral > 0 && (
+                            <div className="flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                              <span className="text-[9px] text-slate-400">{rd.neutral} neutral</span>
+                            </div>
+                          )}
+                          {rd.concerned > 0 && (
+                            <div className="flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                              <span className="text-[9px] text-slate-400">{rd.concerned} concerned</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

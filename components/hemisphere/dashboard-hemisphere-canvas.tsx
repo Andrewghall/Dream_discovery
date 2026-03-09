@@ -171,13 +171,13 @@ export function DashboardHemisphereCanvas({
         const zy = cy - R * Math.cos(Math.PI * z.phi);
         const labelX = cx - R - 14 * dpr;
         ctx.globalAlpha = 0.75;
-        ctx.font = `bold ${9 * dpr}px sans-serif`;
+        ctx.font = `bold ${10 * dpr}px sans-serif`;
         ctx.fillStyle = z.color;
         ctx.textAlign = 'right';
         ctx.fillText('— ' + z.label, labelX, zy - 7 * dpr);
-        ctx.font = `${8 * dpr}px sans-serif`;
-        ctx.fillStyle = 'rgba(148,163,184,0.55)';
-        ctx.fillText(z.sub, labelX, zy + 4 * dpr);
+        ctx.font = `${9.5 * dpr}px sans-serif`;
+        ctx.fillStyle = 'rgba(148,163,184,0.82)';
+        ctx.fillText(z.sub, labelX, zy + 5 * dpr);
       }
       ctx.globalAlpha = 1;
       ctx.textAlign = 'left';
