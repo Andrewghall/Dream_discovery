@@ -1285,7 +1285,6 @@ export default function DownloadReportPage({ params }: PageProps) {
             <div>
               <SectionHeading
                 label="Executive Summary"
-                sublabel="Directly answers the workshop objective"
               />
 
               {reportSummary ? (

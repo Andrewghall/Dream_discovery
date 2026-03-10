@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Brain, Sparkles, RefreshCw, Loader2, CheckCircle2, AlertCircle, Clock,
   Bot, Zap, TrendingUp, AlertTriangle, Lightbulb, Target, Map, ChevronRight,
@@ -245,9 +245,13 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const hasIntelligence = !!intelligence;
-  const generatedAt = stored?.generatedAtMs
-    ? new Date(stored.generatedAtMs).toLocaleString()
-    : null;
+  // Format client-side only to avoid SSR/client hydration mismatch (#418)
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  useEffect(() => {
+    if (stored?.generatedAtMs) {
+      setGeneratedAt(new Date(stored.generatedAtMs).toLocaleString());
+    }
+  }, [stored?.generatedAtMs]);
 
   const activeSignalDef = SIGNALS.find((s) => s.key === activeSignal) ?? SIGNALS[0];
   const activeColors = SIGNAL_COLORS[activeSignalDef.color];
