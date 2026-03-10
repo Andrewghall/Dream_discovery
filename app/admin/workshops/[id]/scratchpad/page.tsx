@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
+  FileDown,
   Download,
   Loader2,
   ArrowLeft,
@@ -16,16 +17,37 @@ import {
   Pencil,
   Plus,
   X,
+  GripVertical,
+  ImagePlus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { nanoid } from 'nanoid';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  type DragStartEvent,
+  type DragEndEvent,
+  type DragOverEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
 import type { WorkshopOutputIntelligence } from '@/lib/output-intelligence/types';
-import type { ReportSummary } from '@/lib/output-intelligence/types';
+import type { ReportSummary, ReportSectionConfig, ReportLayout } from '@/lib/output-intelligence/types';
+import { defaultReportLayout } from '@/lib/output-intelligence/types';
 import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
 import { ReportPromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 import type { PromptOutput } from '@/components/scratchpad/ReportPromptOutput';
+import { DraggableSection, ItemToggle, DropIndicator } from '@/components/report-builder/DraggableSection';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -185,9 +207,13 @@ function AddItemInput({
 function ExecutiveSummaryBlock({
   summary,
   onUpdate,
+  excludedItems = [],
+  onToggleItem = () => {},
 }: {
   summary: ReportSummary;
   onUpdate: (updated: ReportSummary) => void;
+  excludedItems?: string[];
+  onToggleItem?: (id: string) => void;
 }) {
   const es = summary.executiveSummary;
 
@@ -232,29 +258,31 @@ function ExecutiveSummaryBlock({
           </p>
           <ul className="space-y-3">
             {es.whatWeFound.map((finding, i) => (
-              <li key={i} className="flex items-start gap-3 group/item">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary mt-0.5">
-                  {i + 1}
-                </span>
-                <EditableText
-                  value={finding}
-                  onSave={(v) => {
-                    const updated = es.whatWeFound.map((f, j) => j === i ? v : f);
-                    onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
-                  }}
-                  className="flex-1 text-sm text-foreground leading-relaxed"
-                />
-                <button
-                  onClick={() => {
-                    const updated = es.whatWeFound.filter((_, j) => j !== i);
-                    onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
-                  }}
-                  className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
-                  title="Remove finding"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </li>
+              <ItemToggle key={i} id={`finding:${i}`} excluded={excludedItems.includes(`finding:${i}`)} onToggle={onToggleItem}>
+                <div className="flex items-start gap-3 group/finding">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary mt-0.5">
+                    {i + 1}
+                  </span>
+                  <EditableText
+                    value={finding}
+                    onSave={(v) => {
+                      const updated = es.whatWeFound.map((f, j) => j === i ? v : f);
+                      onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
+                    }}
+                    className="flex-1 text-sm text-foreground leading-relaxed"
+                  />
+                  <button
+                    onClick={() => {
+                      const updated = es.whatWeFound.filter((_, j) => j !== i);
+                      onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
+                    }}
+                    className="opacity-0 group-hover/finding:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
+                    title="Remove finding"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </ItemToggle>
             ))}
           </ul>
           <AddItemInput
@@ -271,20 +299,22 @@ function ExecutiveSummaryBlock({
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {es.lensFindings.map((lf, i) => (
-                <div key={i} className="rounded-xl border border-border bg-muted/20 px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
-                    {lf.lens}
-                  </p>
-                  <EditableText
-                    value={lf.finding}
-                    onSave={(v) => {
-                      const updated = es.lensFindings.map((f, j) => j === i ? { ...f, finding: v } : f);
-                      onUpdate({ ...summary, executiveSummary: { ...es, lensFindings: updated } });
-                    }}
-                    multiline
-                    className="text-sm text-foreground leading-relaxed"
-                  />
-                </div>
+                <ItemToggle key={i} id={`lens:${lf.lens}`} excluded={excludedItems.includes(`lens:${lf.lens}`)} onToggle={onToggleItem}>
+                  <div className="rounded-xl border border-border bg-muted/20 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                      {lf.lens}
+                    </p>
+                    <EditableText
+                      value={lf.finding}
+                      onSave={(v) => {
+                        const updated = es.lensFindings.map((f, j) => j === i ? { ...f, finding: v } : f);
+                        onUpdate({ ...summary, executiveSummary: { ...es, lensFindings: updated } });
+                      }}
+                      multiline
+                      className="text-sm text-foreground leading-relaxed"
+                    />
+                  </div>
+                </ItemToggle>
               ))}
             </div>
           </div>
@@ -353,7 +383,15 @@ function ExecutiveSummaryBlock({
 
 // ── Supporting Evidence block ─────────────────────────────────────────────────
 
-function SupportingEvidenceBlock({ intelligence }: { intelligence: WorkshopOutputIntelligence }) {
+function SupportingEvidenceBlock({
+  intelligence,
+  excludedItems = [],
+  onToggleItem = () => {},
+}: {
+  intelligence: WorkshopOutputIntelligence;
+  excludedItems?: string[];
+  onToggleItem?: (id: string) => void;
+}) {
   const [showNew, setShowNew] = useState(false);
   const { discoveryValidation } = intelligence;
 
@@ -370,23 +408,25 @@ function SupportingEvidenceBlock({ intelligence }: { intelligence: WorkshopOutpu
           </div>
           <div className="divide-y divide-border">
             {discoveryValidation.confirmedIssues.map((ci, i) => (
-              <div key={i} className="px-5 py-3.5 flex items-start gap-3">
-                <span
-                  className={`mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${
-                    ci.confidence === 'high'
-                      ? 'bg-red-100 text-red-700'
-                      : ci.confidence === 'medium'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {ci.confidence}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">{ci.issue}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{ci.workshopEvidence}</p>
+              <ItemToggle key={i} id={`confirmed:${i}`} excluded={excludedItems.includes(`confirmed:${i}`)} onToggle={onToggleItem} className="px-5 py-3.5">
+                <div className="flex items-start gap-3">
+                  <span
+                    className={`mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${
+                      ci.confidence === 'high'
+                        ? 'bg-red-100 text-red-700'
+                        : ci.confidence === 'medium'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {ci.confidence}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">{ci.issue}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{ci.workshopEvidence}</p>
+                  </div>
                 </div>
-              </div>
+              </ItemToggle>
             ))}
           </div>
         </div>
@@ -414,11 +454,13 @@ function SupportingEvidenceBlock({ intelligence }: { intelligence: WorkshopOutpu
           {showNew && (
             <div className="divide-y divide-blue-100">
               {discoveryValidation.newIssues.map((ni, i) => (
-                <div key={i} className="px-5 py-3.5">
-                  <p className="text-sm font-medium text-foreground">{ni.issue}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{ni.workshopEvidence}</p>
-                  <p className="text-xs text-blue-700 mt-1 font-medium">→ {ni.significance}</p>
-                </div>
+                <ItemToggle key={i} id={`new:${i}`} excluded={excludedItems.includes(`new:${i}`)} onToggle={onToggleItem} className="px-5 py-3.5">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{ni.issue}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{ni.workshopEvidence}</p>
+                    <p className="text-xs text-blue-700 mt-1 font-medium">→ {ni.significance}</p>
+                  </div>
+                </ItemToggle>
               ))}
             </div>
           )}
@@ -430,7 +472,15 @@ function SupportingEvidenceBlock({ intelligence }: { intelligence: WorkshopOutpu
 
 // ── Root Causes block ─────────────────────────────────────────────────────────
 
-function RootCausesBlock({ intelligence }: { intelligence: WorkshopOutputIntelligence }) {
+function RootCausesBlock({
+  intelligence,
+  excludedItems = [],
+  onToggleItem = () => {},
+}: {
+  intelligence: WorkshopOutputIntelligence;
+  excludedItems?: string[];
+  onToggleItem?: (id: string) => void;
+}) {
   const { rootCause } = intelligence;
   const severityColor: Record<string, string> = {
     critical: 'bg-red-100 text-red-700 border-red-200',
@@ -451,44 +501,43 @@ function RootCausesBlock({ intelligence }: { intelligence: WorkshopOutputIntelli
       {/* Cause cards */}
       <div className="grid gap-3">
         {rootCause.rootCauses.map((rc) => (
-          <div
-            key={rc.rank}
-            className="rounded-xl border border-border bg-card px-5 py-4 flex items-start gap-4"
-          >
-            <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
-              <span className="text-xs font-bold text-muted-foreground font-mono">#{rc.rank}</span>
-              <span
-                className={`px-1.5 py-0.5 rounded border text-[10px] font-medium ${
-                  severityColor[rc.severity] ?? severityColor.moderate
-                }`}
-              >
-                {rc.severity}
-              </span>
+          <ItemToggle key={rc.rank} id={`cause:${rc.rank}`} excluded={excludedItems.includes(`cause:${rc.rank}`)} onToggle={onToggleItem}>
+            <div className="rounded-xl border border-border bg-card px-5 py-4 flex items-start gap-4">
+              <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
+                <span className="text-xs font-bold text-muted-foreground font-mono">#{rc.rank}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded border text-[10px] font-medium ${
+                    severityColor[rc.severity] ?? severityColor.moderate
+                  }`}
+                >
+                  {rc.severity}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <p className="text-sm font-semibold text-foreground">{rc.cause}</p>
+                <p className="text-xs text-muted-foreground">{rc.category}</p>
+                {rc.evidence.length > 0 && (
+                  <ul className="mt-1 space-y-0.5">
+                    {rc.evidence.slice(0, 2).map((e, i) => (
+                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                        <span className="shrink-0 mt-0.5">·</span>
+                        {e}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {rc.affectedLenses.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {rc.affectedLenses.map((l) => (
+                      <span key={l} className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground">
+                        {l}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex-1 min-w-0 space-y-1.5">
-              <p className="text-sm font-semibold text-foreground">{rc.cause}</p>
-              <p className="text-xs text-muted-foreground">{rc.category}</p>
-              {rc.evidence.length > 0 && (
-                <ul className="mt-1 space-y-0.5">
-                  {rc.evidence.slice(0, 2).map((e, i) => (
-                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                      <span className="shrink-0 mt-0.5">·</span>
-                      {e}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {rc.affectedLenses.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {rc.affectedLenses.map((l) => (
-                    <span key={l} className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground">
-                      {l}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          </ItemToggle>
         ))}
       </div>
     </div>
@@ -507,10 +556,14 @@ function SolutionDirectionBlock({
   summary,
   intelligence,
   onUpdate,
+  excludedItems = [],
+  onToggleItem = () => {},
 }: {
   summary: ReportSummary;
   intelligence: WorkshopOutputIntelligence;
   onUpdate: (updated: ReportSummary) => void;
+  excludedItems?: string[];
+  onToggleItem?: (id: string) => void;
 }) {
   const ss = summary.solutionSummary;
   const { roadmap, futureState } = intelligence;
@@ -550,46 +603,48 @@ function SolutionDirectionBlock({
         </p>
         <div className="space-y-3">
           {ss.whatMustChange.map((item, i) => (
-            <div key={i} className="rounded-xl border border-border bg-card p-4">
-              <EditableText
-                value={item.area}
-                onSave={(v) => {
-                  const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, area: v } : x);
-                  onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
-                }}
-                className="text-xs font-bold text-foreground mb-2.5"
-              />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2.5">
-                <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1">
-                    Today's Reality
-                  </p>
-                  <EditableText
-                    value={item.currentState}
-                    onSave={(v) => {
-                      const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, currentState: v } : x);
-                      onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
-                    }}
-                    multiline
-                    className="text-xs text-red-900 leading-relaxed"
-                  />
-                </div>
-                <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 mb-1">
-                    Required Change
-                  </p>
-                  <EditableText
-                    value={item.requiredChange}
-                    onSave={(v) => {
-                      const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, requiredChange: v } : x);
-                      onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
-                    }}
-                    multiline
-                    className="text-xs text-emerald-900 leading-relaxed"
-                  />
+            <ItemToggle key={i} id={`step:${i}`} excluded={excludedItems.includes(`step:${i}`)} onToggle={onToggleItem}>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <EditableText
+                  value={item.area}
+                  onSave={(v) => {
+                    const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, area: v } : x);
+                    onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
+                  }}
+                  className="text-xs font-bold text-foreground mb-2.5"
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2.5">
+                  <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1">
+                      Today's Reality
+                    </p>
+                    <EditableText
+                      value={item.currentState}
+                      onSave={(v) => {
+                        const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, currentState: v } : x);
+                        onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
+                      }}
+                      multiline
+                      className="text-xs text-red-900 leading-relaxed"
+                    />
+                  </div>
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 mb-1">
+                      Required Change
+                    </p>
+                    <EditableText
+                      value={item.requiredChange}
+                      onSave={(v) => {
+                        const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, requiredChange: v } : x);
+                        onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
+                      }}
+                      multiline
+                      className="text-xs text-emerald-900 leading-relaxed"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            </ItemToggle>
           ))}
         </div>
       </div>
@@ -631,41 +686,43 @@ function SolutionDirectionBlock({
             {roadmap.phases.map((phase, i) => {
               const colors = PHASE_COLORS[i] ?? PHASE_COLORS[0];
               return (
-                <div key={i} className={`rounded-xl border ${colors.border} ${colors.bg} p-5`}>
-                  <div className="flex items-start gap-3">
-                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${colors.num} text-xs font-bold`}>
-                      {i + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-3 mb-2">
-                        <p className={`text-sm font-bold ${colors.label}`}>{phase.phase}</p>
-                        <span className="text-xs text-muted-foreground shrink-0">{phase.timeframe}</span>
+                <ItemToggle key={i} id={`phase:${i}`} excluded={excludedItems.includes(`phase:${i}`)} onToggle={onToggleItem}>
+                  <div className={`rounded-xl border ${colors.border} ${colors.bg} p-5`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${colors.num} text-xs font-bold`}>
+                        {i + 1}
                       </div>
-                      {phase.initiatives.length > 0 && (
-                        <ul className="space-y-1.5">
-                          {phase.initiatives.map((init, j) => (
-                            <li key={j} className="flex items-start gap-2">
-                              <span className="text-muted-foreground shrink-0 text-xs mt-0.5">·</span>
-                              <span className="text-xs text-foreground">
-                                <span className="font-medium">{init.title}</span>
-                                {init.outcome ? ` — ${init.outcome}` : ''}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {phase.capabilities.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {phase.capabilities.map((c) => (
-                            <span key={c} className="px-1.5 py-0.5 rounded bg-white/60 border border-white text-[10px] text-foreground/70">
-                              {c}
-                            </span>
-                          ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-3 mb-2">
+                          <p className={`text-sm font-bold ${colors.label}`}>{phase.phase}</p>
+                          <span className="text-xs text-muted-foreground shrink-0">{phase.timeframe}</span>
                         </div>
-                      )}
+                        {phase.initiatives.length > 0 && (
+                          <ul className="space-y-1.5">
+                            {phase.initiatives.map((init, j) => (
+                              <li key={j} className="flex items-start gap-2">
+                                <span className="text-muted-foreground shrink-0 text-xs mt-0.5">·</span>
+                                <span className="text-xs text-foreground">
+                                  <span className="font-medium">{init.title}</span>
+                                  {init.outcome ? ` — ${init.outcome}` : ''}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {phase.capabilities.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {phase.capabilities.map((c) => (
+                              <span key={c} className="px-1.5 py-0.5 rounded bg-white/60 border border-white text-[10px] text-foreground/70">
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
+                </ItemToggle>
               );
             })}
           </div>
@@ -910,6 +967,125 @@ function JourneyIntroBlock({
   );
 }
 
+// ── Custom Section Editor ─────────────────────────────────────────────────────
+
+function CustomSectionEditor({
+  section,
+  workshopId,
+  onUpdate,
+}: {
+  section: ReportSectionConfig;
+  workshopId: string;
+  onUpdate: (patch: Partial<ReportSectionConfig>) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch(`/api/admin/workshops/${workshopId}/upload-section-image`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json() as { url: string };
+      onUpdate({ customContent: { ...section.customContent, imageUrl: data.url } });
+    } catch {
+      toast.error('Image upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Section title */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+          Section Title
+        </p>
+        <input
+          className="w-full text-sm bg-transparent border-b border-border focus:outline-none focus:border-primary pb-0.5 text-foreground"
+          value={section.title}
+          onChange={(e) => onUpdate({ title: e.target.value })}
+          placeholder="Section title…"
+        />
+      </div>
+
+      {/* Text content */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+          Content
+        </p>
+        <textarea
+          className="w-full text-sm bg-muted/20 border border-border rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
+          rows={4}
+          value={section.customContent?.text ?? ''}
+          onChange={(e) => onUpdate({ customContent: { ...section.customContent, text: e.target.value } })}
+          placeholder="Add text content for this section…"
+        />
+      </div>
+
+      {/* Image upload */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+          Image
+        </p>
+        {section.customContent?.imageUrl ? (
+          <div className="space-y-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={section.customContent.imageUrl}
+              alt={section.customContent.imageAlt ?? ''}
+              className="max-w-full rounded-lg border border-border"
+            />
+            <div className="flex items-center gap-2">
+              <input
+                className="flex-1 text-xs bg-transparent border-b border-border focus:outline-none focus:border-primary pb-0.5 text-foreground"
+                value={section.customContent?.imageAlt ?? ''}
+                onChange={(e) => onUpdate({ customContent: { ...section.customContent, imageAlt: e.target.value } })}
+                placeholder="Image caption / alt text…"
+              />
+              <button
+                onClick={() => onUpdate({ customContent: { ...section.customContent, imageUrl: '', imageAlt: '' } })}
+                className="text-xs text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border rounded-lg px-3 py-2.5 transition-colors disabled:opacity-50 w-full justify-center"
+          >
+            {uploading ? (
+              <><Loader2 className="h-3 w-3 animate-spin" /> Uploading…</>
+            ) : (
+              <><ImagePlus className="h-3 w-3" /> Upload image</>
+            )}
+          </button>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/svg+xml"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleImageUpload(file);
+            e.target.value = '';
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Agentic Prompt Bar ────────────────────────────────────────────────────────
 
 function AgenticPromptBar({
@@ -1137,7 +1313,10 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [exporting, setExporting] = useState(false);
   const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [showJourneyMap, setShowJourneyMap] = useState(true);
+  // ── Report builder layout ─────────────────────────────────────────
+  const [layout, setLayout] = useState<ReportLayout>(defaultReportLayout());
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [overDragId, setOverDragId] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -1168,7 +1347,12 @@ export default function DownloadReportPage({ params }: PageProps) {
 
       if (summaryRes.ok) {
         const d = await summaryRes.json();
-        if (d.reportSummary) setReportSummary(d.reportSummary as ReportSummary);
+        if (d.reportSummary) {
+          const rs = d.reportSummary as ReportSummary;
+          setReportSummary(rs);
+          // Restore saved layout if it exists
+          if (rs.layout?.sections?.length) setLayout(rs.layout);
+        }
       }
 
       // Fetch journey versions (non-fatal)
@@ -1234,6 +1418,142 @@ export default function DownloadReportPage({ params }: PageProps) {
     }
   };
 
+  // ── Layout helpers ─────────────────────────────────────────────────────────
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const updateLayout = useCallback((updated: ReportLayout) => {
+    setLayout(updated);
+    // Save layout alongside reportSummary
+    if (reportSummary) {
+      const rs = { ...reportSummary, layout: updated };
+      setReportSummary(rs);
+      // Debounce handled by handleSummaryUpdate below — call directly
+      void (async () => {
+        try {
+          await fetch(`/api/admin/workshops/${workshopId}/report-summary`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reportSummary: rs }),
+          });
+        } catch { /* non-fatal */ }
+      })();
+    }
+  }, [reportSummary, workshopId]);
+
+  const updateSection = useCallback((id: string, patch: Partial<ReportSectionConfig>) => {
+    setLayout(prev => {
+      const next = { ...prev, sections: prev.sections.map(s => s.id === id ? { ...s, ...patch } : s) };
+      updateLayout(next);
+      return next;
+    });
+  }, [updateLayout]);
+
+  const toggleItem = useCallback((sectionId: string, itemId: string) => {
+    setLayout(prev => {
+      const next = {
+        ...prev,
+        sections: prev.sections.map(s => {
+          if (s.id !== sectionId) return s;
+          const excluded = s.excludedItems.includes(itemId)
+            ? s.excludedItems.filter(i => i !== itemId)
+            : [...s.excludedItems, itemId];
+          return { ...s, excludedItems: excluded };
+        }),
+      };
+      updateLayout(next);
+      return next;
+    });
+  }, [updateLayout]);
+
+  const addCustomSection = useCallback(() => {
+    const newSection: ReportSectionConfig = {
+      id: `custom_${nanoid(8)}`,
+      type: 'custom',
+      title: 'New Section',
+      enabled: true,
+      collapsed: false,
+      excludedItems: [],
+      customContent: { text: '', imageUrl: '', imageAlt: '' },
+    };
+    setLayout(prev => {
+      const next = { ...prev, sections: [...prev.sections, newSection] };
+      updateLayout(next);
+      return next;
+    });
+  }, [updateLayout]);
+
+  const removeSection = useCallback((id: string) => {
+    setLayout(prev => {
+      const next = { ...prev, sections: prev.sections.filter(s => s.id !== id) };
+      updateLayout(next);
+      return next;
+    });
+  }, [updateLayout]);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(String(event.active.id));
+  };
+  const handleDragOver = (event: DragOverEvent) => {
+    setOverDragId(event.over ? String(event.over.id) : null);
+  };
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragId(null);
+    setOverDragId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setLayout(prev => {
+      const oldIndex = prev.sections.findIndex(s => s.id === active.id);
+      const newIndex = prev.sections.findIndex(s => s.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      const next = { ...prev, sections: arrayMove(prev.sections, oldIndex, newIndex) };
+      updateLayout(next);
+      return next;
+    });
+  };
+
+  // ── PDF export ──────────────────────────────────────────────────────────────
+
+  const handleExportPdf = async () => {
+    if (!intelligence || !reportSummary) {
+      toast.error('Generate the report summary first before exporting PDF');
+      return;
+    }
+    try {
+      setExporting(true);
+      const res = await fetch(`/api/admin/workshops/${workshopId}/export-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reportSummary,
+          intelligence,
+          layout,
+          liveJourneyData,
+          workshopName: workshop?.name,
+          orgName: workshop?.organization?.name,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Export failed' })) as { error: string };
+        throw new Error(err.error || 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${workshop?.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'workshop'}-discovery-report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('PDF downloaded!');
+    } catch (err) {
+      toast.error(`PDF export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Called whenever user edits any field — updates local state and debounce-saves to DB
   const handleSummaryUpdate = useCallback((updated: ReportSummary) => {
     setReportSummary(updated);
@@ -1256,32 +1576,7 @@ export default function DownloadReportPage({ params }: PageProps) {
     }, 800);
   }, [workshopId]);
 
-  const handleExport = async () => {
-    try {
-      setExporting(true);
-      const response = await fetch(`/api/admin/workshops/${workshopId}/export-html`, {
-        method: 'POST',
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Export failed' }));
-        throw new Error(err.error || 'Failed to export');
-      }
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${workshop?.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'workshop'}-report.zip`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast.success("Report exported! Upload the ZIP contents to your client's domain.");
-    } catch (err) {
-      toast.error(`Failed to export: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setExporting(false);
-    }
-  };
+  // handleExport removed — replaced by handleExportPdf above
 
   // ── Loading ───────────────────────────────────────────────────────────────
 
@@ -1368,17 +1663,17 @@ export default function DownloadReportPage({ params }: PageProps) {
               </Button>
             )}
             <Button
-              onClick={handleExport}
-              disabled={exporting || !intelligence}
+              onClick={handleExportPdf}
+              disabled={exporting || !intelligence || !reportSummary}
               size="sm"
               className="gap-2"
             >
               {exporting ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Download className="h-3.5 w-3.5" />
+                <FileDown className="h-3.5 w-3.5" />
               )}
-              {exporting ? 'Exporting…' : 'Export HTML'}
+              {exporting ? 'Generating PDF…' : 'Generate PDF'}
             </Button>
           </div>
         </div>
@@ -1434,140 +1729,206 @@ export default function DownloadReportPage({ params }: PageProps) {
           </div>
         )}
 
-        {/* ── EXECUTIVE SUMMARY ──────────────────────────────────────────── */}
+        {/* ── REPORT BUILDER — DnD sortable sections ──────────────────── */}
         {intelligence && (
-          <>
-            <div>
-              <SectionHeading
-                label="Executive Summary"
-              />
-
-              {reportSummary ? (
-                <ExecutiveSummaryBlock summary={reportSummary} onUpdate={handleSummaryUpdate} />
-              ) : (
-                <GenerateSummaryCta
-                  workshopId={workshopId}
-                  onComplete={(s) => setReportSummary(s)}
-                />
-              )}
-            </div>
-
-            {/* ── SUPPORTING EVIDENCE ──────────────────────────────────── */}
-            <div>
-              <SectionHeading
-                label="Supporting Evidence"
-                sublabel="Issues confirmed and surfaced during the workshop"
-              />
-              <SupportingEvidenceBlock intelligence={intelligence} />
-            </div>
-
-            {/* ── ROOT CAUSES ──────────────────────────────────────────── */}
-            <div>
-              <SectionHeading
-                label="Root Causes"
-                sublabel="Why these issues exist — ranked by severity"
-              />
-              <RootCausesBlock intelligence={intelligence} />
-            </div>
-
-            {/* ── SOLUTION DIRECTION ───────────────────────────────────── */}
-            {reportSummary && (
-              <div>
-                <SectionHeading
-                  label="Solution Direction"
-                  sublabel="Given the ask and findings, the recommended way forward"
-                />
-                <SolutionDirectionBlock summary={reportSummary} intelligence={intelligence} onUpdate={handleSummaryUpdate} />
-
-                {/* Regenerate button */}
-                <div className="mt-3 flex justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-muted-foreground gap-1.5 h-7"
-                    onClick={() => setReportSummary(null)}
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Regenerate summary
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* ── JOURNEY MAP ──────────────────────────────────────────── */}
-            {liveJourneyData && (
-              <div>
-                <SectionHeading
-                  label="Customer Journey"
-                  sublabel="Actor swim-lanes from the live workshop session"
-                />
-                {/* Journey controls row */}
-                <div className="flex items-center justify-between -mt-3 mb-3 gap-3">
-                  {/* Version picker */}
-                  {journeyVersions.length > 1 && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="text-[10px] uppercase tracking-wide font-medium">Session:</span>
-                      <select
-                        value={selectedVersionId ?? ''}
-                        onChange={async (e) => {
-                          const id = e.target.value;
-                          setSelectedVersionId(id);
-                          await loadJourneyVersion(id);
-                        }}
-                        className="text-xs border border-border rounded px-1.5 py-0.5 bg-background text-foreground"
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={layout.sections.map(s => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-2">
+                {layout.sections.map((cfg) => {
+                  const isOver = overDragId === cfg.id && activeDragId !== cfg.id;
+                  return (
+                    <div key={cfg.id}>
+                      <DropIndicator isOver={isOver} />
+                      <DraggableSection
+                        config={cfg}
+                        onToggleEnabled={() => updateSection(cfg.id, { enabled: !cfg.enabled })}
+                        onToggleCollapsed={() => updateSection(cfg.id, { collapsed: !cfg.collapsed })}
+                        onRemove={cfg.type === 'custom' ? () => removeSection(cfg.id) : undefined}
                       >
-                        {journeyVersions.map((v, i) => (
-                          <option key={v.id} value={v.id}>
-                            v{v.version} — {v.dialoguePhase}{i === 0 ? ' (latest)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3 ml-auto">
-                    {/* Regenerate from full data */}
-                    <button
-                      onClick={handleRegenerateJourney}
-                      disabled={journeyRegenerating}
-                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                    >
-                      {journeyRegenerating
-                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Regenerating…</>
-                        : <><RefreshCw className="h-3 w-3" /> Regenerate from full data</>
-                      }
-                    </button>
-                    {/* Include/exclude toggle */}
-                    <button
-                      onClick={() => setShowJourneyMap(v => !v)}
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <span className={`inline-flex h-4 w-7 items-center rounded-full border transition-colors ${showJourneyMap ? 'bg-foreground/15 border-foreground/20' : 'bg-muted border-border'}`}>
-                        <span className={`h-3.5 w-3.5 rounded-full bg-background shadow-sm border border-border transition-transform ${showJourneyMap ? 'translate-x-3' : 'translate-x-0'}`} />
-                      </span>
-                      {showJourneyMap ? 'Included in report' : 'Excluded from report'}
-                    </button>
-                  </div>
-                </div>
-                {showJourneyMap && (
-                  <>
-                    {/* Journey intro text */}
-                    <JourneyIntroBlock
-                      workshopId={workshopId}
-                      journey={liveJourneyData}
-                      value={reportSummary?.journeyIntro ?? ''}
-                      onChange={(v) => {
-                        if (reportSummary) handleSummaryUpdate({ ...reportSummary, journeyIntro: v });
-                      }}
-                      disabled={!reportSummary}
-                    />
-                    <JourneyDownloadBar workshopId={workshopId} />
-                    <LiveJourneyMap data={liveJourneyData} mode="output" />
-                  </>
-                )}
-              </div>
-            )}
+                        {/* ── Executive Summary ── */}
+                        {cfg.id === 'executive_summary' && (
+                          <div className="p-1">
+                            {reportSummary ? (
+                              <ExecutiveSummaryBlock
+                                summary={reportSummary}
+                                onUpdate={handleSummaryUpdate}
+                                excludedItems={cfg.excludedItems}
+                                onToggleItem={(id) => toggleItem(cfg.id, id)}
+                              />
+                            ) : (
+                              <div className="p-3">
+                                <GenerateSummaryCta
+                                  workshopId={workshopId}
+                                  onComplete={(s) => setReportSummary(s)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
 
-          </>
+                        {/* ── Supporting Evidence ── */}
+                        {cfg.id === 'supporting_evidence' && (
+                          <div className="p-4">
+                            <SupportingEvidenceBlock
+                              intelligence={intelligence}
+                              excludedItems={cfg.excludedItems}
+                              onToggleItem={(id) => toggleItem(cfg.id, id)}
+                            />
+                          </div>
+                        )}
+
+                        {/* ── Root Causes ── */}
+                        {cfg.id === 'root_causes' && (
+                          <div className="p-4">
+                            <RootCausesBlock
+                              intelligence={intelligence}
+                              excludedItems={cfg.excludedItems}
+                              onToggleItem={(id) => toggleItem(cfg.id, id)}
+                            />
+                          </div>
+                        )}
+
+                        {/* ── Solution Direction ── */}
+                        {cfg.id === 'solution_direction' && (
+                          <div className="p-4">
+                            {reportSummary ? (
+                              <>
+                                <SolutionDirectionBlock
+                                  summary={reportSummary}
+                                  intelligence={intelligence}
+                                  onUpdate={handleSummaryUpdate}
+                                  excludedItems={cfg.excludedItems}
+                                  onToggleItem={(id) => toggleItem(cfg.id, id)}
+                                />
+                                <div className="mt-3 flex justify-end">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-xs text-muted-foreground gap-1.5 h-7"
+                                    onClick={() => setReportSummary(null)}
+                                  >
+                                    <RefreshCw className="h-3 w-3" />
+                                    Regenerate summary
+                                  </Button>
+                                </div>
+                              </>
+                            ) : (
+                              <p className="text-xs text-muted-foreground py-2">
+                                Generate the executive summary first to populate this section.
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* ── Customer Journey ── */}
+                        {cfg.id === 'journey_map' && (
+                          <div className="p-4">
+                            {liveJourneyData ? (
+                              <>
+                                {/* Journey controls row */}
+                                <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                                  {journeyVersions.length > 1 && (
+                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                      <span className="text-[10px] uppercase tracking-wide font-medium">Session:</span>
+                                      <select
+                                        value={selectedVersionId ?? ''}
+                                        onChange={async (e) => {
+                                          const id = e.target.value;
+                                          setSelectedVersionId(id);
+                                          await loadJourneyVersion(id);
+                                        }}
+                                        className="text-xs border border-border rounded px-1.5 py-0.5 bg-background text-foreground"
+                                      >
+                                        {journeyVersions.map((v, i) => (
+                                          <option key={v.id} value={v.id}>
+                                            v{v.version} — {v.dialoguePhase}{i === 0 ? ' (latest)' : ''}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  )}
+                                  <button
+                                    onClick={handleRegenerateJourney}
+                                    disabled={journeyRegenerating}
+                                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 ml-auto"
+                                  >
+                                    {journeyRegenerating
+                                      ? <><Loader2 className="h-3 w-3 animate-spin" /> Regenerating…</>
+                                      : <><RefreshCw className="h-3 w-3" /> Regenerate from full data</>
+                                    }
+                                  </button>
+                                </div>
+                                <JourneyIntroBlock
+                                  workshopId={workshopId}
+                                  journey={liveJourneyData}
+                                  value={reportSummary?.journeyIntro ?? ''}
+                                  onChange={(v) => {
+                                    if (reportSummary) handleSummaryUpdate({ ...reportSummary, journeyIntro: v });
+                                  }}
+                                  disabled={!reportSummary}
+                                />
+                                <JourneyDownloadBar workshopId={workshopId} />
+                                <LiveJourneyMap data={liveJourneyData} mode="output" />
+                              </>
+                            ) : (
+                              <p className="text-xs text-muted-foreground py-2">
+                                No journey map generated yet. Run a live session to generate one.
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* ── Custom Section ── */}
+                        {cfg.type === 'custom' && (
+                          <CustomSectionEditor
+                            section={cfg}
+                            workshopId={workshopId}
+                            onUpdate={(patch) => updateSection(cfg.id, patch)}
+                          />
+                        )}
+                      </DraggableSection>
+                    </div>
+                  );
+                })}
+              </div>
+            </SortableContext>
+
+            {/* ── Add custom section ── */}
+            <button
+              onClick={addCustomSection}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary/30 hover:text-foreground transition-colors mt-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add custom section
+            </button>
+
+            {/* DragOverlay — ghost card during drag */}
+            <DragOverlay>
+              {activeDragId && (() => {
+                const cfg = layout.sections.find(s => s.id === activeDragId);
+                if (!cfg) return null;
+                return (
+                  <DraggableSection
+                    config={cfg}
+                    onToggleEnabled={() => {}}
+                    onToggleCollapsed={() => {}}
+                    isDragOverlay
+                  >
+                    <div className="h-10 rounded bg-muted/30 mx-4 mb-3" />
+                  </DraggableSection>
+                );
+              })()}
+            </DragOverlay>
+          </DndContext>
         )}
       </div>
     </div>

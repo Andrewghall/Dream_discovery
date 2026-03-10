@@ -221,6 +221,40 @@ export interface SolutionSummary {
   successIndicators: string[];  // 3-5 observable outcomes
 }
 
+// ── Report Builder Layout ─────────────────────────────────────────────────────
+
+export interface ReportSectionConfig {
+  id: string;                // builtin id (e.g. 'executive_summary') or custom nanoid
+  type: 'builtin' | 'custom';
+  title: string;
+  enabled: boolean;
+  collapsed: boolean;        // UI state only — does not affect PDF
+  excludedItems: string[];   // item IDs hidden from this section in the PDF
+  customContent?: {
+    text?: string;
+    imageUrl?: string;
+    imageAlt?: string;
+  };
+}
+
+export interface ReportLayout {
+  sections: ReportSectionConfig[];
+  version: 1;
+}
+
+export function defaultReportLayout(): ReportLayout {
+  return {
+    version: 1,
+    sections: [
+      { id: 'executive_summary',   type: 'builtin', title: 'Executive Summary',   enabled: true, collapsed: false, excludedItems: [] },
+      { id: 'supporting_evidence', type: 'builtin', title: 'Supporting Evidence', enabled: true, collapsed: false, excludedItems: [] },
+      { id: 'root_causes',         type: 'builtin', title: 'Root Causes',         enabled: true, collapsed: false, excludedItems: [] },
+      { id: 'solution_direction',  type: 'builtin', title: 'Solution Direction',  enabled: true, collapsed: false, excludedItems: [] },
+      { id: 'journey_map',         type: 'builtin', title: 'Customer Journey',    enabled: true, collapsed: false, excludedItems: [] },
+    ],
+  };
+}
+
 export interface ReportSummary {
   workshopAsk: string;
   keyInsight: string;
@@ -231,6 +265,7 @@ export interface ReportSummary {
   validationGaps: string[];
   generatedAtMs: number;
   journeyIntro?: string;
+  layout?: ReportLayout;
 }
 
 // ── SSE Event Types ───────────────────────────────────────────────────────────
