@@ -206,12 +206,16 @@ export async function runReportSummaryPipeline(
   // 3. Run single GPT-4o report summary agent
   const reportSummary = await runReportSummaryAgent(signals, intelligence, onProgress);
 
-  // 4. Store in DB
-  await prisma.workshop.update({
-    where: { id: workshopId },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    data: { reportSummary: reportSummary as any },
-  });
+  // 4. Store in DB (non-fatal — column may not exist until prisma db push is run)
+  try {
+    await prisma.workshop.update({
+      where: { id: workshopId },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: { reportSummary: reportSummary as any },
+    });
+  } catch (err) {
+    console.error('[Report Summary] DB store failed (run prisma db push):', err);
+  }
 
   return reportSummary;
 }

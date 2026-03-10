@@ -587,19 +587,21 @@ function GenerateSummaryCta({
           }
           if (!dataLine) continue;
 
+          let payload: Record<string, unknown>;
           try {
-            const payload = JSON.parse(dataLine);
-            if (eventType === 'status') {
-              setStatusMsg(payload.message ?? '');
-            } else if (eventType === 'complete') {
-              onComplete(payload.reportSummary as ReportSummary);
-              toast.success('Report summary generated');
-              return;
-            } else if (eventType === 'error') {
-              throw new Error(payload.message ?? 'Generation failed');
-            }
+            payload = JSON.parse(dataLine) as Record<string, unknown>;
           } catch {
-            // ignore parse errors on individual events
+            continue; // malformed JSON — skip this event block
+          }
+
+          if (eventType === 'status') {
+            setStatusMsg((payload.message as string) ?? '');
+          } else if (eventType === 'complete') {
+            onComplete(payload.reportSummary as ReportSummary);
+            toast.success('Report summary generated');
+            return;
+          } else if (eventType === 'error') {
+            throw new Error((payload.message as string) ?? 'Generation failed');
           }
         }
       }
