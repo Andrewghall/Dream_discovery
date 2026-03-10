@@ -46,12 +46,16 @@ function safeDialoguePhase(
 }
 
 // ── Filler word set for trivial-fragment detection ──────────
+// Intentionally narrow: only genuine non-semantic noise.
+// Words like 'is', 'we', 'you', 'think', 'know' carry meaning in
+// workshop speech and must NOT be treated as filler — doing so
+// causes real content (e.g. "sustainability is important") to be
+// silently dropped before DataPoints are created.
 const FILLER_WORDS = new Set([
-  'so', 'um', 'uh', 'yeah', 'yes', 'no', 'ok', 'okay', 'right',
-  'well', 'like', 'and', 'but', 'hmm', 'hm', 'ah', 'oh', 'er',
-  'the', 'a', 'an', 'is', 'it', 'i', 'we', 'you', 'they', 'that',
-  'this', 'of', 'to', 'in', 'for', 'on', 'with', 'at', 'by',
-  'just', 'then', 'know', 'mean', 'think', 'got', 'get',
+  'um', 'uh', 'hmm', 'hm', 'ah', 'oh', 'er',
+  'so', 'yeah', 'yes', 'no', 'ok', 'okay',
+  'the', 'a', 'an', 'and', 'but', 'or',
+  'to', 'of', 'in', 'at', 'by', 'for', 'on', 'with',
 ]);
 
 function isTextTrivial(text: string): boolean {
@@ -62,7 +66,7 @@ function isTextTrivial(text: string): boolean {
     .replace(/[^a-z\s']/g, '')
     .split(/\s+/)
     .filter((w) => w.length > 1 && !FILLER_WORDS.has(w));
-  return substantive.length < 2; // Fewer than 2 substantive words
+  return substantive.length < 1; // Drop only if zero substantive words
 }
 
 // ══════════════════════════════════════════════════════════════

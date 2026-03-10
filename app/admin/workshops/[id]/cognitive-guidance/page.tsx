@@ -1610,11 +1610,14 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   useEffect(() => { void fetchSessionVersions(); }, [fetchSessionVersions]);
 
-  // ── Auto-restore: load latest session version on first visit (no live session) ──
+  // ── Auto-restore: load latest session version on mount ──────────────────────
+  // NOTE: deliberately does NOT guard on `listening` — SSE reconnects immediately
+  // on page reload and would set listening=true before this effect could run,
+  // causing all saved hemisphere data to be permanently lost on reload.
+  // Incoming live nodes merge safely on top of restored state.
   const hasAutoRestoredRef = useRef(false);
   useEffect(() => {
     if (hasAutoRestoredRef.current) return;           // only once per mount
-    if (listening) return;                             // don't interrupt a live session
     if (cogNodes.size > 0) return;                    // real-time data already present
     if (Object.keys(hemisphereNodes).length > 0) return; // already restored
     if (sessionVersions.length === 0) return;          // nothing to restore yet
