@@ -39,7 +39,7 @@ type PageState =
   | { status: 'invalid' }
   | { status: 'ready'; info: TokenInfo }
   | { status: 'session'; info: TokenInfo; sessionId: string; isLocal: boolean }
-  | { status: 'complete'; info: TokenInfo; segmentCount: number };
+  | { status: 'complete'; info: TokenInfo; segmentCount: number; isLocal: boolean };
 
 // ---------------------------------------------------------------------------
 // Component
@@ -434,7 +434,12 @@ export default function MobileCaptureTokenPage({
             isLocalSession={state.isLocal}
             onSessionComplete={() => {
               setSessionsRecorded((prev) => prev + 1);
-              setState({ status: 'complete', info: state.info, segmentCount: 0 });
+              setState({ status: 'complete', info: state.info, segmentCount: 0, isLocal: state.isLocal });
+              // For offline speech sessions: if the phone is now online, sync immediately
+              // so sessions appear in the admin inbox without the user needing to reload.
+              if (state.isLocal && navigator.onLine) {
+                void syncOfflineData();
+              }
             }}
           />
         </>
@@ -449,8 +454,10 @@ export default function MobileCaptureTokenPage({
             <div className="flex flex-col items-center gap-2">
               <h2 className="text-xl font-semibold text-green-300">Session Complete</h2>
               <p className="text-center text-sm text-white/60">
-                {isOffline
-                  ? 'Recording saved locally — it will be uploaded and analysed when you reconnect.'
+                {state.isLocal
+                  ? (navigator.onLine
+                    ? 'Uploading your recording now…'
+                    : 'Recording saved locally — it will be uploaded and analysed when you reconnect.')
                   : 'Your recording has been transcribed and is being analysed.'}
               </p>
             </div>
