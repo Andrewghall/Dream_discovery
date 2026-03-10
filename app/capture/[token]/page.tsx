@@ -111,15 +111,21 @@ export default function MobileCaptureTokenPage({
             sessionStorage.setItem(`capture-token-${token}`, JSON.stringify(data));
             setState({ status: 'ready', info: data });
 
-            // Check for pending offline data from previous sessions and sync if online
+            // Check for pending offline data from previous sessions and sync if online.
+            // Wrapped in its own try/catch — any IndexedDB error must NOT reach the
+            // outer catch which would incorrectly set state to 'invalid'.
             if (navigator.onLine) {
-              const [pendingSessions, pendingCount] = await Promise.all([
-                getPendingSessions(),
-                countPendingUploads(),
-              ]);
-              if (pendingSessions.length > 0 || pendingCount > 0) {
-                setHasPendingData(true);
-                syncOfflineData(); // fire-and-forget
+              try {
+                const [pendingSessions, pendingCount] = await Promise.all([
+                  getPendingSessions(),
+                  countPendingUploads(),
+                ]);
+                if (pendingSessions.length > 0 || pendingCount > 0) {
+                  setHasPendingData(true);
+                  syncOfflineData(); // fire-and-forget
+                }
+              } catch {
+                // Non-critical — IndexedDB unavailable or version conflict; skip sync check
               }
             }
           } else {

@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'dream-capture-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // bumped from 1 to match pending-sessions-store.ts (same shared DB)
 const STORE_NAME = 'pending-uploads';
 
 // ---------------------------------------------------------------------------
