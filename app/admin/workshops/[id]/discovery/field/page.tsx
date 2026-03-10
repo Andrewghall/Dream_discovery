@@ -55,9 +55,16 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
   } | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
 
-  // Capture token state
-  const [captureToken, setCaptureToken] = useState<string | null>(null);
-  const [captureLink, setCaptureLink] = useState<string | null>(null);
+  // Capture token state — persisted to sessionStorage so page refresh doesn't lose the QR code
+  const STORAGE_KEY = `capture-link-${workshopId}`;
+  const [captureToken, setCaptureToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try { return sessionStorage.getItem(`${STORAGE_KEY}-token`); } catch { return null; }
+  });
+  const [captureLink, setCaptureLink] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try { return sessionStorage.getItem(STORAGE_KEY); } catch { return null; }
+  });
   const [generatingToken, setGeneratingToken] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -103,24 +110,30 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
     return () => { cancelled = true; };
   }, [fetchWorkshop, fetchSessions]);
 
-  // ---- Background poll while sessions are in-progress ----
-  // Silently refreshes every 15 s so the facilitator sees new mobile sessions
-  // appear without having to manually hit Refresh. Stops once all sessions
-  // have reached a terminal state (ANALYSED / FAILED / CANCELLED).
+  // ---- Background poll ----
+  // When a capture link is active (phone may be recording) we poll every 3 s so new
+  // sessions appear almost immediately. Otherwise 15 s is fine for terminal cleanup.
+  // Polls whenever:
+  //   • a capture link is active (fast: 3 s)
+  //   • any session is non-terminal (fast: 3 s)
+  //   • the session list is still empty (fast: 3 s)
+  // Stops only when ALL sessions are terminal AND no capture link is active.
   useEffect(() => {
     const TERMINAL = ['ANALYSED', 'FAILED', 'CANCELLED'];
     const hasActive = sessions.some((s) => !TERMINAL.includes((s as { status?: string }).status ?? ''));
+    const shouldPoll = hasActive || sessions.length === 0 || !!captureLink;
 
-    // Poll when there are active sessions OR when the list is still empty
-    // (recordings may be incoming for the first time)
-    if (!hasActive && sessions.length > 0) return;
+    if (!shouldPoll) return;
+
+    // Fast poll when capture is live; slower once everything is terminal
+    const intervalMs = captureLink || hasActive || sessions.length === 0 ? 3_000 : 15_000;
 
     const interval = setInterval(() => {
       fetchSessions(); // silent — fetchSessions never sets loading
-    }, 15_000);
+    }, intervalMs);
 
     return () => clearInterval(interval);
-  }, [sessions, fetchSessions]);
+  }, [sessions, fetchSessions, captureLink]);
 
   // ---- Create session handler ----
   const handleCreateSession = useCallback(
@@ -170,8 +183,14 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
       });
       if (!res.ok) throw new Error('Failed to generate token');
       const data = await res.json();
+      const link = `${window.location.origin}/capture/${data.token}`;
       setCaptureToken(data.token);
-      setCaptureLink(`${window.location.origin}/capture/${data.token}`);
+      setCaptureLink(link);
+      // Persist so page refresh doesn't lose the QR code
+      try {
+        sessionStorage.setItem(STORAGE_KEY, link);
+        sessionStorage.setItem(`${STORAGE_KEY}-token`, data.token);
+      } catch { /* sessionStorage unavailable */ }
     } catch (err) {
       console.error('Error generating capture link:', err);
     } finally {
