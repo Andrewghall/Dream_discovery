@@ -1,5 +1,13 @@
 'use client';
 
+// Web Speech API type declarations (not always included in TypeScript DOM types)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SpeechRecognitionInstance = any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SpeechRecognitionResultEvent = any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SpeechRecognitionErrEvent = any;
+
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,8 +28,10 @@ import {
   Loader2,
   AlertCircle,
   WifiOff,
+  FileText,
 } from 'lucide-react';
-import { savePendingUpload } from '@/lib/field-discovery/offline-store';
+import { savePendingUpload, savePendingTextTranscript } from '@/lib/field-discovery/offline-store';
+import { cleanTranscript } from '@/lib/captureapi/transcript-cleaner';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,6 +95,10 @@ export function DesktopCaptureControls({
   const [analysing, setAnalysing] = React.useState(false);
   const [analysisComplete, setAnalysisComplete] = React.useState(false);
 
+  // Speech API state (used when isLocalSession && speechSupported)
+  const [interimText, setInterimText] = React.useState('');
+  const [segmentText, setSegmentText] = React.useState('');
+
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const chunksRef = React.useRef<Blob[]>([]);
@@ -96,12 +110,30 @@ export function DesktopCaptureControls({
   const sessionFinishingRef = React.useRef(false);
   const segmentsRef = React.useRef<SegmentData[]>([]);
 
+  // Speech API refs (stable across callbacks)
+  const recognitionRef = React.useRef<SpeechRecognitionInstance>(null);
+  const segmentTextRef = React.useRef('');
+  const recordingStateRef = React.useRef<RecordingState>('idle');
+
   // Keep segmentsRef in sync with segments state
   React.useEffect(() => {
     segmentsRef.current = segments;
   }, [segments]);
 
+  // Keep recordingStateRef in sync with state
+  React.useEffect(() => {
+    recordingStateRef.current = state;
+  }, [state]);
+
   const currentSegmentIndex = segments.length;
+
+  // Detect Web Speech API support
+  const speechSupported =
+    typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  // Use speech path when offline local session AND speech API is supported
+  const useSpeechPath = isLocalSession && speechSupported;
 
   // -----------------------------------------------------------------------
   // Audio level monitoring
@@ -162,7 +194,7 @@ export function DesktopCaptureControls({
   }, []);
 
   // -----------------------------------------------------------------------
-  // Background transcription
+  // Background transcription (online MediaRecorder path)
   // -----------------------------------------------------------------------
 
   // Build API base path depending on auth mode
@@ -305,7 +337,204 @@ export function DesktopCaptureControls({
   );
 
   // -----------------------------------------------------------------------
-  // Recording controls
+  // Speech API helpers (offline path)
+  // -----------------------------------------------------------------------
+
+  const createRecognition = React.useCallback((): SpeechRecognitionInstance | null => {
+    if (!speechSupported) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SpeechRecognitionClass = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) return null;
+
+    const recognition = new SpeechRecognitionClass();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    return recognition;
+  }, [speechSupported]);
+
+  const attachRecognitionHandlers = React.useCallback(
+    (recognition: SpeechRecognitionInstance) => {
+      recognition.onresult = (event: SpeechRecognitionResultEvent) => {
+        let interimTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            segmentTextRef.current += (segmentTextRef.current ? ' ' : '') + result[0].transcript;
+            setSegmentText(segmentTextRef.current);
+          } else {
+            interimTranscript += result[0].transcript;
+          }
+        }
+        setInterimText(interimTranscript);
+      };
+
+      recognition.onend = () => {
+        // Auto-restart if still actively recording (handles iOS 60-second timeout)
+        if (recordingStateRef.current === 'recording') {
+          try {
+            recognition.start();
+          } catch {
+            // Recognition may not be restartable in all browsers; ignore
+          }
+        }
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrEvent) => {
+        // 'no-speech' and 'aborted' are expected — not real errors
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          setError(`Speech recognition error: ${event.error}`);
+        }
+      };
+    },
+    []
+  );
+
+  // -----------------------------------------------------------------------
+  // Recording controls — SPEECH PATH (isLocalSession && speechSupported)
+  // -----------------------------------------------------------------------
+
+  const startRecordingSpeech = React.useCallback(async () => {
+    setError(null);
+    const recognition = createRecognition();
+    if (!recognition) {
+      setError('Speech recognition not available');
+      return;
+    }
+    attachRecognitionHandlers(recognition);
+    recognitionRef.current = recognition;
+    segmentTextRef.current = '';
+    setSegmentText('');
+    setInterimText('');
+    segmentStartRef.current = Date.now();
+
+    try {
+      recognition.start();
+      setState('recording');
+      startTimer();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to start speech recognition';
+      setError(msg);
+    }
+  }, [createRecognition, attachRecognitionHandlers, startTimer]);
+
+  const stopSegmentSpeech = React.useCallback(async () => {
+    if (!recognitionRef.current) return;
+
+    // Stop recognition — don't auto-restart (onend will check recordingStateRef)
+    setState('paused'); // pause first so onend doesn't restart
+    try {
+      recognitionRef.current.stop();
+    } catch {
+      // ignore
+    }
+    recognitionRef.current = null;
+
+    const rawText = segmentTextRef.current;
+    const cleanedText = rawText.trim() ? cleanTranscript(rawText) : '';
+    const segmentIndex = segmentsRef.current.length;
+    const startedAt = segmentStartRef.current;
+    const stoppedAt = Date.now();
+
+    const segmentData: SegmentData = {
+      index: segmentIndex,
+      blob: null,
+      startedAt,
+      stoppedAt,
+      transcript: cleanedText || '(no speech detected)',
+    };
+    setSegments((prev) => [...prev, segmentData]);
+    stopTimer();
+    setElapsed(0);
+
+    // Save to IndexedDB
+    if (cleanedText) {
+      await savePendingTextTranscript(
+        `${sessionId}-txt-${segmentIndex}`,
+        cleanedText,
+        { sessionId, workshopId, segmentIndex, startedAt, stoppedAt }
+      ).catch(() => { /* best effort */ });
+    }
+
+    // Clear for next segment
+    segmentTextRef.current = '';
+    setSegmentText('');
+    setInterimText('');
+
+    onSegmentComplete?.(segmentIndex);
+
+    // Restart recognition for next segment
+    const nextRecognition = createRecognition();
+    if (nextRecognition) {
+      attachRecognitionHandlers(nextRecognition);
+      recognitionRef.current = nextRecognition;
+      segmentStartRef.current = Date.now();
+      try {
+        nextRecognition.start();
+        setState('recording');
+        startTimer();
+      } catch {
+        setState('idle');
+      }
+    } else {
+      setState('idle');
+    }
+  }, [
+    sessionId,
+    workshopId,
+    stopTimer,
+    startTimer,
+    onSegmentComplete,
+    createRecognition,
+    attachRecognitionHandlers,
+  ]);
+
+  const finishSessionSpeech = React.useCallback(async () => {
+    setState('idle'); // stop onend from restarting
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+    stopTimer();
+    setElapsed(0);
+
+    // Save any remaining accumulated text as a final segment
+    const rawText = segmentTextRef.current;
+    const cleanedText = rawText.trim() ? cleanTranscript(rawText) : '';
+    if (cleanedText) {
+      const segmentIndex = segmentsRef.current.length;
+      const startedAt = segmentStartRef.current;
+      const stoppedAt = Date.now();
+      const segmentData: SegmentData = {
+        index: segmentIndex,
+        blob: null,
+        startedAt,
+        stoppedAt,
+        transcript: cleanedText,
+      };
+      setSegments((prev) => [...prev, segmentData]);
+      await savePendingTextTranscript(
+        `${sessionId}-txt-${segmentIndex}`,
+        cleanedText,
+        { sessionId, workshopId, segmentIndex, startedAt, stoppedAt }
+      ).catch(() => { /* best effort */ });
+    }
+
+    segmentTextRef.current = '';
+    setSegmentText('');
+    setInterimText('');
+
+    // Complete immediately — analysis will happen server-side after sync
+    onSessionComplete?.();
+  }, [sessionId, workshopId, stopTimer, onSessionComplete]);
+
+  // -----------------------------------------------------------------------
+  // Recording controls — MEDIA RECORDER PATH (online or no speech support)
   // -----------------------------------------------------------------------
 
   const startRecording = React.useCallback(async () => {
@@ -511,6 +740,10 @@ export function DesktopCaptureControls({
       stopTimer();
       stopLevelMonitoring();
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch { /* ignore */ }
+        recognitionRef.current = null;
+      }
     };
   }, [stopTimer, stopLevelMonitoring]);
 
@@ -555,6 +788,12 @@ export function DesktopCaptureControls({
               }`}
             />
             <span className="text-sm font-medium">{statusLabel}</span>
+            {useSpeechPath && state !== 'idle' && (
+              <Badge variant="secondary" className="text-xs">
+                <FileText className="mr-1 size-3" />
+                Speech-to-text
+              </Badge>
+            )}
           </div>
 
           <span className="font-mono text-2xl tabular-nums tracking-wider">
@@ -562,24 +801,43 @@ export function DesktopCaptureControls({
           </span>
         </div>
 
-        {/* Audio level indicator */}
-        <div className="flex flex-col gap-1">
-          <span className="text-muted-foreground text-xs">Input Level</span>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-            <div
-              className="h-full rounded-full transition-all duration-75"
-              style={{
-                width: `${audioLevel}%`,
-                backgroundColor:
-                  audioLevel > 80
-                    ? '#ef4444'
-                    : audioLevel > 50
-                      ? '#f59e0b'
-                      : '#22c55e',
-              }}
-            />
+        {/* Live transcript preview (speech path) OR audio level bar (media recorder path) */}
+        {useSpeechPath ? (
+          state !== 'idle' && (
+            <div className="flex flex-col gap-1">
+              <span className="text-muted-foreground text-xs">Live Transcript</span>
+              <div className="min-h-[3rem] rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm leading-relaxed">
+                {segmentText && (
+                  <span className="text-gray-900">{segmentText} </span>
+                )}
+                {interimText && (
+                  <span className="italic text-gray-400">{interimText}</span>
+                )}
+                {!segmentText && !interimText && (
+                  <span className="italic text-gray-400">Listening…</span>
+                )}
+              </div>
+            </div>
+          )
+        ) : (
+          <div className="flex flex-col gap-1">
+            <span className="text-muted-foreground text-xs">Input Level</span>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+              <div
+                className="h-full rounded-full transition-all duration-75"
+                style={{
+                  width: `${audioLevel}%`,
+                  backgroundColor:
+                    audioLevel > 80
+                      ? '#ef4444'
+                      : audioLevel > 50
+                        ? '#f59e0b'
+                        : '#22c55e',
+                }}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Segment counter */}
         {(state !== 'idle' || segments.length > 0) && (
@@ -597,10 +855,21 @@ export function DesktopCaptureControls({
           </div>
         )}
 
+        {/* Offline speech: no speech support warning */}
+        {isLocalSession && !speechSupported && (
+          <div className="flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
+            <AlertCircle className="size-4 shrink-0" />
+            Speech recognition not available — recording audio for later upload.
+          </div>
+        )}
+
         {/* Control buttons */}
         <div className="flex flex-wrap items-center gap-2">
           {state === 'idle' && !analysing && !analysisComplete && (
-            <Button onClick={startRecording} className="gap-2">
+            <Button
+              onClick={useSpeechPath ? startRecordingSpeech : startRecording}
+              className="gap-2"
+            >
               <Mic className="size-4" />
               Start Recording
             </Button>
@@ -608,17 +877,20 @@ export function DesktopCaptureControls({
 
           {state === 'recording' && (
             <>
-              <Button
-                variant="outline"
-                onClick={pauseRecording}
-                className="gap-2"
-              >
-                <Pause className="size-4" />
-                Pause
-              </Button>
+              {/* Pause only available for media recorder path */}
+              {!useSpeechPath && (
+                <Button
+                  variant="outline"
+                  onClick={pauseRecording}
+                  className="gap-2"
+                >
+                  <Pause className="size-4" />
+                  Pause
+                </Button>
+              )}
               <Button
                 variant="secondary"
-                onClick={stopSegment}
+                onClick={useSpeechPath ? stopSegmentSpeech : stopSegment}
                 className="gap-2"
               >
                 <Square className="size-4" />
@@ -627,7 +899,7 @@ export function DesktopCaptureControls({
             </>
           )}
 
-          {state === 'paused' && (
+          {state === 'paused' && !useSpeechPath && (
             <>
               <Button onClick={resumeRecording} className="gap-2">
                 <Play className="size-4" />
@@ -647,7 +919,7 @@ export function DesktopCaptureControls({
           {state !== 'idle' && (
             <Button
               variant="destructive"
-              onClick={finishSession}
+              onClick={useSpeechPath ? finishSessionSpeech : finishSession}
               className="gap-2"
             >
               <CheckCircle2 className="size-4" />
@@ -710,11 +982,16 @@ export function DesktopCaptureControls({
                         !seg.transcriptionError && (
                           <CheckCircle2 className="size-3.5 text-green-600" />
                         )}
-                      <span className="text-muted-foreground">
-                        {seg.blob
-                          ? `${(seg.blob.size / 1024).toFixed(0)} KB`
-                          : '--'}
-                      </span>
+                      {seg.blob ? (
+                        <span className="text-muted-foreground">
+                          {`${(seg.blob.size / 1024).toFixed(0)} KB`}
+                        </span>
+                      ) : useSpeechPath ? (
+                        <Badge variant="secondary" className="text-xs">
+                          <FileText className="mr-1 size-3" />
+                          text
+                        </Badge>
+                      ) : null}
                     </div>
                   </div>
                   {seg.transcript && (
@@ -760,7 +1037,9 @@ export function DesktopCaptureControls({
         {isLocalSession && (
           <div className="flex items-center gap-2 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
             <WifiOff className="size-4 shrink-0" />
-            Recording offline — segments are saved locally and will upload when you&apos;re back online.
+            {useSpeechPath
+              ? 'Recording offline — transcript is saved locally and will sync when you reconnect.'
+              : 'Recording offline — segments are saved locally and will upload when you\'re back online.'}
           </div>
         )}
 

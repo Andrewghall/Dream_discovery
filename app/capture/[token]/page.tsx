@@ -12,7 +12,14 @@ import {
   getPendingSessions,
   removePendingSession,
 } from '@/lib/field-discovery/pending-sessions-store';
-import { getPendingUploads, removePendingUpload, countPendingUploads } from '@/lib/field-discovery/offline-store';
+import {
+  getPendingUploads,
+  removePendingUpload,
+  countPendingUploads,
+  getPendingTextTranscripts,
+  removePendingTextTranscript,
+  countPendingTextTranscripts,
+} from '@/lib/field-discovery/offline-store';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -116,11 +123,12 @@ export default function MobileCaptureTokenPage({
             // outer catch which would incorrectly set state to 'invalid'.
             if (navigator.onLine) {
               try {
-                const [pendingSessions, pendingCount] = await Promise.all([
+                const [pendingSessions, pendingBlobCount, pendingTextCount] = await Promise.all([
                   getPendingSessions(),
                   countPendingUploads(),
+                  countPendingTextTranscripts(),
                 ]);
-                if (pendingSessions.length > 0 || pendingCount > 0) {
+                if (pendingSessions.length > 0 || pendingBlobCount > 0 || pendingTextCount > 0) {
                   setHasPendingData(true);
                   syncOfflineData(); // fire-and-forget
                 }
@@ -148,15 +156,23 @@ export default function MobileCaptureTokenPage({
   async function syncOfflineData() {
     const pendingSessions = await getPendingSessions();
     const pendingUploads = await getPendingUploads();
+    const pendingTexts = await getPendingTextTranscripts();
 
-    if (pendingSessions.length === 0 && pendingUploads.length === 0) return;
+    if (pendingSessions.length === 0 && pendingUploads.length === 0 && pendingTexts.length === 0) return;
 
     setSyncing(true);
     let synced = 0;
 
+    // Map from local session ID → server session ID (built during session creation loop)
+    const syncedSessionMap: Record<string, string> = {};
+
     // 1. Create any sessions that were created offline
     for (const pending of pendingSessions) {
-      if (pending.serverId) continue; // already synced
+      if (pending.serverId) {
+        // Already synced — record the mapping so text transcripts can find it
+        syncedSessionMap[pending.localId] = pending.serverId;
+        continue;
+      }
       try {
         const res = await fetch(`/api/capture/${pending.captureToken}/sessions`, {
           method: 'POST',
@@ -165,10 +181,11 @@ export default function MobileCaptureTokenPage({
         });
         if (res.ok) {
           const { session } = await res.json();
+          syncedSessionMap[pending.localId] = session.id;
           await removePendingSession(pending.localId);
           synced++;
 
-          // 2. Upload any queued segments for this local session
+          // 2. Upload any queued audio segments for this local session
           const myUploads = pendingUploads.filter(
             (u) => (u.metadata.sessionId as string)?.startsWith(pending.localId),
           );
@@ -191,11 +208,68 @@ export default function MobileCaptureTokenPage({
             } catch { /* best effort */ }
           }
 
-          // Trigger analysis
+          // 3. Upload any queued text transcripts for this local session
+          const myTexts = pendingTexts.filter(
+            (t) => (t.metadata.sessionId as string)?.startsWith(pending.localId),
+          );
+          for (const txt of myTexts) {
+            try {
+              const tRes = await fetch(
+                `/api/capture/${pending.captureToken}/sessions/${session.id}/segments/text`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    segmentIndex: txt.metadata.segmentIndex,
+                    startedAt: new Date(txt.metadata.startedAt as number).toISOString(),
+                    stoppedAt: new Date(txt.metadata.stoppedAt as number).toISOString(),
+                    transcript: txt.transcript,
+                  }),
+                },
+              );
+              if (tRes.ok) {
+                await removePendingTextTranscript(txt.id);
+                synced++;
+              }
+            } catch { /* best effort */ }
+          }
+
+          // Trigger analysis (runs after all segments uploaded)
           await fetch(
             `/api/capture/${pending.captureToken}/sessions/${session.id}/analyse`,
             { method: 'POST' },
           ).catch(() => { /* best effort */ });
+        }
+      } catch { /* best effort */ }
+    }
+
+    // 4. Sync any orphaned text transcripts whose session was already synced
+    //    (e.g. page was closed mid-upload and session is already on server)
+    const remainingTexts = pendingTexts.filter(
+      (t) => !Object.keys(syncedSessionMap).some(
+        (localId) => (t.metadata.sessionId as string)?.startsWith(localId),
+      ),
+    );
+    for (const txt of remainingTexts) {
+      const serverSessionId = syncedSessionMap[txt.metadata.sessionId as string];
+      if (!serverSessionId) continue;
+      try {
+        const tRes = await fetch(
+          `/api/capture/${token}/sessions/${serverSessionId}/segments/text`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              segmentIndex: txt.metadata.segmentIndex,
+              startedAt: new Date(txt.metadata.startedAt as number).toISOString(),
+              stoppedAt: new Date(txt.metadata.stoppedAt as number).toISOString(),
+              transcript: txt.transcript,
+            }),
+          },
+        );
+        if (tRes.ok) {
+          await removePendingTextTranscript(txt.id);
+          synced++;
         }
       } catch { /* best effort */ }
     }

@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'dream-capture-offline';
-const DB_VERSION = 2; // bump from v1 (added pending-sessions store)
+const DB_VERSION = 3; // bump from v2: added pending-text-transcripts store (offline-store.ts)
 const UPLOADS_STORE = 'pending-uploads';
 const SESSIONS_STORE = 'pending-sessions';
 
@@ -22,6 +22,10 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(SESSIONS_STORE)) {
         db.createObjectStore(SESSIONS_STORE, { keyPath: 'localId' });
+      }
+      // Also ensure text-transcripts store exists (created by offline-store.ts but same shared DB)
+      if (!db.objectStoreNames.contains('pending-text-transcripts')) {
+        db.createObjectStore('pending-text-transcripts', { keyPath: 'id' });
       }
     };
 

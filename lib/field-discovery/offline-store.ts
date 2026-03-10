@@ -7,8 +7,9 @@
  */
 
 const DB_NAME = 'dream-capture-offline';
-const DB_VERSION = 2; // bumped from 1 to match pending-sessions-store.ts (same shared DB)
+const DB_VERSION = 3; // bumped from 2: added pending-text-transcripts store for offline speech recognition
 const STORE_NAME = 'pending-uploads';
+const TEXT_STORE_NAME = 'pending-text-transcripts';
 
 // ---------------------------------------------------------------------------
 // Database connection
@@ -22,6 +23,9 @@ function openDB(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(TEXT_STORE_NAME)) {
+        db.createObjectStore(TEXT_STORE_NAME, { keyPath: 'id' });
       }
     };
 
@@ -128,6 +132,113 @@ export async function countPendingUploads(): Promise<number> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
+    const request = store.count();
+
+    request.onsuccess = () => {
+      db.close();
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      db.close();
+      reject(request.error);
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Text transcript store — used by offline Web Speech API recording path
+// Stores cleaned text (KB) instead of audio blobs (MB)
+// ---------------------------------------------------------------------------
+
+/**
+ * Save a pending text transcript to IndexedDB.
+ */
+export async function savePendingTextTranscript(
+  id: string,
+  transcript: string,
+  metadata: Record<string, unknown>
+): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TEXT_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(TEXT_STORE_NAME);
+
+    store.put({
+      id,
+      transcript,
+      metadata,
+      createdAt: Date.now(),
+    });
+
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  });
+}
+
+/**
+ * Retrieve all pending text transcripts from IndexedDB.
+ */
+export async function getPendingTextTranscripts(): Promise<
+  Array<{
+    id: string;
+    transcript: string;
+    metadata: Record<string, unknown>;
+    createdAt: number;
+  }>
+> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TEXT_STORE_NAME, 'readonly');
+    const store = tx.objectStore(TEXT_STORE_NAME);
+    const request = store.getAll();
+
+    request.onsuccess = () => {
+      db.close();
+      resolve(request.result ?? []);
+    };
+    request.onerror = () => {
+      db.close();
+      reject(request.error);
+    };
+  });
+}
+
+/**
+ * Remove a pending text transcript from IndexedDB after successful upload.
+ */
+export async function removePendingTextTranscript(id: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TEXT_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(TEXT_STORE_NAME);
+
+    store.delete(id);
+
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  });
+}
+
+/**
+ * Count the number of pending text transcripts in IndexedDB.
+ */
+export async function countPendingTextTranscripts(): Promise<number> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TEXT_STORE_NAME, 'readonly');
+    const store = tx.objectStore(TEXT_STORE_NAME);
     const request = store.count();
 
     request.onsuccess = () => {
