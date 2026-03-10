@@ -96,11 +96,6 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
           The Answer
         </p>
         <p className="text-xl font-bold text-foreground leading-snug">{es.theAnswer}</p>
-        {summary.keyInsight && summary.keyInsight !== es.theAnswer && (
-          <p className="mt-3 text-sm text-foreground/80 leading-relaxed border-t border-primary/10 pt-3">
-            {summary.keyInsight}
-          </p>
-        )}
       </div>
 
       {/* Body */}

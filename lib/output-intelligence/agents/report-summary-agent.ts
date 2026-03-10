@@ -36,13 +36,12 @@ const SCHEMA = `{
     ],
 
     "lensFindings": [
-      { "lens": "string — lens name (e.g. People)", "finding": "string — what this lens specifically revealed in the workshop, grounded in evidence" },
-      { "lens": "string", "finding": "string" }
+      { "lens": "string — lens name EXACTLY as listed in WORKSHOP CONTEXT (e.g. 'People', 'Technology'). One entry per lens — EVERY lens, no exceptions.", "finding": "string — what this lens revealed in the workshop, grounded in the SIGNALS BY LENS section. If signals were thin or absent: 'Workshop signals for this lens were limited — [describe what little was captured, or state no pads were recorded for this lens]'" }
     ],
 
     "whyItMatters": "string — 3-4 sentences: name the direct business cost of these issues (operational, financial, customer, competitive) — no generic consulting language — be specific to this organisation",
     "opportunityOrRisk": "string — 3-4 sentences: name the specific opportunity if addressed, and the specific risk if not — reference the root cause and the evidence",
-    "urgency": "string — 1-2 sentences: the operational or market reason why delay compounds the problem — specific to this organisation",
+    "urgency": "string — 1-2 sentences: must name at least one specific item from the intelligence — a regulatory obligation, measured metric (e.g. '34% attrition'), competitive trigger, or named operational crisis — do not write generic urgency without a named trigger",
     "nextStepsPreview": "string — one sentence: the direction the solution takes, bridging to the solution section below"
   },
 
@@ -158,14 +157,16 @@ function buildContextDump(
     }
   }
 
-  // ── Live Workshop Signals ─────────────────────────────────────────────────
-  const totalPads =
-    signals.liveSession.reimaginePads.length +
-    signals.liveSession.constraintPads.length +
-    signals.liveSession.defineApproachPads.length;
+  // ── Live Workshop Signals — by phase ─────────────────────────────────────
+  const allPads = [
+    ...signals.liveSession.reimaginePads.map((p) => ({ ...p, phase: 'REIMAGINE' })),
+    ...signals.liveSession.constraintPads.map((p) => ({ ...p, phase: 'CONSTRAINTS' })),
+    ...signals.liveSession.defineApproachPads.map((p) => ({ ...p, phase: 'DEFINE_APPROACH' })),
+  ];
+  const totalPads = allPads.length;
 
   if (totalPads > 0) {
-    lines.push(`\n=== LIVE WORKSHOP SIGNALS (${totalPads} pads) ===`);
+    lines.push(`\n=== LIVE WORKSHOP SIGNALS (${totalPads} pads — by phase) ===`);
     if (signals.liveSession.reimaginePads.length > 0) {
       lines.push(`Reimagine pads (${signals.liveSession.reimaginePads.length}):`);
       for (const p of signals.liveSession.reimaginePads.slice(0, 10)) {
@@ -186,7 +187,87 @@ function buildContextDump(
     }
   }
 
+  // ── Live Workshop Signals — by lens (PRIMARY SOURCE for lensFindings) ────
+  // Group ALL pads by lens so the model can see exactly what each lens produced.
+  // Every lens from context.lenses is included, even those with no pads.
+  {
+    const lensPadMap = new Map<string, Array<{ text: string; phase: string }>>();
+
+    // Initialise with all known lenses (in order) so none are silently skipped
+    for (const lens of signals.context.lenses) {
+      lensPadMap.set(lens, []);
+    }
+
+    // Assign pads to their lens; unrecognised lenses get their own bucket
+    for (const p of allPads) {
+      const lens = p.lens ?? 'General';
+      if (!lensPadMap.has(lens)) lensPadMap.set(lens, []);
+      lensPadMap.get(lens)!.push({ text: p.text, phase: p.phase });
+    }
+
+    lines.push('\n=== SIGNALS BY LENS (use this as the primary source for lensFindings) ===');
+    for (const [lens, pads] of lensPadMap) {
+      if (pads.length === 0) {
+        lines.push(`\n${lens} (0 pads — no workshop signals captured for this lens)`);
+      } else {
+        lines.push(`\n${lens} (${pads.length} pad${pads.length > 1 ? 's' : ''}):`);
+        for (const p of pads.slice(0, 12)) {
+          lines.push(`  • [${p.phase}] ${p.text}`);
+        }
+      }
+    }
+  }
+
   return lines.join('\n');
+}
+
+// ── Validation Pass ───────────────────────────────────────────────────────────
+// Separate GPT-4o-mini reviewer that checks the generated output against a
+// specificity rubric. Fast (~500 tokens), low temperature for reliable judgement.
+
+async function runValidationPass(
+  client: OpenAI,
+  summary: ReportSummary,
+  lenses: string[]
+): Promise<{ passed: boolean; gaps: string[] }> {
+  const es = summary.executiveSummary;
+
+  const reviewInput = JSON.stringify({
+    whatWeFound: es.whatWeFound,
+    lensFindings: es.lensFindings,
+    urgency: es.urgency,
+    expectedLenses: lenses,
+  }, null, 2);
+
+  const validationPrompt = `You are a quality reviewer for executive reports. Review the following generated content against the specificity rubric below. Be strict — generic language is not acceptable.
+
+RUBRIC:
+1. whatWeFound items: each MUST name a specific system, team, metric, number, or named process. "Lack of alignment" = FAIL. "8 legacy systems causing 34% longer handling time" = PASS.
+2. lensFindings: the generated output MUST contain one entry for EVERY lens in expectedLenses. If any lens is missing, that is a FAIL. Each finding must be grounded in a specific observation (not "limited findings" without any specifics when the data contained signals).
+3. urgency: MUST name a specific trigger — a regulation, metric, event, or crisis. "Delay will compound inefficiencies" without naming the trigger = FAIL.
+
+CONTENT TO REVIEW:
+${reviewInput}
+
+Return JSON: { "passed": boolean, "gaps": string[] }
+- passed: true only if ALL rubric items pass
+- gaps: array of specific failure descriptions (empty if passed)
+  Format each gap as: "Finding 3 is too generic — names no system or metric" or "Customer lens is missing from lensFindings" or "Urgency cites no specific trigger"`;
+
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    response_format: { type: 'json_object' },
+    messages: [{ role: 'user', content: validationPrompt }],
+    temperature: 0.1,
+    max_tokens: 600,
+  });
+
+  const raw = response.choices[0]?.message?.content ?? '{"passed":true,"gaps":[]}';
+  const result = JSON.parse(raw) as { passed: boolean; gaps: string[] };
+  return {
+    passed: result.passed === true,
+    gaps: Array.isArray(result.gaps) ? result.gaps : [],
+  };
 }
 
 // ── Agent ────────────────────────────────────────────────────────────────────
@@ -203,7 +284,8 @@ export async function runReportSummaryAgent(
 EXECUTIVE SUMMARY RULES:
 • Must directly answer the workshop ask — not describe the workshop process
 • whatWeFound: MINIMUM 6 items — each must name a specific system, team, metric, or process observed — no generic phrases like "lack of alignment" without naming what is misaligned
-• lensFindings: one entry per lens used in the workshop — each must describe what that specific lens revealed — if a lens had no substantive findings, omit it entirely (do not make up findings)
+• lensFindings: produce ONE entry for EVERY lens listed under "Lenses:" in WORKSHOP CONTEXT — no exceptions, no omissions. Consult the "SIGNALS BY LENS" section for evidence. If signals for a lens were thin or absent, write the finding as: "Workshop signals for this lens were limited — [describe what little was captured, or state 'no pads were recorded for this lens']". NEVER omit a lens that the workshop ran.
+• urgency: MUST name at least one specific item from the intelligence — a named regulation, a measured attrition rate, a specific metric, a named operational crisis, or a competitive event. "Inefficiencies will compound" without a named trigger is not acceptable.
 • whyItMatters: must name specific business consequences — operational cost, customer impact, staff impact, competitive exposure — be concrete
 • If evidence for a finding does not exist in the provided intelligence, DO NOT include that finding — omit rather than invent
 
@@ -244,12 +326,27 @@ ${SCHEMA}`;
           { role: 'user', content: userMessage },
         ],
         temperature: 0.4,
-        max_tokens: 4000,
+        max_tokens: 6000,
       });
 
       const raw = response.choices[0]?.message?.content ?? '{}';
       const parsed = JSON.parse(raw) as ReportSummary;
       parsed.generatedAtMs = Date.now();
+
+      // ── Self-critique validation pass ───────────────────────────────────
+      // Run a separate, low-temperature reviewer that checks the generated
+      // output against a specificity rubric. Separates generation from
+      // validation — the generating model always says it passed.
+      onProgress?.('Report Summary: validating quality…');
+      try {
+        const validationResult = await runValidationPass(openai, parsed, signals.context.lenses);
+        parsed.validationPassed = validationResult.passed;
+        parsed.validationGaps = validationResult.gaps;
+      } catch (validationErr) {
+        // Non-fatal — if validation fails, keep the generated output as-is
+        console.error('[Report Summary] Validation pass failed:', validationErr);
+      }
+
       onProgress?.('Report Summary: complete ✓');
       return parsed;
     } catch (err) {
