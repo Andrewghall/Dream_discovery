@@ -103,6 +103,25 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
     return () => { cancelled = true; };
   }, [fetchWorkshop, fetchSessions]);
 
+  // ---- Background poll while sessions are in-progress ----
+  // Silently refreshes every 15 s so the facilitator sees new mobile sessions
+  // appear without having to manually hit Refresh. Stops once all sessions
+  // have reached a terminal state (ANALYSED / FAILED / CANCELLED).
+  useEffect(() => {
+    const TERMINAL = ['ANALYSED', 'FAILED', 'CANCELLED'];
+    const hasActive = sessions.some((s) => !TERMINAL.includes((s as { status?: string }).status ?? ''));
+
+    // Poll when there are active sessions OR when the list is still empty
+    // (recordings may be incoming for the first time)
+    if (!hasActive && sessions.length > 0) return;
+
+    const interval = setInterval(() => {
+      fetchSessions(); // silent — fetchSessions never sets loading
+    }, 15_000);
+
+    return () => clearInterval(interval);
+  }, [sessions, fetchSessions]);
+
   // ---- Create session handler ----
   const handleCreateSession = useCallback(
     async (formData: SessionFormData) => {

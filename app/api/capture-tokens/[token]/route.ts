@@ -54,6 +54,14 @@ export async function GET(
       return NextResponse.json({ valid: false }, { status: 200 });
     }
 
+    // Fire-and-forget: warm up the Railway CaptureAPI container so the first
+    // transcription isn't delayed by a cold start. The mobile user will spend
+    // at least 20–30 s filling in the session form, giving Railway time to wake.
+    const captureApiUrl = process.env.CAPTUREAPI_URL || process.env.NEXT_PUBLIC_CAPTUREAPI_URL;
+    if (captureApiUrl) {
+      fetch(`${captureApiUrl}/health`).catch(() => {}); // intentionally not awaited
+    }
+
     return NextResponse.json({
       valid: true,
       workshopId: workshop.id,

@@ -12,7 +12,7 @@ import {
   getPendingSessions,
   removePendingSession,
 } from '@/lib/field-discovery/pending-sessions-store';
-import { getPendingUploads, removePendingUpload } from '@/lib/field-discovery/offline-store';
+import { getPendingUploads, removePendingUpload, countPendingUploads } from '@/lib/field-discovery/offline-store';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,6 +49,7 @@ export default function MobileCaptureTokenPage({
   const [startError, setStartError] = React.useState<string | null>(null);
   const [syncing, setSyncing] = React.useState(false);
   const [syncResult, setSyncResult] = React.useState<{ synced: number } | null>(null);
+  const [hasPendingData, setHasPendingData] = React.useState(false);
 
   // -------------------------------------------------------------------------
   // Online / offline detection + auto-sync on reconnect
@@ -109,6 +110,18 @@ export default function MobileCaptureTokenPage({
             // Cache for offline use
             sessionStorage.setItem(`capture-token-${token}`, JSON.stringify(data));
             setState({ status: 'ready', info: data });
+
+            // Check for pending offline data from previous sessions and sync if online
+            if (navigator.onLine) {
+              const [pendingSessions, pendingCount] = await Promise.all([
+                getPendingSessions(),
+                countPendingUploads(),
+              ]);
+              if (pendingSessions.length > 0 || pendingCount > 0) {
+                setHasPendingData(true);
+                syncOfflineData(); // fire-and-forget
+              }
+            }
           } else {
             setState({ status: 'invalid' });
           }
@@ -182,6 +195,7 @@ export default function MobileCaptureTokenPage({
     }
 
     setSyncing(false);
+    setHasPendingData(false);
     if (synced > 0) setSyncResult({ synced });
   }
 
@@ -292,6 +306,16 @@ export default function MobileCaptureTokenPage({
             Sync complete — {syncResult.synced} item{syncResult.synced !== 1 ? 's' : ''} uploaded
           </span>
         </div>
+      )}
+      {hasPendingData && !syncing && !isOffline && (
+        <button
+          type="button"
+          onClick={() => syncOfflineData()}
+          className="flex items-center justify-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-300 hover:bg-blue-500/20"
+        >
+          <CheckCircle2 className="size-4" />
+          Sync pending recordings
+        </button>
       )}
 
       {/* Loading */}
