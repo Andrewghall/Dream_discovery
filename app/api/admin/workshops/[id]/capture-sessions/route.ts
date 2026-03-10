@@ -15,6 +15,15 @@ import type { CaptureType, CaptureSessionStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
+/** NextResponse.json uses JSON.stringify which can't handle BigInt (startTimeMs/endTimeMs on segments) */
+function jsonWithBigInt(data: unknown, init?: { status?: number; headers?: Record<string, string> }) {
+  const body = JSON.stringify(data, (_, v) => (typeof v === 'bigint' ? Number(v) : v));
+  return new Response(body, {
+    status: init?.status ?? 200,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+  });
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -41,10 +50,7 @@ export async function GET(
       getSessionProgress(workshopId),
     ]);
 
-    return NextResponse.json(
-      { sessions, progress },
-      { headers: { 'Cache-Control': 'no-store' } }
-    );
+    return jsonWithBigInt({ sessions, progress }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error('Error listing capture sessions:', detail);
@@ -82,7 +88,7 @@ export async function POST(
       deviceType,
     });
 
-    return NextResponse.json({ session }, { status: 201 });
+    return jsonWithBigInt({ session }, { status: 201 });
   } catch (error) {
     console.error('Error creating capture session:', error);
     return NextResponse.json({ error: 'Failed to create capture session' }, { status: 500 });
