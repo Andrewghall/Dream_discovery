@@ -48,6 +48,41 @@ export async function GET(
   }
 }
 
+// ── PATCH: Save manually-edited report summary ────────────────────────────────
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: workshopId } = await params;
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
+    if (!access.valid) return NextResponse.json({ error: access.error }, { status: 403 });
+
+    const body = await request.json() as { reportSummary: ReportSummary };
+    if (!body.reportSummary) {
+      return NextResponse.json({ error: 'reportSummary is required' }, { status: 400 });
+    }
+
+    await prisma.workshop.update({
+      where: { id: workshopId },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: { reportSummary: body.reportSummary as any },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('[Report Summary PATCH] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to save report summary' },
+      { status: 500 }
+    );
+  }
+}
+
 // ── POST: Generate report summary with SSE streaming ─────────────────────────
 
 export async function POST(

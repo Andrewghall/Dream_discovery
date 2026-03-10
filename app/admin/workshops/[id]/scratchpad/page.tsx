@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useRef } from 'react';
+import { use, useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Download,
@@ -13,6 +13,9 @@ import {
   ChevronUp,
   Send,
   RefreshCw,
+  Pencil,
+  Plus,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -59,9 +62,133 @@ function SectionHeading({
   );
 }
 
+// ── Inline field editor ───────────────────────────────────────────────────────
+
+function EditableText({
+  value,
+  onSave,
+  multiline = false,
+  className,
+  placeholder,
+}: {
+  value: string;
+  onSave: (v: string) => void;
+  multiline?: boolean;
+  className?: string;
+  placeholder?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed) onSave(trimmed);
+    setEditing(false);
+  };
+
+  if (editing) {
+    if (multiline) {
+      return (
+        <textarea
+          className={`w-full bg-transparent rounded-sm px-1 -mx-1 focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none border border-primary/20 leading-relaxed ${className ?? ''}`}
+          value={draft}
+          rows={Math.max(3, (draft.match(/\n/g) ?? []).length + 2)}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commit();
+          }}
+          autoFocus
+        />
+      );
+    }
+    return (
+      <input
+        className={`w-full bg-transparent border-b border-primary/40 focus:outline-none focus:border-primary pb-0.5 ${className ?? ''}`}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+        }}
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`group/editable relative cursor-text rounded-sm hover:bg-primary/[0.04] transition-colors -mx-1 px-1 ${className ?? ''}`}
+      onClick={() => { setDraft(value); setEditing(true); }}
+      title="Click to edit"
+    >
+      {value || <span className="text-muted-foreground/40 italic text-xs">{placeholder ?? 'Click to add'}</span>}
+      <Pencil className="absolute right-0 top-0.5 h-3 w-3 text-primary/25 opacity-0 group-hover/editable:opacity-100 transition-opacity pointer-events-none" />
+    </div>
+  );
+}
+
+// ── Inline list item adder ────────────────────────────────────────────────────
+
+function AddItemInput({
+  onAdd,
+  placeholder,
+}: {
+  onAdd: (text: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+
+  const commit = () => {
+    const trimmed = value.trim();
+    if (trimmed) onAdd(trimmed);
+    setValue('');
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mt-2 py-1"
+      >
+        <Plus className="h-3 w-3" />
+        Add item
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      <input
+        className="flex-1 bg-transparent border-b border-primary/40 text-sm focus:outline-none focus:border-primary pb-0.5"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') { setValue(''); setOpen(false); }
+        }}
+        placeholder={placeholder ?? 'Type and press Enter to add'}
+        autoFocus
+      />
+      <button onClick={commit} className="text-xs text-primary font-medium shrink-0">Add</button>
+      <button onClick={() => { setValue(''); setOpen(false); }} className="text-xs text-muted-foreground shrink-0">Cancel</button>
+    </div>
+  );
+}
+
 // ── Executive Summary block ───────────────────────────────────────────────────
 
-function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
+function ExecutiveSummaryBlock({
+  summary,
+  onUpdate,
+}: {
+  summary: ReportSummary;
+  onUpdate: (updated: ReportSummary) => void;
+}) {
   const es = summary.executiveSummary;
 
   return (
@@ -74,7 +201,11 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               The Question Asked
             </p>
-            <p className="text-base text-foreground leading-relaxed">{es.theAsk}</p>
+            <EditableText
+              value={es.theAsk}
+              onSave={(v) => onUpdate({ ...summary, executiveSummary: { ...es, theAsk: v } })}
+              className="text-base text-foreground leading-relaxed"
+            />
           </div>
           {summary.validationPassed ? (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 shrink-0">
@@ -95,7 +226,11 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
         <p className="text-[11px] font-semibold uppercase tracking-widest text-primary/70 mb-2">
           The Answer
         </p>
-        <p className="text-xl font-bold text-foreground leading-snug">{es.theAnswer}</p>
+        <EditableText
+          value={es.theAnswer}
+          onSave={(v) => onUpdate({ ...summary, executiveSummary: { ...es, theAnswer: v } })}
+          className="text-xl font-bold text-foreground leading-snug"
+        />
       </div>
 
       {/* Body */}
@@ -108,14 +243,35 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
           </p>
           <ul className="space-y-3">
             {es.whatWeFound.map((finding, i) => (
-              <li key={i} className="flex items-start gap-3">
+              <li key={i} className="flex items-start gap-3 group/item">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary mt-0.5">
                   {i + 1}
                 </span>
-                <span className="text-sm text-foreground leading-relaxed">{finding}</span>
+                <EditableText
+                  value={finding}
+                  onSave={(v) => {
+                    const updated = es.whatWeFound.map((f, j) => j === i ? v : f);
+                    onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
+                  }}
+                  className="flex-1 text-sm text-foreground leading-relaxed"
+                />
+                <button
+                  onClick={() => {
+                    const updated = es.whatWeFound.filter((_, j) => j !== i);
+                    onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
+                  }}
+                  className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
+                  title="Remove finding"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </li>
             ))}
           </ul>
+          <AddItemInput
+            onAdd={(text) => onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: [...es.whatWeFound, text] } })}
+            placeholder="Add a finding — name a system, metric, or process"
+          />
         </div>
 
         {/* Per-Lens Findings */}
@@ -130,7 +286,15 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
                   <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
                     {lf.lens}
                   </p>
-                  <p className="text-sm text-foreground leading-relaxed">{lf.finding}</p>
+                  <EditableText
+                    value={lf.finding}
+                    onSave={(v) => {
+                      const updated = es.lensFindings.map((f, j) => j === i ? { ...f, finding: v } : f);
+                      onUpdate({ ...summary, executiveSummary: { ...es, lensFindings: updated } });
+                    }}
+                    multiline
+                    className="text-sm text-foreground leading-relaxed"
+                  />
                 </div>
               ))}
             </div>
@@ -143,25 +307,40 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               Why It Matters
             </p>
-            <p className="text-sm text-foreground leading-relaxed">{es.whyItMatters}</p>
+            <EditableText
+              value={es.whyItMatters}
+              onSave={(v) => onUpdate({ ...summary, executiveSummary: { ...es, whyItMatters: v } })}
+              multiline
+              className="text-sm text-foreground leading-relaxed"
+            />
           </div>
 
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-700">
               Opportunity / Risk
             </p>
-            <p className="text-sm text-amber-900 leading-relaxed">{es.opportunityOrRisk}</p>
+            <EditableText
+              value={es.opportunityOrRisk}
+              onSave={(v) => onUpdate({ ...summary, executiveSummary: { ...es, opportunityOrRisk: v } })}
+              multiline
+              className="text-sm text-amber-900 leading-relaxed"
+            />
           </div>
         </div>
 
         {/* Urgency */}
         <div className="rounded-xl border border-border bg-muted/10 px-5 py-4 flex items-start gap-3">
           <AlertTriangle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-          <div>
+          <div className="flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
               Why Act Now
             </p>
-            <p className="text-sm text-foreground leading-relaxed">{es.urgency}</p>
+            <EditableText
+              value={es.urgency}
+              onSave={(v) => onUpdate({ ...summary, executiveSummary: { ...es, urgency: v } })}
+              multiline
+              className="text-sm text-foreground leading-relaxed"
+            />
           </div>
         </div>
 
@@ -169,14 +348,18 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
         {es.nextStepsPreview && (
           <div className="rounded-xl border border-primary/20 bg-primary/5 px-5 py-4 flex items-start gap-3">
             <ChevronDown className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-            <p className="text-sm text-foreground leading-relaxed">{es.nextStepsPreview}</p>
+            <EditableText
+              value={es.nextStepsPreview}
+              onSave={(v) => onUpdate({ ...summary, executiveSummary: { ...es, nextStepsPreview: v } })}
+              className="flex-1 text-sm text-foreground leading-relaxed"
+            />
           </div>
         )}
 
         {/* Validation gaps */}
         {!summary.validationPassed && summary.validationGaps.length > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-            <p className="text-xs font-semibold text-amber-800">Validation Gaps:</p>
+            <p className="text-xs font-semibold text-amber-800">Validation Gaps (address then regenerate to clear):</p>
             <ul className="space-y-1">
               {summary.validationGaps.map((gap, i) => (
                 <li key={i} className="text-xs text-amber-700">• {gap}</li>
@@ -344,9 +527,11 @@ const PHASE_COLORS = [
 function SolutionDirectionBlock({
   summary,
   intelligence,
+  onUpdate,
 }: {
   summary: ReportSummary;
   intelligence: WorkshopOutputIntelligence;
+  onUpdate: (updated: ReportSummary) => void;
 }) {
   const ss = summary.solutionSummary;
   const { roadmap, futureState } = intelligence;
@@ -359,7 +544,11 @@ function SolutionDirectionBlock({
         <p className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700 mb-2">
           Transformation Direction
         </p>
-        <p className="text-xl font-bold text-emerald-900 leading-snug">{ss.direction}</p>
+        <EditableText
+          value={ss.direction}
+          onSave={(v) => onUpdate({ ...summary, solutionSummary: { ...ss, direction: v } })}
+          className="text-xl font-bold text-emerald-900 leading-snug"
+        />
       </div>
 
       {/* Rationale */}
@@ -367,7 +556,12 @@ function SolutionDirectionBlock({
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
           The Rationale
         </p>
-        <p className="text-sm text-foreground leading-relaxed">{ss.rationale}</p>
+        <EditableText
+          value={ss.rationale}
+          onSave={(v) => onUpdate({ ...summary, solutionSummary: { ...ss, rationale: v } })}
+          multiline
+          className="text-sm text-foreground leading-relaxed"
+        />
       </div>
 
       {/* What Must Change */}
@@ -378,19 +572,42 @@ function SolutionDirectionBlock({
         <div className="space-y-3">
           {ss.whatMustChange.map((item, i) => (
             <div key={i} className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs font-bold text-foreground mb-2.5">{item.area}</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <EditableText
+                value={item.area}
+                onSave={(v) => {
+                  const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, area: v } : x);
+                  onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
+                }}
+                className="text-xs font-bold text-foreground mb-2.5"
+              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2.5">
                 <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2.5">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1">
                     Today's Reality
                   </p>
-                  <p className="text-xs text-red-900 leading-relaxed">{item.currentState}</p>
+                  <EditableText
+                    value={item.currentState}
+                    onSave={(v) => {
+                      const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, currentState: v } : x);
+                      onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
+                    }}
+                    multiline
+                    className="text-xs text-red-900 leading-relaxed"
+                  />
                 </div>
                 <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2.5">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 mb-1">
                     Required Change
                   </p>
-                  <p className="text-xs text-emerald-900 leading-relaxed">{item.requiredChange}</p>
+                  <EditableText
+                    value={item.requiredChange}
+                    onSave={(v) => {
+                      const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, requiredChange: v } : x);
+                      onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
+                    }}
+                    multiline
+                    className="text-xs text-emerald-900 leading-relaxed"
+                  />
                 </div>
               </div>
             </div>
@@ -508,7 +725,12 @@ function SolutionDirectionBlock({
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Starting Point
           </p>
-          <p className="text-sm text-foreground leading-relaxed">{ss.startingPoint}</p>
+          <EditableText
+            value={ss.startingPoint}
+            onSave={(v) => onUpdate({ ...summary, solutionSummary: { ...ss, startingPoint: v } })}
+            multiline
+            className="text-sm text-foreground leading-relaxed"
+          />
         </div>
 
         <div className="rounded-xl border border-border bg-card p-5 space-y-2.5">
@@ -517,12 +739,33 @@ function SolutionDirectionBlock({
           </p>
           <ul className="space-y-2">
             {ss.successIndicators.map((indicator, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-foreground">
+              <li key={i} className="flex items-start gap-2.5 group/item">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span>{indicator}</span>
+                <EditableText
+                  value={indicator}
+                  onSave={(v) => {
+                    const updated = ss.successIndicators.map((x, j) => j === i ? v : x);
+                    onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: updated } });
+                  }}
+                  className="flex-1 text-sm text-foreground"
+                />
+                <button
+                  onClick={() => {
+                    const updated = ss.successIndicators.filter((_, j) => j !== i);
+                    onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: updated } });
+                  }}
+                  className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all"
+                  title="Remove"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </li>
             ))}
           </ul>
+          <AddItemInput
+            onAdd={(text) => onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: [...ss.successIndicators, text] } })}
+            placeholder="Add a success indicator — must be observable"
+          />
         </div>
       </div>
 
@@ -803,6 +1046,8 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     void fetchData();
@@ -865,6 +1110,28 @@ export default function DownloadReportPage({ params }: PageProps) {
       setLoading(false);
     }
   };
+
+  // Called whenever user edits any field — updates local state and debounce-saves to DB
+  const handleSummaryUpdate = useCallback((updated: ReportSummary) => {
+    setReportSummary(updated);
+    setSaveStatus('saving');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/workshops/${workshopId}/report-summary`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reportSummary: updated }),
+        });
+        if (!res.ok) throw new Error('Save failed');
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch {
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 3000);
+      }
+    }, 800);
+  }, [workshopId]);
 
   const handleExport = async () => {
     try {
@@ -936,6 +1203,25 @@ export default function DownloadReportPage({ params }: PageProps) {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Save status indicator */}
+            {saveStatus === 'saving' && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Saving…
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                <CheckCircle2 className="h-3 w-3" />
+                Saved
+              </span>
+            )}
+            {saveStatus === 'error' && (
+              <span className="flex items-center gap-1.5 text-xs text-amber-600">
+                <AlertTriangle className="h-3 w-3" />
+                Save failed
+              </span>
+            )}
             {reportSummary && (
               <Button
                 variant="outline"
@@ -1003,7 +1289,7 @@ export default function DownloadReportPage({ params }: PageProps) {
               />
 
               {reportSummary ? (
-                <ExecutiveSummaryBlock summary={reportSummary} />
+                <ExecutiveSummaryBlock summary={reportSummary} onUpdate={handleSummaryUpdate} />
               ) : (
                 <GenerateSummaryCta
                   workshopId={workshopId}
@@ -1037,7 +1323,7 @@ export default function DownloadReportPage({ params }: PageProps) {
                   label="Solution Direction"
                   sublabel="Given the ask and findings, the recommended way forward"
                 />
-                <SolutionDirectionBlock summary={reportSummary} intelligence={intelligence} />
+                <SolutionDirectionBlock summary={reportSummary} intelligence={intelligence} onUpdate={handleSummaryUpdate} />
 
                 {/* Regenerate button */}
                 <div className="mt-3 flex justify-end">
