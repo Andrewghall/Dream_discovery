@@ -230,6 +230,7 @@ export interface ReportSummary {
   validationPassed: boolean;
   validationGaps: string[];
   generatedAtMs: number;
+  journeyIntro?: string;
 }
 
 // ── SSE Event Types ───────────────────────────────────────────────────────────

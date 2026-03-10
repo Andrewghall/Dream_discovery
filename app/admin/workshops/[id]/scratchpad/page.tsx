@@ -802,6 +802,114 @@ function JourneyDownloadBar({ workshopId }: { workshopId: string }) {
   );
 }
 
+// ── Journey Intro Block ───────────────────────────────────────────────────────
+
+function JourneyIntroBlock({
+  workshopId,
+  journey,
+  value,
+  onChange,
+  disabled,
+}: {
+  workshopId: string;
+  journey: import('@/lib/cognitive-guidance/pipeline').LiveJourneyData;
+  value: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  // Keep draft in sync if value changes from outside (e.g. initial load)
+  useEffect(() => { setDraft(value); }, [value]);
+
+  const handleGenerate = async () => {
+    try {
+      setGenerating(true);
+      const res = await fetch(`/api/admin/workshops/${workshopId}/journey/intro`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ journey }),
+      });
+      if (!res.ok) throw new Error('Generation failed');
+      const data = await res.json() as { intro: string };
+      setDraft(data.intro);
+      onChange(data.intro);
+      setEditing(false);
+    } catch {
+      // silent
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  if (!value && !editing) {
+    // Empty state — show generate button
+    return (
+      <div className="mb-4 flex items-center gap-2">
+        <button
+          onClick={handleGenerate}
+          disabled={generating || disabled}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border rounded-lg px-3 py-2 transition-colors disabled:opacity-50 w-full justify-center"
+        >
+          {generating
+            ? <><Loader2 className="h-3 w-3 animate-spin" /> Generating intro…</>
+            : <><Sparkles className="h-3 w-3" /> Generate journey introduction</>
+          }
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 group relative">
+      {editing ? (
+        <div className="space-y-2">
+          <textarea
+            className="w-full text-sm text-muted-foreground leading-relaxed rounded-lg border border-border bg-muted/30 px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+            rows={3}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            autoFocus
+          />
+          <div className="flex items-center gap-2 justify-end">
+            <button
+              onClick={handleGenerate}
+              disabled={generating}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              Regenerate
+            </button>
+            <button
+              onClick={() => { onChange(draft); setEditing(false); }}
+              className="text-xs px-2 py-1 rounded bg-foreground text-background hover:opacity-80 transition-opacity"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => { setDraft(value); setEditing(false); }}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div
+          className="text-sm text-muted-foreground leading-relaxed cursor-pointer hover:text-foreground/80 transition-colors"
+          onClick={() => setEditing(true)}
+          title="Click to edit"
+        >
+          {value}
+          <Pencil className="inline-block ml-1.5 h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Agentic Prompt Bar ────────────────────────────────────────────────────────
 
 function AgenticPromptBar({
@@ -1442,6 +1550,16 @@ export default function DownloadReportPage({ params }: PageProps) {
                 </div>
                 {showJourneyMap && (
                   <>
+                    {/* Journey intro text */}
+                    <JourneyIntroBlock
+                      workshopId={workshopId}
+                      journey={liveJourneyData}
+                      value={reportSummary?.journeyIntro ?? ''}
+                      onChange={(v) => {
+                        if (reportSummary) handleSummaryUpdate({ ...reportSummary, journeyIntro: v });
+                      }}
+                      disabled={!reportSummary}
+                    />
                     <JourneyDownloadBar workshopId={workshopId} />
                     <LiveJourneyMap data={liveJourneyData} mode="output" />
                   </>
