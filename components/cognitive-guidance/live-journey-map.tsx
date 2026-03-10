@@ -359,11 +359,13 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
 
           {/* Grid */}
           {stages.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className={isOutput ? '' : 'overflow-x-auto'}>
               <div
-                className="grid min-w-[1000px]"
+                className={isOutput ? 'grid w-full' : 'grid min-w-[1000px]'}
                 style={{
-                  gridTemplateColumns: `160px repeat(${stages.length}, minmax(180px, 1fr))`,
+                  gridTemplateColumns: isOutput
+                    ? `120px repeat(${stages.length}, minmax(0, 1fr))`
+                    : `160px repeat(${stages.length}, minmax(180px, 1fr))`,
                 }}
               >
                 {/* Header row — stages */}
@@ -400,7 +402,7 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                           className={isOutput ? '' : 'cursor-pointer'}
                           onClick={isOutput ? undefined : () => { setEditingStage(idx); setEditStageValue(stage); }}
                         >
-                          <div className={`text-xs font-semibold text-foreground uppercase tracking-wider ${isOutput ? '' : 'group-hover/stage:text-blue-600'} transition-colors`}>
+                          <div className={`${isOutput ? 'text-[10px]' : 'text-xs'} font-semibold text-foreground uppercase tracking-wider ${isOutput ? '' : 'group-hover/stage:text-blue-600'} transition-colors`}>
                             {stage}
                           </div>
                           <div className="text-[10px] text-muted-foreground mt-0.5">Stage {idx + 1}</div>
@@ -450,8 +452,8 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                 {actors.map((actor, actorIdx) => (
                   <div key={actorIdx} className="contents">
                     {/* Actor name cell */}
-                    <div className="bg-muted/30 p-3 border-b border-r sticky left-0 z-10">
-                      <div className="text-sm font-semibold text-foreground">{actor.name}</div>
+                    <div className={`bg-muted/30 ${isOutput ? 'p-2' : 'p-3'} border-b border-r sticky left-0 z-10`}>
+                      <div className={`${isOutput ? 'text-xs' : 'text-sm'} font-semibold text-foreground`}>{actor.name}</div>
                       <div className="text-[10px] text-muted-foreground mt-0.5">{actor.role}</div>
                       {actor.mentionCount > 0 && (
                         <div className="text-[9px] text-muted-foreground/60 mt-0.5">{actor.mentionCount} mentions</div>
@@ -464,7 +466,7 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                       return (
                         <div
                           key={`cell-${actorIdx}-${stageIdx}`}
-                          className="p-2 border-b border-r min-h-[80px]"
+                          className={`${isOutput ? 'p-1' : 'p-2'} border-b border-r min-h-[80px]`}
                         >
                           <div className="space-y-1.5">
                             {cellInteractions.map((interaction) => {

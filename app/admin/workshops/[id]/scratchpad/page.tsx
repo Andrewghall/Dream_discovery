@@ -1240,6 +1240,27 @@ export default function DownloadReportPage({ params }: PageProps) {
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-10">
 
+        {/* ── AGENTIC PROMPT BAR — always at the top ────────────────────── */}
+        {intelligence && (
+          <>
+            {promptOutputs.length > 0 && (
+              <div className="space-y-4">
+                <SectionHeading
+                  label="Additional Analysis"
+                  sublabel="Generated on demand — not saved to report"
+                />
+                {promptOutputs.map((output, i) => (
+                  <ReportPromptOutput key={i} output={output} />
+                ))}
+              </div>
+            )}
+            <AgenticPromptBar
+              workshopId={workshopId}
+              onOutput={(o) => setPromptOutputs((prev) => [...prev, o])}
+            />
+          </>
+        )}
+
         {/* No intelligence yet */}
         {!intelligence && (
           <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
@@ -1338,24 +1359,6 @@ export default function DownloadReportPage({ params }: PageProps) {
               </div>
             )}
 
-            {/* ── PROMPT OUTPUTS (ephemeral) ────────────────────────────── */}
-            {promptOutputs.length > 0 && (
-              <div className="space-y-4">
-                <SectionHeading
-                  label="Additional Analysis"
-                  sublabel="Generated on demand — not saved to report"
-                />
-                {promptOutputs.map((output, i) => (
-                  <ReportPromptOutput key={i} output={output} />
-                ))}
-              </div>
-            )}
-
-            {/* ── AGENTIC PROMPT BAR ────────────────────────────────────── */}
-            <AgenticPromptBar
-              workshopId={workshopId}
-              onOutput={(o) => setPromptOutputs((prev) => [...prev, o])}
-            />
           </>
         )}
       </div>
