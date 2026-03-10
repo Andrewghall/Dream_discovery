@@ -46,8 +46,9 @@ export async function GET(
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (error) {
-    console.error('Error listing capture sessions:', error);
-    return NextResponse.json({ error: 'Failed to list capture sessions' }, { status: 500 });
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error('Error listing capture sessions:', detail);
+    return NextResponse.json({ error: 'Failed to list capture sessions', detail }, { status: 500 });
   }
 }
 

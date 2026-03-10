@@ -89,7 +89,17 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
         setError('Access denied: you do not have permission to view sessions for this workshop.');
         return;
       }
-      if (!res.ok) return;
+      if (!res.ok) {
+        let detail = `Server error (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body.detail) detail = body.detail;
+          else if (body.error) detail = body.error;
+        } catch { /* ignore JSON parse errors */ }
+        setError(`Could not load sessions: ${detail}`);
+        return;
+      }
+      setError(null);
       const data = await res.json();
       setSessions(data.sessions ?? []);
       setProgress(data.progress ?? null);
@@ -120,11 +130,12 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
   //   • a capture link is active (fast: 3 s)
   //   • any session is non-terminal (fast: 3 s)
   //   • the session list is still empty (fast: 3 s)
-  // Stops only when ALL sessions are terminal AND no capture link is active.
+  // Stops when ALL sessions are terminal AND no capture link is active, OR when there
+  // is an error (e.g. 500 from the server) — user must hit Refresh to re-enable.
   useEffect(() => {
     const TERMINAL = ['ANALYSED', 'FAILED', 'CANCELLED'];
     const hasActive = sessions.some((s) => !TERMINAL.includes((s as { status?: string }).status ?? ''));
-    const shouldPoll = hasActive || sessions.length === 0 || !!captureLink;
+    const shouldPoll = !error && (hasActive || sessions.length === 0 || !!captureLink);
 
     if (!shouldPoll) return;
 
@@ -136,7 +147,7 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
     }, intervalMs);
 
     return () => clearInterval(interval);
-  }, [sessions, fetchSessions, captureLink]);
+  }, [sessions, fetchSessions, captureLink, error]);
 
   // ---- Create session handler ----
   const handleCreateSession = useCallback(
