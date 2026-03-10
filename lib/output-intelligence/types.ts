@@ -191,13 +191,20 @@ export interface StoredOutputIntelligence {
 
 // ── Report Summary (single GPT-4o synthesis) ─────────────────────────────────
 
+export interface LensFinding {
+  lens: string;                 // e.g. "People", "Technology"
+  finding: string;              // specific finding for this lens
+}
+
 export interface ExecSummary {
   theAsk: string;               // one sentence: what was commissioned and why
   theAnswer: string;            // one sentence: direct answer to the ask
-  whatWeFound: string[];        // 4-6 specific findings from the workshop
-  whyItMatters: string;         // 2-3 sentences: business impact, stakes
+  whatWeFound: string[];        // 6-8 specific findings, each grounded in evidence
+  lensFindings: LensFinding[];  // per-lens breakdown of what the workshop revealed
+  whyItMatters: string;         // 3-4 sentences: business impact, cost, risk if unchanged
   opportunityOrRisk: string;    // 2-3 sentences: specific opportunity or risk revealed
   urgency: string;              // one sentence: why act now
+  nextStepsPreview: string;     // one sentence bridging to the solution direction
 }
 
 export interface WhatMustChange {

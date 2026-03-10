@@ -20,35 +20,47 @@ const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) :
 
 const SCHEMA = `{
   "workshopAsk": "string — the precise question the organisation commissioned this workshop to answer",
-  "keyInsight": "string — the single most important thing the workshop revealed (specific, not generic)",
+  "keyInsight": "string — the single most important revelation from the workshop (one sentence, specific, name the organisation)",
 
   "executiveSummary": {
-    "theAsk": "string — one sentence: what was commissioned and why",
-    "theAnswer": "string — one sentence: the direct answer to the ask (bold claim, grounded in evidence)",
+    "theAsk": "string — one sentence: what was commissioned and why this mattered to the organisation",
+    "theAnswer": "string — one sentence: the direct, decisive answer to the ask — a bold claim grounded entirely in the evidence below",
+
     "whatWeFound": [
-      "string — specific finding 1 from this workshop (not generic)",
-      "string — specific finding 2",
-      "string — specific finding 3",
-      "string — specific finding 4"
+      "string — finding 1: specific issue, name the system/team/metric affected",
+      "string — finding 2: specific issue with evidence (e.g. 'X% attrition', '8 legacy systems', 'no unified view')",
+      "string — finding 3: specific issue",
+      "string — finding 4: specific issue",
+      "string — finding 5: specific issue",
+      "string — finding 6: specific issue — if evidence exists for a 6th, include it; otherwise omit"
     ],
-    "whyItMatters": "string — 2-3 sentences: business impact, stakes, consequence of inaction — specific to this organisation",
-    "opportunityOrRisk": "string — 2-3 sentences: the specific opportunity or risk revealed — named concretely, not abstractly",
-    "urgency": "string — one sentence: why this needs to be addressed now (market/competitive/operational reason)"
+
+    "lensFindings": [
+      { "lens": "string — lens name (e.g. People)", "finding": "string — what this lens specifically revealed in the workshop, grounded in evidence" },
+      { "lens": "string", "finding": "string" }
+    ],
+
+    "whyItMatters": "string — 3-4 sentences: name the direct business cost of these issues (operational, financial, customer, competitive) — no generic consulting language — be specific to this organisation",
+    "opportunityOrRisk": "string — 3-4 sentences: name the specific opportunity if addressed, and the specific risk if not — reference the root cause and the evidence",
+    "urgency": "string — 1-2 sentences: the operational or market reason why delay compounds the problem — specific to this organisation",
+    "nextStepsPreview": "string — one sentence: the direction the solution takes, bridging to the solution section below"
   },
 
   "solutionSummary": {
-    "direction": "string — one sentence transformation headline (e.g. 'Move from reactive case handling to AI-augmented advisory')",
-    "rationale": "string — 2-3 sentences: why this is the right direction, grounded in the root causes identified",
+    "direction": "string — one sentence transformation headline — describe where the organisation needs to move FROM and TO",
+    "rationale": "string — 3-4 sentences: why this is the right direction — link each element to the root causes identified — no generic language",
     "whatMustChange": [
-      { "area": "string", "currentState": "string — concrete description of today's reality", "requiredChange": "string — specific change needed" },
+      { "area": "string — name of the specific area", "currentState": "string — concrete description of today's reality using evidence from the workshop", "requiredChange": "string — specific, actionable change needed" },
+      { "area": "string", "currentState": "string", "requiredChange": "string" },
       { "area": "string", "currentState": "string", "requiredChange": "string" },
       { "area": "string", "currentState": "string", "requiredChange": "string" }
     ],
-    "startingPoint": "string — 2-3 sentences: what to do first and the logic of sequencing (why this step unlocks the others)",
+    "startingPoint": "string — 2-3 sentences: what must happen in the first 30-60 days and why this unlocks the rest of the transformation",
     "successIndicators": [
-      "string — observable outcome 1 (specific and measurable, not 'improve experience')",
+      "string — observable outcome 1: specific and measurable (e.g. 'Advisor handles end-to-end case without switching systems')",
       "string — observable outcome 2",
-      "string — observable outcome 3"
+      "string — observable outcome 3",
+      "string — observable outcome 4"
     ]
   },
 
@@ -186,26 +198,29 @@ export async function runReportSummaryAgent(
 ): Promise<ReportSummary> {
   onProgress?.('Report Summary: synthesising executive output…');
 
-  const systemPrompt = `You are the DREAM Download Report writer — the final synthesis layer. Your job is to read all pre-generated workshop intelligence and write the two client-facing sections defined by the DREAM report guidance:
+  const systemPrompt = `You are the DREAM Download Report writer. You receive pre-generated workshop intelligence and write the two client-facing narrative sections. This is a professional deliverable — it must read like a rigorous executive report, not a consulting slide deck.
 
-1. EXECUTIVE SUMMARY — directly answers the workshop ask with specific, evidenced findings
-2. SOLUTION SUMMARY — recommends the way forward grounded in root causes
+EXECUTIVE SUMMARY RULES:
+• Must directly answer the workshop ask — not describe the workshop process
+• whatWeFound: MINIMUM 6 items — each must name a specific system, team, metric, or process observed — no generic phrases like "lack of alignment" without naming what is misaligned
+• lensFindings: one entry per lens used in the workshop — each must describe what that specific lens revealed — if a lens had no substantive findings, omit it entirely (do not make up findings)
+• whyItMatters: must name specific business consequences — operational cost, customer impact, staff impact, competitive exposure — be concrete
+• If evidence for a finding does not exist in the provided intelligence, DO NOT include that finding — omit rather than invent
 
-CRITICAL RULES:
-• The Executive Summary MUST answer the workshop ask — not summarise the workshop
-• Every finding in whatWeFound must be specific to this organisation and this workshop — NO generic consulting language
-• whatMustChange must describe concrete current-state reality, not abstract categories
-• successIndicators must be observable outcomes — e.g. "advisor completes end-to-end case without switching systems" not "improve customer experience"
-• If signals are thin, state that explicitly rather than padding with generics
-• Minimum: 4 items in whatWeFound, 3 items in whatMustChange, 3 items in successIndicators
-• Output MUST be valid JSON matching the schema exactly — no commentary outside the JSON
+SOLUTION SUMMARY RULES:
+• whatMustChange: MINIMUM 4 areas — each currentState must describe the observable reality today using the workshop evidence — not aspirational language about what SHOULD happen
+• successIndicators: MINIMUM 4 — each must be an observable outcome a manager could verify — not "improve efficiency" but "case resolved in single interaction without system switching"
+• rationale must trace directly to the root causes provided — if a root cause is not relevant to the direction, do not reference it
 
-VALIDATION TEST (apply before completing):
-If an executive reads only executiveSummary and solutionSummary, will they clearly understand:
-- The answer to the workshop objective? ✓
-- The specific opportunity or risk revealed? ✓
-- The recommended direction forward? ✓
-If no, set validationPassed: false and list gaps in validationGaps.`;
+ABSOLUTE RULES — NO EXCEPTIONS:
+• NEVER invent data, metrics, or findings not present in the provided intelligence
+• NEVER use generic consulting phrases (e.g. "foster a culture of", "drive alignment", "leverage synergies")
+• If evidence is genuinely thin for a section, write "Insufficient evidence from workshop signals" for that field — do not pad
+• Output MUST be valid JSON matching the schema exactly — no commentary outside JSON
+
+VALIDATION TEST before completing:
+Could a senior executive read executiveSummary and solutionSummary and know: (1) exactly what was asked, (2) the specific answer with evidence, (3) what must change and in what order?
+If not, set validationPassed: false and list the specific gaps in validationGaps.`;
 
   const contextDump = buildContextDump(signals, intelligence);
 
@@ -229,7 +244,7 @@ ${SCHEMA}`;
           { role: 'user', content: userMessage },
         ],
         temperature: 0.4,
-        max_tokens: 3000,
+        max_tokens: 4000,
       });
 
       const raw = response.choices[0]?.message?.content ?? '{}';

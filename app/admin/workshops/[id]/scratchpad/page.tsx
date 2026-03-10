@@ -66,14 +66,15 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      {/* Header */}
+
+      {/* The Ask */}
       <div className="px-6 py-5 border-b border-border bg-muted/30">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1 flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-              The Ask
+              The Question Asked
             </p>
-            <p className="text-sm text-foreground">{es.theAsk}</p>
+            <p className="text-base text-foreground leading-relaxed">{es.theAsk}</p>
           </div>
           {summary.validationPassed ? (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 shrink-0">
@@ -90,24 +91,30 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
       </div>
 
       {/* The Answer — prominent */}
-      <div className="px-6 py-5 bg-primary/5 border-b border-primary/20">
+      <div className="px-6 py-6 bg-primary/5 border-b border-primary/20">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-primary/70 mb-2">
           The Answer
         </p>
-        <p className="text-lg font-semibold text-foreground leading-snug">{es.theAnswer}</p>
+        <p className="text-xl font-bold text-foreground leading-snug">{es.theAnswer}</p>
+        {summary.keyInsight && summary.keyInsight !== es.theAnswer && (
+          <p className="mt-3 text-sm text-foreground/80 leading-relaxed border-t border-primary/10 pt-3">
+            {summary.keyInsight}
+          </p>
+        )}
       </div>
 
       {/* Body */}
-      <div className="px-6 py-6 space-y-6">
-        {/* What We Found */}
+      <div className="px-6 py-6 space-y-7">
+
+        {/* What We Found — numbered findings */}
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
             What We Found
           </p>
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {es.whatWeFound.map((finding, i) => (
               <li key={i} className="flex items-start gap-3">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary mt-0.5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary mt-0.5">
                   {i + 1}
                 </span>
                 <span className="text-sm text-foreground leading-relaxed">{finding}</span>
@@ -116,16 +123,35 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
           </ul>
         </div>
 
-        {/* Why It Matters */}
+        {/* Per-Lens Findings */}
+        {es.lensFindings && es.lensFindings.length > 0 && (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+              Findings by Lens
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {es.lensFindings.map((lf, i) => (
+                <div key={i} className="rounded-xl border border-border bg-muted/20 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                    {lf.lens}
+                  </p>
+                  <p className="text-sm text-foreground leading-relaxed">{lf.finding}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Why It Matters + Opportunity / Risk */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-1.5">
+          <div className="rounded-xl border border-border bg-muted/20 p-5 space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               Why It Matters
             </p>
             <p className="text-sm text-foreground leading-relaxed">{es.whyItMatters}</p>
           </div>
 
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-1.5">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-700">
               Opportunity / Risk
             </p>
@@ -134,15 +160,23 @@ function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
         </div>
 
         {/* Urgency */}
-        <div className="rounded-xl border border-border bg-muted/10 px-4 py-3 flex items-start gap-3">
+        <div className="rounded-xl border border-border bg-muted/10 px-5 py-4 flex items-start gap-3">
           <AlertTriangle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
               Why Act Now
             </p>
-            <p className="text-sm text-foreground">{es.urgency}</p>
+            <p className="text-sm text-foreground leading-relaxed">{es.urgency}</p>
           </div>
         </div>
+
+        {/* Bridge to Solution */}
+        {es.nextStepsPreview && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-5 py-4 flex items-start gap-3">
+            <ChevronDown className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+            <p className="text-sm text-foreground leading-relaxed">{es.nextStepsPreview}</p>
+          </div>
+        )}
 
         {/* Validation gaps */}
         {!summary.validationPassed && summary.validationGaps.length > 0 && (
@@ -306,80 +340,197 @@ function RootCausesBlock({ intelligence }: { intelligence: WorkshopOutputIntelli
 
 // ── Solution Direction block ──────────────────────────────────────────────────
 
-function SolutionDirectionBlock({ summary }: { summary: ReportSummary }) {
+const PHASE_COLORS = [
+  { bg: 'bg-primary/5', border: 'border-primary/20', num: 'bg-primary text-primary-foreground', label: 'text-primary' },
+  { bg: 'bg-emerald-50', border: 'border-emerald-200', num: 'bg-emerald-600 text-white', label: 'text-emerald-700' },
+  { bg: 'bg-violet-50', border: 'border-violet-200', num: 'bg-violet-600 text-white', label: 'text-violet-700' },
+];
+
+function SolutionDirectionBlock({
+  summary,
+  intelligence,
+}: {
+  summary: ReportSummary;
+  intelligence: WorkshopOutputIntelligence;
+}) {
   const ss = summary.solutionSummary;
+  const { roadmap, futureState } = intelligence;
 
   return (
-    <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      {/* Direction headline */}
-      <div className="px-6 py-5 border-b border-border bg-emerald-50">
+    <div className="space-y-6">
+
+      {/* Direction headline card */}
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700 mb-2">
-          Direction
+          Transformation Direction
         </p>
-        <p className="text-lg font-semibold text-emerald-900 leading-snug">{ss.direction}</p>
+        <p className="text-xl font-bold text-emerald-900 leading-snug">{ss.direction}</p>
       </div>
 
-      <div className="px-6 py-6 space-y-6">
-        {/* Rationale */}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-            The Rationale
-          </p>
-          <p className="text-sm text-foreground leading-relaxed">{ss.rationale}</p>
-        </div>
+      {/* Rationale */}
+      <div className="rounded-xl border border-border bg-card px-5 py-5 space-y-1.5">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          The Rationale
+        </p>
+        <p className="text-sm text-foreground leading-relaxed">{ss.rationale}</p>
+      </div>
 
-        {/* What Must Change */}
+      {/* What Must Change */}
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+          What Must Change
+        </p>
+        <div className="space-y-3">
+          {ss.whatMustChange.map((item, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs font-bold text-foreground mb-2.5">{item.area}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1">
+                    Today's Reality
+                  </p>
+                  <p className="text-xs text-red-900 leading-relaxed">{item.currentState}</p>
+                </div>
+                <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 mb-1">
+                    Required Change
+                  </p>
+                  <p className="text-xs text-emerald-900 leading-relaxed">{item.requiredChange}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Target Operating Model (from existing futureState intelligence) */}
+      {futureState.targetOperatingModel && (
+        <div className="rounded-xl border border-border bg-card px-5 py-5 space-y-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Target Operating Model
+          </p>
+          <p className="text-sm text-foreground leading-relaxed">{futureState.targetOperatingModel}</p>
+        </div>
+      )}
+
+      {/* Redesign Principles (from existing futureState intelligence) */}
+      {futureState.redesignPrinciples.length > 0 && (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-            What Must Change
+            Redesign Principles
           </p>
-          <div className="space-y-3">
-            {ss.whatMustChange.map((item, i) => (
-              <div key={i} className="rounded-xl border border-border bg-muted/20 p-4">
-                <p className="text-xs font-semibold text-foreground mb-2">{item.area}</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1">
-                      Current
-                    </p>
-                    <p className="text-xs text-red-900">{item.currentState}</p>
-                  </div>
-                  <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 mb-1">
-                      Required Change
-                    </p>
-                    <p className="text-xs text-emerald-900">{item.requiredChange}</p>
-                  </div>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {futureState.redesignPrinciples.map((p, i) => (
+              <div key={i} className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 flex items-start gap-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                <p className="text-xs text-foreground">{p}</p>
               </div>
             ))}
           </div>
         </div>
+      )}
 
-        {/* Starting Point + Success Indicators side by side */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Starting Point
-            </p>
-            <p className="text-sm text-foreground leading-relaxed">{ss.startingPoint}</p>
+      {/* Transformation Roadmap (from existing roadmap intelligence — NOT agent-generated) */}
+      {roadmap.phases.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
+            Transformation Roadmap
+          </p>
+          <div className="space-y-3">
+            {roadmap.phases.map((phase, i) => {
+              const colors = PHASE_COLORS[i] ?? PHASE_COLORS[0];
+              return (
+                <div key={i} className={`rounded-xl border ${colors.border} ${colors.bg} p-5`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${colors.num} text-xs font-bold`}>
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-3 mb-2">
+                        <p className={`text-sm font-bold ${colors.label}`}>{phase.phase}</p>
+                        <span className="text-xs text-muted-foreground shrink-0">{phase.timeframe}</span>
+                      </div>
+                      {phase.initiatives.length > 0 && (
+                        <ul className="space-y-1.5">
+                          {phase.initiatives.map((init, j) => (
+                            <li key={j} className="flex items-start gap-2">
+                              <span className="text-muted-foreground shrink-0 text-xs mt-0.5">·</span>
+                              <span className="text-xs text-foreground">
+                                <span className="font-medium">{init.title}</span>
+                                {init.outcome ? ` — ${init.outcome}` : ''}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {phase.capabilities.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {phase.capabilities.map((c) => (
+                            <span key={c} className="px-1.5 py-0.5 rounded bg-white/60 border border-white text-[10px] text-foreground/70">
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Success Looks Like
-            </p>
-            <ul className="space-y-2">
-              {ss.successIndicators.map((indicator, i) => (
-                <li key={i} className="flex items-start gap-2.5 text-sm text-foreground">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <span>{indicator}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Critical path */}
+          {roadmap.criticalPath && (
+            <div className="mt-3 rounded-lg border border-border bg-muted/20 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                Critical Path
+              </p>
+              <p className="text-sm text-foreground">{roadmap.criticalPath}</p>
+            </div>
+          )}
+
+          {/* Key risks */}
+          {roadmap.keyRisks.length > 0 && (
+            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-700 mb-1.5">
+                Key Risks
+              </p>
+              <ul className="space-y-1">
+                {roadmap.keyRisks.map((r, i) => (
+                  <li key={i} className="text-xs text-amber-900 flex items-start gap-2">
+                    <span className="shrink-0">·</span>{r}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Starting Point + Success Indicators */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="rounded-xl border border-border bg-card p-5 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Starting Point
+          </p>
+          <p className="text-sm text-foreground leading-relaxed">{ss.startingPoint}</p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-5 space-y-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Success Looks Like
+          </p>
+          <ul className="space-y-2">
+            {ss.successIndicators.map((indicator, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-sm text-foreground">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>{indicator}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
+
     </div>
   );
 }
@@ -891,7 +1042,7 @@ export default function DownloadReportPage({ params }: PageProps) {
                   label="Solution Direction"
                   sublabel="Given the ask and findings, the recommended way forward"
                 />
-                <SolutionDirectionBlock summary={reportSummary} />
+                <SolutionDirectionBlock summary={reportSummary} intelligence={intelligence} />
 
                 {/* Regenerate button */}
                 <div className="mt-3 flex justify-end">
