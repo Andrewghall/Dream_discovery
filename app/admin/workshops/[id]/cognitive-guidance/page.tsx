@@ -2191,14 +2191,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 {versionSaveStatus === 'error' && <span className="w-1.5 h-1.5 rounded-full bg-red-500" />}
               </button>
             )}
-            {/* Review in Hemisphere button (shown after stopping with data) */}
-            {!listening && lastSavedSnapshotId && Object.keys(hemisphereNodes).length > 0 && (
-              <Link href={`/admin/workshops/${workshopId}/hemisphere?snapshotId=${lastSavedSnapshotId}`}>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
-                  Review in Hemisphere →
-                </Button>
-              </Link>
-            )}
             {/* Audio level sound bar — 5 animated bars */}
             {audio.capturing && (
               <div className="flex items-end gap-0.5 h-5 ml-1">

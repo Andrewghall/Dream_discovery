@@ -197,21 +197,15 @@ export default function VersionHistoryPanel({
                   </span>
                 )}
 
-                {/* Restore button */}
-                {!isCurrent && (
-                  <button
-                    onClick={() => handleRestore(v.id)}
-                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium border hover:bg-muted/50 transition-colors shrink-0"
-                    title="Restore this version"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    Restore
-                  </button>
-                )}
-
-                {isCurrent && (
-                  <span className="text-[10px] text-primary font-medium shrink-0">Current</span>
-                )}
+                {/* Restore / Reload button — always shown */}
+                <button
+                  onClick={() => handleRestore(v.id)}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium border hover:bg-muted/50 transition-colors shrink-0"
+                  title={isCurrent ? 'Reload this session into the page' : 'Restore this version'}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  {isCurrent ? 'Reload' : 'Restore'}
+                </button>
               </div>
             );
           })}
