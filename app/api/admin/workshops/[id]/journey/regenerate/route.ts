@@ -135,7 +135,7 @@ export async function POST(
   const sorted = cogNodesRaw
     .filter(n => n.rawText && n.rawText.trim().length > 10)
     .sort((a, b) => (b.classification?.confidence ?? 0) - (a.classification?.confidence ?? 0))
-    .slice(0, 80);
+    .slice(0, 200);
 
   const nodesSummary = sorted
     .map(n => {
@@ -220,7 +220,7 @@ Return ONLY valid JSON matching this exact schema:
 }
 
 Rules:
-- Generate 12–20 meaningful interactions spread across stages and actors
+- Generate 30–50 meaningful interactions spread across ALL stages and ALL actors — sparse coverage is not acceptable
 - Base interactions ONLY on evidence from the transcript nodes below
 - Mark pain points (isPainPoint: true) where frustration or failure is evident
 - Mark moments of truth (isMomentOfTruth: true) for pivotal experience moments
@@ -230,7 +230,7 @@ Rules:
 - aiAgencyFuture should be "assisted" or "autonomous" where AI could help
 - Return ONLY the JSON object, no markdown, no explanation`;
 
-  const userPrompt = `Workshop transcript nodes (${sorted.length} items):\n\n${nodesSummary || 'No detailed node data available — generate interactions based on the actor and stage context.'}`;
+  const userPrompt = `Workshop transcript nodes (${sorted.length} of ${cogNodesRaw.length} total, top by confidence):\n\n${nodesSummary || 'No detailed node data available — generate interactions based on the actor and stage context.'}`;
 
   let liveJourney: LiveJourneyData;
 

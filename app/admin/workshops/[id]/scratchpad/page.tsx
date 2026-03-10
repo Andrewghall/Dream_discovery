@@ -1022,6 +1022,9 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [intelligence, setIntelligence] = useState<WorkshopOutputIntelligence | null>(null);
   const [reportSummary, setReportSummary] = useState<ReportSummary | null>(null);
   const [liveJourneyData, setLiveJourneyData] = useState<LiveJourneyData | null>(null);
+  const [journeyVersions, setJourneyVersions] = useState<Array<{ id: string; version: number; dialoguePhase: string; createdAt: string }>>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [journeyRegenerating, setJourneyRegenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
@@ -1060,25 +1063,19 @@ export default function DownloadReportPage({ params }: PageProps) {
         if (d.reportSummary) setReportSummary(d.reportSummary as ReportSummary);
       }
 
-      // Fetch journey map (non-fatal)
+      // Fetch journey versions (non-fatal)
       try {
         const versionsRes = await fetch(
-          `/api/admin/workshops/${workshopId}/live/session-versions?limit=1`
+          `/api/admin/workshops/${workshopId}/live/session-versions?limit=20`
         );
         if (versionsRes.ok) {
           const vd = await versionsRes.json();
-          const latestId = vd.versions?.[0]?.id;
+          const versions = vd.versions ?? [];
+          setJourneyVersions(versions);
+          const latestId = versions[0]?.id;
           if (latestId) {
-            const versionRes = await fetch(
-              `/api/admin/workshops/${workshopId}/live/session-versions/${latestId}`
-            );
-            if (versionRes.ok) {
-              const versionData = await versionRes.json();
-              const lj = versionData.version?.payload?.liveJourney;
-              if (lj?.stages?.length && lj?.interactions?.length) {
-                setLiveJourneyData(lj as LiveJourneyData);
-              }
-            }
+            setSelectedVersionId(latestId);
+            await loadJourneyVersion(latestId, workshopId);
           }
         }
       } catch {
@@ -1088,6 +1085,44 @@ export default function DownloadReportPage({ params }: PageProps) {
       console.error('Failed to fetch report data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadJourneyVersion = async (versionId: string, wsId = workshopId) => {
+    try {
+      const versionRes = await fetch(
+        `/api/admin/workshops/${wsId}/live/session-versions/${versionId}`
+      );
+      if (versionRes.ok) {
+        const versionData = await versionRes.json();
+        const lj = versionData.version?.payload?.liveJourney;
+        if (lj?.stages?.length && lj?.interactions?.length) {
+          setLiveJourneyData(lj as LiveJourneyData);
+        }
+      }
+    } catch { /* non-fatal */ }
+  };
+
+  const handleRegenerateJourney = async () => {
+    try {
+      setJourneyRegenerating(true);
+      const res = await fetch(`/api/admin/workshops/${workshopId}/journey/regenerate`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Regeneration failed' }));
+        toast.error(err.error || 'Journey regeneration failed');
+        return;
+      }
+      const data = await res.json();
+      if (data.liveJourney) {
+        setLiveJourneyData(data.liveJourney as LiveJourneyData);
+        toast.success('Journey map regenerated from full workshop data');
+      }
+    } catch {
+      toast.error('Journey regeneration failed');
+    } finally {
+      setJourneyRegenerating(false);
     }
   };
 
@@ -1204,11 +1239,14 @@ export default function DownloadReportPage({ params }: PageProps) {
             )}
             {/* Quality indicator — admin only, never exported */}
             {reportSummary && !reportSummary.validationPassed && reportSummary.validationGaps.length > 0 && (
-              <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-700 cursor-default"
-                title={reportSummary.validationGaps.join('\n')}>
+              <button
+                onClick={() => setReportSummary(null)}
+                className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                title={`Click to regenerate\n\n${reportSummary.validationGaps.join('\n')}`}
+              >
                 <AlertTriangle className="h-3 w-3" />
-                {reportSummary.validationGaps.length} quality gap{reportSummary.validationGaps.length > 1 ? 's' : ''} — regenerate to clear
-              </span>
+                {reportSummary.validationGaps.length} quality gap{reportSummary.validationGaps.length > 1 ? 's' : ''} — click to regenerate
+              </button>
             )}
             {reportSummary && (
               <Button
@@ -1355,16 +1393,52 @@ export default function DownloadReportPage({ params }: PageProps) {
                   label="Customer Journey"
                   sublabel="Actor swim-lanes from the live workshop session"
                 />
-                <div className="flex justify-end -mt-3 mb-3">
-                  <button
-                    onClick={() => setShowJourneyMap(v => !v)}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <span className={`inline-flex h-4 w-7 items-center rounded-full border transition-colors ${showJourneyMap ? 'bg-foreground/15 border-foreground/20' : 'bg-muted border-border'}`}>
-                      <span className={`h-3.5 w-3.5 rounded-full bg-background shadow-sm border border-border transition-transform ${showJourneyMap ? 'translate-x-3' : 'translate-x-0'}`} />
-                    </span>
-                    {showJourneyMap ? 'Included in report' : 'Excluded from report'}
-                  </button>
+                {/* Journey controls row */}
+                <div className="flex items-center justify-between -mt-3 mb-3 gap-3">
+                  {/* Version picker */}
+                  {journeyVersions.length > 1 && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="text-[10px] uppercase tracking-wide font-medium">Session:</span>
+                      <select
+                        value={selectedVersionId ?? ''}
+                        onChange={async (e) => {
+                          const id = e.target.value;
+                          setSelectedVersionId(id);
+                          await loadJourneyVersion(id);
+                        }}
+                        className="text-xs border border-border rounded px-1.5 py-0.5 bg-background text-foreground"
+                      >
+                        {journeyVersions.map((v, i) => (
+                          <option key={v.id} value={v.id}>
+                            v{v.version} — {v.dialoguePhase}{i === 0 ? ' (latest)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 ml-auto">
+                    {/* Regenerate from full data */}
+                    <button
+                      onClick={handleRegenerateJourney}
+                      disabled={journeyRegenerating}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      {journeyRegenerating
+                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Regenerating…</>
+                        : <><RefreshCw className="h-3 w-3" /> Regenerate from full data</>
+                      }
+                    </button>
+                    {/* Include/exclude toggle */}
+                    <button
+                      onClick={() => setShowJourneyMap(v => !v)}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <span className={`inline-flex h-4 w-7 items-center rounded-full border transition-colors ${showJourneyMap ? 'bg-foreground/15 border-foreground/20' : 'bg-muted border-border'}`}>
+                        <span className={`h-3.5 w-3.5 rounded-full bg-background shadow-sm border border-border transition-transform ${showJourneyMap ? 'translate-x-3' : 'translate-x-0'}`} />
+                      </span>
+                      {showJourneyMap ? 'Included in report' : 'Excluded from report'}
+                    </button>
+                  </div>
                 </div>
                 {showJourneyMap && (
                   <>
