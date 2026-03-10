@@ -189,6 +189,42 @@ export interface StoredOutputIntelligence {
   errors?: Partial<Record<EngineKey, string>>;
 }
 
+// ── Report Summary (single GPT-4o synthesis) ─────────────────────────────────
+
+export interface ExecSummary {
+  theAsk: string;               // one sentence: what was commissioned and why
+  theAnswer: string;            // one sentence: direct answer to the ask
+  whatWeFound: string[];        // 4-6 specific findings from the workshop
+  whyItMatters: string;         // 2-3 sentences: business impact, stakes
+  opportunityOrRisk: string;    // 2-3 sentences: specific opportunity or risk revealed
+  urgency: string;              // one sentence: why act now
+}
+
+export interface WhatMustChange {
+  area: string;
+  currentState: string;
+  requiredChange: string;
+}
+
+export interface SolutionSummary {
+  direction: string;            // one-sentence transformation headline
+  rationale: string;            // 2-3 sentences: why this is the right direction
+  whatMustChange: WhatMustChange[];  // 3-5 specific change areas
+  startingPoint: string;        // 2-3 sentences: what to do first and why
+  successIndicators: string[];  // 3-5 observable outcomes
+}
+
+export interface ReportSummary {
+  workshopAsk: string;
+  keyInsight: string;
+  executiveSummary: ExecSummary;
+  solutionSummary: SolutionSummary;
+  transformationDirection: string;
+  validationPassed: boolean;
+  validationGaps: string[];
+  generatedAtMs: number;
+}
+
 // ── SSE Event Types ───────────────────────────────────────────────────────────
 
 export type EngineKey = 'discoveryValidation' | 'rootCause' | 'futureState' | 'roadmap' | 'strategicImpact';

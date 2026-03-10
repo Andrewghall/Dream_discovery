@@ -140,6 +140,7 @@ model Workshop {
 
   // DREAM Output Intelligence (5-stage AI pipeline output)
   outputIntelligence  Json?                 @map("output_intelligence")  // WorkshopOutputIntelligence stored as JSON
+  reportSummary       Json?                 @map("report_summary")       // ReportSummary: exec summary + solution summary (single GPT-4o call)
 
   // Field Discovery / Diagnostic extension fields
   engagementType      EngagementType?       @map("engagement_type")      // Diagnostic Baseline, Operational Deep Dive, etc.

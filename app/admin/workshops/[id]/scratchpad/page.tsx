@@ -1,23 +1,28 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { use, useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Loader2, ArrowLeft, Sparkles } from 'lucide-react';
+import {
+  Download,
+  Loader2,
+  ArrowLeft,
+  Sparkles,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Send,
+  RefreshCw,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { SECTION_REGISTRY } from '@/lib/output/section-registry';
 import type { WorkshopOutputIntelligence } from '@/lib/output-intelligence/types';
+import type { ReportSummary } from '@/lib/output-intelligence/types';
+import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
-import { DiscoveryValidationPanel } from '@/components/output-intelligence/DiscoveryValidationPanel';
-import { RootCausePanel } from '@/components/output-intelligence/RootCausePanel';
-import { FutureStatePanel } from '@/components/output-intelligence/FutureStatePanel';
-import { ExecutionRoadmapPanel } from '@/components/output-intelligence/ExecutionRoadmapPanel';
-import { StrategicImpactPanel } from '@/components/output-intelligence/StrategicImpactPanel';
 import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
-import { DiscoveryOutputTab } from '@/components/scratchpad/DiscoveryOutputTab';
-import { HemisphereOutputTab } from '@/components/scratchpad/HemisphereOutputTab';
+import { ReportPromptOutput } from '@/components/scratchpad/ReportPromptOutput';
+import type { PromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -26,27 +31,360 @@ interface PageProps {
 interface Workshop {
   id: string;
   name: string;
-  description?: string | null;
-  organization?: {
-    id: string;
-    name: string;
-    logoUrl: string | null;
-    primaryColor: string | null;
-  } | null;
+  organization?: { name: string } | null;
 }
 
-// ── Stat card for Executive Summary ────────────────────────────────────────
+// ── Section heading ───────────────────────────────────────────────────────────
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function SectionHeading({
+  label,
+  sublabel,
+}: {
+  label: string;
+  sublabel?: string;
+}) {
   return (
-    <div className="rounded-xl border border-border bg-muted/30 p-5 text-center">
-      <p className="text-3xl font-bold text-foreground">{value}</p>
-      <p className="text-xs text-muted-foreground mt-1.5">{label}</p>
+    <div className="mb-5">
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">
+          {label}
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+      {sublabel && (
+        <p className="text-xs text-muted-foreground text-center mt-1">{sublabel}</p>
+      )}
     </div>
   );
 }
 
-// ── Journey download bar ────────────────────────────────────────────────────
+// ── Executive Summary block ───────────────────────────────────────────────────
+
+function ExecutiveSummaryBlock({ summary }: { summary: ReportSummary }) {
+  const es = summary.executiveSummary;
+
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-5 border-b border-border bg-muted/30">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              The Ask
+            </p>
+            <p className="text-sm text-foreground">{es.theAsk}</p>
+          </div>
+          {summary.validationPassed ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 shrink-0">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+              <span className="text-[11px] font-medium text-emerald-700">Passes exec test</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 shrink-0">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+              <span className="text-[11px] font-medium text-amber-700">Review gaps</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* The Answer — prominent */}
+      <div className="px-6 py-5 bg-primary/5 border-b border-primary/20">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-primary/70 mb-2">
+          The Answer
+        </p>
+        <p className="text-lg font-semibold text-foreground leading-snug">{es.theAnswer}</p>
+      </div>
+
+      {/* Body */}
+      <div className="px-6 py-6 space-y-6">
+        {/* What We Found */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+            What We Found
+          </p>
+          <ul className="space-y-2">
+            {es.whatWeFound.map((finding, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary mt-0.5">
+                  {i + 1}
+                </span>
+                <span className="text-sm text-foreground leading-relaxed">{finding}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Why It Matters */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Why It Matters
+            </p>
+            <p className="text-sm text-foreground leading-relaxed">{es.whyItMatters}</p>
+          </div>
+
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-700">
+              Opportunity / Risk
+            </p>
+            <p className="text-sm text-amber-900 leading-relaxed">{es.opportunityOrRisk}</p>
+          </div>
+        </div>
+
+        {/* Urgency */}
+        <div className="rounded-xl border border-border bg-muted/10 px-4 py-3 flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+              Why Act Now
+            </p>
+            <p className="text-sm text-foreground">{es.urgency}</p>
+          </div>
+        </div>
+
+        {/* Validation gaps */}
+        {!summary.validationPassed && summary.validationGaps.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+            <p className="text-xs font-semibold text-amber-800">Validation Gaps:</p>
+            <ul className="space-y-1">
+              {summary.validationGaps.map((gap, i) => (
+                <li key={i} className="text-xs text-amber-700">• {gap}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Supporting Evidence block ─────────────────────────────────────────────────
+
+function SupportingEvidenceBlock({ intelligence }: { intelligence: WorkshopOutputIntelligence }) {
+  const [showNew, setShowNew] = useState(false);
+  const { discoveryValidation } = intelligence;
+
+  return (
+    <div className="space-y-4">
+      {/* Confirmed Issues */}
+      {discoveryValidation.confirmedIssues.length > 0 && (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border bg-muted/30 flex items-center justify-between">
+            <p className="text-xs font-semibold text-foreground">Confirmed Issues</p>
+            <span className="text-[10px] font-medium text-muted-foreground">
+              Hypothesis accuracy: {discoveryValidation.hypothesisAccuracy}%
+            </span>
+          </div>
+          <div className="divide-y divide-border">
+            {discoveryValidation.confirmedIssues.map((ci, i) => (
+              <div key={i} className="px-5 py-3.5 flex items-start gap-3">
+                <span
+                  className={`mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${
+                    ci.confidence === 'high'
+                      ? 'bg-red-100 text-red-700'
+                      : ci.confidence === 'medium'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {ci.confidence}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">{ci.issue}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{ci.workshopEvidence}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* New Issues */}
+      {discoveryValidation.newIssues.length > 0 && (
+        <div className="rounded-xl border border-blue-200 bg-card overflow-hidden">
+          <button
+            onClick={() => setShowNew((v) => !v)}
+            className="w-full px-5 py-3.5 border-b border-blue-200 bg-blue-50 flex items-center justify-between hover:bg-blue-100/60 transition-colors"
+          >
+            <p className="text-xs font-semibold text-blue-800">
+              New Issues — Surfaced in Workshop
+              <span className="ml-2 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px]">
+                {discoveryValidation.newIssues.length}
+              </span>
+            </p>
+            {showNew ? (
+              <ChevronUp className="h-3.5 w-3.5 text-blue-600" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 text-blue-600" />
+            )}
+          </button>
+          {showNew && (
+            <div className="divide-y divide-blue-100">
+              {discoveryValidation.newIssues.map((ni, i) => (
+                <div key={i} className="px-5 py-3.5">
+                  <p className="text-sm font-medium text-foreground">{ni.issue}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{ni.workshopEvidence}</p>
+                  <p className="text-xs text-blue-700 mt-1 font-medium">→ {ni.significance}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Root Causes block ─────────────────────────────────────────────────────────
+
+function RootCausesBlock({ intelligence }: { intelligence: WorkshopOutputIntelligence }) {
+  const { rootCause } = intelligence;
+  const severityColor: Record<string, string> = {
+    critical: 'bg-red-100 text-red-700 border-red-200',
+    significant: 'bg-amber-100 text-amber-700 border-amber-200',
+    moderate: 'bg-gray-100 text-gray-600 border-gray-200',
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Systemic pattern banner */}
+      <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+          Systemic Pattern
+        </p>
+        <p className="text-sm text-foreground leading-relaxed">{rootCause.systemicPattern}</p>
+      </div>
+
+      {/* Cause cards */}
+      <div className="grid gap-3">
+        {rootCause.rootCauses.map((rc) => (
+          <div
+            key={rc.rank}
+            className="rounded-xl border border-border bg-card px-5 py-4 flex items-start gap-4"
+          >
+            <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
+              <span className="text-xs font-bold text-muted-foreground font-mono">#{rc.rank}</span>
+              <span
+                className={`px-1.5 py-0.5 rounded border text-[10px] font-medium ${
+                  severityColor[rc.severity] ?? severityColor.moderate
+                }`}
+              >
+                {rc.severity}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <p className="text-sm font-semibold text-foreground">{rc.cause}</p>
+              <p className="text-xs text-muted-foreground">{rc.category}</p>
+              {rc.evidence.length > 0 && (
+                <ul className="mt-1 space-y-0.5">
+                  {rc.evidence.slice(0, 2).map((e, i) => (
+                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                      <span className="shrink-0 mt-0.5">·</span>
+                      {e}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {rc.affectedLenses.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {rc.affectedLenses.map((l) => (
+                    <span key={l} className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground">
+                      {l}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Solution Direction block ──────────────────────────────────────────────────
+
+function SolutionDirectionBlock({ summary }: { summary: ReportSummary }) {
+  const ss = summary.solutionSummary;
+
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      {/* Direction headline */}
+      <div className="px-6 py-5 border-b border-border bg-emerald-50">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700 mb-2">
+          Direction
+        </p>
+        <p className="text-lg font-semibold text-emerald-900 leading-snug">{ss.direction}</p>
+      </div>
+
+      <div className="px-6 py-6 space-y-6">
+        {/* Rationale */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+            The Rationale
+          </p>
+          <p className="text-sm text-foreground leading-relaxed">{ss.rationale}</p>
+        </div>
+
+        {/* What Must Change */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+            What Must Change
+          </p>
+          <div className="space-y-3">
+            {ss.whatMustChange.map((item, i) => (
+              <div key={i} className="rounded-xl border border-border bg-muted/20 p-4">
+                <p className="text-xs font-semibold text-foreground mb-2">{item.area}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1">
+                      Current
+                    </p>
+                    <p className="text-xs text-red-900">{item.currentState}</p>
+                  </div>
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 mb-1">
+                      Required Change
+                    </p>
+                    <p className="text-xs text-emerald-900">{item.requiredChange}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Starting Point + Success Indicators side by side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Starting Point
+            </p>
+            <p className="text-sm text-foreground leading-relaxed">{ss.startingPoint}</p>
+          </div>
+
+          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Success Looks Like
+            </p>
+            <ul className="space-y-2">
+              {ss.successIndicators.map((indicator, i) => (
+                <li key={i} className="flex items-start gap-2.5 text-sm text-foreground">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                  <span>{indicator}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Journey Map section ───────────────────────────────────────────────────────
 
 function JourneyDownloadBar({ workshopId }: { workshopId: string }) {
   const [downloading, setDownloading] = useState<'pdf' | 'png' | null>(null);
@@ -54,13 +392,8 @@ function JourneyDownloadBar({ workshopId }: { workshopId: string }) {
   const download = async (format: 'pdf' | 'png') => {
     setDownloading(format);
     try {
-      const res = await fetch(
-        `/api/admin/workshops/${workshopId}/export-journey?format=${format}`
-      );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Export failed' }));
-        throw new Error(err.error || 'Export failed');
-      }
+      const res = await fetch(`/api/admin/workshops/${workshopId}/export-journey?format=${format}`);
+      if (!res.ok) throw new Error('Export failed');
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -71,7 +404,6 @@ function JourneyDownloadBar({ workshopId }: { workshopId: string }) {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
-      // Surface error via toast if sonner is available, else log
       console.error('Journey export failed:', err);
     } finally {
       setDownloading(null);
@@ -79,189 +411,253 @@ function JourneyDownloadBar({ workshopId }: { workshopId: string }) {
   };
 
   return (
-    <div className="flex items-center justify-end gap-2 px-4 pb-3 pt-1">
+    <div className="flex items-center justify-end gap-2 pb-3">
       <span className="text-xs text-muted-foreground mr-1">Download:</span>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1.5 text-xs"
-        onClick={() => download('pdf')}
-        disabled={!!downloading}
-      >
-        {downloading === 'pdf' ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <Download className="h-3 w-3" />
-        )}
-        PDF (Landscape)
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1.5 text-xs"
-        onClick={() => download('png')}
-        disabled={!!downloading}
-      >
-        {downloading === 'png' ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <Download className="h-3 w-3" />
-        )}
-        PNG
-      </Button>
+      {(['pdf', 'png'] as const).map((fmt) => (
+        <Button
+          key={fmt}
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1.5 text-xs"
+          onClick={() => download(fmt)}
+          disabled={!!downloading}
+        >
+          {downloading === fmt ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Download className="h-3 w-3" />
+          )}
+          {fmt.toUpperCase()}
+        </Button>
+      ))}
     </div>
   );
 }
 
-// ── Panel renderer ──────────────────────────────────────────────────────────
+// ── Agentic Prompt Bar ────────────────────────────────────────────────────────
 
-// Inline placeholder for tabs that need intelligence data
-function NotSynthesisedYet({ workshopId }: { workshopId: string }) {
+function AgenticPromptBar({
+  workshopId,
+  onOutput,
+}: {
+  workshopId: string;
+  onOutput: (output: PromptOutput) => void;
+}) {
+  const [prompt, setPrompt] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const SUGGESTIONS = [
+    'Bar chart of root causes by severity',
+    'Table comparing current vs future state by lens',
+    'Summarise the key constraints found in workshop',
+    'List the top efficiency gains with estimated impact',
+  ];
+
+  const handleSubmit = async () => {
+    const trimmed = prompt.trim();
+    if (!trimmed || generating) return;
+
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}/report-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: trimmed }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        throw new Error(err.error || 'Request failed');
+      }
+
+      const data = await res.json() as { output: PromptOutput };
+      onOutput(data.output);
+      setPrompt('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to generate output');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center h-48 gap-3 text-center p-6">
-      <p className="text-sm text-muted-foreground">
-        This section is populated after synthesis. Go to the Insight Map and click <strong>✦ Synthesise</strong>.
-      </p>
-      <Link href={`/admin/workshops/${workshopId}/hemisphere`}>
-        <Button variant="outline" size="sm">Go to Insight Map</Button>
-      </Link>
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      <div className="px-5 py-4 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold text-foreground">Additional Analysis</p>
+          <span className="text-xs text-muted-foreground">
+            Ask for charts, tables, or deeper dives
+          </span>
+        </div>
+      </div>
+
+      {/* Suggestions */}
+      <div className="px-5 pt-3 pb-2 flex flex-wrap gap-1.5">
+        {SUGGESTIONS.map((s) => (
+          <button
+            key={s}
+            onClick={() => setPrompt(s)}
+            className="px-2.5 py-1 rounded-full border border-border bg-muted/40 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {/* Input */}
+      <div className="px-5 pb-4 flex gap-2 items-end">
+        <textarea
+          ref={textareaRef}
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void handleSubmit();
+            }
+          }}
+          placeholder="Ask for additional output — e.g. 'Bar chart of root causes by severity'"
+          className="flex-1 min-h-[60px] max-h-[120px] resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+          disabled={generating}
+        />
+        <Button
+          onClick={handleSubmit}
+          disabled={!prompt.trim() || generating}
+          size="sm"
+          className="h-10 px-4 gap-2 shrink-0"
+        >
+          {generating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+          {generating ? 'Generating…' : 'Generate'}
+        </Button>
+      </div>
     </div>
   );
 }
 
-function renderPanel(
-  sectionId: string,
-  intelligence: WorkshopOutputIntelligence | null,
-  liveJourneyData: LiveJourneyData | null,
-  workshopId: string,
-  discoveryOutputData: any,
-): React.ReactNode {
-  // These tabs have their own data sources — always accessible without synthesis
-  if (!intelligence && sectionId !== 'output-analysis' && sectionId !== 'discovery-output' && sectionId !== 'customer-journey') {
-    return <NotSynthesisedYet workshopId={workshopId} />;
-  }
+// ── Generate Report Summary CTA ───────────────────────────────────────────────
 
-  // Safe cast: null case is handled by the early return above for all intel-dependent tabs
-  const intel = intelligence as WorkshopOutputIntelligence;
+function GenerateSummaryCta({
+  workshopId,
+  onComplete,
+}: {
+  workshopId: string;
+  onComplete: (summary: ReportSummary) => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [statusMsg, setStatusMsg] = useState('');
 
-  switch (sectionId) {
-    case 'exec-summary':
-      return (
-        <div className="space-y-6 p-6 max-w-4xl mx-auto">
-          {/* Key metrics */}
-          <div className="grid grid-cols-3 gap-4">
-            <StatCard
-              label="Hypothesis Accuracy"
-              value={`${intel.discoveryValidation.hypothesisAccuracy}%`}
-            />
-            <StatCard
-              label="Automation Potential"
-              value={`${intel.strategicImpact.automationPotential.percentage}%`}
-            />
-            <StatCard
-              label="Confidence Score"
-              value={`${intel.strategicImpact.confidenceScore}%`}
-            />
-          </div>
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setStatusMsg('Starting…');
 
-          {/* Business case narrative */}
-          <div className="rounded-xl border border-border bg-card p-6 space-y-3">
-            <h2 className="text-base font-semibold text-foreground">Business Case</h2>
-            <p className="text-base leading-relaxed text-foreground">
-              {intel.strategicImpact.businessCaseSummary}
-            </p>
-          </div>
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}/report-summary`, {
+        method: 'POST',
+      });
 
-          {/* Discovery summary */}
-          <div className="rounded-xl border border-border bg-muted/20 p-6">
-            <h3 className="text-sm font-semibold text-foreground mb-2">Discovery Summary</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {intel.discoveryValidation.summary}
-            </p>
-          </div>
-        </div>
-      );
-
-    case 'discovery':
-      return <DiscoveryValidationPanel data={intel.discoveryValidation} />;
-
-    case 'reimagine':
-      return <FutureStatePanel data={intel.futureState} />;
-
-    case 'constraints':
-      return <RootCausePanel data={intel.rootCause} />;
-
-    case 'solution':
-      return <ExecutionRoadmapPanel data={intel.roadmap} />;
-
-    case 'customer-journey':
-      if (!liveJourneyData) {
-        return (
-          <div className="flex flex-col items-center justify-center h-48 gap-3 text-center p-6">
-            <p className="text-sm text-muted-foreground">
-              No journey map data available. Complete a live session to generate the journey map.
-            </p>
-            <Link href={`/admin/workshops/${workshopId}/cognitive-guidance`}>
-              <Button variant="outline" size="sm">
-                Go to Live Session
-              </Button>
-            </Link>
-          </div>
-        );
+      if (!res.ok || !res.body) {
+        throw new Error('Failed to start generation');
       }
-      return (
-        <div>
-          <JourneyDownloadBar workshopId={workshopId} />
-          <LiveJourneyMap data={liveJourneyData} mode="output" />
-        </div>
-      );
 
-    case 'summary':
-      return <StrategicImpactPanel data={intel.strategicImpact} />;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-    case 'output-analysis':
-      return <HemisphereOutputTab workshopId={workshopId} />;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
 
-    case 'discovery-output':
-      if (!discoveryOutputData || Object.keys(discoveryOutputData).length === 0) {
-        return (
-          <div className="flex flex-col items-center justify-center h-48 gap-3 text-center p-6">
-            <p className="text-sm text-muted-foreground">
-              Domain-level discovery analysis is generated when you run{' '}
-              <strong>✦ Synthesise</strong> on the Insight Map.
-            </p>
-            <Link href={`/admin/workshops/${workshopId}/hemisphere`}>
-              <Button variant="outline" size="sm">Go to Insight Map</Button>
-            </Link>
-          </div>
-        );
+        const eventBlocks = buffer.split('\n\n');
+        buffer = eventBlocks.pop() ?? '';
+
+        for (const block of eventBlocks) {
+          const lines = block.split('\n');
+          let eventType = '';
+          let dataLine = '';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+            if (line.startsWith('data: ')) dataLine = line.slice(6).trim();
+          }
+          if (!dataLine) continue;
+
+          try {
+            const payload = JSON.parse(dataLine);
+            if (eventType === 'status') {
+              setStatusMsg(payload.message ?? '');
+            } else if (eventType === 'complete') {
+              onComplete(payload.reportSummary as ReportSummary);
+              toast.success('Report summary generated');
+              return;
+            } else if (eventType === 'error') {
+              throw new Error(payload.message ?? 'Generation failed');
+            }
+          } catch {
+            // ignore parse errors on individual events
+          }
+        }
       }
-      return <DiscoveryOutputTab data={discoveryOutputData} />;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setGenerating(false);
+      setStatusMsg('');
+    }
+  };
 
-    default:
-      return (
-        <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-          Section not found: {sectionId}
-        </div>
-      );
-  }
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/5 px-6 py-5 flex items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-semibold text-foreground">
+          Generate Executive Summary &amp; Solution Direction
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          One GPT-4o call reads all existing intelligence and writes the two client-facing sections.
+        </p>
+        {statusMsg && (
+          <p className="text-xs text-primary mt-1 flex items-center gap-1.5">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {statusMsg}
+          </p>
+        )}
+      </div>
+      <Button
+        onClick={handleGenerate}
+        disabled={generating}
+        className="gap-2 shrink-0"
+      >
+        {generating ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Sparkles className="h-4 w-4" />
+        )}
+        {generating ? 'Generating…' : 'Generate Report Summary'}
+      </Button>
+    </div>
+  );
 }
 
-// ── Page component ──────────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function DownloadReportPage({ params }: PageProps) {
   const { id: workshopId } = use(params);
-  const searchParams = useSearchParams();
+
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [intelligence, setIntelligence] = useState<WorkshopOutputIntelligence | null>(null);
+  const [reportSummary, setReportSummary] = useState<ReportSummary | null>(null);
   const [liveJourneyData, setLiveJourneyData] = useState<LiveJourneyData | null>(null);
-  const [discoveryOutputData, setDiscoveryOutputData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') ?? 'exec-summary');
   const [exporting, setExporting] = useState(false);
+  const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workshopId]);
 
@@ -269,62 +665,54 @@ export default function DownloadReportPage({ params }: PageProps) {
     try {
       setLoading(true);
 
-      // Parallel: workshop details + intelligence + scratchpad (non-fatal)
-      const [workshopRes, intelligenceRes, scratchpadRes] = await Promise.all([
+      const [workshopRes, intelligenceRes, summaryRes] = await Promise.all([
         fetch(`/api/admin/workshops/${workshopId}`),
         fetch(`/api/admin/workshops/${workshopId}/output-intelligence`),
-        fetch(`/api/admin/workshops/${workshopId}/scratchpad`),
+        fetch(`/api/admin/workshops/${workshopId}/report-summary`),
       ]);
 
       if (workshopRes.ok) {
-        const workshopData = await workshopRes.json();
-        setWorkshop(workshopData.workshop);
+        const d = await workshopRes.json();
+        setWorkshop(d.workshop);
       }
 
       if (intelligenceRes.ok) {
-        const intelligenceData = await intelligenceRes.json();
-        // API returns { intelligence: StoredOutputIntelligence | null }
-        const stored = intelligenceData.intelligence;
-        if (stored?.intelligence) {
-          setIntelligence(stored.intelligence);
-        }
+        const d = await intelligenceRes.json();
+        const stored = d.intelligence as StoredOutputIntelligence | null;
+        if (stored?.intelligence) setIntelligence(stored.intelligence);
       }
 
-      // Scratchpad discoveryOutput — used for Output Analysis tab (non-fatal)
-      if (scratchpadRes.ok) {
-        const scratchpadData = await scratchpadRes.json();
-        const discoveryOutput = scratchpadData.scratchpad?.discoveryOutput;
-        if (discoveryOutput && Object.keys(discoveryOutput).length > 0) {
-          setDiscoveryOutputData(discoveryOutput);
-        }
+      if (summaryRes.ok) {
+        const d = await summaryRes.json();
+        if (d.reportSummary) setReportSummary(d.reportSummary as ReportSummary);
       }
 
-      // Sequential: fetch live session versions for journey map
+      // Fetch journey map (non-fatal)
       try {
         const versionsRes = await fetch(
           `/api/admin/workshops/${workshopId}/live/session-versions?limit=1`
         );
         if (versionsRes.ok) {
-          const versionsData = await versionsRes.json();
-          const latestVersion = versionsData.versions?.[0];
-          if (latestVersion?.id) {
+          const vd = await versionsRes.json();
+          const latestId = vd.versions?.[0]?.id;
+          if (latestId) {
             const versionRes = await fetch(
-              `/api/admin/workshops/${workshopId}/live/session-versions/${latestVersion.id}`
+              `/api/admin/workshops/${workshopId}/live/session-versions/${latestId}`
             );
             if (versionRes.ok) {
               const versionData = await versionRes.json();
-              const liveJourney = versionData.version?.payload?.liveJourney;
-              if (liveJourney?.stages?.length && liveJourney?.interactions?.length) {
-                setLiveJourneyData(liveJourney as LiveJourneyData);
+              const lj = versionData.version?.payload?.liveJourney;
+              if (lj?.stages?.length && lj?.interactions?.length) {
+                setLiveJourneyData(lj as LiveJourneyData);
               }
             }
           }
         }
       } catch {
-        // Non-fatal — journey map will show empty state
+        // Non-fatal
       }
-    } catch (error) {
-      console.error('Failed to fetch report data:', error);
+    } catch (err) {
+      console.error('Failed to fetch report data:', err);
     } finally {
       setLoading(false);
     }
@@ -336,35 +724,28 @@ export default function DownloadReportPage({ params }: PageProps) {
       const response = await fetch(`/api/admin/workshops/${workshopId}/export-html`, {
         method: 'POST',
       });
-
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Export failed' }));
-        throw new Error(errorData.error || 'Failed to export');
+        const err = await response.json().catch(() => ({ error: 'Export failed' }));
+        throw new Error(err.error || 'Failed to export');
       }
-
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download =
-        `${workshop?.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'workshop'}-report.zip`;
+      a.download = `${workshop?.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'workshop'}-report.zip`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-
       toast.success("Report exported! Upload the ZIP contents to your client's domain.");
-    } catch (error) {
-      console.error('Failed to export HTML:', error);
-      toast.error(
-        `Failed to export: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+    } catch (err) {
+      toast.error(`Failed to export: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setExporting(false);
     }
   };
 
-  // ── Loading state ────────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -377,28 +758,12 @@ export default function DownloadReportPage({ params }: PageProps) {
     );
   }
 
-  // ── Sections — 7 core + Output Analysis + Discovery Output (always shown) ──
-
-  const coreSections = [...SECTION_REGISTRY].sort((a, b) => a.priority - b.priority);
-
-  // Insert extra tabs after exec-summary
-  const OUTPUT_ANALYSIS    = { id: 'output-analysis',    title: 'Insight Map' };
-  const DISCOVERY_OUTPUT   = { id: 'discovery-output',   title: 'Discovery Output' };
-  const execIdx = coreSections.findIndex((s) => s.id === 'exec-summary');
-  const sections = [
-    ...coreSections.slice(0, execIdx + 1),
-    OUTPUT_ANALYSIS,
-    DISCOVERY_OUTPUT,
-    ...coreSections.slice(execIdx + 1),
-  ];
-
-  const colCount = sections.length;
-
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sticky header */}
+
+      {/* ── Sticky header ──────────────────────────────────────────────────── */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
@@ -422,61 +787,157 @@ export default function DownloadReportPage({ params }: PageProps) {
             </div>
           </div>
 
-          <Button
-            onClick={handleExport}
-            disabled={exporting || !intelligence}
-            size="sm"
-            className="gap-2"
-          >
-            {exporting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-2">
+            {reportSummary && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-8"
+                onClick={() => void fetchData()}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Refresh
+              </Button>
             )}
-            {exporting ? 'Exporting…' : 'Export HTML'}
-          </Button>
+            <Button
+              onClick={handleExport}
+              disabled={exporting || !intelligence}
+              size="sm"
+              className="gap-2"
+            >
+              {exporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              {exporting ? 'Exporting…' : 'Export HTML'}
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Body */}
-      <div className="container mx-auto px-4 py-6">
-        {/* Banner when no synthesis yet — shown above tabs, not instead of them */}
+      {/* ── Body ─────────────────────────────────────────────────────────── */}
+      <div className="max-w-5xl mx-auto px-6 py-8 space-y-10">
+
+        {/* No intelligence yet */}
         {!intelligence && (
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 mb-6">
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
             <div className="flex items-center gap-3">
               <Sparkles className="h-4 w-4 text-amber-600 shrink-0" />
-              <p className="text-sm text-amber-800">
-                <span className="font-semibold">Intelligence not yet generated.</span>{' '}
-                Run synthesis on the Insight Map to populate the report tabs.
-              </p>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">
+                  Analysis not yet generated
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Run the 5-engine intelligence pipeline first to populate this report.
+                </p>
+              </div>
             </div>
             <Link href={`/admin/workshops/${workshopId}/hemisphere`}>
-              <Button variant="outline" size="sm" className="shrink-0 border-amber-300 text-amber-800 hover:bg-amber-100">
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 border-amber-300 text-amber-800 hover:bg-amber-100"
+              >
                 Go to Insight Map →
               </Button>
             </Link>
           </div>
         )}
 
-        {/* Always show all tabs — Output Analysis is available regardless of synthesis */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList
-            className="grid w-full mb-6"
-            style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}
-          >
-            {sections.map((section) => (
-              <TabsTrigger key={section.id} value={section.id} className="text-xs">
-                {section.title}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        {/* ── EXECUTIVE SUMMARY ──────────────────────────────────────────── */}
+        {intelligence && (
+          <>
+            <div>
+              <SectionHeading
+                label="Executive Summary"
+                sublabel="Directly answers the workshop objective"
+              />
 
-          {sections.map((section) => (
-            <TabsContent key={section.id} value={section.id}>
-              {renderPanel(section.id, intelligence, liveJourneyData, workshopId, discoveryOutputData)}
-            </TabsContent>
-          ))}
-        </Tabs>
+              {reportSummary ? (
+                <ExecutiveSummaryBlock summary={reportSummary} />
+              ) : (
+                <GenerateSummaryCta
+                  workshopId={workshopId}
+                  onComplete={(s) => setReportSummary(s)}
+                />
+              )}
+            </div>
+
+            {/* ── SUPPORTING EVIDENCE ──────────────────────────────────── */}
+            <div>
+              <SectionHeading
+                label="Supporting Evidence"
+                sublabel="Issues confirmed and surfaced during the workshop"
+              />
+              <SupportingEvidenceBlock intelligence={intelligence} />
+            </div>
+
+            {/* ── ROOT CAUSES ──────────────────────────────────────────── */}
+            <div>
+              <SectionHeading
+                label="Root Causes"
+                sublabel="Why these issues exist — ranked by severity"
+              />
+              <RootCausesBlock intelligence={intelligence} />
+            </div>
+
+            {/* ── SOLUTION DIRECTION ───────────────────────────────────── */}
+            {reportSummary && (
+              <div>
+                <SectionHeading
+                  label="Solution Direction"
+                  sublabel="Given the ask and findings, the recommended way forward"
+                />
+                <SolutionDirectionBlock summary={reportSummary} />
+
+                {/* Regenerate button */}
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground gap-1.5 h-7"
+                    onClick={() => setReportSummary(null)}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Regenerate summary
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* ── JOURNEY MAP ──────────────────────────────────────────── */}
+            {liveJourneyData && (
+              <div>
+                <SectionHeading
+                  label="Customer Journey"
+                  sublabel="Actor swim-lanes from the live workshop session"
+                />
+                <JourneyDownloadBar workshopId={workshopId} />
+                <LiveJourneyMap data={liveJourneyData} mode="output" />
+              </div>
+            )}
+
+            {/* ── PROMPT OUTPUTS (ephemeral) ────────────────────────────── */}
+            {promptOutputs.length > 0 && (
+              <div className="space-y-4">
+                <SectionHeading
+                  label="Additional Analysis"
+                  sublabel="Generated on demand — not saved to report"
+                />
+                {promptOutputs.map((output, i) => (
+                  <ReportPromptOutput key={i} output={output} />
+                ))}
+              </div>
+            )}
+
+            {/* ── AGENTIC PROMPT BAR ────────────────────────────────────── */}
+            <AgenticPromptBar
+              workshopId={workshopId}
+              onOutput={(o) => setPromptOutputs((prev) => [...prev, o])}
+            />
+          </>
+        )}
       </div>
     </div>
   );

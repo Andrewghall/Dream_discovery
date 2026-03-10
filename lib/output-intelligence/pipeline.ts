@@ -5,8 +5,11 @@
  * Returns typed results and handles partial failures gracefully.
  */
 
-import type { WorkshopSignals, WorkshopOutputIntelligence, EngineKey } from './types';
+import { prisma } from '@/lib/prisma';
+import { aggregateWorkshopSignals } from './signal-aggregator';
+import type { WorkshopSignals, WorkshopOutputIntelligence, EngineKey, ReportSummary, StoredOutputIntelligence } from './types';
 import { runDiscoveryValidationAgent } from './agents/discovery-validation-agent';
+import { runReportSummaryAgent } from './agents/report-summary-agent';
 import { runRootCauseAgent } from './agents/root-cause-agent';
 import { runFutureStateAgent } from './agents/future-state-agent';
 import { runExecutionRoadmapAgent } from './agents/execution-roadmap-agent';
@@ -170,4 +173,45 @@ export async function runIntelligencePipeline(
   };
 
   return { intelligence, errors };
+}
+
+// ── Report Summary Pipeline ───────────────────────────────────────────────────
+// Reads all existing intelligence from DB, calls single GPT-4o agent,
+// stores result in workshop.reportSummary JSON field, returns it.
+
+export async function runReportSummaryPipeline(
+  workshopId: string,
+  onProgress?: (msg: string) => void
+): Promise<ReportSummary> {
+  onProgress?.('Loading workshop intelligence…');
+
+  // 1. Load existing output intelligence from DB
+  const workshop = await prisma.workshop.findUnique({
+    where: { id: workshopId },
+    select: { outputIntelligence: true },
+  });
+
+  if (!workshop) throw new Error(`Workshop ${workshopId} not found`);
+  if (!workshop.outputIntelligence) {
+    throw new Error('Output intelligence not yet generated. Run "Generate Analysis" first.');
+  }
+
+  const stored = workshop.outputIntelligence as unknown as StoredOutputIntelligence;
+  const intelligence = stored.intelligence;
+
+  // 2. Aggregate signals for context
+  onProgress?.('Aggregating workshop signals…');
+  const signals = await aggregateWorkshopSignals(workshopId);
+
+  // 3. Run single GPT-4o report summary agent
+  const reportSummary = await runReportSummaryAgent(signals, intelligence, onProgress);
+
+  // 4. Store in DB
+  await prisma.workshop.update({
+    where: { id: workshopId },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: { reportSummary: reportSummary as any },
+  });
+
+  return reportSummary;
 }
