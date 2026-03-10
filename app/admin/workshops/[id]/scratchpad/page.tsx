@@ -618,7 +618,7 @@ function GenerateSummaryCta({
           Generate Executive Summary &amp; Solution Direction
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          One GPT-4o call reads all existing intelligence and writes the two client-facing sections.
+          Agentic analysis reads all existing intelligence and writes the two client-facing sections.
         </p>
         {statusMsg && (
           <p className="text-xs text-primary mt-1 flex items-center gap-1.5">
