@@ -259,12 +259,23 @@ async function runValidationPass(
     expectedLenses: lenses,
   }, null, 2);
 
-  const validationPrompt = `You are a quality reviewer for executive reports. Review the following generated content against the specificity rubric below. Be strict — generic language is not acceptable.
+  const validationPrompt = `You are a quality reviewer for executive reports. Review the following generated content against the specificity rubric below.
 
 RUBRIC:
-1. whatWeFound items: each MUST name a specific system, team, metric, number, or named process. "Lack of alignment" = FAIL. "8 legacy systems causing 34% longer handling time" = PASS.
-2. lensFindings: the generated output MUST contain one entry for EVERY lens in expectedLenses. If any lens is missing, that is a FAIL. Each finding must be grounded in a specific observation (not "limited findings" without any specifics when the data contained signals).
-3. urgency: MUST name a specific trigger — a regulation, metric, event, or crisis. "Delay will compound inefficiencies" without naming the trigger = FAIL.
+1. whatWeFound items: each MUST name a specific system, team, named location, metric, number, or named process.
+   FAIL examples: "Lack of alignment", "Performance issues exist", "Agents face challenges"
+   PASS examples: "8 separate systems causing extended handling times", "34% attrition rate limiting training", "Four BPO sites with no shared performance framework", "Agents in Hyderabad lack real-time data access"
+   NOTE: Named locations (Hyderabad), named tiers (Gold/Platinum), named regulations (EU261), site counts (four sites), and system counts (8 systems) all qualify as specific — do NOT fail these.
+
+2. lensFindings: the generated output MUST contain one entry for EVERY lens in expectedLenses. Missing lens = FAIL.
+   Each finding must reference at least one observable fact — a named team, process, system, role, or condition. "Limited signals captured" is acceptable if genuinely no pads existed.
+
+3. urgency: MUST name at least one specific trigger. Be generous — ANY of the following qualify as PASS:
+   - A percentage or number (e.g. "34% attrition", "30-40% handling time reduction opportunity")
+   - A named regulation or compliance obligation (e.g. "EU261", "GDPR", "CAA regulations")
+   - A named competitive event or deadline
+   - A named operational crisis or customer segment (e.g. "Gold and Platinum tier members at risk")
+   FAIL ONLY if urgency contains ZERO named triggers — pure statements like "inefficiencies will compound" with no number, name, or regulation are FAIL.
 
 CONTENT TO REVIEW:
 ${reviewInput}
@@ -272,7 +283,8 @@ ${reviewInput}
 Return JSON: { "passed": boolean, "gaps": string[] }
 - passed: true only if ALL rubric items pass
 - gaps: array of specific failure descriptions (empty if passed)
-  Format each gap as: "Finding 3 is too generic — names no system or metric" or "Customer lens is missing from lensFindings" or "Urgency cites no specific trigger"`;
+  Format each gap as: "Finding 3 is too generic — names no system or metric" or "Customer lens is missing from lensFindings" or "Urgency cites no specific trigger"
+  Do NOT flag items that contain specific named entities, numbers, locations, or regulations as generic.`;
 
   const response = await client.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -346,7 +358,7 @@ ${SCHEMA}`;
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
         ],
-        temperature: 0.4,
+        temperature: 0.2,
         max_tokens: 6000,
       });
 
