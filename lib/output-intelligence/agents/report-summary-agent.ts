@@ -124,13 +124,24 @@ function buildContextDump(
   // ── Future State ──────────────────────────────────────────────────────────
   lines.push('\n=== FUTURE STATE DESIGN ===');
   lines.push(`Target Operating Model: ${intelligence.futureState.targetOperatingModel}`);
+  // Include the narrative — this contains specific metrics (e.g. "AHT 30-40%") that
+  // the whatWeFound and urgency fields MUST cite verbatim if present.
+  if (intelligence.futureState.narrative) {
+    lines.push(`\nFuture State Narrative:\n${intelligence.futureState.narrative}`);
+  }
   if (intelligence.futureState.redesignPrinciples.length > 0) {
-    lines.push(`Redesign Principles:\n${intelligence.futureState.redesignPrinciples.map((p) => `• ${p}`).join('\n')}`);
+    lines.push(`\nRedesign Principles:\n${intelligence.futureState.redesignPrinciples.map((p) => `• ${p}`).join('\n')}`);
   }
   if (intelligence.futureState.operatingModelChanges.length > 0) {
     lines.push('\nOperating Model Changes:');
     for (const change of intelligence.futureState.operatingModelChanges.slice(0, 5)) {
       lines.push(`• ${change.area}: [Current] ${change.currentState} → [Future] ${change.futureState} (Enabler: ${change.enabler})`);
+    }
+  }
+  if (intelligence.futureState.aiHumanModel.length > 0) {
+    lines.push('\nAI / Human Task Recommendations:');
+    for (const task of intelligence.futureState.aiHumanModel.slice(0, 6)) {
+      lines.push(`• [${task.recommendation}] ${task.task} — ${task.rationale}`);
     }
   }
 
@@ -145,15 +156,24 @@ function buildContextDump(
       }
     }
   }
+  if (intelligence.roadmap.keyRisks.length > 0) {
+    lines.push(`\nKey Risks:\n${intelligence.roadmap.keyRisks.map((r) => `• ${r}`).join('\n')}`);
+  }
 
   // ── Strategic Impact ──────────────────────────────────────────────────────
   lines.push('\n=== STRATEGIC IMPACT ===');
   lines.push(`Automation Potential: ${intelligence.strategicImpact.automationPotential.percentage}% — ${intelligence.strategicImpact.automationPotential.description}`);
   lines.push(`Business Case: ${intelligence.strategicImpact.businessCaseSummary}`);
   if (intelligence.strategicImpact.efficiencyGains.length > 0) {
-    lines.push('\nEfficiency Gains:');
+    lines.push('\nEfficiency Gains (cite these verbatim in findings where relevant):');
     for (const eg of intelligence.strategicImpact.efficiencyGains.slice(0, 4)) {
       lines.push(`• ${eg.metric}: ${eg.estimated} (${eg.basis})`);
+    }
+  }
+  if (intelligence.strategicImpact.experienceImprovements.length > 0) {
+    lines.push('\nExperience Improvements:');
+    for (const ei of intelligence.strategicImpact.experienceImprovements.slice(0, 4)) {
+      lines.push(`• ${ei.dimension}: [Current] ${ei.currentState} → [Future] ${ei.futureState} — Impact: ${ei.impact}`);
     }
   }
 
@@ -284,6 +304,7 @@ export async function runReportSummaryAgent(
 EXECUTIVE SUMMARY RULES:
 • Must directly answer the workshop ask — not describe the workshop process
 • whatWeFound: MINIMUM 6 items — each must name a specific system, team, metric, or process observed — no generic phrases like "lack of alignment" without naming what is misaligned
+• METRIC CITATION RULE — CRITICAL: Before writing whatWeFound and urgency, scan the entire intelligence for ANY specific percentage, named system, named role, customer tier, or quantified outcome (e.g. "30-40% AHT reduction", "Gold and Platinum tier members", "8 legacy systems", "34% attrition"). Every specific metric or named entity found MUST appear verbatim in at least one finding or the urgency field. Do not paraphrase or generalise a specific number — quote it exactly.
 • lensFindings: produce ONE entry for EVERY lens listed under "Lenses:" in WORKSHOP CONTEXT — no exceptions, no omissions. Consult the "SIGNALS BY LENS" section for evidence. If signals for a lens were thin or absent, write the finding as: "Workshop signals for this lens were limited — [describe what little was captured, or state 'no pads were recorded for this lens']". NEVER omit a lens that the workshop ran.
 • urgency: MUST name at least one specific item from the intelligence — a named regulation, a measured attrition rate, a specific metric, a named operational crisis, or a competitive event. "Inefficiencies will compound" without a named trigger is not acceptable.
 • whyItMatters: must name specific business consequences — operational cost, customer impact, staff impact, competitive exposure — be concrete
