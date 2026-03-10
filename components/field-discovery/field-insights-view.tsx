@@ -3,15 +3,16 @@
 /**
  * FieldInsightsView
  *
- * Shows a concise set of "discovery output slides" derived from STREAM_B
- * (field capture) findings and the DiagnosticSynthesis record.
+ * Shows discovery output slides derived ONLY from DiagnosticSynthesis data.
+ * If synthesis has not been run, an amber CTA is shown instead.
+ * NO fallback logic — if there is no data, we say "Insufficient data".
  *
  * Five slides:
- *  1. Overview       — total findings by type
- *  2. Critical Issues — structural weaknesses + systemic risks
- *  3. Opportunities  — 30-day and 90-day actions
- *  4. Contradictions — friction and tension points
- *  5. Lens Breakdown — per-lens finding counts and themes
+ *  1. Overview       — total findings by type (factual counts, always shown when findings exist)
+ *  2. Critical Issues — structural weaknesses + systemic risks (synthesis only)
+ *  3. Opportunities  — 30-day and 90-day actions (synthesis only)
+ *  4. Contradictions — friction and tension points (synthesis only)
+ *  5. Lens Breakdown — per-lens finding counts and themes (synthesis only)
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -108,20 +109,6 @@ function LensDot({ lens }: { lens: string }) {
   );
 }
 
-function TypeBadge({ type }: { type: string }) {
-  const map: Record<string, string> = {
-    CONSTRAINT: 'bg-orange-100 text-orange-700 border-orange-200',
-    RISK: 'bg-red-100 text-red-700 border-red-200',
-    OPPORTUNITY: 'bg-green-100 text-green-700 border-green-200',
-    CONTRADICTION: 'bg-violet-100 text-violet-700 border-violet-200',
-  };
-  return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${map[type] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-      {type.charAt(0) + type.slice(1).toLowerCase()}
-    </span>
-  );
-}
-
 function SeverityBar({ score }: { score: number | null }) {
   if (score == null) return null;
   const pct = Math.min(100, Math.round(score * 10));
@@ -136,8 +123,16 @@ function SeverityBar({ score }: { score: number | null }) {
   );
 }
 
+function InsufficientData() {
+  return (
+    <p className="text-sm text-muted-foreground italic">
+      Insufficient data — run synthesis to generate this analysis.
+    </p>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Slide: Overview
+// Slide: Overview (factual counts — always shown when findings exist)
 // ---------------------------------------------------------------------------
 
 function OverviewSlide({
@@ -162,7 +157,7 @@ function OverviewSlide({
   ];
 
   return (
-    <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden md:col-span-2">
       <div className="h-1 bg-amber-400" />
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
@@ -212,50 +207,16 @@ function OverviewSlide({
 }
 
 // ---------------------------------------------------------------------------
-// Slide: Critical Issues
+// Slide: Critical Issues (synthesis only)
 // ---------------------------------------------------------------------------
 
-function CriticalIssuesSlide({
-  findings,
-  synthesis,
-}: {
-  findings: FindingItem[];
-  synthesis: SynthesisRecord | null;
-}) {
-  // Prefer synthesis data; fall back to raw findings sorted by severity
-  const items: Array<{ text: string; lens: string; severity: number; tag: string }> = [];
-
-  if (synthesis?.crossLens?.structuralWeaknesses?.length || synthesis?.crossLens?.systemicRisks?.length) {
-    const weaknesses = (synthesis.crossLens?.structuralWeaknesses ?? []).map((w) => ({
-      text: w.description,
-      lens: w.lenses[0] ?? 'General',
-      severity: w.severity,
-      tag: 'Structural',
-    }));
-    const risks = (synthesis.crossLens?.systemicRisks ?? []).map((r) => ({
-      text: r.description,
-      lens: r.lenses[0] ?? 'General',
-      severity: r.severity,
-      tag: 'Risk',
-    }));
-    items.push(...weaknesses, ...risks);
-  } else {
-    // Fallback: top CONSTRAINT + RISK findings by severity
-    const fallback = findings
-      .filter((f) => f.type === 'CONSTRAINT' || f.type === 'RISK')
-      .sort((a, b) => (b.severityScore ?? 0) - (a.severityScore ?? 0))
-      .slice(0, 6);
-    items.push(
-      ...fallback.map((f) => ({
-        text: f.title + ': ' + f.description.slice(0, 100),
-        lens: f.lens,
-        severity: f.severityScore ?? 0,
-        tag: f.type === 'CONSTRAINT' ? 'Structural' : 'Risk',
-      }))
-    );
-  }
-
-  const displayed = items.slice(0, 6);
+function CriticalIssuesSlide({ synthesis }: { synthesis: SynthesisRecord }) {
+  const weaknesses = synthesis.crossLens?.structuralWeaknesses ?? [];
+  const risks = synthesis.crossLens?.systemicRisks ?? [];
+  const items = [
+    ...weaknesses.map((w) => ({ text: w.description, lens: w.lenses[0] ?? 'General', severity: w.severity, tag: 'Structural' })),
+    ...risks.map((r) => ({ text: r.description, lens: r.lenses[0] ?? 'General', severity: r.severity, tag: 'Risk' })),
+  ].slice(0, 6);
 
   return (
     <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -268,11 +229,11 @@ function CriticalIssuesSlide({
         <p className="text-xs text-muted-foreground">High-severity constraints and systemic risks surfaced in the field</p>
       </CardHeader>
       <CardContent>
-        {displayed.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No critical issues identified yet.</p>
+        {items.length === 0 ? (
+          <InsufficientData />
         ) : (
           <div className="space-y-2.5">
-            {displayed.map((item, i) => (
+            {items.map((item, i) => (
               <div key={i} className="flex items-start gap-2.5 rounded-lg bg-red-50/60 border border-red-100 px-3 py-2.5">
                 <LensDot lens={item.lens} />
                 <div className="flex-1 min-w-0">
@@ -297,34 +258,16 @@ function CriticalIssuesSlide({
 }
 
 // ---------------------------------------------------------------------------
-// Slide: Opportunities & Actions
+// Slide: Opportunities & Actions (synthesis only)
 // ---------------------------------------------------------------------------
 
-function OpportunitiesSlide({
-  findings,
-  synthesis,
-}: {
-  findings: FindingItem[];
-  synthesis: SynthesisRecord | null;
-}) {
-  const actions30: string[] = [];
-  const actions90: string[] = [];
-
-  if (synthesis?.crossLens?.actions30Day?.length || synthesis?.crossLens?.actions90Day?.length) {
-    actions30.push(...(synthesis.crossLens?.actions30Day ?? []).slice(0, 3));
-    actions90.push(...(synthesis.crossLens?.actions90Day ?? []).slice(0, 4));
-  } else {
-    // Fallback: OPPORTUNITY findings sorted by severity
-    const opps = findings
-      .filter((f) => f.type === 'OPPORTUNITY')
-      .sort((a, b) => (b.severityScore ?? 0) - (a.severityScore ?? 0));
-    actions30.push(...opps.filter((f) => (f.severityScore ?? 0) >= 7).slice(0, 3).map((f) => f.title));
-    actions90.push(...opps.filter((f) => (f.severityScore ?? 0) >= 5 && (f.severityScore ?? 0) < 7).slice(0, 4).map((f) => f.title));
-  }
+function OpportunitiesSlide({ synthesis }: { synthesis: SynthesisRecord }) {
+  const actions30 = synthesis.crossLens?.actions30Day ?? [];
+  const actions90 = synthesis.crossLens?.actions90Day ?? [];
 
   const allActions = [
-    ...actions30.map((a) => ({ text: a, badge: '30 days', badgeClass: 'bg-green-100 text-green-700 border-green-200' })),
-    ...actions90.map((a) => ({ text: a, badge: '90 days', badgeClass: 'bg-blue-100 text-blue-700 border-blue-200' })),
+    ...actions30.slice(0, 3).map((a) => ({ text: a, badge: '30 days', badgeClass: 'bg-green-100 text-green-700 border-green-200' })),
+    ...actions90.slice(0, 4).map((a) => ({ text: a, badge: '90 days', badgeClass: 'bg-blue-100 text-blue-700 border-blue-200' })),
   ];
 
   return (
@@ -339,7 +282,7 @@ function OpportunitiesSlide({
       </CardHeader>
       <CardContent>
         {allActions.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No opportunities identified yet.</p>
+          <InsufficientData />
         ) : (
           <div className="space-y-2">
             {allActions.map((item, i) => (
@@ -361,30 +304,14 @@ function OpportunitiesSlide({
 }
 
 // ---------------------------------------------------------------------------
-// Slide: Contradictions
+// Slide: Contradictions (synthesis only)
 // ---------------------------------------------------------------------------
 
-function ContradictionsSlide({
-  findings,
-  synthesis,
-}: {
-  findings: FindingItem[];
-  synthesis: SynthesisRecord | null;
-}) {
-  type ContradictionItem = { text: string; lens: string };
-  let items: ContradictionItem[] = [];
-
-  if (synthesis?.crossLens?.contradictions?.length) {
-    items = synthesis.crossLens.contradictions.map((c) => ({
-      text: c.description,
-      lens: c.lenses[0] ?? 'General',
-    }));
-  } else {
-    items = findings
-      .filter((f) => f.type === 'CONTRADICTION')
-      .sort((a, b) => (b.severityScore ?? 0) - (a.severityScore ?? 0))
-      .map((f) => ({ text: f.title + ': ' + f.description.slice(0, 100), lens: f.lens }));
-  }
+function ContradictionsSlide({ synthesis }: { synthesis: SynthesisRecord }) {
+  const items = (synthesis.crossLens?.contradictions ?? []).map((c) => ({
+    text: c.description,
+    lens: c.lenses[0] ?? 'General',
+  }));
 
   return (
     <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -398,7 +325,7 @@ function ContradictionsSlide({
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No contradictions detected in the current findings.</p>
+          <InsufficientData />
         ) : (
           <div className="space-y-2.5">
             {items.map((item, i) => (
@@ -418,68 +345,34 @@ function ContradictionsSlide({
 }
 
 // ---------------------------------------------------------------------------
-// Slide: Lens Breakdown (full-width)
+// Slide: Lens Breakdown (synthesis only, full-width)
 // ---------------------------------------------------------------------------
 
-function LensBreakdownSlide({
-  findings,
-  synthesis,
-}: {
-  findings: FindingItem[];
-  synthesis: SynthesisRecord | null;
-}) {
-  // Build per-lens rows from synthesis lensSummaries if available, else from raw findings
-  type LensRow = {
-    lens: string;
-    count: number;
-    topTheme: string | null;
-    themeCount: number;
-    avgSeverity: number;
-    constraints: number;
-    opportunities: number;
-    risks: number;
-    contradictions: number;
-  };
+function LensBreakdownSlide({ synthesis }: { synthesis: SynthesisRecord }) {
+  const lensSummaries = synthesis.lensSummaries ?? {};
+  const entries = Object.entries(lensSummaries);
 
-  const rows: LensRow[] = [];
-
-  if (synthesis?.lensSummaries && Object.keys(synthesis.lensSummaries).length > 0) {
-    for (const [lens, summary] of Object.entries(synthesis.lensSummaries)) {
-      rows.push({
-        lens,
-        count: summary.findingCount,
-        topTheme: summary.themes[0]?.label ?? null,
-        themeCount: summary.themes.length,
-        avgSeverity: summary.severityRanking.length > 0
-          ? Math.round((summary.severityRanking.reduce((s, r) => s + r.severityScore, 0) / summary.severityRanking.length) * 10) / 10
+  const rows = entries
+    .map(([lens, summary]) => ({
+      lens,
+      count: summary.findingCount,
+      topTheme: summary.themes[0]?.label ?? null,
+      themeCount: summary.themes.length,
+      avgSeverity:
+        summary.severityRanking.length > 0
+          ? Math.round(
+              (summary.severityRanking.reduce((s, r) => s + r.severityScore, 0) /
+                summary.severityRanking.length) *
+                10
+            ) / 10
           : 0,
-        constraints: summary.frequencyMetrics.constraints,
-        opportunities: summary.frequencyMetrics.opportunities,
-        risks: summary.frequencyMetrics.risks,
-        contradictions: summary.frequencyMetrics.contradictions,
-      });
-    }
-  } else {
-    // Fallback: compute from raw findings
-    const lenses = Array.from(new Set(findings.map((f) => f.lens)));
-    for (const lens of lenses) {
-      const lf = findings.filter((f) => f.lens === lens);
-      const scored = lf.filter((f) => f.severityScore != null);
-      rows.push({
-        lens,
-        count: lf.length,
-        topTheme: null,
-        themeCount: 0,
-        avgSeverity: scored.length > 0 ? Math.round((scored.reduce((s, f) => s + (f.severityScore ?? 0), 0) / scored.length) * 10) / 10 : 0,
-        constraints: lf.filter((f) => f.type === 'CONSTRAINT').length,
-        opportunities: lf.filter((f) => f.type === 'OPPORTUNITY').length,
-        risks: lf.filter((f) => f.type === 'RISK').length,
-        contradictions: lf.filter((f) => f.type === 'CONTRADICTION').length,
-      });
-    }
-  }
+      constraints: summary.frequencyMetrics.constraints,
+      opportunities: summary.frequencyMetrics.opportunities,
+      risks: summary.frequencyMetrics.risks,
+      contradictions: summary.frequencyMetrics.contradictions,
+    }))
+    .sort((a, b) => b.count - a.count);
 
-  rows.sort((a, b) => b.count - a.count);
   const maxCount = Math.max(...rows.map((r) => r.count), 1);
 
   return (
@@ -494,7 +387,7 @@ function LensBreakdownSlide({
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No findings yet.</p>
+          <InsufficientData />
         ) : (
           <div className="space-y-3">
             {rows.map((row) => (
@@ -592,7 +485,7 @@ export function FieldInsightsView({ workshopId }: FieldInsightsViewProps) {
       if (!res.ok) throw new Error('Synthesis failed');
       const data = await res.json();
       setSynthesis(data.synthesis ?? null);
-      // Also refresh findings (synthesis may have changed counts)
+      // Refresh findings count after synthesis
       const findingsRes = await fetch(`/api/admin/workshops/${workshopId}/findings?sourceStream=STREAM_B`);
       if (findingsRes.ok) {
         const fData = await findingsRes.json();
@@ -622,6 +515,8 @@ export function FieldInsightsView({ workshopId }: FieldInsightsViewProps) {
     );
   }
 
+  const synthesisReady = synthesis != null && synthesis.sessionsProcessed > 0;
+
   return (
     <div className="space-y-6">
       {/* Header row */}
@@ -629,20 +524,22 @@ export function FieldInsightsView({ workshopId }: FieldInsightsViewProps) {
         <div>
           <h2 className="text-lg font-semibold">Field Insights</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Analysis drawn from {findings.length} STREAM B findings
-            {synthesis && ` · Last synthesised ${new Date(synthesis.updatedAt).toLocaleDateString()}`}
+            {findings.length} STREAM B findings
+            {synthesis
+              ? ` · Last synthesised ${new Date(synthesis.updatedAt).toLocaleDateString()} · v${synthesis.version}`
+              : ' · Synthesis not yet run'}
           </p>
         </div>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => { loadData(); runSynthesis(); }}
+          onClick={runSynthesis}
           disabled={synthesising || findings.length === 0}
         >
           {synthesising ? (
             <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating…</>
           ) : (
-            <><RefreshCcw className="h-4 w-4 mr-2" />Refresh Insights</>
+            <><RefreshCcw className="h-4 w-4 mr-2" />{synthesisReady ? 'Refresh Insights' : 'Generate Insights'}</>
           )}
         </Button>
       </div>
@@ -671,8 +568,8 @@ export function FieldInsightsView({ workshopId }: FieldInsightsViewProps) {
         </Card>
       )}
 
-      {/* Synthesis CTA — shown when findings exist but no synthesis run */}
-      {findings.length > 0 && (!synthesis || synthesis.sessionsProcessed === 0) && (
+      {/* Synthesis CTA — shown when findings exist but synthesis not yet run */}
+      {findings.length > 0 && !synthesisReady && (
         <Card className="rounded-2xl border border-amber-200 bg-amber-50 shadow-sm">
           <CardContent className="flex items-start gap-4 py-4">
             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
@@ -694,14 +591,20 @@ export function FieldInsightsView({ workshopId }: FieldInsightsViewProps) {
         </Card>
       )}
 
-      {/* Slide grid */}
+      {/* Overview — factual counts, always shown when findings exist */}
       {findings.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 gap-5">
           <OverviewSlide findings={findings} synthesis={synthesis} />
-          <CriticalIssuesSlide findings={findings} synthesis={synthesis} />
-          <OpportunitiesSlide findings={findings} synthesis={synthesis} />
-          <ContradictionsSlide findings={findings} synthesis={synthesis} />
-          <LensBreakdownSlide findings={findings} synthesis={synthesis} />
+        </div>
+      )}
+
+      {/* Analysis slides — ONLY shown when synthesis has been run */}
+      {synthesisReady && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <CriticalIssuesSlide synthesis={synthesis} />
+          <OpportunitiesSlide synthesis={synthesis} />
+          <ContradictionsSlide synthesis={synthesis} />
+          <LensBreakdownSlide synthesis={synthesis} />
         </div>
       )}
     </div>
