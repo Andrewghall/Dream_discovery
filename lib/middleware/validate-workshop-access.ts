@@ -1,13 +1,11 @@
 /**
  * Workshop access validation
  *
- * Workshops are personally owned by the user who created them.
- * Being in the same organisation does NOT grant visibility — workshops
- * are only visible to their creator (or users they are explicitly shared with).
+ * Access levels match the workshop list API:
  *
- *   PLATFORM_ADMIN  → any workshop (support/ops only)
- *   TENANT_ADMIN    → only workshops they created (same as TENANT_USER)
- *   TENANT_USER     → only workshops they created
+ *   PLATFORM_ADMIN  → blocked (GDPR — workshops are tenant-owned data)
+ *   TENANT_ADMIN    → any workshop in their organisation
+ *   TENANT_USER     → only workshops they personally created
  */
 
 import { prisma } from '@/lib/prisma';
@@ -22,17 +20,16 @@ export interface WorkshopAccessValidation {
 }
 
 /**
- * Validates that a user can access a workshop
- * Enforces user-level isolation:
- *   - PLATFORM_ADMIN: any workshop
- *   - TENANT_ADMIN: any workshop in their org
- *   - TENANT_USER: only workshops they created
+ * Validates that a user can access a workshop.
+ *
+ *   PLATFORM_ADMIN  → always denied (GDPR)
+ *   TENANT_ADMIN    → any workshop in their org (matches the workshop list API)
+ *   TENANT_USER     → only workshops they personally created
  *
  * @param workshopId Workshop ID to access
- * @param userOrganizationId User's organization ID (null for platform admins)
+ * @param userOrganizationId User's organization ID
  * @param userRole User's role
  * @param userId User's ID (required for TENANT_USER ownership check)
- * @returns Validation result with workshop data or error
  */
 export async function validateWorkshopAccess(
   workshopId: string,
@@ -40,14 +37,36 @@ export async function validateWorkshopAccess(
   userRole: string,
   userId?: string
 ): Promise<WorkshopAccessValidation> {
-  // PLATFORM_ADMIN: no access to workshop content (GDPR — workshops are tenant-owned)
+  // PLATFORM_ADMIN: blocked for all workshop content (GDPR — workshops are tenant-owned)
   if (userRole === 'PLATFORM_ADMIN') {
     return { valid: false, error: 'Platform administrators cannot access workshop content' };
   }
 
-  // TENANT_ADMIN and TENANT_USER: workshops are personally owned.
-  // Being in the same org does NOT grant access — you must be the creator.
-  if (userRole === 'TENANT_ADMIN' || userRole === 'TENANT_USER') {
+  // TENANT_ADMIN: org-wide access — matches workshop list API behaviour
+  if (userRole === 'TENANT_ADMIN') {
+    if (!userOrganizationId) {
+      return { valid: false, error: 'Organization ID required' };
+    }
+
+    const workshop = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: { id: true, organizationId: true, createdById: true },
+    });
+
+    if (!workshop) {
+      return { valid: false, error: 'Workshop not found' };
+    }
+
+    // Org boundary only — admins can access any workshop in their org
+    if (workshop.organizationId !== userOrganizationId) {
+      return { valid: false, error: 'Access denied' };
+    }
+
+    return { valid: true, workshop };
+  }
+
+  // TENANT_USER: personal ownership — only the workshop creator
+  if (userRole === 'TENANT_USER') {
     if (!userOrganizationId || !userId) {
       return { valid: false, error: 'Organization and user ID required' };
     }
@@ -61,14 +80,14 @@ export async function validateWorkshopAccess(
       return { valid: false, error: 'Workshop not found' };
     }
 
-    // Org boundary — prevents cross-tenancy access
+    // Org boundary
     if (workshop.organizationId !== userOrganizationId) {
       return { valid: false, error: 'Access denied' };
     }
 
-    // Personal ownership — only the creator can access it
+    // Personal ownership
     if (workshop.createdById !== userId) {
-      return { valid: false, error: 'Access denied: You do not own this workshop' };
+      return { valid: false, error: 'Access denied' };
     }
 
     return { valid: true, workshop };

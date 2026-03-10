@@ -85,13 +85,16 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
   const fetchSessions = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/workshops/${workshopId}/capture-sessions`);
-      if (!res.ok) return; // no sessions yet — fail silently, just show empty state
+      if (res.status === 403) {
+        setError('Access denied: you do not have permission to view sessions for this workshop.');
+        return;
+      }
+      if (!res.ok) return;
       const data = await res.json();
       setSessions(data.sessions ?? []);
       setProgress(data.progress ?? null);
     } catch (err) {
       console.error('Error loading sessions:', err);
-      // Don't surface as a page-level error — just leave sessions empty
     }
   }, [workshopId]);
 
