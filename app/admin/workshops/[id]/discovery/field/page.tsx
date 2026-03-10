@@ -11,6 +11,7 @@ import type { DomainPack, SessionFormData } from '@/components/field-discovery/c
 import { DesktopCaptureControls } from '@/components/field-discovery/desktop-capture-controls';
 import { CaptureInbox } from '@/components/field-discovery/capture-inbox';
 import type { CaptureSessionItem } from '@/components/field-discovery/capture-inbox';
+import { FieldInsightsView } from '@/components/field-discovery/field-insights-view';
 import QRCode from 'react-qr-code';
 
 // ---------------------------------------------------------------------------
@@ -36,6 +37,7 @@ interface PageProps {
 export default function FieldDiscoveryPage({ params }: PageProps) {
   const { id: workshopId } = use(params);
 
+  const [activeTab, setActiveTab] = useState<'capture' | 'insights'>('capture');
   const [showForm, setShowForm] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<CaptureSessionItem[]>([]);
@@ -186,6 +188,16 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
     setLoading(false);
   }, [fetchSessions]);
 
+  // ---- Bulk delete sessions handler ----
+  const handleDeleteSessions = useCallback(async (sessionIds: string[]) => {
+    await fetch(`/api/admin/workshops/${workshopId}/capture-sessions/bulk-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionIds }),
+    });
+    await fetchSessions();
+  }, [workshopId, fetchSessions]);
+
   // ---- Generate capture token handler ----
   async function handleGenerateToken() {
     setGeneratingToken(true);
@@ -314,19 +326,45 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
             Capture interviews and walkarounds on-site, then synthesise findings.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
-          <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        {activeTab === 'capture' && (
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
+            <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        )}
       </div>
 
-      {error && (
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {(['capture', 'insights'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-sm font-medium capitalize rounded-t-md transition-colors border-b-2 -mb-px ${
+              activeTab === tab
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Insights tab */}
+      {activeTab === 'insights' && (
+        <FieldInsightsView workshopId={workshopId} />
+      )}
+
+      {activeTab === 'capture' && error && (
         <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
       )}
 
+      {activeTab === 'capture' && (
+      <>
       {/* --------------------------------------------------------------- */}
       {/* Import Data File                                                 */}
       {/* --------------------------------------------------------------- */}
@@ -609,6 +647,7 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
           <CaptureInbox
             workshopId={workshopId}
             sessions={sessions}
+            onDeleteSessions={handleDeleteSessions}
           />
         </CardContent>
       </Card>
@@ -668,6 +707,8 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }

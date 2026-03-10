@@ -12,6 +12,7 @@ import {
   updateCaptureSession,
   deleteCaptureSession,
 } from '@/lib/field-discovery/capture-session-manager';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,6 +84,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
+    // Remove associated findings before deleting the session
+    // (schema uses onDelete: SetNull so we need to do this explicitly)
+    await prisma.finding.deleteMany({ where: { captureSessionId: sessionId } });
     await deleteCaptureSession(sessionId);
 
     return NextResponse.json({ success: true });

@@ -32,6 +32,9 @@ import {
   X,
   Loader2,
   RotateCcw,
+  CheckSquare,
+  Trash2,
+  Square,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -63,6 +66,7 @@ type CaptureInboxProps = {
   sessions: CaptureSessionItem[];
   onAnalyse?: (sessionId: string) => void;
   onResume?: (sessionId: string) => void;
+  onDeleteSessions?: (sessionIds: string[]) => Promise<void>;
 };
 
 // ---------------------------------------------------------------------------
@@ -508,10 +512,44 @@ export function CaptureInbox({
   sessions,
   onAnalyse,
   onResume,
+  onDeleteSessions,
 }: CaptureInboxProps) {
   const [filterType, setFilterType] = React.useState(ALL_FILTER);
   const [filterStatus, setFilterStatus] = React.useState(ALL_FILTER);
   const [filterRole, setFilterRole] = React.useState('');
+
+  // Multi-select state
+  const [selectionMode, setSelectionMode] = React.useState(false);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+
+  const toggleSelect = React.useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const exitSelectionMode = React.useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setShowDeleteConfirm(false);
+  }, []);
+
+  const handleConfirmDelete = React.useCallback(async () => {
+    if (!onDeleteSessions || selectedIds.size === 0) return;
+    setDeleting(true);
+    try {
+      await onDeleteSessions(Array.from(selectedIds));
+      exitSelectionMode();
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }, [onDeleteSessions, selectedIds, exitSelectionMode]);
 
   // Derive unique values for filter dropdowns
   const uniqueTypes = React.useMemo(
@@ -555,14 +593,69 @@ export function CaptureInbox({
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Inbox className="size-5" />
-          Capture Sessions
-          <Badge variant="secondary" className="ml-1">
-            {sessions.length}
-          </Badge>
-        </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Inbox className="size-5" />
+            Capture Sessions
+            <Badge variant="secondary" className="ml-1">
+              {sessions.length}
+            </Badge>
+          </CardTitle>
+          {onDeleteSessions && sessions.length > 0 && (
+            <div className="flex items-center gap-2">
+              {selectionMode && selectedIds.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={deleting}
+                >
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                  Delete ({selectedIds.size})
+                </Button>
+              )}
+              <Button
+                variant={selectionMode ? 'outline' : 'ghost'}
+                size="sm"
+                onClick={selectionMode ? exitSelectionMode : () => setSelectionMode(true)}
+              >
+                {selectionMode ? (
+                  <><X className="h-4 w-4 mr-1.5" />Cancel</>
+                ) : (
+                  <><CheckSquare className="h-4 w-4 mr-1.5" />Select</>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
       </CardHeader>
+
+      {/* Delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div className="mx-6 mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <Trash2 className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-destructive">
+                Delete {selectedIds.size} session{selectedIds.size !== 1 ? 's' : ''}?
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                This will permanently remove the recording{selectedIds.size !== 1 ? 's' : ''},
+                transcripts, and all findings extracted from {selectedIds.size !== 1 ? 'them' : 'it'}.
+                This cannot be undone.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleConfirmDelete} disabled={deleting}>
+              {deleting ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Deleting…</> : 'Delete'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <CardContent className="flex flex-col gap-4">
         {/* Filters */}
@@ -634,13 +727,32 @@ export function CaptureInbox({
         {filtered.length > 0 ? (
           <div className="flex flex-col gap-2">
             {filtered.map((session) => (
-              <SessionRow
+              <div
                 key={session.id}
-                session={session}
-                workshopId={workshopId}
-                onAnalyse={onAnalyse}
-                onResume={onResume}
-              />
+                className={`flex items-start gap-2 ${selectionMode ? 'cursor-pointer' : ''} ${selectionMode && selectedIds.has(session.id) ? 'rounded-xl ring-2 ring-destructive/40 bg-destructive/5' : ''}`}
+                onClick={selectionMode ? () => toggleSelect(session.id) : undefined}
+              >
+                {selectionMode && (
+                  <button
+                    className="mt-3 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(session.id); }}
+                    aria-label={selectedIds.has(session.id) ? 'Deselect' : 'Select'}
+                  >
+                    {selectedIds.has(session.id)
+                      ? <CheckSquare className="h-5 w-5 text-destructive" />
+                      : <Square className="h-5 w-5" />
+                    }
+                  </button>
+                )}
+                <div className="flex-1 min-w-0">
+                  <SessionRow
+                    session={session}
+                    workshopId={workshopId}
+                    onAnalyse={selectionMode ? undefined : onAnalyse}
+                    onResume={selectionMode ? undefined : onResume}
+                  />
+                </div>
+              </div>
             ))}
           </div>
         ) : (
