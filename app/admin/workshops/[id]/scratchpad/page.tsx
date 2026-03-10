@@ -1026,6 +1026,7 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [exporting, setExporting] = useState(false);
   const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showJourneyMap, setShowJourneyMap] = useState(true);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -1354,8 +1355,23 @@ export default function DownloadReportPage({ params }: PageProps) {
                   label="Customer Journey"
                   sublabel="Actor swim-lanes from the live workshop session"
                 />
-                <JourneyDownloadBar workshopId={workshopId} />
-                <LiveJourneyMap data={liveJourneyData} mode="output" />
+                <div className="flex justify-end -mt-3 mb-3">
+                  <button
+                    onClick={() => setShowJourneyMap(v => !v)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <span className={`inline-flex h-4 w-7 items-center rounded-full border transition-colors ${showJourneyMap ? 'bg-foreground/15 border-foreground/20' : 'bg-muted border-border'}`}>
+                      <span className={`h-3.5 w-3.5 rounded-full bg-background shadow-sm border border-border transition-transform ${showJourneyMap ? 'translate-x-3' : 'translate-x-0'}`} />
+                    </span>
+                    {showJourneyMap ? 'Included in report' : 'Excluded from report'}
+                  </button>
+                </div>
+                {showJourneyMap && (
+                  <>
+                    <JourneyDownloadBar workshopId={workshopId} />
+                    <LiveJourneyMap data={liveJourneyData} mode="output" />
+                  </>
+                )}
               </div>
             )}
 

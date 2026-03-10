@@ -466,9 +466,9 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                       return (
                         <div
                           key={`cell-${actorIdx}-${stageIdx}`}
-                          className={`${isOutput ? 'p-1' : 'p-2'} border-b border-r min-h-[80px]`}
+                          className={`${isOutput ? 'p-1' : 'p-2'} border-b border-r ${isOutput ? 'min-h-[40px]' : 'min-h-[80px]'}`}
                         >
-                          <div className="space-y-1.5">
+                          <div className={`${isOutput ? 'space-y-1' : 'space-y-1.5'}`}>
                             {cellInteractions.map((interaction) => {
                               const isEditing = !isOutput && editingCell === interaction.id;
 
@@ -484,16 +484,36 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                                 );
                               }
 
+                              // Output mode: compact chip — no intensity bars, no badges
+                              if (isOutput) {
+                                const chipStyle = getSentimentStyle(interaction.sentiment);
+                                return (
+                                  <div
+                                    key={interaction.id}
+                                    className={`relative p-1 rounded border ${chipStyle.bg} ${chipStyle.border}`}
+                                  >
+                                    {interaction.isPainPoint && (
+                                      <span className="absolute -top-1 -left-1 text-[9px]" title="Pain Point">🔴</span>
+                                    )}
+                                    {interaction.isMomentOfTruth && (
+                                      <span className="absolute -top-1 -right-1 text-[9px]" title="Moment of Truth">⭐</span>
+                                    )}
+                                    <div className={`text-[9px] font-medium ${chipStyle.text} leading-tight line-clamp-2`}>
+                                      {interaction.action}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
                               return (
                                 <InteractionCard
                                   key={interaction.id}
                                   interaction={interaction}
-                                  readOnly={isOutput}
-                                  onEdit={() => !isOutput && startEdit(interaction)}
-                                  onRemove={() => !isOutput && removeInteraction(interaction.id)}
-                                  onUpdateIntensity={(field, value) => !isOutput && updateInteraction(interaction.id, { [field]: value })}
+                                  readOnly={false}
+                                  onEdit={() => startEdit(interaction)}
+                                  onRemove={() => removeInteraction(interaction.id)}
+                                  onUpdateIntensity={(field, value) => updateInteraction(interaction.id, { [field]: value })}
                                   onSetAiAgency={(field, value) => {
-                                    if (isOutput) return;
                                     updateInteraction(interaction.id, { [field]: value });
                                   }}
                                 />
