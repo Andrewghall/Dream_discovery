@@ -11,6 +11,7 @@ import {
   storePendingSession,
   getPendingSessions,
   removePendingSession,
+  updatePendingSession,
 } from '@/lib/field-discovery/pending-sessions-store';
 import {
   getPendingUploads,
@@ -154,124 +155,111 @@ export default function MobileCaptureTokenPage({
   // -------------------------------------------------------------------------
 
   async function syncOfflineData() {
+    // Gather all pending data — wrap text transcripts separately so a DB upgrade
+    // hiccup doesn't abort session sync entirely.
     const pendingSessions = await getPendingSessions();
     const pendingUploads = await getPendingUploads();
-    const pendingTexts = await getPendingTextTranscripts();
+    let pendingTexts: Awaited<ReturnType<typeof getPendingTextTranscripts>> = [];
+    try {
+      pendingTexts = await getPendingTextTranscripts();
+    } catch { /* text transcript store may not exist yet on older clients */ }
 
     if (pendingSessions.length === 0 && pendingUploads.length === 0 && pendingTexts.length === 0) return;
 
     setSyncing(true);
     let synced = 0;
 
-    // Map from local session ID → server session ID (built during session creation loop)
-    const syncedSessionMap: Record<string, string> = {};
-
-    // 1. Create any sessions that were created offline
+    // Process each pending session. We use updatePendingSession (not remove) to persist the
+    // server ID so that text transcripts recorded AFTER this sync run can still find their
+    // parent session. We only remove the pending session when ALL its uploads are done.
     for (const pending of pendingSessions) {
-      if (pending.serverId) {
-        // Already synced — record the mapping so text transcripts can find it
-        syncedSessionMap[pending.localId] = pending.serverId;
-        continue;
-      }
-      try {
-        const res = await fetch(`/api/capture/${pending.captureToken}/sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...pending.formData, deviceType: 'MOBILE' }),
-        });
-        if (res.ok) {
-          const { session } = await res.json();
-          syncedSessionMap[pending.localId] = session.id;
-          await removePendingSession(pending.localId);
-          synced++;
+      let serverId = pending.serverId ?? null;
 
-          // 2. Upload any queued audio segments for this local session
-          const myUploads = pendingUploads.filter(
-            (u) => (u.metadata.sessionId as string)?.startsWith(pending.localId),
-          );
-          for (const upload of myUploads) {
-            try {
-              const fd = new FormData();
-              fd.append('audio', upload.audioBlob, `segment-${upload.metadata.segmentIndex}.webm`);
-              fd.append('segmentIndex', String(upload.metadata.segmentIndex));
-              fd.append('startedAt', new Date(upload.metadata.startedAt as number).toISOString());
-              fd.append('stoppedAt', new Date(upload.metadata.stoppedAt as number).toISOString());
-
-              const tRes = await fetch(
-                `/api/capture/${pending.captureToken}/sessions/${session.id}/segments/transcribe`,
-                { method: 'POST', body: fd },
-              );
-              if (tRes.ok) {
-                await removePendingUpload(upload.id);
-                synced++;
-              }
-            } catch { /* best effort */ }
-          }
-
-          // 3. Upload any queued text transcripts for this local session
-          const myTexts = pendingTexts.filter(
-            (t) => (t.metadata.sessionId as string)?.startsWith(pending.localId),
-          );
-          for (const txt of myTexts) {
-            try {
-              const tRes = await fetch(
-                `/api/capture/${pending.captureToken}/sessions/${session.id}/segments/text`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    segmentIndex: txt.metadata.segmentIndex,
-                    startedAt: new Date(txt.metadata.startedAt as number).toISOString(),
-                    stoppedAt: new Date(txt.metadata.stoppedAt as number).toISOString(),
-                    transcript: txt.transcript,
-                  }),
-                },
-              );
-              if (tRes.ok) {
-                await removePendingTextTranscript(txt.id);
-                synced++;
-              }
-            } catch { /* best effort */ }
-          }
-
-          // Trigger analysis (runs after all segments uploaded)
-          await fetch(
-            `/api/capture/${pending.captureToken}/sessions/${session.id}/analyse`,
-            { method: 'POST' },
-          ).catch(() => { /* best effort */ });
-        }
-      } catch { /* best effort */ }
-    }
-
-    // 4. Sync any orphaned text transcripts whose session was already synced
-    //    (e.g. page was closed mid-upload and session is already on server)
-    const remainingTexts = pendingTexts.filter(
-      (t) => !Object.keys(syncedSessionMap).some(
-        (localId) => (t.metadata.sessionId as string)?.startsWith(localId),
-      ),
-    );
-    for (const txt of remainingTexts) {
-      const serverSessionId = syncedSessionMap[txt.metadata.sessionId as string];
-      if (!serverSessionId) continue;
-      try {
-        const tRes = await fetch(
-          `/api/capture/${token}/sessions/${serverSessionId}/segments/text`,
-          {
+      // Step 1 — Create session on server if not already done
+      if (!serverId) {
+        try {
+          const res = await fetch(`/api/capture/${pending.captureToken}/sessions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              segmentIndex: txt.metadata.segmentIndex,
-              startedAt: new Date(txt.metadata.startedAt as number).toISOString(),
-              stoppedAt: new Date(txt.metadata.stoppedAt as number).toISOString(),
-              transcript: txt.transcript,
-            }),
-          },
-        );
-        if (tRes.ok) {
-          await removePendingTextTranscript(txt.id);
-          synced++;
-        }
-      } catch { /* best effort */ }
+            body: JSON.stringify({ ...pending.formData, deviceType: 'MOBILE' }),
+          });
+          if (res.ok) {
+            const { session } = await res.json();
+            serverId = session.id;
+            // Persist server ID so future sync runs can find it even if we're mid-recording
+            await updatePendingSession(pending.localId, { serverId: session.id });
+            synced++;
+          }
+        } catch { /* best effort */ }
+      }
+
+      if (!serverId) continue; // Session creation failed; try again next sync
+
+      // Step 2 — Upload any queued audio segments for this session
+      const myUploads = pendingUploads.filter(
+        (u) => (u.metadata.sessionId as string)?.startsWith(pending.localId),
+      );
+      let allUploadsOk = true;
+      for (const upload of myUploads) {
+        try {
+          const fd = new FormData();
+          fd.append('audio', upload.audioBlob, `segment-${upload.metadata.segmentIndex}.webm`);
+          fd.append('segmentIndex', String(upload.metadata.segmentIndex));
+          fd.append('startedAt', new Date(upload.metadata.startedAt as number).toISOString());
+          fd.append('stoppedAt', new Date(upload.metadata.stoppedAt as number).toISOString());
+
+          const tRes = await fetch(
+            `/api/capture/${pending.captureToken}/sessions/${serverId}/segments/transcribe`,
+            { method: 'POST', body: fd },
+          );
+          if (tRes.ok) {
+            await removePendingUpload(upload.id);
+            synced++;
+          } else {
+            allUploadsOk = false;
+          }
+        } catch { allUploadsOk = false; }
+      }
+
+      // Step 3 — Upload any queued text transcripts for this session
+      const myTexts = pendingTexts.filter(
+        (t) => (t.metadata.sessionId as string)?.startsWith(pending.localId),
+      );
+      let allTextsOk = true;
+      for (const txt of myTexts) {
+        try {
+          const tRes = await fetch(
+            `/api/capture/${pending.captureToken}/sessions/${serverId}/segments/text`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                segmentIndex: txt.metadata.segmentIndex,
+                startedAt: new Date(txt.metadata.startedAt as number).toISOString(),
+                stoppedAt: new Date(txt.metadata.stoppedAt as number).toISOString(),
+                transcript: txt.transcript,
+              }),
+            },
+          );
+          if (tRes.ok) {
+            await removePendingTextTranscript(txt.id);
+            synced++;
+          } else {
+            allTextsOk = false;
+          }
+        } catch { allTextsOk = false; }
+      }
+
+      // Step 4 — Only remove the pending session after ALL uploads succeeded.
+      // If anything failed, we leave it so the next sync can retry.
+      if (allUploadsOk && allTextsOk) {
+        await removePendingSession(pending.localId).catch(() => {});
+        // Trigger analysis now that transcripts are all on the server
+        await fetch(
+          `/api/capture/${pending.captureToken}/sessions/${serverId}/analyse`,
+          { method: 'POST' },
+        ).catch(() => { /* best effort */ });
+      }
     }
 
     setSyncing(false);
