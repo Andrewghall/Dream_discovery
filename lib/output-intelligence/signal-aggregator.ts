@@ -46,6 +46,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
     where: { id: workshopId },
     select: {
       name: true,
+      description: true,
       clientName: true,
       businessContext: true,
       industry: true,
@@ -87,10 +88,11 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
 
   let lenses: string[] = [];
 
-  // Try blueprint first
-  const blueprint = safeJson<{ lenses?: Array<{ label: string }> }>(workshop.blueprint);
+  // Try blueprint first — blueprint stores lenses as { name, description, color, keywords }
+  // (Some older blueprints may use `label` instead of `name` — handle both)
+  const blueprint = safeJson<{ lenses?: Array<{ name?: string; label?: string }> }>(workshop.blueprint);
   if (blueprint?.lenses && Array.isArray(blueprint.lenses)) {
-    lenses = blueprint.lenses.map((l) => l.label).filter(Boolean);
+    lenses = blueprint.lenses.map((l) => l.name ?? l.label ?? '').filter(Boolean);
   }
 
   // Fall back to discoveryQuestions
@@ -101,24 +103,57 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
     }
   }
 
-  // Final fallback
+  // Final fallback — only if blueprint and discoveryQuestions both have no lenses
   if (lenses.length === 0) {
     lenses = ['People', 'Organisation', 'Customer', 'Technology'];
   }
 
-  // ── Context: Objectives from prep research ──────────────────────────────
+  // ── Context: Objectives — full Plan phase context ────────────────────────
+  // Build a rich objectives string from all available Plan phase sources so
+  // the AI agents understand the actual workshop ask, not just businessContext.
 
   const prepResearch = safeJson<{
     workshopObjective?: string;
     businessContext?: string;
     companyOverview?: string;
     keyPublicChallenges?: string[];
+    industryContext?: string;
   }>(workshop.prepResearch);
 
-  const objectives = prepResearch?.workshopObjective
-    ?? prepResearch?.businessContext
-    ?? workshop.businessContext
-    ?? '';
+  const objectiveParts: string[] = [];
+
+  // Workshop description = "why we are doing this" (set in Plan phase)
+  if (workshop.description) {
+    objectiveParts.push(`Workshop Purpose: ${workshop.description}`);
+  }
+
+  // Business context = desired outcomes
+  if (workshop.businessContext) {
+    objectiveParts.push(`Desired Outcomes: ${workshop.businessContext}`);
+  }
+
+  // Specific challenge areas from research agent (the real "what needs solving")
+  if (prepResearch?.keyPublicChallenges && prepResearch.keyPublicChallenges.length > 0) {
+    objectiveParts.push(
+      `Key Challenge Areas:\n${prepResearch.keyPublicChallenges.map((c) => `• ${c}`).join('\n')}`
+    );
+  }
+
+  // Industry / operational context (e.g. "contact centre", "airline", "retail")
+  if (prepResearch?.industryContext) {
+    objectiveParts.push(`Industry Context: ${prepResearch.industryContext}`);
+  }
+
+  // Legacy field fallbacks
+  if (objectiveParts.length === 0) {
+    const legacy = prepResearch?.workshopObjective
+      ?? prepResearch?.businessContext
+      ?? prepResearch?.companyOverview
+      ?? '';
+    if (legacy) objectiveParts.push(legacy);
+  }
+
+  const objectives = objectiveParts.filter(Boolean).join('\n\n');
 
   // ── Discovery Signals ────────────────────────────────────────────────────
 
