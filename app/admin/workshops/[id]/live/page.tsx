@@ -3,18 +3,16 @@
 import React, { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 
+import {
+  MicCheckDialog,
+  RevealDialog,
+  NodeDetailDialog,
+  bestConfidence,
+} from './_components/LiveSessionModals';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -197,13 +195,6 @@ function errorMessage(value: unknown): string {
     }
   }
   return 'Unknown error';
-}
-
-/** Prefer agentic confidence (semantic) over classification confidence (regex/GPT-classify) */
-function bestConfidence(node: HemisphereNodeDatum | null | undefined): number | null {
-  if (!node) return null;
-  if (node.agenticAnalysis?.overallConfidence != null) return node.agenticAnalysis.overallConfidence;
-  return node.classification?.confidence ?? null;
 }
 
 export default function WorkshopLivePage({ params }: PageProps) {
@@ -3633,105 +3624,32 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   <CardDescription>Start capture to transcribe room audio in real time</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Dialog
+                  <Button
+                    type="button"
+                    variant={micPermission === 'granted' ? 'outline' : 'default'}
+                    onClick={() => setMicDialogOpen(true)}
+                  >
+                    {micPermission === 'granted' ? 'Microphone checked' : 'Microphone check'}
+                  </Button>
+                  <MicCheckDialog
                     open={micDialogOpen}
                     onOpenChange={(open) => {
                       setMicDialogOpen(open);
-                      if (!open) {
-                        void stopMicTest();
-                      }
+                      if (!open) void stopMicTest();
                     }}
-                  >
-                    <DialogTrigger asChild>
-                      <Button type="button" variant={micPermission === 'granted' ? 'outline' : 'default'}>
-                        {micPermission === 'granted' ? 'Microphone checked' : 'Microphone check'}
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Microphone check</DialogTitle>
-                        <DialogDescription>
-                          Grant microphone permission and confirm audio input is working before going live.
-                        </DialogDescription>
-                      </DialogHeader>
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>Input device</Label>
-                          <Select
-                            value={selectedMicId}
-                            onValueChange={(v) => {
-                              setSelectedMicId(v);
-                              void stopMicTest();
-                            }}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select microphone" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {micDevices.length === 0 ? (
-                                <SelectItem value="__none" disabled>
-                                  No devices found
-                                </SelectItem>
-                              ) : (
-                                micDevices.map((d) => (
-                                  <SelectItem key={d.deviceId} value={d.deviceId}>
-                                    {d.label}
-                                  </SelectItem>
-                                ))
-                              )}
-                            </SelectContent>
-                          </Select>
-                          <div className="text-xs text-muted-foreground">Permission: {micPermission}</div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Level</Label>
-                          <div className="h-3 w-full rounded bg-muted overflow-hidden">
-                            <div
-                              className="h-full bg-green-600 transition-[width]"
-                              style={{ width: `${Math.round(micLevel * 100)}%` }}
-                            />
-                          </div>
-                          <div className="text-xs text-muted-foreground">Speak and watch the bar move.</div>
-                        </div>
-                      </div>
-
-                      <DialogFooter>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            void refreshMicDevices();
-                          }}
-                        >
-                          Refresh devices
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            void stopMicTest();
-                          }}
-                          disabled={!micTesting}
-                        >
-                          Stop
-                        </Button>
-                        <Button type="button" onClick={() => void startMicTest()}>
-                          {micTesting ? 'Testing…' : 'Start test'}
-                        </Button>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            setMicDialogOpen(false);
-                          }}
-                          disabled={micPermission !== 'granted'}
-                        >
-                          Done
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
+                    permission={micPermission}
+                    devices={micDevices}
+                    selectedMicId={selectedMicId}
+                    onMicSelect={(v) => {
+                      setSelectedMicId(v);
+                      void stopMicTest();
+                    }}
+                    micLevel={micLevel}
+                    micTesting={micTesting}
+                    onRefreshDevices={() => void refreshMicDevices()}
+                    onStopTest={() => void stopMicTest()}
+                    onStartTest={() => void startMicTest()}
+                  />
 
                   <div className="flex flex-wrap gap-2 items-center">
                     <Button onClick={startCapture} disabled={status === 'capturing'}>
@@ -3966,90 +3884,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     </div>
                   ) : null}
 
-                  <Dialog
+                  <RevealDialog
                     open={revealOpen}
-                    onOpenChange={(open) => {
-                      setRevealOpen(open);
-                    }}
-                  >
-                    <DialogContent className="max-w-4xl">
-                      <DialogHeader>
-                        <DialogTitle>Reveal</DialogTitle>
-                        <DialogDescription>
-                          This view unlocks once synthesis and relationships are present.
-                        </DialogDescription>
-                      </DialogHeader>
-
-                      <div className="space-y-6">
-                        <div className="rounded-md border p-4">
-                          <div className="text-sm font-medium mb-2">Future state narrative</div>
-                          <div className="text-sm whitespace-pre-wrap break-words">
-                            {visionNarrative || '—'}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {domainNarratives.map((d) => (
-                            <div key={d.domain} className="rounded-md border p-4">
-                              <div className="text-sm font-medium mb-2">{d.domain}</div>
-                              <div className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
-                                {d.hasAny ? d.narrative : 'No synthesis yet.'}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="rounded-md border p-4">
-                            <div className="text-sm font-medium mb-2">Systemic pressure points</div>
-                            {pressurePoints.length === 0 ? (
-                              <div className="text-sm text-muted-foreground">None detected yet.</div>
-                            ) : (
-                              <div className="space-y-2">
-                                {pressurePoints.map((p) => (
-                                  <div key={p.id} className="rounded-md border px-3 py-2">
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="text-sm font-medium">
-                                        {p.fromDomain} → {p.toDomain}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground tabular-nums">{p.count}</div>
-                                    </div>
-                                    <div className="mt-1 text-xs text-muted-foreground tabular-nums">
-                                      constraints: {p.constraintCount} • aspirations: {p.aspirationCount}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="rounded-md border p-4">
-                            <div className="text-sm font-medium mb-2">Key dependencies</div>
-                            {keyDependencies.length === 0 ? (
-                              <div className="text-sm text-muted-foreground">None detected yet.</div>
-                            ) : (
-                              <div className="space-y-2">
-                                {keyDependencies.map((e) => (
-                                  <div key={e.id} className="flex items-center justify-between rounded-md border px-3 py-2">
-                                    <div className="text-sm font-medium">
-                                      {e.fromDomain} → {e.toDomain}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground tabular-nums">{e.count}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <DialogFooter>
-                          <Button type="button" variant="outline" onClick={() => setRevealOpen(false)}>
-                            Close
-                          </Button>
-                        </DialogFooter>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                    onOpenChange={setRevealOpen}
+                    visionNarrative={visionNarrative ?? null}
+                    domainNarratives={domainNarratives}
+                    pressurePoints={pressurePoints}
+                    keyDependencies={keyDependencies}
+                  />
                 </CardContent>
               </Card>
 
@@ -4634,102 +4476,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
               ) : null}
             </div>
 
-        <Dialog
+        <NodeDetailDialog
           open={viewMode !== 'room' && !!selectedNode}
-          onOpenChange={(open) => {
-            if (!open) setSelectedNodeId(null);
-          }}
-        >
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Datapoint</DialogTitle>
-              <DialogDescription>
-                {selectedNode?.classification?.primaryType ?? 'UNCLASSIFIED'}
-                {bestConfidence(selectedNode) != null
-                  ? ` • ${(bestConfidence(selectedNode)! * 100).toFixed(0)}%`
-                  : ''}
-                {selectedNode?.agenticAnalysis ? ' (agentic)' : ''}
-              </DialogDescription>
-            </DialogHeader>
-
-              <div className="space-y-4">
-                <div className="rounded-md border p-3 text-sm whitespace-pre-wrap break-words">
-                  {selectedNode?.rawText || ''}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-md border p-3">
-                    <div className="font-medium mb-1">Transcript</div>
-                    <div className="text-muted-foreground">
-                      Start: {selectedNode?.transcriptChunk?.startTimeMs ?? '—'}ms
-                    </div>
-                    <div className="text-muted-foreground">
-                      End: {selectedNode?.transcriptChunk?.endTimeMs ?? '—'}ms
-                    </div>
-                    <div className="text-muted-foreground">
-                      Deepgram conf:{' '}
-                      {selectedNode?.transcriptChunk?.confidence == null
-                        ? '—'
-                        : `${(selectedNode.transcriptChunk.confidence * 100).toFixed(0)}%`}
-                    </div>
-                    <div className="text-muted-foreground">
-                      Source: {selectedNode?.transcriptChunk?.source ?? '—'}
-                    </div>
-                  </div>
-
-                  <div className="rounded-md border p-3">
-                    <div className="font-medium mb-1">Classification</div>
-                    <div className="text-muted-foreground">
-                      Type: {selectedNode?.classification?.primaryType ?? '—'}
-                    </div>
-                    <div className="text-muted-foreground">
-                      Conf:{' '}
-                      {selectedNode?.classification?.confidence == null
-                        ? '—'
-                        : `${(selectedNode.classification.confidence * 100).toFixed(0)}%`}
-                    </div>
-                    <div className="text-muted-foreground">
-                      Suggested area: {selectedNode?.classification?.suggestedArea ?? '—'}
-                    </div>
-                    <div className="text-muted-foreground">
-                      Keywords: {selectedNode?.classification?.keywords?.length ? selectedNode.classification.keywords.join(', ') : '—'}
-                    </div>
-                  </div>
-                </div>
-
-                {selectedNode?.agenticAnalysis && (
-                  <div className="rounded-md border border-blue-200 bg-blue-50/50 p-3">
-                    <div className="font-medium mb-1 text-blue-800">Agentic Analysis</div>
-                    <div className="text-muted-foreground">
-                      Confidence: {(selectedNode.agenticAnalysis.overallConfidence * 100).toFixed(0)}%
-                    </div>
-                    <div className="text-muted-foreground">
-                      Meaning: {selectedNode.agenticAnalysis.semanticMeaning}
-                    </div>
-                    <div className="text-muted-foreground">
-                      Tone: {selectedNode.agenticAnalysis.sentimentTone}
-                    </div>
-                    {selectedNode.agenticAnalysis.domains.length > 0 && (
-                      <div className="text-muted-foreground">
-                        Domains: {selectedNode.agenticAnalysis.domains.map(d => `${d.domain} (${(d.relevance * 100).toFixed(0)}%)`).join(', ')}
-                      </div>
-                    )}
-                    {selectedNode.agenticAnalysis.themes.length > 0 && (
-                      <div className="text-muted-foreground">
-                        Themes: {selectedNode.agenticAnalysis.themes.map(t => `${t.label} (${t.category})`).join(', ')}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setSelectedNodeId(null)}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          onClose={() => setSelectedNodeId(null)}
+          node={selectedNode}
+        />
       </div>
     </div>
   );
