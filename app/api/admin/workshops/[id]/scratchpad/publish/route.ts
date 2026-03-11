@@ -29,9 +29,10 @@ export async function POST(
 
     return NextResponse.json({ scratchpad });
   } catch (error) {
-    console.error('Failed to publish scratchpad:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[scratchpad-publish] Failed to publish scratchpad:', message);
     return NextResponse.json(
-      { error: 'Failed to publish scratchpad' },
+      { error: 'Failed to publish scratchpad', details: { message } },
       { status: 500 }
     );
   }

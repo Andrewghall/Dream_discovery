@@ -550,9 +550,22 @@ export async function PATCH(
 
     return NextResponse.json({ workshop: updated });
   } catch (error) {
-    console.error('Error updating workshop:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    const isSchemaError = message.toLowerCase().includes('does not exist in the current database')
+      || message.toLowerCase().includes('unknown field')
+      || message.toLowerCase().includes('unknown argument');
+    console.error('[workshop-update]', isSchemaError ? 'SCHEMA DRIFT DETECTED' : 'Error updating workshop:', message);
     return NextResponse.json(
-      { error: 'Failed to update workshop' },
+      {
+        error: 'Failed to update workshop',
+        details: {
+          message,
+          ...(isSchemaError && {
+            schemaDrift: true,
+            hint: 'The database schema is out of sync with the application. Run pending migrations.',
+          }),
+        },
+      },
       { status: 500 }
     );
   }

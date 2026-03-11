@@ -78,9 +78,10 @@ export async function PATCH(
 
     return NextResponse.json({ scratchpad });
   } catch (error) {
-    console.error('Failed to update scratchpad:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[scratchpad-update] Failed to update scratchpad:', message);
     return NextResponse.json(
-      { error: 'Failed to update scratchpad' },
+      { error: 'Failed to update scratchpad', details: { message } },
       { status: 500 }
     );
   }
@@ -141,9 +142,10 @@ export async function POST(
 
     return NextResponse.json({ scratchpad });
   } catch (error) {
-    console.error('Failed to create scratchpad:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[scratchpad-create] Failed to create scratchpad:', message);
     return NextResponse.json(
-      { error: 'Failed to create scratchpad' },
+      { error: 'Failed to create scratchpad', details: { message } },
       { status: 500 }
     );
   }
