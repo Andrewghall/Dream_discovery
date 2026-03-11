@@ -1,32 +1,70 @@
 /**
  * POST /api/admin/workshops/[id]/export-pptx
  *
- * Generates a professional PowerPoint presentation from the Download Report
- * using the same layout/section configuration as the PDF export.
- * Uses pptxgenjs (pure-JS, no native deps) — safe on Vercel Edge.
+ * Generates a PowerPoint presentation from the Download Report.
+ *
+ * Each section is rendered via the shared HTML renderers (lib/report/html-renderers.ts),
+ * screenshotted by Puppeteer at 1200px wide, then embedded as a full-slide
+ * image in pptxgenjs — producing the same rich, styled visuals as the PDF.
+ *
+ * This replaces the previous pptxgenjs text/table approach with pixel-perfect
+ * screenshots of the exact same HTML that the PDF uses.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import PptxGenJS from 'pptxgenjs';
+import chromium from '@sparticuz/chromium';
+import puppeteer from 'puppeteer-core';
 import fs from 'fs';
 import path from 'path';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { prisma } from '@/lib/prisma';
 import type {
   ReportSummary,
   ReportLayout,
   ReportSectionConfig,
   WorkshopOutputIntelligence,
-  ReportConclusion,
-  FacilitatorContact,
 } from '@/lib/output-intelligence/types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
+import {
+  PDF_STYLES,
+  esc,
+  renderExecutiveSummary,
+  renderSupportingEvidence,
+  renderRootCauses,
+  renderSolutionDirection,
+  renderJourneyMap,
+  renderStrategicImpact,
+  renderDiscoveryDiagnostic,
+  renderDiscoverySignals,
+  renderInsightSummary,
+  renderStructuralAlignment,
+  renderStructuralNarrative,
+  renderStructuralTensions,
+  renderStructuralBarriers,
+  renderStructuralConfidence,
+  renderSignalMap,
+  renderFacilitatorBackPage,
+  renderCustomSection,
+  renderChapter,
+  renderConclusion,
+} from '@/lib/report/html-renderers';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-// ── Body type (mirrors export-pdf) ───────────────────────────────────────────
+// ── Slide dimensions (widescreen 13.33" × 7.5" = 16:9) ───────────────────────
+const SW = 13.33;
+const SH = 7.5;
+
+// ── Screenshot viewport ───────────────────────────────────────────────────────
+const VIEWPORT_W = 1200; // px — section screenshots
+const COVER_W    = 1920; // px
+const COVER_H    = 1080; // px
+
+// ── Body type ─────────────────────────────────────────────────────────────────
 
 interface ExportPptxBody {
   reportSummary: ReportSummary;
@@ -41,55 +79,9 @@ interface ExportPptxBody {
   discoverAnalysis?: DiscoverAnalysis;
 }
 
-// ── Layout constants (inches, 16:9 widescreen) ───────────────────────────────
+// ── Logo helpers ──────────────────────────────────────────────────────────────
 
-const SW = 10;         // slide width
-const SH = 5.63;       // slide height
-const ML = 0.4;        // left margin
-const MR = 0.4;        // right margin
-const CW = SW - ML - MR; // content width
-const HDR = 0.52;      // header bar height
-const CY = HDR + 0.12; // content start Y
-const FY = SH - 0.26;  // footer line Y
-const CH = FY - CY;    // content height
-
-// ── Colour palette (hex without #) ───────────────────────────────────────────
-
-const C = {
-  primary:   '4F46E5',
-  primaryDk: '3730A3',
-  dark:      '0F172A',
-  text:      '1E293B',
-  muted:     '64748B',
-  light:     'F1F5F9',
-  border:    'E2E8F0',
-  white:     'FFFFFF',
-  green:     '065F46',
-  greenBg:   'D1FAE5',
-  amber:     'B45309',
-  amberBg:   'FEF3C7',
-  red:       'B91C1C',
-  redBg:     'FEE2E2',
-  purple:    '5B21B6',
-  purpleBg:  'EDE9FE',
-  blue:      '1D4ED8',
-  blueBg:    'DBEAFE',
-};
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Sanitise text for PPTX — strip control characters */
-function t(v: unknown): string {
-  return String(v ?? '').replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ').trim();
-}
-
-/** Truncate with ellipsis */
-function tr(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max - 1) + '…' : text;
-}
-
-/** Load a file from /public as a base64 data URL */
-function readFileBase64(relativePath: string): string | null {
+function readLogoAsBase64(relativePath: string): string | null {
   try {
     const absPath = path.join(process.cwd(), 'public', relativePath);
     const buf = fs.readFileSync(absPath);
@@ -99,1444 +91,374 @@ function readFileBase64(relativePath: string): string | null {
   } catch { return null; }
 }
 
-/** Fetch a remote URL as a base64 data URL */
-async function fetchBase64(url: string): Promise<string | null> {
+async function fetchLogoAsBase64(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
-    const ct = res.headers.get('content-type') ?? 'image/png';
-    return `data:${ct};base64,${buf.toString('base64')}`;
+    const contentType = res.headers.get('content-type') ?? 'image/png';
+    return `data:${contentType};base64,${buf.toString('base64')}`;
   } catch { return null; }
 }
 
-// ── Slide building utilities ─────────────────────────────────────────────────
-
-type Slide = PptxGenJS.Slide;
-
-/** Add the coloured section header bar at the top of every content slide */
-function addHeader(slide: Slide, title: string, hexColor = C.primary) {
-  slide.addShape('rect', {
-    x: 0, y: 0, w: SW, h: HDR,
-    fill: { color: hexColor },
-    line: { color: hexColor, width: 0 },
-  });
-  slide.addText(title.toUpperCase(), {
-    x: ML, y: 0.05, w: CW, h: HDR - 0.1,
-    fontSize: 10.5, bold: true, color: C.white, fontFace: 'Calibri',
-    valign: 'middle',
-  });
-}
-
-/** Add footer line + labels */
-function addFooter(slide: Slide, left: string) {
-  slide.addShape('line', {
-    x: ML, y: FY, w: CW, h: 0,
-    line: { color: C.border, width: 0.5 },
-  });
-  slide.addText(t(tr(left, 100)), {
-    x: ML, y: FY + 0.03, w: CW * 0.75, h: 0.2,
-    fontSize: 7, color: C.muted, fontFace: 'Calibri',
-  });
-}
-
-/** Colour-filled rectangle */
-function box(
-  slide: Slide,
-  x: number, y: number, w: number, h: number,
-  fill: string, stroke = fill, radius = 0,
-) {
-  slide.addShape('rect', {
-    x, y, w, h,
-    fill: { color: fill },
-    line: stroke ? { color: stroke, width: 0.5 } : undefined,
-    rectRadius: radius,
-  });
-}
-
-// ── Cover slide ───────────────────────────────────────────────────────────────
-
-async function addCoverSlide(
-  pptx: PptxGenJS,
-  workshopName: string,
-  orgName: string,
-  summary: ReportSummary,
-  clientLogoUrl: string | undefined,
-  dreamLogoB64: string | null,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.dark };
-
-  // Top accent strip
-  box(slide, 0, 0, SW, 0.07, C.primary, C.primary);
-
-  // DREAM logo
-  if (dreamLogoB64) {
-    slide.addImage({ x: ML, y: 0.2, w: 1.4, h: 0.42, data: dreamLogoB64 });
-  } else {
-    slide.addText('DREAM', {
-      x: ML, y: 0.18, w: 2.0, h: 0.45,
-      fontSize: 22, bold: true, color: 'A5B4FC', fontFace: 'Calibri',
-    });
-  }
-
-  // Client logo (top right)
-  if (clientLogoUrl) {
-    const b64 = await fetchBase64(clientLogoUrl).catch(() => null);
-    if (b64) slide.addImage({ x: SW - MR - 1.9, y: 0.18, w: 1.9, h: 0.45, data: b64 });
-  }
-
-  // Divider
-  slide.addShape('line', {
-    x: ML, y: 0.82, w: CW, h: 0,
-    line: { color: '334155', width: 0.75 },
-  });
-
-  // Workshop name headline
-  slide.addText(t(workshopName), {
-    x: ML, y: 0.98, w: CW, h: 1.35,
-    fontSize: 30, bold: true, color: C.white, fontFace: 'Calibri',
-    valign: 'top', wrap: true,
-  });
-
-  // Subtitle
-  slide.addText('Discovery & Transformation Report', {
-    x: ML, y: 2.38, w: CW, h: 0.38,
-    fontSize: 14, color: 'A5B4FC', fontFace: 'Calibri',
-  });
-
-  // Key insight
-  if (summary.keyInsight) {
-    slide.addText(`"${t(tr(summary.keyInsight, 180))}"`, {
-      x: ML, y: 2.88, w: CW * 0.82, h: 0.7,
-      fontSize: 10, color: '94A3B8', fontFace: 'Calibri',
-      italic: true, wrap: true,
-    });
-  }
-
-  // Org + date
-  const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  slide.addText(`${t(orgName)}  ·  ${dateStr}`, {
-    x: ML, y: SH - 0.62, w: CW, h: 0.28,
-    fontSize: 9, color: '64748B', fontFace: 'Calibri',
-  });
-}
-
-// ── Table of contents slide ───────────────────────────────────────────────────
-
-function addTocSlide(
-  pptx: PptxGenJS,
-  sections: ReportSectionConfig[],
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, 'Contents');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  const enabled = sections.filter(s => s.enabled);
-  const half = Math.ceil(enabled.length / 2);
-  const cols = [enabled.slice(0, half), enabled.slice(half)];
-  const rowH = Math.min(0.36, CH / Math.max(half, 1) - 0.04);
-
-  cols.forEach((col, ci) => {
-    const colX = ML + ci * (CW / 2 + 0.1);
-    col.forEach((sec, ri) => {
-      const numIdx = ci * half + ri + 1;
-      const ry = CY + 0.05 + ri * (rowH + 0.04);
-      // Circle badge
-      slide.addShape('ellipse', {
-        x: colX, y: ry + (rowH - 0.22) / 2, w: 0.22, h: 0.22,
-        fill: { color: C.primary },
-        line: { color: C.primary, width: 0 },
-      });
-      slide.addText(String(numIdx), {
-        x: colX, y: ry + (rowH - 0.22) / 2, w: 0.22, h: 0.22,
-        fontSize: 7.5, bold: true, color: C.white, fontFace: 'Calibri',
-        align: 'center', valign: 'middle',
-      });
-      // Title
-      slide.addText(t(sec.title), {
-        x: colX + 0.28, y: ry, w: CW / 2 - 0.32, h: rowH,
-        fontSize: 10, color: C.text, fontFace: 'Calibri',
-        valign: 'middle',
-      });
-    });
-  });
-}
-
-// ── Chapter / divider slide ───────────────────────────────────────────────────
-
-function addChapterSlide(pptx: PptxGenJS, title: string, idx: number) {
-  const slide = pptx.addSlide();
-  slide.background = { color: 'F8FAFC' };
-
-  // Left accent bar
-  box(slide, 0, 0, 0.18, SH, C.primary, C.primary);
-
-  slide.addText(t(title), {
-    x: 0.45, y: SH / 2 - 0.45, w: CW + ML - 0.05, h: 0.85,
-    fontSize: 26, bold: true, color: C.dark, fontFace: 'Calibri',
-    valign: 'middle',
-  });
-  slide.addText(`Section ${idx}`, {
-    x: 0.45, y: SH / 2 + 0.48, w: CW, h: 0.28,
-    fontSize: 11, color: C.muted, fontFace: 'Calibri',
-  });
-}
-
-// ── Executive Summary slides ──────────────────────────────────────────────────
-
-function addExecutiveSummarySlides(
-  pptx: PptxGenJS,
-  summary: ReportSummary,
-  cfg: ReportSectionConfig,
-  workshopName: string,
-  orgName: string,
-) {
-  const es = summary.executiveSummary;
-  const footer = `${workshopName} — ${orgName}`;
-  const excl = (id: string) => cfg.excludedItems.includes(id);
-
-  // ── Slide 1: THE ANSWER — hero text ────────────────────────────────────────
-  if (!excl('qa')) {
-    const slide = pptx.addSlide();
-    slide.background = { color: C.white };
-    addHeader(slide, 'Executive Summary');
-    addFooter(slide, footer);
-
-    let y = CY + 0.18;
-
-    // The ask — small italic context line above the answer
-    if (es.theAsk) {
-      slide.addText(t(tr(es.theAsk, 260)), {
-        x: ML, y, w: CW, h: 0.26,
-        fontSize: 9, color: C.muted, fontFace: 'Calibri',
-        italic: true, wrap: true,
-      });
-      y += 0.34;
-    }
-
-    // THE ANSWER — big hero text (the main event)
-    const hasUrgency = !!es.urgency && !excl('urgency');
-    const ansH = hasUrgency ? 2.3 : 2.8;
-    slide.addText(t(tr(es.theAnswer ?? '', 700)), {
-      x: ML, y, w: CW, h: ansH,
-      fontSize: 20, bold: true, color: C.dark, fontFace: 'Calibri',
-      wrap: true, valign: 'top',
-    });
-    y += ansH + 0.1;
-
-    // Urgency — amber callout at bottom
-    if (hasUrgency) {
-      box(slide, ML, y, CW, 0.52, 'FFFBEB', 'FDE68A', 0.05);
-      slide.addText(`⚡  ${t(tr(es.urgency!, 340))}`, {
-        x: ML + 0.18, y: y + 0.1, w: CW - 0.36, h: 0.34,
-        fontSize: 9.5, color: C.amber, fontFace: 'Calibri', wrap: true,
-      });
-    }
-  }
-
-  // ── Slide 2: Key Findings — 2-column grid ──────────────────────────────────
-  const findings = (es.whatWeFound ?? []).filter((_, i) => !excl(`finding:${i}`)).slice(0, 8);
-  if (findings.length) {
-    const slide = pptx.addSlide();
-    slide.background = { color: C.white };
-    addHeader(slide, 'Key Findings');
-    addFooter(slide, footer);
-
-    const cols = 2;
-    const colGap = 0.14;
-    const cardW = (CW - colGap * (cols - 1)) / cols;
-    const rows = Math.ceil(findings.length / cols);
-    const startY = CY + 0.1;
-    const rowGap = 0.1;
-    const cardH = Math.max(0.52, (FY - startY - rowGap * (rows - 1) - 0.06) / rows);
-
-    findings.forEach((f, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const fx = ML + col * (cardW + colGap);
-      const fy = startY + row * (cardH + rowGap);
-
-      box(slide, fx, fy, cardW, cardH, 'F8FAFC', C.border, 0.05);
-      // Number badge
-      box(slide, fx + 0.1, fy + (cardH - 0.3) / 2, 0.3, 0.3, C.primary, C.primary, 0.04);
-      slide.addText(String(i + 1), {
-        x: fx + 0.1, y: fy + (cardH - 0.3) / 2, w: 0.3, h: 0.3,
-        fontSize: 10, bold: true, color: C.white, fontFace: 'Calibri',
-        align: 'center', valign: 'middle',
-      });
-      slide.addText(t(tr(f, 480)), {
-        x: fx + 0.5, y: fy + 0.08, w: cardW - 0.6, h: cardH - 0.16,
-        fontSize: 9.5, color: C.text, fontFace: 'Calibri',
-        wrap: true, valign: 'middle',
-      });
-    });
-  }
-
-  // ── Slide 3: Lens Findings + Transformation Direction ──────────────────────
-  const lensFindings = (es.lensFindings ?? []).filter(lf => !excl(`lens:${lf.lens}`));
-  if (lensFindings.length) {
-    const slide = pptx.addSlide();
-    slide.background = { color: C.white };
-    addHeader(slide, 'Lens Analysis');
-    addFooter(slide, footer);
-
-    // Transformation direction — dark hero banner at top if present
-    const hasTD = !excl('transformation') && !!summary.transformationDirection;
-    let startY = CY + 0.08;
-    if (hasTD) {
-      const tdH = 0.7;
-      box(slide, ML, startY, CW, tdH, '1E1B4B', '1E1B4B', 0.06);
-      slide.addText('TRANSFORMATION DIRECTION', {
-        x: ML + 0.18, y: startY + 0.07, w: CW - 0.36, h: 0.16,
-        fontSize: 7, bold: true, color: 'A5B4FC', fontFace: 'Calibri',
-      });
-      slide.addText(t(tr(summary.transformationDirection ?? '', 400)), {
-        x: ML + 0.18, y: startY + 0.25, w: CW - 0.36, h: 0.38,
-        fontSize: 11, bold: true, color: C.white, fontFace: 'Calibri',
-        wrap: true,
-      });
-      startY += tdH + 0.1;
-    }
-
-    const perRow = 3;
-    const colGap = 0.12;
-    const itemW = (CW - colGap * (perRow - 1)) / perRow;
-    const visibleFindings = lensFindings.slice(0, 6);
-    const rows = Math.ceil(visibleFindings.length / perRow);
-    const rowGap = 0.1;
-    const labelH = 0.24;
-    const cardH = Math.max(0.62, (FY - startY - labelH - rowGap * (rows - 1) - 0.06) / rows);
-
-    slide.addText('LENS FINDINGS', {
-      x: ML, y: startY, w: CW, h: 0.2,
-      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-    });
-
-    visibleFindings.forEach((lf, i) => {
-      const col = i % perRow;
-      const row = Math.floor(i / perRow);
-      const lx = ML + col * (itemW + colGap);
-      const ly = startY + labelH + row * (cardH + rowGap);
-      box(slide, lx, ly, itemW, cardH, 'F8FAFC', C.border, 0.05);
-      // Lens label with colour bar
-      box(slide, lx, ly, itemW, 0.26, C.primary, C.primary, 0.05);
-      slide.addText(t(lf.lens).toUpperCase(), {
-        x: lx + 0.1, y: ly + 0.04, w: itemW - 0.2, h: 0.18,
-        fontSize: 7.5, bold: true, color: C.white, fontFace: 'Calibri',
-      });
-      slide.addText(t(tr(lf.finding, 520)), {
-        x: lx + 0.1, y: ly + 0.32, w: itemW - 0.2, h: cardH - 0.4,
-        fontSize: 8.5, color: C.text, fontFace: 'Calibri',
-        wrap: true, valign: 'top',
-      });
-    });
-  }
-}
-
-// ── Supporting Evidence slide ─────────────────────────────────────────────────
-
-function addSupportingEvidenceSlide(
-  pptx: PptxGenJS,
-  intelligence: WorkshopOutputIntelligence,
-  cfg: ReportSectionConfig,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, 'Supporting Evidence');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  const { discoveryValidation: dv } = intelligence;
-  let y = CY + 0.1;
-
-  const confBg: Record<string, string> = { high: C.greenBg, medium: C.amberBg, low: 'F1F5F9' };
-  const confFg: Record<string, string> = { high: C.green,   medium: C.amber,   low: C.muted };
-
-  const confirmed = (dv.confirmedIssues ?? [])
-    .filter((_, i) => !cfg.excludedItems.includes(`confirmed:${i}`))
-    .slice(0, 4);
-
-  const newIssues = (dv.newIssues ?? [])
-    .filter((_, i) => !cfg.excludedItems.includes(`new:${i}`))
-    .slice(0, 3);
-
-  // ── Top row: Big stat + context blurb ──────────────────────────────────────
-  const statW = 2.0;
-  const statH = 0.92;
-  box(slide, ML, y, statW, statH, 'EEF2FF', 'C7D2FE', 0.07);
-  slide.addText(`${dv.hypothesisAccuracy}%`, {
-    x: ML, y: y + 0.04, w: statW, h: 0.54,
-    fontSize: 38, bold: true, color: C.primary, fontFace: 'Calibri',
-    align: 'center',
-  });
-  slide.addText('Hypothesis\nAccuracy', {
-    x: ML, y: y + 0.6, w: statW, h: 0.28,
-    fontSize: 8, color: C.primaryDk, fontFace: 'Calibri',
-    align: 'center',
-  });
-  slide.addText(
-    'Proportion of pre-workshop discovery hypotheses confirmed through live session evidence and facilitator observation.',
-    {
-      x: ML + statW + 0.22, y: y + 0.08, w: CW - statW - 0.22, h: statH - 0.16,
-      fontSize: 9.5, color: C.muted, fontFace: 'Calibri',
-      wrap: true, valign: 'middle', italic: true,
-    },
-  );
-  y += statH + 0.16;
-
-  // ── Two-column layout: Confirmed Issues (left) | New Issues (right) ─────────
-  const colW = (CW - 0.22) / 2;
-  const colGap = 0.22;
-  const rxStart = ML + colW + colGap;
-
-  // LEFT — Confirmed Issues
-  if (confirmed.length) {
-    slide.addText('CONFIRMED ISSUES', {
-      x: ML, y, w: colW, h: 0.2,
-      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-    });
-    const ciTop = y + 0.22;
-    const ciGap = 0.07;
-    const ciH = Math.max(0.38, (FY - ciTop - ciGap * (confirmed.length - 1) - 0.05) / confirmed.length);
-    confirmed.forEach((ci, idx) => {
-      const cy = ciTop + idx * (ciH + ciGap);
-      box(slide, ML, cy, colW, ciH, 'F8FAFC', C.border, 0.04);
-      box(slide, ML + 0.08, cy + (ciH - 0.2) / 2, 0.56, 0.2, confBg[ci.confidence] ?? 'F1F5F9', confBg[ci.confidence] ?? 'F1F5F9', 0.03);
-      slide.addText(ci.confidence, {
-        x: ML + 0.08, y: cy + (ciH - 0.2) / 2, w: 0.56, h: 0.2,
-        fontSize: 6.5, bold: true, color: confFg[ci.confidence] ?? C.muted,
-        fontFace: 'Calibri', align: 'center', valign: 'middle',
-      });
-      slide.addText(t(tr(ci.issue, 260)), {
-        x: ML + 0.72, y: cy + 0.04, w: colW - 0.82, h: ciH - 0.08,
-        fontSize: 8.5, bold: true, color: C.text, fontFace: 'Calibri',
-        wrap: true, valign: 'middle',
-      });
-    });
-  }
-
-  // RIGHT — New Issues
-  if (newIssues.length) {
-    slide.addText('NEW ISSUES SURFACED', {
-      x: rxStart, y, w: colW, h: 0.2,
-      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-    });
-    const niTop = y + 0.22;
-    const niGap = 0.07;
-    const niH = Math.max(0.42, (FY - niTop - niGap * (newIssues.length - 1) - 0.05) / newIssues.length);
-    newIssues.forEach((ni, idx) => {
-      const ny = niTop + idx * (niH + niGap);
-      box(slide, rxStart, ny, colW, niH, 'FFF7ED', 'FED7AA', 0.04);
-      slide.addText(t(tr(ni.issue, 260)), {
-        x: rxStart + 0.12, y: ny + 0.06, w: colW - 0.24, h: (niH - 0.12) * 0.48,
-        fontSize: 8.5, bold: true, color: 'C2410C', fontFace: 'Calibri',
-        wrap: true, valign: 'top',
-      });
-      slide.addText(t(tr(ni.significance, 280)), {
-        x: rxStart + 0.12, y: ny + 0.06 + (niH - 0.12) * 0.48, w: colW - 0.24, h: (niH - 0.12) * 0.48,
-        fontSize: 8, color: C.text, fontFace: 'Calibri',
-        wrap: true, valign: 'top',
-      });
-    });
-  }
-}
-
-// ── Root Causes slide ─────────────────────────────────────────────────────────
-
-function addRootCausesSlide(
-  pptx: PptxGenJS,
-  intelligence: WorkshopOutputIntelligence,
-  cfg: ReportSectionConfig,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, 'Root Causes');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  const { rootCause } = intelligence;
-  let y = CY + 0.1;
-
-  // Systemic pattern — pullquote banner
-  if (rootCause.systemicPattern) {
-    box(slide, ML, y, CW, 0.62, '1E1B4B', '1E1B4B', 0.06);
-    slide.addText('"', {
-      x: ML + 0.12, y: y + 0.04, w: 0.26, h: 0.36,
-      fontSize: 30, color: 'A5B4FC', fontFace: 'Calibri',
-    });
-    slide.addText(t(tr(rootCause.systemicPattern, 440)), {
-      x: ML + 0.42, y: y + 0.1, w: CW - 0.58, h: 0.46,
-      fontSize: 10, italic: true, color: C.white, fontFace: 'Calibri',
-      wrap: true,
-    });
-    y += 0.74;
-  }
-
-  const sevBg: Record<string, string> = { critical: C.redBg, significant: C.amberBg, moderate: 'F1F5F9' };
-  const sevFg: Record<string, string> = { critical: C.red,   significant: C.amber,   moderate: C.muted };
-
-  const causes = (rootCause.rootCauses ?? [])
-    .filter(rc => !cfg.excludedItems.includes(`cause:${rc.rank}`))
-    .slice(0, 6);
-
-  if (!causes.length) return;
-
-  // 2-column card grid
-  const rcCols = 2;
-  const rcColGap = 0.15;
-  const rcColW = (CW - rcColGap * (rcCols - 1)) / rcCols;
-  const rcRows = Math.ceil(causes.length / rcCols);
-  const rcRowGap = 0.1;
-  const rcCardH = Math.max(0.68, (FY - y - rcRowGap * (rcRows - 1) - 0.06) / rcRows);
-
-  causes.forEach((rc, i) => {
-    const col = i % rcCols;
-    const row = Math.floor(i / rcCols);
-    const cx = ML + col * (rcColW + rcColGap);
-    const cy = y + row * (rcCardH + rcRowGap);
-
-    box(slide, cx, cy, rcColW, rcCardH, 'F8FAFC', C.border, 0.05);
-    // Left colour accent strip
-    box(slide, cx, cy, 0.06, rcCardH, C.primary, C.primary);
-
-    // Rank — large number top-left
-    slide.addText(`#${rc.rank}`, {
-      x: cx + 0.14, y: cy + 0.08, w: 0.34, h: 0.32,
-      fontSize: 15, bold: true, color: C.primary, fontFace: 'Calibri',
-    });
-
-    // Severity pill top-right
-    const sevW = 0.96;
-    box(slide, cx + rcColW - sevW - 0.08, cy + 0.1, sevW, 0.2, sevBg[rc.severity] ?? 'F1F5F9', sevBg[rc.severity] ?? 'F1F5F9', 0.03);
-    slide.addText(rc.severity.toUpperCase(), {
-      x: cx + rcColW - sevW - 0.08, y: cy + 0.1, w: sevW, h: 0.2,
-      fontSize: 6.5, bold: true, color: sevFg[rc.severity] ?? C.muted,
-      fontFace: 'Calibri', align: 'center', valign: 'middle',
-    });
-
-    // Cause text — fills middle of card
-    const textAreaH = rcCardH - 0.46;
-    slide.addText(t(tr(rc.cause, 240)), {
-      x: cx + 0.14, y: cy + 0.42, w: rcColW - 0.24, h: textAreaH - 0.22,
-      fontSize: 9, bold: true, color: C.text, fontFace: 'Calibri',
-      wrap: true, valign: 'top',
-    });
-
-    // Category — footer of card
-    slide.addText(t(rc.category), {
-      x: cx + 0.14, y: cy + rcCardH - 0.2, w: rcColW - 0.24, h: 0.18,
-      fontSize: 7.5, color: C.muted, fontFace: 'Calibri',
-    });
-  });
-}
-
-// ── Solution Direction slides ─────────────────────────────────────────────────
-
-function addSolutionDirectionSlides(
-  pptx: PptxGenJS,
-  summary: ReportSummary,
-  intelligence: WorkshopOutputIntelligence,
-  cfg: ReportSectionConfig,
-  workshopName: string,
-  orgName: string,
-) {
-  const ss = summary.solutionSummary;
-  const { roadmap } = intelligence;
-  const footer = `${workshopName} — ${orgName}`;
-  const excl = (id: string) => cfg.excludedItems.includes(id);
-
-  // ── Slide 1: Vision + What Must Change ─────────────────────────────────────
-  {
-    const slide = pptx.addSlide();
-    slide.background = { color: C.white };
-    addHeader(slide, 'Solution Direction');
-    addFooter(slide, footer);
-
-    let y = CY + 0.05;
-
-    // Direction — dark full-width hero banner
-    if (ss.direction) {
-      const dirH = 0.9;
-      box(slide, ML, y, CW, dirH, '022C22', '022C22', 0.07);
-      slide.addText('TRANSFORMATION DIRECTION', {
-        x: ML + 0.2, y: y + 0.09, w: CW - 0.4, h: 0.16,
-        fontSize: 7, bold: true, color: '6EE7B7', fontFace: 'Calibri',
-      });
-      slide.addText(t(tr(ss.direction, 340)), {
-        x: ML + 0.2, y: y + 0.27, w: CW - 0.4, h: 0.56,
-        fontSize: 14, bold: true, color: 'ECFDF5', fontFace: 'Calibri',
-        wrap: true,
-      });
-      y += dirH + 0.14;
-    }
-
-    const steps = (ss.whatMustChange ?? [])
-      .filter((_, i) => !excl(`step:${i}`))
-      .slice(0, 4);
-
-    if (steps.length) {
-      slide.addText('WHAT MUST CHANGE', {
-        x: ML, y, w: CW, h: 0.2,
-        fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-      });
-      y += 0.22;
-
-      // 2-column grid of change cards
-      const sdCols = 2;
-      const sdColGap = 0.14;
-      const sdColW = (CW - sdColGap * (sdCols - 1)) / sdCols;
-      const sdRows = Math.ceil(steps.length / sdCols);
-      const sdRowGap = 0.1;
-      const sdH = Math.max(0.54, (FY - y - sdRowGap * (sdRows - 1) - 0.06) / sdRows);
-
-      steps.forEach((step, i) => {
-        const col = i % sdCols;
-        const row = Math.floor(i / sdCols);
-        const sx = ML + col * (sdColW + sdColGap);
-        const sy = y + row * (sdH + sdRowGap);
-
-        box(slide, sx, sy, sdColW, sdH, 'F8FAFC', C.border, 0.05);
-        // Left accent
-        box(slide, sx, sy, 0.06, sdH, C.primary, C.primary);
-        // Step number
-        slide.addText(String(i + 1), {
-          x: sx + 0.14, y: sy + 0.06, w: 0.22, h: 0.24,
-          fontSize: 13, bold: true, color: C.primary, fontFace: 'Calibri',
-        });
-        // Area
-        slide.addText(t(step.area), {
-          x: sx + 0.14, y: sy + 0.32, w: sdColW - 0.24, h: (sdH - 0.44) * 0.4,
-          fontSize: 9.5, bold: true, color: C.text, fontFace: 'Calibri',
-          wrap: true, valign: 'top',
-        });
-        // Required change
-        slide.addText(t(tr(step.requiredChange, 280)), {
-          x: sx + 0.14, y: sy + 0.32 + (sdH - 0.44) * 0.4, w: sdColW - 0.24, h: (sdH - 0.44) * 0.56,
-          fontSize: 8.5, color: C.muted, fontFace: 'Calibri',
-          wrap: true, valign: 'top',
-        });
-      });
-    }
-  }
-
-  // ── Slide 2: Roadmap phases ─────────────────────────────────────────────────
-  const phases = (roadmap?.phases ?? [])
-    .filter((_, i) => !excl(`phase:${i}`))
-    .slice(0, 3);
-
-  if (phases.length) {
-    const slide = pptx.addSlide();
-    slide.background = { color: C.white };
-    addHeader(slide, 'Solution Direction — Roadmap');
-    addFooter(slide, footer);
-
-    const phCols = ['4F46E5', '0891B2', '059669'];
-    const colW = (CW - 0.2) / 3;
-    const startY = CY + 0.08;
-    const phH = FY - startY - 0.12;
-
-    phases.forEach((phase, i) => {
-      const px = ML + i * (colW + 0.1);
-      const col = phCols[i] ?? C.primary;
-
-      // Header
-      box(slide, px, startY, colW, 0.5, col, col, 0.05);
-      const shortTitle = t(phase.phase ?? `Phase ${i + 1}`)
-        .replace(/^Phase \d+ — /, '');
-      slide.addText(shortTitle, {
-        x: px + 0.1, y: startY + 0.04, w: colW - 0.2, h: 0.24,
-        fontSize: 9, bold: true, color: C.white, fontFace: 'Calibri',
-        wrap: true,
-      });
-      slide.addText(t(phase.timeframe ?? ''), {
-        x: px + 0.1, y: startY + 0.28, w: colW - 0.2, h: 0.18,
-        fontSize: 7.5, color: 'E0E7FF', fontFace: 'Calibri',
-      });
-
-      // Body card
-      box(slide, px, startY + 0.5, colW, phH - 0.5, 'F8FAFC', C.border, 0.05);
-
-      let iy = startY + 0.62;
-      (phase.initiatives ?? []).slice(0, 5).forEach(init => {
-        if (iy + 0.3 > startY + phH - 0.05) return;
-        slide.addText(`• ${t(tr(init.title, 52))}`, {
-          x: px + 0.1, y: iy, w: colW - 0.2, h: 0.3,
-          fontSize: 8, color: C.text, fontFace: 'Calibri',
-          wrap: true,
-        });
-        iy += 0.32;
-      });
-    });
-  }
-}
-
-// ── Customer Journey slide ────────────────────────────────────────────────────
-
-function addJourneyMapSlide(
-  pptx: PptxGenJS,
-  journey: LiveJourneyData,
-  intro: string | undefined,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, 'Customer Journey');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  let y = CY + 0.05;
-
-  if (intro) {
-    slide.addText(t(tr(intro, 200)), {
-      x: ML, y, w: CW, h: 0.28,
-      fontSize: 9, color: C.muted, fontFace: 'Calibri',
-      wrap: true,
-    });
-    y += 0.34;
-  }
-
-  const stages = journey.stages.slice(0, 6);
-  const actors = journey.actors.slice(0, 5);
-
-  const SENTI_BG: Record<string, string> = {
-    critical:  'FEE2E2',
-    concerned: 'FEF3C7',
-    positive:  'DCFCE7',
-    neutral:   'F1F5F9',
+// ── Fit image dimensions into slide (preserving aspect ratio, centred) ────────
+
+function fitInSlide(imgW: number, imgH: number): { x: number; y: number; w: number; h: number } {
+  const scale = Math.min(SW / imgW, SH / imgH);
+  const w = imgW * scale;
+  const h = imgH * scale;
+  return {
+    x: (SW - w) / 2,
+    y: (SH - h) / 2,
+    w,
+    h,
   };
-
-  // Build header row
-  const headerRow = [
-    { text: 'Actor', options: { bold: true, fill: { color: C.primary }, color: C.white, fontSize: 8, fontFace: 'Calibri' } },
-    ...stages.map(s => ({ text: t(tr(s, 18)), options: { bold: true, fill: { color: C.primary }, color: C.white, fontSize: 8, fontFace: 'Calibri' } })),
-  ];
-
-  // Build data rows
-  const dataRows = actors.map(actor => {
-    const actorCell = {
-      text: `${t(actor.name)}\n${t(actor.role)}`,
-      options: { bold: true, fontSize: 7.5, color: C.text, fill: { color: 'F8FAFC' }, fontFace: 'Calibri', valign: 'top' as const },
-    };
-    const stageCells = stages.map(stage => {
-      const interactions = journey.interactions.filter(
-        ix => ix.actor.toLowerCase() === actor.name.toLowerCase() &&
-              ix.stage.toLowerCase() === stage.toLowerCase()
-      ).slice(0, 2);
-      const cellText = interactions.map(ix => `${ix.isPainPoint ? '⚠ ' : ''}${t(tr(ix.action, 38))}`).join('\n');
-      const sentiment = interactions[0]?.sentiment ?? 'neutral';
-      return {
-        text: cellText,
-        options: { fontSize: 7, color: C.text, fill: { color: SENTI_BG[sentiment] ?? 'F8FAFC' }, fontFace: 'Calibri', valign: 'top' as const },
-      };
-    });
-    return [actorCell, ...stageCells];
-  });
-
-  const actorColW = CW * 0.18;
-  const stageColW = (CW - actorColW) / Math.max(stages.length, 1);
-  const colWidths = [actorColW, ...stages.map(() => stageColW)];
-
-  try {
-    slide.addTable([headerRow as Parameters<Slide['addTable']>[0][number], ...dataRows as Parameters<Slide['addTable']>[0]], {
-      x: ML, y, w: CW,
-      colW: colWidths,
-      rowH: 0.56,
-      fontFace: 'Calibri',
-      border: { type: 'solid', color: C.border, pt: 0.5 },
-    });
-  } catch {
-    // Fallback: just list actors if table fails
-    slide.addText('Journey map available in the full PDF report', {
-      x: ML, y: CY + 0.5, w: CW, h: 0.3,
-      fontSize: 9, color: C.muted, fontFace: 'Calibri', italic: true,
-    });
-  }
 }
 
-// ── Strategic Impact slide ────────────────────────────────────────────────────
+// ── HTML wrapper for section screenshots ─────────────────────────────────────
 
-function addStrategicImpactSlide(
-  pptx: PptxGenJS,
-  intelligence: WorkshopOutputIntelligence,
+/**
+ * Wraps a single section's HTML in a self-contained page at VIEWPORT_W px.
+ * fullPage screenshots will capture the full content height.
+ */
+function wrapSectionHtml(sectionHtml: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+${PDF_STYLES}
+/* Slide-specific overrides */
+body {
+  padding: 36px 48px 44px !important;
+  width: ${VIEWPORT_W}px !important;
+  background: #ffffff !important;
+}
+.report-section { page-break-after: unset !important; break-after: unset !important; }
+@page { size: auto; margin: 0; }
+</style>
+</head>
+<body>
+${sectionHtml}
+</body>
+</html>`;
+}
+
+// ── Cover slide HTML (dark themed, landscape 1920×1080) ───────────────────────
+
+function buildCoverSlideHtml(
+  workshopName: string,
+  orgName: string,
+  dreamLogoBase64: string | null,
+  clientLogoBase64: string | null,
+): string {
+  const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: ${COVER_W}px; height: ${COVER_H}px; overflow: hidden; }
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: #0f172a;
+}
+.cover {
+  width: 100%; height: 100%;
+  background: #0f172a;
+  display: flex; flex-direction: column;
+  padding: 72px 96px 60px;
+  position: relative;
+  overflow: hidden;
+}
+.cover::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, #6366f1 0%, #818cf8 55%, #10b981 100%);
+}
+.cover::after {
+  content: '';
+  position: absolute;
+  bottom: -60px; right: -60px;
+  width: 320px; height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cover-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: auto;
+}
+.cover-client-name {
+  font-size: 28pt; font-weight: 300; color: rgba(255,255,255,0.65);
+  letter-spacing: -0.01em;
+}
+.cover-client-logo {
+  max-height: 80px; max-width: 260px;
+  object-fit: contain;
+  filter: brightness(0) invert(1); opacity: 0.88;
+}
+.cover-dream-logo {
+  max-height: 52px; max-width: 180px;
+  object-fit: contain;
+  filter: brightness(0) invert(1); opacity: 0.55;
+}
+.cover-body { margin-bottom: 56px; }
+.cover-eyebrow {
+  font-size: 10pt; font-weight: 600;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: #818cf8; margin-bottom: 22px;
+}
+.cover-title {
+  font-size: 54pt; font-weight: 800;
+  color: #ffffff; line-height: 1.03;
+  letter-spacing: -0.025em; margin-bottom: 16px;
+}
+.cover-subtitle {
+  font-size: 22pt; font-weight: 300;
+  color: rgba(255,255,255,0.45);
+}
+.cover-divider {
+  width: 64px; height: 4px;
+  background: #6366f1; border-radius: 2px; margin-top: 36px;
+}
+.cover-footer {
+  display: flex; align-items: flex-end; justify-content: space-between;
+}
+.cover-meta-label {
+  font-size: 8pt; font-weight: 600;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: rgba(255,255,255,0.28); margin-bottom: 4px;
+}
+.cover-meta-value {
+  font-size: 11pt; font-weight: 400;
+  color: rgba(255,255,255,0.65);
+}
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="cover-top">
+    <div>
+      ${clientLogoBase64
+        ? `<img src="${clientLogoBase64}" class="cover-client-logo" alt="${esc(orgName)} logo" />`
+        : `<div class="cover-client-name">${esc(orgName)}</div>`}
+    </div>
+    <div>
+      ${dreamLogoBase64
+        ? `<img src="${dreamLogoBase64}" class="cover-dream-logo" alt="DREAM" />`
+        : `<div style="font-size:18pt;font-weight:800;color:rgba(255,255,255,0.35)">DREAM</div>`}
+    </div>
+  </div>
+  <div class="cover-body">
+    <div class="cover-eyebrow">Discovery &amp; Transformation Report</div>
+    <div class="cover-title">${esc(workshopName)}</div>
+    <div class="cover-subtitle">${esc(orgName)}</div>
+    <div class="cover-divider"></div>
+  </div>
+  <div class="cover-footer">
+    <div>
+      <div class="cover-meta-label">Prepared</div>
+      <div class="cover-meta-value">${dateStr}</div>
+    </div>
+    <div>
+      <div class="cover-meta-label">Produced by</div>
+      <div class="cover-meta-value">DREAM Discovery Platform</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>`;
+}
+
+// ── Section HTML resolver ─────────────────────────────────────────────────────
+
+function resolveSectionHtml(
   cfg: ReportSectionConfig,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, 'Strategic Impact');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  const si = intelligence.strategicImpact;
-  let y = CY + 0.05;
-
-  // Business case summary
-  if (si.businessCaseSummary) {
-    slide.addText(t(tr(si.businessCaseSummary, 220)), {
-      x: ML, y, w: CW, h: 0.36,
-      fontSize: 9.5, color: C.text, fontFace: 'Calibri',
-      wrap: true,
-    });
-    y += 0.44;
-  }
-
-  // 3 stat boxes
-  const stats = [
-    { id: 'automation',  label: 'Automation Potential', pct: si.automationPotential.percentage, bg: C.purpleBg, fg: C.purple },
-    { id: 'ai_assisted', label: 'AI-Assisted Work',     pct: si.aiAssistedWork.percentage,    bg: 'E0E7FF',   fg: C.primaryDk },
-    { id: 'human_only',  label: 'Human-Only Work',      pct: si.humanOnlyWork.percentage,     bg: C.greenBg,  fg: C.green },
-  ].filter(s => !cfg.excludedItems.includes(s.id));
-
-  if (stats.length) {
-    const bW = (CW - 0.2 * (stats.length - 1)) / stats.length;
-    stats.forEach((stat, i) => {
-      const bx = ML + i * (bW + 0.2);
-      box(slide, bx, y, bW, 0.85, stat.bg, stat.bg, 0.06);
-      slide.addText(`${stat.pct}%`, {
-        x: bx + 0.08, y: y + 0.04, w: bW - 0.16, h: 0.48,
-        fontSize: 28, bold: true, color: stat.fg, fontFace: 'Calibri',
-        align: 'center',
-      });
-      slide.addText(t(stat.label), {
-        x: bx + 0.08, y: y + 0.54, w: bW - 0.16, h: 0.28,
-        fontSize: 8, color: stat.fg, fontFace: 'Calibri',
-        align: 'center', wrap: true,
-      });
-    });
-    y += 0.95;
-  }
-
-  slide.addText(`Confidence score: ${si.confidenceScore}%`, {
-    x: ML, y, w: 2.5, h: 0.24,
-    fontSize: 8, color: C.muted, fontFace: 'Calibri',
-  });
-  y += 0.3;
-
-  // Efficiency gains table
-  const gains = si.efficiencyGains.slice(0, 7);
-  if (gains.length) {
-    slide.addText('EFFICIENCY GAINS', {
-      x: ML, y, w: CW, h: 0.22,
-      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-    });
-    y += 0.24;
-
-    const headerRow = [
-      { text: 'Metric',    options: { bold: true, fill: { color: C.primary }, color: C.white, fontSize: 8, fontFace: 'Calibri' } },
-      { text: 'Estimated', options: { bold: true, fill: { color: C.primary }, color: C.white, fontSize: 8, fontFace: 'Calibri' } },
-      { text: 'Basis',     options: { bold: true, fill: { color: C.primary }, color: C.white, fontSize: 8, fontFace: 'Calibri' } },
-    ];
-    const dataRows = gains.map((g, i) => [
-      { text: t(g.metric),    options: { fontSize: 8, color: C.text,    fill: { color: i % 2 === 0 ? 'F8FAFC' : C.white }, fontFace: 'Calibri' } },
-      { text: t(g.estimated), options: { fontSize: 8, bold: true, color: C.primary, fill: { color: i % 2 === 0 ? 'F8FAFC' : C.white }, fontFace: 'Calibri' } },
-      { text: t(g.basis),     options: { fontSize: 7.5, color: C.muted, fill: { color: i % 2 === 0 ? 'F8FAFC' : C.white }, fontFace: 'Calibri' } },
-    ]);
-    try {
-      slide.addTable([headerRow as Parameters<Slide['addTable']>[0][number], ...dataRows as Parameters<Slide['addTable']>[0]], {
-        x: ML, y, w: CW,
-        colW: [CW * 0.3, CW * 0.2, CW * 0.5],
-        rowH: 0.3,
-        fontFace: 'Calibri',
-        border: { type: 'solid', color: C.border, pt: 0.5 },
-      });
-    } catch { /* ignore */ }
-  }
-}
-
-// ── Discovery Diagnostic slide ────────────────────────────────────────────────
-
-function addDiscoveryDiagnosticSlide(
-  pptx: PptxGenJS,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  discoveryOutput: any,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, 'Discovery Diagnostic');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  const CARDS = [
-    { key: 'operationalReality',         label: 'Operational Reality',       bg: 'EFF6FF', border: 'BFDBFE', fg: '1E40AF' },
-    { key: 'organisationalMisalignment', label: 'Leadership Alignment Risk', bg: 'FFF1F2', border: 'FECDD3', fg: '9F1239' },
-    { key: 'systemicFriction',           label: 'Systemic Friction',         bg: 'FFFBEB', border: 'FDE68A', fg: '92400E' },
-    { key: 'transformationReadiness',    label: 'Transformation Readiness',  bg: 'F0FDF4', border: 'BBF7D0', fg: '065F46' },
-  ];
-
-  const colW = (CW - 0.15) / 2;
-  const rowH = (CH - 0.1) / 2;
-
-  CARDS.forEach(({ key, label, bg, border, fg }, i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const cx = ML + col * (colW + 0.15);
-    const cy = CY + 0.05 + row * (rowH + 0.1);
-    const card = discoveryOutput?.[key] as { insight?: string } | undefined;
-
-    box(slide, cx, cy, colW, rowH, bg, border, 0.06);
-    slide.addText(t(label), {
-      x: cx + 0.12, y: cy + 0.1, w: colW - 0.24, h: 0.22,
-      fontSize: 8.5, bold: true, color: fg, fontFace: 'Calibri',
-    });
-    slide.addText(t(tr(card?.insight ?? 'No data available', 180)), {
-      x: cx + 0.12, y: cy + 0.34, w: colW - 0.24, h: rowH - 0.46,
-      fontSize: 9, color: card?.insight ? C.text : C.muted, fontFace: 'Calibri',
-      wrap: true, italic: !card?.insight,
-    });
-  });
-}
-
-// ── Discovery Signals slide ───────────────────────────────────────────────────
-
-function addDiscoverySignalsSlide(
-  pptx: PptxGenJS,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  discoveryOutput: any,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, 'Discovery Signals');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  const SIGNALS = [
-    { key: 'perception',  label: 'PERCEPTION',  color: '3B82F6' },
-    { key: 'inhibition',  label: 'INHIBITION',  color: 'EF4444' },
-    { key: 'imagination', label: 'IMAGINATION', color: '8B5CF6' },
-    { key: 'vision',      label: 'VISION',      color: '10B981' },
-    { key: 'execution',   label: 'EXECUTION',   color: 'F59E0B' },
-  ];
-
-  const barMaxW = CW - 1.9;
-  const startY = CY + 0.12;
-  const rowH = (FY - startY - 0.08) / SIGNALS.length;
-
-  SIGNALS.forEach(({ key, label, color }, sigIdx) => {
-    const scores = discoveryOutput?.[key] as { score?: number; description?: string } | undefined;
-    const score = Math.min(Math.max(scores?.score ?? 0, 0), 100);
-    const pct = score / 100;
-    const ry = startY + sigIdx * rowH;
-
-    slide.addText(t(label), {
-      x: ML, y: ry + (rowH - 0.26) / 2, w: 1.2, h: 0.26,
-      fontSize: 8.5, bold: true, color, fontFace: 'Calibri',
-    });
-    slide.addText(String(Math.round(score)), {
-      x: ML + 1.25, y: ry + (rowH - 0.22) / 2, w: 0.42, h: 0.22,
-      fontSize: 11, bold: true, color, fontFace: 'Calibri',
-      align: 'center',
-    });
-    // Track
-    box(slide, ML + 1.72, ry + rowH / 2 - 0.06, barMaxW, 0.12, 'E2E8F0', 'E2E8F0', 0.06);
-    // Fill
-    if (pct > 0.01) {
-      box(slide, ML + 1.72, ry + rowH / 2 - 0.06, Math.max(barMaxW * pct, 0.12), 0.12, color, color, 0.06);
-    }
-    // Description
-    if (scores?.description) {
-      slide.addText(t(tr(scores.description, 90)), {
-        x: ML + 1.72, y: ry + rowH / 2 + 0.1, w: barMaxW, h: 0.18,
-        fontSize: 7.5, color: C.muted, fontFace: 'Calibri',
-      });
-    }
-  });
-}
-
-// ── Insight Summary slide ─────────────────────────────────────────────────────
-
-function addInsightSummarySlide(
-  pptx: PptxGenJS,
-  intelligence: WorkshopOutputIntelligence,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, 'Insight Map Summary');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  const summary = intelligence.discoveryValidation.summary;
-  slide.addText(t(tr(summary ?? 'No summary available.', 600)), {
-    x: ML, y: CY + 0.1, w: CW, h: CH - 0.2,
-    fontSize: 10, color: C.text, fontFace: 'Calibri',
-    wrap: true,
-  });
-}
-
-// ── Report Conclusion slide ───────────────────────────────────────────────────
-
-function addReportConclusionSlide(
-  pptx: PptxGenJS,
-  conclusion: ReportConclusion,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, 'Summary & Next Steps');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  let y = CY + 0.05;
-
-  // Summary paragraph — large hero card
-  if (conclusion.summary) {
-    const stepsCount = (conclusion.nextSteps ?? []).length;
-    const sumH = stepsCount > 0 ? 0.96 : CH - 0.12;
-    box(slide, ML, y, CW, sumH, 'F0F9FF', 'BAE6FD', 0.06);
-    slide.addText(t(tr(conclusion.summary, 640)), {
-      x: ML + 0.2, y: y + 0.1, w: CW - 0.4, h: sumH - 0.18,
-      fontSize: 11, color: C.dark, fontFace: 'Calibri',
-      wrap: true, valign: 'middle',
-    });
-    y += sumH + 0.12;
-  }
-
-  const steps = (conclusion.nextSteps ?? []).slice(0, 6);
-  if (steps.length) {
-    slide.addText('RECOMMENDED NEXT STEPS', {
-      x: ML, y, w: CW, h: 0.2,
-      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-    });
-    y += 0.22;
-
-    // 2-column next-steps grid
-    const rcCols = 2;
-    const rcColGap = 0.14;
-    const rcColW = (CW - rcColGap * (rcCols - 1)) / rcCols;
-    const rcRows = Math.ceil(steps.length / rcCols);
-    const rcRowGap = 0.08;
-    const rcH = Math.max(0.48, (FY - y - rcRowGap * (rcRows - 1) - 0.05) / rcRows);
-
-    steps.forEach((step, i) => {
-      const col = i % rcCols;
-      const row = Math.floor(i / rcCols);
-      const sx = ML + col * (rcColW + rcColGap);
-      const sy = y + row * (rcH + rcRowGap);
-
-      box(slide, sx, sy, rcColW, rcH, 'F8FAFC', C.border, 0.04);
-
-      // Circle number — vertically centred left
-      slide.addShape('ellipse', {
-        x: sx + 0.1, y: sy + (rcH - 0.26) / 2, w: 0.26, h: 0.26,
-        fill: { color: C.primary }, line: { color: C.primary, width: 0 },
-      });
-      slide.addText(String(i + 1), {
-        x: sx + 0.1, y: sy + (rcH - 0.26) / 2, w: 0.26, h: 0.26,
-        fontSize: 8.5, bold: true, color: C.white, fontFace: 'Calibri',
-        align: 'center', valign: 'middle',
-      });
-
-      // Title — upper
-      slide.addText(t(step.title), {
-        x: sx + 0.44, y: sy + 0.06, w: rcColW - 0.54, h: (rcH - 0.12) * 0.42,
-        fontSize: 9, bold: true, color: C.text, fontFace: 'Calibri',
-        wrap: true, valign: 'top',
-      });
-      // Description — lower
-      slide.addText(t(tr(step.description, 300)), {
-        x: sx + 0.44, y: sy + 0.06 + (rcH - 0.12) * 0.42, w: rcColW - 0.54, h: (rcH - 0.12) * 0.55,
-        fontSize: 8, color: C.muted, fontFace: 'Calibri',
-        wrap: true, valign: 'top',
-      });
-    });
-  }
-}
-
-// ── Facilitator Contact slide ─────────────────────────────────────────────────
-
-async function addFacilitatorContactSlide(
-  pptx: PptxGenJS,
-  contact: FacilitatorContact,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.dark };
-
-  // Accent strip
-  box(slide, 0, 0, SW, 0.07, C.primary, C.primary);
-
-  // Company logo
-  if (contact.companyLogoUrl) {
-    const b64 = await fetchBase64(contact.companyLogoUrl).catch(() => null);
-    if (b64) slide.addImage({ x: ML, y: 0.35, w: 2.0, h: 0.6, data: b64 });
-  }
-
-  slide.addText('GET IN TOUCH', {
-    x: ML, y: 1.3, w: CW, h: 0.28,
-    fontSize: 9, bold: true, color: '64748B', fontFace: 'Calibri',
-  });
-  slide.addText(t(contact.name), {
-    x: ML, y: 1.6, w: CW, h: 0.58,
-    fontSize: 28, bold: true, color: C.white, fontFace: 'Calibri',
-  });
-  if (contact.companyName) {
-    slide.addText(t(contact.companyName), {
-      x: ML, y: 2.22, w: CW, h: 0.3,
-      fontSize: 13, color: 'A5B4FC', fontFace: 'Calibri',
-    });
-  }
-
-  const lines = [
-    contact.email && `📧  ${contact.email}`,
-    contact.phone && `📞  ${contact.phone}`,
-  ].filter(Boolean) as string[];
-
-  lines.forEach((line, i) => {
-    slide.addText(t(line), {
-      x: ML, y: 2.72 + i * 0.46, w: CW, h: 0.4,
-      fontSize: 12, color: 'CBD5E1', fontFace: 'Calibri',
-    });
-  });
-
-  // Divider
-  slide.addShape('line', {
-    x: ML, y: SH - 1.05, w: CW, h: 0,
-    line: { color: '334155', width: 0.75 },
-  });
-  slide.addText('Dream Discovery & Transformation', {
-    x: ML, y: SH - 0.98, w: CW, h: 0.26,
-    fontSize: 9, color: '475569', fontFace: 'Calibri',
-  });
-}
-
-// ── Custom section slide ──────────────────────────────────────────────────────
-
-async function addCustomSlide(
-  pptx: PptxGenJS,
-  cfg: ReportSectionConfig,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, cfg.title, '334155');
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  let y = CY + 0.1;
-
-  if (cfg.customContent?.imageUrl) {
-    const b64 = await fetchBase64(cfg.customContent.imageUrl).catch(() => null);
-    if (b64) {
-      const imgH = Math.min(CH * 0.58, 2.9);
-      slide.addImage({ x: ML, y, w: CW, h: imgH, data: b64 });
-      y += imgH + 0.1;
-    }
-  }
-
-  if (cfg.customContent?.text) {
-    slide.addText(t(tr(cfg.customContent.text, 600)), {
-      x: ML, y, w: CW, h: FY - y - 0.08,
-      fontSize: 9.5, color: C.text, fontFace: 'Calibri',
-      wrap: true,
-    });
-  }
-}
-
-// ── Structural data slides ────────────────────────────────────────────────────
-
-function addStructuralSlide(
-  pptx: PptxGenJS,
-  cfg: ReportSectionConfig,
-  discoverAnalysis: DiscoverAnalysis | undefined,
   reportSummary: ReportSummary,
-  workshopName: string,
-  orgName: string,
-) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.white };
-  addHeader(slide, cfg.title);
-  addFooter(slide, `${workshopName} — ${orgName}`);
-
-  // Signal map: show image if captured, otherwise placeholder
-  if (cfg.id === 'discovery_signal_map') {
-    if (reportSummary.signalMapImageUrl) {
-      slide.addText('Signal map captured from Discovery Output', {
-        x: ML, y: CY + 0.1, w: CW, h: 0.26,
-        fontSize: 9, color: C.muted, fontFace: 'Calibri', italic: true,
-      });
-      // Note: remote image embedding happens via fetchBase64 but we skip here
-      // to avoid async complexity; image is noted for facilitator reference
-    } else {
-      slide.addText('Signal map not yet captured. Enable and save from the Discovery Output page.', {
-        x: ML, y: CY + 0.2, w: CW, h: 0.28,
-        fontSize: 9, color: C.muted, fontFace: 'Calibri', italic: true,
-      });
-    }
-    return;
-  }
-
-  if (!discoverAnalysis) {
-    slide.addText('No structural analysis data available.', {
-      x: ML, y: CY + 0.2, w: CW, h: 0.28,
-      fontSize: 9, color: C.muted, fontFace: 'Calibri', italic: true,
-    });
-    return;
-  }
-
-  let y = CY + 0.1;
-
+  intelligence: WorkshopOutputIntelligence,
+  liveJourneyData: LiveJourneyData | null | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  discoveryOutput: any,
+  discoverAnalysis: DiscoverAnalysis | undefined,
+  dreamLogoBase64: string | null,
+): string {
+  if (cfg.type === 'chapter') return renderChapter(cfg);
+  if (cfg.type === 'custom')  return renderCustomSection(cfg);
   switch (cfg.id) {
-    case 'structural_tensions': {
-      const tensions = discoverAnalysis.tensions?.tensions ?? [];
-      tensions.slice(0, 6).forEach(ten => {
-        if (y + 0.46 > FY - 0.05) return;
-        box(slide, ML, y, CW, 0.44, 'FFFBEB', 'FDE68A', 0.04);
-        slide.addText(t(tr(ten.topic ?? '', 90)), {
-          x: ML + 0.12, y: y + 0.05, w: CW - 0.24, h: 0.18,
-          fontSize: 9.5, bold: true, color: C.text, fontFace: 'Calibri',
-        });
-        if (ten.viewpoints?.[0]?.position) {
-          slide.addText(t(tr(ten.viewpoints[0].position, 130)), {
-            x: ML + 0.12, y: y + 0.24, w: CW - 0.24, h: 0.16,
-            fontSize: 8, color: C.muted, fontFace: 'Calibri',
-          });
-        }
-        y += 0.5;
-      });
-      break;
-    }
-    case 'structural_barriers': {
-      const constraints = discoverAnalysis.constraints?.constraints ?? [];
-      constraints.slice(0, 6).forEach(c => {
-        if (y + 0.44 > FY - 0.05) return;
-        box(slide, ML, y, CW, 0.42, 'FFF1F2', 'FECDD3', 0.04);
-        slide.addText(t(tr(c.description ?? '', 90)), {
-          x: ML + 0.12, y: y + 0.05, w: CW - 0.24, h: 0.18,
-          fontSize: 9.5, bold: true, color: C.red, fontFace: 'Calibri',
-        });
-        slide.addText(`${t(c.domain)}  ·  ${t(c.severity)}`, {
-          x: ML + 0.12, y: y + 0.24, w: CW - 0.24, h: 0.15,
-          fontSize: 8, color: C.text, fontFace: 'Calibri',
-        });
-        y += 0.48;
-      });
-      break;
-    }
-    case 'structural_alignment': {
-      const cells = discoverAnalysis.alignment?.cells ?? [];
-      const sorted = [...cells].sort((a, b) => Math.abs(a.alignmentScore) - Math.abs(b.alignmentScore)).slice(0, 6);
-      sorted.forEach(cell => {
-        if (y + 0.42 > FY - 0.05) return;
-        const score = cell.alignmentScore;
-        const isDiv = score < -0.2;
-        box(slide, ML, y, CW, 0.4, isDiv ? 'FFF1F2' : 'F0FDF4', isDiv ? 'FECDD3' : 'BBF7D0', 0.04);
-        slide.addText(`${t(cell.actor)} × ${t(cell.theme)}`, {
-          x: ML + 0.12, y: y + 0.05, w: CW - 0.5, h: 0.18,
-          fontSize: 9.5, bold: true, color: C.text, fontFace: 'Calibri',
-        });
-        slide.addText(score >= 0 ? `+${score.toFixed(2)}` : score.toFixed(2), {
-          x: SW - MR - 0.5, y: y + 0.05, w: 0.5, h: 0.3,
-          fontSize: 11, bold: true, color: isDiv ? C.red : C.green,
-          fontFace: 'Calibri', align: 'right',
-        });
-        y += 0.46;
-      });
-      break;
-    }
-    case 'structural_narrative': {
-      const layers = discoverAnalysis.narrative?.layers ?? [];
-      layers.slice(0, 3).forEach(layer => {
-        if (y + 0.6 > FY - 0.05) return;
-        box(slide, ML, y, CW, 0.58, 'F8FAFC', C.border, 0.04);
-        slide.addText(t(layer.layer).toUpperCase(), {
-          x: ML + 0.12, y: y + 0.06, w: CW - 0.24, h: 0.18,
-          fontSize: 8.5, bold: true, color: C.primary, fontFace: 'Calibri',
-        });
-        const terms = (layer.topTerms ?? []).slice(0, 5).map(term => term.term).join('  ·  ');
-        slide.addText(t(tr(terms, 120)), {
-          x: ML + 0.12, y: y + 0.26, w: CW - 0.24, h: 0.16,
-          fontSize: 8.5, color: C.text, fontFace: 'Calibri',
-        });
-        slide.addText(`Sentiment: ${t(layer.dominantSentiment)}`, {
-          x: ML + 0.12, y: y + 0.4, w: CW - 0.24, h: 0.14,
-          fontSize: 8, color: C.muted, fontFace: 'Calibri',
-        });
-        y += 0.64;
-      });
-      break;
-    }
-    case 'structural_confidence': {
-      const conf = discoverAnalysis.confidence;
-      if (conf) {
-        const overall = conf.overall;
-        const certPct = overall ? Math.round(overall.certain / (overall.certain + overall.hedging + overall.uncertain) * 100) : 0;
-        slide.addText(`Certainty: ${certPct}% certain  ·  ${overall?.hedging ?? 0} hedging  ·  ${overall?.uncertain ?? 0} uncertain`, {
-          x: ML, y, w: CW, h: 0.28,
-          fontSize: 10, bold: true, color: C.text, fontFace: 'Calibri',
-          wrap: true,
-        });
-        y += 0.36;
-        // Domain breakdown
-        (conf.byDomain ?? []).slice(0, 5).forEach(d => {
-          if (y + 0.38 > FY - 0.05) return;
-          box(slide, ML, y, CW, 0.36, 'F8FAFC', C.border, 0.03);
-          slide.addText(t(d.domain), {
-            x: ML + 0.12, y: y + 0.06, w: CW * 0.35, h: 0.22,
-            fontSize: 8.5, bold: true, color: C.text, fontFace: 'Calibri',
-          });
-          const dom = d.distribution;
-          slide.addText(`Certain: ${dom.certain}  Hedging: ${dom.hedging}  Uncertain: ${dom.uncertain}`, {
-            x: ML + CW * 0.38, y: y + 0.06, w: CW * 0.6, h: 0.22,
-            fontSize: 8, color: C.muted, fontFace: 'Calibri',
-          });
-          y += 0.42;
-        });
-      } else {
-        slide.addText('Confidence index data not available.', {
-          x: ML, y: y + 0.1, w: CW, h: 0.28,
-          fontSize: 9, color: C.muted, fontFace: 'Calibri', italic: true,
-        });
-      }
-      break;
-    }
-    default: {
-      slide.addText(`${t(cfg.title)} data available in the full report.`, {
-        x: ML, y: CY + 0.2, w: CW, h: 0.28,
-        fontSize: 9, color: C.muted, fontFace: 'Calibri', italic: true,
-      });
-    }
+    case 'executive_summary':    return renderExecutiveSummary(reportSummary, cfg);
+    case 'supporting_evidence':  return renderSupportingEvidence(intelligence, cfg);
+    case 'root_causes':          return renderRootCauses(intelligence, cfg);
+    case 'solution_direction':   return renderSolutionDirection(reportSummary, intelligence, cfg);
+    case 'journey_map':          return liveJourneyData ? renderJourneyMap(liveJourneyData, reportSummary.journeyIntro, cfg) : '';
+    case 'strategic_impact':     return renderStrategicImpact(intelligence, cfg);
+    case 'discovery_diagnostic': return renderDiscoveryDiagnostic(discoveryOutput);
+    case 'discovery_signals':    return renderDiscoverySignals(discoveryOutput);
+    case 'insight_summary':      return renderInsightSummary(intelligence);
+    case 'structural_alignment': return renderStructuralAlignment(discoverAnalysis);
+    case 'structural_narrative': return renderStructuralNarrative(discoverAnalysis);
+    case 'structural_tensions':  return renderStructuralTensions(discoverAnalysis);
+    case 'structural_barriers':  return renderStructuralBarriers(discoverAnalysis);
+    case 'structural_confidence':return renderStructuralConfidence(discoverAnalysis);
+    case 'discovery_signal_map': return renderSignalMap(reportSummary, discoverAnalysis);
+    case 'facilitator_contact':  return renderFacilitatorBackPage(reportSummary, dreamLogoBase64);
+    case 'report_conclusion':    return renderConclusion(reportSummary);
+    default: return '';
   }
 }
 
-// ── POST handler ──────────────────────────────────────────────────────────────
+// ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: workshopId } = await params;
+
   const user = await getAuthenticatedUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
   if (!access.valid) return NextResponse.json({ error: access.error }, { status: 403 });
 
-  const body = await request.json() as ExportPptxBody;
-  const { reportSummary, intelligence, layout, liveJourneyData, discoveryOutput, discoverAnalysis } = body;
-  const workshopName = body.workshopName ?? 'Workshop';
-  const orgName = body.orgName ?? '';
-
-  if (!reportSummary || !intelligence || !layout) {
+  const body = await request.json().catch(() => null) as ExportPptxBody | null;
+  if (!body?.reportSummary || !body?.intelligence || !body?.layout) {
     return NextResponse.json({ error: 'Missing required fields: reportSummary, intelligence, layout' }, { status: 400 });
   }
 
+  const { reportSummary, intelligence, layout, liveJourneyData, discoveryOutput, discoverAnalysis } = body;
+
+  // ── Fetch workshop / org ───────────────────────────────────────────────────
+  const workshop = await prisma.workshop.findUnique({
+    where: { id: workshopId },
+    select: { name: true, organization: { select: { name: true, logoUrl: true } } },
+  }).catch(() => null);
+
+  const workshopName = body.workshopName ?? workshop?.name ?? 'Workshop';
+  const orgName      = body.orgName      ?? workshop?.organization?.name ?? '';
+  const orgLogoUrl   = workshop?.organization?.logoUrl ?? null;
+
+  // ── Logos as base64 ────────────────────────────────────────────────────────
+  const dreamLogoBase64  = readLogoAsBase64('Dream.PNG');
+  const tenantLogoBase64 = orgLogoUrl
+    ? (orgLogoUrl.startsWith('http') ? await fetchLogoAsBase64(orgLogoUrl) : readLogoAsBase64(orgLogoUrl))
+    : null;
+  void tenantLogoBase64; // available for future use
+
+  const clientLogoUrlRaw = body.clientLogoUrl ?? layout.clientLogoUrl ?? null;
+  const clientLogoBase64 = clientLogoUrlRaw
+    ? (clientLogoUrlRaw.startsWith('http') ? await fetchLogoAsBase64(clientLogoUrlRaw) : readLogoAsBase64(clientLogoUrlRaw))
+    : null;
+
+  const enabledSections = layout.sections.filter(s => s.enabled);
+
+  let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
+
   try {
+    // ── Launch Puppeteer ────────────────────────────────────────────────────
+    const executablePath = await chromium.executablePath();
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: { width: VIEWPORT_W, height: 900 },
+      executablePath,
+      headless: true,
+    });
+
+    // ── Screenshot: cover slide (1920×1080 = 16:9 exact) ──────────────────
+    const coverPage = await browser.newPage();
+    await coverPage.setViewport({ width: COVER_W, height: COVER_H, deviceScaleFactor: 1 });
+    const coverHtml = buildCoverSlideHtml(workshopName, orgName, dreamLogoBase64, clientLogoBase64);
+    await coverPage.setContent(coverHtml, { waitUntil: 'networkidle0' });
+    const coverBuf = Buffer.from(await coverPage.screenshot({ type: 'jpeg', quality: 92 }));
+    await coverPage.close();
+
+    // ── Screenshot: each enabled section ───────────────────────────────────
+    const sectionScreenshots: Array<{ cfg: ReportSectionConfig; buf: Buffer; imgH: number }> = [];
+
+    const contentPage = await browser.newPage();
+    await contentPage.setViewport({ width: VIEWPORT_W, height: 900, deviceScaleFactor: 1 });
+
+    for (const cfg of enabledSections) {
+      const sectionHtml = resolveSectionHtml(
+        cfg, reportSummary, intelligence, liveJourneyData,
+        discoveryOutput, discoverAnalysis, dreamLogoBase64,
+      );
+      if (!sectionHtml) continue;
+
+      const wrappedHtml = wrapSectionHtml(sectionHtml);
+      await contentPage.setContent(wrappedHtml, { waitUntil: 'networkidle0' });
+
+      // Get the natural rendered height so we can centre the image correctly
+      const imgH = await contentPage.evaluate(
+        () => document.documentElement.scrollHeight,
+      );
+
+      const buf = Buffer.from(await contentPage.screenshot({
+        type: 'jpeg',
+        quality: 88,
+        fullPage: true,
+      }));
+
+      sectionScreenshots.push({ cfg, buf, imgH });
+    }
+
+    await contentPage.close();
+
+    // ── Assemble pptxgenjs ─────────────────────────────────────────────────
     const pptx = new PptxGenJS();
-    pptx.layout = 'LAYOUT_WIDE';
-    pptx.author = 'DREAM Discovery';
-    pptx.company = 'DREAM';
-    pptx.title = `${workshopName} — Discovery & Transformation Report`;
+    pptx.layout  = 'LAYOUT_WIDE';   // 13.33" × 7.5"
+    pptx.title   = workshopName;
     pptx.subject = 'Discovery & Transformation Report';
+    pptx.author  = 'DREAM Discovery Platform';
 
-    // Load DREAM logo
-    const dreamLogoB64 = readFileBase64('Dream.PNG');
+    // Cover slide — 16:9 screenshot fills entire slide perfectly
+    const coverSlide = pptx.addSlide();
+    coverSlide.addImage({
+      data: `data:image/jpeg;base64,${coverBuf.toString('base64')}`,
+      x: 0, y: 0, w: SW, h: SH,
+    });
 
-    // Load client logo
-    const clientLogoUrl = body.clientLogoUrl ?? layout.clientLogoUrl;
+    // Content slides — each section screenshot fitted and centred
+    for (const { buf, imgH } of sectionScreenshots) {
+      const pos = fitInSlide(VIEWPORT_W, imgH);
 
-    // ── Cover ───────────────────────────────────────────────────────────
-    await addCoverSlide(pptx, workshopName, orgName, reportSummary, clientLogoUrl, dreamLogoB64);
+      const slide = pptx.addSlide();
+      slide.background = { color: 'FFFFFF' };
 
-    // ── Table of Contents ────────────────────────────────────────────────
-    const enabledSections = layout.sections.filter(s => s.enabled);
-    if (enabledSections.length > 1) {
-      addTocSlide(pptx, layout.sections, workshopName, orgName);
+      slide.addImage({
+        data: `data:image/jpeg;base64,${buf.toString('base64')}`,
+        x: pos.x,
+        y: pos.y,
+        w: pos.w,
+        h: pos.h,
+      });
     }
 
-    // ── Section slides ───────────────────────────────────────────────────
-    let chapterIdx = 1;
-    for (const cfg of layout.sections) {
-      if (!cfg.enabled) continue;
-
-      if (cfg.type === 'chapter') {
-        addChapterSlide(pptx, cfg.title, chapterIdx++);
-        continue;
-      }
-
-      if (cfg.type === 'custom') {
-        await addCustomSlide(pptx, cfg, workshopName, orgName);
-        continue;
-      }
-
-      // Builtin sections
-      switch (cfg.id) {
-        case 'executive_summary':
-          addExecutiveSummarySlides(pptx, reportSummary, cfg, workshopName, orgName);
-          break;
-        case 'supporting_evidence':
-          addSupportingEvidenceSlide(pptx, intelligence, cfg, workshopName, orgName);
-          break;
-        case 'root_causes':
-          addRootCausesSlide(pptx, intelligence, cfg, workshopName, orgName);
-          break;
-        case 'solution_direction':
-          addSolutionDirectionSlides(pptx, reportSummary, intelligence, cfg, workshopName, orgName);
-          break;
-        case 'journey_map':
-          if (liveJourneyData?.actors?.length && liveJourneyData?.stages?.length) {
-            addJourneyMapSlide(pptx, liveJourneyData, reportSummary.journeyIntro, workshopName, orgName);
-          }
-          break;
-        case 'strategic_impact':
-          addStrategicImpactSlide(pptx, intelligence, cfg, workshopName, orgName);
-          break;
-        case 'discovery_diagnostic':
-          if (discoveryOutput) addDiscoveryDiagnosticSlide(pptx, discoveryOutput, workshopName, orgName);
-          break;
-        case 'discovery_signals':
-          if (discoveryOutput) addDiscoverySignalsSlide(pptx, discoveryOutput, workshopName, orgName);
-          break;
-        case 'insight_summary':
-          addInsightSummarySlide(pptx, intelligence, workshopName, orgName);
-          break;
-        case 'report_conclusion':
-          if (reportSummary.reportConclusion) {
-            addReportConclusionSlide(pptx, reportSummary.reportConclusion, workshopName, orgName);
-          }
-          break;
-        case 'facilitator_contact':
-          if (reportSummary.facilitatorContact) {
-            await addFacilitatorContactSlide(pptx, reportSummary.facilitatorContact);
-          }
-          break;
-        case 'structural_alignment':
-        case 'structural_narrative':
-        case 'structural_tensions':
-        case 'structural_barriers':
-        case 'structural_confidence':
-        case 'discovery_signal_map':
-          addStructuralSlide(pptx, cfg, discoverAnalysis, reportSummary, workshopName, orgName);
-          break;
-        default:
-          break;
-      }
-    }
-
-    // ── Write buffer ─────────────────────────────────────────────────────
-    const data = await pptx.write({ outputType: 'nodebuffer' });
-    const buf = Buffer.from(data as ArrayBuffer);
+    // ── Write buffer ───────────────────────────────────────────────────────
+    const data   = await pptx.write({ outputType: 'nodebuffer' });
+    const outBuf = Buffer.from(data as ArrayBuffer);
     const safeName = workshopName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
 
-    return new NextResponse(buf, {
+    return new NextResponse(outBuf, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         'Content-Disposition': `attachment; filename="${safeName}-report.pptx"`,
-        'Content-Length': String(buf.length),
+        'Content-Length': String(outBuf.length),
       },
     });
+
   } catch (error) {
     console.error('[Export PPTX] Error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'PPTX generation failed' },
       { status: 500 },
     );
+  } finally {
+    await browser?.close().catch(() => {});
   }
 }
