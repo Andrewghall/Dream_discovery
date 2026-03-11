@@ -20,6 +20,7 @@ import {
   GripVertical,
   ImagePlus,
   Building2,
+  Presentation,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -1983,6 +1984,7 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [journeyRegenerating, setJourneyRegenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [exportingPptx, setExportingPptx] = useState(false);
   const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // ── Report builder layout ─────────────────────────────────────────
@@ -2321,6 +2323,51 @@ export default function DownloadReportPage({ params }: PageProps) {
     }, 800);
   }, [workshopId]);
 
+  // ── PowerPoint export ────────────────────────────────────────────────────────
+
+  const handleExportPptx = async () => {
+    if (!intelligence || !reportSummary) {
+      toast.error('Generate the report summary first before exporting PowerPoint');
+      return;
+    }
+    try {
+      setExportingPptx(true);
+      const res = await fetch(`/api/admin/workshops/${workshopId}/export-pptx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reportSummary,
+          intelligence,
+          layout,
+          liveJourneyData,
+          workshopName: workshop?.name,
+          orgName: workshop?.organization?.name,
+          clientLogoUrl: clientLogoUrl || undefined,
+          discoveryOutput: discoveryOutput || undefined,
+          discoverAnalysis: discoverAnalysis || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Export failed' })) as { error: string };
+        throw new Error(err.error || 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${workshop?.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'workshop'}-discovery-report.pptx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('PowerPoint downloaded!');
+    } catch (err) {
+      toast.error(`PowerPoint export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setExportingPptx(false);
+    }
+  };
+
   // handleExport removed — replaced by handleExportPdf above
 
   // ── Loading ───────────────────────────────────────────────────────────────
@@ -2460,6 +2507,20 @@ export default function DownloadReportPage({ params }: PageProps) {
                 <FileDown className="h-3.5 w-3.5" />
               )}
               {exporting ? 'Generating PDF…' : 'Generate PDF'}
+            </Button>
+            <Button
+              onClick={handleExportPptx}
+              disabled={exportingPptx || !intelligence || !reportSummary}
+              size="sm"
+              variant="outline"
+              className="gap-2"
+            >
+              {exportingPptx ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Presentation className="h-3.5 w-3.5" />
+              )}
+              {exportingPptx ? 'Generating PPTX…' : 'Generate PPTX'}
             </Button>
           </div>
         </div>

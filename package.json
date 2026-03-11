@@ -55,6 +55,7 @@
     "openai": "^6.16.0",
     "papaparse": "^5.5.3",
     "pdf-lib": "^1.17.1",
+    "pptxgenjs": "^4.0.1",
     "prisma": "^6.19.1",
     "puppeteer-core": "^24.35.0",
     "radix-ui": "^1.4.3",
