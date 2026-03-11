@@ -57,17 +57,9 @@ export async function GET(
             email: true,
           },
         },
+        report: { select: { id: true } },
       },
     });
-
-    const sessionIds = sessions.map((s) => s.id);
-    const reports = sessionIds.length
-      ? ((await (prisma as any).conversationReport.findMany({
-          where: { sessionId: { in: sessionIds } },
-          select: { sessionId: true },
-        })) as Array<{ sessionId: string }>)
-      : [];
-    const hasReport = new Set(reports.map((r) => r.sessionId));
 
     return NextResponse.json({
       ok: true,
@@ -78,7 +70,7 @@ export async function GET(
         createdAt: s.createdAt,
         completedAt: s.completedAt,
         participant: s.participant,
-        hasReport: hasReport.has(s.id),
+        hasReport: s.report !== null,
       })),
       pagination: {
         page,
