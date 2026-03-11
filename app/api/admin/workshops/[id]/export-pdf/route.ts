@@ -680,7 +680,6 @@ function buildReportHtml(
     page-break-after: always;
     min-height: 256mm;
     background: #ffffff;
-    border: 1px solid #e2e8f0;
     border-radius: 8px;
     display: flex;
     flex-direction: column;
