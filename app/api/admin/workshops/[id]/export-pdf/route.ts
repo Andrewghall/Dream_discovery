@@ -671,18 +671,17 @@ function buildReportHtml(
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; background: white; line-height: 1.7; }
-  @page { size: A4; margin: 0; }
-  @page :not(:first) { margin: 20mm 18mm 18mm 18mm; }
+  @page { size: A4; }
 
   /* ── Cover page ─────────────────────────────────────────────────────────── */
   .cover {
     page-break-after: always;
-    width: 210mm;
-    min-height: 297mm;
+    min-height: 256mm;
     background: #0f172a;
+    border-radius: 8px;
     display: flex;
     flex-direction: column;
-    padding: 52px 52px 48px;
+    padding: 44px 44px 40px;
     position: relative;
     overflow: hidden;
   }
@@ -786,6 +785,12 @@ function buildReportHtml(
 
   /* ── Section chrome ─────────────────────────────────────────────────────── */
   .report-section { margin-bottom: 28px; }
+  /* Title bar stays with the first content item — never orphaned at page bottom */
+  .section-title-bar { page-break-after: avoid; }
+  /* Individual items avoid mid-card breaks */
+  .cause-card, .evidence-row, .finding-item, .lens-row,
+  .phase-card, .step-item, .next-step-item, .tension-item,
+  .diag-card, .sig-row, .toc-row { page-break-inside: avoid; }
   .section-title-bar {
     display: flex;
     align-items: center;
@@ -800,7 +805,7 @@ function buildReportHtml(
   /* ── Executive summary ──────────────────────────────────────────────────── */
   .qa-card { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
   .qa-question { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #6366f1; margin-bottom: 8px; }
-  .qa-answer { font-size: 14pt; font-weight: 700; color: #111827; line-height: 1.3; margin-bottom: 10px; }
+  .qa-answer { font-size: 12pt; font-weight: 700; color: #111827; line-height: 1.35; margin-bottom: 10px; }
   .qa-urgency { font-size: 10pt; color: #475569; font-style: italic; line-height: 1.5; }
   .findings-list { margin-bottom: 20px; }
   .finding-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
@@ -844,7 +849,7 @@ function buildReportHtml(
   .cause-ev { font-size: 9pt; color: #6b7280; padding: 2px 0; line-height: 1.5; }
 
   /* ── Solution direction ─────────────────────────────────────────────────── */
-  .sol-vision { font-size: 14pt; font-weight: 700; color: #111827; margin-bottom: 8px; line-height: 1.3; }
+  .sol-vision { font-size: 12pt; font-weight: 700; color: #111827; margin-bottom: 8px; line-height: 1.35; }
   .sol-rationale-text { font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 20px; }
   .step-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
   .step-item { display: flex; gap: 12px; align-items: flex-start; background: #f8fafc; border-radius: 8px; padding: 10px 14px; }
@@ -879,7 +884,7 @@ function buildReportHtml(
   .si-confidence { font-size: 9pt; color: #6b7280; margin-bottom: 16px; }
   .si-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
   .si-stat { border-radius: 10px; padding: 14px; text-align: center; border: 1px solid transparent; }
-  .si-stat-pct { font-size: 24pt; font-weight: 800; }
+  .si-stat-pct { font-size: 20pt; font-weight: 800; }
   .si-stat-label { font-size: 8.5pt; font-weight: 600; margin-top: 4px; }
   .gain-table { width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; font-size: 9.5pt; }
   .gain-th { background: #f9fafb; padding: 8px 14px; text-align: left; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; }
@@ -919,7 +924,7 @@ function buildReportHtml(
   .insight-summary-text { font-size: 10.5pt; color: #374151; line-height: 1.7; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
   .insight-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   .insight-stat { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; text-align: center; }
-  .insight-stat-val { font-size: 24pt; font-weight: 800; color: #111827; }
+  .insight-stat-val { font-size: 20pt; font-weight: 800; color: #111827; }
   .insight-stat-val.indigo { color: #4338ca; }
   .insight-stat-val.blue { color: #1d4ed8; }
   .insight-stat-label { font-size: 8.5pt; color: #6b7280; margin-top: 4px; font-weight: 500; }
@@ -1084,7 +1089,7 @@ export async function POST(
   const html = buildReportHtml(enrichedBody, dreamLogoBase64, tenantLogoBase64, clientLogoBase64);
 
   const footerTemplate = `
-    <div style="width:100%;padding:0 18mm;display:flex;justify-content:space-between;align-items:center;font-size:8pt;color:#9ca3af;font-family:'Inter',-apple-system,sans-serif;border-top:1px solid #f1f5f9;padding-top:4px;">
+    <div style="width:100%;box-sizing:border-box;padding:4px 18mm 0;display:flex;justify-content:space-between;align-items:center;font-size:8px;color:#9ca3af;font-family:Helvetica,Arial,sans-serif;border-top:1px solid #e5e7eb;">
       <span>${esc(workshopName)} — ${esc(orgName)}</span>
       <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
     </div>`;
