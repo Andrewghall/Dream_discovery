@@ -299,128 +299,141 @@ function addExecutiveSummarySlides(
   const footer = `${workshopName} — ${orgName}`;
   const excl = (id: string) => cfg.excludedItems.includes(id);
 
-  // ── Slide 1: The Ask + Key Findings ────────────────────────────────────────
-  {
+  // ── Slide 1: THE ANSWER — hero text ────────────────────────────────────────
+  if (!excl('qa')) {
     const slide = pptx.addSlide();
     slide.background = { color: C.white };
     addHeader(slide, 'Executive Summary');
     addFooter(slide, footer);
 
-    let y = CY + 0.05;
+    let y = CY + 0.18;
 
-    // Q&A card — tall enough for wrapping answer
-    const qaH = 1.1;
-    if (!excl('qa')) {
-      box(slide, ML, y, CW, qaH, 'EEF2FF', 'C7D2FE', 0.05);
-      slide.addText(t(tr(es.theAsk ?? '', 220)), {
-        x: ML + 0.15, y: y + 0.06, w: CW - 0.3, h: 0.22,
-        fontSize: 8.5, color: C.muted, fontFace: 'Calibri', wrap: true,
+    // The ask — small italic context line above the answer
+    if (es.theAsk) {
+      slide.addText(t(tr(es.theAsk, 260)), {
+        x: ML, y, w: CW, h: 0.26,
+        fontSize: 9, color: C.muted, fontFace: 'Calibri',
+        italic: true, wrap: true,
       });
-      slide.addText(t(tr(es.theAnswer ?? '', 400)), {
-        x: ML + 0.15, y: y + 0.3, w: CW - 0.3, h: 0.52,
-        fontSize: 10.5, bold: true, color: C.text, fontFace: 'Calibri',
-        wrap: true,
-      });
-      if (es.urgency) {
-        slide.addText(`⚡ ${t(tr(es.urgency, 200))}`, {
-          x: ML + 0.15, y: y + 0.86, w: CW - 0.3, h: 0.2,
-          fontSize: 8.5, color: C.amber, fontFace: 'Calibri', wrap: true,
-        });
-      }
-      y += qaH + 0.1;
+      y += 0.34;
     }
 
-    // Key findings — dynamic heights filling remaining space
-    const findings = (es.whatWeFound ?? [])
-      .filter((_, i) => !excl(`finding:${i}`))
-      .slice(0, 7);
-    if (findings.length) {
-      const labelH = 0.26;
-      const gapH = 0.05;
-      const availH = FY - y - labelH - 0.05;
-      const findH = Math.max(0.46, (availH - gapH * (findings.length - 1)) / findings.length);
+    // THE ANSWER — big hero text (the main event)
+    const hasUrgency = !!es.urgency && !excl('urgency');
+    const ansH = hasUrgency ? 2.3 : 2.8;
+    slide.addText(t(tr(es.theAnswer ?? '', 700)), {
+      x: ML, y, w: CW, h: ansH,
+      fontSize: 20, bold: true, color: C.dark, fontFace: 'Calibri',
+      wrap: true, valign: 'top',
+    });
+    y += ansH + 0.1;
 
-      slide.addText('KEY FINDINGS', {
-        x: ML, y, w: CW, h: 0.22,
-        fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-      });
-      y += labelH;
-
-      findings.forEach((f, i) => {
-        const fy = y + i * (findH + gapH);
-        box(slide, ML, fy, 0.3, findH, C.primary, C.primary, 0.03);
-        slide.addText(String(i + 1), {
-          x: ML, y: fy, w: 0.3, h: findH,
-          fontSize: 9, bold: true, color: C.white, fontFace: 'Calibri',
-          align: 'center', valign: 'middle',
-        });
-        slide.addText(t(tr(f, 350)), {
-          x: ML + 0.37, y: fy + 0.04, w: CW - 0.37, h: findH - 0.08,
-          fontSize: 9.5, color: C.text, fontFace: 'Calibri',
-          wrap: true, valign: 'top',
-        });
+    // Urgency — amber callout at bottom
+    if (hasUrgency) {
+      box(slide, ML, y, CW, 0.52, 'FFFBEB', 'FDE68A', 0.05);
+      slide.addText(`⚡  ${t(tr(es.urgency!, 340))}`, {
+        x: ML + 0.18, y: y + 0.1, w: CW - 0.36, h: 0.34,
+        fontSize: 9.5, color: C.amber, fontFace: 'Calibri', wrap: true,
       });
     }
   }
 
-  // ── Slide 2: Lens Findings (if any) ────────────────────────────────────────
+  // ── Slide 2: Key Findings — 2-column grid ──────────────────────────────────
+  const findings = (es.whatWeFound ?? []).filter((_, i) => !excl(`finding:${i}`)).slice(0, 8);
+  if (findings.length) {
+    const slide = pptx.addSlide();
+    slide.background = { color: C.white };
+    addHeader(slide, 'Key Findings');
+    addFooter(slide, footer);
+
+    const cols = 2;
+    const colGap = 0.14;
+    const cardW = (CW - colGap * (cols - 1)) / cols;
+    const rows = Math.ceil(findings.length / cols);
+    const startY = CY + 0.1;
+    const rowGap = 0.1;
+    const cardH = Math.max(0.52, (FY - startY - rowGap * (rows - 1) - 0.06) / rows);
+
+    findings.forEach((f, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const fx = ML + col * (cardW + colGap);
+      const fy = startY + row * (cardH + rowGap);
+
+      box(slide, fx, fy, cardW, cardH, 'F8FAFC', C.border, 0.05);
+      // Number badge
+      box(slide, fx + 0.1, fy + (cardH - 0.3) / 2, 0.3, 0.3, C.primary, C.primary, 0.04);
+      slide.addText(String(i + 1), {
+        x: fx + 0.1, y: fy + (cardH - 0.3) / 2, w: 0.3, h: 0.3,
+        fontSize: 10, bold: true, color: C.white, fontFace: 'Calibri',
+        align: 'center', valign: 'middle',
+      });
+      slide.addText(t(tr(f, 480)), {
+        x: fx + 0.5, y: fy + 0.08, w: cardW - 0.6, h: cardH - 0.16,
+        fontSize: 9.5, color: C.text, fontFace: 'Calibri',
+        wrap: true, valign: 'middle',
+      });
+    });
+  }
+
+  // ── Slide 3: Lens Findings + Transformation Direction ──────────────────────
   const lensFindings = (es.lensFindings ?? []).filter(lf => !excl(`lens:${lf.lens}`));
   if (lensFindings.length) {
     const slide = pptx.addSlide();
     slide.background = { color: C.white };
-    addHeader(slide, 'Executive Summary — Lens Analysis');
+    addHeader(slide, 'Lens Analysis');
     addFooter(slide, footer);
 
-    const perRow = 2;
-    const itemW = (CW - 0.12) / perRow;
+    // Transformation direction — dark hero banner at top if present
+    const hasTD = !excl('transformation') && !!summary.transformationDirection;
+    let startY = CY + 0.08;
+    if (hasTD) {
+      const tdH = 0.7;
+      box(slide, ML, startY, CW, tdH, '1E1B4B', '1E1B4B', 0.06);
+      slide.addText('TRANSFORMATION DIRECTION', {
+        x: ML + 0.18, y: startY + 0.07, w: CW - 0.36, h: 0.16,
+        fontSize: 7, bold: true, color: 'A5B4FC', fontFace: 'Calibri',
+      });
+      slide.addText(t(tr(summary.transformationDirection ?? '', 400)), {
+        x: ML + 0.18, y: startY + 0.25, w: CW - 0.36, h: 0.38,
+        fontSize: 11, bold: true, color: C.white, fontFace: 'Calibri',
+        wrap: true,
+      });
+      startY += tdH + 0.1;
+    }
+
+    const perRow = 3;
+    const colGap = 0.12;
+    const itemW = (CW - colGap * (perRow - 1)) / perRow;
     const visibleFindings = lensFindings.slice(0, 6);
     const rows = Math.ceil(visibleFindings.length / perRow);
-    const hasTD = !excl('transformation') && !!summary.transformationDirection;
-    const tdH = hasTD ? 0.72 : 0;
-    const tdGap = hasTD ? 0.1 : 0;
-    const labelH = 0.26;
-    const rowGap = 0.08;
-    const startY = CY + 0.05;
-    const availForGrid = FY - startY - labelH - tdH - tdGap - 0.05;
-    const cardH = Math.max(0.7, (availForGrid - rowGap * (rows - 1)) / rows);
+    const rowGap = 0.1;
+    const labelH = 0.24;
+    const cardH = Math.max(0.62, (FY - startY - labelH - rowGap * (rows - 1) - 0.06) / rows);
 
     slide.addText('LENS FINDINGS', {
-      x: ML, y: startY, w: CW, h: 0.22,
+      x: ML, y: startY, w: CW, h: 0.2,
       fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
     });
 
     visibleFindings.forEach((lf, i) => {
       const col = i % perRow;
       const row = Math.floor(i / perRow);
-      const lx = ML + col * (itemW + 0.12);
+      const lx = ML + col * (itemW + colGap);
       const ly = startY + labelH + row * (cardH + rowGap);
       box(slide, lx, ly, itemW, cardH, 'F8FAFC', C.border, 0.05);
+      // Lens label with colour bar
+      box(slide, lx, ly, itemW, 0.26, C.primary, C.primary, 0.05);
       slide.addText(t(lf.lens).toUpperCase(), {
-        x: lx + 0.1, y: ly + 0.08, w: itemW - 0.2, h: 0.2,
-        fontSize: 7.5, bold: true, color: C.primary, fontFace: 'Calibri',
+        x: lx + 0.1, y: ly + 0.04, w: itemW - 0.2, h: 0.18,
+        fontSize: 7.5, bold: true, color: C.white, fontFace: 'Calibri',
       });
-      slide.addText(t(tr(lf.finding, 500)), {
-        x: lx + 0.1, y: ly + 0.3, w: itemW - 0.2, h: cardH - 0.38,
-        fontSize: 9, color: C.text, fontFace: 'Calibri',
+      slide.addText(t(tr(lf.finding, 520)), {
+        x: lx + 0.1, y: ly + 0.32, w: itemW - 0.2, h: cardH - 0.4,
+        fontSize: 8.5, color: C.text, fontFace: 'Calibri',
         wrap: true, valign: 'top',
       });
     });
-
-    // Transformation direction — positioned directly after the grid
-    if (hasTD) {
-      const gridEndY = startY + labelH + rows * (cardH + rowGap) - rowGap;
-      const tdY = gridEndY + tdGap;
-      box(slide, ML, tdY, CW, tdH, 'F0FDF4', 'BBF7D0', 0.05);
-      slide.addText('TRANSFORMATION DIRECTION', {
-        x: ML + 0.15, y: tdY + 0.06, w: CW, h: 0.18,
-        fontSize: 7.5, bold: true, color: C.green, fontFace: 'Calibri',
-      });
-      slide.addText(t(tr(summary.transformationDirection ?? '', 350)), {
-        x: ML + 0.15, y: tdY + 0.26, w: CW - 0.3, h: tdH - 0.32,
-        fontSize: 9.5, color: C.text, fontFace: 'Calibri',
-        wrap: true, valign: 'top',
-      });
-    }
   }
 }
 
@@ -439,89 +452,97 @@ function addSupportingEvidenceSlide(
   addFooter(slide, `${workshopName} — ${orgName}`);
 
   const { discoveryValidation: dv } = intelligence;
-  let y = CY + 0.05;
-
-  slide.addText(`Hypothesis Accuracy: ${dv.hypothesisAccuracy}%`, {
-    x: ML, y, w: 3.0, h: 0.28,
-    fontSize: 9.5, bold: true, color: C.primary, fontFace: 'Calibri',
-  });
-  y += 0.36;
+  let y = CY + 0.1;
 
   const confBg: Record<string, string> = { high: C.greenBg, medium: C.amberBg, low: 'F1F5F9' };
   const confFg: Record<string, string> = { high: C.green,   medium: C.amber,   low: C.muted };
 
   const confirmed = (dv.confirmedIssues ?? [])
     .filter((_, i) => !cfg.excludedItems.includes(`confirmed:${i}`))
-    .slice(0, 5);
+    .slice(0, 4);
 
   const newIssues = (dv.newIssues ?? [])
     .filter((_, i) => !cfg.excludedItems.includes(`new:${i}`))
     .slice(0, 3);
 
-  // Pre-compute uniform dynamic card height so all items fill the slide
-  {
-    const gapH = 0.05;
-    const ciLabelH = confirmed.length ? 0.24 : 0;
-    const niLabelH = newIssues.length ? 0.24 : 0;
-    const totalGaps =
-      gapH * Math.max(confirmed.length - 1, 0) +
-      gapH * Math.max(newIssues.length - 1, 0);
-    const totalAvail = FY - y - ciLabelH - niLabelH - totalGaps - 0.1;
-    const totalItems = confirmed.length + newIssues.length;
-    const cardH = totalItems > 0 ? Math.max(0.4, totalAvail / totalItems) : 0.4;
+  // ── Top row: Big stat + context blurb ──────────────────────────────────────
+  const statW = 2.0;
+  const statH = 0.92;
+  box(slide, ML, y, statW, statH, 'EEF2FF', 'C7D2FE', 0.07);
+  slide.addText(`${dv.hypothesisAccuracy}%`, {
+    x: ML, y: y + 0.04, w: statW, h: 0.54,
+    fontSize: 38, bold: true, color: C.primary, fontFace: 'Calibri',
+    align: 'center',
+  });
+  slide.addText('Hypothesis\nAccuracy', {
+    x: ML, y: y + 0.6, w: statW, h: 0.28,
+    fontSize: 8, color: C.primaryDk, fontFace: 'Calibri',
+    align: 'center',
+  });
+  slide.addText(
+    'Proportion of pre-workshop discovery hypotheses confirmed through live session evidence and facilitator observation.',
+    {
+      x: ML + statW + 0.22, y: y + 0.08, w: CW - statW - 0.22, h: statH - 0.16,
+      fontSize: 9.5, color: C.muted, fontFace: 'Calibri',
+      wrap: true, valign: 'middle', italic: true,
+    },
+  );
+  y += statH + 0.16;
 
-    if (confirmed.length) {
-      slide.addText('CONFIRMED ISSUES', {
-        x: ML, y, w: CW, h: 0.22,
-        fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-      });
-      y += 0.24;
-      confirmed.forEach(ci => {
-        box(slide, ML, y, CW, cardH, 'F8FAFC', C.border, 0.03);
-        // Badge — centred vertically in card
-        box(slide, ML + 0.1, y + (cardH - 0.22) / 2, 0.58, 0.22, confBg[ci.confidence] ?? 'F1F5F9', confBg[ci.confidence] ?? 'F1F5F9', 0.03);
-        slide.addText(ci.confidence, {
-          x: ML + 0.1, y: y + (cardH - 0.22) / 2, w: 0.58, h: 0.22,
-          fontSize: 7, bold: true, color: confFg[ci.confidence] ?? C.muted,
-          fontFace: 'Calibri', align: 'center', valign: 'middle',
-        });
-        // Issue title — upper half of right area
-        slide.addText(t(tr(ci.issue, 280)), {
-          x: ML + 0.78, y: y + 0.05, w: CW - 0.88, h: (cardH - 0.1) * 0.52,
-          fontSize: 9, bold: true, color: C.text, fontFace: 'Calibri',
-          wrap: true, valign: 'top',
-        });
-        // Evidence — lower half of right area
-        slide.addText(t(tr(ci.workshopEvidence, 320)), {
-          x: ML + 0.78, y: y + 0.05 + (cardH - 0.1) * 0.52, w: CW - 0.88, h: (cardH - 0.1) * 0.45,
-          fontSize: 8, color: C.muted, fontFace: 'Calibri',
-          wrap: true, valign: 'top',
-        });
-        y += cardH + gapH;
-      });
-    }
+  // ── Two-column layout: Confirmed Issues (left) | New Issues (right) ─────────
+  const colW = (CW - 0.22) / 2;
+  const colGap = 0.22;
+  const rxStart = ML + colW + colGap;
 
-    if (newIssues.length) {
-      slide.addText('NEW ISSUES — SURFACED IN WORKSHOP', {
-        x: ML, y, w: CW, h: 0.22,
-        fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
+  // LEFT — Confirmed Issues
+  if (confirmed.length) {
+    slide.addText('CONFIRMED ISSUES', {
+      x: ML, y, w: colW, h: 0.2,
+      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
+    });
+    const ciTop = y + 0.22;
+    const ciGap = 0.07;
+    const ciH = Math.max(0.38, (FY - ciTop - ciGap * (confirmed.length - 1) - 0.05) / confirmed.length);
+    confirmed.forEach((ci, idx) => {
+      const cy = ciTop + idx * (ciH + ciGap);
+      box(slide, ML, cy, colW, ciH, 'F8FAFC', C.border, 0.04);
+      box(slide, ML + 0.08, cy + (ciH - 0.2) / 2, 0.56, 0.2, confBg[ci.confidence] ?? 'F1F5F9', confBg[ci.confidence] ?? 'F1F5F9', 0.03);
+      slide.addText(ci.confidence, {
+        x: ML + 0.08, y: cy + (ciH - 0.2) / 2, w: 0.56, h: 0.2,
+        fontSize: 6.5, bold: true, color: confFg[ci.confidence] ?? C.muted,
+        fontFace: 'Calibri', align: 'center', valign: 'middle',
       });
-      y += 0.24;
-      newIssues.forEach(ni => {
-        box(slide, ML, y, CW, cardH, 'FFF7ED', 'FED7AA', 0.03);
-        slide.addText(t(tr(ni.issue, 280)), {
-          x: ML + 0.15, y: y + 0.05, w: CW - 0.3, h: (cardH - 0.1) * 0.52,
-          fontSize: 9, bold: true, color: 'C2410C', fontFace: 'Calibri',
-          wrap: true, valign: 'top',
-        });
-        slide.addText(t(tr(ni.significance, 320)), {
-          x: ML + 0.15, y: y + 0.05 + (cardH - 0.1) * 0.52, w: CW - 0.3, h: (cardH - 0.1) * 0.45,
-          fontSize: 8, color: C.text, fontFace: 'Calibri',
-          wrap: true, valign: 'top',
-        });
-        y += cardH + gapH;
+      slide.addText(t(tr(ci.issue, 260)), {
+        x: ML + 0.72, y: cy + 0.04, w: colW - 0.82, h: ciH - 0.08,
+        fontSize: 8.5, bold: true, color: C.text, fontFace: 'Calibri',
+        wrap: true, valign: 'middle',
       });
-    }
+    });
+  }
+
+  // RIGHT — New Issues
+  if (newIssues.length) {
+    slide.addText('NEW ISSUES SURFACED', {
+      x: rxStart, y, w: colW, h: 0.2,
+      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
+    });
+    const niTop = y + 0.22;
+    const niGap = 0.07;
+    const niH = Math.max(0.42, (FY - niTop - niGap * (newIssues.length - 1) - 0.05) / newIssues.length);
+    newIssues.forEach((ni, idx) => {
+      const ny = niTop + idx * (niH + niGap);
+      box(slide, rxStart, ny, colW, niH, 'FFF7ED', 'FED7AA', 0.04);
+      slide.addText(t(tr(ni.issue, 260)), {
+        x: rxStart + 0.12, y: ny + 0.06, w: colW - 0.24, h: (niH - 0.12) * 0.48,
+        fontSize: 8.5, bold: true, color: 'C2410C', fontFace: 'Calibri',
+        wrap: true, valign: 'top',
+      });
+      slide.addText(t(tr(ni.significance, 280)), {
+        x: rxStart + 0.12, y: ny + 0.06 + (niH - 0.12) * 0.48, w: colW - 0.24, h: (niH - 0.12) * 0.48,
+        fontSize: 8, color: C.text, fontFace: 'Calibri',
+        wrap: true, valign: 'top',
+      });
+    });
   }
 }
 
@@ -540,16 +561,21 @@ function addRootCausesSlide(
   addFooter(slide, `${workshopName} — ${orgName}`);
 
   const { rootCause } = intelligence;
-  let y = CY + 0.05;
+  let y = CY + 0.1;
 
+  // Systemic pattern — pullquote banner
   if (rootCause.systemicPattern) {
-    box(slide, ML, y, CW, 0.54, 'EEF2FF', 'C7D2FE', 0.05);
-    slide.addText(t(tr(rootCause.systemicPattern, 420)), {
-      x: ML + 0.15, y: y + 0.07, w: CW - 0.3, h: 0.42,
-      fontSize: 9.5, italic: true, color: C.text, fontFace: 'Calibri',
+    box(slide, ML, y, CW, 0.62, '1E1B4B', '1E1B4B', 0.06);
+    slide.addText('"', {
+      x: ML + 0.12, y: y + 0.04, w: 0.26, h: 0.36,
+      fontSize: 30, color: 'A5B4FC', fontFace: 'Calibri',
+    });
+    slide.addText(t(tr(rootCause.systemicPattern, 440)), {
+      x: ML + 0.42, y: y + 0.1, w: CW - 0.58, h: 0.46,
+      fontSize: 10, italic: true, color: C.white, fontFace: 'Calibri',
       wrap: true,
     });
-    y += 0.64;
+    y += 0.74;
   }
 
   const sevBg: Record<string, string> = { critical: C.redBg, significant: C.amberBg, moderate: 'F1F5F9' };
@@ -557,57 +583,56 @@ function addRootCausesSlide(
 
   const causes = (rootCause.rootCauses ?? [])
     .filter(rc => !cfg.excludedItems.includes(`cause:${rc.rank}`))
-    .slice(0, 5);
+    .slice(0, 6);
 
-  // Dynamic card height — fill the available slide space evenly across all causes
-  const rcGapH = 0.06;
-  const iH = causes.length > 0
-    ? Math.max(0.56, (FY - y - rcGapH * (causes.length - 1) - 0.08) / causes.length)
-    : 0.56;
+  if (!causes.length) return;
 
-  causes.forEach(rc => {
-    box(slide, ML, y, CW, iH, 'F8FAFC', C.border, 0.04);
+  // 2-column card grid
+  const rcCols = 2;
+  const rcColGap = 0.15;
+  const rcColW = (CW - rcColGap * (rcCols - 1)) / rcCols;
+  const rcRows = Math.ceil(causes.length / rcCols);
+  const rcRowGap = 0.1;
+  const rcCardH = Math.max(0.68, (FY - y - rcRowGap * (rcRows - 1) - 0.06) / rcRows);
 
-    // Rank — fixed top position
-    box(slide, ML + 0.08, y + 0.12, 0.28, 0.28, C.primary, C.primary, 0.03);
+  causes.forEach((rc, i) => {
+    const col = i % rcCols;
+    const row = Math.floor(i / rcCols);
+    const cx = ML + col * (rcColW + rcColGap);
+    const cy = y + row * (rcCardH + rcRowGap);
+
+    box(slide, cx, cy, rcColW, rcCardH, 'F8FAFC', C.border, 0.05);
+    // Left colour accent strip
+    box(slide, cx, cy, 0.06, rcCardH, C.primary, C.primary);
+
+    // Rank — large number top-left
     slide.addText(`#${rc.rank}`, {
-      x: ML + 0.08, y: y + 0.12, w: 0.28, h: 0.28,
-      fontSize: 8.5, bold: true, color: C.white, fontFace: 'Calibri',
-      align: 'center', valign: 'middle',
+      x: cx + 0.14, y: cy + 0.08, w: 0.34, h: 0.32,
+      fontSize: 15, bold: true, color: C.primary, fontFace: 'Calibri',
     });
 
-    // Severity
-    box(slide, ML + 0.44, y + 0.12, 0.78, 0.22, sevBg[rc.severity] ?? 'F1F5F9', sevBg[rc.severity] ?? 'F1F5F9', 0.03);
-    slide.addText(rc.severity, {
-      x: ML + 0.44, y: y + 0.12, w: 0.78, h: 0.22,
-      fontSize: 7.5, bold: true, color: sevFg[rc.severity] ?? C.muted,
+    // Severity pill top-right
+    const sevW = 0.96;
+    box(slide, cx + rcColW - sevW - 0.08, cy + 0.1, sevW, 0.2, sevBg[rc.severity] ?? 'F1F5F9', sevBg[rc.severity] ?? 'F1F5F9', 0.03);
+    slide.addText(rc.severity.toUpperCase(), {
+      x: cx + rcColW - sevW - 0.08, y: cy + 0.1, w: sevW, h: 0.2,
+      fontSize: 6.5, bold: true, color: sevFg[rc.severity] ?? C.muted,
       fontFace: 'Calibri', align: 'center', valign: 'middle',
     });
 
-    // Cause — fills from top, leaving room for category and evidence at bottom
-    const causeH = Math.max(0.22, iH - 0.38);
-    slide.addText(t(tr(rc.cause, 280)), {
-      x: ML + 1.3, y: y + 0.07, w: CW - 1.38, h: causeH,
-      fontSize: 9.5, bold: true, color: C.text, fontFace: 'Calibri',
+    // Cause text — fills middle of card
+    const textAreaH = rcCardH - 0.46;
+    slide.addText(t(tr(rc.cause, 240)), {
+      x: cx + 0.14, y: cy + 0.42, w: rcColW - 0.24, h: textAreaH - 0.22,
+      fontSize: 9, bold: true, color: C.text, fontFace: 'Calibri',
       wrap: true, valign: 'top',
     });
 
-    // Category — just above the evidence line
+    // Category — footer of card
     slide.addText(t(rc.category), {
-      x: ML + 1.3, y: y + iH - 0.30, w: CW - 1.38, h: 0.16,
-      fontSize: 8, color: C.muted, fontFace: 'Calibri',
+      x: cx + 0.14, y: cy + rcCardH - 0.2, w: rcColW - 0.24, h: 0.18,
+      fontSize: 7.5, color: C.muted, fontFace: 'Calibri',
     });
-
-    // Top evidence — bottom strip
-    const ev = (rc.evidence ?? []).slice(0, 1);
-    if (ev[0]) {
-      slide.addText(`• ${t(tr(ev[0], 220))}`, {
-        x: ML + 0.15, y: y + iH - 0.18, w: CW - 0.25, h: 0.16,
-        fontSize: 7.5, color: C.muted, fontFace: 'Calibri',
-        wrap: true,
-      });
-    }
-    y += iH + rcGapH;
   });
 }
 
@@ -635,14 +660,20 @@ function addSolutionDirectionSlides(
 
     let y = CY + 0.05;
 
+    // Direction — dark full-width hero banner
     if (ss.direction) {
-      box(slide, ML, y, CW, 0.58, 'F0FDF4', 'BBF7D0', 0.05);
-      slide.addText(t(tr(ss.direction, 280)), {
-        x: ML + 0.15, y: y + 0.07, w: CW - 0.3, h: 0.46,
-        fontSize: 11, bold: true, color: '0F4C2A', fontFace: 'Calibri',
+      const dirH = 0.9;
+      box(slide, ML, y, CW, dirH, '022C22', '022C22', 0.07);
+      slide.addText('TRANSFORMATION DIRECTION', {
+        x: ML + 0.2, y: y + 0.09, w: CW - 0.4, h: 0.16,
+        fontSize: 7, bold: true, color: '6EE7B7', fontFace: 'Calibri',
+      });
+      slide.addText(t(tr(ss.direction, 340)), {
+        x: ML + 0.2, y: y + 0.27, w: CW - 0.4, h: 0.56,
+        fontSize: 14, bold: true, color: 'ECFDF5', fontFace: 'Calibri',
         wrap: true,
       });
-      y += 0.68;
+      y += dirH + 0.14;
     }
 
     const steps = (ss.whatMustChange ?? [])
@@ -650,37 +681,46 @@ function addSolutionDirectionSlides(
       .slice(0, 4);
 
     if (steps.length) {
-      const sdLabelH = 0.24;
-      const sdGapH = 0.06;
-      const sdAvail = FY - y - sdLabelH - sdGapH * (steps.length - 1) - 0.08;
-      const sdH = Math.max(0.48, sdAvail / steps.length);
-
       slide.addText('WHAT MUST CHANGE', {
-        x: ML, y, w: CW, h: 0.22,
+        x: ML, y, w: CW, h: 0.2,
         fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
       });
-      y += sdLabelH;
+      y += 0.22;
+
+      // 2-column grid of change cards
+      const sdCols = 2;
+      const sdColGap = 0.14;
+      const sdColW = (CW - sdColGap * (sdCols - 1)) / sdCols;
+      const sdRows = Math.ceil(steps.length / sdCols);
+      const sdRowGap = 0.1;
+      const sdH = Math.max(0.54, (FY - y - sdRowGap * (sdRows - 1) - 0.06) / sdRows);
+
       steps.forEach((step, i) => {
-        box(slide, ML, y, CW, sdH, 'F8FAFC', C.border, 0.04);
-        box(slide, ML, y, 0.06, sdH, C.primary, C.primary);
+        const col = i % sdCols;
+        const row = Math.floor(i / sdCols);
+        const sx = ML + col * (sdColW + sdColGap);
+        const sy = y + row * (sdH + sdRowGap);
+
+        box(slide, sx, sy, sdColW, sdH, 'F8FAFC', C.border, 0.05);
+        // Left accent
+        box(slide, sx, sy, 0.06, sdH, C.primary, C.primary);
+        // Step number
         slide.addText(String(i + 1), {
-          x: ML + 0.12, y: y + (sdH - 0.22) / 2, w: 0.22, h: 0.22,
-          fontSize: 10, bold: true, color: C.primary, fontFace: 'Calibri',
-          align: 'center',
+          x: sx + 0.14, y: sy + 0.06, w: 0.22, h: 0.24,
+          fontSize: 13, bold: true, color: C.primary, fontFace: 'Calibri',
         });
-        // Area title — upper portion
+        // Area
         slide.addText(t(step.area), {
-          x: ML + 0.42, y: y + 0.05, w: CW - 0.52, h: (sdH - 0.1) * 0.45,
+          x: sx + 0.14, y: sy + 0.32, w: sdColW - 0.24, h: (sdH - 0.44) * 0.4,
           fontSize: 9.5, bold: true, color: C.text, fontFace: 'Calibri',
           wrap: true, valign: 'top',
         });
-        // Required change — lower portion
-        slide.addText(t(tr(step.requiredChange, 300)), {
-          x: ML + 0.42, y: y + 0.05 + (sdH - 0.1) * 0.45, w: CW - 0.52, h: (sdH - 0.1) * 0.52,
+        // Required change
+        slide.addText(t(tr(step.requiredChange, 280)), {
+          x: sx + 0.14, y: sy + 0.32 + (sdH - 0.44) * 0.4, w: sdColW - 0.24, h: (sdH - 0.44) * 0.56,
           fontSize: 8.5, color: C.muted, fontFace: 'Calibri',
           wrap: true, valign: 'top',
         });
-        y += sdH + sdGapH;
       });
     }
   }
@@ -1046,59 +1086,66 @@ function addReportConclusionSlide(
 
   let y = CY + 0.05;
 
-  // Summary paragraph — tall enough to wrap comfortably
-  const sumH = conclusion.summary ? 0.78 : 0;
+  // Summary paragraph — large hero card
   if (conclusion.summary) {
-    box(slide, ML, y, CW, sumH, 'F0F9FF', 'BAE6FD', 0.05);
-    slide.addText(t(tr(conclusion.summary, 520)), {
-      x: ML + 0.15, y: y + 0.08, w: CW - 0.3, h: sumH - 0.14,
-      fontSize: 9.5, color: C.text, fontFace: 'Calibri',
-      wrap: true,
+    const stepsCount = (conclusion.nextSteps ?? []).length;
+    const sumH = stepsCount > 0 ? 0.96 : CH - 0.12;
+    box(slide, ML, y, CW, sumH, 'F0F9FF', 'BAE6FD', 0.06);
+    slide.addText(t(tr(conclusion.summary, 640)), {
+      x: ML + 0.2, y: y + 0.1, w: CW - 0.4, h: sumH - 0.18,
+      fontSize: 11, color: C.dark, fontFace: 'Calibri',
+      wrap: true, valign: 'middle',
     });
-    y += sumH + 0.1;
+    y += sumH + 0.12;
   }
 
-  const steps = (conclusion.nextSteps ?? []).slice(0, 5);
+  const steps = (conclusion.nextSteps ?? []).slice(0, 6);
   if (steps.length) {
-    const rcLabelH = 0.24;
-    const rcGapH = 0.06;
-    const rcAvail = FY - y - rcLabelH - rcGapH * (steps.length - 1) - 0.08;
-    const rcH = Math.max(0.46, rcAvail / steps.length);
-
     slide.addText('RECOMMENDED NEXT STEPS', {
-      x: ML, y, w: CW, h: 0.22,
+      x: ML, y, w: CW, h: 0.2,
       fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
     });
-    y += rcLabelH;
+    y += 0.22;
+
+    // 2-column next-steps grid
+    const rcCols = 2;
+    const rcColGap = 0.14;
+    const rcColW = (CW - rcColGap * (rcCols - 1)) / rcCols;
+    const rcRows = Math.ceil(steps.length / rcCols);
+    const rcRowGap = 0.08;
+    const rcH = Math.max(0.48, (FY - y - rcRowGap * (rcRows - 1) - 0.05) / rcRows);
 
     steps.forEach((step, i) => {
-      box(slide, ML, y, CW, rcH, 'F8FAFC', C.border, 0.04);
+      const col = i % rcCols;
+      const row = Math.floor(i / rcCols);
+      const sx = ML + col * (rcColW + rcColGap);
+      const sy = y + row * (rcH + rcRowGap);
 
-      // Circle number — vertically centred
+      box(slide, sx, sy, rcColW, rcH, 'F8FAFC', C.border, 0.04);
+
+      // Circle number — vertically centred left
       slide.addShape('ellipse', {
-        x: ML + 0.1, y: y + (rcH - 0.26) / 2, w: 0.26, h: 0.26,
-        fill: { color: C.primary },
-        line: { color: C.primary, width: 0 },
+        x: sx + 0.1, y: sy + (rcH - 0.26) / 2, w: 0.26, h: 0.26,
+        fill: { color: C.primary }, line: { color: C.primary, width: 0 },
       });
       slide.addText(String(i + 1), {
-        x: ML + 0.1, y: y + (rcH - 0.26) / 2, w: 0.26, h: 0.26,
-        fontSize: 9, bold: true, color: C.white, fontFace: 'Calibri',
+        x: sx + 0.1, y: sy + (rcH - 0.26) / 2, w: 0.26, h: 0.26,
+        fontSize: 8.5, bold: true, color: C.white, fontFace: 'Calibri',
         align: 'center', valign: 'middle',
       });
 
-      // Title — upper portion
+      // Title — upper
       slide.addText(t(step.title), {
-        x: ML + 0.46, y: y + 0.05, w: CW - 0.56, h: (rcH - 0.1) * 0.42,
-        fontSize: 9.5, bold: true, color: C.text, fontFace: 'Calibri',
+        x: sx + 0.44, y: sy + 0.06, w: rcColW - 0.54, h: (rcH - 0.12) * 0.42,
+        fontSize: 9, bold: true, color: C.text, fontFace: 'Calibri',
         wrap: true, valign: 'top',
       });
-      // Description — lower portion
-      slide.addText(t(tr(step.description, 320)), {
-        x: ML + 0.46, y: y + 0.05 + (rcH - 0.1) * 0.42, w: CW - 0.56, h: (rcH - 0.1) * 0.55,
-        fontSize: 8.5, color: C.muted, fontFace: 'Calibri',
+      // Description — lower
+      slide.addText(t(tr(step.description, 300)), {
+        x: sx + 0.44, y: sy + 0.06 + (rcH - 0.12) * 0.42, w: rcColW - 0.54, h: (rcH - 0.12) * 0.55,
+        fontSize: 8, color: C.muted, fontFace: 'Calibri',
         wrap: true, valign: 'top',
       });
-      y += rcH + rcGapH;
     });
   }
 }
