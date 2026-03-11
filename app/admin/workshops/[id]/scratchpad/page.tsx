@@ -1099,7 +1099,7 @@ function NarrativeDivergenceBlock({ discoverAnalysis }: { discoverAnalysis: Disc
             {layer.dominantSentiment}
           </p>
           <ul className="space-y-0.5">
-            {layer.topTerms.slice(0, 5).map((t) => (
+            {(layer.topTerms ?? []).slice(0, 5).map((t) => (
               <li key={t.term} className="text-[11px] text-foreground flex items-center gap-1.5">
                 <span className="shrink-0 w-12 bg-muted-foreground/20 rounded-full h-1.5 overflow-hidden">
                   <span className="block h-full bg-primary/50 rounded-full" style={{ width: `${t.normalised * 100}%` }} />
@@ -1137,7 +1137,7 @@ function TensionsBlock({ discoverAnalysis }: { discoverAnalysis: DiscoverAnalysi
                   {t.severity}
                 </span>
               </div>
-              {t.viewpoints.slice(0, 2).map((vp, j) => (
+              {(t.viewpoints ?? []).slice(0, 2).map((vp, j) => (
                 <p key={j} className="text-xs text-muted-foreground truncate">
                   <span className="font-medium text-foreground/70">{vp.actor}</span> — {vp.position}
                 </p>
