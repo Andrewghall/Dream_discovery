@@ -41,44 +41,48 @@ function truncate(str: string, maxLen = 300): string {
 // ── Main aggregator ──────────────────────────────────────────────────────────
 
 export async function aggregateWorkshopSignals(workshopId: string): Promise<WorkshopSignals> {
-  // Fetch workshop + all related data in one query
-  const workshop = await prisma.workshop.findUnique({
-    where: { id: workshopId },
-    select: {
-      name: true,
-      description: true,
-      clientName: true,
-      businessContext: true,
-      industry: true,
-      discoveryQuestions: true,
-      blueprint: true,
-      prepResearch: true,
-      discoverAnalysis: true,
-      insights: {
-        take: 200,
-        select: { text: true, insightType: true, category: true },
-      },
-      themes: {
-        take: 50,
-        select: { themeLabel: true, themeDescription: true },
-      },
-      liveSnapshots: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-        select: { payload: true },
-      },
-      scratchpad: {
-        select: {
-          execSummary: true,
-          potentialSolution: true,
-          summaryContent: true,
+  // Split into two parallel queries:
+  // 1. Core metadata + insights + themes (small fields, fast)
+  // 2. Latest snapshot payload (potentially large blob, run in parallel)
+  const [workshop, latestSnapshotRows] = await Promise.all([
+    prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: {
+        name: true,
+        description: true,
+        clientName: true,
+        businessContext: true,
+        industry: true,
+        discoveryQuestions: true,
+        blueprint: true,
+        prepResearch: true,
+        discoverAnalysis: true,
+        insights: {
+          take: 200,
+          select: { text: true, insightType: true, category: true },
+        },
+        themes: {
+          take: 50,
+          select: { themeLabel: true, themeDescription: true },
+        },
+        scratchpad: {
+          select: {
+            execSummary: true,
+            potentialSolution: true,
+            summaryContent: true,
+          },
+        },
+        participants: {
+          select: { id: true },
         },
       },
-      participants: {
-        select: { id: true },
-      },
-    },
-  });
+    }),
+    prisma.liveWorkshopSnapshot.findFirst({
+      where: { workshopId },
+      orderBy: { createdAt: 'desc' },
+      select: { payload: true },
+    }),
+  ]);
 
   if (!workshop) {
     throw new Error(`Workshop ${workshopId} not found`);
@@ -182,7 +186,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   let journey: WorkshopSignals['liveSession']['journey'] = [];
   let hemisphereShift: number | null = null;
 
-  const latestSnapshot = workshop.liveSnapshots[0];
+  const latestSnapshot = latestSnapshotRows;
   if (latestSnapshot) {
     const payload = safeJson<SnapshotPayload>(latestSnapshot.payload);
     const rawNodes = payload?.nodesById ?? payload?.nodes ?? {};
