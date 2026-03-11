@@ -1292,21 +1292,43 @@ function CustomSectionEditor({
 
 function AgenticPromptBar({
   workshopId,
+  layout,
   onOutput,
 }: {
   workshopId: string;
+  layout: ReportLayout;
   onOutput: (output: PromptOutput) => void;
 }) {
   const [prompt, setPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [fetchingSuggestions, setFetchingSuggestions] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const SUGGESTIONS = [
+  const STATIC_SUGGESTIONS = [
     'Bar chart of root causes by severity',
     'Table comparing current vs future state by lens',
     'Summarise the key constraints found in workshop',
     'List the top efficiency gains with estimated impact',
   ];
+
+  const handleSuggest = async () => {
+    setFetchingSuggestions(true);
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}/report-suggestions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ layout }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json() as { suggestions?: string[] };
+      setAiSuggestions(data.suggestions ?? []);
+    } catch {
+      toast.error('Could not fetch suggestions — try again');
+    } finally {
+      setFetchingSuggestions(false);
+    }
+  };
 
   const handleSubmit = async () => {
     const trimmed = prompt.trim();
@@ -1321,8 +1343,8 @@ function AgenticPromptBar({
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed' }));
-        throw new Error(err.error || 'Request failed');
+        const err = await res.json().catch(() => ({ error: 'Failed' })) as { error?: string };
+        throw new Error(err.error ?? 'Request failed');
       }
 
       const data = await res.json() as { output: PromptOutput };
@@ -1335,25 +1357,56 @@ function AgenticPromptBar({
     }
   };
 
+  const visibleSuggestions = aiSuggestions.length > 0 ? aiSuggestions : STATIC_SUGGESTIONS;
+
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <p className="text-sm font-semibold text-foreground">Additional Analysis</p>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-muted-foreground flex-1">
             Ask for charts, tables, or deeper dives
           </span>
+          {/* Suggest additions button */}
+          <button
+            onClick={() => void handleSuggest()}
+            disabled={fetchingSuggestions}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/30 bg-primary/5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors"
+          >
+            {fetchingSuggestions ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            {fetchingSuggestions ? 'Analysing…' : 'Suggest additions'}
+          </button>
+          {aiSuggestions.length > 0 && (
+            <button
+              onClick={() => setAiSuggestions([])}
+              className="p-1 rounded text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+              title="Clear AI suggestions"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Suggestions */}
       <div className="px-5 pt-3 pb-2 flex flex-wrap gap-1.5">
-        {SUGGESTIONS.map((s) => (
+        {visibleSuggestions.map((s) => (
           <button
             key={s}
-            onClick={() => setPrompt(s)}
-            className="px-2.5 py-1 rounded-full border border-border bg-muted/40 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            onClick={() => {
+              setPrompt(s);
+              setTimeout(() => textareaRef.current?.focus(), 50);
+            }}
+            className={`px-2.5 py-1 rounded-full border text-xs transition-colors ${
+              aiSuggestions.length > 0
+                ? 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
+                : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
           >
             {s}
           </button>
@@ -1377,7 +1430,7 @@ function AgenticPromptBar({
           disabled={generating}
         />
         <Button
-          onClick={handleSubmit}
+          onClick={() => void handleSubmit()}
           disabled={!prompt.trim() || generating}
           size="sm"
           className="h-10 px-4 gap-2 shrink-0"
@@ -1983,6 +2036,7 @@ export default function DownloadReportPage({ params }: PageProps) {
             )}
             <AgenticPromptBar
               workshopId={workshopId}
+              layout={layout}
               onOutput={(o) => setPromptOutputs((prev) => [...prev, o])}
             />
           </>
