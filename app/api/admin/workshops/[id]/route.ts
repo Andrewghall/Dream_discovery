@@ -218,12 +218,46 @@ async function detectWorkshopDeleteBlockers(workshopId: string): Promise<Worksho
  *   }
  * }
  */
+// ── Select shapes for field-selective GET ─────────────────────────────────────
+
+const LIGHT_SELECT = {
+  id: true,
+  organizationId: true,
+  name: true,
+  description: true,
+  businessContext: true,
+  includeRegulation: true,
+  workshopType: true,
+  status: true,
+  scheduledDate: true,
+  responseDeadline: true,
+  clientName: true,
+  industry: true,
+  companyWebsite: true,
+  dreamTrack: true,
+  targetDomain: true,
+  customQuestions: true,
+  engagementType: true,
+  domainPack: true,
+  domainPackConfig: true,
+  blueprint: true,
+  discoveryQuestions: true,
+} as const;
+
+const FULL_EXTRA = {
+  // Large blobs only needed by the prep page (~150KB combined)
+  prepResearch: true,
+  discoveryBriefing: true,
+  historicalMetrics: true,
+} as const;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const isFull = request.nextUrl.searchParams.get('full') === 'true';
 
     // Authenticate user
     const user = await getAuthenticatedUser();
@@ -242,30 +276,8 @@ export async function GET(
       workshop = await prisma.workshop.findUnique({
         where: { id },
         select: {
-          id: true,
-          organizationId: true,
-          name: true,
-          description: true,
-          businessContext: true,
-          includeRegulation: true,
-          workshopType: true,
-          status: true,
-          scheduledDate: true,
-          responseDeadline: true,
-          clientName: true,
-          industry: true,
-          companyWebsite: true,
-          dreamTrack: true,
-          targetDomain: true,
-          prepResearch: true,
-          customQuestions: true,
-          discoveryBriefing: true,
-          engagementType: true,
-          domainPack: true,
-          domainPackConfig: true,
-          discoveryQuestions: true,
-          blueprint: true,
-          historicalMetrics: true,
+          ...LIGHT_SELECT,
+          ...(isFull ? FULL_EXTRA : {}),
           participants: {
             orderBy: { createdAt: 'asc' },
             select: {
@@ -352,15 +364,17 @@ export async function GET(
           companyWebsite: null,
           dreamTrack: null,
           targetDomain: null,
-          prepResearch: null,
           customQuestions: null,
-          discoveryBriefing: null,
           engagementType: null,
           domainPack: null,
           domainPackConfig: null,
-          discoveryQuestions: null,
           blueprint: null,
-          historicalMetrics: null,
+          discoveryQuestions: null,
+          ...(isFull ? {
+            prepResearch: null,
+            discoveryBriefing: null,
+            historicalMetrics: null,
+          } : {}),
           participants: (legacy.participants || []).map((p) => ({
             ...p,
             attributionPreference: 'NAMED',

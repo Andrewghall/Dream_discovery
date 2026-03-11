@@ -216,7 +216,7 @@ export default function PrepPage({ params }: PageProps) {
   useEffect(() => {
     async function fetchWorkshop() {
       try {
-        const res = await fetch(`/api/admin/workshops/${workshopId}`);
+        const res = await fetch(`/api/admin/workshops/${workshopId}?full=true`);
         if (res.ok) {
           const data = await res.json();
           const w = data.workshop as WorkshopPrep;
