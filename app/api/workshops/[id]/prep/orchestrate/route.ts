@@ -8,10 +8,11 @@
  * Use this for the "Run Full Prep" flow.
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { strictLimiter } from '@/lib/rate-limit';
 import { runPrepOrchestrator } from '@/lib/cognition/agents/prep-orchestrator';
 import { ResearchClarificationNeededError } from '@/lib/cognition/agents/research-agent';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
@@ -25,6 +26,15 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? 'unknown';
+  const rl = await strictLimiter.check(10, `prep-orchestrate:${ip}`);
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.', retryAfter: Math.ceil((rl.reset - Date.now()) / 1000) },
+      { status: 429, headers: { 'Retry-After': Math.ceil((rl.reset - Date.now()) / 1000).toString() } }
+    );
+  }
+
   const { id: workshopId } = await params;
 
   // ── Auth ────────────────────────────────────────────

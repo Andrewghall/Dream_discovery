@@ -12,6 +12,7 @@ import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-acces
 import { aggregateWorkshopSignals, computeSignalsHash } from '@/lib/output-intelligence/signal-aggregator';
 import { runIntelligencePipeline } from '@/lib/output-intelligence/pipeline';
 import type { StoredOutputIntelligence, EngineKey } from '@/lib/output-intelligence/types';
+import { strictLimiter } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -68,6 +69,15 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const ip = _request.headers.get('x-forwarded-for') ?? _request.headers.get('x-real-ip') ?? 'unknown';
+  const rl = await strictLimiter.check(10, `output-intelligence:${ip}`);
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.', retryAfter: Math.ceil((rl.reset - Date.now()) / 1000) },
+      { status: 429, headers: { 'Retry-After': Math.ceil((rl.reset - Date.now()) / 1000).toString() } }
+    );
+  }
+
   const { id: workshopId } = await params;
   const user = await getAuthenticatedUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { strictLimiter } from '@/lib/rate-limit';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
@@ -517,6 +518,15 @@ Write as a risk analyst. Be direct and actionable.`;
 // ── Main Handler ───────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? 'unknown';
+  const rl = await strictLimiter.check(10, `synthesise:${ip}`);
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.', retryAfter: Math.ceil((rl.reset - Date.now()) / 1000) },
+      { status: 429, headers: { 'Retry-After': Math.ceil((rl.reset - Date.now()) / 1000).toString() } }
+    );
+  }
+
   const { id: workshopId } = await params;
 
   // ── Auth (must happen before stream) ─────────────────
