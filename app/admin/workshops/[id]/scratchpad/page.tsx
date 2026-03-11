@@ -810,6 +810,207 @@ function SolutionDirectionBlock({
   );
 }
 
+// ── Strategic Impact block ────────────────────────────────────────────────────
+
+function StrategicImpactBlock({
+  intelligence,
+  excludedItems = [],
+  onToggleItem = () => {},
+}: {
+  intelligence: WorkshopOutputIntelligence;
+  excludedItems?: string[];
+  onToggleItem?: (id: string) => void;
+}) {
+  const si = intelligence.strategicImpact;
+
+  const statItems = [
+    { id: 'automation', label: 'Automation Potential', pct: si.automationPotential.percentage, color: 'bg-violet-100 text-violet-700 border-violet-200' },
+    { id: 'ai_assisted', label: 'AI-Assisted Work',    pct: si.aiAssistedWork.percentage,    color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+    { id: 'human_only', label: 'Human-Only Work',      pct: si.humanOnlyWork.percentage,     color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Business case */}
+      <div className="rounded-xl border border-border bg-card px-5 py-4">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Business Case Summary</p>
+        <p className="text-sm text-foreground leading-relaxed">{si.businessCaseSummary}</p>
+        <p className="text-xs text-muted-foreground mt-2">Confidence score: <span className="font-medium text-foreground">{si.confidenceScore}%</span></p>
+      </div>
+
+      {/* 3 stat boxes */}
+      <div className="grid grid-cols-3 gap-3">
+        {statItems.map(s => (
+          !excludedItems.includes(s.id) && (
+            <ItemToggle key={s.id} id={s.id} excluded={false} onToggle={onToggleItem}>
+              <div className={`rounded-xl border px-4 py-4 text-center ${s.color}`}>
+                <p className="text-2xl font-bold">{s.pct}%</p>
+                <p className="text-[11px] font-medium mt-1">{s.label}</p>
+              </div>
+            </ItemToggle>
+          )
+        ))}
+      </div>
+
+      {/* Efficiency gains table */}
+      {si.efficiencyGains.length > 0 && (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-5 py-3 border-b border-border bg-muted/30">
+            <p className="text-xs font-semibold text-foreground">Efficiency Gains</p>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left px-4 py-2 font-medium text-muted-foreground">Metric</th>
+                <th className="text-left px-4 py-2 font-medium text-muted-foreground">Estimated</th>
+                <th className="text-left px-4 py-2 font-medium text-muted-foreground">Basis</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {si.efficiencyGains.map((g, i) => (
+                <tr key={i}>
+                  <td className="px-4 py-2.5 font-medium text-foreground">{g.metric}</td>
+                  <td className="px-4 py-2.5 text-emerald-700 font-semibold">{g.estimated}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{g.basis}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Discovery Diagnostic block ─────────────────────────────────────────────────
+
+const DIAGNOSTIC_CARDS_CFG = [
+  { key: 'operationalReality',         label: 'Operational Reality',         color: 'border-indigo-200 bg-indigo-50'  },
+  { key: 'organisationalMisalignment', label: 'Leadership Alignment Risk',   color: 'border-rose-200 bg-rose-50'      },
+  { key: 'systemicFriction',           label: 'Systemic Friction',           color: 'border-amber-200 bg-amber-50'    },
+  { key: 'transformationReadiness',    label: 'Transformation Readiness',    color: 'border-emerald-200 bg-emerald-50' },
+] as const;
+
+function DiscoveryDiagnosticBlock({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  discoveryOutput,
+}: { discoveryOutput: any | null }) {
+  if (!discoveryOutput) {
+    return <p className="text-xs text-muted-foreground py-2">Discovery output not available. Go to Discovery Output and run the Executive Diagnostic.</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {discoveryOutput.finalDiscoverySummary && (
+        <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Diagnostic Summary</p>
+          <p className="text-sm text-foreground leading-relaxed">{discoveryOutput.finalDiscoverySummary}</p>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        {DIAGNOSTIC_CARDS_CFG.map(({ key, label, color }) => {
+          const card = discoveryOutput[key] as { insight: string; evidence?: string[] } | undefined;
+          if (!card?.insight) return null;
+          return (
+            <div key={key} className={`rounded-xl border px-4 py-4 ${color}`}>
+              <p className="text-[11px] font-semibold uppercase tracking-widest opacity-60 mb-2">{label}</p>
+              <p className="text-sm leading-relaxed text-foreground">{card.insight}</p>
+              {card.evidence && card.evidence.length > 0 && (
+                <ul className="mt-2 space-y-0.5">
+                  {card.evidence.slice(0, 2).map((e, i) => (
+                    <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+                      <span className="shrink-0">·</span>{e}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Discovery Signals block ────────────────────────────────────────────────────
+
+function DiscoverySignalsBlock({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  discoveryOutput,
+}: { discoveryOutput: any | null }) {
+  if (!discoveryOutput?.sections?.length) {
+    return <p className="text-xs text-muted-foreground py-2">Discovery output not available. Go to Discovery Output to generate signals.</p>;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sections: any[] = discoveryOutput.sections;
+
+  return (
+    <div className="space-y-3">
+      {discoveryOutput._aiSummary && (
+        <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Perception Summary</p>
+          <p className="text-sm text-foreground leading-relaxed">{discoveryOutput._aiSummary}</p>
+        </div>
+      )}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="divide-y divide-border">
+          {sections.map((s, i) => (
+            <div key={i} className="px-5 py-3.5">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{s.icon}</span>
+                  <span className="text-sm font-medium text-foreground">{s.domain}</span>
+                </div>
+                <span className="text-xs text-muted-foreground">Consensus: <span className="font-medium text-foreground">{s.consensusLevel}%</span></span>
+              </div>
+              {/* Sentiment bar */}
+              <div className="h-2 rounded-full overflow-hidden flex gap-0.5">
+                <div className="bg-red-400 h-full rounded-l-full transition-all" style={{ width: `${s.sentiment?.concerned ?? 0}%` }} />
+                <div className="bg-gray-300 h-full transition-all" style={{ width: `${s.sentiment?.neutral ?? 0}%` }} />
+                <div className="bg-emerald-400 h-full rounded-r-full transition-all" style={{ width: `${s.sentiment?.optimistic ?? 0}%` }} />
+              </div>
+              <div className="flex items-center gap-3 mt-1.5">
+                <span className="text-[10px] text-red-600">Concerned {s.sentiment?.concerned ?? 0}%</span>
+                <span className="text-[10px] text-muted-foreground">Neutral {s.sentiment?.neutral ?? 0}%</span>
+                <span className="text-[10px] text-emerald-600">Optimistic {s.sentiment?.optimistic ?? 0}%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Insight Summary block ─────────────────────────────────────────────────────
+
+function InsightSummaryBlock({ intelligence }: { intelligence: WorkshopOutputIntelligence }) {
+  const { discoveryValidation } = intelligence;
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Insight Map Summary</p>
+        <p className="text-sm text-foreground leading-relaxed">{discoveryValidation.summary}</p>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-center">
+          <p className="text-xl font-bold text-indigo-700">{discoveryValidation.hypothesisAccuracy}%</p>
+          <p className="text-[11px] text-indigo-600 mt-0.5">Hypothesis Accuracy</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card px-4 py-3 text-center">
+          <p className="text-xl font-bold text-foreground">{discoveryValidation.confirmedIssues.length}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Confirmed Issues</p>
+        </div>
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-center">
+          <p className="text-xl font-bold text-blue-700">{discoveryValidation.newIssues.length}</p>
+          <p className="text-[11px] text-blue-600 mt-0.5">New Issues Surfaced</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Journey Map section ───────────────────────────────────────────────────────
 
 function JourneyDownloadBar({ workshopId }: { workshopId: string }) {
@@ -1321,6 +1522,9 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [clientLogoUrl, setClientLogoUrl] = useState<string>('');
   const [uploadingClientLogo, setUploadingClientLogo] = useState(false);
   const clientLogoFileRef = useRef<HTMLInputElement>(null);
+  // ── Cross-page section data ─────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [discoveryOutput, setDiscoveryOutput] = useState<any | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -1361,6 +1565,16 @@ export default function DownloadReportPage({ params }: PageProps) {
           }
         }
       }
+
+      // Fetch discovery output if needed for cross-page sections (non-fatal)
+      try {
+        const scratchpadRes = await fetch(`/api/admin/workshops/${workshopId}/scratchpad`);
+        if (scratchpadRes.ok) {
+          const sd = await scratchpadRes.json();
+          const dOut = sd.scratchpad?.discoveryOutput;
+          if (dOut && Object.keys(dOut).length > 0) setDiscoveryOutput(dOut);
+        }
+      } catch { /* non-fatal */ }
 
       // Fetch journey versions (non-fatal)
       try {
@@ -1560,6 +1774,7 @@ export default function DownloadReportPage({ params }: PageProps) {
           workshopName: workshop?.name,
           orgName: workshop?.organization?.name,
           clientLogoUrl: clientLogoUrl || undefined,
+          discoveryOutput: discoveryOutput || undefined,
         }),
       });
       if (!res.ok) {
@@ -1954,6 +2169,38 @@ export default function DownloadReportPage({ params }: PageProps) {
                                 No journey map generated yet. Run a live session to generate one.
                               </p>
                             )}
+                          </div>
+                        )}
+
+                        {/* ── Strategic Impact ── */}
+                        {cfg.id === 'strategic_impact' && (
+                          <div className="p-4">
+                            <StrategicImpactBlock
+                              intelligence={intelligence}
+                              excludedItems={cfg.excludedItems}
+                              onToggleItem={(id) => toggleItem(cfg.id, id)}
+                            />
+                          </div>
+                        )}
+
+                        {/* ── Discovery Diagnostic ── */}
+                        {cfg.id === 'discovery_diagnostic' && (
+                          <div className="p-4">
+                            <DiscoveryDiagnosticBlock discoveryOutput={discoveryOutput} />
+                          </div>
+                        )}
+
+                        {/* ── Discovery Signals ── */}
+                        {cfg.id === 'discovery_signals' && (
+                          <div className="p-4">
+                            <DiscoverySignalsBlock discoveryOutput={discoveryOutput} />
+                          </div>
+                        )}
+
+                        {/* ── Insight Map Summary ── */}
+                        {cfg.id === 'insight_summary' && (
+                          <div className="p-4">
+                            <InsightSummaryBlock intelligence={intelligence} />
                           </div>
                         )}
 

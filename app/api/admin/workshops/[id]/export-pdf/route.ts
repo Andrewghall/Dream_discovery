@@ -58,6 +58,8 @@ interface ExportPdfBody {
   workshopName?: string;
   orgName?: string;
   clientLogoUrl?: string;   // Client logo for the cover page
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  discoveryOutput?: any;    // From scratchpad.discoveryOutput — for discovery_* sections
 }
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
@@ -283,6 +285,126 @@ function renderJourneyMap(journey: LiveJourneyData, intro: string | undefined, c
     </section>`;
 }
 
+function renderStrategicImpact(intelligence: WorkshopOutputIntelligence, cfg: ReportSectionConfig): string {
+  const si = intelligence.strategicImpact;
+
+  const statBoxes = [
+    { id: 'automation', label: 'Automation Potential', pct: si.automationPotential.percentage, color: '#ede9fe', text: '#5b21b6' },
+    { id: 'ai_assisted', label: 'AI-Assisted Work',    pct: si.aiAssistedWork.percentage,    color: '#e0e7ff', text: '#3730a3' },
+    { id: 'human_only', label: 'Human-Only Work',      pct: si.humanOnlyWork.percentage,     color: '#d1fae5', text: '#065f46' },
+  ].filter(s => !isExcluded(cfg, s.id));
+
+  const gainRows = si.efficiencyGains.map(g => `
+    <tr>
+      <td class="gain-metric">${esc(g.metric)}</td>
+      <td class="gain-est">${esc(g.estimated)}</td>
+      <td class="gain-basis">${esc(g.basis)}</td>
+    </tr>`).join('');
+
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Strategic Impact</div></div>
+      <div class="si-summary">${esc(si.businessCaseSummary)}</div>
+      <p class="si-confidence">Confidence score: <strong>${si.confidenceScore}%</strong></p>
+      ${statBoxes.length ? `<div class="si-stats">${statBoxes.map(s => `
+        <div class="si-stat" style="background:${s.color};color:${s.text}">
+          <div class="si-stat-pct">${s.pct}%</div>
+          <div class="si-stat-label">${esc(s.label)}</div>
+        </div>`).join('')}</div>` : ''}
+      ${gainRows ? `
+      <table class="gain-table">
+        <thead><tr>
+          <th class="gain-th">Metric</th>
+          <th class="gain-th">Estimated</th>
+          <th class="gain-th">Basis</th>
+        </tr></thead>
+        <tbody>${gainRows}</tbody>
+      </table>` : ''}
+    </section>`;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function renderDiscoveryDiagnostic(discoveryOutput: any): string {
+  if (!discoveryOutput) return '';
+
+  const DIAG_CARDS = [
+    { key: 'operationalReality',         label: 'Operational Reality',       bg: '#eff6ff', border: '#bfdbfe', label_color: '#1e40af' },
+    { key: 'organisationalMisalignment', label: 'Leadership Alignment Risk', bg: '#fff1f2', border: '#fecdd3', label_color: '#9f1239' },
+    { key: 'systemicFriction',           label: 'Systemic Friction',         bg: '#fffbeb', border: '#fde68a', label_color: '#92400e' },
+    { key: 'transformationReadiness',    label: 'Transformation Readiness',  bg: '#f0fdf4', border: '#bbf7d0', label_color: '#065f46' },
+  ];
+
+  const cards = DIAG_CARDS.map(({ key, label, bg, border, label_color }) => {
+    const card = discoveryOutput[key] as { insight?: string; evidence?: string[] } | undefined;
+    if (!card?.insight) return '';
+    const evList = (card.evidence ?? []).slice(0, 2).map(e => `<li class="diag-ev">${esc(e)}</li>`).join('');
+    return `
+      <div class="diag-card" style="background:${bg};border-color:${border}">
+        <div class="diag-label" style="color:${label_color}">${esc(label)}</div>
+        <p class="diag-insight">${esc(card.insight)}</p>
+        ${evList ? `<ul class="diag-ev-list">${evList}</ul>` : ''}
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Diagnostic</div></div>
+      ${discoveryOutput.finalDiscoverySummary ? `<p class="diag-summary">${esc(discoveryOutput.finalDiscoverySummary)}</p>` : ''}
+      <div class="diag-grid">${cards}</div>
+    </section>`;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function renderDiscoverySignals(discoveryOutput: any): string {
+  if (!discoveryOutput?.sections?.length) return '';
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sectionRows = (discoveryOutput.sections as any[]).map(s => {
+    const concerned = s.sentiment?.concerned ?? 0;
+    const neutral = s.sentiment?.neutral ?? 0;
+    const optimistic = s.sentiment?.optimistic ?? 0;
+    return `
+      <div class="sig-row">
+        <div class="sig-meta">
+          <span class="sig-icon">${esc(s.icon ?? '')}</span>
+          <span class="sig-domain">${esc(s.domain)}</span>
+          <span class="sig-consensus">${s.consensusLevel}% consensus</span>
+        </div>
+        <div class="sig-bar-wrap">
+          <div class="sig-bar-seg sig-concerned" style="width:${concerned}%"></div>
+          <div class="sig-bar-seg sig-neutral" style="width:${neutral}%"></div>
+          <div class="sig-bar-seg sig-optimistic" style="width:${optimistic}%"></div>
+        </div>
+        <div class="sig-legend">
+          <span class="sig-c">Concerned ${concerned}%</span>
+          <span class="sig-n">Neutral ${neutral}%</span>
+          <span class="sig-o">Optimistic ${optimistic}%</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Signals</div></div>
+      ${discoveryOutput._aiSummary ? `<p class="sig-summary">${esc(discoveryOutput._aiSummary)}</p>` : ''}
+      <div class="sig-list">${sectionRows}</div>
+    </section>`;
+}
+
+function renderInsightSummary(intelligence: WorkshopOutputIntelligence): string {
+  const dv = intelligence.discoveryValidation;
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Insight Map Summary</div></div>
+      <p class="insight-summary-text">${esc(dv.summary)}</p>
+      <div class="insight-stats">
+        <div class="insight-stat"><div class="insight-stat-val indigo">${dv.hypothesisAccuracy}%</div><div class="insight-stat-label">Hypothesis Accuracy</div></div>
+        <div class="insight-stat"><div class="insight-stat-val">${dv.confirmedIssues.length}</div><div class="insight-stat-label">Confirmed Issues</div></div>
+        <div class="insight-stat"><div class="insight-stat-val blue">${dv.newIssues.length}</div><div class="insight-stat-label">New Issues Surfaced</div></div>
+      </div>
+    </section>`;
+}
+
 function renderCustomSection(cfg: ReportSectionConfig): string {
   const content = cfg.customContent ?? {};
   return `
@@ -301,7 +423,7 @@ function buildReportHtml(
   tenantLogoBase64: string | null,
   clientLogoBase64: string | null,
 ): string {
-  const { reportSummary, intelligence, layout, liveJourneyData, workshopName, orgName } = body;
+  const { reportSummary, intelligence, layout, liveJourneyData, workshopName, orgName, discoveryOutput } = body;
 
   const enabledSections = layout.sections.filter(s => s.enabled);
 
@@ -324,6 +446,14 @@ function buildReportHtml(
         return liveJourneyData
           ? renderJourneyMap(liveJourneyData, reportSummary.journeyIntro, cfg)
           : '';
+      case 'strategic_impact':
+        return renderStrategicImpact(intelligence, cfg);
+      case 'discovery_diagnostic':
+        return renderDiscoveryDiagnostic(discoveryOutput);
+      case 'discovery_signals':
+        return renderDiscoverySignals(discoveryOutput);
+      case 'insight_summary':
+        return renderInsightSummary(intelligence);
       default: return '';
     }
   }).join('\n');
@@ -523,6 +653,56 @@ function buildReportHtml(
   .custom-text { font-size: 10.5pt; color: #374151; line-height: 1.7; white-space: pre-wrap; margin-bottom: 16px; }
   .custom-image-wrap { margin-top: 14px; }
   .custom-image { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #e5e7eb; }
+
+  /* ── Strategic Impact ───────────────────────────────────────────────────── */
+  .si-summary { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 8px; }
+  .si-confidence { font-size: 9pt; color: #6b7280; margin-bottom: 16px; }
+  .si-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .si-stat { border-radius: 10px; padding: 14px; text-align: center; border: 1px solid transparent; }
+  .si-stat-pct { font-size: 24pt; font-weight: 800; }
+  .si-stat-label { font-size: 8.5pt; font-weight: 600; margin-top: 4px; }
+  .gain-table { width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; font-size: 9.5pt; }
+  .gain-th { background: #f9fafb; padding: 8px 14px; text-align: left; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; }
+  .gain-metric { padding: 9px 14px; font-weight: 600; color: #111827; border-top: 1px solid #f1f5f9; }
+  .gain-est { padding: 9px 14px; font-weight: 700; color: #065f46; border-top: 1px solid #f1f5f9; }
+  .gain-basis { padding: 9px 14px; color: #6b7280; border-top: 1px solid #f1f5f9; }
+
+  /* ── Discovery Diagnostic ───────────────────────────────────────────────── */
+  .diag-summary { font-size: 10.5pt; color: #374151; line-height: 1.7; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .diag-card { border: 1px solid; border-radius: 10px; padding: 14px 16px; }
+  .diag-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 8px; }
+  .diag-insight { font-size: 9.5pt; color: #374151; line-height: 1.6; margin-bottom: 6px; }
+  .diag-ev-list { margin: 0; padding-left: 14px; }
+  .diag-ev { font-size: 8.5pt; color: #6b7280; padding: 1px 0; line-height: 1.5; }
+
+  /* ── Discovery Signals ──────────────────────────────────────────────────── */
+  .sig-summary { font-size: 10.5pt; color: #374151; line-height: 1.7; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
+  .sig-list { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+  .sig-row { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; }
+  .sig-row:last-child { border-bottom: none; }
+  .sig-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .sig-icon { font-size: 12pt; }
+  .sig-domain { font-size: 10pt; font-weight: 600; color: #111827; flex: 1; }
+  .sig-consensus { font-size: 8.5pt; color: #6b7280; }
+  .sig-bar-wrap { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 1px; margin-bottom: 5px; }
+  .sig-bar-seg { height: 100%; }
+  .sig-concerned { background: #f87171; border-radius: 4px 0 0 4px; }
+  .sig-neutral { background: #d1d5db; }
+  .sig-optimistic { background: #34d399; border-radius: 0 4px 4px 0; }
+  .sig-legend { display: flex; gap: 12px; font-size: 8pt; }
+  .sig-c { color: #dc2626; }
+  .sig-n { color: #6b7280; }
+  .sig-o { color: #059669; }
+
+  /* ── Insight Summary ────────────────────────────────────────────────────── */
+  .insight-summary-text { font-size: 10.5pt; color: #374151; line-height: 1.7; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
+  .insight-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .insight-stat { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; text-align: center; }
+  .insight-stat-val { font-size: 24pt; font-weight: 800; color: #111827; }
+  .insight-stat-val.indigo { color: #4338ca; }
+  .insight-stat-val.blue { color: #1d4ed8; }
+  .insight-stat-label { font-size: 8.5pt; color: #6b7280; margin-top: 4px; font-weight: 500; }
 </style>
 </head>
 <body>

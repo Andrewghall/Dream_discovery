@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Loader2, BarChart2, RefreshCw, Info, Brain, TrendingUp, Eye, Zap, Search, X } from 'lucide-react';
+import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -1211,6 +1212,13 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
             {/* ── Tab 1: Executive Diagnostic ──────────────────────── */}
             <TabsContent value="executive-diagnostic" className="mt-0 p-6">
+              <div className="flex justify-end mb-4">
+                <ReportSectionToggle
+                  workshopId={workshopId}
+                  sectionId="discovery_diagnostic"
+                  title="Discovery Diagnostic"
+                />
+              </div>
               <ExecDiagnosticPanel
                 discoveryOutput={discoveryOutput}
                 workshopId={workshopId}
@@ -1229,6 +1237,13 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
             {/* ── Tab 3: Organisational State ───────────────────────── */}
             <TabsContent value="going-in-brain" className="mt-0 p-6">
+              <div className="flex justify-end mb-4">
+                <ReportSectionToggle
+                  workshopId={workshopId}
+                  sectionId="discovery_signals"
+                  title="Discovery Signals"
+                />
+              </div>
               <GoingInBrain discoveryOutput={discoveryOutput} discoverAnalysis={discoverAnalysis} conversationReports={conversationReports} />
             </TabsContent>
 

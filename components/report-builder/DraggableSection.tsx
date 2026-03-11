@@ -5,6 +5,14 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ChevronDown, ChevronUp, Eye, EyeOff, Trash2 } from 'lucide-react';
 import type { ReportSectionConfig } from '@/lib/output-intelligence/types';
 
+// Source page badges — shown on sections that came from outside the Download Report page
+const SOURCE_BADGE: Record<string, string> = {
+  strategic_impact:     'Brain Scan',
+  discovery_diagnostic: 'Discovery',
+  discovery_signals:    'Discovery',
+  insight_summary:      'Insight Map',
+};
+
 interface DraggableSectionProps {
   config: ReportSectionConfig;
   children: React.ReactNode;
@@ -62,11 +70,18 @@ export function DraggableSection({
             <GripVertical className="h-4 w-4" />
           </button>
 
-          {/* Title */}
-          <span className={`flex-1 text-[11px] font-semibold uppercase tracking-widest ${
-            config.enabled ? 'text-muted-foreground' : 'text-muted-foreground/40 line-through'
-          }`}>
-            {config.title}
+          {/* Title + source badge */}
+          <span className="flex-1 flex items-center gap-1.5 min-w-0">
+            <span className={`text-[11px] font-semibold uppercase tracking-widest truncate ${
+              config.enabled ? 'text-muted-foreground' : 'text-muted-foreground/40 line-through'
+            }`}>
+              {config.title}
+            </span>
+            {SOURCE_BADGE[config.id] && (
+              <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-muted text-muted-foreground">
+                {SOURCE_BADGE[config.id]}
+              </span>
+            )}
           </span>
 
           {/* Controls */}

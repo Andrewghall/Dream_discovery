@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -1330,6 +1331,11 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
               Generated {new Date(data.generatedAt).toLocaleString()}
             </span>
           )}
+          <ReportSectionToggle
+            workshopId={workshopId}
+            sectionId="insight_summary"
+            title="Insight Map Summary"
+          />
         </div>
 
         <div className="flex items-center gap-2">
