@@ -126,8 +126,10 @@ export async function POST(
         contextLines.push(`  ${eg.metric}: ${eg.estimated} (${eg.basis})`);
       }
     }
-    contextLines.push(`Automation Potential: ${intel.strategicImpact.automationPotential.percentage}%`);
-    contextLines.push(`Confidence Score: ${intel.strategicImpact.confidenceScore}%`);
+    if (intel.strategicImpact.automationPotential !== null) {
+      contextLines.push(`Automation Potential: ${intel.strategicImpact.automationPotential.percentage}%`);
+    }
+    contextLines.push(`Confidence Score: ${intel.strategicImpact.confidenceScore !== null ? `${intel.strategicImpact.confidenceScore}%` : 'Insufficient evidence'}`);
 
     // Operating model changes
     if (intel.futureState.operatingModelChanges.length > 0) {

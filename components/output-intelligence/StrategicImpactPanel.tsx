@@ -13,10 +13,18 @@ function BigStat({
   color,
 }: {
   label: string;
-  percentage: number;
-  description: string;
+  percentage: number | null;
+  description: string | null;
   color: string;
 }) {
+  if (percentage === null) {
+    return (
+      <div className={`p-5 rounded-xl border ${color} text-center`}>
+        <p className="text-sm font-semibold mb-2">{label}</p>
+        <p className="text-xs text-slate-400 italic">Insufficient evidence</p>
+      </div>
+    );
+  }
   return (
     <div className={`p-5 rounded-xl border ${color} text-center`}>
       <p className="text-4xl font-bold mb-1">{percentage}%</p>
@@ -27,9 +35,11 @@ function BigStat({
 }
 
 export function StrategicImpactPanel({ data }: Props) {
-  const confidence = Math.max(0, Math.min(100, data.confidenceScore ?? 0));
+  const confidence = data.confidenceScore;
   const confColor =
-    confidence >= 70
+    confidence === null
+      ? 'text-slate-400'
+      : confidence >= 70
       ? 'text-emerald-600'
       : confidence >= 40
       ? 'text-amber-600'
@@ -41,20 +51,20 @@ export function StrategicImpactPanel({ data }: Props) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <BigStat
           label="Automation Potential"
-          percentage={data.automationPotential?.percentage ?? 0}
-          description={data.automationPotential?.description ?? ''}
+          percentage={data.automationPotential?.percentage ?? null}
+          description={data.automationPotential?.description ?? null}
           color="border-purple-200 bg-purple-50 text-purple-800"
         />
         <BigStat
           label="AI Assisted Work"
-          percentage={data.aiAssistedWork?.percentage ?? 0}
-          description={data.aiAssistedWork?.description ?? ''}
+          percentage={data.aiAssistedWork?.percentage ?? null}
+          description={data.aiAssistedWork?.description ?? null}
           color="border-blue-200 bg-blue-50 text-blue-800"
         />
         <BigStat
           label="Human Only Work"
-          percentage={data.humanOnlyWork?.percentage ?? 0}
-          description={data.humanOnlyWork?.description ?? ''}
+          percentage={data.humanOnlyWork?.percentage ?? null}
+          description={data.humanOnlyWork?.description ?? null}
           color="border-slate-200 bg-slate-50 text-slate-700"
         />
       </div>
@@ -62,13 +72,19 @@ export function StrategicImpactPanel({ data }: Props) {
       {/* Confidence score */}
       <div className="flex items-center gap-3">
         <span className="text-xs text-slate-500">Confidence in estimates:</span>
-        <span className={`text-sm font-bold ${confColor}`}>{confidence}/100</span>
-        <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden max-w-32">
-          <div
-            className={`h-full rounded-full ${confidence >= 70 ? 'bg-emerald-500' : confidence >= 40 ? 'bg-amber-500' : 'bg-red-400'}`}
-            style={{ width: `${confidence}%` }}
-          />
-        </div>
+        {confidence === null ? (
+          <span className="text-sm text-slate-400 italic">Insufficient evidence</span>
+        ) : (
+          <>
+            <span className={`text-sm font-bold ${confColor}`}>{confidence}/100</span>
+            <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden max-w-32">
+              <div
+                className={`h-full rounded-full ${confidence >= 70 ? 'bg-emerald-500' : confidence >= 40 ? 'bg-amber-500' : 'bg-red-400'}`}
+                style={{ width: `${confidence}%` }}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Business case summary */}

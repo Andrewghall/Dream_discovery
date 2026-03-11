@@ -84,10 +84,10 @@ Currently ENABLED report sections: ${enabledSectionIds.join(', ') || 'none'}
 Currently DISABLED sections (available to add): ${disabledSectionIds.join(', ') || 'none'}
 
 Key data points:
-- Hypothesis accuracy: ${dv.hypothesisAccuracy}%
+- Hypothesis accuracy: ${dv.hypothesisAccuracy !== null ? `${dv.hypothesisAccuracy}%` : 'Insufficient evidence'}
 - Confirmed issues: ${dv.confirmedIssues.length}, new issues: ${dv.newIssues.length}
-- Automation potential: ${si.automationPotential.percentage}%
-- AI-assisted work: ${si.aiAssistedWork.percentage}%
+- Automation potential: ${si.automationPotential !== null ? `${si.automationPotential.percentage}%` : 'Insufficient evidence'}
+- AI-assisted work: ${si.aiAssistedWork !== null ? `${si.aiAssistedWork.percentage}%` : 'Insufficient evidence'}
 - Root causes: ${rc.rootCauses.length} identified, top: "${rc.rootCauses[0]?.cause ?? 'n/a'}"
 - Systemic pattern: "${rc.systemicPattern}"
 - Business case: "${si.businessCaseSummary.slice(0, 200)}…"

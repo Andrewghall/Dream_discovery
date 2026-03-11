@@ -162,7 +162,9 @@ function buildContextDump(
 
   // ── Strategic Impact ──────────────────────────────────────────────────────
   lines.push('\n=== STRATEGIC IMPACT ===');
-  lines.push(`Automation Potential: ${intelligence.strategicImpact.automationPotential.percentage}% — ${intelligence.strategicImpact.automationPotential.description}`);
+  if (intelligence.strategicImpact.automationPotential) {
+    lines.push(`Automation Potential: ${intelligence.strategicImpact.automationPotential.percentage}% — ${intelligence.strategicImpact.automationPotential.description}`);
+  }
   lines.push(`Business Case: ${intelligence.strategicImpact.businessCaseSummary}`);
   if (intelligence.strategicImpact.efficiencyGains.length > 0) {
     lines.push('\nEfficiency Gains (cite these verbatim in findings where relevant):');

@@ -65,7 +65,7 @@ const SIGNALS: Signal[] = [
     phase: 'Dream',
     color: 'emerald',
     description: 'The ideal future self',
-    getMetric: (i) => `${i.strategicImpact.automationPotential.percentage}% automation potential`,
+    getMetric: (i) => i.strategicImpact.automationPotential !== null ? `${i.strategicImpact.automationPotential.percentage}% automation potential` : 'Automation potential pending',
     Icon: TrendingUp,
   },
   {
@@ -611,21 +611,33 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                   </p>
                   <div className="grid grid-cols-3 gap-2 mb-4">
                     <div className="rounded-lg bg-rose-50 border border-rose-100 p-3 text-center">
-                      <p className="text-xl font-bold text-rose-600">
-                        {intelligence.strategicImpact.automationPotential.percentage}%
-                      </p>
+                      {intelligence.strategicImpact.automationPotential !== null ? (
+                        <p className="text-xl font-bold text-rose-600">
+                          {intelligence.strategicImpact.automationPotential.percentage}%
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">—</p>
+                      )}
                       <p className="text-[10px] text-rose-500 font-medium mt-0.5">AI Only</p>
                     </div>
                     <div className="rounded-lg bg-violet-50 border border-violet-100 p-3 text-center">
-                      <p className="text-xl font-bold text-violet-600">
-                        {intelligence.strategicImpact.aiAssistedWork.percentage}%
-                      </p>
+                      {intelligence.strategicImpact.aiAssistedWork !== null ? (
+                        <p className="text-xl font-bold text-violet-600">
+                          {intelligence.strategicImpact.aiAssistedWork.percentage}%
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">—</p>
+                      )}
                       <p className="text-[10px] text-violet-500 font-medium mt-0.5">AI Assisted</p>
                     </div>
                     <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-center">
-                      <p className="text-xl font-bold text-slate-600">
-                        {intelligence.strategicImpact.humanOnlyWork.percentage}%
-                      </p>
+                      {intelligence.strategicImpact.humanOnlyWork !== null ? (
+                        <p className="text-xl font-bold text-slate-600">
+                          {intelligence.strategicImpact.humanOnlyWork.percentage}%
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">—</p>
+                      )}
                       <p className="text-[10px] text-slate-500 font-medium mt-0.5">Human Only</p>
                     </div>
                   </div>

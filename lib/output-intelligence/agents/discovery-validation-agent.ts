@@ -34,7 +34,7 @@ const SCHEMA = `{
       "reason": "string — why the workshop evidence was weak or contradictory"
     }
   ],
-  "hypothesisAccuracy": 75,
+  "hypothesisAccuracy": <number 0-100 — derive from evidence, do NOT copy example values>,
   "summary": "string — 2-3 paragraph synthesis of discovery vs workshop alignment"
 }`;
 
@@ -96,6 +96,7 @@ Rules:
 • If evidence is weak or incomplete, state that explicitly
 • hypothesisAccuracy (0-100) reflects how well workshop findings matched discovery hypothesis
 • If no discovery signals exist, return a low hypothesisAccuracy with explanation
+• If you cannot determine hypothesis accuracy from available signals, set hypothesisAccuracy to null
 • Output MUST be valid JSON matching the schema exactly — no commentary outside the JSON`;
 
   const userMessage = `${buildSignalDump(signals)}

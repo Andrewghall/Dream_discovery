@@ -13,15 +13,15 @@ const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) :
 
 const SCHEMA = `{
   "automationPotential": {
-    "percentage": 35,
+    "percentage": <number — derive from evidence, do NOT copy example values>,
     "description": "string — what can be fully automated and how"
   },
   "aiAssistedWork": {
-    "percentage": 45,
+    "percentage": <number — derive from evidence, do NOT copy example values>,
     "description": "string — what can be augmented with AI assistance"
   },
   "humanOnlyWork": {
-    "percentage": 20,
+    "percentage": <number — derive from evidence, do NOT copy example values>,
     "description": "string — what must remain human-led and why"
   },
   "efficiencyGains": [
@@ -40,7 +40,7 @@ const SCHEMA = `{
     }
   ],
   "businessCaseSummary": "string — 2-3 paragraph executive summary of the transformation value. Written for a CEO or CFO. Must be compelling and evidence-grounded.",
-  "confidenceScore": 70
+  "confidenceScore": <number 0-100 — derive from evidence strength, do NOT copy example values>
 }`;
 
 function buildSignalDump(signals: WorkshopSignals): string {
@@ -127,6 +127,7 @@ Rules:
 • experienceImprovements should cover both customer and employee dimensions
 • confidenceScore (0-100) reflects how much evidence supports the estimates
 • If signals are sparse, lower the confidenceScore and note it
+• If you cannot compute meaningful percentages from the evidence, omit automationPotential, aiAssistedWork, and humanOnlyWork entirely (set them to null)
 • businessCaseSummary must be compelling — written for a CEO or CFO, not technical
 • Output MUST be valid JSON matching the schema — no commentary outside JSON`;
 

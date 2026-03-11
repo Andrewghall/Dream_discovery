@@ -62,7 +62,7 @@ export interface DiscoveryValidation {
   confirmedIssues: ConfirmedIssue[];
   newIssues: NewIssue[];
   reducedIssues: ReducedIssue[];
-  hypothesisAccuracy: number;  // 0-100
+  hypothesisAccuracy: number | null;  // 0-100, null = insufficient evidence
   summary: string;
 }
 
@@ -157,13 +157,13 @@ export interface ExperienceImprovement {
 }
 
 export interface StrategicImpact {
-  automationPotential: ImpactBucket;
-  aiAssistedWork: ImpactBucket;
-  humanOnlyWork: ImpactBucket;
+  automationPotential: ImpactBucket | null;
+  aiAssistedWork: ImpactBucket | null;
+  humanOnlyWork: ImpactBucket | null;
   efficiencyGains: EfficiencyGain[];
   experienceImprovements: ExperienceImprovement[];
   businessCaseSummary: string;
-  confidenceScore: number;  // 0-100
+  confidenceScore: number | null;  // 0-100, null = insufficient evidence
 }
 
 // ── Master Output ────────────────────────────────────────────────────────────

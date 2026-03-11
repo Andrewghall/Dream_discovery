@@ -8,6 +8,12 @@
 import { prisma } from '@/lib/prisma';
 import { aggregateWorkshopSignals } from './signal-aggregator';
 import type { WorkshopSignals, WorkshopOutputIntelligence, EngineKey, ReportSummary, StoredOutputIntelligence } from './types';
+import {
+  computeStrategicEvidenceScore,
+  gateStrategicImpact,
+  computeDiscoveryEvidenceScore,
+  gateDiscoveryValidation,
+} from './evidence-gating';
 import { runDiscoveryValidationAgent } from './agents/discovery-validation-agent';
 import { runReportSummaryAgent } from './agents/report-summary-agent';
 import { runRootCauseAgent } from './agents/root-cause-agent';
@@ -29,7 +35,7 @@ function discoveryValidationFallback() {
     confirmedIssues: [],
     newIssues: [],
     reducedIssues: [],
-    hypothesisAccuracy: 0,
+    hypothesisAccuracy: null,
     summary: 'Discovery validation could not be completed due to insufficient signal data.',
   };
 }
@@ -87,13 +93,13 @@ function executionRoadmapFallback() {
 
 function strategicImpactFallback() {
   return {
-    automationPotential: { percentage: 0, description: 'Could not be calculated' },
-    aiAssistedWork: { percentage: 0, description: 'Could not be calculated' },
-    humanOnlyWork: { percentage: 100, description: 'Could not be calculated' },
+    automationPotential: null,
+    aiAssistedWork: null,
+    humanOnlyWork: null,
     efficiencyGains: [],
     experienceImprovements: [],
     businessCaseSummary: 'Strategic impact could not be calculated due to insufficient signal data.',
-    confidenceScore: 0,
+    confidenceScore: null,
   };
 }
 
@@ -124,10 +130,14 @@ export async function runIntelligencePipeline(
     runStrategicImpactAgent(signals, (msg) => console.log(msg)),
   ]);
 
-  // Resolve results with fallbacks
+  // Compute evidence scores for gating
+  const strategicEvidenceScore = computeStrategicEvidenceScore(signals);
+  const discoveryEvidenceScore = computeDiscoveryEvidenceScore(signals);
+
+  // Resolve results with fallbacks and evidence gating
   const discoveryValidation =
     dv.status === 'fulfilled'
-      ? dv.value
+      ? gateDiscoveryValidation(dv.value, discoveryEvidenceScore)
       : (errors.discoveryValidation = dv.reason instanceof Error ? dv.reason.message : String(dv.reason),
          discoveryValidationFallback());
 
@@ -151,7 +161,7 @@ export async function runIntelligencePipeline(
 
   const strategicImpact =
     si.status === 'fulfilled'
-      ? si.value
+      ? gateStrategicImpact(si.value, strategicEvidenceScore)
       : (errors.strategicImpact = si.reason instanceof Error ? si.reason.message : String(si.reason),
          strategicImpactFallback());
 

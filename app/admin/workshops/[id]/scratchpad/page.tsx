@@ -826,9 +826,9 @@ function StrategicImpactBlock({
   const si = intelligence.strategicImpact;
 
   const statItems = [
-    { id: 'automation', label: 'Automation Potential', pct: si.automationPotential.percentage, color: 'bg-violet-100 text-violet-700 border-violet-200' },
-    { id: 'ai_assisted', label: 'AI-Assisted Work',    pct: si.aiAssistedWork.percentage,    color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
-    { id: 'human_only', label: 'Human-Only Work',      pct: si.humanOnlyWork.percentage,     color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    { id: 'automation', label: 'Automation Potential', pct: si.automationPotential?.percentage ?? null, color: 'bg-violet-100 text-violet-700 border-violet-200' },
+    { id: 'ai_assisted', label: 'AI-Assisted Work',    pct: si.aiAssistedWork?.percentage ?? null,    color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+    { id: 'human_only', label: 'Human-Only Work',      pct: si.humanOnlyWork?.percentage ?? null,     color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
   ];
 
   return (
@@ -837,7 +837,7 @@ function StrategicImpactBlock({
       <div className="rounded-xl border border-border bg-card px-5 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Business Case Summary</p>
         <p className="text-sm text-foreground leading-relaxed">{si.businessCaseSummary}</p>
-        <p className="text-xs text-muted-foreground mt-2">Confidence score: <span className="font-medium text-foreground">{si.confidenceScore}%</span></p>
+        <p className="text-xs text-muted-foreground mt-2">Confidence score: <span className="font-medium text-foreground">{si.confidenceScore !== null ? `${si.confidenceScore}%` : '—'}</span></p>
       </div>
 
       {/* 3 stat boxes */}
@@ -846,7 +846,11 @@ function StrategicImpactBlock({
           !excludedItems.includes(s.id) && (
             <ItemToggle key={s.id} id={s.id} excluded={false} onToggle={onToggleItem}>
               <div className={`rounded-xl border px-4 py-4 text-center ${s.color}`}>
-                <p className="text-2xl font-bold">{s.pct}%</p>
+                {s.pct !== null ? (
+                  <p className="text-2xl font-bold">{s.pct}%</p>
+                ) : (
+                  <p className="text-xs italic opacity-60">—</p>
+                )}
                 <p className="text-[11px] font-medium mt-1">{s.label}</p>
               </div>
             </ItemToggle>

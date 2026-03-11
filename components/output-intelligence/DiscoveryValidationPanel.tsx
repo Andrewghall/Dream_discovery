@@ -21,11 +21,24 @@ function ConfidenceBadge({ level }: { level: 'high' | 'medium' | 'low' }) {
 }
 
 export function DiscoveryValidationPanel({ data }: Props) {
-  const accuracy = Math.max(0, Math.min(100, data.hypothesisAccuracy ?? 0));
+  const accuracy = data.hypothesisAccuracy;
+  const clampedAccuracy = accuracy !== null ? Math.max(0, Math.min(100, accuracy)) : null;
   const accuracyColor =
-    accuracy >= 70 ? 'text-emerald-600' : accuracy >= 40 ? 'text-amber-600' : 'text-red-500';
+    clampedAccuracy === null
+      ? 'text-slate-400'
+      : clampedAccuracy >= 70
+      ? 'text-emerald-600'
+      : clampedAccuracy >= 40
+      ? 'text-amber-600'
+      : 'text-red-500';
   const barColor =
-    accuracy >= 70 ? 'bg-emerald-500' : accuracy >= 40 ? 'bg-amber-500' : 'bg-red-500';
+    clampedAccuracy === null
+      ? 'bg-slate-200'
+      : clampedAccuracy >= 70
+      ? 'bg-emerald-500'
+      : clampedAccuracy >= 40
+      ? 'bg-amber-500'
+      : 'bg-red-500';
 
   return (
     <div className="space-y-8">
@@ -34,16 +47,22 @@ export function DiscoveryValidationPanel({ data }: Props) {
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
           Hypothesis Accuracy
         </p>
-        <div className="flex items-end gap-4">
-          <span className={`text-6xl font-bold ${accuracyColor}`}>{accuracy}</span>
-          <span className="text-2xl text-slate-400 mb-2">/100</span>
-        </div>
-        <div className="mt-4 h-2.5 rounded-full bg-slate-100 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-            style={{ width: `${accuracy}%` }}
-          />
-        </div>
+        {clampedAccuracy === null ? (
+          <p className="text-sm text-slate-400 italic">Insufficient evidence to calculate hypothesis accuracy</p>
+        ) : (
+          <>
+            <div className="flex items-end gap-4">
+              <span className={`text-6xl font-bold ${accuracyColor}`}>{clampedAccuracy}</span>
+              <span className="text-2xl text-slate-400 mb-2">/100</span>
+            </div>
+            <div className="mt-4 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                style={{ width: `${clampedAccuracy}%` }}
+              />
+            </div>
+          </>
+        )}
         {data.summary && (
           <p className="mt-4 text-sm text-slate-600 leading-relaxed">{data.summary}</p>
         )}

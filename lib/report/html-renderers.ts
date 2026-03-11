@@ -259,9 +259,9 @@ export function renderStrategicImpact(intelligence: WorkshopOutputIntelligence, 
   const si = intelligence.strategicImpact;
 
   const statBoxes = [
-    { id: 'automation',  label: 'Automation Potential', pct: si.automationPotential.percentage, color: '#ede9fe', text: '#5b21b6' },
-    { id: 'ai_assisted', label: 'AI-Assisted Work',     pct: si.aiAssistedWork.percentage,    color: '#e0e7ff', text: '#3730a3' },
-    { id: 'human_only',  label: 'Human-Only Work',      pct: si.humanOnlyWork.percentage,     color: '#d1fae5', text: '#065f46' },
+    { id: 'automation',  label: 'Automation Potential', pct: si.automationPotential?.percentage ?? null, color: '#ede9fe', text: '#5b21b6' },
+    { id: 'ai_assisted', label: 'AI-Assisted Work',     pct: si.aiAssistedWork?.percentage ?? null,    color: '#e0e7ff', text: '#3730a3' },
+    { id: 'human_only',  label: 'Human-Only Work',      pct: si.humanOnlyWork?.percentage ?? null,     color: '#d1fae5', text: '#065f46' },
   ].filter(s => !isExcluded(cfg, s.id));
 
   const gainRows = si.efficiencyGains.map(g => `
@@ -275,10 +275,10 @@ export function renderStrategicImpact(intelligence: WorkshopOutputIntelligence, 
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Strategic Impact</div></div>
       <div class="si-summary">${esc(si.businessCaseSummary)}</div>
-      <p class="si-confidence">Confidence score: <strong>${si.confidenceScore}%</strong></p>
+      <p class="si-confidence">Confidence score: <strong>${si.confidenceScore !== null ? `${si.confidenceScore}%` : '—'}</strong></p>
       ${statBoxes.length ? `<div class="si-stats">${statBoxes.map(s => `
         <div class="si-stat" style="background:${s.color};color:${s.text}">
-          <div class="si-stat-pct">${s.pct}%</div>
+          <div class="si-stat-pct">${s.pct !== null ? `${s.pct}%` : '—'}</div>
           <div class="si-stat-label">${esc(s.label)}</div>
         </div>`).join('')}</div>` : ''}
       ${gainRows ? `

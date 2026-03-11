@@ -84,10 +84,10 @@ export async function POST(
   const context = `
 Workshop: ${workshop.name ?? 'Unknown'}
 Business case: ${si.businessCaseSummary}
-Hypothesis accuracy: ${dv.hypothesisAccuracy}%
-Confidence score: ${si.confidenceScore}%
-Automation potential: ${si.automationPotential.percentage}%
-AI-assisted work: ${si.aiAssistedWork.percentage}%
+Hypothesis accuracy: ${dv.hypothesisAccuracy !== null ? `${dv.hypothesisAccuracy}%` : 'Insufficient evidence'}
+Confidence score: ${si.confidenceScore !== null ? `${si.confidenceScore}%` : 'Insufficient evidence'}
+Automation potential: ${si.automationPotential !== null ? `${si.automationPotential.percentage}%` : 'Insufficient evidence'}
+AI-assisted work: ${si.aiAssistedWork !== null ? `${si.aiAssistedWork.percentage}%` : 'Insufficient evidence'}
 Systemic pattern: "${rc.systemicPattern}"
 Top root causes:
 ${rootCauseList}
