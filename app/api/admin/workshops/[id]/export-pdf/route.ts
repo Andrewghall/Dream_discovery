@@ -254,7 +254,7 @@ function renderJourneyMap(journey: LiveJourneyData, intro: string | undefined, c
         const bg = SENTIMENT_COLORS[int.sentiment] ?? '#f1f5f9';
         return `<div class="journey-chip" style="background:${bg}">
           ${int.isPainPoint ? '<span class="pain-dot">●</span>' : ''}
-          ${esc(int.action.slice(0, 35))}${int.action.length > 35 ? '…' : ''}
+          ${esc(int.action.slice(0, 45))}${int.action.length > 45 ? '…' : ''}
         </div>`;
       }).join('');
       return `<td class="journey-td">${chips}</td>`;
@@ -270,7 +270,7 @@ function renderJourneyMap(journey: LiveJourneyData, intro: string | undefined, c
   }).join('');
 
   return `
-    <section class="report-section">
+    <section class="report-section journey-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Customer Journey</div></div>
       ${intro ? `<p class="journey-intro">${esc(intro)}</p>` : ''}
       <div class="journey-table-wrap">
@@ -672,88 +672,91 @@ function buildReportHtml(
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; background: white; line-height: 1.7; }
   @page { size: A4; }
+  /* Journey map gets a full landscape page */
+  @page landscape-page { size: A4 landscape; margin: 16mm 18mm 14mm; }
 
   /* ── Cover page ─────────────────────────────────────────────────────────── */
   .cover {
     page-break-after: always;
     min-height: 256mm;
-    background: #0f172a;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
     display: flex;
     flex-direction: column;
-    padding: 44px 44px 40px;
+    padding: 0 44px 40px;
     position: relative;
     overflow: hidden;
   }
-  /* Subtle geometric accent */
+  /* 5 px accent strip at top */
   .cover::before {
     content: '';
     position: absolute;
-    top: -80px; right: -80px;
-    width: 320px; height: 320px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%);
-    pointer-events: none;
+    top: 0; left: 0; right: 0;
+    height: 5px;
+    background: linear-gradient(90deg, #6366f1 0%, #818cf8 55%, #10b981 100%);
+    border-radius: 8px 8px 0 0;
   }
+  /* Subtle watermark dot — very faint */
   .cover::after {
     content: '';
     position: absolute;
-    bottom: 40px; left: -60px;
-    width: 260px; height: 260px;
+    bottom: -40px; right: -40px;
+    width: 200px; height: 200px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 70%);
     pointer-events: none;
   }
-  .cover-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: auto; }
+  .cover-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: auto; padding-top: 44px; }
   .cover-client-name {
-    font-size: 13pt;
-    font-weight: 300;
-    letter-spacing: 0.06em;
-    color: rgba(255,255,255,0.55);
-    text-transform: uppercase;
+    font-size: 11pt;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    color: #374151;
   }
-  .cover-client-logo { max-height: 52px; max-width: 180px; object-fit: contain; }
-  .cover-dream-logo { max-height: 36px; max-width: 140px; object-fit: contain; filter: brightness(0) invert(1); opacity: 0.85; }
-  .cover-dream-wordmark { font-size: 11pt; font-weight: 800; letter-spacing: 0.2em; color: rgba(255,255,255,0.5); }
+  .cover-client-logo { max-height: 48px; max-width: 160px; object-fit: contain; }
+  .cover-dream-logo { max-height: 36px; max-width: 140px; object-fit: contain; opacity: 0.8; }
+  .cover-dream-wordmark { font-size: 11pt; font-weight: 800; letter-spacing: 0.2em; color: #374151; }
 
-  .cover-body { padding-top: 80px; }
+  .cover-body { padding-top: 68px; }
   .cover-eyebrow {
-    font-size: 9pt;
+    font-size: 8.5pt;
     font-weight: 600;
     letter-spacing: 0.2em;
     text-transform: uppercase;
     color: #6366f1;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
     display: flex;
     align-items: center;
     gap: 10px;
   }
   .cover-eyebrow::after { content: ''; flex: 0 0 40px; height: 1px; background: #6366f1; }
   .cover-title {
-    font-size: 34pt;
+    font-size: 30pt;
     font-weight: 800;
-    line-height: 1.05;
-    color: #ffffff;
-    margin-bottom: 16px;
+    line-height: 1.1;
+    color: #0f172a;
+    margin-bottom: 14px;
     letter-spacing: -0.02em;
   }
   .cover-subtitle {
     font-size: 12pt;
     font-weight: 400;
-    color: rgba(255,255,255,0.5);
-    margin-bottom: 48px;
+    color: #6b7280;
+    margin-bottom: 40px;
     line-height: 1.5;
   }
   .cover-divider { width: 48px; height: 3px; background: #6366f1; border-radius: 2px; margin-bottom: 28px; }
   .cover-footer {
     margin-top: auto;
-    padding-top: 32px;
+    padding-top: 28px;
+    border-top: 1px solid #f1f5f9;
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
   }
-  .cover-meta-label { font-size: 8pt; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.3); margin-bottom: 4px; }
-  .cover-meta-value { font-size: 10pt; font-weight: 600; color: rgba(255,255,255,0.65); }
+  .cover-meta-label { font-size: 7.5pt; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #9ca3af; margin-bottom: 4px; }
+  .cover-meta-value { font-size: 10pt; font-weight: 600; color: #374151; }
   .cover-prepared-by { text-align: right; }
 
   /* ── TOC ────────────────────────────────────────────────────────────────── */
@@ -783,6 +786,9 @@ function buildReportHtml(
   .toc-footer { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-top: 4px; }
   .toc-footer p { font-size: 9.5pt; color: #6b7280; line-height: 1.65; }
 
+  /* ── Journey map — full landscape page ─────────────────────────────────── */
+  .journey-section { page: landscape-page; page-break-before: always; page-break-after: always; page-break-inside: avoid; }
+
   /* ── Section chrome ─────────────────────────────────────────────────────── */
   .report-section { margin-bottom: 28px; }
   /* Title bar stays with the first content item — never orphaned at page bottom */
@@ -804,7 +810,7 @@ function buildReportHtml(
 
   /* ── Executive summary ──────────────────────────────────────────────────── */
   .qa-card { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-  .qa-question { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #6366f1; margin-bottom: 8px; }
+  .qa-question { font-size: 9pt; font-weight: 500; color: #9ca3af; margin-bottom: 8px; line-height: 1.5; }
   .qa-answer { font-size: 12pt; font-weight: 700; color: #111827; line-height: 1.35; margin-bottom: 10px; }
   .qa-urgency { font-size: 10pt; color: #475569; font-style: italic; line-height: 1.5; }
   .findings-list { margin-bottom: 20px; }
@@ -855,7 +861,7 @@ function buildReportHtml(
   .step-item { display: flex; gap: 12px; align-items: flex-start; background: #f8fafc; border-radius: 8px; padding: 10px 14px; }
   .step-num { flex-shrink: 0; width: 22px; height: 22px; background: #0f172a; color: white; border-radius: 50%; font-size: 8pt; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
   .step-change { font-size: 9.5pt; color: #6b7280; line-height: 1.5; }
-  .phases-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .phases-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; page-break-inside: avoid; }
   .phase-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }
   .phase-name { font-size: 9.5pt; font-weight: 700; color: #111827; margin-bottom: 3px; }
   .phase-horizon { font-size: 8pt; color: #9ca3af; margin-bottom: 8px; font-weight: 500; }
@@ -882,7 +888,7 @@ function buildReportHtml(
   /* ── Strategic Impact ───────────────────────────────────────────────────── */
   .si-summary { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 8px; }
   .si-confidence { font-size: 9pt; color: #6b7280; margin-bottom: 16px; }
-  .si-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .si-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; page-break-inside: avoid; }
   .si-stat { border-radius: 10px; padding: 14px; text-align: center; border: 1px solid transparent; }
   .si-stat-pct { font-size: 20pt; font-weight: 800; }
   .si-stat-label { font-size: 8.5pt; font-weight: 600; margin-top: 4px; }
@@ -894,7 +900,7 @@ function buildReportHtml(
 
   /* ── Discovery Diagnostic ───────────────────────────────────────────────── */
   .diag-summary { font-size: 10.5pt; color: #374151; line-height: 1.7; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
-  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; page-break-inside: avoid; }
   .diag-card { border: 1px solid; border-radius: 10px; padding: 14px 16px; }
   .diag-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 8px; }
   .diag-insight { font-size: 9.5pt; color: #374151; line-height: 1.6; margin-bottom: 6px; }
@@ -940,7 +946,7 @@ function buildReportHtml(
   .struct-td-muted { padding: 9px 14px; color: #6b7280; border-top: 1px solid #f1f5f9; }
   .struct-td-score { padding: 9px 14px; text-align: right; font-weight: 700; border-top: 1px solid #f1f5f9; }
   .struct-sev { padding: 2px 6px; border-radius: 4px; font-size: 8pt; font-weight: 600; }
-  .narr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .narr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; page-break-inside: avoid; }
   .narr-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
   .narr-layer { font-size: 8pt; font-weight: 700; text-transform: capitalize; letter-spacing: 0.1em; color: #374151; margin-bottom: 4px; text-transform: uppercase; }
   .narr-sentiment { font-size: 9.5pt; font-weight: 600; margin-bottom: 10px; text-transform: capitalize; }
@@ -982,6 +988,9 @@ function buildReportHtml(
 </style>
 </head>
 <body>
+
+<!-- Per-page pinstripe border: position:fixed repeats on every printed page -->
+<div style="position:fixed;top:0;left:0;width:100%;height:100%;border:0.75pt solid #dde1e7;box-sizing:border-box;pointer-events:none;border-radius:0;z-index:9999;"></div>
 
 <!-- ══ Cover page ══ -->
 <div class="cover">
