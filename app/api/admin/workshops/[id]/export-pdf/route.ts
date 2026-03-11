@@ -415,6 +415,42 @@ function renderCustomSection(cfg: ReportSectionConfig): string {
     </section>`;
 }
 
+// ── Chapter divider ───────────────────────────────────────────────────────────
+
+function renderChapter(cfg: ReportSectionConfig): string {
+  return `
+    <div class="chapter-divider">
+      <div class="chapter-accent"></div>
+      <div class="chapter-label">${esc(cfg.title)}</div>
+    </div>`;
+}
+
+// ── Conclusion section ────────────────────────────────────────────────────────
+
+function renderConclusion(reportSummary: ReportSummary): string {
+  const conclusion = reportSummary.reportConclusion;
+  if (!conclusion) return '';
+
+  const steps = conclusion.nextSteps
+    .map((s, i) => `
+      <div class="next-step-item">
+        <div class="next-step-num">${i + 1}</div>
+        <div class="next-step-content">
+          <div class="next-step-title">${esc(s.title)}</div>
+          <div class="next-step-desc">${esc(s.description)}</div>
+        </div>
+      </div>`)
+    .join('');
+
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">${esc('Summary &amp; Next Steps')}</div></div>
+      <div class="conclusion-summary">${esc(conclusion.summary)}</div>
+      <div class="next-steps-heading">Recommended Next Steps</div>
+      <div class="next-step-list">${steps}</div>
+    </section>`;
+}
+
 // ── Full HTML document ────────────────────────────────────────────────────────
 
 function buildReportHtml(
@@ -427,15 +463,26 @@ function buildReportHtml(
 
   const enabledSections = layout.sections.filter(s => s.enabled);
 
-  // Table of contents entries
-  const tocEntries = enabledSections.map((cfg, i) => `
-    <div class="toc-row">
-      <span class="toc-num">${i + 1}</span>
+  // Table of contents entries — chapters shown as section dividers, not numbered
+  let tocNum = 0;
+  const tocEntries = enabledSections.map((cfg) => {
+    if (cfg.type === 'chapter') {
+      return `<div class="toc-row" style="margin-top:8px;padding-top:8px;border-top:2px solid #1e293b;">
+        <span class="toc-num" style="color:#1e293b;font-size:7pt;">§</span>
+        <span class="toc-title" style="font-weight:700;color:#111827;">${esc(cfg.title)}</span>
+        <span class="toc-dots"></span>
+      </div>`;
+    }
+    tocNum++;
+    return `<div class="toc-row">
+      <span class="toc-num">${tocNum}</span>
       <span class="toc-title">${esc(cfg.title)}</span>
       <span class="toc-dots"></span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   const sectionsHtml = enabledSections.map(cfg => {
+    if (cfg.type === 'chapter') return renderChapter(cfg);
     if (cfg.type === 'custom') return renderCustomSection(cfg);
     switch (cfg.id) {
       case 'executive_summary':   return renderExecutiveSummary(reportSummary, cfg);
@@ -454,6 +501,8 @@ function buildReportHtml(
         return renderDiscoverySignals(discoveryOutput);
       case 'insight_summary':
         return renderInsightSummary(intelligence);
+      case 'report_conclusion':
+        return renderConclusion(reportSummary);
       default: return '';
     }
   }).join('\n');
@@ -703,6 +752,30 @@ function buildReportHtml(
   .insight-stat-val.indigo { color: #4338ca; }
   .insight-stat-val.blue { color: #1d4ed8; }
   .insight-stat-label { font-size: 8.5pt; color: #6b7280; margin-top: 4px; font-weight: 500; }
+
+  /* ── Chapter dividers ───────────────────────────────────────────────────── */
+  .chapter-divider {
+    page-break-before: always;
+    background: #1e293b;
+    border-radius: 10px;
+    padding: 20px 28px;
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .chapter-accent { width: 4px; height: 28px; border-radius: 2px; background: #6366f1; flex-shrink: 0; }
+  .chapter-label { font-size: 14pt; font-weight: 700; color: #f1f5f9; letter-spacing: -0.01em; }
+
+  /* ── Report Conclusion ──────────────────────────────────────────────────── */
+  .conclusion-summary { font-size: 10.5pt; color: #374151; line-height: 1.8; margin-bottom: 24px; white-space: pre-line; }
+  .next-steps-heading { font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #6b7280; margin-bottom: 14px; }
+  .next-step-list { display: flex; flex-direction: column; gap: 10px; }
+  .next-step-item { display: flex; gap: 14px; align-items: flex-start; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; }
+  .next-step-num { flex-shrink: 0; width: 24px; height: 24px; background: #6366f1; color: white; border-radius: 50%; font-size: 9pt; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .next-step-content { flex: 1; }
+  .next-step-title { font-size: 10.5pt; font-weight: 700; color: #111827; margin-bottom: 3px; }
+  .next-step-desc { font-size: 9.5pt; color: #6b7280; line-height: 1.5; }
 </style>
 </head>
 <body>

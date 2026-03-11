@@ -225,7 +225,7 @@ export interface SolutionSummary {
 
 export interface ReportSectionConfig {
   id: string;                // builtin id (e.g. 'executive_summary') or custom nanoid
-  type: 'builtin' | 'custom';
+  type: 'builtin' | 'custom' | 'chapter';
   title: string;
   enabled: boolean;
   collapsed: boolean;        // UI state only — does not affect PDF
@@ -247,19 +247,41 @@ export function defaultReportLayout(): ReportLayout {
   return {
     version: 1,
     sections: [
-      { id: 'executive_summary',    type: 'builtin', title: 'Executive Summary',    enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'supporting_evidence',  type: 'builtin', title: 'Supporting Evidence',  enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'root_causes',          type: 'builtin', title: 'Root Causes',          enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'solution_direction',   type: 'builtin', title: 'Solution Direction',   enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'journey_map',          type: 'builtin', title: 'Customer Journey',     enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'executive_summary',       type: 'builtin', title: 'Executive Summary',        enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'supporting_evidence',     type: 'builtin', title: 'Supporting Evidence',      enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'root_causes',             type: 'builtin', title: 'Root Causes',              enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'solution_direction',      type: 'builtin', title: 'Solution Direction',       enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'journey_map',             type: 'builtin', title: 'Customer Journey',         enabled: true,  collapsed: false, excludedItems: [] },
       // Cross-page sections — disabled until toggled on from their source page
-      { id: 'strategic_impact',     type: 'builtin', title: 'Strategic Impact',     enabled: false, collapsed: false, excludedItems: [] },
-      { id: 'discovery_diagnostic', type: 'builtin', title: 'Discovery Diagnostic', enabled: false, collapsed: false, excludedItems: [] },
-      { id: 'discovery_signals',    type: 'builtin', title: 'Discovery Signals',    enabled: false, collapsed: false, excludedItems: [] },
-      { id: 'insight_summary',      type: 'builtin', title: 'Insight Map Summary',  enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'strategic_impact',        type: 'builtin', title: 'Strategic Impact',         enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'discovery_diagnostic',    type: 'builtin', title: 'Discovery Diagnostic',     enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'discovery_signals',       type: 'builtin', title: 'Discovery Signals',        enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'insight_summary',         type: 'builtin', title: 'Insight Map Summary',      enabled: false, collapsed: false, excludedItems: [] },
+      // Structural Analysis sub-sections — disabled until toggled on from Discovery Output
+      { id: 'structural_alignment',    type: 'builtin', title: 'Domain Misalignment',      enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'structural_narrative',    type: 'builtin', title: 'Narrative Divergence',     enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'structural_tensions',     type: 'builtin', title: 'Transformation Tensions',  enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'structural_barriers',     type: 'builtin', title: 'Structural Barriers',      enabled: false, collapsed: false, excludedItems: [] },
+      // Conclusion — enabled by default, positioned last
+      { id: 'report_conclusion',       type: 'builtin', title: 'Summary & Next Steps',     enabled: true,  collapsed: false, excludedItems: [] },
     ],
   };
 }
+
+// ── Report Conclusion ─────────────────────────────────────────────────────────
+
+export interface ReportNextStep {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface ReportConclusion {
+  summary: string;
+  nextSteps: ReportNextStep[];
+}
+
+// ── Full Report Summary ───────────────────────────────────────────────────────
 
 export interface ReportSummary {
   workshopAsk: string;
@@ -272,6 +294,7 @@ export interface ReportSummary {
   generatedAtMs: number;
   journeyIntro?: string;
   layout?: ReportLayout;
+  reportConclusion?: ReportConclusion;
 }
 
 // ── SSE Event Types ───────────────────────────────────────────────────────────

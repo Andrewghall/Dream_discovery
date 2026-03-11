@@ -41,7 +41,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import type { WorkshopOutputIntelligence } from '@/lib/output-intelligence/types';
-import type { ReportSummary, ReportSectionConfig, ReportLayout } from '@/lib/output-intelligence/types';
+import type { ReportSummary, ReportSectionConfig, ReportLayout, ReportConclusion, ReportNextStep } from '@/lib/output-intelligence/types';
 import { defaultReportLayout } from '@/lib/output-intelligence/types';
 import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
@@ -1011,6 +1011,150 @@ function InsightSummaryBlock({ intelligence }: { intelligence: WorkshopOutputInt
   );
 }
 
+// ── Report Conclusion block ───────────────────────────────────────────────────
+
+function ReportConclusionBlock({
+  workshopId,
+  conclusion,
+  onUpdate,
+}: {
+  workshopId: string;
+  conclusion: ReportConclusion | null | undefined;
+  onUpdate: (c: ReportConclusion) => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}/report-conclusion`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' })) as { error?: string };
+        throw new Error(err.error ?? 'Generation failed');
+      }
+      const data = await res.json() as { conclusion: ReportConclusion };
+      onUpdate(data.conclusion);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to generate conclusion');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const updateStep = (id: string, patch: Partial<ReportNextStep>) => {
+    if (!conclusion) return;
+    onUpdate({
+      ...conclusion,
+      nextSteps: conclusion.nextSteps.map(s => s.id === id ? { ...s, ...patch } : s),
+    });
+  };
+
+  const removeStep = (id: string) => {
+    if (!conclusion) return;
+    onUpdate({ ...conclusion, nextSteps: conclusion.nextSteps.filter(s => s.id !== id) });
+  };
+
+  const addStep = () => {
+    if (!conclusion) return;
+    onUpdate({
+      ...conclusion,
+      nextSteps: [...conclusion.nextSteps, { id: nanoid(8), title: 'New Step', description: '' }],
+    });
+  };
+
+  if (!conclusion) {
+    return (
+      <div className="px-5 py-6 flex flex-col items-center gap-3 text-center">
+        <p className="text-sm text-muted-foreground">
+          Generate an AI-powered summary and recommended next steps for the end of your report.
+        </p>
+        <Button
+          onClick={() => void handleGenerate()}
+          disabled={generating}
+          className="gap-2"
+        >
+          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {generating ? 'Generating…' : 'Generate Conclusion'}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5 p-5">
+      {/* Summary */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Conclusion
+          </p>
+          <button
+            onClick={() => void handleGenerate()}
+            disabled={generating}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            {generating ? 'Regenerating…' : 'Regenerate'}
+          </button>
+        </div>
+        <EditableText
+          value={conclusion.summary}
+          onSave={(v) => onUpdate({ ...conclusion, summary: v })}
+          multiline
+          className="text-sm text-foreground leading-relaxed"
+        />
+      </div>
+
+      {/* Next Steps */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Recommended Next Steps
+        </p>
+        <div className="space-y-2">
+          {conclusion.nextSteps.map((step, i) => (
+            <div key={step.id} className="group/step flex items-start gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
+                {i + 1}
+              </span>
+              <div className="flex-1 min-w-0 space-y-1">
+                <EditableText
+                  value={step.title}
+                  onSave={(v) => updateStep(step.id, { title: v })}
+                  className="text-sm font-semibold text-foreground"
+                  placeholder="Step title"
+                />
+                <EditableText
+                  value={step.description}
+                  onSave={(v) => updateStep(step.id, { description: v })}
+                  multiline
+                  className="text-xs text-muted-foreground leading-relaxed"
+                  placeholder="Step description"
+                />
+              </div>
+              <button
+                onClick={() => removeStep(step.id)}
+                className="shrink-0 opacity-0 group-hover/step:opacity-100 p-1 text-muted-foreground/40 hover:text-red-500 transition-all"
+                title="Remove step"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={addStep}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add step
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Journey Map section ───────────────────────────────────────────────────────
 
 function JourneyDownloadBar({ workshopId }: { workshopId: string }) {
@@ -1757,6 +1901,26 @@ export default function DownloadReportPage({ params }: PageProps) {
     });
   }, [updateLayout]);
 
+  const addChapterSection = useCallback(() => {
+    const newSection: ReportSectionConfig = {
+      id: `chapter_${nanoid(8)}`,
+      type: 'chapter',
+      title: 'New Chapter',
+      enabled: true,
+      collapsed: false,
+      excludedItems: [],
+    };
+    setLayout(prev => {
+      const next = { ...prev, sections: [...prev.sections, newSection] };
+      updateLayout(next);
+      return next;
+    });
+  }, [updateLayout]);
+
+  const updateSectionTitle = useCallback((id: string, title: string) => {
+    updateSection(id, { title });
+  }, [updateSection]);
+
   const handleClientLogoUpload = useCallback(async (file: File) => {
     setUploadingClientLogo(true);
     try {
@@ -2091,7 +2255,8 @@ export default function DownloadReportPage({ params }: PageProps) {
                         config={cfg}
                         onToggleEnabled={() => updateSection(cfg.id, { enabled: !cfg.enabled })}
                         onToggleCollapsed={() => updateSection(cfg.id, { collapsed: !cfg.collapsed })}
-                        onRemove={cfg.type === 'custom' ? () => removeSection(cfg.id) : undefined}
+                        onRemove={(cfg.type === 'custom' || cfg.type === 'chapter') ? () => removeSection(cfg.id) : undefined}
+                        onTitleChange={cfg.type === 'chapter' ? (title) => updateSectionTitle(cfg.id, title) : undefined}
                       >
                         {/* ── Executive Summary ── */}
                         {cfg.id === 'executive_summary' && (
@@ -2258,6 +2423,20 @@ export default function DownloadReportPage({ params }: PageProps) {
                           </div>
                         )}
 
+                        {/* ── Report Conclusion ── */}
+                        {cfg.id === 'report_conclusion' && (
+                          <ReportConclusionBlock
+                            workshopId={workshopId}
+                            conclusion={reportSummary?.reportConclusion}
+                            onUpdate={(c) => {
+                              if (reportSummary) handleSummaryUpdate({ ...reportSummary, reportConclusion: c });
+                            }}
+                          />
+                        )}
+
+                        {/* ── Chapter sections have no body ── */}
+                        {cfg.type === 'chapter' && null}
+
                         {/* ── Custom Section ── */}
                         {cfg.type === 'custom' && (
                           <CustomSectionEditor
@@ -2273,14 +2452,23 @@ export default function DownloadReportPage({ params }: PageProps) {
               </div>
             </SortableContext>
 
-            {/* ── Add custom section ── */}
-            <button
-              onClick={addCustomSection}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary/30 hover:text-foreground transition-colors mt-2"
-            >
-              <Plus className="h-4 w-4" />
-              Add custom section
-            </button>
+            {/* ── Add section controls ── */}
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={addChapterSection}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-primary/30 text-sm text-primary/60 hover:border-primary/50 hover:text-primary transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Add chapter header
+              </button>
+              <button
+                onClick={addCustomSection}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary/30 hover:text-foreground transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Add custom section
+              </button>
+            </div>
 
             {/* DragOverlay — ghost card during drag */}
             <DragOverlay>

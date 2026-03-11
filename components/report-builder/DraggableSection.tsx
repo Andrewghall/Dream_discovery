@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ChevronDown, ChevronUp, Eye, EyeOff, Trash2 } from 'lucide-react';
@@ -11,6 +12,10 @@ const SOURCE_BADGE: Record<string, string> = {
   discovery_diagnostic: 'Discovery',
   discovery_signals:    'Discovery',
   insight_summary:      'Insight Map',
+  structural_alignment: 'Discovery',
+  structural_narrative: 'Discovery',
+  structural_tensions:  'Discovery',
+  structural_barriers:  'Discovery',
 };
 
 interface DraggableSectionProps {
@@ -19,6 +24,7 @@ interface DraggableSectionProps {
   onToggleEnabled: () => void;
   onToggleCollapsed: () => void;
   onRemove?: () => void;
+  onTitleChange?: (title: string) => void;
   isDragOverlay?: boolean;
 }
 
@@ -28,6 +34,7 @@ export function DraggableSection({
   onToggleEnabled,
   onToggleCollapsed,
   onRemove,
+  onTitleChange,
   isDragOverlay = false,
 }: DraggableSectionProps) {
   const {
@@ -39,6 +46,9 @@ export function DraggableSection({
     isDragging,
   } = useSortable({ id: config.id });
 
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(config.title);
+
   const style = isDragOverlay
     ? undefined
     : {
@@ -46,6 +56,78 @@ export function DraggableSection({
         transition,
       };
 
+  // ── Chapter type: minimal strip with editable title ───────────────────────
+  if (config.type === 'chapter') {
+    return (
+      <div
+        ref={isDragOverlay ? undefined : setNodeRef}
+        style={style}
+        className={`relative ${isDragging ? 'opacity-30 z-0' : 'opacity-100'} ${isDragOverlay ? 'shadow-2xl rotate-[0.5deg]' : ''}`}
+      >
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-primary/30 border-l-4 border-l-primary bg-primary/5">
+          {/* Drag handle */}
+          <button
+            {...(isDragOverlay ? {} : { ...attributes, ...listeners })}
+            className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors p-0.5 rounded shrink-0"
+            tabIndex={-1}
+            aria-label="Drag to reorder"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+
+          {/* Editable chapter title */}
+          <div className="flex-1 min-w-0">
+            {editingTitle ? (
+              <input
+                autoFocus
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                onBlur={() => {
+                  setEditingTitle(false);
+                  const trimmed = draftTitle.trim();
+                  if (trimmed && trimmed !== config.title) {
+                    onTitleChange?.(trimmed);
+                  } else {
+                    setDraftTitle(config.title);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                  if (e.key === 'Escape') { setDraftTitle(config.title); setEditingTitle(false); }
+                }}
+                className="w-full bg-transparent border-none outline-none text-sm font-bold text-foreground"
+              />
+            ) : (
+              <button
+                onClick={() => { setDraftTitle(config.title); setEditingTitle(true); }}
+                className="text-sm font-bold text-foreground hover:text-primary transition-colors truncate block w-full text-left"
+                title="Click to edit chapter title"
+              >
+                {config.title}
+              </button>
+            )}
+          </div>
+
+          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-primary/10 text-primary border border-primary/20">
+            Chapter
+          </span>
+
+          {/* Delete */}
+          {onRemove && (
+            <button
+              onClick={onRemove}
+              className="shrink-0 p-1 rounded text-muted-foreground/30 hover:text-red-500 transition-colors"
+              title="Remove chapter"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Standard section ──────────────────────────────────────────────────────
   return (
     <div
       ref={isDragOverlay ? undefined : setNodeRef}
