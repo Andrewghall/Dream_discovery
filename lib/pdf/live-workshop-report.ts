@@ -1,8 +1,8 @@
 import chromium from '@sparticuz/chromium';
 import puppeteerCore from 'puppeteer-core';
 // Use regular puppeteer in development (has bundled Chromium)
-// @ts-expect-error - puppeteer may not be installed in production
-import puppeteerFull from 'puppeteer';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const puppeteerFull = (() => { try { return require('puppeteer'); } catch { return null; } })();
 
 type LiveWorkshopReport = {
   title: string;

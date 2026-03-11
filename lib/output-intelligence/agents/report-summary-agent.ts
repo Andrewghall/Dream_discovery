@@ -288,13 +288,19 @@ Return JSON: { "passed": boolean, "gaps": string[] }
   Format each gap as: "Finding 3 is too generic — names no system or metric" or "Customer lens is missing from lensFindings" or "Urgency cites no specific trigger"
   Do NOT flag items that contain specific named entities, numbers, locations, or regulations as generic.`;
 
-  const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
-    response_format: { type: 'json_object' },
-    messages: [{ role: 'user', content: validationPrompt }],
-    temperature: 0.1,
-    max_tokens: 600,
-  });
+  const validationController = new AbortController();
+  const validationTimeoutId = setTimeout(() => validationController.abort(), 30_000);
+  const response = await client.chat.completions.create(
+    {
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: validationPrompt }],
+      temperature: 0.1,
+      max_tokens: 600,
+    },
+    { signal: validationController.signal },
+  );
+  clearTimeout(validationTimeoutId);
 
   const raw = response.choices[0]?.message?.content ?? '{"passed":true,"gaps":[]}';
   const result = JSON.parse(raw) as { passed: boolean; gaps: string[] };
@@ -352,17 +358,23 @@ ${SCHEMA}`;
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 100_000);
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        temperature: 0.2,
-        max_tokens: 6000,
-      });
+      const response = await openai.chat.completions.create(
+        {
+          model: 'gpt-4o',
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+          temperature: 0.2,
+          max_tokens: 6000,
+        },
+        { signal: controller.signal },
+      );
+      clearTimeout(timeoutId);
 
       const raw = response.choices[0]?.message?.content ?? '{}';
       const parsed = JSON.parse(raw) as ReportSummary;
@@ -385,6 +397,7 @@ ${SCHEMA}`;
       onProgress?.('Report Summary: complete ✓');
       return parsed;
     } catch (err) {
+      clearTimeout(timeoutId);
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
     }
