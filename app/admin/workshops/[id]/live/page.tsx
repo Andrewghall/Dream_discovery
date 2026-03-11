@@ -9,6 +9,7 @@ import {
   NodeDetailDialog,
   bestConfidence,
 } from './_components/LiveSessionModals';
+import { LiveSessionHeader } from './_components/LiveSessionHeader';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -3255,75 +3256,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
             </CardHeader>
           </Card>
         )}
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">Workshop Live (MVP)</h1>
-            <p className="text-sm text-muted-foreground">
-              Captures room audio and transcribes live → DataPoints
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="hidden sm:flex items-center gap-1 rounded-md border bg-muted/20 p-1">
-              <Button
-                type="button"
-                variant={dialoguePhase === 'REIMAGINE' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setDialoguePhase('REIMAGINE')}
-              >
-                Reimagine
-              </Button>
-              <Button
-                type="button"
-                variant={dialoguePhase === 'CONSTRAINTS' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setDialoguePhase('CONSTRAINTS')}
-              >
-                Constraints
-              </Button>
-              <Button
-                type="button"
-                variant={dialoguePhase === 'DEFINE_APPROACH' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setDialoguePhase('DEFINE_APPROACH')}
-              >
-                Define approach
-              </Button>
-            </div>
-            <div className="flex items-center gap-1 rounded-md border bg-muted/20 p-1">
-              <Button
-                type="button"
-                variant={viewMode === 'room' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('room')}
-              >
-                Room
-              </Button>
-              <Button
-                type="button"
-                variant={viewMode === 'facilitator' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('facilitator')}
-              >
-                Facilitator
-              </Button>
-              <Button
-                type="button"
-                variant={viewMode === 'split' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('split')}
-              >
-                Split
-              </Button>
-            </div>
-            {/* Navigation handled by sidebar */}
-          </div>
-        </div>
-
-        <div className="sm:hidden">
-          <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
-            Phase: <span className="font-medium">{phaseLabel}</span>
-          </div>
-        </div>
+        <LiveSessionHeader
+          dialoguePhase={dialoguePhase}
+          onPhaseChange={setDialoguePhase}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          phaseLabel={phaseLabel}
+        />
 
         {viewMode === 'room' ? null : (
           <Card>
