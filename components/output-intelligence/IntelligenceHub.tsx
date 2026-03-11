@@ -17,6 +17,7 @@ import type {
   WorkshopOutputIntelligence,
   EngineKey,
 } from '@/lib/output-intelligence/types';
+import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
 
 // ── Signal config — DREAM cognitive function mapping ──────────────────────────
 
@@ -113,6 +114,16 @@ const SIGNAL_COLORS = {
     activeBg: 'bg-amber-600', headerBg: 'bg-amber-50/70',
   },
 } as const;
+
+// ── Report section IDs for each engine panel ──────────────────────────────────
+
+const ENGINE_SECTION_MAP: Record<EngineKey, { sectionId: string; title: string }> = {
+  discoveryValidation: { sectionId: 'supporting_evidence', title: 'Supporting Evidence' },
+  rootCause:           { sectionId: 'root_causes',         title: 'Root Causes'         },
+  futureState:         { sectionId: 'solution_direction',  title: 'Solution Direction'  },
+  roadmap:             { sectionId: 'solution_direction',  title: 'Solution Direction'  },
+  strategicImpact:     { sectionId: 'strategic_impact',    title: 'Strategic Impact'    },
+};
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -480,7 +491,14 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                       </span>
                       <ChevronRight className={`h-3 w-3 ${colors.accent}`} />
                       <span className="text-xs font-medium text-slate-600">{signal.phase} Phase</span>
-                      <span className="text-xs text-slate-400 ml-auto italic">{signal.description}</span>
+                      <span className="text-xs text-slate-400 italic hidden sm:block">{signal.description}</span>
+                      <div className="ml-auto">
+                        <ReportSectionToggle
+                          workshopId={workshopId}
+                          sectionId={ENGINE_SECTION_MAP[signal.key].sectionId}
+                          title={ENGINE_SECTION_MAP[signal.key].title}
+                        />
+                      </div>
                     </div>
                     <div className={`rounded-b-xl border ${colors.border} overflow-hidden`}>
                       <EngineShell

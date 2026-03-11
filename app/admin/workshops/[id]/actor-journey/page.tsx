@@ -5,6 +5,7 @@ import { RefreshCw, CheckCircle2, Loader2, Route } from 'lucide-react';
 import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { StoredOutputJourney } from '@/app/api/admin/workshops/[id]/journey/output/route';
+import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -212,6 +213,13 @@ export default function ActorJourneyPage({
                 </p>
               )}
             </div>
+            {journey && (
+              <ReportSectionToggle
+                workshopId={workshopId}
+                sectionId="journey_map"
+                title="Customer Journey"
+              />
+            )}
           </div>
 
           <div className="flex items-center gap-3">
