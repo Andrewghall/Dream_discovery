@@ -670,7 +670,7 @@ function buildReportHtml(
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; background: white; line-height: 1.7; }
+  body { font-family: 'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; background: white; line-height: 1.7; padding: 0 12px; }
   @page { size: A4; }
   /* Journey map gets a full landscape page */
   @page landscape-page { size: A4 landscape; margin: 16mm 18mm 14mm; }
