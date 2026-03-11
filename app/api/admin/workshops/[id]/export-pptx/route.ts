@@ -308,50 +308,56 @@ function addExecutiveSummarySlides(
 
     let y = CY + 0.05;
 
-    // Q&A card
+    // Q&A card — tall enough for wrapping answer
+    const qaH = 1.1;
     if (!excl('qa')) {
-      box(slide, ML, y, CW, 0.88, 'EEF2FF', 'C7D2FE', 0.05);
-      slide.addText(t(tr(es.theAsk ?? '', 130)), {
+      box(slide, ML, y, CW, qaH, 'EEF2FF', 'C7D2FE', 0.05);
+      slide.addText(t(tr(es.theAsk ?? '', 220)), {
         x: ML + 0.15, y: y + 0.06, w: CW - 0.3, h: 0.22,
-        fontSize: 8.5, color: C.muted, fontFace: 'Calibri',
+        fontSize: 8.5, color: C.muted, fontFace: 'Calibri', wrap: true,
       });
-      slide.addText(t(tr(es.theAnswer ?? '', 190)), {
-        x: ML + 0.15, y: y + 0.28, w: CW - 0.3, h: 0.32,
+      slide.addText(t(tr(es.theAnswer ?? '', 400)), {
+        x: ML + 0.15, y: y + 0.3, w: CW - 0.3, h: 0.52,
         fontSize: 10.5, bold: true, color: C.text, fontFace: 'Calibri',
         wrap: true,
       });
       if (es.urgency) {
-        slide.addText(`⚡ ${t(tr(es.urgency, 130))}`, {
-          x: ML + 0.15, y: y + 0.63, w: CW - 0.3, h: 0.2,
-          fontSize: 8.5, color: C.amber, fontFace: 'Calibri',
+        slide.addText(`⚡ ${t(tr(es.urgency, 200))}`, {
+          x: ML + 0.15, y: y + 0.86, w: CW - 0.3, h: 0.2,
+          fontSize: 8.5, color: C.amber, fontFace: 'Calibri', wrap: true,
         });
       }
-      y += 0.98;
+      y += qaH + 0.1;
     }
 
-    // Key findings
+    // Key findings — dynamic heights filling remaining space
     const findings = (es.whatWeFound ?? [])
       .filter((_, i) => !excl(`finding:${i}`))
-      .slice(0, 5);
+      .slice(0, 7);
     if (findings.length) {
+      const labelH = 0.26;
+      const gapH = 0.05;
+      const availH = FY - y - labelH - 0.05;
+      const findH = Math.max(0.46, (availH - gapH * (findings.length - 1)) / findings.length);
+
       slide.addText('KEY FINDINGS', {
         x: ML, y, w: CW, h: 0.22,
         fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
       });
-      y += 0.22;
+      y += labelH;
+
       findings.forEach((f, i) => {
-        const fy = y + i * 0.41;
-        if (fy + 0.38 > FY - 0.05) return;
-        box(slide, ML, fy, 0.26, 0.28, C.primary, C.primary, 0.03);
+        const fy = y + i * (findH + gapH);
+        box(slide, ML, fy, 0.3, findH, C.primary, C.primary, 0.03);
         slide.addText(String(i + 1), {
-          x: ML, y: fy, w: 0.26, h: 0.28,
-          fontSize: 8.5, bold: true, color: C.white, fontFace: 'Calibri',
+          x: ML, y: fy, w: 0.3, h: findH,
+          fontSize: 9, bold: true, color: C.white, fontFace: 'Calibri',
           align: 'center', valign: 'middle',
         });
-        slide.addText(t(tr(f, 150)), {
-          x: ML + 0.33, y: fy, w: CW - 0.33, h: 0.36,
+        slide.addText(t(tr(f, 350)), {
+          x: ML + 0.37, y: fy + 0.04, w: CW - 0.37, h: findH - 0.08,
           fontSize: 9.5, color: C.text, fontFace: 'Calibri',
-          wrap: true,
+          wrap: true, valign: 'top',
         });
       });
     }
@@ -365,45 +371,54 @@ function addExecutiveSummarySlides(
     addHeader(slide, 'Executive Summary — Lens Analysis');
     addFooter(slide, footer);
 
-    let y = CY + 0.05;
-    slide.addText('LENS FINDINGS', {
-      x: ML, y, w: CW, h: 0.22,
-      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-    });
-    y += 0.24;
-
     const perRow = 2;
     const itemW = (CW - 0.12) / perRow;
-    lensFindings.slice(0, 6).forEach((lf, i) => {
+    const visibleFindings = lensFindings.slice(0, 6);
+    const rows = Math.ceil(visibleFindings.length / perRow);
+    const hasTD = !excl('transformation') && !!summary.transformationDirection;
+    const tdH = hasTD ? 0.72 : 0;
+    const tdGap = hasTD ? 0.1 : 0;
+    const labelH = 0.26;
+    const rowGap = 0.08;
+    const startY = CY + 0.05;
+    const availForGrid = FY - startY - labelH - tdH - tdGap - 0.05;
+    const cardH = Math.max(0.7, (availForGrid - rowGap * (rows - 1)) / rows);
+
+    slide.addText('LENS FINDINGS', {
+      x: ML, y: startY, w: CW, h: 0.22,
+      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
+    });
+
+    visibleFindings.forEach((lf, i) => {
       const col = i % perRow;
       const row = Math.floor(i / perRow);
       const lx = ML + col * (itemW + 0.12);
-      const ly = y + row * 0.74;
-      if (ly + 0.68 > FY - 0.1) return;
-      box(slide, lx, ly, itemW, 0.68, 'F8FAFC', C.border, 0.05);
+      const ly = startY + labelH + row * (cardH + rowGap);
+      box(slide, lx, ly, itemW, cardH, 'F8FAFC', C.border, 0.05);
       slide.addText(t(lf.lens).toUpperCase(), {
-        x: lx + 0.1, y: ly + 0.08, w: itemW - 0.2, h: 0.18,
+        x: lx + 0.1, y: ly + 0.08, w: itemW - 0.2, h: 0.2,
         fontSize: 7.5, bold: true, color: C.primary, fontFace: 'Calibri',
       });
-      slide.addText(t(tr(lf.finding, 110)), {
-        x: lx + 0.1, y: ly + 0.26, w: itemW - 0.2, h: 0.38,
+      slide.addText(t(tr(lf.finding, 500)), {
+        x: lx + 0.1, y: ly + 0.3, w: itemW - 0.2, h: cardH - 0.38,
         fontSize: 9, color: C.text, fontFace: 'Calibri',
-        wrap: true,
+        wrap: true, valign: 'top',
       });
     });
 
-    // Transformation direction
-    if (!excl('transformation') && summary.transformationDirection) {
-      const ty = CY + CH - 0.7;
-      box(slide, ML, ty, CW, 0.62, 'F0FDF4', 'BBF7D0', 0.05);
+    // Transformation direction — positioned directly after the grid
+    if (hasTD) {
+      const gridEndY = startY + labelH + rows * (cardH + rowGap) - rowGap;
+      const tdY = gridEndY + tdGap;
+      box(slide, ML, tdY, CW, tdH, 'F0FDF4', 'BBF7D0', 0.05);
       slide.addText('TRANSFORMATION DIRECTION', {
-        x: ML + 0.15, y: ty + 0.06, w: CW, h: 0.18,
+        x: ML + 0.15, y: tdY + 0.06, w: CW, h: 0.18,
         fontSize: 7.5, bold: true, color: C.green, fontFace: 'Calibri',
       });
-      slide.addText(t(tr(summary.transformationDirection, 220)), {
-        x: ML + 0.15, y: ty + 0.26, w: CW - 0.3, h: 0.32,
+      slide.addText(t(tr(summary.transformationDirection ?? '', 350)), {
+        x: ML + 0.15, y: tdY + 0.26, w: CW - 0.3, h: tdH - 0.32,
         fontSize: 9.5, color: C.text, fontFace: 'Calibri',
-        wrap: true,
+        wrap: true, valign: 'top',
       });
     }
   }
@@ -439,56 +454,74 @@ function addSupportingEvidenceSlide(
     .filter((_, i) => !cfg.excludedItems.includes(`confirmed:${i}`))
     .slice(0, 5);
 
-  if (confirmed.length) {
-    slide.addText('CONFIRMED ISSUES', {
-      x: ML, y, w: CW, h: 0.22,
-      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-    });
-    y += 0.24;
-    confirmed.forEach(ci => {
-      if (y + 0.42 > FY - 0.05) return;
-      box(slide, ML, y, CW, 0.4, 'F8FAFC', C.border, 0.03);
-      box(slide, ML + 0.1, y + 0.08, 0.58, 0.22, confBg[ci.confidence] ?? 'F1F5F9', confBg[ci.confidence] ?? 'F1F5F9', 0.03);
-      slide.addText(ci.confidence, {
-        x: ML + 0.1, y: y + 0.08, w: 0.58, h: 0.22,
-        fontSize: 7, bold: true, color: confFg[ci.confidence] ?? C.muted,
-        fontFace: 'Calibri', align: 'center', valign: 'middle',
-      });
-      slide.addText(t(tr(ci.issue, 110)), {
-        x: ML + 0.78, y: y + 0.05, w: CW - 0.88, h: 0.18,
-        fontSize: 9, bold: true, color: C.text, fontFace: 'Calibri',
-      });
-      slide.addText(t(tr(ci.workshopEvidence, 130)), {
-        x: ML + 0.78, y: y + 0.23, w: CW - 0.88, h: 0.16,
-        fontSize: 8, color: C.muted, fontFace: 'Calibri',
-      });
-      y += 0.47;
-    });
-  }
-
   const newIssues = (dv.newIssues ?? [])
     .filter((_, i) => !cfg.excludedItems.includes(`new:${i}`))
     .slice(0, 3);
 
-  if (newIssues.length && y < FY - 0.55) {
-    slide.addText('NEW ISSUES — SURFACED IN WORKSHOP', {
-      x: ML, y, w: CW, h: 0.22,
-      fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
-    });
-    y += 0.24;
-    newIssues.forEach(ni => {
-      if (y + 0.42 > FY - 0.05) return;
-      box(slide, ML, y, CW, 0.42, 'FFF7ED', 'FED7AA', 0.03);
-      slide.addText(t(tr(ni.issue, 110)), {
-        x: ML + 0.15, y: y + 0.05, w: CW - 0.3, h: 0.18,
-        fontSize: 9, bold: true, color: 'C2410C', fontFace: 'Calibri',
+  // Pre-compute uniform dynamic card height so all items fill the slide
+  {
+    const gapH = 0.05;
+    const ciLabelH = confirmed.length ? 0.24 : 0;
+    const niLabelH = newIssues.length ? 0.24 : 0;
+    const totalGaps =
+      gapH * Math.max(confirmed.length - 1, 0) +
+      gapH * Math.max(newIssues.length - 1, 0);
+    const totalAvail = FY - y - ciLabelH - niLabelH - totalGaps - 0.1;
+    const totalItems = confirmed.length + newIssues.length;
+    const cardH = totalItems > 0 ? Math.max(0.4, totalAvail / totalItems) : 0.4;
+
+    if (confirmed.length) {
+      slide.addText('CONFIRMED ISSUES', {
+        x: ML, y, w: CW, h: 0.22,
+        fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
       });
-      slide.addText(t(tr(ni.significance, 130)), {
-        x: ML + 0.15, y: y + 0.24, w: CW - 0.3, h: 0.16,
-        fontSize: 8, color: C.text, fontFace: 'Calibri',
+      y += 0.24;
+      confirmed.forEach(ci => {
+        box(slide, ML, y, CW, cardH, 'F8FAFC', C.border, 0.03);
+        // Badge — centred vertically in card
+        box(slide, ML + 0.1, y + (cardH - 0.22) / 2, 0.58, 0.22, confBg[ci.confidence] ?? 'F1F5F9', confBg[ci.confidence] ?? 'F1F5F9', 0.03);
+        slide.addText(ci.confidence, {
+          x: ML + 0.1, y: y + (cardH - 0.22) / 2, w: 0.58, h: 0.22,
+          fontSize: 7, bold: true, color: confFg[ci.confidence] ?? C.muted,
+          fontFace: 'Calibri', align: 'center', valign: 'middle',
+        });
+        // Issue title — upper half of right area
+        slide.addText(t(tr(ci.issue, 280)), {
+          x: ML + 0.78, y: y + 0.05, w: CW - 0.88, h: (cardH - 0.1) * 0.52,
+          fontSize: 9, bold: true, color: C.text, fontFace: 'Calibri',
+          wrap: true, valign: 'top',
+        });
+        // Evidence — lower half of right area
+        slide.addText(t(tr(ci.workshopEvidence, 320)), {
+          x: ML + 0.78, y: y + 0.05 + (cardH - 0.1) * 0.52, w: CW - 0.88, h: (cardH - 0.1) * 0.45,
+          fontSize: 8, color: C.muted, fontFace: 'Calibri',
+          wrap: true, valign: 'top',
+        });
+        y += cardH + gapH;
       });
-      y += 0.49;
-    });
+    }
+
+    if (newIssues.length) {
+      slide.addText('NEW ISSUES — SURFACED IN WORKSHOP', {
+        x: ML, y, w: CW, h: 0.22,
+        fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
+      });
+      y += 0.24;
+      newIssues.forEach(ni => {
+        box(slide, ML, y, CW, cardH, 'FFF7ED', 'FED7AA', 0.03);
+        slide.addText(t(tr(ni.issue, 280)), {
+          x: ML + 0.15, y: y + 0.05, w: CW - 0.3, h: (cardH - 0.1) * 0.52,
+          fontSize: 9, bold: true, color: 'C2410C', fontFace: 'Calibri',
+          wrap: true, valign: 'top',
+        });
+        slide.addText(t(tr(ni.significance, 320)), {
+          x: ML + 0.15, y: y + 0.05 + (cardH - 0.1) * 0.52, w: CW - 0.3, h: (cardH - 0.1) * 0.45,
+          fontSize: 8, color: C.text, fontFace: 'Calibri',
+          wrap: true, valign: 'top',
+        });
+        y += cardH + gapH;
+      });
+    }
   }
 }
 
@@ -510,13 +543,13 @@ function addRootCausesSlide(
   let y = CY + 0.05;
 
   if (rootCause.systemicPattern) {
-    box(slide, ML, y, CW, 0.44, 'EEF2FF', 'C7D2FE', 0.05);
-    slide.addText(t(tr(rootCause.systemicPattern, 220)), {
-      x: ML + 0.15, y: y + 0.07, w: CW - 0.3, h: 0.32,
+    box(slide, ML, y, CW, 0.54, 'EEF2FF', 'C7D2FE', 0.05);
+    slide.addText(t(tr(rootCause.systemicPattern, 420)), {
+      x: ML + 0.15, y: y + 0.07, w: CW - 0.3, h: 0.42,
       fontSize: 9.5, italic: true, color: C.text, fontFace: 'Calibri',
       wrap: true,
     });
-    y += 0.54;
+    y += 0.64;
   }
 
   const sevBg: Record<string, string> = { critical: C.redBg, significant: C.amberBg, moderate: 'F1F5F9' };
@@ -526,12 +559,16 @@ function addRootCausesSlide(
     .filter(rc => !cfg.excludedItems.includes(`cause:${rc.rank}`))
     .slice(0, 5);
 
+  // Dynamic card height — fill the available slide space evenly across all causes
+  const rcGapH = 0.06;
+  const iH = causes.length > 0
+    ? Math.max(0.56, (FY - y - rcGapH * (causes.length - 1) - 0.08) / causes.length)
+    : 0.56;
+
   causes.forEach(rc => {
-    if (y + 0.6 > FY - 0.05) return;
-    const iH = 0.56;
     box(slide, ML, y, CW, iH, 'F8FAFC', C.border, 0.04);
 
-    // Rank
+    // Rank — fixed top position
     box(slide, ML + 0.08, y + 0.12, 0.28, 0.28, C.primary, C.primary, 0.03);
     slide.addText(`#${rc.rank}`, {
       x: ML + 0.08, y: y + 0.12, w: 0.28, h: 0.28,
@@ -547,25 +584,30 @@ function addRootCausesSlide(
       fontFace: 'Calibri', align: 'center', valign: 'middle',
     });
 
-    // Cause + category
-    slide.addText(t(tr(rc.cause, 115)), {
-      x: ML + 1.3, y: y + 0.07, w: CW - 1.38, h: 0.22,
+    // Cause — fills from top, leaving room for category and evidence at bottom
+    const causeH = Math.max(0.22, iH - 0.38);
+    slide.addText(t(tr(rc.cause, 280)), {
+      x: ML + 1.3, y: y + 0.07, w: CW - 1.38, h: causeH,
       fontSize: 9.5, bold: true, color: C.text, fontFace: 'Calibri',
+      wrap: true, valign: 'top',
     });
+
+    // Category — just above the evidence line
     slide.addText(t(rc.category), {
-      x: ML + 1.3, y: y + 0.28, w: CW - 1.38, h: 0.16,
+      x: ML + 1.3, y: y + iH - 0.30, w: CW - 1.38, h: 0.16,
       fontSize: 8, color: C.muted, fontFace: 'Calibri',
     });
 
-    // Top evidence
+    // Top evidence — bottom strip
     const ev = (rc.evidence ?? []).slice(0, 1);
     if (ev[0]) {
-      slide.addText(`• ${t(tr(ev[0], 110))}`, {
-        x: ML + 0.15, y: y + iH - 0.17, w: CW - 0.25, h: 0.15,
+      slide.addText(`• ${t(tr(ev[0], 220))}`, {
+        x: ML + 0.15, y: y + iH - 0.18, w: CW - 0.25, h: 0.16,
         fontSize: 7.5, color: C.muted, fontFace: 'Calibri',
+        wrap: true,
       });
     }
-    y += iH + 0.06;
+    y += iH + rcGapH;
   });
 }
 
@@ -594,13 +636,13 @@ function addSolutionDirectionSlides(
     let y = CY + 0.05;
 
     if (ss.direction) {
-      box(slide, ML, y, CW, 0.52, 'F0FDF4', 'BBF7D0', 0.05);
-      slide.addText(t(tr(ss.direction, 160)), {
-        x: ML + 0.15, y: y + 0.07, w: CW - 0.3, h: 0.4,
+      box(slide, ML, y, CW, 0.58, 'F0FDF4', 'BBF7D0', 0.05);
+      slide.addText(t(tr(ss.direction, 280)), {
+        x: ML + 0.15, y: y + 0.07, w: CW - 0.3, h: 0.46,
         fontSize: 11, bold: true, color: '0F4C2A', fontFace: 'Calibri',
         wrap: true,
       });
-      y += 0.62;
+      y += 0.68;
     }
 
     const steps = (ss.whatMustChange ?? [])
@@ -608,30 +650,37 @@ function addSolutionDirectionSlides(
       .slice(0, 4);
 
     if (steps.length) {
+      const sdLabelH = 0.24;
+      const sdGapH = 0.06;
+      const sdAvail = FY - y - sdLabelH - sdGapH * (steps.length - 1) - 0.08;
+      const sdH = Math.max(0.48, sdAvail / steps.length);
+
       slide.addText('WHAT MUST CHANGE', {
         x: ML, y, w: CW, h: 0.22,
         fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
       });
-      y += 0.24;
+      y += sdLabelH;
       steps.forEach((step, i) => {
-        if (y + 0.5 > FY - 0.05) return;
-        box(slide, ML, y, CW, 0.48, 'F8FAFC', C.border, 0.04);
-        box(slide, ML, y, 0.06, 0.48, C.primary, C.primary);
+        box(slide, ML, y, CW, sdH, 'F8FAFC', C.border, 0.04);
+        box(slide, ML, y, 0.06, sdH, C.primary, C.primary);
         slide.addText(String(i + 1), {
-          x: ML + 0.12, y: y + 0.08, w: 0.22, h: 0.22,
+          x: ML + 0.12, y: y + (sdH - 0.22) / 2, w: 0.22, h: 0.22,
           fontSize: 10, bold: true, color: C.primary, fontFace: 'Calibri',
           align: 'center',
         });
+        // Area title — upper portion
         slide.addText(t(step.area), {
-          x: ML + 0.42, y: y + 0.05, w: CW - 0.52, h: 0.2,
+          x: ML + 0.42, y: y + 0.05, w: CW - 0.52, h: (sdH - 0.1) * 0.45,
           fontSize: 9.5, bold: true, color: C.text, fontFace: 'Calibri',
+          wrap: true, valign: 'top',
         });
-        slide.addText(t(tr(step.requiredChange, 130)), {
-          x: ML + 0.42, y: y + 0.25, w: CW - 0.52, h: 0.2,
+        // Required change — lower portion
+        slide.addText(t(tr(step.requiredChange, 300)), {
+          x: ML + 0.42, y: y + 0.05 + (sdH - 0.1) * 0.45, w: CW - 0.52, h: (sdH - 0.1) * 0.52,
           fontSize: 8.5, color: C.muted, fontFace: 'Calibri',
-          wrap: true,
+          wrap: true, valign: 'top',
         });
-        y += 0.54;
+        y += sdH + sdGapH;
       });
     }
   }
@@ -997,51 +1046,59 @@ function addReportConclusionSlide(
 
   let y = CY + 0.05;
 
-  // Summary paragraph
+  // Summary paragraph — tall enough to wrap comfortably
+  const sumH = conclusion.summary ? 0.78 : 0;
   if (conclusion.summary) {
-    box(slide, ML, y, CW, 0.66, 'F0F9FF', 'BAE6FD', 0.05);
-    slide.addText(t(tr(conclusion.summary, 380)), {
-      x: ML + 0.15, y: y + 0.08, w: CW - 0.3, h: 0.54,
+    box(slide, ML, y, CW, sumH, 'F0F9FF', 'BAE6FD', 0.05);
+    slide.addText(t(tr(conclusion.summary, 520)), {
+      x: ML + 0.15, y: y + 0.08, w: CW - 0.3, h: sumH - 0.14,
       fontSize: 9.5, color: C.text, fontFace: 'Calibri',
       wrap: true,
     });
-    y += 0.76;
+    y += sumH + 0.1;
   }
 
   const steps = (conclusion.nextSteps ?? []).slice(0, 5);
   if (steps.length) {
+    const rcLabelH = 0.24;
+    const rcGapH = 0.06;
+    const rcAvail = FY - y - rcLabelH - rcGapH * (steps.length - 1) - 0.08;
+    const rcH = Math.max(0.46, rcAvail / steps.length);
+
     slide.addText('RECOMMENDED NEXT STEPS', {
       x: ML, y, w: CW, h: 0.22,
       fontSize: 7.5, bold: true, color: C.muted, fontFace: 'Calibri',
     });
-    y += 0.24;
+    y += rcLabelH;
 
     steps.forEach((step, i) => {
-      if (y + 0.48 > FY - 0.05) return;
-      box(slide, ML, y, CW, 0.46, 'F8FAFC', C.border, 0.04);
+      box(slide, ML, y, CW, rcH, 'F8FAFC', C.border, 0.04);
 
-      // Circle number
+      // Circle number — vertically centred
       slide.addShape('ellipse', {
-        x: ML + 0.1, y: y + 0.1, w: 0.26, h: 0.26,
+        x: ML + 0.1, y: y + (rcH - 0.26) / 2, w: 0.26, h: 0.26,
         fill: { color: C.primary },
         line: { color: C.primary, width: 0 },
       });
       slide.addText(String(i + 1), {
-        x: ML + 0.1, y: y + 0.1, w: 0.26, h: 0.26,
+        x: ML + 0.1, y: y + (rcH - 0.26) / 2, w: 0.26, h: 0.26,
         fontSize: 9, bold: true, color: C.white, fontFace: 'Calibri',
         align: 'center', valign: 'middle',
       });
 
+      // Title — upper portion
       slide.addText(t(step.title), {
-        x: ML + 0.46, y: y + 0.05, w: CW - 0.56, h: 0.2,
+        x: ML + 0.46, y: y + 0.05, w: CW - 0.56, h: (rcH - 0.1) * 0.42,
         fontSize: 9.5, bold: true, color: C.text, fontFace: 'Calibri',
+        wrap: true, valign: 'top',
       });
-      slide.addText(t(tr(step.description, 140)), {
-        x: ML + 0.46, y: y + 0.24, w: CW - 0.56, h: 0.2,
+      // Description — lower portion
+      slide.addText(t(tr(step.description, 320)), {
+        x: ML + 0.46, y: y + 0.05 + (rcH - 0.1) * 0.42, w: CW - 0.56, h: (rcH - 0.1) * 0.55,
         fontSize: 8.5, color: C.muted, fontFace: 'Calibri',
-        wrap: true,
+        wrap: true, valign: 'top',
       });
-      y += 0.52;
+      y += rcH + rcGapH;
     });
   }
 }
