@@ -337,16 +337,6 @@ function ExecDiagnosticPanel({
     }
   };
 
-  if (!discoveryOutput) {
-    return (
-      <Card className="p-8 text-center">
-        <p className="text-sm text-muted-foreground">
-          Complete discovery interviews to generate the Executive Diagnostic.
-        </p>
-      </Card>
-    );
-  }
-
   return (
     <div className="space-y-6 max-w-3xl">
       {/* Header */}
@@ -357,14 +347,16 @@ function ExecDiagnosticPanel({
             The organisational condition based on discovery signals — readable in under 10 seconds.
           </p>
         </div>
-        <button
-          onClick={generate}
-          disabled={generating}
-          className="shrink-0 flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-50 pt-1"
-        >
-          <RefreshCw className={`h-3 w-3 ${generating ? 'animate-spin' : ''}`} />
-          {generating ? 'Generating…' : hasInsights ? 'Regenerate' : ''}
-        </button>
+        {hasInsights && (
+          <button
+            onClick={generate}
+            disabled={generating}
+            className="shrink-0 flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-50 pt-1"
+          >
+            <RefreshCw className={`h-3 w-3 ${generating ? 'animate-spin' : ''}`} />
+            {generating ? 'Generating…' : 'Regenerate'}
+          </button>
+        )}
       </div>
 
       {/* Hero summary */}
@@ -380,7 +372,7 @@ function ExecDiagnosticPanel({
       )}
 
       {/* Empty state */}
-      {!hasInsights && !generating && (
+      {(!discoveryOutput || !hasInsights) && !generating && (
         <Card className="p-8 flex flex-col items-center gap-4 text-center border-dashed">
           <div className="rounded-full bg-indigo-50 p-3">
             <BarChart2 className="h-6 w-6 text-indigo-500" />
@@ -402,7 +394,7 @@ function ExecDiagnosticPanel({
         </Card>
       )}
 
-      {generating && !hasInsights && (
+      {generating && (!discoveryOutput || !hasInsights) && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-indigo-50 border border-indigo-100">
           <Loader2 className="h-4 w-4 animate-spin text-indigo-600 shrink-0" />
           <p className="text-sm text-indigo-700">
