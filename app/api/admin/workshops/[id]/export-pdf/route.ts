@@ -254,7 +254,7 @@ function renderJourneyMap(journey: LiveJourneyData, intro: string | undefined, c
         const bg = SENTIMENT_COLORS[int.sentiment] ?? '#f1f5f9';
         return `<div class="journey-chip" style="background:${bg}">
           ${int.isPainPoint ? '<span class="pain-dot">●</span>' : ''}
-          ${esc(int.action.slice(0, 60))}${int.action.length > 60 ? '…' : ''}
+          ${esc(int.action.slice(0, 35))}${int.action.length > 35 ? '…' : ''}
         </div>`;
       }).join('');
       return `<td class="journey-td">${chips}</td>`;
@@ -608,14 +608,13 @@ function buildReportHtml(
 
   const enabledSections = layout.sections.filter(s => s.enabled);
 
-  // Table of contents entries — chapters shown as section dividers, not numbered
+  // Table of contents entries — chapters shown as styled dividers, sections as numbered badges
   let tocNum = 0;
   const tocEntries = enabledSections.map((cfg) => {
     if (cfg.type === 'chapter') {
-      return `<div class="toc-row" style="margin-top:8px;padding-top:8px;border-top:2px solid #1e293b;">
-        <span class="toc-num" style="color:#1e293b;font-size:7pt;">§</span>
-        <span class="toc-title" style="font-weight:700;color:#111827;">${esc(cfg.title)}</span>
-        <span class="toc-dots"></span>
+      return `<div class="toc-row toc-chapter">
+        <span class="toc-chapter-marker">§</span>
+        <span class="toc-chapter-title">${esc(cfg.title)}</span>
       </div>`;
     }
     tocNum++;
@@ -759,15 +758,34 @@ function buildReportHtml(
   .cover-prepared-by { text-align: right; }
 
   /* ── TOC ────────────────────────────────────────────────────────────────── */
-  .toc-page { page-break-after: always; padding-top: 16px; }
-  .toc-heading { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #9ca3af; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 24px; }
-  .toc-row { display: flex; align-items: baseline; gap: 6px; padding: 7px 0; border-bottom: 1px solid #f3f4f6; }
-  .toc-num { flex-shrink: 0; font-size: 8.5pt; font-weight: 700; color: #6366f1; width: 24px; }
-  .toc-title { font-size: 11pt; font-weight: 500; color: #111827; }
-  .toc-dots { flex: 1; border-bottom: 1px dotted #d1d5db; margin: 0 8px 4px; }
+  .toc-page { page-break-after: always; }
+  .toc-hero {
+    background: #0f172a;
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  .toc-hero-sub { font-size: 8.5pt; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 8px; }
+  .toc-hero-title { font-size: 20pt; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; line-height: 1.15; max-width: 320px; }
+  .toc-hero-meta { text-align: right; flex-shrink: 0; }
+  .toc-hero-meta-label { font-size: 7.5pt; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.3); margin-bottom: 3px; }
+  .toc-hero-meta-value { font-size: 10pt; font-weight: 600; color: rgba(255,255,255,0.65); }
+  .toc-list { margin-bottom: 24px; }
+  .toc-row { display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid #f1f5f9; }
+  .toc-num { flex-shrink: 0; width: 28px; height: 28px; background: #0f172a; color: white; border-radius: 50%; font-size: 9pt; font-weight: 700; text-align: center; line-height: 28px; }
+  .toc-title { font-size: 11.5pt; font-weight: 600; color: #111827; flex: 1; }
+  .toc-dots { flex: 1; border-bottom: 1px dotted #d1d5db; margin: 0 12px 4px; }
+  .toc-chapter { padding: 10px 0; border-bottom: 1px solid #e2e8f0; }
+  .toc-chapter-marker { flex-shrink: 0; width: 28px; height: 28px; background: #1e293b; color: rgba(255,255,255,0.7); border-radius: 6px; font-size: 10pt; font-weight: 700; text-align: center; line-height: 28px; }
+  .toc-chapter-title { font-size: 10.5pt; font-weight: 700; color: #374151; }
+  .toc-footer { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-top: 4px; }
+  .toc-footer p { font-size: 9.5pt; color: #6b7280; line-height: 1.65; }
 
   /* ── Section chrome ─────────────────────────────────────────────────────── */
-  .report-section { page-break-inside: avoid; margin-bottom: 40px; }
+  .report-section { margin-bottom: 28px; }
   .section-title-bar {
     display: flex;
     align-items: center;
@@ -848,7 +866,7 @@ function buildReportHtml(
   .actor-name { font-weight: 700; color: #111827; font-size: 8pt; }
   .actor-role { color: #9ca3af; font-size: 7pt; margin-top: 1px; }
   .journey-td { padding: 5px 6px; vertical-align: top; border-right: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; min-height: 36px; }
-  .journey-chip { border-radius: 5px; padding: 3px 6px; margin-bottom: 3px; font-size: 7.5pt; color: #374151; line-height: 1.4; }
+  .journey-chip { border-radius: 4px; padding: 2px 5px; margin-bottom: 2px; font-size: 7pt; color: #374151; line-height: 1.4; }
   .pain-dot { color: #ef4444; font-size: 8pt; margin-right: 2px; }
 
   /* ── Custom sections ────────────────────────────────────────────────────── */
@@ -996,8 +1014,23 @@ function buildReportHtml(
 
 <!-- Table of Contents -->
 <div class="toc-page">
-  <div class="toc-heading">Contents</div>
-  ${tocEntries}
+  <div class="toc-hero">
+    <div>
+      <div class="toc-hero-sub">Table of Contents</div>
+      <div class="toc-hero-title">${esc(workshopName ?? 'Workshop')}</div>
+    </div>
+    <div class="toc-hero-meta">
+      <div class="toc-hero-meta-label">Prepared</div>
+      <div class="toc-hero-meta-value">${dateStr}</div>
+      <div class="toc-hero-meta-label" style="margin-top:10px;">${enabledSections.filter(s => s.type !== 'chapter').length} sections</div>
+    </div>
+  </div>
+  <div class="toc-list">
+    ${tocEntries}
+  </div>
+  <div class="toc-footer">
+    <p>This report has been prepared by the DREAM Discovery Platform and summarises the key findings, root causes, and recommended actions from the Discovery &amp; Transformation workshop with ${esc(orgName ?? 'your organisation')}.</p>
+  </div>
 </div>
 
 ${sectionsHtml}
