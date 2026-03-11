@@ -240,17 +240,23 @@ export interface ReportSectionConfig {
 export interface ReportLayout {
   sections: ReportSectionConfig[];
   version: 1;
+  clientLogoUrl?: string;   // Client logo embedded on PDF cover page
 }
 
 export function defaultReportLayout(): ReportLayout {
   return {
     version: 1,
     sections: [
-      { id: 'executive_summary',   type: 'builtin', title: 'Executive Summary',   enabled: true, collapsed: false, excludedItems: [] },
-      { id: 'supporting_evidence', type: 'builtin', title: 'Supporting Evidence', enabled: true, collapsed: false, excludedItems: [] },
-      { id: 'root_causes',         type: 'builtin', title: 'Root Causes',         enabled: true, collapsed: false, excludedItems: [] },
-      { id: 'solution_direction',  type: 'builtin', title: 'Solution Direction',  enabled: true, collapsed: false, excludedItems: [] },
-      { id: 'journey_map',         type: 'builtin', title: 'Customer Journey',    enabled: true, collapsed: false, excludedItems: [] },
+      { id: 'executive_summary',    type: 'builtin', title: 'Executive Summary',    enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'supporting_evidence',  type: 'builtin', title: 'Supporting Evidence',  enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'root_causes',          type: 'builtin', title: 'Root Causes',          enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'solution_direction',   type: 'builtin', title: 'Solution Direction',   enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'journey_map',          type: 'builtin', title: 'Customer Journey',     enabled: true,  collapsed: false, excludedItems: [] },
+      // Cross-page sections — disabled until toggled on from their source page
+      { id: 'strategic_impact',     type: 'builtin', title: 'Strategic Impact',     enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'discovery_diagnostic', type: 'builtin', title: 'Discovery Diagnostic', enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'discovery_signals',    type: 'builtin', title: 'Discovery Signals',    enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'insight_summary',      type: 'builtin', title: 'Insight Map Summary',  enabled: false, collapsed: false, excludedItems: [] },
     ],
   };
 }

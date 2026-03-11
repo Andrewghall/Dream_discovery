@@ -57,6 +57,7 @@ interface ExportPdfBody {
   liveJourneyData?: LiveJourneyData | null;
   workshopName?: string;
   orgName?: string;
+  clientLogoUrl?: string;   // Client logo for the cover page
 }
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
@@ -127,7 +128,7 @@ function renderExecutiveSummary(summary: ReportSummary, cfg: ReportSectionConfig
 
   return `
     <section class="report-section">
-      <h2 class="section-title">Executive Summary</h2>
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Executive Summary</div></div>
       ${qaBlock}
       ${findings ? `<div class="findings-list">${findings}</div>` : ''}
       ${lensRows ? `<div class="lens-grid">${lensRows}</div>` : ''}
@@ -164,7 +165,7 @@ function renderSupportingEvidence(intelligence: WorkshopOutputIntelligence, cfg:
 
   return `
     <section class="report-section">
-      <h2 class="section-title">Supporting Evidence</h2>
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Supporting Evidence</div></div>
       <div class="evidence-card">
         <div class="evidence-header">
           Confirmed Issues
@@ -203,7 +204,7 @@ function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: ReportS
 
   return `
     <section class="report-section">
-      <h2 class="section-title">Root Causes</h2>
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Root Causes</div></div>
       <div class="systemic-pattern">${esc(rootCause.systemicPattern ?? '')}</div>
       <div class="cause-list">${causes}</div>
     </section>`;
@@ -228,7 +229,7 @@ function renderSolutionDirection(summary: ReportSummary, intelligence: WorkshopO
 
   return `
     <section class="report-section">
-      <h2 class="section-title">Solution Direction</h2>
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Solution Direction</div></div>
       <div class="sol-vision">${esc(ss.direction ?? '')}</div>
       <p class="sol-rationale-text">${esc(ss.rationale ?? '')}</p>
       ${steps ? `<div class="step-list">${steps}</div>` : ''}
@@ -266,7 +267,7 @@ function renderJourneyMap(journey: LiveJourneyData, intro: string | undefined, c
 
   return `
     <section class="report-section">
-      <h2 class="section-title">Customer Journey</h2>
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Customer Journey</div></div>
       ${intro ? `<p class="journey-intro">${esc(intro)}</p>` : ''}
       <div class="journey-table-wrap">
         <table class="journey-table">
@@ -286,7 +287,7 @@ function renderCustomSection(cfg: ReportSectionConfig): string {
   const content = cfg.customContent ?? {};
   return `
     <section class="report-section">
-      <h2 class="section-title">${esc(cfg.title)}</h2>
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">${esc(cfg.title)}</div></div>
       ${content.text ? `<p class="custom-text">${esc(content.text).replace(/\n/g, '<br>')}</p>` : ''}
       ${content.imageUrl ? `<div class="custom-image-wrap"><img src="${esc(content.imageUrl)}" alt="${esc(content.imageAlt ?? '')}" class="custom-image" /></div>` : ''}
     </section>`;
@@ -298,6 +299,7 @@ function buildReportHtml(
   body: ExportPdfBody,
   dreamLogoBase64: string | null,
   tenantLogoBase64: string | null,
+  clientLogoBase64: string | null,
 ): string {
   const { reportSummary, intelligence, layout, liveJourneyData, workshopName, orgName } = body;
 
@@ -334,124 +336,228 @@ function buildReportHtml(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(workshopName ?? 'Discovery Report')}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 11pt; color: #1a1a1a; background: white; }
-  @page { size: A4; margin: 20mm 18mm; }
+  body { font-family: 'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; background: white; line-height: 1.7; }
+  @page { size: A4; margin: 0; }
+  @page :not(:first) { margin: 20mm 18mm 18mm 18mm; }
 
-  /* Cover */
-  .cover { page-break-after: always; min-height: 100vh; display: flex; flex-direction: column; padding: 0; }
-  .cover-logos { display: flex; align-items: center; justify-content: space-between; padding: 32px 0 0; margin-bottom: auto; }
-  .cover-logo-tenant { max-height: 48px; max-width: 160px; object-fit: contain; }
-  .cover-logo-dream { max-height: 32px; max-width: 120px; object-fit: contain; opacity: 0.7; }
-  .cover-body { padding: 80px 0 48px; border-top: 3px solid #111827; margin-top: auto; }
-  .cover-tag { font-size: 9pt; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #6b7280; margin-bottom: 16px; }
-  .cover-title { font-size: 28pt; font-weight: 800; line-height: 1.1; color: #111827; margin-bottom: 8px; }
-  .cover-sub { font-size: 13pt; color: #6b7280; margin-bottom: 32px; }
-  .cover-meta { font-size: 9pt; color: #9ca3af; }
-  /* TOC */
+  /* ── Cover page ─────────────────────────────────────────────────────────── */
+  .cover {
+    page-break-after: always;
+    width: 210mm;
+    min-height: 297mm;
+    background: #0f172a;
+    display: flex;
+    flex-direction: column;
+    padding: 52px 52px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  /* Subtle geometric accent */
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 320px; height: 320px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    bottom: 40px; left: -60px;
+    width: 260px; height: 260px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .cover-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: auto; }
+  .cover-client-name {
+    font-size: 13pt;
+    font-weight: 300;
+    letter-spacing: 0.06em;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+  }
+  .cover-client-logo { max-height: 52px; max-width: 180px; object-fit: contain; }
+  .cover-dream-logo { max-height: 36px; max-width: 140px; object-fit: contain; filter: brightness(0) invert(1); opacity: 0.85; }
+  .cover-dream-wordmark { font-size: 11pt; font-weight: 800; letter-spacing: 0.2em; color: rgba(255,255,255,0.5); }
+
+  .cover-body { padding-top: 80px; }
+  .cover-eyebrow {
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #6366f1;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .cover-eyebrow::after { content: ''; flex: 0 0 40px; height: 1px; background: #6366f1; }
+  .cover-title {
+    font-size: 34pt;
+    font-weight: 800;
+    line-height: 1.05;
+    color: #ffffff;
+    margin-bottom: 16px;
+    letter-spacing: -0.02em;
+  }
+  .cover-subtitle {
+    font-size: 12pt;
+    font-weight: 400;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 48px;
+    line-height: 1.5;
+  }
+  .cover-divider { width: 48px; height: 3px; background: #6366f1; border-radius: 2px; margin-bottom: 28px; }
+  .cover-footer {
+    margin-top: auto;
+    padding-top: 32px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  .cover-meta-label { font-size: 8pt; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.3); margin-bottom: 4px; }
+  .cover-meta-value { font-size: 10pt; font-weight: 600; color: rgba(255,255,255,0.65); }
+  .cover-prepared-by { text-align: right; }
+
+  /* ── TOC ────────────────────────────────────────────────────────────────── */
   .toc-page { page-break-after: always; padding-top: 16px; }
-  .toc-heading { font-size: 8pt; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #9ca3af; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 20px; }
-  .toc-row { display: flex; align-items: baseline; gap: 6px; padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
-  .toc-num { flex-shrink: 0; font-size: 9pt; font-weight: 700; color: #9ca3af; width: 20px; }
-  .toc-title { font-size: 11pt; font-weight: 600; color: #111827; }
-  .toc-dots { flex: 1; border-bottom: 1px dotted #d1d5db; margin: 0 6px 4px; }
+  .toc-heading { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #9ca3af; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 24px; }
+  .toc-row { display: flex; align-items: baseline; gap: 6px; padding: 7px 0; border-bottom: 1px solid #f3f4f6; }
+  .toc-num { flex-shrink: 0; font-size: 8.5pt; font-weight: 700; color: #6366f1; width: 24px; }
+  .toc-title { font-size: 11pt; font-weight: 500; color: #111827; }
+  .toc-dots { flex: 1; border-bottom: 1px dotted #d1d5db; margin: 0 8px 4px; }
 
-  /* Sections */
-  .report-section { page-break-inside: avoid; margin-bottom: 32px; }
-  .section-title { font-size: 8pt; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #9ca3af; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 16px; }
+  /* ── Section chrome ─────────────────────────────────────────────────────── */
+  .report-section { page-break-inside: avoid; margin-bottom: 40px; }
+  .section-title-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e5e7eb;
+  }
+  .section-accent { width: 4px; height: 22px; border-radius: 2px; background: #6366f1; flex-shrink: 0; }
+  .section-title { font-size: 13pt; font-weight: 700; color: #111827; letter-spacing: -0.01em; }
 
-  /* Executive summary */
-  .qa-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .qa-question { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 6px; }
-  .qa-answer { font-size: 14pt; font-weight: 700; color: #111827; line-height: 1.3; margin-bottom: 8px; }
-  .qa-urgency { font-size: 10pt; color: #475569; font-style: italic; }
-  .validation-test { font-size: 9pt; color: #64748b; background: #f8fafc; border-left: 3px solid #cbd5e1; padding: 8px 12px; margin-bottom: 12px; border-radius: 0 4px 4px 0; }
-  .findings-list { margin-bottom: 16px; }
-  .finding-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
-  .finding-num { flex-shrink: 0; width: 20px; height: 20px; background: #1a1a1a; color: white; border-radius: 50%; font-size: 8pt; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
-  .finding-item p { font-size: 10pt; color: #374151; line-height: 1.5; }
-  .lens-grid { display: grid; grid-template-columns: 1fr; gap: 6px; margin-bottom: 16px; }
-  .lens-row { display: grid; grid-template-columns: 140px 1fr; gap: 12px; background: #f8fafc; border-radius: 6px; padding: 8px 12px; }
+  /* ── Executive summary ──────────────────────────────────────────────────── */
+  .qa-card { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  .qa-question { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #6366f1; margin-bottom: 8px; }
+  .qa-answer { font-size: 14pt; font-weight: 700; color: #111827; line-height: 1.3; margin-bottom: 10px; }
+  .qa-urgency { font-size: 10pt; color: #475569; font-style: italic; line-height: 1.5; }
+  .findings-list { margin-bottom: 20px; }
+  .finding-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+  .finding-num { flex-shrink: 0; width: 22px; height: 22px; background: #0f172a; color: white; border-radius: 50%; font-size: 8pt; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .finding-item p { font-size: 10pt; color: #374151; line-height: 1.6; }
+  .lens-grid { display: grid; grid-template-columns: 1fr; gap: 6px; margin-bottom: 20px; }
+  .lens-row { display: grid; grid-template-columns: 150px 1fr; gap: 14px; background: #f8fafc; border-left: 3px solid #6366f1; border-radius: 0 8px 8px 0; padding: 9px 14px; }
   .lens-name { font-size: 9pt; font-weight: 700; color: #374151; }
-  .lens-finding { font-size: 9pt; color: #6b7280; }
-  .transform-block { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
-  .transform-label { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #16a34a; margin-bottom: 4px; }
-  .solution-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 16px; }
-  .sol-title { font-size: 12pt; font-weight: 700; color: #92400e; margin-bottom: 6px; }
-  .sol-rationale { font-size: 9pt; color: #78350f; margin-bottom: 8px; }
-  .sol-benefit { font-size: 9pt; color: #78350f; padding: 2px 0; }
+  .lens-finding { font-size: 9pt; color: #6b7280; line-height: 1.5; }
+  .transform-block { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; }
+  .transform-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #16a34a; margin-bottom: 6px; }
+  .solution-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 16px 18px; }
+  .sol-title { font-size: 12pt; font-weight: 700; color: #92400e; margin-bottom: 8px; }
+  .sol-rationale { font-size: 9.5pt; color: #78350f; margin-bottom: 10px; line-height: 1.6; }
+  .sol-benefit { font-size: 9.5pt; color: #78350f; padding: 3px 0; }
 
-  /* Supporting evidence */
-  .evidence-card { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
-  .evidence-header { background: #f9fafb; padding: 8px 14px; font-size: 9pt; font-weight: 700; color: #374151; display: flex; justify-content: space-between; align-items: center; }
+  /* ── Supporting evidence ────────────────────────────────────────────────── */
+  .evidence-card { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
+  .evidence-header { background: #f9fafb; padding: 10px 16px; font-size: 9pt; font-weight: 700; color: #374151; display: flex; justify-content: space-between; align-items: center; }
   .evidence-header.new { background: #eff6ff; color: #1d4ed8; }
   .badge-muted { font-size: 8pt; font-weight: 400; color: #9ca3af; }
-  .evidence-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 14px; border-top: 1px solid #f1f5f9; }
-  .confidence-badge { flex-shrink: 0; padding: 1px 6px; border-radius: 4px; font-size: 8pt; font-weight: 600; }
+  .evidence-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 16px; border-top: 1px solid #f1f5f9; }
+  .confidence-badge { flex-shrink: 0; padding: 2px 7px; border-radius: 5px; font-size: 8pt; font-weight: 600; }
   .confidence-badge.high { background: #fee2e2; color: #b91c1c; }
   .confidence-badge.medium { background: #fef3c7; color: #b45309; }
   .confidence-badge.low, .confidence-badge.new { background: #f1f5f9; color: #475569; }
-  .evidence-issue { font-size: 9pt; font-weight: 600; color: #111827; }
-  .evidence-ev { font-size: 8.5pt; color: #6b7280; margin-top: 2px; }
-  .evidence-sig { font-size: 8.5pt; color: #2563eb; margin-top: 3px; font-weight: 500; }
-  .empty-msg { padding: 10px 14px; font-size: 9pt; color: #9ca3af; font-style: italic; }
+  .evidence-issue { font-size: 9.5pt; font-weight: 600; color: #111827; }
+  .evidence-ev { font-size: 9pt; color: #6b7280; margin-top: 3px; line-height: 1.5; }
+  .evidence-sig { font-size: 9pt; color: #2563eb; margin-top: 4px; font-weight: 500; }
+  .empty-msg { padding: 12px 16px; font-size: 9pt; color: #9ca3af; font-style: italic; }
 
-  /* Root causes */
-  .systemic-pattern { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; font-size: 10pt; color: #374151; line-height: 1.6; margin-bottom: 16px; }
-  .cause-list { display: grid; gap: 10px; }
-  .cause-card { display: flex; gap: 12px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; }
-  .cause-meta { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; padding-top: 2px; }
+  /* ── Root causes ────────────────────────────────────────────────────────── */
+  .systemic-pattern { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 20px; }
+  .cause-list { display: grid; gap: 12px; }
+  .cause-card { display: flex; gap: 14px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
+  .cause-meta { display: flex; flex-direction: column; align-items: center; gap: 5px; flex-shrink: 0; padding-top: 2px; }
   .cause-rank { font-size: 9pt; font-weight: 700; color: #9ca3af; font-family: monospace; }
-  .cause-sev { font-size: 7.5pt; font-weight: 600; padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
-  .cause-title { font-size: 10pt; font-weight: 600; color: #111827; margin-bottom: 2px; }
-  .cause-cat { font-size: 8pt; color: #9ca3af; margin-bottom: 4px; }
-  .cause-ev { font-size: 8.5pt; color: #6b7280; padding: 2px 0; }
+  .cause-sev { font-size: 7.5pt; font-weight: 600; padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+  .cause-title { font-size: 10.5pt; font-weight: 600; color: #111827; margin-bottom: 3px; }
+  .cause-cat { font-size: 8.5pt; color: #9ca3af; margin-bottom: 6px; }
+  .cause-ev { font-size: 9pt; color: #6b7280; padding: 2px 0; line-height: 1.5; }
 
-  /* Solution direction */
-  .sol-vision { font-size: 13pt; font-weight: 700; color: #111827; margin-bottom: 6px; }
-  .sol-rationale-text { font-size: 10pt; color: #374151; line-height: 1.6; margin-bottom: 16px; }
-  .step-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-  .step-item { display: flex; gap: 10px; align-items: flex-start; background: #f8fafc; border-radius: 6px; padding: 8px 12px; }
-  .step-num { flex-shrink: 0; width: 20px; height: 20px; background: #111827; color: white; border-radius: 50%; font-size: 8pt; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
-  .phases-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .phase-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; }
-  .phase-name { font-size: 9pt; font-weight: 700; color: #111827; margin-bottom: 2px; }
-  .phase-horizon { font-size: 8pt; color: #9ca3af; margin-bottom: 6px; }
-  .phase-action { font-size: 8.5pt; color: #374151; padding: 1.5px 0; }
+  /* ── Solution direction ─────────────────────────────────────────────────── */
+  .sol-vision { font-size: 14pt; font-weight: 700; color: #111827; margin-bottom: 8px; line-height: 1.3; }
+  .sol-rationale-text { font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 20px; }
+  .step-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .step-item { display: flex; gap: 12px; align-items: flex-start; background: #f8fafc; border-radius: 8px; padding: 10px 14px; }
+  .step-num { flex-shrink: 0; width: 22px; height: 22px; background: #0f172a; color: white; border-radius: 50%; font-size: 8pt; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .step-change { font-size: 9.5pt; color: #6b7280; line-height: 1.5; }
+  .phases-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .phase-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }
+  .phase-name { font-size: 9.5pt; font-weight: 700; color: #111827; margin-bottom: 3px; }
+  .phase-horizon { font-size: 8pt; color: #9ca3af; margin-bottom: 8px; font-weight: 500; }
+  .phase-action { font-size: 9pt; color: #374151; padding: 2px 0; line-height: 1.5; }
 
-  /* Journey map */
-  .journey-intro { font-size: 10pt; color: #374151; line-height: 1.6; margin-bottom: 14px; }
-  .journey-table-wrap { overflow: hidden; border: 1px solid #e5e7eb; border-radius: 8px; }
+  /* ── Journey map ────────────────────────────────────────────────────────── */
+  .journey-intro { font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 16px; }
+  .journey-table-wrap { overflow: hidden; border: 1px solid #e5e7eb; border-radius: 10px; }
   .journey-table { width: 100%; border-collapse: collapse; font-size: 8pt; }
-  .actor-th { background: #f9fafb; padding: 6px 8px; text-align: left; font-weight: 700; color: #374151; border-right: 1px solid #e5e7eb; width: 90px; }
-  .stage-th { background: #f9fafb; padding: 6px 8px; text-align: center; font-weight: 700; color: #374151; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.05em; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
-  .actor-td { background: #fafafa; padding: 6px 8px; vertical-align: top; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #f1f5f9; }
+  .actor-th { background: #f9fafb; padding: 7px 9px; text-align: left; font-weight: 700; color: #374151; border-right: 1px solid #e5e7eb; width: 90px; }
+  .stage-th { background: #f9fafb; padding: 7px 9px; text-align: center; font-weight: 700; color: #374151; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+  .actor-td { background: #fafafa; padding: 7px 9px; vertical-align: top; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #f1f5f9; }
   .actor-name { font-weight: 700; color: #111827; font-size: 8pt; }
   .actor-role { color: #9ca3af; font-size: 7pt; margin-top: 1px; }
-  .journey-td { padding: 4px 5px; vertical-align: top; border-right: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; min-height: 36px; }
-  .journey-chip { border-radius: 4px; padding: 3px 5px; margin-bottom: 3px; font-size: 7.5pt; color: #374151; line-height: 1.4; }
+  .journey-td { padding: 5px 6px; vertical-align: top; border-right: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; min-height: 36px; }
+  .journey-chip { border-radius: 5px; padding: 3px 6px; margin-bottom: 3px; font-size: 7.5pt; color: #374151; line-height: 1.4; }
   .pain-dot { color: #ef4444; font-size: 8pt; margin-right: 2px; }
 
-  /* Custom sections */
-  .custom-text { font-size: 10pt; color: #374151; line-height: 1.7; white-space: pre-wrap; margin-bottom: 16px; }
-  .custom-image-wrap { margin-top: 12px; }
-  .custom-image { max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #e5e7eb; }
+  /* ── Custom sections ────────────────────────────────────────────────────── */
+  .custom-text { font-size: 10.5pt; color: #374151; line-height: 1.7; white-space: pre-wrap; margin-bottom: 16px; }
+  .custom-image-wrap { margin-top: 14px; }
+  .custom-image { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #e5e7eb; }
 </style>
 </head>
 <body>
 
-<!-- Cover page -->
+<!-- ══ Cover page ══ -->
 <div class="cover">
-  <div class="cover-logos">
-    ${tenantLogoBase64 ? `<img src="${tenantLogoBase64}" class="cover-logo-tenant" alt="${esc(orgName ?? 'Client')} logo" />` : `<div style="font-size:13pt;font-weight:700;color:#111827">${esc(orgName ?? '')}</div>`}
-    ${dreamLogoBase64 ? `<img src="${dreamLogoBase64}" class="cover-logo-dream" alt="DREAM" />` : '<div style="font-size:10pt;font-weight:700;letter-spacing:0.1em;color:#9ca3af">DREAM</div>'}
+  <div class="cover-top">
+    <div>
+      ${clientLogoBase64
+        ? `<img src="${clientLogoBase64}" class="cover-client-logo" alt="${esc(orgName ?? 'Client')} logo" />`
+        : `<div class="cover-client-name">${esc(orgName ?? '')}</div>`}
+    </div>
+    <div>
+      ${dreamLogoBase64
+        ? `<img src="${dreamLogoBase64}" class="cover-dream-logo" alt="DREAM" />`
+        : `<div class="cover-dream-wordmark">DREAM</div>`}
+    </div>
   </div>
+
   <div class="cover-body">
-    <div class="cover-tag">Discovery Report</div>
+    <div class="cover-eyebrow">Discovery &amp; Transformation Report</div>
     <div class="cover-title">${esc(workshopName ?? 'Workshop')}</div>
-    <div class="cover-sub">${esc(orgName ?? '')}</div>
-    <div class="cover-meta">Prepared ${dateStr}</div>
+    <div class="cover-subtitle">${esc(orgName ?? '')}</div>
+    <div class="cover-divider"></div>
+  </div>
+
+  <div class="cover-footer">
+    <div>
+      <div class="cover-meta-label">Prepared</div>
+      <div class="cover-meta-value">${dateStr}</div>
+    </div>
+    <div class="cover-prepared-by">
+      <div class="cover-meta-label">Produced by</div>
+      <div class="cover-meta-value">DREAM Discovery Platform</div>
+    </div>
   </div>
 </div>
 
@@ -502,11 +608,17 @@ export async function POST(
     ? (orgLogoUrl.startsWith('http') ? await fetchLogoAsBase64(orgLogoUrl) : readLogoAsBase64(orgLogoUrl))
     : null;
 
+  // Client logo — supplied by the user at export time
+  const clientLogoUrlRaw = body.clientLogoUrl ?? body.layout.clientLogoUrl ?? null;
+  const clientLogoBase64 = clientLogoUrlRaw
+    ? (clientLogoUrlRaw.startsWith('http') ? await fetchLogoAsBase64(clientLogoUrlRaw) : readLogoAsBase64(clientLogoUrlRaw))
+    : null;
+
   const enrichedBody = { ...body, workshopName, orgName };
-  const html = buildReportHtml(enrichedBody, dreamLogoBase64, tenantLogoBase64);
+  const html = buildReportHtml(enrichedBody, dreamLogoBase64, tenantLogoBase64, clientLogoBase64);
 
   const footerTemplate = `
-    <div style="width:100%;padding:0 18mm;display:flex;justify-content:space-between;align-items:center;font-size:8pt;color:#9ca3af;font-family:-apple-system,sans-serif;">
+    <div style="width:100%;padding:0 18mm;display:flex;justify-content:space-between;align-items:center;font-size:8pt;color:#9ca3af;font-family:'Inter',-apple-system,sans-serif;border-top:1px solid #f1f5f9;padding-top:4px;">
       <span>${esc(workshopName)} — ${esc(orgName)}</span>
       <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
     </div>`;

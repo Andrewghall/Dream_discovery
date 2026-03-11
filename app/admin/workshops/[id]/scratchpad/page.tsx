@@ -19,6 +19,7 @@ import {
   X,
   GripVertical,
   ImagePlus,
+  Building2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -1317,6 +1318,9 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [layout, setLayout] = useState<ReportLayout>(defaultReportLayout());
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [overDragId, setOverDragId] = useState<string | null>(null);
+  const [clientLogoUrl, setClientLogoUrl] = useState<string>('');
+  const [uploadingClientLogo, setUploadingClientLogo] = useState(false);
+  const clientLogoFileRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -1351,7 +1355,10 @@ export default function DownloadReportPage({ params }: PageProps) {
           const rs = d.reportSummary as ReportSummary;
           setReportSummary(rs);
           // Restore saved layout if it exists
-          if (rs.layout?.sections?.length) setLayout(rs.layout);
+          if (rs.layout?.sections?.length) {
+            setLayout(rs.layout);
+            if (rs.layout.clientLogoUrl) setClientLogoUrl(rs.layout.clientLogoUrl);
+          }
         }
       }
 
@@ -1483,6 +1490,27 @@ export default function DownloadReportPage({ params }: PageProps) {
     });
   }, [updateLayout]);
 
+  const handleClientLogoUpload = useCallback(async (file: File) => {
+    setUploadingClientLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch(`/api/admin/workshops/${workshopId}/upload-section-image`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json() as { url: string };
+      setClientLogoUrl(data.url);
+      // Persist in layout
+      updateLayout({ ...layout, clientLogoUrl: data.url });
+    } catch {
+      toast.error('Client logo upload failed');
+    } finally {
+      setUploadingClientLogo(false);
+    }
+  }, [workshopId, layout, updateLayout]);
+
   const removeSection = useCallback((id: string) => {
     setLayout(prev => {
       const next = { ...prev, sections: prev.sections.filter(s => s.id !== id) };
@@ -1531,6 +1559,7 @@ export default function DownloadReportPage({ params }: PageProps) {
           liveJourneyData,
           workshopName: workshop?.name,
           orgName: workshop?.organization?.name,
+          clientLogoUrl: clientLogoUrl || undefined,
         }),
       });
       if (!res.ok) {
@@ -1618,6 +1647,47 @@ export default function DownloadReportPage({ params }: PageProps) {
                 </p>
               )}
             </div>
+          </div>
+
+          {/* ── Client Logo picker ─────────────────────────────────── */}
+          <div className="flex items-center gap-2 border border-border rounded-lg px-3 py-1.5 bg-muted/20">
+            <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            {clientLogoUrl ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={clientLogoUrl} alt="Client logo" className="h-6 max-w-[80px] object-contain rounded" />
+                <button
+                  onClick={() => { setClientLogoUrl(''); updateLayout({ ...layout, clientLogoUrl: undefined }); }}
+                  className="text-[10px] text-muted-foreground hover:text-red-500 transition-colors ml-1"
+                  title="Remove client logo"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => clientLogoFileRef.current?.click()}
+                disabled={uploadingClientLogo}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                {uploadingClientLogo ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" /> Uploading…</>
+                ) : (
+                  <>+ Client logo</>
+                )}
+              </button>
+            )}
+            <input
+              ref={clientLogoFileRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/svg+xml"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleClientLogoUpload(file);
+                e.target.value = '';
+              }}
+            />
           </div>
 
           <div className="flex items-center gap-2">
