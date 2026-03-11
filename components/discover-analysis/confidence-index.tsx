@@ -49,13 +49,13 @@ export function ConfidenceIndex({ data, compact }: ConfidenceIndexProps) {
       </div>
 
       {/* By Domain */}
-      {!compact && data.byDomain.length > 0 && (
+      {!compact && (data.byDomain ?? []).length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
             By Domain
           </h4>
           <div className="space-y-2">
-            {data.byDomain.map((d) => (
+            {(data.byDomain ?? []).map((d) => (
               <div key={d.domain}>
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="text-xs text-slate-600 font-medium">{d.domain}</span>
@@ -64,9 +64,9 @@ export function ConfidenceIndex({ data, compact }: ConfidenceIndexProps) {
                   </span>
                 </div>
                 <StackedBar distribution={d.distribution} height={12} />
-                {d.hedgingPhrases.length > 0 && (
+                {(d.hedgingPhrases ?? []).length > 0 && (
                   <div className="mt-1 ml-1">
-                    {d.hedgingPhrases.slice(0, 2).map((phrase, i) => (
+                    {(d.hedgingPhrases ?? []).slice(0, 2).map((phrase, i) => (
                       <p key={i} className="text-[10px] text-slate-400 italic truncate">
                         &ldquo;{phrase}&rdquo;
                       </p>
@@ -80,13 +80,13 @@ export function ConfidenceIndex({ data, compact }: ConfidenceIndexProps) {
       )}
 
       {/* By Layer */}
-      {!compact && data.byLayer.some((l) => total(l.distribution) > 0) && (
+      {!compact && (data.byLayer ?? []).some((l) => total(l.distribution) > 0) && (
         <div>
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
             By Narrative Layer
           </h4>
           <div className="space-y-2">
-            {data.byLayer.map((l) => {
+            {(data.byLayer ?? []).map((l) => {
               const t = total(l.distribution);
               if (t === 0) return null;
               return (

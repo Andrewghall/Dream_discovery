@@ -54,16 +54,19 @@ const SEVERITY_ORDER: Array<'critical' | 'significant' | 'moderate'> = [
  */
 export function ConstraintMap({ data, showImpactScore, lensColors }: ConstraintMapProps) {
   const { grouped, maxWeight, blockMap, ampMap } = useMemo(() => {
-    const maxWeight = Math.max(1, ...data.constraints.map((c) => c.weight));
+    const constraints = data.constraints ?? [];
+    const relationships = data.relationships ?? [];
+
+    const maxWeight = Math.max(1, ...constraints.map((c) => c.weight));
 
     // Map: constraintId → list of constraint descriptions it blocks
     const blockMap = new Map<string, string[]>();
     // Map: constraintId → list of constraint descriptions it amplifies
     const ampMap = new Map<string, string[]>();
 
-    const descById = new Map(data.constraints.map((c) => [c.id, c.description]));
+    const descById = new Map(constraints.map((c) => [c.id, c.description]));
 
-    for (const rel of data.relationships) {
+    for (const rel of relationships) {
       if (rel.type === 'blocks') {
         const targets = blockMap.get(rel.source) ?? [];
         const targetDesc = descById.get(rel.target);
@@ -80,7 +83,7 @@ export function ConstraintMap({ data, showImpactScore, lensColors }: ConstraintM
     // Group by severity, sorted by weight desc within each group
     const grouped = SEVERITY_ORDER.map((severity) => ({
       severity,
-      constraints: data.constraints
+      constraints: constraints
         .filter((c) => c.severity === severity)
         .sort((a, b) => b.weight - a.weight),
     })).filter((g) => g.constraints.length > 0);
@@ -88,7 +91,7 @@ export function ConstraintMap({ data, showImpactScore, lensColors }: ConstraintM
     return { grouped, maxWeight, blockMap, ampMap };
   }, [data]);
 
-  if (data.constraints.length === 0) {
+  if ((data.constraints ?? []).length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground/50">
         <p className="text-sm">No constraints identified</p>

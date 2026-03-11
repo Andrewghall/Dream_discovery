@@ -31,7 +31,9 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
   const LABEL_TOP = 96;
   const GAP = 3;
 
-  const { themes, actors, cells } = data;
+  const themes = data.themes ?? [];
+  const actors = data.actors ?? [];
+  const cells  = data.cells  ?? [];
 
   // Build lookup for O(1) cell access
   const cellLookup = useMemo(() => {

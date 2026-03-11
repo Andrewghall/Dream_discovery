@@ -29,7 +29,9 @@ const SENTIMENT_COLORS: Record<string, string> = {
 export function TensionSurface({ data, maxItems }: TensionSurfaceProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  if (data.tensions.length === 0) {
+  const tensions = data.tensions ?? [];
+
+  if (tensions.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground/50">
         <p className="text-sm">No significant tensions identified</p>
@@ -38,8 +40,8 @@ export function TensionSurface({ data, maxItems }: TensionSurfaceProps) {
   }
 
   const displayTensions = maxItems != null
-    ? data.tensions.slice(0, maxItems)
-    : data.tensions;
+    ? tensions.slice(0, maxItems)
+    : tensions;
 
   return (
     <div className="space-y-3">
@@ -120,7 +122,7 @@ function TensionCard({
               Competing Viewpoints
             </h4>
             <div className="space-y-2">
-              {tension.viewpoints.map((vp, i) => (
+              {(tension.viewpoints ?? []).map((vp, i) => (
                 <div
                   key={i}
                   className="flex items-start gap-3 bg-slate-50/50 rounded-lg p-3"
@@ -148,13 +150,13 @@ function TensionCard({
           </div>
 
           {/* Affected actors */}
-          {tension.affectedActors.length > 0 && (
+          {(tension.affectedActors ?? []).length > 0 && (
             <div className="mb-3">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                 Affected Actors
               </h4>
               <div className="flex flex-wrap gap-1.5">
-                {tension.affectedActors.map((actor) => (
+                {(tension.affectedActors ?? []).map((actor) => (
                   <span
                     key={actor}
                     className="inline-block px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs"
@@ -167,13 +169,13 @@ function TensionCard({
           )}
 
           {/* Related constraints */}
-          {tension.relatedConstraints.length > 0 && (
+          {(tension.relatedConstraints ?? []).length > 0 && (
             <div>
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                 Related Constraints
               </h4>
               <div className="flex flex-wrap gap-1.5">
-                {tension.relatedConstraints.map((cid) => (
+                {(tension.relatedConstraints ?? []).map((cid) => (
                   <span
                     key={cid}
                     className="inline-block px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-xs font-mono"

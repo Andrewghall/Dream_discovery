@@ -40,7 +40,11 @@ const SENTIMENT_INDICATOR: Record<string, { label: string; color: string }> = {
 export function NarrativeDivergence({ data, onLayerOverride }: NarrativeDivergenceProps) {
   const [showAssignments, setShowAssignments] = useState(false);
 
-  const hasData = data.layers.some((l) => l.topTerms.length > 0);
+  const layers = data.layers ?? [];
+  const divergencePoints = data.divergencePoints ?? [];
+  const layerAssignments = data.layerAssignments ?? [];
+
+  const hasData = layers.some((l) => (l.topTerms ?? []).length > 0);
 
   if (!hasData) {
     return (
@@ -54,19 +58,19 @@ export function NarrativeDivergence({ data, onLayerOverride }: NarrativeDivergen
     <div className="space-y-4">
       {/* Three-column layer comparison */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {data.layers.map((layer) => (
+        {layers.map((layer) => (
           <LayerColumn key={layer.layer} data={layer} />
         ))}
       </div>
 
       {/* Divergence points */}
-      {data.divergencePoints.length > 0 && (
+      {divergencePoints.length > 0 && (
         <div className="border-t border-slate-100 pt-4">
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
             Divergence Points
           </h4>
           <div className="space-y-2">
-            {data.divergencePoints.map((dp, i) => (
+            {divergencePoints.map((dp, i) => (
               <DivergencePointRow key={i} point={dp} />
             ))}
           </div>
@@ -74,7 +78,7 @@ export function NarrativeDivergence({ data, onLayerOverride }: NarrativeDivergen
       )}
 
       {/* Layer assignment panel (collapsible) */}
-      {data.layerAssignments.length > 0 && (
+      {layerAssignments.length > 0 && (
         <div className="border-t border-slate-100 pt-3">
           <button
             onClick={() => setShowAssignments(!showAssignments)}
@@ -82,12 +86,12 @@ export function NarrativeDivergence({ data, onLayerOverride }: NarrativeDivergen
           >
             <Users className="h-3 w-3" />
             {showAssignments ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            <span>Layer Assignments ({data.layerAssignments.length} participants)</span>
+            <span>Layer Assignments ({layerAssignments.length} participants)</span>
           </button>
 
           {showAssignments && (
             <div className="mt-2 space-y-1 max-h-60 overflow-y-auto">
-              {data.layerAssignments.map((a) => (
+              {layerAssignments.map((a) => (
                 <AssignmentRow
                   key={a.participantId}
                   assignment={a}
@@ -107,7 +111,8 @@ export function NarrativeDivergence({ data, onLayerOverride }: NarrativeDivergen
 function LayerColumn({ data }: { data: NarrativeLayerData }) {
   const colors = LAYER_COLORS[data.layer];
   const sentiment = SENTIMENT_INDICATOR[data.dominantSentiment] || SENTIMENT_INDICATOR.neutral;
-  const maxTermCount = data.topTerms[0]?.normalised || 1;
+  const topTerms = data.topTerms ?? [];
+  const maxTermCount = topTerms[0]?.normalised || 1;
 
   return (
     <div className={`rounded-lg p-3 ${colors.bg}`}>
@@ -126,7 +131,7 @@ function LayerColumn({ data }: { data: NarrativeLayerData }) {
 
       {/* Top terms (horizontal bars) */}
       <div className="space-y-1.5 mb-3">
-        {data.topTerms.slice(0, 8).map((term) => (
+        {topTerms.slice(0, 8).map((term) => (
           <div key={term.term} className="flex items-center gap-2">
             <span className="text-xs text-slate-600 w-20 truncate flex-shrink-0">
               {term.term}
@@ -176,9 +181,9 @@ function LayerColumn({ data }: { data: NarrativeLayerData }) {
       </div>
 
       {/* Sample phrases */}
-      {data.samplePhrases.length > 0 && (
+      {(data.samplePhrases ?? []).length > 0 && (
         <div className="border-t border-white/30 pt-2 mt-2">
-          {data.samplePhrases.slice(0, 2).map((phrase, i) => (
+          {(data.samplePhrases ?? []).slice(0, 2).map((phrase, i) => (
             <p key={i} className="text-xs text-slate-500 italic truncate mb-0.5">
               &ldquo;{phrase}&rdquo;
             </p>
@@ -198,7 +203,7 @@ function DivergencePointRow({ point }: { point: DivergencePoint }) {
         {point.topic}
       </span>
       <div className="flex-1 flex flex-wrap gap-1.5">
-        {point.layerPositions.map((pos) => {
+        {(point.layerPositions ?? []).map((pos) => {
           const colors = LAYER_COLORS[pos.layer];
           const sentimentInfo = SENTIMENT_INDICATOR[pos.sentiment] || SENTIMENT_INDICATOR.neutral;
           return (
