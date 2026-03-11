@@ -171,6 +171,7 @@ export function useLiveEventPipeline(
   const esRef = useRef<EventSource | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastOutboxCursorRef = useRef<string>(new Date().toISOString());
+  const lastOutboxCursorIdRef = useRef<string>('');
   const seenEventIdsRef = useRef<Set<string>>(new Set());
 
   // Stable callback refs (avoid stale closures)
@@ -317,9 +318,12 @@ export function useLiveEventPipeline(
     // ---- Outbox polling (primary, durable) ----
     const poll = async () => {
       try {
-        const res = await fetch(
-          `/api/workshops/${encodeURIComponent(workshopId)}/events/poll?after=${encodeURIComponent(lastOutboxCursorRef.current)}&types=${POLL_TYPES}`,
-        );
+        const url = `/api/workshops/${encodeURIComponent(workshopId)}/events/poll` +
+          `?after=${encodeURIComponent(lastOutboxCursorRef.current)}` +
+          `&types=${POLL_TYPES}` +
+          (lastOutboxCursorIdRef.current ? `&afterId=${encodeURIComponent(lastOutboxCursorIdRef.current)}` : '');
+
+        const res = await fetch(url);
         if (!res.ok) return;
 
         const data = await res.json();
@@ -328,17 +332,17 @@ export function useLiveEventPipeline(
         for (const evt of events) {
           const eventId = evt.id || `poll:${evt.type}:${evt.createdAt}`;
           dispatchEvent(eventId, evt.type, evt.payload);
+        }
 
-          // Advance cursor
-          if (evt.createdAt) {
-            const ts =
-              typeof evt.createdAt === 'string'
-                ? evt.createdAt
-                : new Date(evt.createdAt).toISOString();
-            if (ts > lastOutboxCursorRef.current) {
-              lastOutboxCursorRef.current = ts;
-            }
-          }
+        // Advance composite cursor to last event (events ordered by [createdAt, id] ASC)
+        if (events.length > 0) {
+          const last = events[events.length - 1];
+          const ts =
+            typeof last.createdAt === 'string'
+              ? last.createdAt
+              : new Date(last.createdAt).toISOString();
+          lastOutboxCursorRef.current = ts;
+          lastOutboxCursorIdRef.current = last.id || '';
         }
       } catch (err) {
         console.warn('[EventPipeline] Poll error:', err);

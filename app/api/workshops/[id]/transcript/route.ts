@@ -5,6 +5,7 @@ import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { apiLimiter } from '@/lib/rate-limit';
 import { emitWorkshopEvent, persistAndEmit } from '@/lib/realtime/workshop-events';
 import { deriveIntent } from '@/lib/workshop/derive-intent';
 import { addFragment, flushWorkshop, type FlushedUtterance } from '@/lib/workshop/utterance-buffer';
@@ -79,7 +80,9 @@ async function processCompleteUtterance(
   bodyDialoguePhase: string | null | undefined,
   bodySpeakerId: string | null,
   bodySlmMetadata?: Record<string, unknown>,
+  traceId?: string,
 ) {
+  const trace = traceId ? `[trace:${traceId}]` : '';
   const text = utterance.text;
   const src = utterance.source === 'WHISPER' ? 'WHISPER' : utterance.source === 'ZOOM' ? 'ZOOM' : 'DEEPGRAM';
 
@@ -238,14 +241,6 @@ async function processCompleteUtterance(
   // full cognitive state — beliefs, contradictions, entities, momentum.
   after(async () => {
     try {
-      // Outbox cleanup — delete events older than 24 hours to prevent unbounded growth
-      await (prisma as any).workshopEventOutbox.deleteMany({
-        where: {
-          workshopId,
-          createdAt: { lt: new Date(Date.now() - 24 * 60 * 60_000) },
-        },
-      }).catch(() => {}); // non-fatal
-
       const workshop = await prisma.workshop.findUnique({
         where: { id: workshopId },
         select: { name: true, description: true, businessContext: true, prepResearch: true },
@@ -269,7 +264,7 @@ async function processCompleteUtterance(
 
       // Run the cognitive reasoning engine
       const engine = getGPT4oMiniEngine();
-      console.log('[Cognitive] Processing utterance:', text.substring(0, 100));
+      console.log(`[Cognitive]${trace} Processing utterance:`, text.substring(0, 100));
 
       const stateUpdate = await engine.processUtterance(
         cognitiveState,
@@ -307,7 +302,7 @@ async function processCompleteUtterance(
         timestampMs: utterance.startTimeMs,
       });
 
-      console.log('[Cognitive] Result:', {
+      console.log(`[Cognitive]${trace} Result:`, {
         primaryType: stateUpdate.primaryType,
         meaning: stateUpdate.classification.semanticMeaning.substring(0, 80),
         newBeliefs: events.newBeliefs.length,
@@ -574,6 +569,15 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Rate limit: 120 req/min per workshop (2/s — well above normal live-session cadence)
+    const rl = await apiLimiter.check(120, `transcript:${workshopId}`);
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
+    // Trace ID — threads through all logs for this ingest request
+    const traceId = nanoid(8);
+
     const body = (await request.json()) as IngestTranscriptChunkBody;
 
     const text = (body?.text || '').trim();
@@ -591,10 +595,12 @@ export async function POST(
             utterance,
             body.dialoguePhase,
             body.speakerId,
+            undefined,
+            traceId,
           );
           results.push(result);
         } catch (error) {
-          console.error('[Transcript] Error processing flushed utterance:', error);
+          console.error(`[Transcript][trace:${traceId}] Error processing flushed utterance:`, error);
         }
       }
 
@@ -696,11 +702,12 @@ export async function POST(
           body.dialoguePhase,
           body.speakerId,
           body.slmMetadata as Record<string, unknown> | undefined,
+          traceId,
         );
         results.push(result);
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
-        console.error('[Transcript] Error processing buffered utterance:', error);
+        console.error(`[Transcript][trace:${traceId}] Error processing buffered utterance:`, error);
         results.push({ error: errMsg });
       }
     }
@@ -714,7 +721,7 @@ export async function POST(
       classificationId: null, // Classification arrives asynchronously
     });
   } catch (error) {
-    console.error('Error ingesting transcript chunk:', error);
+    console.error('[Transcript] Error ingesting transcript chunk:', error);
     return NextResponse.json({ error: 'Failed to ingest transcript chunk' }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth/session';
 import { getDomainPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import type { EngagementType } from '@prisma/client';
+import { auditLog, getClientIp } from '@/lib/audit/log-action';
 
 export const dynamic = 'force-dynamic';
 
@@ -207,6 +208,20 @@ export async function POST(request: NextRequest) {
     };
 
     const workshop = await prisma.workshop.create({ data: workshopData });
+
+    auditLog({
+      organizationId,
+      userId: session.userId,
+      userEmail: session.email,
+      action: 'workshop.created',
+      resourceType: 'workshop',
+      resourceId: workshop.id,
+      method: 'POST',
+      path: '/api/admin/workshops',
+      ipAddress: getClientIp(request),
+      userAgent: request.headers.get('user-agent'),
+      metadata: { name: workshop.name, workshopType: workshop.workshopType },
+    });
 
     return NextResponse.json({ workshop });
   } catch (error: unknown) {

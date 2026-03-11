@@ -11,6 +11,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { CognitiveState, ReasoningEntry } from '../cognitive-state';
 import type {
   CognitiveReasoningEngine,
@@ -143,16 +144,18 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
         const callTimeoutId = setTimeout(() => callController.abort(), 8_000);
         let completion: OpenAI.Chat.Completions.ChatCompletion;
         try {
-          completion = await this.openai.chat.completions.create(
-            {
-              model: MODEL,
-              temperature: 0.3,
-              messages,
-              tools,
-              tool_choice: toolChoice,
-              parallel_tool_calls: true,
-            },
-            { signal: callController.signal }
+          completion = await openAiBreaker.execute(() =>
+            this.openai.chat.completions.create(
+              {
+                model: MODEL,
+                temperature: 0.3,
+                messages,
+                tools,
+                tool_choice: toolChoice,
+                parallel_tool_calls: true,
+              },
+              { signal: callController.signal },
+            )
           );
         } finally {
           clearTimeout(callTimeoutId);

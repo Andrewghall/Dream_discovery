@@ -99,6 +99,9 @@ export async function transcribeAudio(
   const baseURL = getCaptureAPIURL()
   const endpoint = `${baseURL}/api/v1/transcribe`
 
+  // Lazy import avoids circular deps and keeps this client usable in browser
+  const { captureApiBreaker } = await import('@/lib/circuit-breaker')
+
   try {
     // Build FormData
     const formData = new FormData()
@@ -106,11 +109,21 @@ export async function transcribeAudio(
     formData.append('mode', mode)
     formData.append('enable_slm', String(enableSLM))
 
-    // Call CaptureAPI
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      body: formData,
-    })
+    // Call CaptureAPI via circuit breaker + 30s timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+    let response: Response;
+    try {
+      response = await captureApiBreaker.execute(() =>
+        fetch(endpoint, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        })
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorText = await response.text()

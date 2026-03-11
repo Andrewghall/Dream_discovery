@@ -31,18 +31,26 @@ export async function GET(
     }
 
     const after = request.nextUrl.searchParams.get('after') || new Date(0).toISOString();
+    const afterId = request.nextUrl.searchParams.get('afterId') || '';
     const typesParam = request.nextUrl.searchParams.get('types') || '';
     const limit = Math.min(200, parseInt(request.nextUrl.searchParams.get('limit') || '100', 10));
 
     const types = typesParam ? typesParam.split(',').filter(Boolean) : undefined;
+    const afterDate = new Date(after);
+    const typeFilter = types ? { type: { in: types } } : {};
 
+    // Composite cursor: events after `after`, plus same-millisecond tiebreaker by id.
+    // This prevents dropped events when multiple events share the same createdAt timestamp.
     const events = await (prisma as any).workshopEventOutbox.findMany({
       where: {
         workshopId,
-        createdAt: { gt: new Date(after) },
-        ...(types ? { type: { in: types } } : {}),
+        ...typeFilter,
+        OR: [
+          { createdAt: { gt: afterDate } },
+          ...(afterId ? [{ createdAt: afterDate, id: { gt: afterId } }] : []),
+        ],
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: limit,
     });
 
