@@ -275,23 +275,65 @@ function ExecDiagnosticPanel({
 }) {
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [genProgress, setGenProgress] = useState<string | null>(null);
 
   const hasInsights = DIAGNOSTIC_CARDS.some(({ key }) => !!discoveryOutput?.[key]);
 
   const generate = async () => {
     setGenerating(true);
     setGenError(null);
+    setGenProgress(null);
     try {
       const res = await fetch(`/api/admin/workshops/${workshopId}/discovery-intelligence`, {
         method: 'POST',
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      if (json.discoveryOutput) onGenerated(json.discoveryOutput);
-    } catch {
-      setGenError('Generation failed. Please try again.');
+
+      // Non-2xx before streaming starts — surface the server error message
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error((json as any).error ?? `Request failed (HTTP ${res.status})`);
+      }
+
+      // Consume SSE stream
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response stream received');
+
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop() ?? '';
+
+        for (const part of parts) {
+          const lines = part.split('\n');
+          const eventLine = lines.find(l => l.startsWith('event: '));
+          const dataLine  = lines.find(l => l.startsWith('data: '));
+          if (!dataLine) continue;
+
+          const eventType = eventLine?.slice(7).trim() ?? 'message';
+          let data: Record<string, unknown> = {};
+          try { data = JSON.parse(dataLine.slice(6)); } catch { continue; }
+
+          if (eventType === 'progress') {
+            setGenProgress((data.message as string) ?? null);
+          } else if (eventType === 'complete') {
+            if (data.discoveryOutput) onGenerated(data.discoveryOutput);
+            break outer;
+          } else if (eventType === 'error') {
+            throw new Error((data.message as string) || 'Generation failed');
+          }
+        }
+      }
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : 'Generation failed. Please try again.');
     } finally {
       setGenerating(false);
+      setGenProgress(null);
     }
   };
 
@@ -363,7 +405,9 @@ function ExecDiagnosticPanel({
       {generating && !hasInsights && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-indigo-50 border border-indigo-100">
           <Loader2 className="h-4 w-4 animate-spin text-indigo-600 shrink-0" />
-          <p className="text-sm text-indigo-700">Synthesising discovery signals into diagnostic insights…</p>
+          <p className="text-sm text-indigo-700">
+            {genProgress ?? 'Synthesising discovery signals into diagnostic insights…'}
+          </p>
         </div>
       )}
 

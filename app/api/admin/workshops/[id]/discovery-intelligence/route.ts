@@ -1,44 +1,57 @@
 /**
- * Discovery Intelligence API
+ * POST /api/admin/workshops/[id]/discovery-intelligence
  *
- * POST — Generates 4 executive intelligence sections from discovery data alone.
- *        No dependency on hemisphere synthesis or workshop phase data.
- *        Designed to run before the workshop begins.
+ * Agentic replacement for the legacy single-completion executive diagnostic.
  *
- *        Signal sources used:
- *          1. discoveryOutput.sections  — domain themes, quotes, sentiment, consensus
- *          2. discoverAnalysis.alignment — actor × theme alignment and divergence cells
- *          3. discoverAnalysis.tensions  — ranked organisational tensions with viewpoints
- *          4. discoverAnalysis.constraints — weighted constraints by severity and domain
- *          5. discoverAnalysis.narrative  — executive / operational / frontline divergence
- *          6. discoverAnalysis.confidence — certainty distribution by domain and layer
+ * Pipeline (matches Jo Air agentic pattern):
+ *   1. Build PrepContext from workshop DB fields (generic — no name/id special-casing)
+ *   2. If no discoveryBriefing exists: run runDiscoveryIntelligenceAgent
+ *      (gpt-4o-mini tool-calling, up to 5 iterations) → stores WorkshopIntelligence
+ *      to workshop.discoveryBriefing so discover-analysis can use it
+ *   3. Build signal blocks from discoverAnalysis (alignment, tensions, constraints,
+ *      narrative, confidence) — same as legacy
+ *   4. GPT-4o call → 4 executive diagnostic sections (same prompt as legacy)
+ *   5. Merge into scratchpad.discoveryOutput and persist
+ *
+ * Streams SSE progress events throughout so the UI shows live status.
+ *
+ * DEPRECATED: The legacy single openai.chat.completions.create() without the
+ * discovery agent has been removed. All workshops now flow through
+ * runDiscoveryIntelligenceAgent before the diagnostic is generated.
+ *
+ * Auth: validateWorkshopAccess — tenant-scoped, role-checked (unchanged).
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { runDiscoveryIntelligenceAgent } from '@/lib/cognition/agents/discovery-intelligence-agent';
+import { hasDiscoveryData } from '@/lib/cognition/agents/agent-types';
+import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import type { PrepContext, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 
-export const maxDuration = 60;
+export const runtime = 'nodejs';
+export const maxDuration = 90; // agent (40s) + GPT-4o diagnostic (30s) + margin
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ── Signal builders — compact summaries for GPT prompt ───────
+// ── Signal builders — compact summaries for GPT-4o diagnostic prompt ──────────
+// These are unchanged from the legacy route; they transform discoverAnalysis
+// data into focused signal text so the diagnostic GPT call is well-grounded.
 
 function buildAlignmentSignals(analysis: DiscoverAnalysis): string {
   const cells = analysis.alignment?.cells ?? [];
   if (cells.length === 0) return '';
 
-  // Top divergence cells (score < -0.05, sorted most divergent first)
   const divergent = cells
     .filter(c => c.alignmentScore < -0.05 && c.utteranceCount >= 2)
     .sort((a, b) => a.alignmentScore - b.alignmentScore)
     .slice(0, 6);
 
-  // Top alignment cells (score > 0.3, sorted highest first)
   const aligned = cells
     .filter(c => c.alignmentScore > 0.3 && c.utteranceCount >= 2)
     .sort((a, b) => b.alignmentScore - a.alignmentScore)
@@ -91,7 +104,6 @@ function buildConstraintSignals(analysis: DiscoverAnalysis): string {
   const constraints = analysis.constraints?.constraints ?? [];
   if (constraints.length === 0) return '';
 
-  // Sort by weight descending (critical first)
   const sorted = constraints
     .slice()
     .sort((a, b) => b.weight - a.weight)
@@ -149,15 +161,14 @@ function buildConfidenceSignals(analysis: DiscoverAnalysis): string {
   if (!overall) return '';
 
   const total = (overall.certain + overall.hedging + overall.uncertain) || 1;
-  const certainPct = Math.round((overall.certain / total) * 100);
-  const hedgingPct = Math.round((overall.hedging / total) * 100);
-  const uncertainPct = Math.round((overall.uncertain / total) * 100);
+  const certainPct  = Math.round((overall.certain  / total) * 100);
+  const hedgingPct  = Math.round((overall.hedging  / total) * 100);
+  const uncertainPct= Math.round((overall.uncertain / total) * 100);
 
   const lines: string[] = [
     `CONFIDENCE INDEX: overall — certain ${certainPct}% / hedging ${hedgingPct}% / uncertain ${uncertainPct}%`,
   ];
 
-  // Domains with highest uncertainty (most concerning)
   const highUncertainty = byDomain
     .map(d => {
       const t = (d.distribution.certain + d.distribution.hedging + d.distribution.uncertain) || 1;
@@ -178,97 +189,21 @@ function buildConfidenceSignals(analysis: DiscoverAnalysis): string {
   return lines.join('\n');
 }
 
-// ── Main handler ──────────────────────────────────────────────
+// ── Diagnostic prompt (unchanged from legacy) ────────────────────────────────
 
-export async function POST(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  try {
-    const { id: workshopId } = await params;
-    const user = await getAuthenticatedUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
-    if (!access.valid) return NextResponse.json({ error: access.error }, { status: 403 });
-
-    // Load all signal sources in parallel
-    const [scratchpad, workshop] = await Promise.all([
-      prisma.workshopScratchpad.findUnique({
-        where: { workshopId },
-        select: { discoveryOutput: true },
-      }),
-      prisma.workshop.findUnique({
-        where: { id: workshopId },
-        select: { discoverAnalysis: true },
-      }),
-    ]);
-
-    if (!scratchpad?.discoveryOutput) {
-      return NextResponse.json(
-        { error: 'No discovery output data found. Run discovery interviews first.' },
-        { status: 400 },
-      );
-    }
-
-    const discoveryOutput = scratchpad.discoveryOutput as Record<string, unknown>;
-    const sections = (discoveryOutput.sections as any[]) || [];
-    const aiSummary = (discoveryOutput._aiSummary as string) || '';
-    const participants = (discoveryOutput.participants as string[]) || [];
-    const totalUtterances = (discoveryOutput.totalUtterances as number) || 0;
-    const analysis = workshop?.discoverAnalysis as DiscoverAnalysis | null;
-
-    if (sections.length === 0) {
-      return NextResponse.json(
-        { error: 'No domain sections found in discovery data. Synthesis may be needed.' },
-        { status: 400 },
-      );
-    }
-
-    // ── Build signal blocks for the prompt ───────────────────
-
-    // 1. Domain sections — themes, quotes, sentiment, consensus
-    const sectionSignals = sections.map((s: any) => {
-      const topThemes = (s.topThemes || []).slice(0, 5).join(', ');
-      const quotes = (s.quotes || [])
-        .slice(0, 2)
-        .map((q: any) => `"${q.text}" — ${q.author}`)
-        .join(' | ');
-      const sentiment = s.sentiment
-        ? `concerned ${s.sentiment.concerned}% / neutral ${s.sentiment.neutral}% / optimistic ${s.sentiment.optimistic}%`
-        : '';
-      return `Domain: ${s.domain} | ${s.utteranceCount} insights | Consensus: ${s.consensusLevel}%
-  Themes: ${topThemes}
-  Sentiment: ${sentiment}
-  Quotes: ${quotes || 'none'}`;
-    }).join('\n\n');
-
-    // 2. Rich analysis signals (only if discoverAnalysis has been run)
-    const richSignals: string[] = [];
-    if (analysis) {
-      const alignmentBlock = buildAlignmentSignals(analysis);
-      const tensionBlock = buildTensionSignals(analysis);
-      const constraintBlock = buildConstraintSignals(analysis);
-      const narrativeBlock = buildNarrativeSignals(analysis);
-      const confidenceBlock = buildConfidenceSignals(analysis);
-
-      if (alignmentBlock) richSignals.push(alignmentBlock);
-      if (tensionBlock) richSignals.push(tensionBlock);
-      if (constraintBlock) richSignals.push(constraintBlock);
-      if (narrativeBlock) richSignals.push(narrativeBlock);
-      if (confidenceBlock) richSignals.push(confidenceBlock);
-    }
-
-    const hasRichSignals = richSignals.length > 0;
-
-    // ── Build the prompt ─────────────────────────────────────
-
-    const prompt = `You are the DREAM Organisational Brain Scanner. Your role is to interpret workshop signals and produce clear executive intelligence — not dashboards, not generic analysis.
+function buildDiagnosticPrompt(
+  participants: string[],
+  totalUtterances: number,
+  aiSummary: string,
+  sectionSignals: string,
+  richSignals: string[],
+): string {
+  const hasRichSignals = richSignals.length > 0;
+  return `You are the DREAM Organisational Brain Scanner. Your role is to interpret workshop signals and produce clear executive intelligence — not dashboards, not generic analysis.
 
 This is pre-workshop discovery intelligence. All signals come from pre-workshop discovery conversations with ${participants.length} participants (${totalUtterances} total insights).
 
-${aiSummary ? `PERCEPTION SUMMARY:\n${aiSummary}\n` : ''}
-─── DOMAIN SIGNALS ───
+${aiSummary ? `PERCEPTION SUMMARY:\n${aiSummary}\n` : ''}─── DOMAIN SIGNALS ───
 ${sectionSignals}
 
 ${hasRichSignals ? `─── DEEPER ANALYSIS SIGNALS ───\n${richSignals.join('\n\n')}` : ''}
@@ -323,47 +258,216 @@ Return valid JSON:
   },
   "finalDiscoverySummary": "2-3 sentences. Executive diagnosis synthesising all four insights: how the organisation currently operates, the most important organisational tensions, the primary friction limiting performance, and the organisation's readiness for transformation. Be direct. This is the going-in statement before the workshop begins."
 }`;
+}
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: 'json_object' },
-      temperature: 0.35,
+// ── Route handler ─────────────────────────────────────────────────────────────
+
+export async function POST(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id: workshopId } = await params;
+
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401, headers: { 'Content-Type': 'application/json' },
     });
-
-    const raw = completion.choices[0]?.message?.content || '{}';
-    let generated: Record<string, unknown>;
-    try {
-      generated = JSON.parse(raw);
-    } catch {
-      return NextResponse.json({ error: 'Failed to parse GPT response' }, { status: 500 });
-    }
-
-    // Merge generated sections back into existing discoveryOutput
-    const updatedDiscoveryOutput = {
-      ...discoveryOutput,
-      operationalReality: generated.operationalReality ?? null,
-      organisationalMisalignment: generated.organisationalMisalignment ?? null,
-      systemicFriction: generated.systemicFriction ?? null,
-      transformationReadiness: generated.transformationReadiness ?? null,
-      finalDiscoverySummary: generated.finalDiscoverySummary ?? null,
-    } as Prisma.InputJsonValue;
-
-    // Save back to scratchpad
-    await prisma.workshopScratchpad.update({
-      where: { workshopId },
-      data: {
-        discoveryOutput: updatedDiscoveryOutput,
-        updatedAt: new Date(),
-      },
-    });
-
-    return NextResponse.json({ discoveryOutput: updatedDiscoveryOutput });
-  } catch (error) {
-    console.error('[Discovery Intelligence POST] Error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to generate discovery intelligence' },
-      { status: 500 },
-    );
   }
+
+  const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
+  if (!access.valid) {
+    return new Response(JSON.stringify({ error: access.error }), {
+      status: 403, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      function sendEvent(type: string, data: unknown) {
+        const payload = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+        try { controller.enqueue(encoder.encode(payload)); } catch { /* stream closed */ }
+      }
+
+      try {
+        // ── 1. Load all data sources in parallel ──────────────────────────
+        const [workshop, scratchpad] = await Promise.all([
+          prisma.workshop.findUnique({
+            where: { id: workshopId },
+            select: {
+              id: true,
+              description: true,
+              businessContext: true,
+              clientName: true,
+              industry: true,
+              companyWebsite: true,
+              dreamTrack: true,
+              targetDomain: true,
+              prepResearch: true,
+              blueprint: true,
+              discoveryBriefing: true,
+              discoverAnalysis: true,
+            },
+          }),
+          prisma.workshopScratchpad.findUnique({
+            where: { workshopId },
+            select: { discoveryOutput: true },
+          }),
+        ]);
+
+        if (!workshop) {
+          sendEvent('error', { message: 'Workshop not found.' });
+          controller.close();
+          return;
+        }
+
+        // ── 2. Ensure discoveryBriefing exists (agentic step) ─────────────
+        // If the workshop has not been through the agentic prep pipeline,
+        // run runDiscoveryIntelligenceAgent now to synthesise any available
+        // participant data. This is the core unification: every workshop's
+        // diagnostic is now backed by the agent's structured synthesis.
+
+        const existingBriefing = workshop.discoveryBriefing as Record<string, unknown> | null;
+
+        if (!hasDiscoveryData(existingBriefing)) {
+          sendEvent('progress', { step: 'agent', message: 'Running discovery intelligence agent…' });
+
+          const context: PrepContext = {
+            workshopId,
+            workshopPurpose: workshop.description,
+            desiredOutcomes: workshop.businessContext,
+            clientName: workshop.clientName,
+            industry: workshop.industry,
+            companyWebsite: workshop.companyWebsite,
+            dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
+            targetDomain: workshop.targetDomain,
+            blueprint: readBlueprintFromJson(workshop.blueprint),
+          };
+
+          const research = workshop.prepResearch as WorkshopPrepResearch | null;
+
+          const intelligence = await runDiscoveryIntelligenceAgent(context, research);
+
+          // Store briefing so discover-analysis can use it on the next run
+          await prisma.workshop.update({
+            where: { id: workshopId },
+            data: { discoveryBriefing: JSON.parse(JSON.stringify(intelligence)) },
+          });
+        }
+
+        // ── 3. Validate scratchpad discovery data ─────────────────────────
+        if (!scratchpad?.discoveryOutput) {
+          sendEvent('error', { message: 'No discovery output data found. Run discovery interviews first.' });
+          controller.close();
+          return;
+        }
+
+        const discoveryOutput = scratchpad.discoveryOutput as Record<string, unknown>;
+        const sections = (discoveryOutput.sections as any[]) ?? [];
+
+        if (sections.length === 0) {
+          sendEvent('error', { message: 'No domain sections found in discovery data. Hemisphere synthesis may be needed.' });
+          controller.close();
+          return;
+        }
+
+        // ── 4. Build signal blocks ────────────────────────────────────────
+        sendEvent('progress', { step: 'signals', message: 'Building diagnostic signals…' });
+
+        const analysis = workshop.discoverAnalysis as DiscoverAnalysis | null;
+        const aiSummary       = (discoveryOutput._aiSummary      as string)   ?? '';
+        const participants    = (discoveryOutput.participants     as string[]) ?? [];
+        const totalUtterances = (discoveryOutput.totalUtterances  as number)  ?? 0;
+
+        const sectionSignals = sections.map((s: any) => {
+          const topThemes = (s.topThemes ?? []).slice(0, 5).join(', ');
+          const quotes = (s.quotes ?? [])
+            .slice(0, 2)
+            .map((q: any) => `"${q.text}" — ${q.author}`)
+            .join(' | ');
+          const sentiment = s.sentiment
+            ? `concerned ${s.sentiment.concerned}% / neutral ${s.sentiment.neutral}% / optimistic ${s.sentiment.optimistic}%`
+            : '';
+          return `Domain: ${s.domain} | ${s.utteranceCount} insights | Consensus: ${s.consensusLevel}%
+  Themes: ${topThemes}
+  Sentiment: ${sentiment}
+  Quotes: ${quotes || 'none'}`;
+        }).join('\n\n');
+
+        const richSignals: string[] = [];
+        if (analysis) {
+          const alignmentBlock   = buildAlignmentSignals(analysis);
+          const tensionBlock     = buildTensionSignals(analysis);
+          const constraintBlock  = buildConstraintSignals(analysis);
+          const narrativeBlock   = buildNarrativeSignals(analysis);
+          const confidenceBlock  = buildConfidenceSignals(analysis);
+
+          if (alignmentBlock)  richSignals.push(alignmentBlock);
+          if (tensionBlock)    richSignals.push(tensionBlock);
+          if (constraintBlock) richSignals.push(constraintBlock);
+          if (narrativeBlock)  richSignals.push(narrativeBlock);
+          if (confidenceBlock) richSignals.push(confidenceBlock);
+        }
+
+        // ── 5. Generate 4 executive diagnostic sections ───────────────────
+        sendEvent('progress', { step: 'diagnostic', message: 'Generating executive diagnostic…' });
+
+        const prompt = buildDiagnosticPrompt(
+          participants, totalUtterances, aiSummary, sectionSignals, richSignals,
+        );
+
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          temperature: 0.35,
+        });
+
+        const raw = completion.choices[0]?.message?.content ?? '{}';
+        let generated: Record<string, unknown>;
+        try {
+          generated = JSON.parse(raw);
+        } catch {
+          sendEvent('error', { message: 'Failed to parse diagnostic response from GPT.' });
+          controller.close();
+          return;
+        }
+
+        // ── 6. Merge into scratchpad and persist ──────────────────────────
+        const updatedDiscoveryOutput = {
+          ...discoveryOutput,
+          operationalReality:        generated.operationalReality        ?? null,
+          organisationalMisalignment:generated.organisationalMisalignment ?? null,
+          systemicFriction:          generated.systemicFriction          ?? null,
+          transformationReadiness:   generated.transformationReadiness   ?? null,
+          finalDiscoverySummary:     generated.finalDiscoverySummary     ?? null,
+        } as Prisma.InputJsonValue;
+
+        await prisma.workshopScratchpad.update({
+          where: { workshopId },
+          data: { discoveryOutput: updatedDiscoveryOutput, updatedAt: new Date() },
+        });
+
+        sendEvent('complete', { discoveryOutput: updatedDiscoveryOutput });
+
+      } catch (error) {
+        console.error('[Discovery Intelligence] Error:', error);
+        sendEvent('error', {
+          message: error instanceof Error ? error.message : 'Failed to generate discovery intelligence',
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  });
 }
