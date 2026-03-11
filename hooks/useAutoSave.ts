@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -13,7 +13,8 @@ export function useAutoSave(
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstRender = useRef(true);
   const saveFnRef = useRef(saveFn);
-  saveFnRef.current = saveFn;
+  // Keep ref in sync with latest saveFn without adding it to effect deps
+  useLayoutEffect(() => { saveFnRef.current = saveFn; });
 
   useEffect(() => {
     // Skip the initial render — don't save on page load
@@ -27,9 +28,8 @@ export function useAutoSave(
     // Clear pending timeout
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
-    setStatus('saving');
-
     timeoutRef.current = setTimeout(async () => {
+      setStatus('saving');
       try {
         await saveFnRef.current();
         setStatus('saved');

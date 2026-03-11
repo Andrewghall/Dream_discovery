@@ -17,6 +17,15 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+  {
+    // Downgrade quality/style rules to warnings across the codebase.
+    // These represent typing debt and copy debt to be resolved incrementally —
+    // they are not correctness bugs.
+    rules: {
+      "@typescript-eslint/no-explicit-any": "warn",
+      "react/no-unescaped-entities": "warn",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

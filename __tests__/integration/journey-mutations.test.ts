@@ -138,7 +138,7 @@ function applyMergeStage(
 
   const sourceNamesLower = payload.sourceStages.map((s) => s.toLowerCase());
 
-  let stages = journey.stages.filter(
+  const stages = journey.stages.filter(
     (s) => !sourceNamesLower.includes(s.toLowerCase()),
   );
   if (!stageExists(stages, payload.targetName)) {

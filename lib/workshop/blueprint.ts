@@ -330,10 +330,11 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
   lenses: buildDefaultLenses(),
 
   // Phase lens policy
-  // Note: pipeline.ts REIMAGINE_LENSES uses 'Organisation', workshop-dimensions
-  // uses 'Operations'. Both are included for compatibility until normalised.
+  // REIMAGINE is aspirational — restricted to 3 human-centric lenses (no Technology/Regulation)
+  // Uses lens names ('Organisation') not dimension names ('Operations') — see pipeline.ts DEFAULT_LENSES
+  // CONSTRAINTS and DEFINE_APPROACH use all dimension names
   phaseLensPolicy: {
-    REIMAGINE: DEFAULT_DIMENSIONS.map((d) => d.name),
+    REIMAGINE: ['People', 'Customer', 'Organisation'],
     CONSTRAINTS: DEFAULT_DIMENSIONS.map((d) => d.name),
     DEFINE_APPROACH: DEFAULT_DIMENSIONS.map((d) => d.name),
   },
@@ -522,9 +523,11 @@ export function composeBlueprint(input: ComposeInput): WorkshopBlueprint {
       });
 
       // Update phase lens policy to match available lenses
+      // REIMAGINE is aspirational — exclude Technology and Regulation
       const lensNames = bp.lenses.map((l) => l.name);
+      const REIMAGINE_EXCLUDED = ['Technology', 'Regulation'];
       bp.phaseLensPolicy = {
-        REIMAGINE: [...lensNames],
+        REIMAGINE: lensNames.filter((n) => !REIMAGINE_EXCLUDED.includes(n)),
         CONSTRAINTS: [...lensNames],
         DEFINE_APPROACH: [...lensNames],
       };

@@ -50,6 +50,15 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
     [cells],
   );
 
+  // Compute per-actor sample sizes for n= display (must be before early return)
+  const actorSampleSizes = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of cells) {
+      map.set(c.actor, (map.get(c.actor) || 0) + c.utteranceCount);
+    }
+    return map;
+  }, [cells]);
+
   const svgWidth = LABEL_LEFT + actors.length * (CELL_W + GAP) + 20;
   const svgHeight = LABEL_TOP + themes.length * (CELL_H + GAP) + 20;
 
@@ -84,15 +93,6 @@ export function AlignmentHeatmap({ data, showSampleSize, imbalanceWarning }: Ali
       </div>
     );
   }
-
-  // Compute per-actor sample sizes for n= display
-  const actorSampleSizes = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const c of cells) {
-      map.set(c.actor, (map.get(c.actor) || 0) + c.utteranceCount);
-    }
-    return map;
-  }, [cells]);
 
   return (
     <div className="relative overflow-x-auto">

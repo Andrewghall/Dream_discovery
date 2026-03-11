@@ -330,7 +330,7 @@ function recoverOrphans(nodes: HemisphereNode[], edges: HemisphereEdge[]): void 
   const nonEvidence = nodes.filter((n) => n.type !== 'EVIDENCE');
   const tokenAll = new Map(nonEvidence.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
 
-  let degree = degreeByNode(edges);
+  const degree = degreeByNode(edges);
   const orphanIds = nonEvidence
     .map((n) => n.id)
     .filter((id) => (degree.get(id) || 0) <= 0);

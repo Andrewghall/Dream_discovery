@@ -1,9 +1,9 @@
 /**
  * Workshop access validation
  *
- *   PLATFORM_ADMIN  → blocked (GDPR — workshops are tenant-owned data)
- *   TENANT_ADMIN    → only workshops they personally created (same as TENANT_USER)
- *   TENANT_USER     → only workshops they personally created
+ *   PLATFORM_ADMIN  → can access any workshop (cross-org super-admin)
+ *   TENANT_ADMIN    → can access any workshop in their own organisation
+ *   TENANT_USER     → can only access workshops they personally created
  */
 
 import { prisma } from '@/lib/prisma';
@@ -20,9 +20,9 @@ export interface WorkshopAccessValidation {
 /**
  * Validates that a user can access a workshop.
  *
- *   PLATFORM_ADMIN  → always denied (GDPR)
- *   TENANT_ADMIN    → only workshops they personally created
- *   TENANT_USER     → only workshops they personally created
+ *   PLATFORM_ADMIN  → can access any workshop (cross-org super-admin)
+ *   TENANT_ADMIN    → org-scoped: any workshop in their organisation
+ *   TENANT_USER     → ownership-scoped: only workshops they created
  *
  * @param workshopId Workshop ID to access
  * @param userOrganizationId User's organization ID
@@ -35,36 +35,54 @@ export async function validateWorkshopAccess(
   userRole: string,
   userId?: string
 ): Promise<WorkshopAccessValidation> {
-  // PLATFORM_ADMIN: blocked for all workshop content (GDPR — workshops are tenant-owned)
   if (userRole === 'PLATFORM_ADMIN') {
-    return { valid: false, error: 'Platform administrators cannot access workshop content' };
+    // Super-admin: universal read access across all organisations
+    const workshop = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: { id: true, organizationId: true },
+    });
+    if (!workshop) {
+      return { valid: false, error: 'Workshop not found' };
+    }
+    return { valid: true, workshop };
   }
 
-  // TENANT_ADMIN and TENANT_USER: personal ownership — only the workshop creator
-  if (userRole === 'TENANT_ADMIN' || userRole === 'TENANT_USER') {
+  if (userRole === 'TENANT_ADMIN') {
+    // Org-scoped: any workshop within the admin's organisation
+    if (!userOrganizationId) {
+      return { valid: false, error: 'Organization ID required' };
+    }
+    const workshop = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: { id: true, organizationId: true },
+    });
+    if (!workshop) {
+      return { valid: false, error: 'Workshop not found' };
+    }
+    if (workshop.organizationId !== userOrganizationId) {
+      return { valid: false, error: 'Workshop belongs to a different organization' };
+    }
+    return { valid: true, workshop };
+  }
+
+  if (userRole === 'TENANT_USER') {
+    // Ownership-scoped: only workshops the user personally created
     if (!userOrganizationId || !userId) {
       return { valid: false, error: 'Organization and user ID required' };
     }
-
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },
       select: { id: true, organizationId: true, createdById: true },
     });
-
     if (!workshop) {
       return { valid: false, error: 'Workshop not found' };
     }
-
-    // Org boundary
     if (workshop.organizationId !== userOrganizationId) {
-      return { valid: false, error: 'Access denied' };
+      return { valid: false, error: 'Workshop belongs to a different organization' };
     }
-
-    // Personal ownership — access is granted to whoever created the workshop
     if (workshop.createdById !== userId) {
-      return { valid: false, error: 'Access denied' };
+      return { valid: false, error: 'You do not own this workshop' };
     }
-
     return { valid: true, workshop };
   }
 

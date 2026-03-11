@@ -12,7 +12,7 @@
  * dedup set.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { StickyPad } from '@/lib/cognitive-guidance/pipeline';
 import type { JourneyCompletionState } from '@/lib/cognition/guidance-state';
 import type { JourneyMutationIntent } from '@/lib/cognition/agents/journey-mutation-types';
@@ -175,7 +175,8 @@ export function useLiveEventPipeline(
 
   // Stable callback refs (avoid stale closures)
   const callbacksRef = useRef(options);
-  callbacksRef.current = options;
+  // Keep ref in sync with latest options without adding it to effect deps
+  useLayoutEffect(() => { callbacksRef.current = options; });
 
   // ---- Central event dispatch ----
 
@@ -361,6 +362,7 @@ export function useLiveEventPipeline(
 
   useEffect(() => {
     if (enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       startListening();
     } else {
       cleanup();

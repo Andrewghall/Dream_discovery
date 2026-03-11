@@ -60,7 +60,7 @@ export async function classifyParticipantLayers(
   if (participants.length === 0) return [];
 
   // Build AI classifications (for those not overridden)
-  let aiMap: ParticipantLayerMap = {};
+  const aiMap: ParticipantLayerMap = {};
 
   if (process.env.OPENAI_API_KEY) {
     try {

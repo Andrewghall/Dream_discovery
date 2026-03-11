@@ -180,9 +180,9 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
 
   // ── Live Session Signals ─────────────────────────────────────────────────
 
-  let reimaginePads: WorkshopSignals['liveSession']['reimaginePads'] = [];
-  let constraintPads: WorkshopSignals['liveSession']['constraintPads'] = [];
-  let defineApproachPads: WorkshopSignals['liveSession']['defineApproachPads'] = [];
+  const reimaginePads: WorkshopSignals['liveSession']['reimaginePads'] = [];
+  const constraintPads: WorkshopSignals['liveSession']['constraintPads'] = [];
+  const defineApproachPads: WorkshopSignals['liveSession']['defineApproachPads'] = [];
   let journey: WorkshopSignals['liveSession']['journey'] = [];
   let hemisphereShift: number | null = null;
 

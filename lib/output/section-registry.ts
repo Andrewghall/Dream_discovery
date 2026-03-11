@@ -1,9 +1,8 @@
 /**
  * Section Registry
  *
- * Defines the 7 fixed sections for the Download Report.
- * All sections are always shown — this is the definitive output document.
- * Sections ordered by priority (ascending).
+ * Defines sections for the Download Report.
+ * Sections are filtered by archetype and context, then ordered by priority.
  */
 
 import type { WorkshopArchetype } from './archetype-classifier';
@@ -36,7 +35,7 @@ export interface SectionDefinition {
 }
 
 // ================================================================
-// Registry — 7 fixed sections, always shown
+// Registry — sections with conditional rules
 // ================================================================
 
 export const SECTION_REGISTRY: SectionDefinition[] = [
@@ -61,8 +60,9 @@ export const SECTION_REGISTRY: SectionDefinition[] = [
     title: 'Reimagine',
     dataKey: 'reimagineContent',
     priority: 20,
-    core: true,
-    when: () => true,
+    core: false,
+    // Compliance workshops skip the aspirational Reimagine section
+    when: (archetype) => archetype !== 'compliance_risk_remediation',
   },
   {
     id: 'constraints',
@@ -81,12 +81,30 @@ export const SECTION_REGISTRY: SectionDefinition[] = [
     when: () => true,
   },
   {
+    id: 'hemisphere',
+    title: 'Insight Hemisphere',
+    dataKey: 'hemisphereData',
+    priority: 50,
+    core: false,
+    when: (_archetype, context) => context.hasHemisphereData,
+  },
+  {
     id: 'customer-journey',
     title: 'Journey Map',
     dataKey: 'customerJourney',
     priority: 60,
-    core: true,
-    when: () => true,
+    core: false,
+    // Only relevant for customer-facing / operational archetypes
+    when: (archetype) =>
+      archetype === 'operational_contact_centre_improvement' || archetype === 'hybrid',
+  },
+  {
+    id: 'commercial',
+    title: 'Commercial',
+    dataKey: 'commercialContent',
+    priority: 70,
+    core: false,
+    when: (_archetype, context) => context.hasCommercialContent,
   },
   {
     id: 'summary',
@@ -103,14 +121,15 @@ export const SECTION_REGISTRY: SectionDefinition[] = [
 // ================================================================
 
 /**
- * Returns all 7 sections sorted by priority.
- * archetype and context params retained for API compatibility.
+ * Returns sections active for the given archetype and context, sorted by priority.
  */
 export function composeActiveSections(
-  _archetype: WorkshopArchetype,
-  _context: SectionContext,
+  archetype: WorkshopArchetype,
+  context: SectionContext,
 ): SectionDefinition[] {
-  return [...SECTION_REGISTRY].sort((a, b) => a.priority - b.priority);
+  return SECTION_REGISTRY
+    .filter((s) => s.when(archetype, context))
+    .sort((a, b) => a.priority - b.priority);
 }
 
 /**

@@ -422,7 +422,7 @@ export async function GET(
         });
       }
 
-      let allNodes: HemisphereNode[] = [...nodesById.values()].sort((a, b) => b.weight - a.weight);
+      const allNodes: HemisphereNode[] = [...nodesById.values()].sort((a, b) => b.weight - a.weight);
 
       // If blueprint lenses are absent, infer industryDimensions from node phaseTags + datum.lens fields
       if (!industryDimensions) {

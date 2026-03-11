@@ -1,7 +1,7 @@
 import chromium from '@sparticuz/chromium';
 import puppeteerCore from 'puppeteer-core';
 // Use regular puppeteer in development (has bundled Chromium)
-// @ts-ignore - puppeteer may not be installed in production
+// @ts-expect-error - puppeteer may not be installed in production
 import puppeteerFull from 'puppeteer';
 
 type LiveWorkshopReport = {

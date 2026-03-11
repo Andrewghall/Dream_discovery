@@ -140,7 +140,7 @@ function applyMergeStage(
   const sourceNamesLower = payload.sourceStages.map((s) => s.toLowerCase());
 
   // Remove source stages, add target if not present
-  let stages = journey.stages.filter(
+  const stages = journey.stages.filter(
     (s) => !sourceNamesLower.includes(s.toLowerCase()),
   );
   if (!stageExists(stages, payload.targetName)) {
@@ -368,6 +368,7 @@ export function useJourneyMutations(
     setJourney,
     applyMutationIntent,
     mergeBackend,
+    // eslint-disable-next-line react-hooks/refs
     appliedIntentIds: appliedIntentIdsRef.current,
   };
 }

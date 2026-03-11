@@ -67,9 +67,11 @@ export function DreamNav() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Close mobile menu on navigation
+  // Close mobile menu on navigation — intentional synchronous reset on route change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMobileOpen(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMobileSolutionsOpen(false);
   }, [pathname]);
 

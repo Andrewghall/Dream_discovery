@@ -427,7 +427,7 @@ async function tavilySearch(
   return response.json() as Promise<TavilyResponse>;
 }
 
-const useTavily = () => Boolean(env.TAVILY_API_KEY);
+const hasTavily = () => Boolean(env.TAVILY_API_KEY);
 
 // ══════════════════════════════════════════════════════════════
 // TOOL EXECUTION
@@ -449,7 +449,7 @@ async function executeResearchTool(
       const searchQuery = String(args.searchQuery || `${context.clientName} official website`);
       const providedWebsite = String(args.companyWebsite || context.companyWebsite || '');
 
-      if (useTavily()) {
+      if (hasTavily()) {
         try {
           // Search specifically for the company's official website / confirmed existence
           const query = providedWebsite
@@ -522,7 +522,7 @@ async function executeResearchTool(
       const query = String(args.query || '');
       const focus = String(args.focus || 'overview');
 
-      if (useTavily()) {
+      if (hasTavily()) {
         // ── REAL WEB SEARCH ──
         try {
           const searchQuery = `${query} ${context.clientName || ''} ${context.industry || ''}`.trim();
@@ -575,7 +575,7 @@ async function executeResearchTool(
       const industry = String(args.industry || context.industry || 'general');
       const focus = String(args.focus || 'key trends');
 
-      if (useTavily()) {
+      if (hasTavily()) {
         // ── REAL WEB SEARCH ──
         try {
           const searchQuery = `${industry} industry trends ${focus} ${new Date().getFullYear()}`;
@@ -627,7 +627,7 @@ async function executeResearchTool(
       const industry = String(args.industry || context.industry || '');
       const question = String(args.question || `challenges in ${domain}`);
 
-      if (useTavily()) {
+      if (hasTavily()) {
         // ── REAL WEB SEARCH ──
         try {
           const searchQuery = `${domain} ${industry} ${question} challenges best practices ${new Date().getFullYear()}`;
@@ -679,7 +679,7 @@ async function executeResearchTool(
       const clientType = String(args.clientType || 'customer');
       const focus = String(args.focus || 'end-to-end lifecycle');
 
-      if (useTavily()) {
+      if (hasTavily()) {
         try {
           const searchQuery = `${industry} ${clientType} journey stages lifecycle touchpoints ${focus} ${new Date().getFullYear()}`;
           const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
@@ -729,7 +729,7 @@ async function executeResearchTool(
       const industry = String(args.industry || context.industry || 'general');
       const focus = String(args.focus || 'key strategic dimensions');
 
-      if (useTavily()) {
+      if (hasTavily()) {
         try {
           const searchQuery = `${industry} strategic dimensions key success factors transformation pillars ${focus} ${new Date().getFullYear()}`;
           const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
@@ -780,7 +780,7 @@ async function executeResearchTool(
       const domain = String(args.domain || context.targetDomain || '');
       const clientType = String(args.clientType || 'operations');
 
-      if (useTavily()) {
+      if (hasTavily()) {
         try {
           const searchQuery = `${industry}${domain ? ` ${domain}` : ''} key roles stakeholders organisational structure ${clientType} team composition ${new Date().getFullYear()}`;
           const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
@@ -843,7 +843,7 @@ function buildResearchSystemPrompt(context: PrepContext): string {
     ? `The DREAM track is Domain, focused on "${context.targetDomain || 'a specific area'}". You MUST research both the company broadly AND this specific domain in substantial depth — the domain is the centrepiece of this workshop.`
     : 'The DREAM track is Enterprise — full end-to-end assessment. Research the company holistically across all business functions.';
 
-  const searchMode = useTavily()
+  const searchMode = hasTavily()
     ? 'You have LIVE WEB SEARCH via Tavily. Your search tools return real, current web results with full page content and source URLs. Use many different queries to build a thorough, evidence-based picture. Each search gives you fresh material — use it extensively.'
     : '⚠️ No web search API configured. Your search tools use parametric knowledge only. Results should be treated as general knowledge that needs verification. Even so, provide thorough, detailed multi-paragraph responses.';
 
@@ -1122,7 +1122,7 @@ Remember: every fact must be cited. Every challenge and development must end wit
             ? (fnArgs.recentDevelopments as string[]).map((d) => `  • ${d}`).join('\n')
             : '  (none identified)';
 
-          const searchLabel = useTavily() ? '🔍 Web-Researched' : '⚠️ Parametric Knowledge';
+          const searchLabel = hasTavily() ? '🔍 Web-Researched' : '⚠️ Parametric Knowledge';
           const sourceUrls = Array.isArray(fnArgs.sourceUrls) ? (fnArgs.sourceUrls as string[]) : [];
           const sourcesSection = sourceUrls.length > 0
             ? `\n\n**Sources** (${sourceUrls.length})\n${sourceUrls.map((u) => `  • ${u}`).join('\n')}`
@@ -1154,7 +1154,7 @@ Remember: every fact must be cited. Every challenge and development must end wit
             type: 'proposal',
             metadata: {
               toolsUsed: ['search_company_info', 'search_industry_trends', 'search_domain_challenges', 'search_customer_journey', 'search_industry_dimensions', 'search_actor_roles'],
-              searchMode: useTavily() ? 'tavily_web_search' : 'parametric_fallback',
+              searchMode: hasTavily() ? 'tavily_web_search' : 'parametric_fallback',
               sourceCount: sourceUrls.length,
               journeyStageCount: journeyStages.length,
               dimensionCount: industryDims.length,

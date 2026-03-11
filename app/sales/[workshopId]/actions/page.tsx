@@ -34,19 +34,6 @@ export default function ActionsPage() {
   const [showEmail, setShowEmail] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    fetch(`/api/sales/${workshopId}/report`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.report) {
-          setReport(data.report);
-          generateEmailDraft(data.report);
-        }
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [workshopId]);
-
   const generateEmailDraft = (report: SalesReport) => {
     const actions = report.actions || [];
     const actionLines = actions
@@ -60,6 +47,20 @@ export default function ActionsPage() {
       `Please let me know if I've missed anything or if you have any questions.\n\nBest regards`
     );
   };
+
+  useEffect(() => {
+    fetch(`/api/sales/${workshopId}/report`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.report) {
+          setReport(data.report);
+          generateEmailDraft(data.report);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workshopId]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
