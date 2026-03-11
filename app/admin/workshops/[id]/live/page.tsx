@@ -12,6 +12,7 @@ import {
 import { LiveSessionHeader } from './_components/LiveSessionHeader';
 import { LiveActorJourneyMap } from './_components/LiveActorJourneyMap';
 import { LiveWorkboardCard } from './_components/LiveWorkboardCard';
+import { LiveSynthesisCard } from './_components/LiveSynthesisCard';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -3969,118 +3970,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Synthesis</CardTitle>
-                  <CardDescription>Dominant themes by domain (weighted by repetition and recency)</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {blueprintLensNames.map((d) => {
-                    const s = synthesisByDomain[d];
-                    const hasAny =
-                      (s?.aspirations?.length || 0) +
-                        (s?.constraints?.length || 0) +
-                        (s?.enablers?.length || 0) +
-                        (s?.opportunities?.length || 0) >
-                      0;
-
-                    return (
-                      <div key={d} className="rounded-md border p-3">
-                        <div className="text-sm font-medium mb-2">{d}</div>
-                        {!hasAny ? (
-                          <div className="text-sm text-muted-foreground">No synthesis yet.</div>
-                        ) : (
-                          <div className="grid grid-cols-1 gap-3">
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Aspirations</div>
-                              <div className="space-y-2">
-                                {(s?.aspirations || []).length === 0 ? (
-                                  <div className="text-sm text-muted-foreground">—</div>
-                                ) : (
-                                  (s?.aspirations || []).map((x) => (
-                                    <div key={x.themeId} className="rounded-md border bg-background px-2 py-2">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="text-sm font-medium">{x.label}</div>
-                                        <div className="text-xs text-muted-foreground tabular-nums">×{x.strength}</div>
-                                      </div>
-                                      {x.examples?.[0] ? (
-                                        <div className="mt-1 text-xs text-muted-foreground">{x.examples[0]}</div>
-                                      ) : null}
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Constraints</div>
-                              <div className="space-y-2">
-                                {(s?.constraints || []).length === 0 ? (
-                                  <div className="text-sm text-muted-foreground">—</div>
-                                ) : (
-                                  (s?.constraints || []).map((x) => (
-                                    <div key={x.themeId} className="rounded-md border bg-background px-2 py-2">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="text-sm font-medium">{x.label}</div>
-                                        <div className="text-xs text-muted-foreground tabular-nums">×{x.strength}</div>
-                                      </div>
-                                      {x.examples?.[0] ? (
-                                        <div className="mt-1 text-xs text-muted-foreground">{x.examples[0]}</div>
-                                      ) : null}
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Enablers</div>
-                              <div className="space-y-2">
-                                {(s?.enablers || []).length === 0 ? (
-                                  <div className="text-sm text-muted-foreground">—</div>
-                                ) : (
-                                  (s?.enablers || []).map((x) => (
-                                    <div key={x.themeId} className="rounded-md border bg-background px-2 py-2">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="text-sm font-medium">{x.label}</div>
-                                        <div className="text-xs text-muted-foreground tabular-nums">×{x.strength}</div>
-                                      </div>
-                                      {x.examples?.[0] ? (
-                                        <div className="mt-1 text-xs text-muted-foreground">{x.examples[0]}</div>
-                                      ) : null}
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Opportunities</div>
-                              <div className="space-y-2">
-                                {(s?.opportunities || []).length === 0 ? (
-                                  <div className="text-sm text-muted-foreground">—</div>
-                                ) : (
-                                  (s?.opportunities || []).map((x) => (
-                                    <div key={x.themeId} className="rounded-md border bg-background px-2 py-2">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="text-sm font-medium">{x.label}</div>
-                                        <div className="text-xs text-muted-foreground tabular-nums">×{x.strength}</div>
-                                      </div>
-                                      {x.examples?.[0] ? (
-                                        <div className="mt-1 text-xs text-muted-foreground">{x.examples[0]}</div>
-                                      ) : null}
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
+              <LiveSynthesisCard lensNames={blueprintLensNames} synthesisByDomain={synthesisByDomain} />
 
               <Card>
                 <CardHeader>
