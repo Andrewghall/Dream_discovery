@@ -24,6 +24,7 @@ import type {
 } from '@/lib/output-intelligence/types';
 import type { WorkshopOutputIntelligence } from '@/lib/output-intelligence/types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
+import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -60,6 +61,7 @@ interface ExportPdfBody {
   clientLogoUrl?: string;   // Client logo for the cover page
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   discoveryOutput?: any;    // From scratchpad.discoveryOutput — for discovery_* sections
+  discoverAnalysis?: DiscoverAnalysis; // Structural analysis data — for structural_* sections
 }
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
@@ -405,6 +407,149 @@ function renderInsightSummary(intelligence: WorkshopOutputIntelligence): string 
     </section>`;
 }
 
+// ── Structural Analysis renderers ─────────────────────────────────────────────
+
+function renderStructuralAlignment(discoverAnalysis: DiscoverAnalysis | undefined): string {
+  if (!discoverAnalysis?.alignment?.cells?.length) return '';
+  const divergent = [...discoverAnalysis.alignment.cells]
+    .sort((a, b) => a.alignmentScore - b.alignmentScore)
+    .slice(0, 12);
+  const rows = divergent.map(cell => {
+    const score = cell.alignmentScore;
+    const color = score < -0.5 ? '#b91c1c' : score < 0 ? '#b45309' : '#065f46';
+    return `<tr>
+      <td class="struct-td">${esc(cell.theme)}</td>
+      <td class="struct-td-muted">${esc(cell.actor)}</td>
+      <td class="struct-td-score" style="color:${color}">${score.toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Domain Misalignment</div></div>
+      <p class="struct-subtitle">Top divergent actor × theme pairs — negative scores indicate misalignment</p>
+      <div class="struct-table-wrap">
+        <table class="struct-table">
+          <thead>
+            <tr class="struct-thead">
+              <th class="struct-th">Theme</th>
+              <th class="struct-th">Actor</th>
+              <th class="struct-th-right">Score</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function renderStructuralNarrative(discoverAnalysis: DiscoverAnalysis | undefined): string {
+  if (!discoverAnalysis?.narrative?.layers?.length) return '';
+  const { layers } = discoverAnalysis.narrative;
+  const LAYER_BG: Record<string, string> = {
+    executive:   '#f5f3ff',
+    operational: '#eff6ff',
+    frontline:   '#f0fdf4',
+  };
+  const LAYER_BORDER: Record<string, string> = {
+    executive:   '#ddd6fe',
+    operational: '#bfdbfe',
+    frontline:   '#bbf7d0',
+  };
+  const SENT_COLOR: Record<string, string> = {
+    positive: '#065f46',
+    negative: '#b91c1c',
+    neutral:  '#6b7280',
+    mixed:    '#b45309',
+  };
+  const cards = layers.map(layer => {
+    const bg = LAYER_BG[layer.layer] ?? '#f9fafb';
+    const border = LAYER_BORDER[layer.layer] ?? '#e5e7eb';
+    const sentColor = SENT_COLOR[layer.dominantSentiment] ?? '#374151';
+    const terms = layer.topTerms.slice(0, 5).map(t => `<div class="narr-term">${esc(t.term)}</div>`).join('');
+    return `
+      <div class="narr-card" style="background:${bg};border-color:${border}">
+        <div class="narr-layer">${esc(layer.layer)}</div>
+        <div class="narr-sentiment" style="color:${sentColor}">${esc(layer.dominantSentiment)}</div>
+        <div class="narr-terms">${terms}</div>
+      </div>`;
+  }).join('');
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Narrative Divergence</div></div>
+      <p class="struct-subtitle">Language and sentiment differences across organisational layers</p>
+      <div class="narr-grid">${cards}</div>
+    </section>`;
+}
+
+function renderStructuralTensions(discoverAnalysis: DiscoverAnalysis | undefined): string {
+  if (!discoverAnalysis?.tensions?.tensions?.length) return '';
+  const tensions = discoverAnalysis.tensions.tensions.slice(0, 8);
+  const SEV_BG: Record<string, string> = { critical: '#fee2e2', significant: '#fef3c7', moderate: '#f1f5f9' };
+  const SEV_TEXT: Record<string, string> = { critical: '#b91c1c', significant: '#b45309', moderate: '#475569' };
+  const items = tensions.map((t, i) => {
+    const bg = SEV_BG[t.severity] ?? SEV_BG.moderate;
+    const text = SEV_TEXT[t.severity] ?? SEV_TEXT.moderate;
+    const viewpoints = t.viewpoints.slice(0, 2).map(vp =>
+      `<div class="tension-vp"><span class="tension-actor">${esc(vp.actor)}</span> — ${esc(vp.position.slice(0, 80))}${vp.position.length > 80 ? '…' : ''}</div>`
+    ).join('');
+    return `
+      <div class="tension-item">
+        <div class="tension-rank">#${i + 1}</div>
+        <div class="tension-body">
+          <div class="tension-header">
+            <span class="tension-topic">${esc(t.topic)}</span>
+            <span class="tension-sev" style="background:${bg};color:${text}">${esc(t.severity)}</span>
+          </div>
+          ${viewpoints}
+        </div>
+      </div>`;
+  }).join('');
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Transformation Tensions</div></div>
+      <p class="struct-subtitle">Ranked unresolved tensions — competing perspectives slowing transformation</p>
+      <div class="tension-list">${items}</div>
+    </section>`;
+}
+
+function renderStructuralBarriers(discoverAnalysis: DiscoverAnalysis | undefined): string {
+  if (!discoverAnalysis?.constraints?.constraints?.length) return '';
+  const sorted = [...discoverAnalysis.constraints.constraints]
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 10);
+  const SEV_BG: Record<string, string> = { critical: '#fee2e2', significant: '#fef3c7', moderate: '#f1f5f9' };
+  const SEV_TEXT: Record<string, string> = { critical: '#b91c1c', significant: '#b45309', moderate: '#475569' };
+  const rows = sorted.map(c => {
+    const bg = SEV_BG[c.severity] ?? SEV_BG.moderate;
+    const text = SEV_TEXT[c.severity] ?? SEV_TEXT.moderate;
+    const desc = c.description.split(' ').slice(0, 10).join(' ') + (c.description.split(' ').length > 10 ? '…' : '');
+    return `<tr>
+      <td class="struct-td">${esc(desc)}</td>
+      <td class="struct-td-muted">${esc(c.domain)}</td>
+      <td class="struct-td"><span class="struct-sev" style="background:${bg};color:${text}">${esc(c.severity)}</span></td>
+      <td class="struct-td-score">${c.weight}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Structural Barriers</div></div>
+      <p class="struct-subtitle">Weighted constraints ranked by severity and frequency</p>
+      <div class="struct-table-wrap">
+        <table class="struct-table">
+          <thead>
+            <tr class="struct-thead">
+              <th class="struct-th">Barrier</th>
+              <th class="struct-th">Domain</th>
+              <th class="struct-th">Severity</th>
+              <th class="struct-th-right">Weight</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
 function renderCustomSection(cfg: ReportSectionConfig): string {
   const content = cfg.customContent ?? {};
   return `
@@ -459,7 +604,7 @@ function buildReportHtml(
   tenantLogoBase64: string | null,
   clientLogoBase64: string | null,
 ): string {
-  const { reportSummary, intelligence, layout, liveJourneyData, workshopName, orgName, discoveryOutput } = body;
+  const { reportSummary, intelligence, layout, liveJourneyData, workshopName, orgName, discoveryOutput, discoverAnalysis } = body;
 
   const enabledSections = layout.sections.filter(s => s.enabled);
 
@@ -501,6 +646,14 @@ function buildReportHtml(
         return renderDiscoverySignals(discoveryOutput);
       case 'insight_summary':
         return renderInsightSummary(intelligence);
+      case 'structural_alignment':
+        return renderStructuralAlignment(discoverAnalysis);
+      case 'structural_narrative':
+        return renderStructuralNarrative(discoverAnalysis);
+      case 'structural_tensions':
+        return renderStructuralTensions(discoverAnalysis);
+      case 'structural_barriers':
+        return renderStructuralBarriers(discoverAnalysis);
       case 'report_conclusion':
         return renderConclusion(reportSummary);
       default: return '';
@@ -752,6 +905,33 @@ function buildReportHtml(
   .insight-stat-val.indigo { color: #4338ca; }
   .insight-stat-val.blue { color: #1d4ed8; }
   .insight-stat-label { font-size: 8.5pt; color: #6b7280; margin-top: 4px; font-weight: 500; }
+
+  /* ── Structural Analysis ────────────────────────────────────────────────── */
+  .struct-subtitle { font-size: 9.5pt; color: #6b7280; margin-bottom: 14px; line-height: 1.5; }
+  .struct-table-wrap { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+  .struct-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  .struct-thead tr { background: #f9fafb; }
+  .struct-th { padding: 8px 14px; text-align: left; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; font-size: 8.5pt; }
+  .struct-th-right { padding: 8px 14px; text-align: right; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; font-size: 8.5pt; }
+  .struct-td { padding: 9px 14px; color: #111827; border-top: 1px solid #f1f5f9; }
+  .struct-td-muted { padding: 9px 14px; color: #6b7280; border-top: 1px solid #f1f5f9; }
+  .struct-td-score { padding: 9px 14px; text-align: right; font-weight: 700; border-top: 1px solid #f1f5f9; }
+  .struct-sev { padding: 2px 6px; border-radius: 4px; font-size: 8pt; font-weight: 600; }
+  .narr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .narr-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
+  .narr-layer { font-size: 8pt; font-weight: 700; text-transform: capitalize; letter-spacing: 0.1em; color: #374151; margin-bottom: 4px; text-transform: uppercase; }
+  .narr-sentiment { font-size: 9.5pt; font-weight: 600; margin-bottom: 10px; text-transform: capitalize; }
+  .narr-terms { display: flex; flex-direction: column; gap: 4px; }
+  .narr-term { font-size: 9pt; color: #374151; padding: 2px 0; }
+  .tension-list { display: flex; flex-direction: column; gap: 10px; }
+  .tension-item { display: flex; gap: 12px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; }
+  .tension-rank { flex-shrink: 0; font-size: 8.5pt; font-weight: 700; color: #9ca3af; font-family: monospace; width: 22px; padding-top: 2px; }
+  .tension-body { flex: 1; }
+  .tension-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+  .tension-topic { font-size: 10pt; font-weight: 700; color: #111827; flex: 1; }
+  .tension-sev { flex-shrink: 0; padding: 2px 7px; border-radius: 5px; font-size: 8pt; font-weight: 600; white-space: nowrap; }
+  .tension-vp { font-size: 9pt; color: #6b7280; line-height: 1.5; padding: 1px 0; }
+  .tension-actor { font-weight: 600; color: #374151; }
 
   /* ── Chapter dividers ───────────────────────────────────────────────────── */
   .chapter-divider {

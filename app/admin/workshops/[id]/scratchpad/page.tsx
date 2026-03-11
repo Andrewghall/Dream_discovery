@@ -42,6 +42,7 @@ import {
 } from '@dnd-kit/sortable';
 import type { WorkshopOutputIntelligence } from '@/lib/output-intelligence/types';
 import type { ReportSummary, ReportSectionConfig, ReportLayout, ReportConclusion, ReportNextStep } from '@/lib/output-intelligence/types';
+import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 import { defaultReportLayout } from '@/lib/output-intelligence/types';
 import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
@@ -894,7 +895,14 @@ const DIAGNOSTIC_CARDS_CFG = [
 function DiscoveryDiagnosticBlock({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   discoveryOutput,
-}: { discoveryOutput: any | null }) {
+  excludedItems = [],
+  onToggleItem = () => {},
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  discoveryOutput: any | null;
+  excludedItems?: string[];
+  onToggleItem?: (id: string) => void;
+}) {
   if (!discoveryOutput) {
     return <p className="text-xs text-muted-foreground py-2">Discovery output not available. Go to Discovery Output and run the Executive Diagnostic.</p>;
   }
@@ -911,20 +919,23 @@ function DiscoveryDiagnosticBlock({
         {DIAGNOSTIC_CARDS_CFG.map(({ key, label, color }) => {
           const card = discoveryOutput[key] as { insight: string; evidence?: string[] } | undefined;
           if (!card?.insight) return null;
+          const itemId = `card:${key}`;
           return (
-            <div key={key} className={`rounded-xl border px-4 py-4 ${color}`}>
-              <p className="text-[11px] font-semibold uppercase tracking-widest opacity-60 mb-2">{label}</p>
-              <p className="text-sm leading-relaxed text-foreground">{card.insight}</p>
-              {card.evidence && card.evidence.length > 0 && (
-                <ul className="mt-2 space-y-0.5">
-                  {card.evidence.slice(0, 2).map((e, i) => (
-                    <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
-                      <span className="shrink-0">·</span>{e}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <ItemToggle key={key} id={itemId} excluded={excludedItems.includes(itemId)} onToggle={onToggleItem}>
+              <div className={`rounded-xl border px-4 py-4 ${color}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-widest opacity-60 mb-2">{label}</p>
+                <p className="text-sm leading-relaxed text-foreground">{card.insight}</p>
+                {card.evidence && card.evidence.length > 0 && (
+                  <ul className="mt-2 space-y-0.5">
+                    {card.evidence.slice(0, 2).map((e, i) => (
+                      <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+                        <span className="shrink-0">·</span>{e}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </ItemToggle>
           );
         })}
       </div>
@@ -937,7 +948,14 @@ function DiscoveryDiagnosticBlock({
 function DiscoverySignalsBlock({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   discoveryOutput,
-}: { discoveryOutput: any | null }) {
+  excludedItems = [],
+  onToggleItem = () => {},
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  discoveryOutput: any | null;
+  excludedItems?: string[];
+  onToggleItem?: (id: string) => void;
+}) {
   if (!discoveryOutput?.sections?.length) {
     return <p className="text-xs text-muted-foreground py-2">Discovery output not available. Go to Discovery Output to generate signals.</p>;
   }
@@ -955,28 +973,33 @@ function DiscoverySignalsBlock({
       )}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="divide-y divide-border">
-          {sections.map((s, i) => (
-            <div key={i} className="px-5 py-3.5">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{s.icon}</span>
-                  <span className="text-sm font-medium text-foreground">{s.domain}</span>
+          {sections.map((s, i) => {
+            const itemId = `signal:${String(s.domain ?? i).toLowerCase().replace(/\s+/g, '_')}`;
+            return (
+              <ItemToggle key={i} id={itemId} excluded={excludedItems.includes(itemId)} onToggle={onToggleItem} className="px-5 py-3.5">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">{s.icon}</span>
+                      <span className="text-sm font-medium text-foreground">{s.domain}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">Consensus: <span className="font-medium text-foreground">{s.consensusLevel}%</span></span>
+                  </div>
+                  {/* Sentiment bar */}
+                  <div className="h-2 rounded-full overflow-hidden flex gap-0.5">
+                    <div className="bg-red-400 h-full rounded-l-full transition-all" style={{ width: `${s.sentiment?.concerned ?? 0}%` }} />
+                    <div className="bg-gray-300 h-full transition-all" style={{ width: `${s.sentiment?.neutral ?? 0}%` }} />
+                    <div className="bg-emerald-400 h-full rounded-r-full transition-all" style={{ width: `${s.sentiment?.optimistic ?? 0}%` }} />
+                  </div>
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <span className="text-[10px] text-red-600">Concerned {s.sentiment?.concerned ?? 0}%</span>
+                    <span className="text-[10px] text-muted-foreground">Neutral {s.sentiment?.neutral ?? 0}%</span>
+                    <span className="text-[10px] text-emerald-600">Optimistic {s.sentiment?.optimistic ?? 0}%</span>
+                  </div>
                 </div>
-                <span className="text-xs text-muted-foreground">Consensus: <span className="font-medium text-foreground">{s.consensusLevel}%</span></span>
-              </div>
-              {/* Sentiment bar */}
-              <div className="h-2 rounded-full overflow-hidden flex gap-0.5">
-                <div className="bg-red-400 h-full rounded-l-full transition-all" style={{ width: `${s.sentiment?.concerned ?? 0}%` }} />
-                <div className="bg-gray-300 h-full transition-all" style={{ width: `${s.sentiment?.neutral ?? 0}%` }} />
-                <div className="bg-emerald-400 h-full rounded-r-full transition-all" style={{ width: `${s.sentiment?.optimistic ?? 0}%` }} />
-              </div>
-              <div className="flex items-center gap-3 mt-1.5">
-                <span className="text-[10px] text-red-600">Concerned {s.sentiment?.concerned ?? 0}%</span>
-                <span className="text-[10px] text-muted-foreground">Neutral {s.sentiment?.neutral ?? 0}%</span>
-                <span className="text-[10px] text-emerald-600">Optimistic {s.sentiment?.optimistic ?? 0}%</span>
-              </div>
-            </div>
-          ))}
+              </ItemToggle>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -1007,6 +1030,160 @@ function InsightSummaryBlock({ intelligence }: { intelligence: WorkshopOutputInt
           <p className="text-[11px] text-blue-600 mt-0.5">New Issues Surfaced</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Structural Analysis blocks ────────────────────────────────────────────────
+
+function AlignmentBlock({ discoverAnalysis }: { discoverAnalysis: DiscoverAnalysis | null }) {
+  if (!discoverAnalysis?.alignment?.cells?.length) {
+    return <p className="text-xs text-muted-foreground py-2">No alignment data available. Generate Structural Analysis from Discovery Output.</p>;
+  }
+  const { cells } = discoverAnalysis.alignment;
+  const divergent = [...cells].sort((a, b) => a.alignmentScore - b.alignmentScore).slice(0, 10);
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">Top divergent actor × theme pairs (negative = misalignment)</p>
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-muted/30">
+              <th className="text-left px-4 py-2 font-medium text-muted-foreground">Theme</th>
+              <th className="text-left px-4 py-2 font-medium text-muted-foreground">Actor</th>
+              <th className="text-right px-4 py-2 font-medium text-muted-foreground">Score</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {divergent.map((cell, i) => {
+              const score = cell.alignmentScore;
+              const color = score < -0.5 ? 'text-red-600' : score < 0 ? 'text-amber-600' : 'text-emerald-600';
+              return (
+                <tr key={i}>
+                  <td className="px-4 py-2 text-foreground truncate max-w-[160px]">{cell.theme}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{cell.actor}</td>
+                  <td className={`px-4 py-2 font-semibold text-right ${color}`}>{score.toFixed(2)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function NarrativeDivergenceBlock({ discoverAnalysis }: { discoverAnalysis: DiscoverAnalysis | null }) {
+  if (!discoverAnalysis?.narrative?.layers?.length) {
+    return <p className="text-xs text-muted-foreground py-2">No narrative data available. Generate Structural Analysis from Discovery Output.</p>;
+  }
+  const { layers } = discoverAnalysis.narrative;
+  const LAYER_COLORS: Record<string, string> = {
+    executive:   'border-violet-200 bg-violet-50',
+    operational: 'border-blue-200 bg-blue-50',
+    frontline:   'border-emerald-200 bg-emerald-50',
+  };
+  const SENT_COLORS: Record<string, string> = {
+    positive: 'text-emerald-700',
+    negative: 'text-red-700',
+    neutral:  'text-muted-foreground',
+    mixed:    'text-amber-700',
+  };
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {layers.map((layer) => (
+        <div key={layer.layer} className={`rounded-xl border px-4 py-3.5 ${LAYER_COLORS[layer.layer] ?? 'border-border bg-muted/20'}`}>
+          <p className="text-[10px] font-bold uppercase tracking-widest mb-1 capitalize">{layer.layer}</p>
+          <p className={`text-[11px] font-medium mb-2 ${SENT_COLORS[layer.dominantSentiment] ?? ''}`}>
+            {layer.dominantSentiment}
+          </p>
+          <ul className="space-y-0.5">
+            {layer.topTerms.slice(0, 5).map((t) => (
+              <li key={t.term} className="text-[11px] text-foreground flex items-center gap-1.5">
+                <span className="shrink-0 w-12 bg-muted-foreground/20 rounded-full h-1.5 overflow-hidden">
+                  <span className="block h-full bg-primary/50 rounded-full" style={{ width: `${t.normalised * 100}%` }} />
+                </span>
+                {t.term}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TensionsBlock({ discoverAnalysis }: { discoverAnalysis: DiscoverAnalysis | null }) {
+  if (!discoverAnalysis?.tensions?.tensions?.length) {
+    return <p className="text-xs text-muted-foreground py-2">No tension data available. Generate Structural Analysis from Discovery Output.</p>;
+  }
+  const { tensions } = discoverAnalysis.tensions;
+  const SEV_STYLE: Record<string, string> = {
+    critical:    'bg-red-100 text-red-700 border-red-200',
+    significant: 'bg-amber-100 text-amber-700 border-amber-200',
+    moderate:    'bg-slate-100 text-slate-600 border-slate-200',
+  };
+  return (
+    <div className="space-y-2">
+      {tensions.slice(0, 8).map((t, i) => (
+        <div key={t.id} className="rounded-xl border border-border bg-card px-4 py-3">
+          <div className="flex items-start gap-3">
+            <span className="shrink-0 text-[11px] font-bold text-muted-foreground/50 mt-0.5">#{i + 1}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-sm font-semibold text-foreground">{t.topic}</p>
+                <span className={`shrink-0 px-1.5 py-0.5 rounded border text-[10px] font-semibold ${SEV_STYLE[t.severity] ?? SEV_STYLE.moderate}`}>
+                  {t.severity}
+                </span>
+              </div>
+              {t.viewpoints.slice(0, 2).map((vp, j) => (
+                <p key={j} className="text-xs text-muted-foreground truncate">
+                  <span className="font-medium text-foreground/70">{vp.actor}</span> — {vp.position}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StructuralBarriersBlock({ discoverAnalysis }: { discoverAnalysis: DiscoverAnalysis | null }) {
+  if (!discoverAnalysis?.constraints?.constraints?.length) {
+    return <p className="text-xs text-muted-foreground py-2">No constraint data available. Generate Structural Analysis from Discovery Output.</p>;
+  }
+  const { constraints } = discoverAnalysis.constraints;
+  const sorted = [...constraints].sort((a, b) => b.weight - a.weight).slice(0, 10);
+  const SEV_STYLE: Record<string, string> = {
+    critical:    'bg-red-100 text-red-700',
+    significant: 'bg-amber-100 text-amber-700',
+    moderate:    'bg-slate-100 text-slate-600',
+  };
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border bg-muted/30">
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Barrier</th>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Domain</th>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Severity</th>
+            <th className="text-right px-4 py-2 font-medium text-muted-foreground">Weight</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {sorted.map((c, i) => (
+            <tr key={i}>
+              <td className="px-4 py-2 text-foreground max-w-[200px]">{c.description.split(' ').slice(0, 8).join(' ')}{c.description.split(' ').length > 8 ? '…' : ''}</td>
+              <td className="px-4 py-2 text-muted-foreground">{c.domain}</td>
+              <td className="px-4 py-2">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${SEV_STYLE[c.severity] ?? SEV_STYLE.moderate}`}>{c.severity}</span>
+              </td>
+              <td className="px-4 py-2 text-right font-medium text-foreground">{c.weight}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -1722,6 +1899,7 @@ export default function DownloadReportPage({ params }: PageProps) {
   // ── Cross-page section data ─────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [discoveryOutput, setDiscoveryOutput] = useState<any | null>(null);
+  const [discoverAnalysis, setDiscoverAnalysis] = useState<DiscoverAnalysis | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -1770,6 +1948,15 @@ export default function DownloadReportPage({ params }: PageProps) {
           const sd = await scratchpadRes.json();
           const dOut = sd.scratchpad?.discoveryOutput;
           if (dOut && Object.keys(dOut).length > 0) setDiscoveryOutput(dOut);
+        }
+      } catch { /* non-fatal */ }
+
+      // Fetch structural analysis data (non-fatal)
+      try {
+        const analysisRes = await fetch(`/api/admin/workshops/${workshopId}/discover-analysis`);
+        if (analysisRes.ok) {
+          const ad = await analysisRes.json();
+          if (ad.analysis) setDiscoverAnalysis(ad.analysis as DiscoverAnalysis);
         }
       } catch { /* non-fatal */ }
 
@@ -1992,6 +2179,7 @@ export default function DownloadReportPage({ params }: PageProps) {
           orgName: workshop?.organization?.name,
           clientLogoUrl: clientLogoUrl || undefined,
           discoveryOutput: discoveryOutput || undefined,
+          discoverAnalysis: discoverAnalysis || undefined,
         }),
       });
       if (!res.ok) {
@@ -2405,14 +2593,50 @@ export default function DownloadReportPage({ params }: PageProps) {
                         {/* ── Discovery Diagnostic ── */}
                         {cfg.id === 'discovery_diagnostic' && (
                           <div className="p-4">
-                            <DiscoveryDiagnosticBlock discoveryOutput={discoveryOutput} />
+                            <DiscoveryDiagnosticBlock
+                              discoveryOutput={discoveryOutput}
+                              excludedItems={cfg.excludedItems}
+                              onToggleItem={(id) => toggleItem(cfg.id, id)}
+                            />
                           </div>
                         )}
 
                         {/* ── Discovery Signals ── */}
                         {cfg.id === 'discovery_signals' && (
                           <div className="p-4">
-                            <DiscoverySignalsBlock discoveryOutput={discoveryOutput} />
+                            <DiscoverySignalsBlock
+                              discoveryOutput={discoveryOutput}
+                              excludedItems={cfg.excludedItems}
+                              onToggleItem={(id) => toggleItem(cfg.id, id)}
+                            />
+                          </div>
+                        )}
+
+                        {/* ── Structural: Domain Misalignment ── */}
+                        {cfg.id === 'structural_alignment' && (
+                          <div className="p-4">
+                            <AlignmentBlock discoverAnalysis={discoverAnalysis} />
+                          </div>
+                        )}
+
+                        {/* ── Structural: Narrative Divergence ── */}
+                        {cfg.id === 'structural_narrative' && (
+                          <div className="p-4">
+                            <NarrativeDivergenceBlock discoverAnalysis={discoverAnalysis} />
+                          </div>
+                        )}
+
+                        {/* ── Structural: Transformation Tensions ── */}
+                        {cfg.id === 'structural_tensions' && (
+                          <div className="p-4">
+                            <TensionsBlock discoverAnalysis={discoverAnalysis} />
+                          </div>
+                        )}
+
+                        {/* ── Structural: Structural Barriers ── */}
+                        {cfg.id === 'structural_barriers' && (
+                          <div className="p-4">
+                            <StructuralBarriersBlock discoverAnalysis={discoverAnalysis} />
                           </div>
                         )}
 

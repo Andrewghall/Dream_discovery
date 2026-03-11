@@ -1309,7 +1309,14 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
                     {(discoverAnalysis.tensions?.tensions?.length ?? 0) > 0 && (
                       <Card className="p-6">
-                        <h3 className="font-bold text-lg mb-1">Transformation Constraints</h3>
+                        <div className="flex items-start justify-between gap-4 mb-1">
+                          <h3 className="font-bold text-lg">Transformation Constraints</h3>
+                          <ReportSectionToggle
+                            workshopId={workshopId}
+                            sectionId="structural_tensions"
+                            title="Transformation Tensions"
+                          />
+                        </div>
                         <p className="text-sm text-muted-foreground mb-4">
                           Ranked unresolved tensions and competing perspectives — what is slowing or preventing transformation
                         </p>
@@ -1319,7 +1326,14 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
                     {(discoverAnalysis.constraints?.constraints?.length ?? 0) > 0 && (
                       <Card className="p-6">
-                        <h3 className="font-bold text-lg mb-1">Structural Barriers</h3>
+                        <div className="flex items-start justify-between gap-4 mb-1">
+                          <h3 className="font-bold text-lg">Structural Barriers</h3>
+                          <ReportSectionToggle
+                            workshopId={workshopId}
+                            sectionId="structural_barriers"
+                            title="Structural Barriers"
+                          />
+                        </div>
                         <p className="text-sm text-muted-foreground mb-4">
                           Weighted constraints and dependencies — system fragmentation, capability gaps, operational instability
                         </p>
@@ -1329,7 +1343,14 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
                     {(discoverAnalysis.alignment?.themes?.length ?? 0) > 0 && (
                       <Card className="p-6">
-                        <h3 className="font-bold text-lg mb-1">Domain Misalignment</h3>
+                        <div className="flex items-start justify-between gap-4 mb-1">
+                          <h3 className="font-bold text-lg">Domain Misalignment</h3>
+                          <ReportSectionToggle
+                            workshopId={workshopId}
+                            sectionId="structural_alignment"
+                            title="Domain Misalignment"
+                          />
+                        </div>
                         <p className="text-sm text-muted-foreground mb-4">
                           Actor × theme alignment and divergence — where leadership and operational thinking diverge
                         </p>
@@ -1339,7 +1360,14 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
                     {(discoverAnalysis.narrative?.layers?.length ?? 0) > 0 && (
                       <Card className="p-6">
-                        <h3 className="font-bold text-lg mb-1">Narrative Divergence</h3>
+                        <div className="flex items-start justify-between gap-4 mb-1">
+                          <h3 className="font-bold text-lg">Narrative Divergence</h3>
+                          <ReportSectionToggle
+                            workshopId={workshopId}
+                            sectionId="structural_narrative"
+                            title="Narrative Divergence"
+                          />
+                        </div>
                         <p className="text-sm text-muted-foreground mb-4">
                           Language and sentiment differences across organisational layers — executive vs operational vs frontline
                         </p>
