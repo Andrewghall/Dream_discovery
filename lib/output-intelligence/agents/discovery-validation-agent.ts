@@ -108,23 +108,30 @@ ${SCHEMA}`;
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 100_000);
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        temperature: 0.3,
-        max_tokens: 3000,
-      });
+      const response = await openai.chat.completions.create(
+        {
+          model: 'gpt-4o',
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+          temperature: 0.3,
+          max_tokens: 3000,
+        },
+        { signal: controller.signal }
+      );
 
+      clearTimeout(timeoutId);
       const raw = response.choices[0]?.message?.content ?? '{}';
       const parsed = JSON.parse(raw) as DiscoveryValidation;
       onProgress?.('Discovery Validation: complete ✓');
       return parsed;
     } catch (err) {
+      clearTimeout(timeoutId);
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
     }

@@ -139,14 +139,24 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
         const dimensionNames = state.customDimensions?.map(d => d.name);
         const tools = dimensionNames?.length ? buildCognitiveTools(dimensionNames) : COGNITIVE_TOOLS;
 
-        const completion = await this.openai.chat.completions.create({
-          model: MODEL,
-          temperature: 0.3,
-          messages,
-          tools,
-          tool_choice: toolChoice,
-          parallel_tool_calls: true,
-        });
+        const callController = new AbortController();
+        const callTimeoutId = setTimeout(() => callController.abort(), 8_000);
+        let completion: OpenAI.Chat.Completions.ChatCompletion;
+        try {
+          completion = await this.openai.chat.completions.create(
+            {
+              model: MODEL,
+              temperature: 0.3,
+              messages,
+              tools,
+              tool_choice: toolChoice,
+              parallel_tool_calls: true,
+            },
+            { signal: callController.signal }
+          );
+        } finally {
+          clearTimeout(callTimeoutId);
+        }
 
         const choice = completion.choices[0];
         const assistantMessage = choice.message;
@@ -279,13 +289,23 @@ export class GPT4oMiniEngine implements CognitiveReasoningEngine {
     try {
       const tools = customDimensionNames?.length ? buildCognitiveTools(customDimensionNames) : COGNITIVE_TOOLS;
 
-      const completion = await this.openai.chat.completions.create({
-        model: MODEL,
-        temperature: 0.3,
-        messages,
-        tools,
-        tool_choice: { type: 'function', function: { name: 'commit_analysis' } },
-      });
+      const commitController = new AbortController();
+      const commitTimeoutId = setTimeout(() => commitController.abort(), 8_000);
+      let completion: OpenAI.Chat.Completions.ChatCompletion;
+      try {
+        completion = await this.openai.chat.completions.create(
+          {
+            model: MODEL,
+            temperature: 0.3,
+            messages,
+            tools,
+            tool_choice: { type: 'function', function: { name: 'commit_analysis' } },
+          },
+          { signal: commitController.signal }
+        );
+      } finally {
+        clearTimeout(commitTimeoutId);
+      }
 
       const toolCalls = completion.choices[0]?.message?.tool_calls;
       const firstFnCall = toolCalls?.find(tc => tc.type === 'function');
