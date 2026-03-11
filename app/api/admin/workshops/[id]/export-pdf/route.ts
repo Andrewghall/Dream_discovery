@@ -550,6 +550,120 @@ function renderStructuralBarriers(discoverAnalysis: DiscoverAnalysis | undefined
     </section>`;
 }
 
+function renderStructuralConfidence(discoverAnalysis: DiscoverAnalysis | undefined): string {
+  if (!discoverAnalysis?.confidence) return '';
+  const { overall, byDomain, byLayer } = discoverAnalysis.confidence;
+  const total = overall.certain + overall.hedging + overall.uncertain;
+  if (total === 0) return '';
+  const certainPct = Math.round((overall.certain / total) * 100);
+  const hedgingPct = Math.round((overall.hedging / total) * 100);
+  const uncertainPct = 100 - certainPct - hedgingPct;
+
+  const domainRows = byDomain.slice(0, 8).map(d => {
+    const dt = d.distribution.certain + d.distribution.hedging + d.distribution.uncertain;
+    const cp = dt > 0 ? Math.round((d.distribution.certain / dt) * 100) : 0;
+    const hp = dt > 0 ? Math.round((d.distribution.hedging / dt) * 100) : 0;
+    const up = 100 - cp - hp;
+    return `
+      <div class="conf-row">
+        <div class="conf-domain">${esc(d.domain)}</div>
+        <div class="conf-bar-wrap">
+          <div class="conf-seg conf-certain" style="width:${cp}%"></div>
+          <div class="conf-seg conf-hedging" style="width:${hp}%"></div>
+          <div class="conf-seg conf-uncertain" style="width:${up}%"></div>
+        </div>
+        <div class="conf-pct">${dt} responses</div>
+      </div>`;
+  }).join('');
+
+  const layerRows = byLayer.map(l => {
+    const lt = l.distribution.certain + l.distribution.hedging + l.distribution.uncertain;
+    const cp = lt > 0 ? Math.round((l.distribution.certain / lt) * 100) : 0;
+    const hp = lt > 0 ? Math.round((l.distribution.hedging / lt) * 100) : 0;
+    const up = 100 - cp - hp;
+    return `
+      <div class="conf-row">
+        <div class="conf-domain" style="text-transform:capitalize">${esc(l.layer)}</div>
+        <div class="conf-bar-wrap">
+          <div class="conf-seg conf-certain" style="width:${cp}%"></div>
+          <div class="conf-seg conf-hedging" style="width:${hp}%"></div>
+          <div class="conf-seg conf-uncertain" style="width:${up}%"></div>
+        </div>
+        <div class="conf-pct">${lt} responses</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Transformation Readiness</div></div>
+      <p class="struct-subtitle">Certainty, hedging and uncertainty across domains — signals of organisational confidence to execute change</p>
+      <div class="conf-overall">
+        <div class="conf-bar-wrap conf-overall-bar">
+          <div class="conf-seg conf-certain" style="width:${certainPct}%"></div>
+          <div class="conf-seg conf-hedging" style="width:${hedgingPct}%"></div>
+          <div class="conf-seg conf-uncertain" style="width:${uncertainPct}%"></div>
+        </div>
+        <div class="conf-legend">
+          <span class="conf-leg-item conf-leg-certain">● ${certainPct}% certain</span>
+          <span class="conf-leg-item conf-leg-hedging">● ${hedgingPct}% hedging</span>
+          <span class="conf-leg-item conf-leg-uncertain">● ${uncertainPct}% uncertain</span>
+        </div>
+      </div>
+      ${domainRows ? `<div class="conf-section-label">BY DOMAIN</div><div class="conf-list">${domainRows}</div>` : ''}
+      ${layerRows ? `<div class="conf-section-label" style="margin-top:14px;">BY NARRATIVE LAYER</div><div class="conf-list">${layerRows}</div>` : ''}
+    </section>`;
+}
+
+function renderSignalMap(reportSummary: ReportSummary, discoverAnalysis: DiscoverAnalysis | undefined): string {
+  const imageUrl = reportSummary.signalMapImageUrl;
+  const conf = discoverAnalysis?.confidence;
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Signal Map</div></div>
+      <p class="struct-subtitle">Distribution of signals across Aspiration, Enablers and Operational Friction — extracted from participant interviews</p>
+      ${imageUrl ? `<div class="signal-map-img-wrap"><img src="${esc(imageUrl)}" class="signal-map-img" alt="Discovery Signal Map" /></div>` : `
+      <div class="signal-map-placeholder">
+        <p class="signal-map-note">Signal map image not yet captured. Visit the Organisational State tab to capture it.</p>
+      </div>`}
+      <div class="signal-map-legend">
+        <div class="signal-map-legend-item"><span style="background:#a78bfa" class="legend-dot"></span>Aspiration — Vision &amp; Beliefs</div>
+        <div class="signal-map-legend-item"><span style="background:#34d399" class="legend-dot"></span>Enablers — Actions &amp; Change</div>
+        <div class="signal-map-legend-item"><span style="background:#f97316" class="legend-dot"></span>Friction — Constraints &amp; Barriers</div>
+        <div class="signal-map-legend-item"><span style="background:#ef4444" class="legend-dot"></span>Constraint</div>
+        <div class="signal-map-legend-item"><span style="background:#60a5fa" class="legend-dot"></span>Aligned signal</div>
+        <div class="signal-map-legend-item"><span style="background:#94a3b8" class="legend-dot"></span>Participant view</div>
+      </div>
+      ${conf ? `<p class="signal-map-narrative">The signal distribution across the organisation shows confidence patterns where ${conf.overall.hedging > conf.overall.certain ? 'hedging language dominates' : 'certainty is present in key areas'}, with ${conf.byLayer?.[0]?.layer ?? 'executive'} layer showing distinct sentiment from frontline perspectives. These signals identify where alignment exists and where transformation friction is concentrated.</p>` : ''}
+    </section>`;
+}
+
+function renderFacilitatorBackPage(reportSummary: ReportSummary, dreamLogoBase64: string | null): string {
+  const fc = reportSummary.facilitatorContact;
+  if (!fc && !dreamLogoBase64) return '';
+  const name = fc?.name ?? '';
+  const email = fc?.email ?? '';
+  const phone = fc?.phone ?? '';
+  const companyName = fc?.companyName ?? '';
+  return `
+    <div class="back-page">
+      <div class="back-page-content">
+        ${(fc?.companyLogoUrl || dreamLogoBase64) ? `
+        <div class="back-logo-wrap">
+          <img src="${esc(fc?.companyLogoUrl ?? dreamLogoBase64 ?? '')}" class="back-logo" alt="Logo" />
+        </div>` : ''}
+        <div class="back-divider"></div>
+        <div class="back-heading">Get in touch</div>
+        ${name ? `<div class="back-name">${esc(name)}</div>` : ''}
+        ${companyName ? `<div class="back-company">${esc(companyName)}</div>` : ''}
+        <div class="back-contacts">
+          ${email ? `<div class="back-contact-item"><span class="back-contact-label">Email</span><span class="back-contact-value">${esc(email)}</span></div>` : ''}
+          ${phone ? `<div class="back-contact-item"><span class="back-contact-label">Phone</span><span class="back-contact-value">${esc(phone)}</span></div>` : ''}
+        </div>
+        <div class="back-footer-note">This report was produced using the DREAM Discovery &amp; Transformation Platform</div>
+      </div>
+    </div>`;
+}
+
 function renderCustomSection(cfg: ReportSectionConfig): string {
   const content = cfg.customContent ?? {};
   return `
@@ -653,6 +767,12 @@ function buildReportHtml(
         return renderStructuralTensions(discoverAnalysis);
       case 'structural_barriers':
         return renderStructuralBarriers(discoverAnalysis);
+      case 'structural_confidence':
+        return renderStructuralConfidence(discoverAnalysis);
+      case 'discovery_signal_map':
+        return renderSignalMap(reportSummary, discoverAnalysis);
+      case 'facilitator_contact':
+        return renderFacilitatorBackPage(reportSummary, dreamLogoBase64);
       case 'report_conclusion':
         return renderConclusion(reportSummary);
       default: return '';
@@ -960,6 +1080,58 @@ function buildReportHtml(
   .tension-sev { flex-shrink: 0; padding: 2px 7px; border-radius: 5px; font-size: 8pt; font-weight: 600; white-space: nowrap; }
   .tension-vp { font-size: 9pt; color: #6b7280; line-height: 1.5; padding: 1px 0; }
   .tension-actor { font-weight: 600; color: #374151; }
+
+  /* ── Confidence / Transformation Readiness ──────────────────────────────── */
+  .conf-overall { margin-bottom: 16px; }
+  .conf-overall-bar { height: 16px; border-radius: 8px; }
+  .conf-bar-wrap { display: flex; height: 10px; border-radius: 5px; overflow: hidden; width: 100%; }
+  .conf-seg { height: 100%; }
+  .conf-certain { background: #334155; }
+  .conf-hedging { background: #f59e0b; }
+  .conf-uncertain { background: #f87171; }
+  .conf-legend { display: flex; gap: 16px; margin-top: 6px; font-size: 8.5pt; }
+  .conf-leg-certain { color: #334155; font-weight: 600; }
+  .conf-leg-hedging { color: #b45309; font-weight: 600; }
+  .conf-leg-uncertain { color: #dc2626; font-weight: 600; }
+  .conf-section-label { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #9ca3af; margin-bottom: 8px; margin-top: 16px; }
+  .conf-list { display: flex; flex-direction: column; gap: 6px; }
+  .conf-row { display: flex; align-items: center; gap: 10px; }
+  .conf-domain { font-size: 9pt; font-weight: 500; color: #374151; width: 160px; flex-shrink: 0; }
+  .conf-pct { font-size: 8pt; color: #9ca3af; flex-shrink: 0; width: 80px; text-align: right; }
+
+  /* ── Signal Map ─────────────────────────────────────────────────────────── */
+  .signal-map-img-wrap { margin-bottom: 14px; border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb; }
+  .signal-map-img { width: 100%; height: auto; display: block; }
+  .signal-map-placeholder { background: #f8fafc; border: 1px dashed #d1d5db; border-radius: 10px; padding: 20px; margin-bottom: 14px; text-align: center; }
+  .signal-map-note { font-size: 9.5pt; color: #9ca3af; }
+  .signal-map-legend { display: flex; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 14px; }
+  .signal-map-legend-item { display: flex; align-items: center; gap: 6px; font-size: 8.5pt; color: #374151; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .signal-map-narrative { font-size: 10pt; color: #374151; line-height: 1.7; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; }
+
+  /* ── Facilitator back page ──────────────────────────────────────────────── */
+  .back-page {
+    page-break-before: always;
+    min-height: 250mm;
+    background: #0f172a;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 44px;
+  }
+  .back-page-content { text-align: center; max-width: 320px; }
+  .back-logo-wrap { margin-bottom: 32px; }
+  .back-logo { max-height: 64px; max-width: 200px; object-fit: contain; filter: brightness(0) invert(1); opacity: 0.9; }
+  .back-divider { width: 40px; height: 3px; background: #6366f1; border-radius: 2px; margin: 0 auto 28px; }
+  .back-heading { font-size: 9pt; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 20px; }
+  .back-name { font-size: 20pt; font-weight: 700; color: #ffffff; margin-bottom: 6px; letter-spacing: -0.01em; }
+  .back-company { font-size: 11pt; font-weight: 400; color: rgba(255,255,255,0.5); margin-bottom: 24px; }
+  .back-contacts { display: flex; flex-direction: column; gap: 10px; margin-bottom: 40px; }
+  .back-contact-item { display: flex; justify-content: center; gap: 12px; }
+  .back-contact-label { font-size: 8pt; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.35); width: 40px; text-align: right; padding-top: 2px; }
+  .back-contact-value { font-size: 11pt; font-weight: 500; color: rgba(255,255,255,0.8); }
+  .back-footer-note { font-size: 8pt; color: rgba(255,255,255,0.2); }
 
   /* ── Chapter dividers ───────────────────────────────────────────────────── */
   .chapter-divider {

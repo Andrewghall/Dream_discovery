@@ -1237,14 +1237,21 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
             {/* ── Tab 3: Organisational State ───────────────────────── */}
             <TabsContent value="going-in-brain" className="mt-0 p-6">
-              <div className="flex justify-end mb-4">
+              <div className="flex justify-end mb-4 gap-3">
                 <ReportSectionToggle
                   workshopId={workshopId}
                   sectionId="discovery_signals"
                   title="Discovery Signals"
                 />
+                <ReportSectionToggle
+                  workshopId={workshopId}
+                  sectionId="discovery_signal_map"
+                  title="Signal Map"
+                />
               </div>
-              <GoingInBrain discoveryOutput={discoveryOutput} discoverAnalysis={discoverAnalysis} conversationReports={conversationReports} />
+              <div id="signal-map-area">
+                <GoingInBrain discoveryOutput={discoveryOutput} discoverAnalysis={discoverAnalysis} conversationReports={conversationReports} />
+              </div>
             </TabsContent>
 
             {/* ── Tab 4: Structural Analysis ────────────────────────── */}
@@ -1377,7 +1384,10 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
                     {discoverAnalysis.confidence && (
                       <Card className="p-6">
-                        <h3 className="font-bold text-lg mb-1">Transformation Readiness</h3>
+                        <div className="flex justify-between items-center mb-1">
+                          <h3 className="font-bold text-lg">Transformation Readiness</h3>
+                          <ReportSectionToggle workshopId={workshopId} sectionId="structural_confidence" title="Transformation Readiness" />
+                        </div>
                         <p className="text-sm text-muted-foreground mb-4">
                           Certainty, hedging and uncertainty across domains — signals of organisational confidence to execute change
                         </p>

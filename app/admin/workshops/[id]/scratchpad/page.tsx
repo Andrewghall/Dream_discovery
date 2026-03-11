@@ -41,7 +41,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import type { WorkshopOutputIntelligence } from '@/lib/output-intelligence/types';
-import type { ReportSummary, ReportSectionConfig, ReportLayout, ReportConclusion, ReportNextStep } from '@/lib/output-intelligence/types';
+import type { ReportSummary, ReportSectionConfig, ReportLayout, ReportConclusion, ReportNextStep, FacilitatorContact } from '@/lib/output-intelligence/types';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 import { defaultReportLayout } from '@/lib/output-intelligence/types';
 import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
@@ -1873,6 +1873,102 @@ function GenerateSummaryCta({
   );
 }
 
+// ── Structural Confidence Block ───────────────────────────────────────────────
+
+function StructuralConfidenceBlock({ data }: { data: DiscoverAnalysis }) {
+  const { overall, byDomain, byLayer } = data.confidence;
+  const total = overall.certain + overall.hedging + overall.uncertain;
+  const certainPct = total > 0 ? Math.round((overall.certain / total) * 100) : 0;
+  const hedgingPct = total > 0 ? Math.round((overall.hedging / total) * 100) : 0;
+  const uncertainPct = 100 - certainPct - hedgingPct;
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">Overall Confidence</p>
+        <div className="flex h-3 rounded-full overflow-hidden">
+          <div className="bg-slate-700" style={{ width: `${certainPct}%` }} />
+          <div className="bg-amber-400" style={{ width: `${hedgingPct}%` }} />
+          <div className="bg-red-400" style={{ width: `${uncertainPct}%` }} />
+        </div>
+        <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+          <span>{certainPct}% certain</span>
+          <span>{hedgingPct}% hedging</span>
+          <span>{uncertainPct}% uncertain</span>
+        </div>
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">By Domain</p>
+        <div className="space-y-1">
+          {byDomain.slice(0, 6).map(d => {
+            const dt = d.distribution.certain + d.distribution.hedging + d.distribution.uncertain;
+            const cp = dt > 0 ? Math.round((d.distribution.certain / dt) * 100) : 0;
+            const hp = dt > 0 ? Math.round((d.distribution.hedging / dt) * 100) : 0;
+            const up = 100 - cp - hp;
+            return (
+              <div key={d.domain} className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-36 truncate capitalize">{d.domain}</span>
+                <div className="flex flex-1 h-2 rounded overflow-hidden">
+                  <div className="bg-slate-700" style={{ width: `${cp}%` }} />
+                  <div className="bg-amber-400" style={{ width: `${hp}%` }} />
+                  <div className="bg-red-400" style={{ width: `${up}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Signal Map Block ──────────────────────────────────────────────────────────
+
+function SignalMapBlock({ imageUrl }: { imageUrl: string | null; workshopId: string; onImageCaptured: (url: string) => void }) {
+  return (
+    <div className="space-y-3">
+      {imageUrl ? (
+        <img src={imageUrl} alt="Discovery Signal Map" className="w-full rounded-lg border" />
+      ) : (
+        <div className="bg-muted rounded-lg p-4 text-center">
+          <p className="text-sm text-muted-foreground">No signal map captured yet. Open the Organisational State tab and the map will be captured when you add it to the report.</p>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+        <span>● Aspiration</span><span>● Enablers</span><span>● Friction</span><span>● Constraint</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Facilitator Contact Block ─────────────────────────────────────────────────
+
+function FacilitatorContactBlock({ contact, onChange }: { contact: FacilitatorContact | null; onChange: (c: FacilitatorContact) => void }) {
+  const [local, setLocal] = useState<FacilitatorContact>(contact ?? { name: '', email: '', phone: '', companyName: '' });
+  const update = (field: keyof FacilitatorContact, value: string) => {
+    const updated = { ...local, [field]: value };
+    setLocal(updated);
+    onChange(updated);
+  };
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">This appears as the final back page of the report.</p>
+      {(['name', 'email', 'phone', 'companyName'] as const).map(field => (
+        <div key={field}>
+          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground block mb-1">
+            {field === 'companyName' ? 'Company Name' : field.charAt(0).toUpperCase() + field.slice(1)}
+          </label>
+          <input
+            className="w-full border rounded px-3 py-2 text-sm"
+            value={local[field] ?? ''}
+            onChange={e => update(field, e.target.value)}
+            placeholder={field === 'name' ? 'Facilitator Name' : field === 'email' ? 'email@example.com' : field === 'phone' ? '+44 7000 000000' : 'Your Company'}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function DownloadReportPage({ params }: PageProps) {
@@ -2637,6 +2733,42 @@ export default function DownloadReportPage({ params }: PageProps) {
                         {cfg.id === 'structural_barriers' && (
                           <div className="p-4">
                             <StructuralBarriersBlock discoverAnalysis={discoverAnalysis} />
+                          </div>
+                        )}
+
+                        {/* ── Structural: Transformation Readiness ── */}
+                        {cfg.id === 'structural_confidence' && (
+                          <div className="p-4">
+                            {discoverAnalysis ? (
+                              <StructuralConfidenceBlock data={discoverAnalysis} />
+                            ) : (
+                              <p className="text-sm text-muted-foreground">Enable Structural Analysis on the Discovery Output page first.</p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* ── Discovery Signal Map ── */}
+                        {cfg.id === 'discovery_signal_map' && (
+                          <div className="p-4">
+                            <SignalMapBlock
+                              imageUrl={reportSummary?.signalMapImageUrl ?? null}
+                              workshopId={workshopId}
+                              onImageCaptured={(url) => {
+                                if (reportSummary) handleSummaryUpdate({ ...reportSummary, signalMapImageUrl: url });
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        {/* ── Facilitator Contact ── */}
+                        {cfg.id === 'facilitator_contact' && (
+                          <div className="p-4">
+                            <FacilitatorContactBlock
+                              contact={reportSummary?.facilitatorContact ?? null}
+                              onChange={(contact) => {
+                                if (reportSummary) handleSummaryUpdate({ ...reportSummary, facilitatorContact: contact });
+                              }}
+                            />
                           </div>
                         )}
 

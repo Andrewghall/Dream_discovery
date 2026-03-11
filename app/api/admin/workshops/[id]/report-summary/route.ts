@@ -67,10 +67,26 @@ export async function PATCH(
       return NextResponse.json({ error: 'reportSummary is required' }, { status: 400 });
     }
 
+    // Load existing to preserve user-managed fields (layout, reportConclusion, facilitatorContact, signalMapImageUrl)
+    const existing = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      select: { reportSummary: true },
+    });
+    const current = (existing?.reportSummary ?? {}) as Partial<ReportSummary>;
+
+    const merged: ReportSummary = {
+      ...body.reportSummary,
+      // Always preserve user-managed fields from DB — never overwrite with incoming data
+      layout: current.layout ?? body.reportSummary.layout,
+      reportConclusion: current.reportConclusion ?? body.reportSummary.reportConclusion,
+      ...(current.facilitatorContact !== undefined && { facilitatorContact: current.facilitatorContact }),
+      ...(current.signalMapImageUrl !== undefined && { signalMapImageUrl: current.signalMapImageUrl }),
+    };
+
     await prisma.workshop.update({
       where: { id: workshopId },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      data: { reportSummary: body.reportSummary as any },
+      data: { reportSummary: merged as any },
     });
 
     return NextResponse.json({ ok: true });

@@ -8,14 +8,17 @@ import type { ReportSectionConfig } from '@/lib/output-intelligence/types';
 
 // Source page badges — shown on sections that came from outside the Download Report page
 const SOURCE_BADGE: Record<string, string> = {
-  strategic_impact:     'Brain Scan',
-  discovery_diagnostic: 'Discovery',
-  discovery_signals:    'Discovery',
-  insight_summary:      'Insight Map',
-  structural_alignment: 'Discovery',
-  structural_narrative: 'Discovery',
-  structural_tensions:  'Discovery',
-  structural_barriers:  'Discovery',
+  strategic_impact:      'Brain Scan',
+  discovery_diagnostic:  'Discovery',
+  discovery_signals:     'Discovery',
+  insight_summary:       'Insight Map',
+  structural_alignment:  'Discovery',
+  structural_narrative:  'Discovery',
+  structural_tensions:   'Discovery',
+  structural_barriers:   'Discovery',
+  discovery_signal_map:  'Discovery',
+  structural_confidence: 'Discovery',
+  facilitator_contact:   'Contact',
 };
 
 interface DraggableSectionProps {

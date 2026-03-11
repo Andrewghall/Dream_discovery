@@ -262,10 +262,24 @@ export function defaultReportLayout(): ReportLayout {
       { id: 'structural_narrative',    type: 'builtin', title: 'Narrative Divergence',     enabled: false, collapsed: false, excludedItems: [] },
       { id: 'structural_tensions',     type: 'builtin', title: 'Transformation Tensions',  enabled: false, collapsed: false, excludedItems: [] },
       { id: 'structural_barriers',     type: 'builtin', title: 'Structural Barriers',      enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'structural_confidence',   type: 'builtin', title: 'Transformation Readiness', enabled: false, collapsed: false, excludedItems: [] },
+      // Discovery Signal Map + Facilitator — disabled until toggled on
+      { id: 'discovery_signal_map',    type: 'builtin', title: 'Discovery Signal Map',     enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'facilitator_contact',     type: 'builtin', title: 'Facilitator Contact',      enabled: false, collapsed: false, excludedItems: [] },
       // Conclusion — enabled by default, positioned last
       { id: 'report_conclusion',       type: 'builtin', title: 'Summary & Next Steps',     enabled: true,  collapsed: false, excludedItems: [] },
     ],
   };
+}
+
+// ── Facilitator Contact ───────────────────────────────────────────────────────
+
+export interface FacilitatorContact {
+  name: string;
+  email: string;
+  phone?: string;
+  companyName?: string;
+  companyLogoUrl?: string;
 }
 
 // ── Report Conclusion ─────────────────────────────────────────────────────────
@@ -295,6 +309,8 @@ export interface ReportSummary {
   journeyIntro?: string;
   layout?: ReportLayout;
   reportConclusion?: ReportConclusion;
+  signalMapImageUrl?: string;
+  facilitatorContact?: FacilitatorContact;
 }
 
 // ── SSE Event Types ───────────────────────────────────────────────────────────
