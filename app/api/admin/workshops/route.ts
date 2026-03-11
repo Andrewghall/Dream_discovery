@@ -78,10 +78,8 @@ export async function GET(request: NextRequest) {
           scheduledDate: true,
           createdAt: true,
           participants: {
-            select: {
-              id: true,
-              responseCompletedAt: true,
-            },
+            where: { responseCompletedAt: { not: null } },
+            select: { id: true },
           },
           _count: {
             select: {
@@ -96,17 +94,14 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    type WorkshopRow = (typeof workshops)[number];
-    type WorkshopParticipantRow = WorkshopRow['participants'][number];
-
-    const workshopsWithStats = workshops.map((workshop: WorkshopRow) => ({
+    const workshopsWithStats = workshops.map((workshop) => ({
       id: workshop.id,
       name: workshop.name,
       workshopType: workshop.workshopType,
       status: workshop.status,
       scheduledDate: workshop.scheduledDate,
       participantCount: workshop._count.participants,
-      completedResponses: workshop.participants.filter((p: WorkshopParticipantRow) => p.responseCompletedAt).length,
+      completedResponses: workshop.participants.length,
       snapshotCount: workshop._count.liveSnapshots,
     }));
 
