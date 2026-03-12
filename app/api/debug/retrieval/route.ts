@@ -6,9 +6,10 @@
  * Usage:
  *   GET /api/debug/retrieval?q=customer+complaint+handling&orgId=<org-id>
  *   GET /api/debug/retrieval?q=...&orgId=...&workshopId=<workshop-id>
+ *   GET /api/debug/retrieval?q=...&orgId=...&minSimilarity=0.3&topK=10
  *
- * Returns top 5 chunks with similarity scores + text previews.
- * Uses minSimilarity=0.65 (lower than production) for debug visibility.
+ * Returns top chunks with similarity scores + text previews.
+ * Defaults: minSimilarity=0.65, topK=5. Pass lower minSimilarity for synthetic/seed data.
  *
  * Do NOT wire agents to this endpoint — it's diagnostic only.
  */
@@ -33,6 +34,8 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get('q')?.trim();
     const orgId = searchParams.get('orgId')?.trim();
     const workshopId = searchParams.get('workshopId')?.trim() || undefined;
+    const minSimilarity = parseFloat(searchParams.get('minSimilarity') ?? '0.65');
+    const topK = parseInt(searchParams.get('topK') ?? '5', 10);
 
     if (!q) {
       return NextResponse.json({ error: 'Missing query param: q' }, { status: 400 });
@@ -44,14 +47,16 @@ export async function GET(request: NextRequest) {
     const chunks = await retrieveRelevant(q, {
       organizationId: orgId,
       workshopId,
-      topK: 5,
-      minSimilarity: 0.65,  // lower threshold for debug visibility
+      topK: isNaN(topK) ? 5 : Math.min(topK, 20),
+      minSimilarity: isNaN(minSimilarity) ? 0.65 : Math.max(0, Math.min(1, minSimilarity)),
     });
 
     return NextResponse.json({
       query: q,
       orgId,
       workshopId: workshopId ?? null,
+      minSimilarity: isNaN(minSimilarity) ? 0.65 : Math.max(0, Math.min(1, minSimilarity)),
+      topK: isNaN(topK) ? 5 : Math.min(topK, 20),
       resultCount: chunks.length,
       results: chunks.map((c) => ({
         id: c.id,
