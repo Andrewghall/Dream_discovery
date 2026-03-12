@@ -41,6 +41,12 @@ export interface RetrievedChunk {
   source: EmbeddableTable;
   workshopId: string | null;
   similarity: number;
+  /** Job role of the participant who produced this content (where known) */
+  participantRole?: string | null;
+  /** Department of the participant who produced this content (where known) */
+  participantDepartment?: string | null;
+  /** Cohort label for field capture sessions (actorRole from capture_sessions) */
+  cohortLabel?: string | null;
 }
 
 const DEFAULT_SOURCES: EmbeddableTable[] = [
@@ -147,7 +153,15 @@ async function querySource(
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 // SELECT aliases use "workshopId" so PG returns key workshopId in result objects
-type RawRow = { id: string; text: string; workshopId: string | null; similarity: number };
+type RawRow = {
+  id: string;
+  text: string;
+  workshopId: string | null;
+  similarity: number;
+  participantRole?: string | null;
+  participantDepartment?: string | null;
+  cohortLabel?: string | null;
+};
 
 function mapRows(source: EmbeddableTable, rows: RawRow[]): RetrievedChunk[] {
   return rows.map((r) => ({
@@ -156,6 +170,9 @@ function mapRows(source: EmbeddableTable, rows: RawRow[]): RetrievedChunk[] {
     source,
     workshopId: r.workshopId,
     similarity: Number(r.similarity),
+    participantRole: r.participantRole ?? null,
+    participantDepartment: r.participantDepartment ?? null,
+    cohortLabel: r.cohortLabel ?? null,
   }));
 }
 
@@ -182,9 +199,12 @@ async function queryConversationInsights(v: string, opts: QueryOpts): Promise<Re
     SELECT ci.id,
            ci.text,
            ci."workshopId"                                        AS "workshopId",
-           (1 - (ci.embedding <=> ${v}::vector))::float8         AS similarity
+           (1 - (ci.embedding <=> ${v}::vector))::float8         AS similarity,
+           wp.role                                                AS "participantRole",
+           wp.department                                          AS "participantDepartment"
     FROM   conversation_insights ci
     JOIN   workshops w ON w.id = ci."workshopId"
+    LEFT JOIN workshop_participants wp ON wp.id = ci."participantId"
     WHERE  w."organizationId" = ${opts.organizationId}
       AND  ci.embedding IS NOT NULL
       AND  (1 - (ci.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
@@ -197,7 +217,7 @@ async function queryConversationInsights(v: string, opts: QueryOpts): Promise<Re
 }
 
 async function queryConversationMessages(v: string, opts: QueryOpts): Promise<RetrievedChunk[]> {
-  // conversation_messages.sessionId → conversation_sessions.workshopId
+  // conversation_messages.sessionId → conversation_sessions → workshop_participants
   const wFilter = opts.workshopId
     ? Prisma.sql`AND cs."workshopId" = ${opts.workshopId}`
     : Prisma.empty;
@@ -208,10 +228,13 @@ async function queryConversationMessages(v: string, opts: QueryOpts): Promise<Re
     SELECT cm.id,
            cm.content                                             AS text,
            cs."workshopId"                                        AS "workshopId",
-           (1 - (cm.embedding <=> ${v}::vector))::float8         AS similarity
+           (1 - (cm.embedding <=> ${v}::vector))::float8         AS similarity,
+           wp.role                                                AS "participantRole",
+           wp.department                                          AS "participantDepartment"
     FROM   conversation_messages cm
     JOIN   conversation_sessions cs ON cs.id = cm."sessionId"
     JOIN   workshops w ON w.id = cs."workshopId"
+    LEFT JOIN workshop_participants wp ON wp.id = cs."participantId"
     WHERE  w."organizationId" = ${opts.organizationId}
       AND  cm.role = 'PARTICIPANT'
       AND  cm.embedding IS NOT NULL
@@ -270,9 +293,12 @@ async function queryDataPoints(v: string, opts: QueryOpts): Promise<RetrievedChu
     SELECT dp.id,
            dp."rawText"                                           AS text,
            dp."workshopId"                                        AS "workshopId",
-           (1 - (dp.embedding <=> ${v}::vector))::float8         AS similarity
+           (1 - (dp.embedding <=> ${v}::vector))::float8         AS similarity,
+           wp.role                                                AS "participantRole",
+           wp.department                                          AS "participantDepartment"
     FROM   data_points dp
     JOIN   workshops w ON w.id = dp."workshopId"
+    LEFT JOIN workshop_participants wp ON wp.id = dp."participantId"
     WHERE  w."organizationId" = ${opts.organizationId}
       AND  dp.embedding IS NOT NULL
       AND  (1 - (dp.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
@@ -308,6 +334,7 @@ async function queryWorkshopScratchpads(v: string, opts: QueryOpts): Promise<Ret
 
 async function queryCaptureSegments(v: string, opts: QueryOpts): Promise<RetrievedChunk[]> {
   // capture_segments.captureSessionId → capture_sessions.workshopId (both camelCase, no @map)
+  // actorRole and department from capture_sessions provide cohort identity for field interviews
   const wFilter = opts.workshopId
     ? Prisma.sql`AND cap."workshopId" = ${opts.workshopId}`
     : Prisma.empty;
@@ -318,7 +345,9 @@ async function queryCaptureSegments(v: string, opts: QueryOpts): Promise<Retriev
     SELECT seg.id,
            seg.transcript                                         AS text,
            cap."workshopId"                                       AS "workshopId",
-           (1 - (seg.embedding <=> ${v}::vector))::float8        AS similarity
+           (1 - (seg.embedding <=> ${v}::vector))::float8        AS similarity,
+           cap."actorRole"                                        AS "cohortLabel",
+           cap.department                                         AS "participantDepartment"
     FROM   capture_segments seg
     JOIN   capture_sessions cap ON cap.id = seg."captureSessionId"
     JOIN   workshops w ON w.id = cap."workshopId"

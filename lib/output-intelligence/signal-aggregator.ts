@@ -11,6 +11,7 @@ import { createHash } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import type { WorkshopSignals } from './types';
 import { retrieveRelevant } from '@/lib/embeddings/retrieve';
+import { groupRole } from '@/lib/discover-analysis/compute-alignment';
 
 // ── Types from DB shapes ─────────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
         discoverAnalysis: true,
         insights: {
           take: 200,
-          select: { text: true, insightType: true, category: true },
+          select: { text: true, insightType: true, category: true, participantId: true },
         },
         themes: {
           take: 50,
@@ -75,7 +76,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
           },
         },
         participants: {
-          select: { id: true },
+          select: { id: true, role: true, department: true },
         },
       },
     }),
@@ -179,6 +180,72 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
     type: i.insightType,
     category: i.category ?? undefined,
   }));
+
+  // ── Cohort Breakdown ─────────────────────────────────────────────────────
+  // Groups insights by participant role cohort so OI agents can identify
+  // role-specific root causes and cross-cohort divergence.
+
+  const cohortBreakdown = (() => {
+    // Build participantId → { role, department } map
+    const participantMap = new Map<string, { role: string | null; department: string | null }>();
+    for (const p of workshop.participants) {
+      participantMap.set(p.id, { role: p.role ?? null, department: p.department ?? null });
+    }
+
+    // Group insights by cohort label
+    type CohortAcc = {
+      roles: Set<string>;
+      participantIds: Set<string>;
+      frictions: string[];
+      aspirations: string[];
+      allInsights: Array<{ text: string; type: string }>;
+    };
+    const cohortMap = new Map<string, CohortAcc>();
+
+    const ASPIRATION_TYPES = new Set(['VISION', 'OPPORTUNITY', 'ENABLER']);
+    const FRICTION_TYPES = new Set(['CHALLENGE', 'CONSTRAINT', 'FRICTION']);
+
+    for (const insight of workshop.insights) {
+      if (!insight.participantId) continue;
+      const participant = participantMap.get(insight.participantId);
+      if (!participant) continue;
+
+      const cohortLabel = groupRole(participant.role);
+      if (!cohortMap.has(cohortLabel)) {
+        cohortMap.set(cohortLabel, { roles: new Set(), participantIds: new Set(), frictions: [], aspirations: [], allInsights: [] });
+      }
+      const acc = cohortMap.get(cohortLabel)!;
+      acc.participantIds.add(insight.participantId);
+      if (participant.role) acc.roles.add(participant.role);
+
+      const insightType = String(insight.insightType).toUpperCase();
+      const text = truncate(insight.text, 200);
+      acc.allInsights.push({ text, type: insightType });
+      if (FRICTION_TYPES.has(insightType)) acc.frictions.push(text);
+      if (ASPIRATION_TYPES.has(insightType)) acc.aspirations.push(text);
+    }
+
+    const result: NonNullable<WorkshopSignals['discovery']['cohortBreakdown']> = [];
+    for (const [cohortLabel, acc] of cohortMap) {
+      if (acc.allInsights.length === 0) continue;
+      const aspirationRatio = acc.allInsights.length > 0
+        ? acc.aspirations.length / acc.allInsights.length
+        : 0;
+      result.push({
+        cohortLabel,
+        roles: [...acc.roles],
+        participantCount: acc.participantIds.size,
+        aspirationRatio,
+        topFrictions: acc.frictions.slice(0, 3),
+        topAspirations: acc.aspirations.slice(0, 3),
+        insightSample: acc.allInsights.slice(0, 8),
+      });
+    }
+
+    // Sort by participant count descending (most represented cohort first)
+    result.sort((a, b) => b.participantCount - a.participantCount);
+    return result.length > 0 ? result : undefined;
+  })();
 
   // ── Live Session Signals ─────────────────────────────────────────────────
 
@@ -289,6 +356,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       narrativeDivergence,
       participantCount: workshop.participants.length,
       insights,
+      cohortBreakdown,
     },
     liveSession: {
       reimaginePads,

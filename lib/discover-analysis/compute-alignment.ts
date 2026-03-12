@@ -243,7 +243,7 @@ async function computeAlignmentFromReports(workshopId: string): Promise<Alignmen
   return { themes: topThemes, actors: topActors, cells };
 }
 
-function groupRole(role: string | null): string {
+export function groupRole(role: string | null): string {
   if (!role) return 'General';
   const r = role.toLowerCase();
   if (/\b(ceo|chief|director|vp|vice.president|head of|president|executive)\b/.test(r)) return 'Leadership';

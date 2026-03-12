@@ -44,6 +44,29 @@ const ALLOWED_TABLES = new Set<EmbeddableTable>([
 ]);
 
 /**
+ * Prepend cohort context to text before embedding so the vector carries
+ * role signal. Used by backfill and live write paths.
+ *
+ * Safe for all attributionPreference values — role/department is not
+ * personally identifying. Name is never included.
+ *
+ * Examples:
+ *   buildEmbedText("Agents optimise for handle time", "Team Leader", "Operations")
+ *   → "[Team Leader, Operations] Agents optimise for handle time"
+ *
+ *   buildEmbedText("No coaching infrastructure", null, null)
+ *   → "No coaching infrastructure"  (no prefix if no role data)
+ */
+export function buildEmbedText(
+  text: string,
+  role?: string | null,
+  department?: string | null
+): string {
+  const prefix = [role, department].filter(Boolean).join(', ');
+  return prefix ? `[${prefix}] ${text}` : text;
+}
+
+/**
  * Generate a 1536-dimensional embedding vector for the given text.
  * Throws if OpenAI is unavailable or returns an unexpected response.
  */

@@ -2,16 +2,28 @@
  * scripts/backfill-embeddings.ts
  *
  * Backfills embedding vectors for all existing content in the knowledge base.
+ * Embeddings include cohort context (role + department) for participant-attributed
+ * tables so the vector carries role signal at retrieval time.
  *
  * Usage:
  *   npx tsx scripts/backfill-embeddings.ts
  *   npx tsx scripts/backfill-embeddings.ts --dry-run
- *   npx tsx scripts/backfill-embeddings.ts --source=discovery_themes
+ *   npx tsx scripts/backfill-embeddings.ts --source=conversation_insights
+ *   npx tsx scripts/backfill-embeddings.ts --reset-source=conversation_insights
+ *   npx tsx scripts/backfill-embeddings.ts --reset-source=conversation_insights --source=conversation_insights
+ *
+ * Flags:
+ *   --dry-run            Preview only — no embeddings written, shows enriched text
+ *   --source=<name>      Process one source only
+ *   --reset-source=<name> Set embedding=NULL for a source before backfilling
+ *                         (use to re-embed rows that already have embeddings)
  *
  * Design:
  *   - Cursor-based pagination (fully resumable — safe to restart)
  *   - BATCH=20, SLEEP=300ms — avoids OpenAI rate limits
  *   - Never touches seed data — only writes to the `embedding` column
+ *   - Cohort enrichment: role + department prepended to embedded text for
+ *     conversation_insights, data_points, conversation_messages, capture_segments
  *
  * Column naming:
  *   Tables use @@map() for snake_case table names but fields have no @map(),
@@ -39,6 +51,7 @@ const MAX_CHARS = 32_000;
 
 const isDryRun = process.argv.includes('--dry-run');
 const sourceArg = process.argv.find((a) => a.startsWith('--source='))?.split('=')[1];
+const resetSourceArg = process.argv.find((a) => a.startsWith('--reset-source='))?.split('=')[1];
 
 type SourceName =
   | 'discovery_themes'
@@ -56,6 +69,26 @@ const ALL_SOURCES: SourceName[] = [
   'conversation_messages',
   'transcript_chunks',
 ];
+
+// ─── Cohort text enrichment ───────────────────────────────────────────────────
+
+/**
+ * Prepend cohort context (role + department) to text so the vector carries
+ * role signal. Safe for all attributionPreference values — role/department
+ * is not personally identifying. Name is never included.
+ *
+ * Examples:
+ *   "[Team Leader, Operations] Agents optimise for handle time not resolution"
+ *   "[Agent, Contact Centre] I feel measured on compliance not outcomes"
+ */
+function buildEmbedText(
+  text: string,
+  role?: string | null,
+  department?: string | null
+): string {
+  const prefix = [role, department].filter(Boolean).join(', ');
+  return prefix ? `[${prefix}] ${text}` : text;
+}
 
 // ─── Embedding ────────────────────────────────────────────────────────────────
 
@@ -80,6 +113,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// ─── Reset helper ─────────────────────────────────────────────────────────────
+
+async function resetEmbeddings(source: SourceName): Promise<void> {
+  console.log(`\n⚠  Resetting embeddings for ${source}...`);
+  const result = await prisma.$executeRawUnsafe(
+    `UPDATE "${source}" SET embedding = NULL`
+  );
+  console.log(`  ✓ Reset ${result} rows`);
+}
+
 // ─── Text extractors ──────────────────────────────────────────────────────────
 
 function extractJsonText(obj: unknown): string {
@@ -97,7 +140,12 @@ function extractJsonText(obj: unknown): string {
 
 // ─── Per-source backfill ──────────────────────────────────────────────────────
 
-type RawRow = { id: string; text: string };
+type RawRow = {
+  id: string;
+  text: string;
+  role?: string | null;
+  department?: string | null;
+};
 
 async function backfillSource(source: SourceName): Promise<void> {
   console.log(`\n▶ ${source}`);
@@ -109,7 +157,7 @@ async function backfillSource(source: SourceName): Promise<void> {
     let rows: RawRow[] = [];
 
     if (source === 'discovery_themes') {
-      // DB columns: "themeLabel", "themeDescription" (camelCase, no @map on fields)
+      // No participant attribution — theme-level, not individual
       rows = await prisma.$queryRaw<RawRow[]>`
         SELECT id,
                COALESCE("themeLabel" || ': ' || "themeDescription", "themeLabel") AS text
@@ -120,27 +168,37 @@ async function backfillSource(source: SourceName): Promise<void> {
         LIMIT  ${BATCH}
       `;
     } else if (source === 'conversation_insights') {
+      // JOIN to workshop_participants for role + department cohort context
       rows = await prisma.$queryRaw<RawRow[]>`
-        SELECT id, text
-        FROM   conversation_insights
-        WHERE  embedding IS NULL
-          AND  id > ${cursor}
-        ORDER  BY id
+        SELECT ci.id,
+               ci.text,
+               wp.role,
+               wp.department
+        FROM   conversation_insights ci
+        LEFT JOIN workshop_participants wp ON wp.id = ci."participantId"
+        WHERE  ci.embedding IS NULL
+          AND  ci.id > ${cursor}
+        ORDER  BY ci.id
         LIMIT  ${BATCH}
       `;
     } else if (source === 'data_points') {
-      // DB column: "rawText" (camelCase, no @map on field)
+      // JOIN to workshop_participants for role + department cohort context
+      // participantId is nullable on data_points
       rows = await prisma.$queryRaw<RawRow[]>`
-        SELECT id, "rawText" AS text
-        FROM   data_points
-        WHERE  embedding IS NULL
-          AND  id > ${cursor}
-        ORDER  BY id
+        SELECT dp.id,
+               dp."rawText" AS text,
+               wp.role,
+               wp.department
+        FROM   data_points dp
+        LEFT JOIN workshop_participants wp ON wp.id = dp."participantId"
+        WHERE  dp.embedding IS NULL
+          AND  dp.id > ${cursor}
+        ORDER  BY dp.id
         LIMIT  ${BATCH}
       `;
     } else if (source === 'workshop_scratchpads') {
       // Fetch JSON blobs and extract text in JS.
-      // DB columns: "execSummary", "discoveryOutput", etc. (camelCase, no @map on fields)
+      // No participant attribution — scratchpad is workshop-level
       const scratchpadRows = await prisma.$queryRaw<Array<{
         id: string;
         execSummary: unknown;
@@ -177,16 +235,23 @@ async function backfillSource(source: SourceName): Promise<void> {
           .join('\n'),
       })).filter((r) => r.text.length > 0);
     } else if (source === 'conversation_messages') {
+      // JOIN through conversation_sessions → workshop_participants for cohort context
       rows = await prisma.$queryRaw<RawRow[]>`
-        SELECT id, content AS text
-        FROM   conversation_messages
-        WHERE  embedding IS NULL
-          AND  role = 'PARTICIPANT'
-          AND  id > ${cursor}
-        ORDER  BY id
+        SELECT cm.id,
+               cm.content AS text,
+               wp.role,
+               wp.department
+        FROM   conversation_messages cm
+        JOIN   conversation_sessions cs ON cs.id = cm."sessionId"
+        LEFT JOIN workshop_participants wp ON wp.id = cs."participantId"
+        WHERE  cm.embedding IS NULL
+          AND  cm.role = 'PARTICIPANT'
+          AND  cm.id > ${cursor}
+        ORDER  BY cm.id
         LIMIT  ${BATCH}
       `;
     } else if (source === 'transcript_chunks') {
+      // No participant attribution — transcript chunks are not per-participant
       rows = await prisma.$queryRaw<RawRow[]>`
         SELECT id, text
         FROM   transcript_chunks
@@ -201,14 +266,16 @@ async function backfillSource(source: SourceName): Promise<void> {
     if (rows.length === 0) break;
 
     for (const row of rows) {
-      const text = row.text?.trim();
-      if (!text) {
+      const rawText = row.text?.trim();
+      if (!rawText) {
         cursor = row.id;
         continue;
       }
+      // Enrich text with cohort prefix where participant data is available
+      const text = buildEmbedText(rawText, row.role, row.department);
       try {
         if (isDryRun) {
-          console.log(`  [dry-run] ${row.id} — ${text.slice(0, 60)}…`);
+          console.log(`  [dry-run] ${row.id} — ${text.slice(0, 80)}…`);
         } else {
           const vector = await embed(text);
           await store(source, row.id, vector);
@@ -283,11 +350,27 @@ async function main() {
     process.exit(1);
   }
 
+  // Handle --reset-source before backfill
+  if (resetSourceArg) {
+    const validSources = ALL_SOURCES as readonly string[];
+    if (!validSources.includes(resetSourceArg)) {
+      console.error(`✗ Unknown reset-source: ${resetSourceArg}. Valid: ${ALL_SOURCES.join(', ')}`);
+      process.exit(1);
+    }
+    if (isDryRun) {
+      console.log(`[dry-run] Would reset embeddings for: ${resetSourceArg}`);
+    } else {
+      await resetEmbeddings(resetSourceArg as SourceName);
+    }
+  }
+
   const sources = sourceArg
     ? ALL_SOURCES.filter((s) => s === sourceArg)
-    : ALL_SOURCES;
+    : resetSourceArg
+      ? ALL_SOURCES.filter((s) => s === resetSourceArg)  // if only reset given, default to same source
+      : ALL_SOURCES;
 
-  if (sources.length === 0) {
+  if (sourceArg && sources.length === 0) {
     console.error(`✗ Unknown source: ${sourceArg}. Valid: ${ALL_SOURCES.join(', ')}`);
     process.exit(1);
   }
