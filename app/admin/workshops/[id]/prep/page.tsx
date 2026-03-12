@@ -33,6 +33,7 @@ import {
   type AgentConversationEntry,
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
 import BlueprintPreviewPanel from '@/components/prep/blueprint-preview-panel';
+import { HelpTooltip } from '@/components/help/HelpTooltip';
 import HistoricalMetricsPanel from '@/components/prep/historical-metrics-panel';
 import { readBlueprintFromJson, type WorkshopBlueprint } from '@/lib/workshop/blueprint';
 import { readHistoricalMetricsFromJson, type HistoricalMetricsData } from '@/lib/historical-metrics/types';
@@ -989,6 +990,11 @@ export default function PrepPage({ params }: PageProps) {
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-[10px] font-bold text-cyan-700 dark:text-cyan-300">1</span>
                 <Search className="h-4 w-4 text-cyan-600" />
                 <h3 className="text-sm font-semibold">Research Agent</h3>
+                <HelpTooltip
+                  content="Always run this first."
+                  detail="Pulls public company and industry data used by every other agent. Requires Client Name and Workshop Purpose to be filled in. Runs automatically on first load when client details exist."
+                  side="right"
+                />
                 {researchComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
               </div>
               <p className="text-xs text-muted-foreground mb-4">
@@ -1008,6 +1014,9 @@ export default function PrepPage({ params }: PageProps) {
                   'Run Research'
                 )}
               </Button>
+              {!clientName && (
+                <p className="text-xs text-muted-foreground mt-1 text-center">Add a client name to unlock</p>
+              )}
             </div>
 
             {/* Arrow 1->2 */}
@@ -1025,6 +1034,11 @@ export default function PrepPage({ params }: PageProps) {
                   <span className="flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">2</span>
                   <MessageSquare className="h-4 w-4 text-emerald-600" />
                   <h3 className="text-sm font-semibold">Discovery Questions</h3>
+                  <HelpTooltip
+                    content="Run before participant interviews."
+                    detail="Generates structured questions for facilitators to use in participant Discovery sessions. Requires Research to complete first. Only shown when a Domain Pack is configured for this workshop type."
+                    side="right"
+                  />
                   {discoveryQuestionsData && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
                 </div>
                 <p className="text-xs text-muted-foreground mb-2">
@@ -1053,6 +1067,9 @@ export default function PrepPage({ params }: PageProps) {
                     'Generate Questions'
                   )}
                 </Button>
+                {!researchComplete && (
+                  <p className="text-xs text-muted-foreground mt-1 text-center">Run Research first</p>
+                )}
               </div>
             ) : (
               /* No domain pack -- skip step 2, show synthesis as step 2 */
@@ -1073,6 +1090,11 @@ export default function PrepPage({ params }: PageProps) {
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">{workshop?.domainPack ? '3' : '2'}</span>
                 <Brain className="h-4 w-4 text-amber-600" />
                 <h3 className="text-sm font-semibold">Discovery Synthesis</h3>
+                <HelpTooltip
+                  content="Run after participant interviews are complete."
+                  detail="Synthesizes participant responses into themes, pain points, and aspirations. Requires Research to complete first. Running it before participants have submitted Discovery sessions will produce empty output."
+                  side="right"
+                />
                 {briefingComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
               </div>
               <p className="text-xs text-muted-foreground mb-4">
@@ -1093,6 +1115,9 @@ export default function PrepPage({ params }: PageProps) {
                   'Synthesize Discovery'
                 )}
               </Button>
+              {!researchComplete && (
+                <p className="text-xs text-muted-foreground mt-1 text-center">Run Research first</p>
+              )}
             </div>
 
             {/* Arrow 3->4 (or 2->3 if no domainPack) */}
@@ -1109,6 +1134,11 @@ export default function PrepPage({ params }: PageProps) {
                 <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">{workshop?.domainPack ? '4' : '3'}</span>
                 <FileQuestion className="h-4 w-4 text-indigo-600" />
                 <h3 className="text-sm font-semibold">Workshop Questions</h3>
+                <HelpTooltip
+                  content="The final step — run this last."
+                  detail="Generates the facilitation questions for the live workshop. Needs both Research AND Discovery Synthesis to be complete. Richer discovery data = better questions — don't skip Discovery Synthesis."
+                  side="left"
+                />
                 {questionsComplete && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
               </div>
               <p className="text-xs text-muted-foreground mb-4">
@@ -1129,6 +1159,12 @@ export default function PrepPage({ params }: PageProps) {
                   'Generate Questions'
                 )}
               </Button>
+              {!researchComplete && !briefingComplete && (
+                <p className="text-xs text-muted-foreground mt-1 text-center">Run Research and Discovery Synthesis first</p>
+              )}
+              {researchComplete && !briefingComplete && (
+                <p className="text-xs text-muted-foreground mt-1 text-center">Complete Discovery Synthesis first</p>
+              )}
             </div>
           </div>
 
