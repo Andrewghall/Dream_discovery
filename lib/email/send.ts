@@ -1,9 +1,13 @@
 import { Resend } from 'resend';
 import {
   workshopInvitationTemplate,
+  workshopInvitationText,
   passwordResetTemplate,
+  passwordResetText,
   welcomeEmailTemplate,
+  welcomeEmailText,
   tenantOnboardingTemplate,
+  tenantOnboardingText,
 } from './templates';
 
 let _resend: Resend | null = null;
@@ -18,7 +22,9 @@ function getResend(): Resend {
   return _resend;
 }
 
-const fromEmail = process.env.FROM_EMAIL || 'onboarding@resend.dev';
+// Single consistent from-address for all emails.
+// One sender identity builds reputation faster than per-org addresses.
+const fromEmail = process.env.FROM_EMAIL || 'DREAM Discovery <dream@dream.ethenta.com>';
 
 /**
  * Generic email sender used by monitoring/alerts and other internal systems.
@@ -58,22 +64,23 @@ export async function sendWorkshopInvitation(params: {
   discoveryUrl: string;
   deadline?: string;
 }) {
-  const html = workshopInvitationTemplate({
+  const templateData = {
     participantName: params.participantName,
     workshopName: params.workshopName,
     organizationName: params.organizationName,
     discoveryUrl: params.discoveryUrl,
     deadline: params.deadline,
-  });
-
-  const sender = orgFromEmail(params.organizationName);
+  };
+  const html = workshopInvitationTemplate(templateData);
+  const text = workshopInvitationText(templateData);
 
   try {
     const { data, error } = await getResend().emails.send({
-      from: sender,
+      from: fromEmail,
       to: [params.to],
-      subject: `Workshop Invitation: ${params.workshopName}`,
+      subject: `${params.workshopName} — Discovery Invitation`,
       html,
+      text,
     });
 
     if (error) {
@@ -94,18 +101,21 @@ export async function sendPasswordReset(params: {
   resetUrl: string;
   expiresIn?: string;
 }) {
-  const html = passwordResetTemplate({
+  const templateData = {
     userName: params.userName,
     resetUrl: params.resetUrl,
     expiresIn: params.expiresIn || '1 hour',
-  });
+  };
+  const html = passwordResetTemplate(templateData);
+  const text = passwordResetText(templateData);
 
   try {
     const { data, error } = await getResend().emails.send({
       from: fromEmail,
       to: [params.to],
-      subject: 'Reset Your Password - DREAM Discovery',
+      subject: 'Reset your DREAM Discovery password',
       html,
+      text,
     });
 
     if (error) {
@@ -132,7 +142,7 @@ export async function sendWelcomeEmail(params: {
   maxSeats?: number;
   from?: string; // override sender - defaults to org-derived address
 }) {
-  const html = welcomeEmailTemplate({
+  const templateData = {
     userName: params.userName,
     userEmail: params.userEmail,
     temporaryPassword: params.temporaryPassword || 'Use the Set Password link below',
@@ -141,16 +151,17 @@ export async function sendWelcomeEmail(params: {
     role: params.role,
     organizationName: params.organizationName,
     maxSeats: params.maxSeats,
-  });
-
-  const sender = params.from ?? orgFromEmail(params.organizationName);
+  };
+  const html = welcomeEmailTemplate(templateData);
+  const text = welcomeEmailText(templateData);
 
   try {
     const { data, error } = await getResend().emails.send({
-      from: sender,
+      from: params.from ?? fromEmail,
       to: [params.to],
-      subject: 'Welcome to DREAM Discovery - Your Account is Ready',
+      subject: 'Your DREAM Discovery account is ready',
       html,
+      text,
     });
 
     if (error) {
@@ -172,22 +183,23 @@ export async function sendTenantOnboarding(params: {
   maxSeats: number;
   loginUrl: string;
 }) {
-  const html = tenantOnboardingTemplate({
+  const templateData = {
     organizationName: params.organizationName,
     billingEmail: params.billingEmail,
     adminName: params.adminName,
     maxSeats: params.maxSeats,
     loginUrl: params.loginUrl,
-  });
-
-  const sender = orgFromEmail(params.organizationName);
+  };
+  const html = tenantOnboardingTemplate(templateData);
+  const text = tenantOnboardingText(templateData);
 
   try {
     const { data, error } = await getResend().emails.send({
-      from: sender,
+      from: fromEmail,
       to: [params.billingEmail],
-      subject: `Welcome to DREAM Discovery — ${params.organizationName} is ready`,
+      subject: `${params.organizationName} — your DREAM Discovery workspace is ready`,
       html,
+      text,
     });
 
     if (error) {

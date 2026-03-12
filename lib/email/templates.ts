@@ -280,6 +280,103 @@ export function welcomeEmailTemplate(data: WelcomeEmailData): string {
   `.trim();
 }
 
+// ─── Plain-text alternatives ──────────────────────────────────────────────
+// Included alongside every HTML email. Spam filters strongly prefer both parts.
+
+export function workshopInvitationText(data: WorkshopInvitationData): string {
+  const deadline = data.deadline ? `\nPlease complete by: ${data.deadline}\n` : '';
+  return [
+    `Hi ${data.participantName},`,
+    '',
+    `You've been invited to participate in a discovery workshop: ${data.workshopName}`,
+    '',
+    'This is your opportunity to share your insights, challenges, and vision. The conversation typically takes 15–20 minutes.',
+    deadline,
+    'Start your discovery session here:',
+    data.discoveryUrl,
+    '',
+    'Your responses are confidential and will help shape the future of your organisation.',
+    '',
+    '---',
+    'If you have any questions, please reach out to your workshop facilitator.',
+    `© ${new Date().getFullYear()} ${data.organizationName} · Powered by DREAM Discovery`,
+  ].join('\n').trim();
+}
+
+export function passwordResetText(data: PasswordResetData): string {
+  return [
+    `Hi ${data.userName},`,
+    '',
+    'We received a request to reset your password.',
+    '',
+    'Reset your password here:',
+    data.resetUrl,
+    '',
+    `This link expires in ${data.expiresIn}.`,
+    '',
+    "If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.",
+    '',
+    '---',
+    'For security reasons, never share this link with anyone.',
+    `© ${new Date().getFullYear()} DREAM Discovery Platform`,
+  ].join('\n').trim();
+}
+
+export function welcomeEmailText(data: WelcomeEmailData): string {
+  const orgName = data.organizationName || 'your organisation';
+  const isTenantAdmin = data.role === 'TENANT_ADMIN';
+  const bodyText = isTenantAdmin
+    ? `You have been set up as the ${orgName} administrator on the DREAM Discovery platform.`
+    : `You have been given access to the ${orgName} DREAM Discovery platform.`;
+
+  const seatsLine = isTenantAdmin && data.maxSeats
+    ? `\nYour licence includes up to ${data.maxSeats} seat${data.maxSeats === 1 ? '' : 's'}. Need more? Contact admin@ethenta.com\n`
+    : '';
+
+  return [
+    `Welcome, ${data.userName}!`,
+    '',
+    bodyText,
+    seatsLine,
+    'SIGN-IN CREDENTIALS',
+    `Email:    ${data.userEmail}`,
+    `Password: ${data.temporaryPassword}`,
+    '',
+    'Please set your own password using the link below. Do not share these credentials.',
+    '',
+    'Set your password:',
+    data.setPasswordUrl || data.loginUrl,
+    '',
+    `This link expires in 7 days. After setting your password, sign in at: ${data.loginUrl}`,
+    '',
+    '---',
+    'Need help? admin@ethenta.com',
+    `© ${new Date().getFullYear()} Ethenta · DREAM Discovery Platform`,
+  ].join('\n').trim();
+}
+
+export function tenantOnboardingText(data: TenantOnboardingData): string {
+  const greeting = data.adminName ? data.adminName.split(' ')[0] : data.organizationName;
+  return [
+    `Welcome, ${greeting}!`,
+    '',
+    `Your DREAM Discovery tenancy for ${data.organizationName} has been created and is ready to use.`,
+    '',
+    `Organisation:  ${data.organizationName}`,
+    `Billing Email: ${data.billingEmail}`,
+    `Seat Licence:  ${data.maxSeats} user${data.maxSeats === 1 ? '' : 's'}`,
+    '',
+    'WHAT HAPPENS NEXT?',
+    'We will set up your account and send you a separate email with your login credentials and temporary password. You\'ll be able to log in and get started straight away.',
+    '',
+    'If you have any questions in the meantime, contact us at admin@ethenta.com',
+    '',
+    '---',
+    'Questions? Contact admin@ethenta.com',
+    `© ${new Date().getFullYear()} Ethenta · DREAM Discovery Platform`,
+  ].join('\n').trim();
+}
+
 // ─── Tenant Onboarding Email ───────────────────────────────────────────────
 
 interface TenantOnboardingData {
