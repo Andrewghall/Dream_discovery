@@ -123,9 +123,10 @@ export async function verifySessionWithDB(token: string): Promise<SessionPayload
 
     return payload;
   } catch (error) {
-    console.error('DB session verification failed:', error);
-    // On DB error, fall back to JWT-only to avoid locking everyone out
-    return payload;
+    console.error('DB session verification failed — rejecting session to maintain revocation guarantees:', error);
+    // Fail closed: return null so revoked/expired sessions are not accepted during DB outages.
+    // Trade-off: active users are logged out during outages. Correct security posture.
+    return null;
   }
 }
 

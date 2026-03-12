@@ -28,11 +28,12 @@ type Env = z.infer<typeof envSchema>;
 
 const parsed = envSchema.safeParse(process.env);
 
-export const env: Env = parsed.success
-  ? parsed.data
-  : ({
-      ...process.env,
-      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-    } as unknown as Env);
+if (!parsed.success) {
+  // Fail hard — bad config should never reach runtime silently.
+  // If this fires during `next build`, DATABASE_URL or another required var is missing.
+  const issues = parsed.error.issues.map((i) => `  • ${i.path.join('.')}: ${i.message}`).join('\n');
+  throw new Error(`[env] Invalid environment configuration:\n${issues}`);
+}
 
-export const envParseError = parsed.success ? null : parsed.error;
+export const env: Env = parsed.data;
+export const envParseError = null;

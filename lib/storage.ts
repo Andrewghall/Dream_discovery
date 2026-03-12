@@ -16,12 +16,15 @@ function getSupabaseClient() {
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !anonKey) {
-    throw new Error(`Supabase credentials not configured. URL=${url ? 'set' : 'MISSING'}, ANON_KEY=${anonKey ? 'set' : 'MISSING'}, SERVICE_KEY=${serviceRoleKey ? 'set' : 'MISSING'}`);
+  if (!url || !serviceRoleKey) {
+    throw new Error(
+      `[storage] Supabase admin credentials not configured. ` +
+      `URL=${url ? 'set' : 'MISSING'}, SERVICE_KEY=${serviceRoleKey ? 'set' : 'MISSING'}. ` +
+      `Admin operations require SUPABASE_SERVICE_ROLE_KEY — anon key fallback removed.`
+    );
   }
-  return createClient(url, serviceRoleKey || anonKey);
+  return createClient(url, serviceRoleKey);
 }
 
 const BUCKET_NAME = 'workshop-images';
