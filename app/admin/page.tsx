@@ -107,7 +107,6 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchWorkshops();
-    fetchDbDebug();
     fetch('/api/auth/me', { cache: 'no-store' })
       .then(r => {
         if (r.status === 401) { router.push('/login'); return null; }
@@ -122,8 +121,10 @@ export default function AdminDashboard() {
         setOrgName(data.orgName || null);
         setOrgPrimaryColor(data.orgPrimaryColor || null);
         setUserEmail(data.email || null);
-        // PLATFORM_ADMIN has no access to workshop content — redirect to platform console
+        // PLATFORM_ADMIN has no access to workshop content — redirect to platform console.
+        // Also the only role that can read /api/debug/env, so only fetch it for them.
         if (role === 'PLATFORM_ADMIN') {
+          fetchDbDebug();
           router.replace('/admin/platform');
         }
       })
