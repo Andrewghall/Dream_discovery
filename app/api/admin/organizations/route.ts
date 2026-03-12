@@ -37,8 +37,12 @@ export async function GET() {
       return NextResponse.json({ organizations: organization ? [organization] : [] });
     }
 
-    // PLATFORM_ADMIN sees all
+    // PLATFORM_ADMIN sees all real (non-system) orgs.
+    // System orgs are platform-owned (e.g. Jo Air demo org) — they hold
+    // example workshops visible to every tenant but are not real tenants
+    // and must not appear in this client-facing list.
     const organizations = await prisma.organization.findMany({
+      where: { isSystem: false },
       orderBy: {
         name: 'asc',
       },
@@ -235,6 +239,12 @@ export async function DELETE(request: NextRequest) {
     const { id } = await request.json();
     if (!id) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
+    }
+
+    // Hard block: system orgs hold example/demo data and must never be deleted
+    const target = await prisma.organization.findUnique({ where: { id }, select: { isSystem: true } });
+    if (target?.isSystem) {
+      return NextResponse.json({ error: 'System organisations cannot be deleted.' }, { status: 403 });
     }
 
     // Count related records for the response summary

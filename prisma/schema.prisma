@@ -19,6 +19,7 @@ model Organization {
   maxSeats       Int        @default(5)   // licence seat limit
   billingEmail   String?    // billing contact email
   adminName      String?    // admin contact first name (used in onboarding email)
+  isSystem       Boolean    @default(false) @map("is_system")  // platform-owned org (e.g. holds demo/example workshops); hidden from tenant-facing org lists
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   users          User[]
