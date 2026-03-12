@@ -100,6 +100,12 @@ export async function verifySessionWithDB(token: string): Promise<SessionPayload
     return payload;
   }
 
+  // Support/impersonation sessions: scoped JWT derived from a valid PLATFORM_ADMIN
+  // session — no DB session row exists for these. JWT signature already proves validity.
+  if (payload.impersonatedBy) {
+    return payload;
+  }
+
   // All other roles: verify DB session state
   try {
     const dbSession = await prisma.session.findFirst({
