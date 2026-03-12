@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { sendWelcomeEmail } from '@/lib/email/send';
 import * as bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
+import crypto from 'crypto';
 
 function generateTemporaryPassword(): string {
   const words = ['Dream', 'Discovery', 'Platform', 'Secure', 'Admin', 'Access'];
@@ -130,8 +131,21 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          // Send welcome email with credentials
-          const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/tenant/login`;
+          // Generate a set-password token so the welcome email button goes
+          // directly to the reset-password form rather than the login page.
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://dream.ethenta.com';
+          const setPasswordToken = crypto.randomBytes(32).toString('hex');
+          await prisma.passwordResetToken.create({
+            data: {
+              id: nanoid(),
+              userId: adminUser.id,
+              token: setPasswordToken,
+              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+            },
+          });
+          const loginUrl = `${appUrl}/tenant/login`;
+          const setPasswordUrl = `${appUrl}/reset-password?token=${setPasswordToken}`;
+
           console.log('[org/create] Sending welcome email to', billingEmail.trim());
           await sendWelcomeEmail({
             to: billingEmail.trim(),
@@ -139,6 +153,7 @@ export async function POST(request: NextRequest) {
             userEmail: billingEmail.trim(),
             temporaryPassword,
             loginUrl,
+            setPasswordUrl,
             role: 'TENANT_ADMIN',
             organizationName: name.trim(),
             maxSeats: seats,
