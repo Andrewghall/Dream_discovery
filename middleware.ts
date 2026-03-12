@@ -56,6 +56,26 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
+    // Support session auto-exit: if Andrew navigates to /admin/platform while holding a
+    // scoped TENANT_ADMIN session (impersonatedBy is set), automatically restore the
+    // original PLATFORM_ADMIN session from the backup cookie before serving the page.
+    if (session.impersonatedBy && pathname.startsWith('/admin/platform')) {
+      const backupJwt = request.cookies.get('dream-admin-session')?.value;
+      if (backupJwt) {
+        const isProduction = process.env.NODE_ENV === 'production';
+        const response = NextResponse.redirect(new URL('/admin/platform', request.url));
+        response.cookies.set('session', backupJwt, {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite: 'strict',
+          path: '/',
+          maxAge: 60 * 60 * 24,
+        });
+        response.cookies.delete('dream-admin-session');
+        return response;
+      }
+    }
+
     // Role-based access control
     if (isAdminPath && session.role !== 'PLATFORM_ADMIN' && !TENANT_ROLES.includes(session.role)) {
       return NextResponse.redirect(new URL('/login', request.url));

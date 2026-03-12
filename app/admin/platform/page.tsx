@@ -5,7 +5,16 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Building, Users, ShieldCheck, Activity } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Building, Users, ShieldCheck, Activity, LogIn } from 'lucide-react';
+
+interface Organisation {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  adminName: string | null;
+  billingEmail: string | null;
+}
 
 interface AuditLog {
   id: string;
@@ -58,6 +67,29 @@ export default function PlatformAdminPage() {
   const [userName, setUserName] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
+  const [organisations, setOrganisations] = useState<Organisation[]>([]);
+  const [enteringOrgId, setEnteringOrgId] = useState<string | null>(null);
+
+  const handleEnterWorkspace = async (orgId: string) => {
+    setEnteringOrgId(orgId);
+    try {
+      const res = await fetch('/api/admin/platform/enter-org', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: orgId }),
+      });
+      if (!res.ok) {
+        console.error('[enter-org] failed', await res.text());
+        return;
+      }
+      // Hard navigate so the new session cookie is picked up
+      window.location.href = '/admin';
+    } catch (err) {
+      console.error('[enter-org]', err);
+    } finally {
+      setEnteringOrgId(null);
+    }
+  };
 
   useEffect(() => {
     // Guard: only PLATFORM_ADMIN should be here
@@ -75,6 +107,12 @@ export default function PlatformAdminPage() {
         }
         setUserName(data.name || null);
       })
+      .catch(() => null);
+
+    // Fetch organisations for the workspace switcher
+    fetch('/api/admin/organizations', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (data) setOrganisations(data.organizations || []); })
       .catch(() => null);
 
     // Recent audit logs
@@ -125,6 +163,45 @@ export default function PlatformAdminPage() {
             );
           })}
         </div>
+
+        {/* Client workspace access */}
+        {organisations.length > 0 && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <LogIn className="h-4 w-4" />
+                Enter Client Workspace
+              </CardTitle>
+              <CardDescription>
+                Access a client's workspace to provide support. Your session will be scoped to their organisation.
+                Navigate back to <strong>/admin/platform</strong> to return to platform admin view.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="divide-y divide-border">
+                {organisations.map(org => (
+                  <div key={org.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                    <div>
+                      <p className="text-sm font-medium">{org.name}</p>
+                      {org.adminName && (
+                        <p className="text-xs text-muted-foreground">{org.adminName}</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={enteringOrgId === org.id}
+                      onClick={() => handleEnterWorkspace(org.id)}
+                    >
+                      <LogIn className="h-3.5 w-3.5 mr-1.5" />
+                      {enteringOrgId === org.id ? 'Entering…' : 'Enter'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Recent activity */}
         <Card>

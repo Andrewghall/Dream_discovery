@@ -17,6 +17,8 @@ export interface SessionPayload {
   role: string;
   organizationId: string | null;
   createdAt: number;
+  /** Set when a PLATFORM_ADMIN has entered a tenant workspace via support access. */
+  impersonatedBy?: string;
   [key: string]: unknown;
 }
 
