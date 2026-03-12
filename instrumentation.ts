@@ -19,9 +19,14 @@ export async function register() {
       }
     } catch (err) {
       console.error('[startup] Secret validation FAILED:', err);
-      // In production: hard crash — misconfigured secrets must not silently run.
-      // In development: log and continue so local dev is not blocked.
-      if (process.env.NODE_ENV === 'production') {
+      // Hard crash only on the true Vercel production deployment.
+      // Vercel sets NODE_ENV=production on ALL deployments (including preview/pre-live),
+      // so we use VERCEL_ENV to distinguish true production from preview branches.
+      // Outside Vercel (e.g. self-hosted), fall back to NODE_ENV=production.
+      const isTrueProduction =
+        process.env.VERCEL_ENV === 'production' ||
+        (!process.env.VERCEL && process.env.NODE_ENV === 'production');
+      if (isTrueProduction) {
         process.exit(1);
       }
     }
