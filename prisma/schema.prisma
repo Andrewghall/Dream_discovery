@@ -150,6 +150,11 @@ model Workshop {
   blueprint           Json?                 @map("blueprint")            // Composed WorkshopBlueprint snapshot (runtime config)
   historicalMetrics   Json?                 @map("historical_metrics")   // Normalized metric time series from CSV upload
 
+  // Example/demo flag — example workshops are visible to all authenticated users (cross-org)
+  // and are read-only. Users must fork to run synthesis on their own copy.
+  isExample        Boolean               @default(false) @map("is_example")
+  exampleSourceId  String?               @map("example_source_id")  // Set on forks: ID of source example
+
   insights          ConversationInsight[]
   sessions          ConversationSession[]
   dataPoints        DataPoint[]
@@ -171,6 +176,7 @@ model Workshop {
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([createdAt])
+  @@index([isExample])
   @@map("workshops")
 }
 

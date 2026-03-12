@@ -242,6 +242,8 @@ const LIGHT_SELECT = {
   domainPackConfig: true,
   blueprint: true,
   discoveryQuestions: true,
+  isExample: true,
+  exampleSourceId: true,
 } as const;
 
 const FULL_EXTRA = {
@@ -468,6 +470,18 @@ export async function PATCH(
       return NextResponse.json({ error: validation.error }, { status: 403 });
     }
 
+    // Block writes to example workshops — they are platform-level read-only demos.
+    // Users must fork the workshop first (POST /api/admin/workshops/[id]/fork).
+    if (validation.isExample) {
+      return NextResponse.json(
+        {
+          error: 'Example workshops are read-only. Fork this workshop to make changes.',
+          exampleImmutable: true,
+        },
+        { status: 403 }
+      );
+    }
+
     const workshop = await prisma.workshop.findUnique({
       where: { id },
       select: { id: true },
@@ -650,6 +664,14 @@ export async function DELETE(
     const validation = await validateWorkshopAccess(id, user.organizationId, user.role, user.userId);
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 403 });
+    }
+
+    // Block deletion of example workshops entirely
+    if (validation.isExample) {
+      return NextResponse.json(
+        { error: 'Example workshops cannot be deleted.' },
+        { status: 403 }
+      );
     }
 
     const workshop = await prisma.workshop.findUnique({

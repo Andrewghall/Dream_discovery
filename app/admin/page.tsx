@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Users, MessageSquare, TrendingUp, ShieldCheck, Trash2, Share2 } from 'lucide-react';
+import { Plus, Users, MessageSquare, TrendingUp, ShieldCheck, Trash2, Share2, Sparkles } from 'lucide-react';
 import { WelcomeSplash } from '@/components/admin/WelcomeSplash';
 import {
   Dialog,
@@ -28,6 +28,7 @@ interface Workshop {
   scheduledDate: string | null;
   participantCount: number;
   completedResponses: number;
+  isExample?: boolean;
 }
 
 interface DbUrlInfo {
@@ -224,11 +225,13 @@ export default function AdminDashboard() {
     });
   };
 
+  const selectableWorkshops = workshops.filter((w) => !w.isExample);
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === workshops.length) {
+    if (selectedIds.size === selectableWorkshops.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(workshops.map((w) => w.id)));
+      setSelectedIds(new Set(selectableWorkshops.map((w) => w.id)));
     }
   };
 
@@ -532,31 +535,41 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="space-y-2">
-                {/* Select All */}
-                <div className="flex items-center gap-3 px-4 py-2 text-sm text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300"
-                    checked={selectedIds.size === workshops.length && workshops.length > 0}
-                    onChange={toggleSelectAll}
-                  />
-                  <span>{selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select all'}</span>
-                </div>
+                {/* Select All — only counts non-example workshops */}
+                {selectableWorkshops.length > 0 && (
+                  <div className="flex items-center gap-3 px-4 py-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300"
+                      checked={selectedIds.size === selectableWorkshops.length && selectableWorkshops.length > 0}
+                      onChange={toggleSelectAll}
+                    />
+                    <span>{selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select all'}</span>
+                  </div>
+                )}
 
                 {workshops.map((workshop) => (
                   <div
                     key={workshop.id}
                     className={`border rounded-lg p-4 hover:bg-muted/50 transition-colors flex items-center gap-3 ${
-                      selectedIds.has(workshop.id) ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-950/20' : ''
+                      workshop.isExample
+                        ? 'border-amber-200 bg-amber-50/40 dark:border-amber-800/40 dark:bg-amber-950/10'
+                        : selectedIds.has(workshop.id)
+                          ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-950/20'
+                          : ''
                     }`}
                   >
-                    {/* Checkbox */}
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 flex-shrink-0"
-                      checked={selectedIds.has(workshop.id)}
-                      onChange={() => toggleSelect(workshop.id)}
-                    />
+                    {/* Checkbox — hidden for example workshops */}
+                    {!workshop.isExample ? (
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300 flex-shrink-0"
+                        checked={selectedIds.has(workshop.id)}
+                        onChange={() => toggleSelect(workshop.id)}
+                      />
+                    ) : (
+                      <div className="h-4 w-4 flex-shrink-0" />
+                    )}
 
                     {/* Workshop content — clickable */}
                     <Link
@@ -567,35 +580,52 @@ export default function AdminDashboard() {
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
                             <h3 className="font-semibold text-lg">{workshop.name}</h3>
-                            <Badge variant="outline" className="capitalize">
-                              {workshop.workshopType.toLowerCase()}
-                            </Badge>
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`h-2 w-2 rounded-full ${getStatusColor(
-                                  workshop.status
-                                )}`}
-                              />
-                              <span className="text-sm text-muted-foreground capitalize">
-                                {workshop.status.toLowerCase().replace('_', ' ')}
-                              </span>
-                            </div>
+                            {workshop.isExample ? (
+                              <Badge className="bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 gap-1">
+                                <Sparkles className="h-3 w-3" />
+                                Example
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="capitalize">
+                                {workshop.workshopType.toLowerCase()}
+                              </Badge>
+                            )}
+                            {!workshop.isExample && (
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className={`h-2 w-2 rounded-full ${getStatusColor(
+                                    workshop.status
+                                  )}`}
+                                />
+                                <span className="text-sm text-muted-foreground capitalize">
+                                  {workshop.status.toLowerCase().replace('_', ' ')}
+                                </span>
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                            <span>{formatDate(workshop.scheduledDate)}</span>
-                            <span>
-                              {workshop.completedResponses}/{workshop.participantCount}{' '}
-                              completed
-                            </span>
-                            <span>
-                              {workshop.participantCount > 0
-                                ? Math.round(
-                                    (workshop.completedResponses / workshop.participantCount) *
-                                      100
-                                  )
-                                : 0}
-                              % completion
-                            </span>
+                            {workshop.isExample ? (
+                              <span className="text-amber-700 text-xs">
+                                Browse the full platform output — fork to run your own agents
+                              </span>
+                            ) : (
+                              <>
+                                <span>{formatDate(workshop.scheduledDate)}</span>
+                                <span>
+                                  {workshop.completedResponses}/{workshop.participantCount}{' '}
+                                  completed
+                                </span>
+                                <span>
+                                  {workshop.participantCount > 0
+                                    ? Math.round(
+                                        (workshop.completedResponses / workshop.participantCount) *
+                                          100
+                                      )
+                                    : 0}
+                                  % completion
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                         <Button variant="ghost" size="sm" tabIndex={-1}>
@@ -604,19 +634,21 @@ export default function AdminDashboard() {
                       </div>
                     </Link>
 
-                    {/* Share button */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-shrink-0"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        openShareDialog(workshop.id);
-                      }}
-                      title="Share workshop"
-                    >
-                      <Share2 className="h-4 w-4" />
-                    </Button>
+                    {/* Share button — hidden for example workshops */}
+                    {!workshop.isExample && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-shrink-0"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          openShareDialog(workshop.id);
+                        }}
+                        title="Share workshop"
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -636,7 +668,7 @@ export default function AdminDashboard() {
             </DialogHeader>
             <div className="max-h-40 overflow-y-auto space-y-1 text-sm">
               {workshops
-                .filter((w) => selectedIds.has(w.id))
+                .filter((w) => selectedIds.has(w.id) && !w.isExample)
                 .map((w) => (
                   <div key={w.id} className="text-muted-foreground">&bull; {w.name}</div>
                 ))}

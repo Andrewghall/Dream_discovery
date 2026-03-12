@@ -27,7 +27,9 @@ import {
   MessageSquare,
   Sparkles,
   RefreshCw,
+  GitFork,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import {
   AgentOrchestrationPanel,
   type AgentConversationEntry,
@@ -62,6 +64,8 @@ type WorkshopPrep = {
   domainPack: string | null;
   blueprint: Record<string, unknown> | null;
   historicalMetrics: Record<string, unknown> | null;
+  isExample?: boolean;
+  exampleSourceId?: string | null;
 };
 
 type FacilitationQuestion = {
@@ -135,10 +139,14 @@ const INDUSTRY_OPTIONS = [
 
 export default function PrepPage({ params }: PageProps) {
   const { id: workshopId } = use(params);
+  const router = useRouter();
 
   const [workshop, setWorkshop] = useState<WorkshopPrep | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Example workshop fork state
+  const [forking, setForking] = useState(false);
 
   // Workshop purpose fields
   const [description, setDescription] = useState('');
@@ -772,6 +780,28 @@ export default function PrepPage({ params }: PageProps) {
   })();
 
   // ══════════════════════════════════════════════════════════
+  // EXAMPLE WORKSHOP — FORK HANDLER
+  // ══════════════════════════════════════════════════════════
+
+  const handleFork = async () => {
+    setForking(true);
+    try {
+      const res = await fetch(`/api/admin/workshops/${workshopId}/fork`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to fork workshop');
+        return;
+      }
+      toast.success('Workshop forked — taking you to your copy');
+      router.push(`/admin/workshops/${data.workshopId}/prep`);
+    } catch {
+      toast.error('Network error — please try again');
+    } finally {
+      setForking(false);
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════
 
@@ -816,6 +846,34 @@ export default function PrepPage({ params }: PageProps) {
             </Button>
           </Link>
         </div>
+
+        {/* ── Example Workshop Banner ──────────────────── */}
+        {workshop?.isExample && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-600/50 px-5 py-4 flex items-start justify-between gap-4 mb-6">
+            <div className="flex items-start gap-3">
+              <Sparkles className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">This is a shared example workshop</p>
+                <p className="text-xs text-amber-700/80 dark:text-amber-400/70 mt-0.5">
+                  Browse all the platform output below. To run or re-run agents, fork this workshop into your own workspace first.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              className="flex-shrink-0 bg-amber-600 hover:bg-amber-700 text-white gap-2"
+              onClick={handleFork}
+              disabled={forking}
+            >
+              {forking ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <GitFork className="h-4 w-4" />
+              )}
+              {forking ? 'Forking…' : 'Fork to my workspace'}
+            </Button>
+          </div>
+        )}
 
         <div className="space-y-6">
           {/* ── Workshop Purpose Card ────────────────────── */}

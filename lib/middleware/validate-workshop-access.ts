@@ -15,6 +15,8 @@ export interface WorkshopAccessValidation {
     organizationId: string;
   };
   error?: string;
+  /** True when the accessed workshop is a platform-level example (cross-org, read-only) */
+  isExample?: boolean;
 }
 
 /**
@@ -39,12 +41,27 @@ export async function validateWorkshopAccess(
     // Super-admin: universal read access across all organisations
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, isExample: true },
     });
     if (!workshop) {
       return { valid: false, error: 'Workshop not found' };
     }
-    return { valid: true, workshop };
+    return { valid: true, workshop, isExample: workshop.isExample };
+  }
+
+  // ── Example workshop fast-path ─────────────────────────────────────────────
+  // isExample workshops are global read-only demo workshops visible to any
+  // authenticated user, regardless of organisation.  Writes are blocked at the
+  // route level (PATCH returns 403 exampleImmutable).
+  const workshopBase = await prisma.workshop.findUnique({
+    where: { id: workshopId },
+    select: { id: true, organizationId: true, createdById: true, isExample: true },
+  });
+  if (!workshopBase) {
+    return { valid: false, error: 'Workshop not found' };
+  }
+  if (workshopBase.isExample) {
+    return { valid: true, workshop: workshopBase, isExample: true };
   }
 
   if (userRole === 'TENANT_ADMIN') {
@@ -52,38 +69,31 @@ export async function validateWorkshopAccess(
     if (!userOrganizationId) {
       return { valid: false, error: 'Organization ID required' };
     }
-    const workshop = await prisma.workshop.findUnique({
-      where: { id: workshopId },
-      select: { id: true, organizationId: true },
-    });
-    if (!workshop) {
-      return { valid: false, error: 'Workshop not found' };
-    }
-    if (workshop.organizationId !== userOrganizationId) {
+    if (workshopBase.organizationId !== userOrganizationId) {
       return { valid: false, error: 'Workshop belongs to a different organization' };
     }
-    return { valid: true, workshop };
+    return { valid: true, workshop: workshopBase };
   }
 
   if (userRole === 'TENANT_USER') {
-    // Ownership-scoped: only workshops the user personally created
+    // Ownership-scoped: only workshops the user personally created OR shares
     if (!userOrganizationId || !userId) {
       return { valid: false, error: 'Organization and user ID required' };
     }
-    const workshop = await prisma.workshop.findUnique({
-      where: { id: workshopId },
-      select: { id: true, organizationId: true, createdById: true },
-    });
-    if (!workshop) {
-      return { valid: false, error: 'Workshop not found' };
-    }
-    if (workshop.organizationId !== userOrganizationId) {
+    if (workshopBase.organizationId !== userOrganizationId) {
       return { valid: false, error: 'Workshop belongs to a different organization' };
     }
-    if (workshop.createdById !== userId) {
-      return { valid: false, error: 'You do not own this workshop' };
+    if (workshopBase.createdById !== userId) {
+      // Check for explicit share
+      const share = await prisma.workshopShare.findUnique({
+        where: { workshopId_userId: { workshopId, userId } },
+        select: { id: true },
+      });
+      if (!share) {
+        return { valid: false, error: 'You do not own this workshop' };
+      }
     }
-    return { valid: true, workshop };
+    return { valid: true, workshop: workshopBase };
   }
 
   return { valid: false, error: 'Invalid user role' };

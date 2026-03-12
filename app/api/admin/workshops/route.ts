@@ -53,15 +53,20 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
     const skip = (page - 1) * limit;
 
-    // TENANT_ADMIN sees all in their org;
-    // TENANT_USER sees their own + workshops shared with them
+    // TENANT_ADMIN sees all in their org + all example workshops (cross-org)
+    // TENANT_USER sees their own + workshops shared with them + all example workshops
     const where = isTenantAdmin
-      ? { organizationId: orgId! }
+      ? { OR: [{ organizationId: orgId! }, { isExample: true }] }
       : {
-          organizationId: orgId!,
           OR: [
-            { createdById: session.userId },
-            { shares: { some: { userId: session.userId } } },
+            {
+              organizationId: orgId!,
+              OR: [
+                { createdById: session.userId },
+                { shares: { some: { userId: session.userId } } },
+              ],
+            },
+            { isExample: true },
           ],
         };
 
@@ -78,6 +83,7 @@ export async function GET(request: NextRequest) {
           status: true,
           scheduledDate: true,
           createdAt: true,
+          isExample: true,
           participants: {
             where: { responseCompletedAt: { not: null } },
             select: { id: true },
@@ -89,9 +95,11 @@ export async function GET(request: NextRequest) {
             },
           },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
+        orderBy: [
+          // Pin example workshops to the top of the list
+          { isExample: 'desc' },
+          { createdAt: 'desc' },
+        ],
       }),
     ]);
 
@@ -104,6 +112,7 @@ export async function GET(request: NextRequest) {
       participantCount: workshop._count.participants,
       completedResponses: workshop.participants.length,
       snapshotCount: workshop._count.liveSnapshots,
+      isExample: workshop.isExample,
     }));
 
     // When no workshops found, check the global count so the client can show a helpful diagnostic.
