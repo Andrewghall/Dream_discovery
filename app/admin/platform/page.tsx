@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Building, Users, ShieldCheck, Activity, LogIn } from 'lucide-react';
+import { Building, Users, ShieldCheck, Activity, LogIn, BarChart2 } from 'lucide-react';
 
 interface Organisation {
   id: string;
@@ -59,6 +59,14 @@ const NAV_CARDS = [
     icon: Activity,
     color: 'text-amber-600',
     bg: 'bg-amber-50 dark:bg-amber-950/30',
+  },
+  {
+    title: 'Client Activity',
+    description: 'See login frequency, workshop usage, and time spent per client.',
+    href: '/admin/platform/activity',
+    icon: BarChart2,
+    color: 'text-rose-600',
+    bg: 'bg-rose-50 dark:bg-rose-950/30',
   },
 ];
 
@@ -141,7 +149,7 @@ export default function PlatformAdminPage() {
         </div>
 
         {/* Navigation cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-10">
           {NAV_CARDS.map(card => {
             const Icon = card.icon;
             return (
