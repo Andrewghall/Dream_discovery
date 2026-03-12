@@ -10,6 +10,7 @@
 import { createHash } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import type { WorkshopSignals } from './types';
+import { retrieveRelevant } from '@/lib/embeddings/retrieve';
 
 // ── Types from DB shapes ─────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
     prisma.workshop.findUnique({
       where: { id: workshopId },
       select: {
+        organizationId: true,
         name: true,
         description: true,
         clientName: true,
@@ -301,6 +303,38 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       summaryContent,
     },
   };
+
+  // ── Historical Memory — cross-workshop semantic retrieval ─────────────────
+  // Finds semantically relevant findings from other past workshops in this org.
+  // Gracefully skips if embeddings aren't populated yet or retrieval fails.
+  try {
+    const memoryQuery = [workshop.businessContext, workshop.industry, objectives]
+      .filter(Boolean)
+      .join(' — ')
+      .slice(0, 500);
+
+    if (memoryQuery.trim()) {
+      const chunks = await retrieveRelevant(memoryQuery, {
+        organizationId: workshop.organizationId,
+        excludeWorkshopId: workshopId,   // exclude the current workshop
+        sources: ['discovery_themes', 'conversation_insights', 'data_points'],
+        topK: 6,
+        minSimilarity: 0.74,
+      });
+      if (chunks.length > 0) {
+        signals.historicalMemory = {
+          chunks: chunks.map((c) => ({
+            text: c.text,
+            source: c.source,
+            similarity: c.similarity,
+          })),
+          queryUsed: memoryQuery,
+        };
+      }
+    }
+  } catch (err) {
+    console.error('[signal-aggregator] historicalMemory retrieval failed:', err);
+  }
 
   return signals;
 }

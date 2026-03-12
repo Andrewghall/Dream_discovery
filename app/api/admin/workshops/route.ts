@@ -84,10 +84,6 @@ export async function GET(request: NextRequest) {
           scheduledDate: true,
           createdAt: true,
           isExample: true,
-          participants: {
-            where: { responseCompletedAt: { not: null } },
-            select: { id: true },
-          },
           _count: {
             select: {
               participants: true,
@@ -103,6 +99,20 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+    // Get completed participant counts in one aggregate query — avoids fetching all participant rows
+    const workshopIds = workshops.map((w) => w.id);
+    const completedCounts = workshopIds.length > 0
+      ? await prisma.workshopParticipant.groupBy({
+          by: ['workshopId'],
+          where: {
+            workshopId: { in: workshopIds },
+            responseCompletedAt: { not: null },
+          },
+          _count: { id: true },
+        })
+      : [];
+    const completedMap = new Map(completedCounts.map((c) => [c.workshopId, c._count.id]));
+
     const workshopsWithStats = workshops.map((workshop) => ({
       id: workshop.id,
       name: workshop.name,
@@ -110,7 +120,7 @@ export async function GET(request: NextRequest) {
       status: workshop.status,
       scheduledDate: workshop.scheduledDate,
       participantCount: workshop._count.participants,
-      completedResponses: workshop.participants.length,
+      completedResponses: completedMap.get(workshop.id) ?? 0,
       snapshotCount: workshop._count.liveSnapshots,
       isExample: workshop.isExample,
     }));

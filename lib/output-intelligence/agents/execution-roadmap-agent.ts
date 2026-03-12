@@ -97,6 +97,15 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push(signals.scratchpad.potentialSolution);
   }
 
+  if (signals.historicalMemory?.chunks.length) {
+    lines.push('\n=== CROSS-WORKSHOP HISTORICAL MEMORY ===');
+    lines.push('Relevant findings from past workshops in this organisation:');
+    for (const c of signals.historicalMemory.chunks) {
+      lines.push(`• [${c.source}, ${c.similarity.toFixed(2)}] ${c.text}`);
+    }
+    lines.push('(Supporting context only — not from this workshop)');
+  }
+
   return lines.join('\n');
 }
 

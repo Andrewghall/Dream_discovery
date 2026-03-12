@@ -36,6 +36,11 @@ export interface WorkshopSignals {
     potentialSolution: string | null;
     summaryContent: string | null;
   };
+  /** Semantically relevant findings from past workshops in the same organisation */
+  historicalMemory?: {
+    chunks: Array<{ text: string; source: string; similarity: number }>;
+    queryUsed: string;
+  };
 }
 
 // ── Engine 1: Discovery Validation ─────────────────────────────────────────
