@@ -13,6 +13,10 @@
  *   - BATCH=20, SLEEP=300ms — avoids OpenAI rate limits
  *   - Never touches seed data — only writes to the `embedding` column
  *
+ * Column naming:
+ *   Tables use @@map() for snake_case table names but fields have no @map(),
+ *   so DB column names are camelCase (Prisma quotes them: "workshopId", etc.).
+ *
  * Process order (smallest/fastest tables first):
  *   discovery_themes → conversation_insights → data_points →
  *   workshop_scratchpads → conversation_messages → transcript_chunks
@@ -105,9 +109,10 @@ async function backfillSource(source: SourceName): Promise<void> {
     let rows: RawRow[] = [];
 
     if (source === 'discovery_themes') {
+      // DB columns: "themeLabel", "themeDescription" (camelCase, no @map on fields)
       rows = await prisma.$queryRaw<RawRow[]>`
         SELECT id,
-               COALESCE(theme_label || ': ' || theme_description, theme_label) AS text
+               COALESCE("themeLabel" || ': ' || "themeDescription", "themeLabel") AS text
         FROM   discovery_themes
         WHERE  embedding IS NULL
           AND  id > ${cursor}
@@ -124,8 +129,9 @@ async function backfillSource(source: SourceName): Promise<void> {
         LIMIT  ${BATCH}
       `;
     } else if (source === 'data_points') {
+      // DB column: "rawText" (camelCase, no @map on field)
       rows = await prisma.$queryRaw<RawRow[]>`
-        SELECT id, raw_text AS text
+        SELECT id, "rawText" AS text
         FROM   data_points
         WHERE  embedding IS NULL
           AND  id > ${cursor}
@@ -133,23 +139,24 @@ async function backfillSource(source: SourceName): Promise<void> {
         LIMIT  ${BATCH}
       `;
     } else if (source === 'workshop_scratchpads') {
-      // Fetch JSON blobs and extract text in JS
+      // Fetch JSON blobs and extract text in JS.
+      // DB columns: "execSummary", "discoveryOutput", etc. (camelCase, no @map on fields)
       const scratchpadRows = await prisma.$queryRaw<Array<{
         id: string;
-        exec_summary: unknown;
-        discovery_output: unknown;
-        reimagine_content: unknown;
-        constraints_content: unknown;
-        potential_solution: unknown;
-        summary_content: unknown;
+        execSummary: unknown;
+        discoveryOutput: unknown;
+        reimagineContent: unknown;
+        constraintsContent: unknown;
+        potentialSolution: unknown;
+        summaryContent: unknown;
       }>>`
         SELECT id,
-               exec_summary,
-               discovery_output,
-               reimagine_content,
-               constraints_content,
-               potential_solution,
-               summary_content
+               "execSummary",
+               "discoveryOutput",
+               "reimagineContent",
+               "constraintsContent",
+               "potentialSolution",
+               "summaryContent"
         FROM   workshop_scratchpads
         WHERE  embedding IS NULL
           AND  id > ${cursor}
@@ -159,12 +166,12 @@ async function backfillSource(source: SourceName): Promise<void> {
       rows = scratchpadRows.map((r) => ({
         id: r.id,
         text: [
-          extractJsonText(r.exec_summary),
-          extractJsonText(r.discovery_output),
-          extractJsonText(r.reimagine_content),
-          extractJsonText(r.constraints_content),
-          extractJsonText(r.potential_solution),
-          extractJsonText(r.summary_content),
+          extractJsonText(r.execSummary),
+          extractJsonText(r.discoveryOutput),
+          extractJsonText(r.reimagineContent),
+          extractJsonText(r.constraintsContent),
+          extractJsonText(r.potentialSolution),
+          extractJsonText(r.summaryContent),
         ]
           .filter(Boolean)
           .join('\n'),

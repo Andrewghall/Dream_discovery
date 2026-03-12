@@ -3,8 +3,14 @@
  *
  * Semantic retrieval from the pgvector knowledge base.
  *
- * Data isolation: every query JOINs through workshops.organization_id —
+ * Data isolation: every query JOINs through workshops."organizationId" —
  * cross-org leakage is structurally impossible.
+ *
+ * Column naming:
+ *   Tables with @@map() but no field @map() store columns in camelCase
+ *   (Prisma quotes them: "workshopId", "themeLabel", etc.).
+ *   The exception is document_chunks which uses @map() on every field
+ *   and therefore has snake_case columns (workshop_id, etc.).
  *
  * Graceful degradation: if embedding or DB fails, returns [] and logs —
  * agents get no memory rather than a crash.
@@ -140,25 +146,30 @@ async function querySource(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-type RawRow = { id: string; text: string; workshop_id: string | null; similarity: number };
+// SELECT aliases use "workshopId" so PG returns key workshopId in result objects
+type RawRow = { id: string; text: string; workshopId: string | null; similarity: number };
 
 function mapRows(source: EmbeddableTable, rows: RawRow[]): RetrievedChunk[] {
   return rows.map((r) => ({
     id: r.id,
     text: r.text,
     source,
-    workshopId: r.workshop_id,
+    workshopId: r.workshopId,
     similarity: Number(r.similarity),
   }));
 }
 
-/** Build optional workshop filter clauses as Prisma.sql fragments */
+/**
+ * Build optional workshop filter clauses for tables whose workshopId column is
+ * camelCase (no @map on the field). Do NOT use for document_chunks which has
+ * @map("workshop_id") — handle that table's filters inline.
+ */
 function buildWorkshopFilters(alias: string, opts: QueryOpts) {
   const wFilter = opts.workshopId
-    ? Prisma.sql`AND ${Prisma.raw(`${alias}.workshop_id`)} = ${opts.workshopId}`
+    ? Prisma.sql`AND ${Prisma.raw(`${alias}."workshopId"`)} = ${opts.workshopId}`
     : Prisma.empty;
   const exFilter = opts.excludeWorkshopId
-    ? Prisma.sql`AND ${Prisma.raw(`${alias}.workshop_id`)} != ${opts.excludeWorkshopId}`
+    ? Prisma.sql`AND ${Prisma.raw(`${alias}."workshopId"`)} != ${opts.excludeWorkshopId}`
     : Prisma.empty;
   return { wFilter, exFilter };
 }
@@ -170,11 +181,11 @@ async function queryConversationInsights(v: string, opts: QueryOpts): Promise<Re
   const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
     SELECT ci.id,
            ci.text,
-           ci.workshop_id,
-           (1 - (ci.embedding <=> ${v}::vector))::float8 AS similarity
+           ci."workshopId"                                        AS "workshopId",
+           (1 - (ci.embedding <=> ${v}::vector))::float8         AS similarity
     FROM   conversation_insights ci
-    JOIN   workshops w ON w.id = ci.workshop_id
-    WHERE  w.organization_id = ${opts.organizationId}
+    JOIN   workshops w ON w.id = ci."workshopId"
+    WHERE  w."organizationId" = ${opts.organizationId}
       AND  ci.embedding IS NOT NULL
       AND  (1 - (ci.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
       ${wFilter}
@@ -186,21 +197,22 @@ async function queryConversationInsights(v: string, opts: QueryOpts): Promise<Re
 }
 
 async function queryConversationMessages(v: string, opts: QueryOpts): Promise<RetrievedChunk[]> {
+  // conversation_messages.sessionId → conversation_sessions.workshopId
   const wFilter = opts.workshopId
-    ? Prisma.sql`AND cs.workshop_id = ${opts.workshopId}`
+    ? Prisma.sql`AND cs."workshopId" = ${opts.workshopId}`
     : Prisma.empty;
   const exFilter = opts.excludeWorkshopId
-    ? Prisma.sql`AND cs.workshop_id != ${opts.excludeWorkshopId}`
+    ? Prisma.sql`AND cs."workshopId" != ${opts.excludeWorkshopId}`
     : Prisma.empty;
   const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
     SELECT cm.id,
-           cm.content AS text,
-           cs.workshop_id,
-           (1 - (cm.embedding <=> ${v}::vector))::float8 AS similarity
+           cm.content                                             AS text,
+           cs."workshopId"                                        AS "workshopId",
+           (1 - (cm.embedding <=> ${v}::vector))::float8         AS similarity
     FROM   conversation_messages cm
-    JOIN   conversation_sessions cs ON cs.id = cm.session_id
-    JOIN   workshops w ON w.id = cs.workshop_id
-    WHERE  w.organization_id = ${opts.organizationId}
+    JOIN   conversation_sessions cs ON cs.id = cm."sessionId"
+    JOIN   workshops w ON w.id = cs."workshopId"
+    WHERE  w."organizationId" = ${opts.organizationId}
       AND  cm.role = 'PARTICIPANT'
       AND  cm.embedding IS NOT NULL
       AND  (1 - (cm.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
@@ -216,12 +228,12 @@ async function queryDiscoveryThemes(v: string, opts: QueryOpts): Promise<Retriev
   const { wFilter, exFilter } = buildWorkshopFilters('dt', opts);
   const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
     SELECT dt.id,
-           COALESCE(dt.theme_label || ': ' || dt.theme_description, dt.theme_label) AS text,
-           dt.workshop_id,
-           (1 - (dt.embedding <=> ${v}::vector))::float8 AS similarity
+           COALESCE(dt."themeLabel" || ': ' || dt."themeDescription", dt."themeLabel") AS text,
+           dt."workshopId"                                        AS "workshopId",
+           (1 - (dt.embedding <=> ${v}::vector))::float8         AS similarity
     FROM   discovery_themes dt
-    JOIN   workshops w ON w.id = dt.workshop_id
-    WHERE  w.organization_id = ${opts.organizationId}
+    JOIN   workshops w ON w.id = dt."workshopId"
+    WHERE  w."organizationId" = ${opts.organizationId}
       AND  dt.embedding IS NOT NULL
       AND  (1 - (dt.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
       ${wFilter}
@@ -237,11 +249,11 @@ async function queryTranscriptChunks(v: string, opts: QueryOpts): Promise<Retrie
   const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
     SELECT tc.id,
            tc.text,
-           tc.workshop_id,
-           (1 - (tc.embedding <=> ${v}::vector))::float8 AS similarity
+           tc."workshopId"                                        AS "workshopId",
+           (1 - (tc.embedding <=> ${v}::vector))::float8         AS similarity
     FROM   transcript_chunks tc
-    JOIN   workshops w ON w.id = tc.workshop_id
-    WHERE  w.organization_id = ${opts.organizationId}
+    JOIN   workshops w ON w.id = tc."workshopId"
+    WHERE  w."organizationId" = ${opts.organizationId}
       AND  tc.embedding IS NOT NULL
       AND  (1 - (tc.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
       ${wFilter}
@@ -256,12 +268,12 @@ async function queryDataPoints(v: string, opts: QueryOpts): Promise<RetrievedChu
   const { wFilter, exFilter } = buildWorkshopFilters('dp', opts);
   const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
     SELECT dp.id,
-           dp.raw_text AS text,
-           dp.workshop_id,
-           (1 - (dp.embedding <=> ${v}::vector))::float8 AS similarity
+           dp."rawText"                                           AS text,
+           dp."workshopId"                                        AS "workshopId",
+           (1 - (dp.embedding <=> ${v}::vector))::float8         AS similarity
     FROM   data_points dp
-    JOIN   workshops w ON w.id = dp.workshop_id
-    WHERE  w.organization_id = ${opts.organizationId}
+    JOIN   workshops w ON w.id = dp."workshopId"
+    WHERE  w."organizationId" = ${opts.organizationId}
       AND  dp.embedding IS NOT NULL
       AND  (1 - (dp.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
       ${wFilter}
@@ -279,11 +291,11 @@ async function queryWorkshopScratchpads(v: string, opts: QueryOpts): Promise<Ret
   const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
     SELECT ws.id,
            COALESCE(w.name, 'Workshop') || ' (' || COALESCE(w.industry, 'unspecified industry') || ') — synthesised output' AS text,
-           ws.workshop_id,
-           (1 - (ws.embedding <=> ${v}::vector))::float8 AS similarity
+           ws."workshopId"                                        AS "workshopId",
+           (1 - (ws.embedding <=> ${v}::vector))::float8         AS similarity
     FROM   workshop_scratchpads ws
-    JOIN   workshops w ON w.id = ws.workshop_id
-    WHERE  w.organization_id = ${opts.organizationId}
+    JOIN   workshops w ON w.id = ws."workshopId"
+    WHERE  w."organizationId" = ${opts.organizationId}
       AND  ws.embedding IS NOT NULL
       AND  (1 - (ws.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
       ${wFilter}
@@ -295,22 +307,22 @@ async function queryWorkshopScratchpads(v: string, opts: QueryOpts): Promise<Ret
 }
 
 async function queryCaptureSegments(v: string, opts: QueryOpts): Promise<RetrievedChunk[]> {
-  // capture_segments.transcript — joins through capture_sessions → workshops
+  // capture_segments.captureSessionId → capture_sessions.workshopId (both camelCase, no @map)
   const wFilter = opts.workshopId
-    ? Prisma.sql`AND cap.workshop_id = ${opts.workshopId}`
+    ? Prisma.sql`AND cap."workshopId" = ${opts.workshopId}`
     : Prisma.empty;
   const exFilter = opts.excludeWorkshopId
-    ? Prisma.sql`AND cap.workshop_id != ${opts.excludeWorkshopId}`
+    ? Prisma.sql`AND cap."workshopId" != ${opts.excludeWorkshopId}`
     : Prisma.empty;
   const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
     SELECT seg.id,
-           seg.transcript AS text,
-           cap.workshop_id,
-           (1 - (seg.embedding <=> ${v}::vector))::float8 AS similarity
+           seg.transcript                                         AS text,
+           cap."workshopId"                                       AS "workshopId",
+           (1 - (seg.embedding <=> ${v}::vector))::float8        AS similarity
     FROM   capture_segments seg
-    JOIN   capture_sessions cap ON cap.id = seg.session_id
-    JOIN   workshops w ON w.id = cap.workshop_id
-    WHERE  w.organization_id = ${opts.organizationId}
+    JOIN   capture_sessions cap ON cap.id = seg."captureSessionId"
+    JOIN   workshops w ON w.id = cap."workshopId"
+    WHERE  w."organizationId" = ${opts.organizationId}
       AND  seg.embedding IS NOT NULL
       AND  (1 - (seg.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
       ${wFilter}
@@ -322,15 +334,22 @@ async function queryCaptureSegments(v: string, opts: QueryOpts): Promise<Retriev
 }
 
 async function queryDocumentChunks(v: string, opts: QueryOpts): Promise<RetrievedChunk[]> {
-  const { wFilter, exFilter } = buildWorkshopFilters('dc', opts);
+  // document_chunks uses @map() on every field → all DB columns are snake_case.
+  // Inline filters here rather than using buildWorkshopFilters.
+  const wFilter = opts.workshopId
+    ? Prisma.sql`AND dc.workshop_id = ${opts.workshopId}`
+    : Prisma.empty;
+  const exFilter = opts.excludeWorkshopId
+    ? Prisma.sql`AND dc.workshop_id != ${opts.excludeWorkshopId}`
+    : Prisma.empty;
   const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
     SELECT dc.id,
-           dc.content AS text,
-           dc.workshop_id,
-           (1 - (dc.embedding <=> ${v}::vector))::float8 AS similarity
+           dc.content                                             AS text,
+           dc.workshop_id                                         AS "workshopId",
+           (1 - (dc.embedding <=> ${v}::vector))::float8         AS similarity
     FROM   document_chunks dc
     JOIN   workshops w ON w.id = dc.workshop_id
-    WHERE  w.organization_id = ${opts.organizationId}
+    WHERE  w."organizationId" = ${opts.organizationId}
       AND  dc.embedding IS NOT NULL
       AND  (1 - (dc.embedding <=> ${v}::vector)) > ${opts.minSimilarity}
       ${wFilter}
