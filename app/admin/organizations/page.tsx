@@ -206,17 +206,18 @@ export default function OrganizationsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: deleteTarget.id }),
       });
-      const data = await res.json();
+      let data: { error?: string; success?: boolean } = {};
+      try { data = await res.json(); } catch { /* non-JSON response */ }
       if (!res.ok) {
-        setDeleteError(data.error || 'Failed to delete');
+        setDeleteError(data.error || `Server error (${res.status})`);
       } else {
         setDeleteTarget(null);
         setDeleteConfirmName('');
         setSuccess(`"${deleteTarget.name}" has been deleted.`);
         fetchOrgs();
       }
-    } catch {
-      setDeleteError('An error occurred');
+    } catch (err: unknown) {
+      setDeleteError(err instanceof Error ? err.message : 'Network error — please retry');
     } finally {
       setDeleting(false);
     }

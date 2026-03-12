@@ -233,10 +233,27 @@ export async function DELETE(request: NextRequest) {
     });
     const workshopIds = workshops.map(w => w.id);
 
-    // Delete everything in dependency order (children first, then workshops, then org)
+    // Delete everything in dependency order (explicit: belt-and-suspenders regardless of DB cascade state)
     if (workshopIds.length > 0) {
+      // Diagnostic / capture module (Sales)
+      const captureSessions = await prisma.captureSession.findMany({
+        where: { workshopId: { in: workshopIds } },
+        select: { id: true },
+      });
+      const captureSessionIds = captureSessions.map(cs => cs.id);
+      if (captureSessionIds.length > 0) {
+        await prisma.captureSegment.deleteMany({ where: { captureSessionId: { in: captureSessionIds } } });
+      }
+      await prisma.captureSession.deleteMany({ where: { workshopId: { in: workshopIds } } });
+      await prisma.finding.deleteMany({ where: { workshopId: { in: workshopIds } } });
+      await prisma.diagnosticSynthesis.deleteMany({ where: { workshopId: { in: workshopIds } } });
+
+      // Core workshop data
       await prisma.workshopScratchpad.deleteMany({ where: { workshopId: { in: workshopIds } } });
+      await prisma.liveSessionVersion.deleteMany({ where: { workshopId: { in: workshopIds } } });
       await prisma.liveWorkshopSnapshot.deleteMany({ where: { workshopId: { in: workshopIds } } });
+      await prisma.workshopEventOutbox.deleteMany({ where: { workshopId: { in: workshopIds } } });
+      await prisma.workshopShare.deleteMany({ where: { workshopId: { in: workshopIds } } });
       await prisma.discoveryTheme.deleteMany({ where: { workshopId: { in: workshopIds } } });
       await prisma.conversationReport.deleteMany({ where: { workshopId: { in: workshopIds } } });
       await prisma.conversationInsight.deleteMany({ where: { workshopId: { in: workshopIds } } });
@@ -247,14 +264,17 @@ export async function DELETE(request: NextRequest) {
       await prisma.workshop.deleteMany({ where: { id: { in: workshopIds } } });
     }
 
-    // Delete org users (non-platform-admin accounts belong to the org)
+    // Delete org users — get IDs first to avoid nested-filter issues in deleteMany
     if (userCount > 0) {
-      await prisma.session.deleteMany({
-        where: { user: { organizationId: id } },
-      });
-      await prisma.user.deleteMany({
+      const orgUsers = await prisma.user.findMany({
         where: { organizationId: id },
+        select: { id: true },
       });
+      const orgUserIds = orgUsers.map(u => u.id);
+      if (orgUserIds.length > 0) {
+        await prisma.session.deleteMany({ where: { userId: { in: orgUserIds } } });
+        await prisma.user.deleteMany({ where: { id: { in: orgUserIds } } });
+      }
     }
 
     // Delete audit logs for this org
