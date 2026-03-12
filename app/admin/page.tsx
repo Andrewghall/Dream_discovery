@@ -510,20 +510,12 @@ export default function AdminDashboard() {
                 <p className="text-muted-foreground mb-4">
                   Create your first workshop to start gathering insights
                 </p>
-                {userRole && userRole !== 'PLATFORM_ADMIN' && (
-                  <div className="text-xs text-amber-600 mb-4 space-y-1">
-                    <p>
-                      Logged in as <span className="font-semibold">{userRole}</span>
-                      {orgName ? ` (${orgName})` : ''}.
-                      {' '}You can only see workshops belonging to your organisation.
+                {userRole === 'PLATFORM_ADMIN' && workshopDebug && typeof workshopDebug.globalWorkshopCount === 'number' && workshopDebug.globalWorkshopCount > 0 && (
+                  <div className="text-xs text-red-600 mb-4">
+                    <p className="font-semibold">
+                      {workshopDebug.globalWorkshopCount} workshop{workshopDebug.globalWorkshopCount !== 1 ? 's' : ''} exist
+                      {' '}in the database but are not visible with current filters.
                     </p>
-                    {workshopDebug && typeof workshopDebug.globalWorkshopCount === 'number' && workshopDebug.globalWorkshopCount > 0 && (
-                      <p className="font-semibold text-red-600">
-                        {workshopDebug.globalWorkshopCount} workshop{workshopDebug.globalWorkshopCount !== 1 ? 's' : ''} exist
-                        {' '}in the database but belong to a different organisation.
-                        {' '}Log in with your platform admin credentials to see all workshops.
-                      </p>
-                    )}
                   </div>
                 )}
                 <Link href="/admin/workshops/new">
