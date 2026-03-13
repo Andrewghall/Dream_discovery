@@ -19,16 +19,9 @@ export async function register() {
       }
     } catch (err) {
       console.error('[startup] Secret validation FAILED:', err);
-      // Hard crash only on the true Vercel production deployment.
-      // Vercel sets NODE_ENV=production on ALL deployments (including preview/pre-live),
-      // so we use VERCEL_ENV to distinguish true production from preview branches.
-      // Outside Vercel (e.g. self-hosted), fall back to NODE_ENV=production.
-      const isTrueProduction =
-        process.env.VERCEL_ENV === 'production' ||
-        (!process.env.VERCEL && process.env.NODE_ENV === 'production');
-      if (isTrueProduction) {
-        process.exit(1);
-      }
+      // Log only — never crash. Pre-live is 100% equivalent to production,
+      // so any behaviour gated on VERCEL_ENV=production can never be tested.
+      // Missing secrets surface as natural failures in the routes that need them.
     }
   }
 }
