@@ -97,6 +97,28 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push(signals.scratchpad.potentialSolution);
   }
 
+  if (signals.discovery.cohortBreakdown?.length) {
+    lines.push('\n=== SIGNALS BY PARTICIPANT COHORT ===');
+    for (const cohort of signals.discovery.cohortBreakdown) {
+      lines.push(`\n${cohort.cohortLabel} (n=${cohort.participantCount}, roles: ${cohort.roles.slice(0, 3).join(', ')})`);
+      lines.push(`  Aspiration ratio: ${Math.round(cohort.aspirationRatio * 100)}%`);
+      if (cohort.topFrictions.length)
+        lines.push(`  Top frictions:\n${cohort.topFrictions.map((f) => `    • ${f}`).join('\n')}`);
+      if (cohort.topAspirations.length)
+        lines.push(`  Top aspirations:\n${cohort.topAspirations.map((a) => `    • ${a}`).join('\n')}`);
+    }
+    lines.push('\nSequence roadmap phases to address the highest-friction cohorts first. Identify where cohorts need to move in lockstep and reflect that as dependencies.');
+  }
+
+  if (signals.historicalMemory?.chunks.length) {
+    lines.push('\n=== CROSS-WORKSHOP HISTORICAL MEMORY ===');
+    lines.push('Relevant findings from past workshops in this organisation:');
+    for (const c of signals.historicalMemory.chunks) {
+      lines.push(`• [${c.source}, ${c.similarity.toFixed(2)}] ${c.text}`);
+    }
+    lines.push('(Supporting context only — not from this workshop)');
+  }
+
   return lines.join('\n');
 }
 

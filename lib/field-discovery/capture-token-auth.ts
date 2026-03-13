@@ -8,9 +8,14 @@
 
 import * as jose from 'jose';
 
-const CAPTURE_TOKEN_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || process.env.AUTH_SECRET || 'capture-fallback-secret',
-);
+const _captureSecret = process.env.SESSION_SECRET || process.env.AUTH_SECRET;
+if (!_captureSecret) {
+  throw new Error(
+    '[capture-token-auth] SESSION_SECRET or AUTH_SECRET must be set. ' +
+    'Refusing to start with a predictable fallback secret.'
+  );
+}
+const CAPTURE_TOKEN_SECRET = new TextEncoder().encode(_captureSecret);
 
 export type CaptureTokenPayload =
   | { valid: true; workshopId: string }

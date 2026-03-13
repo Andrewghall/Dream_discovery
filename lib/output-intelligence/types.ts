@@ -23,6 +23,20 @@ export interface WorkshopSignals {
     narrativeDivergence: number | null;
     participantCount: number;
     insights: Array<{ text: string; type: string; category?: string }>;
+    /**
+     * Signals grouped by participant cohort (role group).
+     * Only present when participant role data is available.
+     * Enables OI agents to identify role-specific root causes and cross-cohort divergence.
+     */
+    cohortBreakdown?: Array<{
+      cohortLabel: string;        // e.g. "Management", "Customer Ops", "Leadership"
+      roles: string[];            // raw role strings that map to this cohort
+      participantCount: number;
+      aspirationRatio: number;    // 0-1: proportion of VISION/OPPORTUNITY/ENABLER insights
+      topFrictions: string[];     // up to 3 CHALLENGE/CONSTRAINT insight texts
+      topAspirations: string[];   // up to 3 VISION/OPPORTUNITY insight texts
+      insightSample: Array<{ text: string; type: string }>;  // up to 8
+    }>;
   };
   liveSession: {
     reimaginePads: Array<{ text: string; type?: string; lens?: string }>;
@@ -35,6 +49,11 @@ export interface WorkshopSignals {
     execSummary: string | null;
     potentialSolution: string | null;
     summaryContent: string | null;
+  };
+  /** Semantically relevant findings from past workshops in the same organisation */
+  historicalMemory?: {
+    chunks: Array<{ text: string; source: string; similarity: number }>;
+    queryUsed: string;
   };
 }
 

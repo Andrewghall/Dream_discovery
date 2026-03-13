@@ -47,3 +47,8 @@ next-env.d.ts
 
 # PAMWellness client assets — never commit to git
 public/PAMWellness/
+
+# Local DB dump artifacts — may contain schema/PII, never commit
+roles.sql
+schema.sql
+data.sql

@@ -360,7 +360,7 @@ function ExecDiagnosticPanel({
       </div>
 
       {/* Hero summary */}
-      {discoveryOutput.finalDiscoverySummary && (
+      {discoveryOutput?.finalDiscoverySummary && (
         <div className="rounded-xl bg-slate-900 text-white px-6 py-5">
           <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase mb-2">
             Diagnostic Summary

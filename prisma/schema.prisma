@@ -19,6 +19,7 @@ model Organization {
   maxSeats       Int        @default(5)   // licence seat limit
   billingEmail   String?    // billing contact email
   adminName      String?    // admin contact first name (used in onboarding email)
+  isSystem       Boolean    @default(false) @map("is_system")  // platform-owned org (e.g. holds demo/example workshops); hidden from tenant-facing org lists
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   users          User[]
@@ -170,6 +171,7 @@ model Workshop {
   captureSessions   CaptureSession[]
   findings          Finding[]
   diagnosticSynthesis DiagnosticSynthesis?
+  documentChunks    DocumentChunk[]
   createdBy         User                  @relation(fields: [createdById], references: [id])
   organization      Organization          @relation(fields: [organizationId], references: [id])
 
@@ -786,4 +788,25 @@ model DiagnosticSynthesis {
   workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 
   @@map("diagnostic_syntheses")
+}
+
+model DocumentChunk {
+  id            String    @id @default(cuid())
+  workshopId    String    @map("workshop_id")
+  fileName      String    @map("file_name")
+  fileType      String    @map("file_type")        // "pdf","docx","txt","image","video"
+  fileSizeBytes Int       @map("file_size_bytes")
+  storageKey    String    @map("storage_key")       // path in object storage
+  chunkIndex    Int       @map("chunk_index")
+  totalChunks   Int       @map("total_chunks")
+  content       String                              // text content, transcription, or Vision description
+  pageNumber    Int?      @map("page_number")       // PDFs only
+  artefactType  String?   @map("artefact_type")     // "whiteboard"|"sticky_notes"|"diagram"|"handwritten"|"photo"|"transcript"|"document"|"video"
+  embedding     Unsupported("vector")?              // matches pgvector column added via SQL
+  createdAt     DateTime  @default(now())           @map("created_at")
+
+  workshop      Workshop  @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId])
+  @@map("document_chunks")
 }
