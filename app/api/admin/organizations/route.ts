@@ -41,12 +41,19 @@ export async function GET() {
     // System orgs are platform-owned (e.g. Jo Air demo org) — they hold
     // example workshops visible to every tenant but are not real tenants
     // and must not appear in this client-facing list.
-    const organizations = await prisma.organization.findMany({
-      where: { isSystem: false },
-      orderBy: {
-        name: 'asc',
-      },
-    });
+    // Fallback: if is_system column doesn't exist yet (migration pending),
+    // return all orgs rather than silently returning nothing.
+    let organizations;
+    try {
+      organizations = await prisma.organization.findMany({
+        where: { isSystem: false },
+        orderBy: { name: 'asc' },
+      });
+    } catch {
+      organizations = await prisma.organization.findMany({
+        orderBy: { name: 'asc' },
+      });
+    }
 
     return NextResponse.json({ organizations });
   } catch (error) {
