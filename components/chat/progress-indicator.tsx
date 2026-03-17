@@ -104,7 +104,7 @@ export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulati
                 </div>
                 {current && (
                   <p className="text-xs text-muted-foreground">
-                    {PHASE_CONFIGS[currentPhase]?.objective}
+                    {PHASE_CONFIGS[currentPhase as ConversationPhase]?.objective}
                   </p>
                 )}
               </div>
