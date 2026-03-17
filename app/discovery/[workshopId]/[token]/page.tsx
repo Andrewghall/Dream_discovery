@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 
 type QuestionMeta = {
   kind: 'question';
-  phase: ConversationPhase;
+  phase: string; // dynamic for custom-lens sessions (e.g. 'organisation')
   index: number;
   tag?: string;
   maturityScale?: string[];
@@ -43,7 +43,8 @@ function isQuestionMeta(meta: unknown): meta is QuestionMeta {
   if (!meta || typeof meta !== 'object') return false;
   const rec = meta as Record<string, unknown>;
   if (rec.kind !== 'question') return false;
-  if (!isConversationPhase(rec.phase)) return false;
+  // Accept any non-empty string phase — custom-lens sessions use dynamic keys like 'organisation'
+  if (typeof rec.phase !== 'string' || rec.phase.length === 0) return false;
   if (typeof rec.index !== 'number') return false;
   if (rec.tag !== undefined && typeof rec.tag !== 'string') return false;
   if (rec.maturityScale !== undefined && !Array.isArray(rec.maturityScale)) return false;
@@ -118,7 +119,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const lastQuestionMeta = isQuestionMeta(lastAiQuestionMessage?.metadata) ? lastAiQuestionMessage?.metadata : null;
   const questionNumber =
     lastQuestionMeta
-      ? getOverallQuestionNumber(lastQuestionMeta.phase, lastQuestionMeta.index, includeRegulation)
+      ? getOverallQuestionNumber(lastQuestionMeta.phase as ConversationPhase, lastQuestionMeta.index, includeRegulation)
       : null;
   const totalQuestions = getTotalQuestionCount(includeRegulation);
   const isTripleRatingQuestion = !!lastQuestionMeta && lastQuestionMeta.tag === 'triple_rating';
