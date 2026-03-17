@@ -41,6 +41,7 @@ import { readBlueprintFromJson, type WorkshopBlueprint } from '@/lib/workshop/bl
 import { readHistoricalMetricsFromJson, type HistoricalMetricsData } from '@/lib/historical-metrics/types';
 import { getDomainPack } from '@/lib/domain-packs/registry';
 import { toast } from 'sonner';
+import { INDUSTRY_OPTIONS } from '@/lib/cognition/industry-actor-model';
 
 // ══════════════════════════════════════════════════════════
 // TYPES
@@ -113,25 +114,6 @@ const LENS_COLORS: Record<string, string> = {
   General: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
 };
 
-// ══════════════════════════════════════════════════════════
-// INDUSTRY OPTIONS
-// ══════════════════════════════════════════════════════════
-
-const INDUSTRY_OPTIONS = [
-  'Retail',
-  'Financial Services',
-  'Healthcare',
-  'Manufacturing',
-  'Technology',
-  'Energy & Utilities',
-  'Public Sector',
-  'Telecommunications',
-  'Education',
-  'Professional Services',
-  'Transport & Logistics',
-  'Media & Entertainment',
-  'Other',
-];
 
 // ══════════════════════════════════════════════════════════
 // MAIN PAGE

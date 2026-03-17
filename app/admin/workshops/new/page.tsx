@@ -11,22 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowLeft, Building2, Globe, Target, Compass, Briefcase } from 'lucide-react';
 import Link from 'next/link';
 import { listDomainPacks, listEngagementTypes } from '@/lib/domain-packs';
-
-const INDUSTRY_OPTIONS = [
-  'Retail',
-  'Financial Services',
-  'Healthcare',
-  'Manufacturing',
-  'Technology',
-  'Energy & Utilities',
-  'Public Sector',
-  'Telecommunications',
-  'Education',
-  'Professional Services',
-  'Transport & Logistics',
-  'Media & Entertainment',
-  'Other',
-];
+import { INDUSTRY_OPTIONS } from '@/lib/cognition/industry-actor-model';
 
 const DOMAIN_PACK_OPTIONS = listDomainPacks();
 const ENGAGEMENT_TYPE_OPTIONS = listEngagementTypes();

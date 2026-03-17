@@ -294,6 +294,14 @@ export const INDUSTRY_ACTOR_MODEL: IndustryActorSet[] = [
 ];
 
 /**
+ * Canonical sorted list of all industries in the model.
+ * Use this as the source of truth for industry dropdowns across the app.
+ */
+export const INDUSTRY_OPTIONS: string[] = INDUSTRY_ACTOR_MODEL
+  .map(s => s.industry)
+  .sort((a, b) => a.localeCompare(b));
+
+/**
  * Returns the actor set for the closest matching industry, or null if no match.
  * Matching is case-insensitive and checks industry name and aliases.
  */
