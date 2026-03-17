@@ -347,7 +347,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             items: {
               type: 'object',
               properties: {
-                role: { type: 'string', description: 'Industry-specific job title. Use titles actual people in this industry hold — e.g. for waste management: "Fleet Manager", "Site Operations Manager", "Environmental Compliance Officer", "Collections Route Planner". DO NOT use generic titles like "CEO", "CFO", "COO", "CTO", "Manager" — these add no insight. At most 1-2 executive-level roles; the rest must be operational and industry-specific.' },
+                role: { type: 'string', description: 'Job title. Include BOTH board/executive roles (CEO/MD, CFO, COO, Board Chair, Chief Sustainability Officer etc.) AND industry-specific operational roles (e.g. for waste management: "Fleet Manager", "Collections Route Planner", "MRF Operative", "Weighbridge Operator", "Depot Manager", "Environmental Compliance Officer"). A complete taxonomy needs the full hierarchy — board level down to frontline.' },
                 description: { type: 'string', description: 'What this role does in this specific industry context (1-2 sentences). Be concrete, not generic.' },
                 seniority: {
                   type: 'string',
@@ -358,7 +358,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               },
               required: ['role', 'description', 'seniority', 'department'],
             },
-            description: '8-15 roles covering the full range of people who work in and around this type of organisation. CRITICAL: At least 6 of these must be industry-specific operational/specialist roles that you would only find in this sector — NOT generic C-suite titles. Draw on the search_actor_roles results and industry knowledge to name real job titles used in this industry.',
+            description: '12-15 roles covering the FULL hierarchy: 3-4 board/executive roles (CEO/MD, CFO, COO, Chief Sustainability Officer etc.) + 4-5 management/specialist roles specific to this industry + 4-5 frontline/operational roles you would only find in this sector + 1-2 external stakeholders. Draw on search_actor_roles results. Do NOT omit either the executive layer or the operational layer — both are needed.',
           },
         },
         required: [
@@ -834,11 +834,11 @@ NOTE: You are working from training knowledge, not live web search.`,
             role: 'user',
             content: `Identify 12-15 key roles at ${context.clientName ? `${context.clientName} (a ${industry} company${domain ? `, focus: ${domain}` : ''})` : `a ${industry} company${domain ? ` (focus: ${domain})` : ''}`}.
 
-${context.clientName ? `Use your knowledge of ${context.clientName} to name the actual job titles and roles that exist there — be specific to how this company is structured, not just generic industry roles.\n\n` : ''}Include ALL levels:
-1. 1-2 executive/strategic roles
-2. 3-4 management/specialist roles
-3. 5-6 frontline/operational roles specific to this industry
-4. 2-3 external stakeholders (regulators, customers, partners)
+${context.clientName ? `Use your knowledge of ${context.clientName} to name the actual job titles and roles that exist there — be specific to how this company is structured, not just generic industry roles.\n\n` : ''}Include the FULL hierarchy — all four tiers are required:
+1. 3-4 board/executive roles (CEO/MD, CFO, COO, Chair, Chief Sustainability Officer, etc.)
+2. 4-5 management/specialist roles specific to this industry
+3. 4-5 frontline/operational roles that only exist in this sector (real job titles, not generic)
+4. 1-2 external stakeholders (regulators, customers, key partners)
 
 For each role provide:
 - Role title (use the real job title used in this industry, NOT generic titles)
@@ -985,7 +985,12 @@ ${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${cont
 
 - industryDimensions: 4-6 dimensions with descriptive names, detailed descriptions, and 10-20 classification keywords each. Choose dimensions that matter for THIS industry.
 
-- actorTaxonomy: 8-15 roles. CRITICAL: at least 6 must be industry-specific operational/specialist titles that only exist in this sector (e.g. for waste management: "Fleet Manager", "Site Operations Manager", "Environmental Compliance Officer", "Collections Route Planner", "Recycling Plant Supervisor", "Waste Transfer Station Operator"). At most 1-2 generic executive roles (and even those should be industry-flavoured where possible). Draw directly from the search_actor_roles results — use the actual job titles found in that industry.
+- actorTaxonomy: 12-15 roles covering the FULL hierarchy. Include ALL of:
+  • 3-4 board/executive roles (CEO/MD, CFO, COO, Chair, Chief Sustainability Officer, etc.)
+  • 4-5 management/specialist roles specific to this industry
+  • 4-5 frontline/operational roles unique to this sector (e.g. waste management: Fleet Manager, Collections Route Planner, MRF Operative, Weighbridge Operator, Depot Manager, Environmental Compliance Officer, HGV Driver)
+  • 1-2 external stakeholders (regulators, customers, partners)
+  Draw directly from search_actor_roles results. Do NOT produce only executive roles and do NOT produce only operational roles — the full hierarchy is required.
 
 ═══ QUALITY STANDARDS ═══
 
