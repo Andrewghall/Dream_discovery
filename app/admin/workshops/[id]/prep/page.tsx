@@ -437,6 +437,16 @@ export default function PrepPage({ params }: PageProps) {
       ]);
     } finally {
       setResearchRunning(false);
+      // Fallback: if SSE ended without setting researchData (e.g. stream closed early),
+      // fetch from server so the Discovery Questions button enables without a page refresh.
+      try {
+        const r = await fetch(`/api/workshops/${workshopId}/prep/research`);
+        if (r.ok) {
+          const d = await r.json();
+          if (d.research) { setResearchData(d.research as ResearchOutput); setResearchComplete(true); }
+          if (d.blueprint) { const bp = readBlueprintFromJson(d.blueprint); if (bp) setBlueprintData(bp); }
+        }
+      } catch { /* non-fatal */ }
     }
   }, [workshopId, clientName, industry, companyWebsite, dreamTrack, targetDomain]);
 
