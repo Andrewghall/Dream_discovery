@@ -347,18 +347,18 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             items: {
               type: 'object',
               properties: {
-                role: { type: 'string', description: 'Role title — e.g. "Customer Service Agent", "Operations Manager", "Quality Analyst"' },
-                description: { type: 'string', description: 'What this role does in this context (1-2 sentences)' },
+                role: { type: 'string', description: 'Industry-specific job title. Use titles actual people in this industry hold — e.g. for waste management: "Fleet Manager", "Site Operations Manager", "Environmental Compliance Officer", "Collections Route Planner". DO NOT use generic titles like "CEO", "CFO", "COO", "CTO", "Manager" — these add no insight. At most 1-2 executive-level roles; the rest must be operational and industry-specific.' },
+                description: { type: 'string', description: 'What this role does in this specific industry context (1-2 sentences). Be concrete, not generic.' },
                 seniority: {
                   type: 'string',
                   enum: ['executive', 'manager', 'operational', 'external'],
                   description: 'Seniority level of this role',
                 },
-                department: { type: 'string', description: 'Department or functional area — e.g. "Operations", "Technology", "Quality"' },
+                department: { type: 'string', description: 'Department or functional area specific to this industry — e.g. "Collections Operations", "Fleet & Logistics", "Environmental Compliance", "Recycling Processing".' },
               },
               required: ['role', 'description', 'seniority', 'department'],
             },
-            description: '8-15 key roles/stakeholders relevant to this workshop. Cover executives, managers, front-line operational staff, and relevant external actors. Be specific to this industry and domain.',
+            description: '8-15 roles covering the full range of people who work in and around this type of organisation. CRITICAL: At least 6 of these must be industry-specific operational/specialist roles that you would only find in this sector — NOT generic C-suite titles. Draw on the search_actor_roles results and industry knowledge to name real job titles used in this industry.',
           },
         },
         required: [
@@ -954,7 +954,7 @@ ${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${cont
 
 - industryDimensions: 4-6 dimensions with descriptive names, detailed descriptions, and 10-20 classification keywords each. Choose dimensions that matter for THIS industry.
 
-- actorTaxonomy: 8-15 roles covering executive sponsors, managers, front-line operational staff, and external stakeholders. Be specific to this industry and domain.
+- actorTaxonomy: 8-15 roles. CRITICAL: at least 6 must be industry-specific operational/specialist titles that only exist in this sector (e.g. for waste management: "Fleet Manager", "Site Operations Manager", "Environmental Compliance Officer", "Collections Route Planner", "Recycling Plant Supervisor", "Waste Transfer Station Operator"). At most 1-2 generic executive roles (and even those should be industry-flavoured where possible). Draw directly from the search_actor_roles results — use the actual job titles found in that industry.
 
 ═══ QUALITY STANDARDS ═══
 
