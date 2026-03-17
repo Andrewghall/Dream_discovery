@@ -14,6 +14,12 @@ import {
  * Resolve the question configuration for a new session using the
  * three-tier cascade: discoveryQuestions > blueprint > legacy.
  */
+function getLensLabels(workshop: any): Array<{ key: string; label: string }> | null {
+  const lenses = workshop?.discoveryQuestions?.lenses;
+  if (!Array.isArray(lenses) || lenses.length === 0) return null;
+  return lenses.map((l: any) => ({ key: l.key, label: l.label }));
+}
+
 function resolveSessionConfig(workshop: any, questionSetVersion: string) {
   const customQs = buildQuestionsFromDiscoverySet(workshop.discoveryQuestions);
   const blueprint = readBlueprintFromJson(workshop.blueprint);
@@ -156,6 +162,7 @@ export async function POST(request: NextRequest) {
         language: refetchedSession.language,
         voiceEnabled: refetchedSession.voiceEnabled,
         includeRegulation: refetchedSession.includeRegulation,
+        lensLabels: getLensLabels(participant.workshop),
         organization: participant.workshop.organization,
         messages: (refetchedSession.messages || []).map((msg: any) => ({
           id: msg.id,
@@ -283,6 +290,7 @@ export async function POST(request: NextRequest) {
       language: session.language,
       voiceEnabled: session.voiceEnabled,
       includeRegulation: session.includeRegulation,
+      lensLabels: getLensLabels(participant.workshop),
       organization: participant.workshop.organization,
       messages: ((session as any).messages || []).map((msg: any) => ({
         id: msg.id,

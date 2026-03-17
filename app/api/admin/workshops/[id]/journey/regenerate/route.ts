@@ -21,7 +21,7 @@ import type {
 } from '@/lib/cognitive-guidance/pipeline';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 

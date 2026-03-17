@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 
 type QuestionMeta = {
   kind: 'question';
-  phase: ConversationPhase;
+  phase: string; // dynamic for custom-lens sessions (e.g. 'organisation')
   index: number;
   tag?: string;
   maturityScale?: string[];
@@ -43,7 +43,8 @@ function isQuestionMeta(meta: unknown): meta is QuestionMeta {
   if (!meta || typeof meta !== 'object') return false;
   const rec = meta as Record<string, unknown>;
   if (rec.kind !== 'question') return false;
-  if (!isConversationPhase(rec.phase)) return false;
+  // Accept any non-empty string phase — custom-lens sessions use dynamic keys like 'organisation'
+  if (typeof rec.phase !== 'string' || rec.phase.length === 0) return false;
   if (typeof rec.index !== 'number') return false;
   if (rec.tag !== undefined && typeof rec.tag !== 'string') return false;
   if (rec.maturityScale !== undefined && !Array.isArray(rec.maturityScale)) return false;
@@ -71,6 +72,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [language, setLanguage] = useState('en');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
+  const [lensLabels, setLensLabels] = useState<Array<{ key: string; label: string }> | null>(null);
   const [draftMessage, setDraftMessage] = useState('');
   const [organization, setOrganization] = useState<{ name: string; logoUrl: string | null; primaryColor: string | null } | null>(null);
   const [isPdfMode, setIsPdfMode] = useState(() => {
@@ -117,7 +119,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const lastQuestionMeta = isQuestionMeta(lastAiQuestionMessage?.metadata) ? lastAiQuestionMessage?.metadata : null;
   const questionNumber =
     lastQuestionMeta
-      ? getOverallQuestionNumber(lastQuestionMeta.phase, lastQuestionMeta.index, includeRegulation)
+      ? getOverallQuestionNumber(lastQuestionMeta.phase as ConversationPhase, lastQuestionMeta.index, includeRegulation)
       : null;
   const totalQuestions = getTotalQuestionCount(includeRegulation);
   const isTripleRatingQuestion = !!lastQuestionMeta && lastQuestionMeta.tag === 'triple_rating';
@@ -234,6 +236,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setLanguage(data.language || 'en');
       setVoiceEnabled(data.voiceEnabled ?? true);
       setIncludeRegulation(data.includeRegulation ?? true);
+      if (data.lensLabels) setLensLabels(data.lensLabels);
 
       const last = data.messages?.[data.messages.length - 1];
       if (last && last.role === 'AI' && (data.voiceEnabled ?? true)) {
@@ -326,6 +329,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setLanguage(data.language || 'en');
       setVoiceEnabled(data.voiceEnabled ?? true);
       setIncludeRegulation(data.includeRegulation ?? true);
+      if (data.lensLabels) setLensLabels(data.lensLabels);
 
       const last = incomingMessages?.[incomingMessages.length - 1];
       if (last && last.role === 'AI' && (data.voiceEnabled ?? true)) {
@@ -392,6 +396,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setCurrentPhase(data.currentPhase);
       setPhaseProgress(data.phaseProgress);
       if (typeof data.includeRegulation === 'boolean') setIncludeRegulation(data.includeRegulation);
+      if (data.lensLabels) setLensLabels(data.lensLabels);
 
       const now = Date.now();
       if (phaseChanged) {
@@ -769,7 +774,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         )}
       </div>
 
-      <ProgressIndicator currentPhase={currentPhase} phaseProgress={phaseProgress} includeRegulation={includeRegulation} />
+      <ProgressIndicator currentPhase={currentPhase} phaseProgress={phaseProgress} includeRegulation={includeRegulation} lensLabels={lensLabels} />
     </div>
   );
 }

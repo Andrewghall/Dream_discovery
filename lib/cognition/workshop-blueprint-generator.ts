@@ -112,6 +112,14 @@ const CONTACT_CENTRE_AIRLINE_LENSES: LensPolicyEntry[] = [
   { name: 'Culture', description: 'Values in practice, psychological safety, service ethic, and continuous improvement mindset', color: '#fbcfe8', keywords: ['culture', 'values', 'mindset', 'safety', 'improvement', 'innovation', 'engagement'] },
 ];
 
+const ENTERPRISE_LENSES: LensPolicyEntry[] = [
+  { name: 'People', description: 'Human capability, culture, leadership, and organisational behaviour', color: '#bfdbfe', keywords: ['people', 'culture', 'leadership', 'capability', 'talent', 'workforce', 'engagement', 'behaviour'] },
+  { name: 'Organisation', description: 'Structure, governance, processes, operating model, and strategic alignment', color: '#a7f3d0', keywords: ['organisation', 'structure', 'governance', 'process', 'operating model', 'alignment', 'strategy', 'function'] },
+  { name: 'Customer', description: 'Customer experience, needs, journeys, and value delivery', color: '#ddd6fe', keywords: ['customer', 'client', 'experience', 'journey', 'NPS', 'satisfaction', 'value', 'retention'] },
+  { name: 'Technology', description: 'Digital enablement, systems, data, platforms, and automation', color: '#fed7aa', keywords: ['technology', 'digital', 'system', 'data', 'platform', 'automation', 'AI', 'infrastructure'] },
+  { name: 'Regulation', description: 'Compliance obligations, risk, legal constraints, and governance frameworks', color: '#fecaca', keywords: ['regulation', 'compliance', 'risk', 'legal', 'GDPR', 'audit', 'governance', 'policy'] },
+];
+
 const CONTACT_CENTRE_AIRLINE_JOURNEY_TEMPLATE: JourneyStageEntry[] = [
   { name: 'Inspiration & Planning', description: 'Customer searches destinations, compares prices, explores schedules' },
   { name: 'Booking', description: 'Flight selection, payment, seat choice, add-ons (bags, insurance)' },
@@ -197,6 +205,9 @@ function isAirlineContactCentreContext(input: GeneratorInput): boolean {
 function resolveIndustryLenses(input: GeneratorInput): LensPolicyEntry[] | null {
   if (isAirlineContactCentreContext(input)) {
     return CONTACT_CENTRE_AIRLINE_LENSES;
+  }
+  if ((input.dreamTrack ?? '').toUpperCase() === 'ENTERPRISE') {
+    return ENTERPRISE_LENSES;
   }
   return null;
 }
@@ -499,7 +510,9 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   }
 
   // Layer 4: Question constraints from domain + engagement type
-  const domainKey = input.domainPack?.toLowerCase() ?? '';
+  // Fall back to 'enterprise' key when dreamTrack is ENTERPRISE and no domainPack is set
+  const domainKey = input.domainPack?.toLowerCase() ??
+    ((input.dreamTrack ?? '').toUpperCase() === 'ENTERPRISE' ? 'enterprise' : '');
   const etKey = input.engagementType?.toLowerCase() ?? '';
 
   const domainConstraints = DOMAIN_QUESTION_CONSTRAINTS[domainKey];

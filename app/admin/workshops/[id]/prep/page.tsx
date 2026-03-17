@@ -1226,27 +1226,37 @@ export default function PrepPage({ params }: PageProps) {
             </div>
           </div>
 
-          {/* ── Blueprint Preview (gated on research completion) ── */}
-          {researchComplete && blueprintData ? (
-            <BlueprintPreviewPanel
-              blueprint={blueprintData}
-              onSave={async (updated) => {
-                try {
-                  const res = await fetch(`/api/admin/workshops/${workshopId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ blueprint: updated }),
-                  });
-                  if (res.ok) {
-                    setBlueprintData(updated);
-                  } else {
-                    console.error('Failed to save blueprint:', await res.text());
+          {/* ── Blueprint Preview ── */}
+          {blueprintData ? (
+            <>
+              {!researchComplete && (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                  <Search className="h-3.5 w-3.5 shrink-0" />
+                  {researchRunning
+                    ? 'Research Agent is analysing — blueprint will be enhanced with industry-specific insights...'
+                    : 'Run the Research Agent to enhance this blueprint with industry-specific insights'}
+                </div>
+              )}
+              <BlueprintPreviewPanel
+                blueprint={blueprintData}
+                onSave={async (updated) => {
+                  try {
+                    const res = await fetch(`/api/admin/workshops/${workshopId}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ blueprint: updated }),
+                    });
+                    if (res.ok) {
+                      setBlueprintData(updated);
+                    } else {
+                      console.error('Failed to save blueprint:', await res.text());
+                    }
+                  } catch (err) {
+                    console.error('Failed to save blueprint:', err);
                   }
-                } catch (err) {
-                  console.error('Failed to save blueprint:', err);
-                }
-              }}
-            />
+                }}
+              />
+            </>
           ) : (
             <div className="rounded-xl border bg-card overflow-hidden">
               <div className="flex items-center gap-3 p-4">

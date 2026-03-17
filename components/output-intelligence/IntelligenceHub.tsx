@@ -34,16 +34,16 @@ interface Signal {
 const SIGNALS: Signal[] = [
   {
     key: 'discoveryValidation',
-    name: 'PERCEPTION',
+    name: 'Discovery',
     phase: 'Discovery',
     color: 'indigo',
     description: 'How the organisation sees itself',
-    getMetric: (i) => `${i.discoveryValidation.hypothesisAccuracy}% hypothesis confirmed`,
+    getMetric: (i) => `${i.discoveryValidation.hypothesisAccuracy ?? 0}% hypothesis confirmed`,
     Icon: Target,
   },
   {
     key: 'rootCause',
-    name: 'INHIBITION',
+    name: 'Constraints',
     phase: 'Constraints',
     color: 'rose',
     description: 'Forces preventing transformation',
@@ -52,25 +52,18 @@ const SIGNALS: Signal[] = [
   },
   {
     key: 'futureState',
-    name: 'IMAGINATION',
+    name: 'Reimagine',
     phase: 'Reimagine',
     color: 'violet',
-    description: 'What the future could be',
-    getMetric: (i) => `${i.futureState.redesignPrinciples.length} design principles`,
+    description: 'Vision, design principles & impact',
+    getMetric: (i) => i.strategicImpact.automationPotential !== null
+      ? `${i.strategicImpact.automationPotential.percentage}% automation potential`
+      : `${i.futureState.redesignPrinciples.length} design principles`,
     Icon: Lightbulb,
   },
   {
-    key: 'strategicImpact',
-    name: 'VISION',
-    phase: 'Dream',
-    color: 'emerald',
-    description: 'The ideal future self',
-    getMetric: (i) => i.strategicImpact.automationPotential !== null ? `${i.strategicImpact.automationPotential.percentage}% automation potential` : 'Automation potential pending',
-    Icon: TrendingUp,
-  },
-  {
     key: 'roadmap',
-    name: 'EXECUTION',
+    name: 'Way Forward',
     phase: 'Way Forward',
     color: 'amber',
     description: 'The transformation pathway',
@@ -80,11 +73,11 @@ const SIGNALS: Signal[] = [
 ];
 
 const ENGINE_LABELS: Record<EngineKey, string> = {
-  discoveryValidation: 'Perception Signal',
-  rootCause: 'Inhibition Analysis',
-  futureState: 'Imagination Output',
-  roadmap: 'Execution Pathway',
-  strategicImpact: 'Vision Metrics',
+  discoveryValidation: 'Discovery',
+  rootCause: 'Constraints',
+  futureState: 'Reimagine',
+  roadmap: 'Way Forward',
+  strategicImpact: 'Reimagine',
 };
 
 const SIGNAL_COLORS = {
@@ -280,7 +273,7 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
             Organisational Brain Scan
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Five cognitive signals derived from your workshop
+            Four workshop stages derived from your session
           </p>
         </div>
 
@@ -323,7 +316,16 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
         <div className="shrink-0 px-6 py-3 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-5 flex-wrap">
             {SIGNALS.map((signal) => {
-              const status = engineStatuses[signal.key];
+              // Reimagine combines futureState + strategicImpact — show running if either is active
+              const status = signal.key === 'futureState'
+                ? engineStatuses.futureState === 'running' || engineStatuses.strategicImpact === 'running'
+                  ? 'running'
+                  : engineStatuses.futureState === 'complete' && engineStatuses.strategicImpact === 'complete'
+                  ? 'complete'
+                  : engineStatuses.futureState === 'error' || engineStatuses.strategicImpact === 'error'
+                  ? 'error'
+                  : 'idle'
+                : engineStatuses[signal.key];
               return (
                 <div key={signal.key} className="flex items-center gap-1.5 text-xs">
                   {status === 'idle' && <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
@@ -335,7 +337,7 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                     status === 'running' ? 'text-blue-600 font-medium' :
                     'text-slate-400'
                   }>
-                    {ENGINE_LABELS[signal.key]}
+                    {signal.name}
                   </span>
                 </div>
               );
@@ -357,7 +359,7 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
               <div>
                 <p className="font-semibold text-slate-700">No brain scan yet</p>
                 <p className="text-sm text-slate-500 mt-1 max-w-sm">
-                  Generate the Organisational Brain Scan to reveal five cognitive signals from your workshop.
+                  Generate the Organisational Brain Scan to reveal four workshop stages from your session.
                 </p>
               </div>
               <Button onClick={() => void handleGenerate()} className="gap-2">
@@ -417,9 +419,9 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
           {(hasIntelligence || isGenerating) && (
             <div>
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                Cognitive Signals
+                Workshop Stages
               </p>
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 {SIGNALS.map((signal) => {
                   const colors = SIGNAL_COLORS[signal.color];
                   const isActive = activeSignal === signal.key;
@@ -448,11 +450,8 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                           <AlertCircle className="h-3 w-3 text-amber-400" />
                         )}
                       </div>
-                      <p className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${isActive ? 'text-white/60' : colors.accent}`}>
-                        {signal.name}
-                      </p>
                       <p className={`text-xs font-semibold mb-1.5 ${isActive ? 'text-white' : 'text-slate-800'}`}>
-                        {signal.phase}
+                        {signal.name}
                       </p>
                       {intelligence ? (
                         <p className={`text-[10px] leading-snug ${isActive ? 'text-white/70' : 'text-slate-500'}`}>
@@ -486,12 +485,11 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                   <div key={signal.key}>
                     {/* Signal identity strip */}
                     <div className={`rounded-t-xl ${colors.headerBg} border ${colors.border} border-b-0 px-5 py-3 flex items-center gap-2`}>
-                      <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.accent}`}>
+                      <span className={`text-xs font-bold ${colors.accent}`}>
                         {signal.name}
                       </span>
                       <ChevronRight className={`h-3 w-3 ${colors.accent}`} />
-                      <span className="text-xs font-medium text-slate-600">{signal.phase} Phase</span>
-                      <span className="text-xs text-slate-400 italic hidden sm:block">{signal.description}</span>
+                      <span className="text-xs text-slate-500 italic hidden sm:block">{signal.description}</span>
                       <div className="ml-auto">
                         <ReportSectionToggle
                           workshopId={workshopId}
@@ -502,7 +500,7 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                     </div>
                     <div className={`rounded-b-xl border ${colors.border} overflow-hidden`}>
                       <EngineShell
-                        title={`${signal.name} — ${signal.phase}`}
+                        title={signal.name}
                         description={signal.description}
                         status={status}
                       >
@@ -513,13 +511,14 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                           <RootCausePanel data={intelligence.rootCause} />
                         )}
                         {intelligence && signal.key === 'futureState' && (
-                          <FutureStatePanel data={intelligence.futureState} />
+                          <>
+                            <FutureStatePanel data={intelligence.futureState} />
+                            <div className="border-t border-slate-100 mx-4" />
+                            <StrategicImpactPanel data={intelligence.strategicImpact} />
+                          </>
                         )}
                         {intelligence && signal.key === 'roadmap' && (
                           <ExecutionRoadmapPanel data={intelligence.roadmap} />
-                        )}
-                        {intelligence && signal.key === 'strategicImpact' && (
-                          <StrategicImpactPanel data={intelligence.strategicImpact} />
                         )}
                         {engineErrors[signal.key] && (
                           <div className="m-4 rounded-lg border border-amber-200 bg-amber-50 p-4">

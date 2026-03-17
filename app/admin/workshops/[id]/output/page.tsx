@@ -3,13 +3,13 @@
 /**
  * Output Dashboard — redesigned with 6 tabs backed entirely by real session data.
  *
- * Tabs:
- *   1. Exec Summary     — blueprint desired outcomes + AI exec summary
- *   2. Hemispheres      — 4-phase hemisphere views (Discovery, Reimagine, Constrained, Define)
- *   3. Insights         — domain-by-domain discovery analysis (discoveryOutput)
- *   4. Reimagine        — vision statement from reimagineContent
- *   5. Transformation   — constraints + potential solution from real data
- *   6. Define Approach  — final output, how it meets desired session outcomes
+ * Tabs mirror the 4 workshop stages:
+ *   1. Exec Summary  — blueprint desired outcomes + AI exec summary
+ *   2. Hemispheres   — 4-phase hemisphere views (Discovery, Reimagine, Constrained, Define)
+ *   3. Discovery     — domain-by-domain discovery analysis (discoveryOutput)
+ *   4. Reimagine     — vision statement from reimagineContent
+ *   5. Constraints   — constraint landscape from real data
+ *   6. Way Forward   — potential solution + key findings, how it meets desired outcomes
  *
  * NO hardcoded template data anywhere. Every section shows an empty state
  * if synthesis hasn't been run yet.
@@ -21,8 +21,10 @@ import {
   Target,
   Globe2,
   Lightbulb,
+  Search,
   Sparkles,
   Rocket,
+  ArrowRight,
   CheckSquare,
   TrendingUp,
   Users,
@@ -72,12 +74,12 @@ type TabKey = 'exec-summary' | 'hemisphere' | 'insights' | 'reimagine' | 'transf
 // ── Tab config ────────────────────────────────────────────────────────────────
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType; color: string }[] = [
-  { key: 'exec-summary',    label: 'Exec Summary',    icon: Target,      color: 'text-amber-600'   },
-  { key: 'hemisphere',      label: 'Hemispheres',     icon: Globe2,      color: 'text-blue-600'    },
-  { key: 'insights',        label: 'Insights',        icon: Lightbulb,   color: 'text-purple-600'  },
-  { key: 'reimagine',       label: 'Reimagine',       icon: Sparkles,    color: 'text-pink-600'    },
-  { key: 'transformation',  label: 'Transformation',  icon: Rocket,      color: 'text-emerald-600' },
-  { key: 'define-approach', label: 'Define Approach', icon: CheckSquare, color: 'text-slate-700'   },
+  { key: 'exec-summary',    label: 'Exec Summary',  icon: Target,      color: 'text-amber-600'   },
+  { key: 'hemisphere',      label: 'Hemispheres',   icon: Globe2,      color: 'text-blue-600'    },
+  { key: 'insights',        label: 'Discovery',     icon: Search,      color: 'text-blue-600'    },
+  { key: 'reimagine',       label: 'Reimagine',     icon: Sparkles,    color: 'text-pink-600'    },
+  { key: 'transformation',  label: 'Constraints',   icon: Shield,      color: 'text-amber-600'   },
+  { key: 'define-approach', label: 'Way Forward',   icon: ArrowRight,  color: 'text-emerald-600' },
 ];
 
 // Dialogue phase → display config
@@ -715,26 +717,21 @@ function ReimagineSection({ reimagineContent }: { reimagineContent: any }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SECTION: TRANSFORMATION PLAN (constraints + solution)
+// SECTION: CONSTRAINTS
 // ══════════════════════════════════════════════════════════════════════════════
 
 function TransformationSection({
   constraintsContent,
-  potentialSolution,
 }: {
   constraintsContent: any;
-  potentialSolution: any;
 }) {
   const hasConstraints = constraintsContent && typeof constraintsContent === 'object';
-  const hasSolution = potentialSolution && typeof potentialSolution === 'object';
 
-  if (!hasConstraints && !hasSolution) {
-    return <EmptyState message="No transformation data yet. Run Synthesise from the Hemisphere page to generate this content." />;
+  if (!hasConstraints) {
+    return <EmptyState message="No constraints data yet. Run Synthesise from the Hemisphere page to generate this content." />;
   }
 
   const CONSTRAINT_CATS = ['regulatory', 'technical', 'commercial', 'organizational'] as const;
-  const enablers: any[] = Array.isArray(potentialSolution?.enablers) ? potentialSolution.enablers : [];
-  const implPath: any[] = Array.isArray(potentialSolution?.implementationPath) ? potentialSolution.implementationPath : [];
 
   return (
     <div className="space-y-8">
@@ -788,6 +785,40 @@ function TransformationSection({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION: WAY FORWARD (solution + summary)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function DefineApproachSection({
+  summaryContent,
+  potentialSolution,
+  outcomes,
+  workshopName,
+}: {
+  summaryContent: any;
+  potentialSolution: any;
+  outcomes: string | null;
+  workshopName: string;
+}) {
+  const hasData = summaryContent && typeof summaryContent === 'object';
+  const hasSolution = potentialSolution && typeof potentialSolution === 'object';
+
+  if (!hasData && !hasSolution) {
+    return <EmptyState message="No way forward data yet. Run Synthesise from the Hemisphere page to generate this content." />;
+  }
+
+  const keyFindings: any[] = Array.isArray(summaryContent?.keyFindings) ? summaryContent.keyFindings : [];
+  const nextSteps: any[] = Array.isArray(summaryContent?.recommendedNextSteps) ? summaryContent.recommendedNextSteps : [];
+  const successMetrics: any[] = Array.isArray(summaryContent?.successMetrics) ? summaryContent.successMetrics : [];
+  const enablers: any[] = Array.isArray(potentialSolution?.enablers) ? potentialSolution.enablers : [];
+  const implPath: any[] = Array.isArray(potentialSolution?.implementationPath) ? potentialSolution.implementationPath : [];
+
+  return (
+    <div className="space-y-8">
 
       {/* Solution synthesis */}
       {potentialSolution?._aiSummary && (
@@ -884,35 +915,6 @@ function TransformationSection({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION: DEFINE APPROACH
-// ══════════════════════════════════════════════════════════════════════════════
-
-function DefineApproachSection({
-  summaryContent,
-  outcomes,
-  workshopName,
-}: {
-  summaryContent: any;
-  outcomes: string | null;
-  workshopName: string;
-}) {
-  const hasData = summaryContent && typeof summaryContent === 'object';
-
-  if (!hasData) {
-    return <EmptyState message="No define approach data yet. Run Synthesise from the Hemisphere page to generate this content." />;
-  }
-
-  const keyFindings: any[] = Array.isArray(summaryContent.keyFindings) ? summaryContent.keyFindings : [];
-  const nextSteps: any[] = Array.isArray(summaryContent.recommendedNextSteps) ? summaryContent.recommendedNextSteps : [];
-  const successMetrics: any[] = Array.isArray(summaryContent.successMetrics) ? summaryContent.successMetrics : [];
-
-  return (
-    <div className="space-y-8">
 
       {/* How this meets desired outcomes */}
       {outcomes && (
@@ -1169,13 +1171,13 @@ export default function OutputDashboardPage({ params }: PageProps) {
         {activeTab === 'transformation' && (
           <TransformationSection
             constraintsContent={scratchpad.constraintsContent}
-            potentialSolution={scratchpad.potentialSolution}
           />
         )}
 
         {activeTab === 'define-approach' && (
           <DefineApproachSection
             summaryContent={scratchpad.summaryContent}
+            potentialSolution={scratchpad.potentialSolution}
             outcomes={blueprintOutcomes}
             workshopName={workshopName}
           />
