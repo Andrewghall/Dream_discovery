@@ -192,10 +192,12 @@ export async function POST(
   }
 
   const stagesList = stages.map((s, i) => `${i + 1}. ${s}`).join('\n');
-  const actorsList = blueprintActors.length > 0
-    ? blueprintActors.map(a => `- ${a.name} (${a.role})`).join('\n')
-    : researchJourneyActors.length > 0
-      ? researchJourneyActors.join('\n')
+  // Research journeyActors always wins — they are the intelligent customer-facing subset.
+  // Only fall back to saved journey actors if research has no journeyActors (legacy workshops).
+  const actorsList = researchJourneyActors.length > 0
+    ? researchJourneyActors.join('\n')
+    : blueprintActors.length > 0
+      ? blueprintActors.map(a => `- ${a.name} (${a.role})`).join('\n')
       : '- Customer\n- Frontline Operative\n- Supervisor\n- Support Agent';
   const lensesList = lensNames.join(', ');
 
