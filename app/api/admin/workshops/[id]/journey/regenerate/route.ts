@@ -14,6 +14,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { getIndustryActors } from '@/lib/cognition/industry-actor-model';
 import type {
   LiveJourneyData,
   LiveJourneyInteraction,
@@ -86,7 +87,7 @@ export async function POST(
   // ── Load workshop + blueprint ──────────────────────────────────────
   const workshop = await prisma.workshop.findUnique({
     where: { id: workshopId },
-    select: { id: true, name: true, blueprint: true, prepResearch: true },
+    select: { id: true, name: true, blueprint: true, prepResearch: true, industry: true },
   });
   if (!workshop) {
     return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
@@ -158,19 +159,32 @@ export async function POST(
     (versionPayload?.liveJourney as any)?.actors ??
     [];
 
-  // Use journeyActors from research (intelligent customer-journey-specific subset).
-  // Falls back to keyword-filtered actorTaxonomy for older workshops without journeyActors.
+  // ── Actor resolution (priority order) ────────────────────────────────
+  // 1. DREAM Industry Actor Model (hardcoded by industry — canonical defaults)
+  // 2. Research journeyActors (company-specific, from research agent)
+  // 3. Blueprint actorTaxonomy (fallback for legacy workshops)
   const execKeywords = /\b(ceo|cfo|coo|cto|cpo|ciso|chro|chief|board|director|president|vp|vice.?president|c-suite|exec)/i;
+
+  const industryActorSet = getIndustryActors(
+    (workshop as any).industry ?? (workshop.prepResearch as any)?.industry ?? '',
+  );
+
   const researchJourneyActors: string[] = (() => {
+    // 1. Industry model match — always use if available
+    if (industryActorSet) {
+      return industryActorSet.actors.map(
+        a => `- ${a.name} (${a.tier})`,
+      );
+    }
+    // 2. Research journeyActors — company-specific subset
     const r = workshop.prepResearch as Record<string, unknown> | null;
     const ja = r?.journeyActors as Array<{ role: string; description?: string }> | undefined;
     if (Array.isArray(ja) && ja.length > 0) {
-      // Safety net: always strip board/exec even if GPT included them
       return ja
         .filter(a => !execKeywords.test(a.role))
         .map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
     }
-    // Fallback: use actorTaxonomy as-is — it is already curated (blueprint or research)
+    // 3. Blueprint actorTaxonomy — already curated, use as-is
     const taxonomy = blueprint?.actorTaxonomy as Array<{ role: string; description?: string }> | undefined;
     if (!Array.isArray(taxonomy) || taxonomy.length === 0) return [];
     return taxonomy.map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
@@ -288,12 +302,16 @@ Rules:
       );
     }
 
-    // Build canonical actor list — research journeyActors always win over GPT response.
-    // Parse research actor strings ("- Role: Description") back into name/role objects.
+    // Build canonical actor list — industry model / research always wins over GPT response.
+    // Parse actor strings: "- Name (Tier)" or "- Name: Description"
     const canonicalActors: Array<{ name: string; role: string }> =
       researchJourneyActors.length > 0
         ? researchJourneyActors.map(s => {
             const clean = s.replace(/^-\s*/, '');
+            // Handle "Name (Tier)" format from industry model
+            const tierMatch = clean.match(/^(.+?)\s*\(([^)]+)\)$/);
+            if (tierMatch) return { name: tierMatch[1].trim(), role: tierMatch[2].trim() };
+            // Handle "Name: Description" format from research
             const [namePart] = clean.split(':');
             return { name: namePart.trim(), role: namePart.trim() };
           })
