@@ -782,7 +782,10 @@ async function executeResearchTool(
 
       if (hasTavily()) {
         try {
-          const searchQuery = `${industry}${domain ? ` ${domain}` : ''} key roles stakeholders organisational structure ${clientType} team composition ${new Date().getFullYear()}`;
+          // Search with company name first for specificity, fall back to generic industry search
+          const searchQuery = context.clientName
+            ? `${context.clientName} ${industry} job titles employees roles workforce organisational structure`
+            : `${industry}${domain ? ` ${domain}` : ''} operational job titles roles front-line staff workforce structure ${clientType} ${new Date().getFullYear()}`;
           const tavily = await tavilySearch(searchQuery, { searchDepth: 'advanced', maxResults: 5 });
 
           const sources = tavily.results.map((r) => `\u2022 ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 800)}`).join('\n\n');
@@ -810,11 +813,38 @@ async function executeResearchTool(
         messages: [
           {
             role: 'system',
-            content: `You are an organisational design consultant. Identify the key roles and stakeholders involved in a specific business domain. Cover all levels: executive sponsors who set direction, middle management who oversee operations, front-line operational staff who do the work, and external stakeholders who are affected. For each role provide the title, a detailed description, seniority level, and department. Be specific to the industry and domain. NOTE: You are working from training knowledge, not live web search.`,
+            content: `You are an organisational design consultant with deep knowledge of workforce structures across industries. Your task is to identify the REAL job titles that people in this industry actually hold — from frontline operatives to executives.
+
+CRITICAL RULES:
+- Include the full operational depth: frontline workers, specialists, supervisors, managers, and executives
+- At least half the roles must be frontline/operational/specialist — the people who do the actual work
+- Use the real job titles used in this industry (e.g. for waste management: HGV Driver, RCV Loader, MRF Operative, Weighbridge Operator, Route Planner, Depot Manager, Fleet Engineer — NOT "Operations Manager")
+- Include relevant external actors: regulators, customers, contractors, supply chain partners
+- Maximum 2 generic executive roles (e.g. CEO, CFO); the rest must be industry-specific
+- Group by function: Operations, Commercial, Compliance, Technology, External etc.
+
+INDUSTRY KNOWLEDGE EXAMPLES:
+- Waste management: HGV/RCV Drivers, Loaders, MRF Operatives, Weighbridge Operators, Route Planners, Depot Managers, Fleet Engineers, Environmental Compliance Officers, Landfill Operators, EfW Plant Operators, Hazardous Waste Specialists, Contract Managers, Local Authority liaisons
+- Retail: Store Managers, Department Supervisors, Checkout Operators, Stock Room Operatives, Loss Prevention Officers, Buyers, Merchandisers, Supply Chain Planners, Logistics Coordinators
+- Financial Services: Branch Advisors, Underwriters, Claims Handlers, Risk Analysts, Compliance Officers, Relationship Managers, AML Analysts, Actuaries
+
+NOTE: You are working from training knowledge, not live web search.`,
           },
           {
             role: 'user',
-            content: `Identify 8-15 key roles for ${industry}${domain ? ` (${domain})` : ''}, client type: ${clientType}.\n\nFor each role provide:\n- Role title (specific to this industry, not generic)\n- Description of what they do (1-2 sentences)\n- Seniority: executive, manager, operational, or external\n- Department or functional area\n\nBe specific to this industry and domain.`,
+            content: `Identify 12-15 key roles at ${context.clientName ? `${context.clientName} (a ${industry} company${domain ? `, focus: ${domain}` : ''})` : `a ${industry} company${domain ? ` (focus: ${domain})` : ''}`}.
+
+${context.clientName ? `Use your knowledge of ${context.clientName} to name the actual job titles and roles that exist there — be specific to how this company is structured, not just generic industry roles.\n\n` : ''}Include ALL levels:
+1. 1-2 executive/strategic roles
+2. 3-4 management/specialist roles
+3. 5-6 frontline/operational roles specific to this industry
+4. 2-3 external stakeholders (regulators, customers, partners)
+
+For each role provide:
+- Role title (use the real job title used in this industry, NOT generic titles)
+- Description of what they do day-to-day (1-2 sentences)
+- Seniority: executive, manager, operational, or external
+- Department or functional area`,
           },
         ],
       });
@@ -857,9 +887,9 @@ Client: ${context.clientName || 'Unknown'}
 Industry: ${context.industry || 'Unknown'}
 Website: ${context.companyWebsite || 'Not provided'}
 ${trackDesc}
-${context.workshopPurpose ? `\nWORKSHOP PURPOSE (WHY WE ARE HERE): ${context.workshopPurpose}` : ''}
-${context.desiredOutcomes ? `DESIRED OUTCOMES: ${context.desiredOutcomes}` : ''}
-${context.workshopPurpose || context.desiredOutcomes ? '\nYour research MUST be oriented toward this purpose and these outcomes. Every section of your briefing should help the facilitator understand the context relevant to WHY this workshop is happening and WHAT it needs to produce.\n' : ''}
+${context.workshopPurpose ? `\nWORKSHOP PURPOSE: ${context.workshopPurpose}\n⟹ Let this shape your Phase 3–4 search angles. If this mentions AI → search what ${context.clientName || 'the company'} currently uses for AI/technology today. If it mentions cost/efficiency → focus on operational pain points and benchmarks. If it mentions transformation → find what programmes are underway. The purpose tells you what the facilitator most needs to understand.` : ''}
+${context.desiredOutcomes ? `\nDESIRED OUTCOMES: ${context.desiredOutcomes}\n⟹ Every section of your briefing should give the facilitator the context needed to achieve these outcomes.` : ''}
+${context.workshopPurpose || context.desiredOutcomes ? '' : ''}
 SEARCH CAPABILITY: ${searchMode}
 
 ═══════════════════════════════════════════
@@ -925,10 +955,11 @@ ${isDomain
     : `- Cross-functional challenges facing the business
 - Digital transformation status, strategic initiatives, and major programmes`}
 
-PHASE 4: Journey, Dimensions, and Actor Research (3-4 searches)
+PHASE 4: Journey, Dimensions, Actor Research, and Current State (3-5 searches)
 - Customer/user lifecycle stages specific to this industry — NOT generic stages
 - Key strategic dimensions that matter for workshop analysis in this sector
-- Key roles and stakeholders: who works in this type of operation, who makes decisions, who is affected
+- Key roles and stakeholders: search specifically for "${context.clientName || context.industry || 'the company'} job titles roles employees" — use the actual company name to get company-specific results
+${isDomain ? `- MANDATORY for Domain track: search what ${context.clientName || 'the company'} currently uses, does, or has in place for "${context.targetDomain || 'this domain'}" today — existing tools, systems, processes, maturity level. The facilitator must understand the current starting point before the workshop.` : '- Current strategic initiatives or transformation programmes underway at the company'}
 
 ═══ MINIMUM SEARCH REQUIREMENTS ═══
 
