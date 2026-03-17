@@ -1078,53 +1078,54 @@ export default function PrepPage({ params }: PageProps) {
             </div>
 
             {/* Step 2: Discovery Interview Questions */}
-            {workshop?.domainPack ? (
-              <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">2</span>
-                  <MessageSquare className="h-4 w-4 text-emerald-600" />
-                  <h3 className="text-sm font-semibold">Discovery Questions</h3>
-                  <HelpTooltip
-                    content="Run before participant interviews."
-                    detail="Generates structured questions for facilitators to use in participant Discovery sessions. Requires Research to complete first. Only shown when a Domain Pack is configured for this workshop type."
-                    side="right"
-                  />
-                  {discoveryQuestionsData && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
-                </div>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Generates interview questions for participant Discovery sessions, organised by lens.
-                </p>
-                <textarea
-                  className="w-full text-xs p-2 border rounded-md bg-white dark:bg-slate-900 resize-none placeholder:text-muted-foreground/60 mb-2"
-                  rows={2}
-                  placeholder="Guide the question style, e.g. 'Focus on agent daily experience, not corporate strategy. These are frontline contact centre staff.'"
-                  value={discoveryDirection}
-                  onChange={(e) => setDiscoveryDirection(e.target.value)}
-                  disabled={discoveryQuestionsLoading}
+            <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!workshop?.domainPack ? 'opacity-40' : !researchComplete ? 'opacity-50' : ''}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">2</span>
+                <MessageSquare className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-sm font-semibold">Discovery Questions</h3>
+                <HelpTooltip
+                  content="Run before participant interviews."
+                  detail="Generates structured questions for facilitators to use in participant Discovery sessions. Requires Research to complete first. Requires a Domain Pack to be configured for this workshop."
+                  side="right"
                 />
-                <Button
-                  onClick={generateDiscoveryQuestions}
-                  disabled={discoveryQuestionsLoading || !researchData}
-                  size="sm"
-                  className="w-full mt-auto"
-                  variant={researchComplete ? 'default' : 'secondary'}
-                >
-                  {discoveryQuestionsLoading ? (
-                    <><Loader2 className="h-3 w-3 animate-spin mr-2" />Generating...</>
-                  ) : discoveryQuestionsData ? (
-                    'Regenerate'
-                  ) : (
-                    'Generate Questions'
-                  )}
-                </Button>
-                {!researchComplete && (
-                  <p className="text-xs text-muted-foreground mt-1 text-center">Run Research first</p>
-                )}
+                {discoveryQuestionsData && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
               </div>
-            ) : (
-              /* No domain pack -- skip step 2, show synthesis as step 2 */
-              null
-            )}
+              <p className="text-xs text-muted-foreground mb-2">
+                Generates interview questions for participant Discovery sessions, organised by lens.
+              </p>
+              {workshop?.domainPack ? (
+                <>
+                  <textarea
+                    className="w-full text-xs p-2 border rounded-md bg-white dark:bg-slate-900 resize-none placeholder:text-muted-foreground/60 mb-2"
+                    rows={2}
+                    placeholder="Guide the question style, e.g. 'Focus on agent daily experience, not corporate strategy. These are frontline contact centre staff.'"
+                    value={discoveryDirection}
+                    onChange={(e) => setDiscoveryDirection(e.target.value)}
+                    disabled={discoveryQuestionsLoading}
+                  />
+                  <Button
+                    onClick={generateDiscoveryQuestions}
+                    disabled={discoveryQuestionsLoading || !researchData}
+                    size="sm"
+                    className="w-full mt-auto"
+                    variant={researchComplete ? 'default' : 'secondary'}
+                  >
+                    {discoveryQuestionsLoading ? (
+                      <><Loader2 className="h-3 w-3 animate-spin mr-2" />Generating...</>
+                    ) : discoveryQuestionsData ? (
+                      'Regenerate'
+                    ) : (
+                      'Generate Questions'
+                    )}
+                  </Button>
+                  {!researchComplete && (
+                    <p className="text-xs text-muted-foreground mt-1 text-center">Run Research first</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-auto text-center">Requires a Domain Pack</p>
+              )}
+            </div>
 
             {/* Arrow 2->3 (or 1->2 if no domainPack) */}
             <div className="hidden md:flex items-center justify-center px-1">
@@ -1137,7 +1138,7 @@ export default function PrepPage({ params }: PageProps) {
             {/* Step 3: Discovery Synthesis (or step 2 if no domainPack) */}
             <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!researchComplete ? 'opacity-50' : ''}`}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">{workshop?.domainPack ? '3' : '2'}</span>
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">3</span>
                 <Brain className="h-4 w-4 text-amber-600" />
                 <h3 className="text-sm font-semibold">Discovery Synthesis</h3>
                 <HelpTooltip
@@ -1181,7 +1182,7 @@ export default function PrepPage({ params }: PageProps) {
             {/* Step 4: Workshop Questions (or step 3 if no domainPack) */}
             <div className={`flex-1 rounded-xl border bg-card p-5 flex flex-col transition-opacity ${!(researchComplete && briefingComplete) ? 'opacity-50' : ''}`}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">{workshop?.domainPack ? '4' : '3'}</span>
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">4</span>
                 <FileQuestion className="h-4 w-4 text-indigo-600" />
                 <h3 className="text-sm font-semibold">Workshop Questions</h3>
                 <HelpTooltip
