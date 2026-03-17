@@ -288,10 +288,19 @@ Rules:
       );
     }
 
+    // Build canonical actor list — research journeyActors always win over GPT response.
+    // Parse research actor strings ("- Role: Description") back into name/role objects.
+    const canonicalActors: Array<{ name: string; role: string }> =
+      researchJourneyActors.length > 0
+        ? researchJourneyActors.map(s => {
+            const clean = s.replace(/^-\s*/, '');
+            const [namePart] = clean.split(':');
+            return { name: namePart.trim(), role: namePart.trim() };
+          })
+        : (parsed.actors ?? blueprintActors);
+
     // Normalise and validate interactions
-    const validActorNames = new Set(
-      (parsed.actors ?? blueprintActors).map(a => a.name),
-    );
+    const validActorNames = new Set(canonicalActors.map(a => a.name));
     const validStageNames = new Set(parsed.stages ?? stages);
 
     const interactions: LiveJourneyInteraction[] = (parsed.interactions ?? [])
@@ -329,7 +338,7 @@ Rules:
         };
       });
 
-    const actors: LiveJourneyActor[] = (parsed.actors ?? blueprintActors).map(a => ({
+    const actors: LiveJourneyActor[] = canonicalActors.map(a => ({
       name: a.name,
       role: a.role,
       mentionCount: typeof (a as any).mentionCount === 'number' ? (a as any).mentionCount : 0,
