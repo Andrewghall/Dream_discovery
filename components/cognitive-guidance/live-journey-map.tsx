@@ -359,13 +359,11 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
 
           {/* Grid */}
           {stages.length > 0 && (
-            <div className={isOutput ? '' : 'overflow-x-auto'}>
+            <div className="w-full">
               <div
-                className={isOutput ? 'grid w-full' : 'grid min-w-[1000px]'}
+                className="grid w-full"
                 style={{
-                  gridTemplateColumns: isOutput
-                    ? `120px repeat(${stages.length}, minmax(0, 1fr))`
-                    : `160px repeat(${stages.length}, minmax(180px, 1fr))`,
+                  gridTemplateColumns: `90px repeat(${stages.length}, minmax(0, 1fr))`,
                 }}
               >
                 {/* Header row — stages */}
@@ -381,7 +379,7 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                   )}
                 </div>
                 {stages.map((stage, idx) => (
-                  <div key={idx} className="bg-muted/50 p-2 border-b border-r text-center group/stage relative">
+                  <div key={idx} className="bg-muted/50 p-1.5 border-b border-r text-center group/stage relative">
                     {!isOutput && editingStage === idx ? (
                       <div className="flex items-center gap-1">
                         <input
@@ -402,10 +400,10 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                           className={isOutput ? '' : 'cursor-pointer'}
                           onClick={isOutput ? undefined : () => { setEditingStage(idx); setEditStageValue(stage); }}
                         >
-                          <div className={`${isOutput ? 'text-[10px]' : 'text-xs'} font-semibold text-foreground uppercase tracking-wider ${isOutput ? '' : 'group-hover/stage:text-blue-600'} transition-colors`}>
+                          <div className={`text-[10px] font-semibold text-foreground uppercase tracking-wider ${isOutput ? '' : 'group-hover/stage:text-blue-600'} transition-colors leading-tight`}>
                             {stage}
                           </div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">Stage {idx + 1}</div>
+                          <div className="text-[9px] text-muted-foreground mt-0.5">Stage {idx + 1}</div>
                         </div>
 
                         {/* Stage controls — visible on hover (live mode only) */}
@@ -452,12 +450,9 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                 {actors.map((actor, actorIdx) => (
                   <div key={actorIdx} className="contents">
                     {/* Actor name cell */}
-                    <div className={`bg-muted/30 ${isOutput ? 'p-2' : 'p-3'} border-b border-r sticky left-0 z-10`}>
-                      <div className={`${isOutput ? 'text-xs' : 'text-sm'} font-semibold text-foreground`}>{actor.name}</div>
-                      <div className="text-[10px] text-muted-foreground mt-0.5">{actor.role}</div>
-                      {actor.mentionCount > 0 && (
-                        <div className="text-[9px] text-muted-foreground/60 mt-0.5">{actor.mentionCount} mentions</div>
-                      )}
+                    <div className="bg-muted/30 p-1.5 border-b border-r sticky left-0 z-10">
+                      <div className="text-[10px] font-semibold text-foreground leading-tight">{actor.name}</div>
+                      <div className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{actor.role}</div>
                     </div>
 
                     {/* Interaction cells */}
@@ -466,7 +461,7 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                       return (
                         <div
                           key={`cell-${actorIdx}-${stageIdx}`}
-                          className={`${isOutput ? 'p-1' : 'p-2'} border-b border-r ${isOutput ? 'min-h-[40px]' : 'min-h-[80px]'}`}
+                          className={`${isOutput ? 'p-1' : 'p-1.5'} border-b border-r ${isOutput ? 'min-h-[36px]' : 'min-h-[60px]'}`}
                         >
                           <div className={`${isOutput ? 'space-y-1' : 'space-y-1.5'}`}>
                             {cellInteractions.map((interaction) => {
@@ -589,23 +584,18 @@ function InteractionCard({
 
   return (
     <div
-      className={`group relative p-2 rounded-lg border ${style.bg} ${style.border} ${intensityStyle} ${isEnriched ? 'animate-enrichment-pulse' : ''} ${readOnly ? '' : 'cursor-pointer hover:shadow-md'} transition-all animate-in fade-in duration-300`}
+      className={`group relative p-1 rounded border ${style.bg} ${style.border} ${intensityStyle} ${isEnriched ? 'animate-enrichment-pulse' : ''} ${readOnly ? '' : 'cursor-pointer hover:shadow-md'} transition-all animate-in fade-in duration-300`}
       onClick={readOnly ? undefined : onEdit}
     >
       {/* Pain point / moment of truth markers */}
       {interaction.isPainPoint && (
-        <span className="absolute -top-1.5 -left-1.5 text-[10px]" title="Pain Point">🔴</span>
+        <span className="absolute -top-1 -left-1 text-[8px]" title="Pain Point">🔴</span>
       )}
       {interaction.isMomentOfTruth && (
-        <span className="absolute -top-1.5 -right-1.5 text-[10px]" title="Moment of Truth">⭐</span>
+        <span className="absolute -top-1 -right-1 text-[8px]" title="Moment of Truth">⭐</span>
       )}
 
-      {/* Governance shield icon */}
-      {hasGovernance && (
-        <span className="absolute -bottom-1 -right-1 text-[10px]" title="Governance/Regulatory Overlay">🛡️</span>
-      )}
-
-      {/* Enrichment indicator — small emerald dot when AI-enriched */}
+      {/* Enrichment indicator */}
       {isEnriched && (
         <span
           className="absolute -top-0.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-emerald-400 border border-emerald-600/30"
@@ -613,28 +603,23 @@ function InteractionCard({
         />
       )}
 
-      {/* AI-added sparkle */}
-      {interaction.addedBy === 'ai' && (
-        <Sparkles className="absolute top-1 right-1 h-2.5 w-2.5 text-blue-400 opacity-50" />
-      )}
-
       {/* Remove button (live mode only) */}
       {!readOnly && (
         <button
-          className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-[10px] z-10"
+          className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 z-10"
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
           title="Remove"
         >
-          <X className="h-3 w-3" />
+          <X className="h-2.5 w-2.5" />
         </button>
       )}
 
       {/* Action + context */}
-      <div className={`text-xs font-semibold ${style.text} leading-snug pr-4`}>
+      <div className={`text-[10px] font-semibold ${style.text} leading-tight pr-3`}>
         {interaction.action}
       </div>
       {interaction.context && (
-        <div className="text-[10px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">{interaction.context}</div>
+        <div className="text-[9px] text-muted-foreground mt-0.5 leading-tight line-clamp-1">{interaction.context}</div>
       )}
 
       {/* Constraint badges */}
@@ -657,7 +642,7 @@ function InteractionCard({
       )}
 
       {/* Dual intensity bars with ghost indicators */}
-      <div className="mt-1.5 space-y-0.5" onClick={e => e.stopPropagation()}>
+      <div className="mt-1 space-y-0.5" onClick={e => e.stopPropagation()}>
         <IntensityBar
           label="Biz"
           value={interaction.businessIntensity}
@@ -677,7 +662,7 @@ function InteractionCard({
       </div>
 
       {/* AI agency  -  triple badge strip for Now and Future */}
-      <div className="mt-1.5 flex items-center gap-0.5 text-[9px]" onClick={e => e.stopPropagation()}>
+      <div className="mt-0.5 flex items-center gap-0.5 text-[9px]" onClick={e => e.stopPropagation()}>
         {/* Now strip */}
         <div className="flex items-center gap-px">
           {(['human', 'assisted', 'autonomous'] as const).map((level) => {
