@@ -202,6 +202,31 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
     safeOnChange({ ...data, stages: newStages });
   }
 
+  function deleteActor(actorIdx: number) {
+    const actorName = actors[actorIdx].name;
+    const actorInteractions = interactions.filter(
+      i => i.actor.toLowerCase() === actorName.toLowerCase()
+    );
+    if (actorInteractions.length > 0) {
+      if (!window.confirm(`Delete actor "${actorName}" and their ${actorInteractions.length} interaction(s)?`)) {
+        return;
+      }
+    }
+    const newActors = actors.filter((_, i) => i !== actorIdx);
+    const newInteractions = interactions.filter(
+      i => i.actor.toLowerCase() !== actorName.toLowerCase()
+    );
+    safeOnChange({ ...data, actors: newActors, interactions: newInteractions });
+  }
+
+  function reorderActor(fromIdx: number, toIdx: number) {
+    if (toIdx < 0 || toIdx >= actors.length) return;
+    const newActors = [...actors];
+    const [moved] = newActors.splice(fromIdx, 1);
+    newActors.splice(toIdx, 0, moved);
+    safeOnChange({ ...data, actors: newActors });
+  }
+
   // ── Edit handlers ────────────────────────────────────────
 
   function startEdit(interaction: LiveJourneyInteraction) {
@@ -450,9 +475,39 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                 {actors.map((actor, actorIdx) => (
                   <div key={actorIdx} className="contents">
                     {/* Actor name cell */}
-                    <div className="bg-muted/30 p-1.5 border-b border-r sticky left-0 z-10">
+                    <div className="bg-muted/30 p-1.5 border-b border-r sticky left-0 z-10 group/actor relative">
                       <div className="text-[10px] font-semibold text-foreground leading-tight">{actor.name}</div>
                       <div className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{actor.role}</div>
+                      {/* Actor controls — live mode only */}
+                      {!isOutput && (
+                        <div className="absolute right-0.5 top-0 bottom-0 flex flex-col items-center justify-center gap-0 opacity-0 group-hover/actor:opacity-100 transition-opacity">
+                          {actorIdx > 0 && (
+                            <button
+                              className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                              onClick={() => reorderActor(actorIdx, actorIdx - 1)}
+                              title="Move up"
+                            >
+                              <ChevronUp className="h-2.5 w-2.5" />
+                            </button>
+                          )}
+                          <button
+                            className="p-0.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600 transition-colors"
+                            onClick={() => deleteActor(actorIdx)}
+                            title={`Delete "${actor.name}"`}
+                          >
+                            <Trash2 className="h-2.5 w-2.5" />
+                          </button>
+                          {actorIdx < actors.length - 1 && (
+                            <button
+                              className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                              onClick={() => reorderActor(actorIdx, actorIdx + 1)}
+                              title="Move down"
+                            >
+                              <ChevronDown className="h-2.5 w-2.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Interaction cells */}
