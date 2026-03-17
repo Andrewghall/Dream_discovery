@@ -54,7 +54,8 @@ export type WorkshopPrepResearch = {
   // Research-driven workshop configuration (null for legacy workshops)
   journeyStages: JourneyStageResearch[] | null;    // Typical customer journey for this industry
   industryDimensions: IndustryDimension[] | null;   // Industry-specific axes (replaces hardcoded 5)
-  actorTaxonomy: ActorResearch[] | null;            // Key roles and stakeholders for this industry/domain
+  actorTaxonomy: ActorResearch[] | null;            // Full org hierarchy — all roles in this industry/domain
+  journeyActors: Array<{ role: string; description: string }> | null; // Subset: roles who directly interact with customers in the journey (excludes board/exec)
 };
 
 // ══════════════════════════════════════════════════════════

@@ -360,6 +360,18 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             },
             description: '12-15 roles drawn from the search_actor_roles research results. Must cover the full hierarchy: board/executive, management, operational/specialist, and external stakeholders. Use only roles found through actual research for this specific company and industry.',
           },
+          journeyActors: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                role: { type: 'string', description: 'Job title of the actor who directly interacts with customers at one or more journey stages.' },
+                description: { type: 'string', description: 'What this actor does in the customer journey (1 sentence).' },
+              },
+              required: ['role', 'description'],
+            },
+            description: 'The 4-8 roles who DIRECTLY interact with customers or the end-user at one or more journey stages. These are the actors who appear in the customer journey map — NOT the full org chart. Always include the Customer themselves (or equivalent end-user: household, business, council). Include frontline operatives, service agents, account managers etc. EXCLUDE board members, C-suite, and executives who set strategy but do not appear in customer touchpoints.',
+          },
         },
         required: [
           'companyOverview',
@@ -978,6 +990,8 @@ ${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${cont
 
 - actorTaxonomy: 12-15 roles covering the FULL hierarchy — board/executive, management, operational/specialist, and external stakeholders. Draw directly from the search_actor_roles results. Use only the actual roles found through research for this company and industry — do not invent or template roles.
 
+- journeyActors: 4-8 roles who DIRECTLY interact with customers or end-users at one or more journey stages. These are the actors who appear in the customer journey map — a focused subset of actorTaxonomy. ALWAYS include the Customer (or equivalent: household, council, business client). Include frontline operatives, service agents, account managers, and any external parties who touch the customer experience. EXCLUDE board members, C-suite, and executives who set strategy but do not appear in customer touchpoints. Example for waste management: Customer, HGV Driver/Loader, Customer Service Agent, Account Manager, Weighbridge Operator. Example for retail: Customer, Store Associate, Customer Service Agent, Account Manager.
+
 ═══ QUALITY STANDARDS ═══
 
 - Verify before you write. Every company-specific fact must come from a confirmed search result for this exact company.
@@ -1260,6 +1274,7 @@ function normaliseResearchOutput(args: Record<string, unknown>): WorkshopPrepRes
     journeyStages: Array.isArray(args.journeyStages) ? args.journeyStages as WorkshopPrepResearch['journeyStages'] : null,
     industryDimensions: Array.isArray(args.industryDimensions) ? args.industryDimensions as WorkshopPrepResearch['industryDimensions'] : null,
     actorTaxonomy: Array.isArray(args.actorTaxonomy) ? args.actorTaxonomy as WorkshopPrepResearch['actorTaxonomy'] : null,
+    journeyActors: Array.isArray(args.journeyActors) ? args.journeyActors as WorkshopPrepResearch['journeyActors'] : null,
   };
 }
 
@@ -1307,6 +1322,7 @@ function fallbackResearch(context: PrepContext): WorkshopPrepResearch {
     journeyStages: null,
     industryDimensions: null,
     actorTaxonomy: null,
+    journeyActors: null,
   };
 }
 

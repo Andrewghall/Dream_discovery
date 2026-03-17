@@ -154,21 +154,25 @@ export async function POST(
     ['Booking & Pre-trip', 'Check-in & Departure', 'Disruption & Real-time', 'In-flight Experience', 'Arrival & Baggage', 'Post-trip & Recovery', 'Loyalty & Retention'];
 
   // Blueprint doesn't carry actors — pull from the saved session journey or start empty.
-  // Also surface customer-journey-relevant actors from the blueprint actorTaxonomy
-  // (operational/frontline/external roles only — NOT board/exec who don't touch the journey).
   const blueprintActors: LiveJourneyActor[] =
     (versionPayload?.liveJourney as any)?.actors ??
     [];
 
-  // Build a hint list from blueprint actorTaxonomy — customer-journey-touching roles only
-  const taxonomyActorHints: string[] = (() => {
-    const taxonomy = blueprint?.actorTaxonomy as Array<{ role: string; description?: string; seniority?: string }> | undefined;
+  // Use journeyActors from research (intelligent customer-journey-specific subset).
+  // Falls back to keyword-filtered actorTaxonomy for older workshops without journeyActors.
+  const researchJourneyActors: string[] = (() => {
+    const r = workshop.prepResearch as Record<string, unknown> | null;
+    const ja = r?.journeyActors as Array<{ role: string; description?: string }> | undefined;
+    if (Array.isArray(ja) && ja.length > 0) {
+      return ja.map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
+    }
+    // Fallback: filter actorTaxonomy, exclude board/exec
+    const taxonomy = blueprint?.actorTaxonomy as Array<{ role: string; description?: string }> | undefined;
     if (!Array.isArray(taxonomy) || taxonomy.length === 0) return [];
-    // Include operational, external, and manager-level roles; exclude pure board/exec
     const execKeywords = /\b(ceo|cfo|coo|cto|ciso|chro|chief|board|director|president|vp|vice president|c-suite|exec)/i;
     return taxonomy
       .filter(a => !execKeywords.test(a.role))
-      .map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 80)}` : ''}`);
+      .map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
   })();
 
   const lensNames: string[] =
@@ -190,8 +194,8 @@ export async function POST(
   const stagesList = stages.map((s, i) => `${i + 1}. ${s}`).join('\n');
   const actorsList = blueprintActors.length > 0
     ? blueprintActors.map(a => `- ${a.name} (${a.role})`).join('\n')
-    : taxonomyActorHints.length > 0
-      ? taxonomyActorHints.join('\n')
+    : researchJourneyActors.length > 0
+      ? researchJourneyActors.join('\n')
       : '- Customer\n- Frontline Operative\n- Supervisor\n- Support Agent';
   const lensesList = lensNames.join(', ');
 
