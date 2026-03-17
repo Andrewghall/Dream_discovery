@@ -71,6 +71,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [language, setLanguage] = useState('en');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [includeRegulation, setIncludeRegulation] = useState(true);
+  const [lensLabels, setLensLabels] = useState<Array<{ key: string; label: string }> | null>(null);
   const [draftMessage, setDraftMessage] = useState('');
   const [organization, setOrganization] = useState<{ name: string; logoUrl: string | null; primaryColor: string | null } | null>(null);
   const [isPdfMode, setIsPdfMode] = useState(() => {
@@ -234,6 +235,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setLanguage(data.language || 'en');
       setVoiceEnabled(data.voiceEnabled ?? true);
       setIncludeRegulation(data.includeRegulation ?? true);
+      if (data.lensLabels) setLensLabels(data.lensLabels);
 
       const last = data.messages?.[data.messages.length - 1];
       if (last && last.role === 'AI' && (data.voiceEnabled ?? true)) {
@@ -326,6 +328,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setLanguage(data.language || 'en');
       setVoiceEnabled(data.voiceEnabled ?? true);
       setIncludeRegulation(data.includeRegulation ?? true);
+      if (data.lensLabels) setLensLabels(data.lensLabels);
 
       const last = incomingMessages?.[incomingMessages.length - 1];
       if (last && last.role === 'AI' && (data.voiceEnabled ?? true)) {
@@ -392,6 +395,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setCurrentPhase(data.currentPhase);
       setPhaseProgress(data.phaseProgress);
       if (typeof data.includeRegulation === 'boolean') setIncludeRegulation(data.includeRegulation);
+      if (data.lensLabels) setLensLabels(data.lensLabels);
 
       const now = Date.now();
       if (phaseChanged) {
@@ -769,7 +773,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
         )}
       </div>
 
-      <ProgressIndicator currentPhase={currentPhase} phaseProgress={phaseProgress} includeRegulation={includeRegulation} />
+      <ProgressIndicator currentPhase={currentPhase} phaseProgress={phaseProgress} includeRegulation={includeRegulation} lensLabels={lensLabels} />
     </div>
   );
 }

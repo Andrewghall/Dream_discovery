@@ -423,6 +423,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const lensLabels = (() => {
+      const lenses = (session.workshop as any).discoveryQuestions?.lenses;
+      if (!Array.isArray(lenses) || lenses.length === 0) return null;
+      return lenses.map((l: any) => ({ key: l.key, label: l.label }));
+    })();
+
     return NextResponse.json({
       message: {
         id: aiMessage.id,
@@ -435,6 +441,7 @@ export async function POST(request: NextRequest) {
       currentPhase: newPhase,
       phaseProgress: newProgress,
       includeRegulation,
+      lensLabels,
       status: isFinalClosingLine ? 'COMPLETED' : session.status,
     });
   } catch (error) {

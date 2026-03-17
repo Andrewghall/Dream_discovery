@@ -1,40 +1,64 @@
-import { Badge } from '@/components/ui/badge';
 import { PHASE_CONFIGS, ConversationPhase } from '@/lib/types/conversation';
 import { Check } from 'lucide-react';
 
-interface ProgressIndicatorProps {
-  currentPhase: ConversationPhase;
-  phaseProgress: number;
-  includeRegulation?: boolean;
+interface LensLabel {
+  key: string;
+  label: string;
 }
 
-export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulation = true }: ProgressIndicatorProps) {
-  const baseAreas: Array<{ phase: ConversationPhase; name: string; icon: string }> = [
+interface ProgressIndicatorProps {
+  currentPhase: string;
+  phaseProgress: number;
+  includeRegulation?: boolean;
+  lensLabels?: LensLabel[] | null;
+}
+
+function getIconForPhase(key: string): string {
+  const icons: Record<string, string> = {
+    people: '👥',
+    corporate: '🏢',
+    organisation: '🏢',
+    organization: '🏢',
+    customer: '🎯',
+    technology: '💻',
+    regulation: '⚖️',
+    finance: '💰',
+    operations: '⚙️',
+    strategy: '🗺️',
+    digital: '🌐',
+  };
+  return icons[key.toLowerCase()] ?? '📋';
+}
+
+export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulation = true, lensLabels }: ProgressIndicatorProps) {
+  const staticAreas = [
     { phase: 'people', name: 'People', icon: '👥' },
-    { phase: 'corporate', name: 'Corporate', icon: '🏢' },
+    { phase: 'corporate', name: 'Organisation', icon: '🏢' },
     { phase: 'customer', name: 'Customer', icon: '🎯' },
     { phase: 'technology', name: 'Technology', icon: '💻' },
     { phase: 'regulation', name: 'Regulation', icon: '⚖️' },
   ];
 
-  const competencyAreas = includeRegulation
-    ? baseAreas
-    : baseAreas.filter((a) => a.phase !== 'regulation');
+  // Use dynamic lens labels when available, otherwise fall back to static areas
+  const competencyAreas: Array<{ phase: string; name: string; icon: string }> = lensLabels?.length
+    ? lensLabels.map((l) => ({ phase: l.key, name: l.label, icon: getIconForPhase(l.key) }))
+    : includeRegulation
+      ? staticAreas
+      : staticAreas.filter((a) => a.phase !== 'regulation');
 
-  const getCompletionPercentage = (phase: ConversationPhase) => {
-    const phases: ConversationPhase[] = includeRegulation
-      ? ['intro', 'people', 'corporate', 'customer', 'technology', 'regulation', 'prioritization', 'summary']
-      : ['intro', 'people', 'corporate', 'customer', 'technology', 'prioritization', 'summary'];
-    const currentIndex = phases.indexOf(currentPhase);
-    const phaseIndex = phases.indexOf(phase);
-    
+  const phaseOrder = ['intro', ...competencyAreas.map((a) => a.phase), 'prioritization', 'summary'];
+
+  const getCompletionPercentage = (phase: string): number => {
+    const currentIndex = phaseOrder.indexOf(currentPhase);
+    const phaseIndex = phaseOrder.indexOf(phase);
+    if (phaseIndex === -1) return 0;
     if (currentIndex > phaseIndex) return 100; // Completed
     if (currentIndex === phaseIndex) return phaseProgress; // In progress
     return 0; // Not started
   };
 
-  const isCurrentPhase = (phase: ConversationPhase) => currentPhase === phase;
-  const isCompleted = (phase: ConversationPhase) => getCompletionPercentage(phase) === 100;
+  const isCurrentPhase = (phase: string) => currentPhase === phase;
+  const isCompleted = (phase: string) => getCompletionPercentage(phase) === 100;
 
   return (
     <div className="fixed right-0 top-0 h-screen w-80 bg-muted/30 border-l p-6 hidden lg:block">
@@ -44,7 +68,7 @@ export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulati
             Discovery Progress
           </h3>
           <p className="text-xs text-muted-foreground">
-            5 Competency Areas
+            {competencyAreas.length} Competency Area{competencyAreas.length !== 1 ? 's' : ''}
           </p>
         </div>
 

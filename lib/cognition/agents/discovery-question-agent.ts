@@ -439,6 +439,15 @@ YOUR APPROACH:
    - Question 1 MUST be a maturity rating question with tag "triple_rating" and a
      maturityScale array of exactly 5 levels (from lowest maturity to highest).
      The scale should be specific to the lens and client context, not generic.
+     *** THIS QUESTION MUST EXPLICITLY ASK ALL THREE OF THE FOLLOWING ***
+     (1) WHERE ARE YOU NOW?     — current maturity today
+     (2) WHERE DO YOU WANT TO BE? — target maturity
+     (3) WHAT IF NOTHING CHANGES? — projected maturity if no action is taken
+     Combine all three into a single question. Example:
+     "On a scale of 1–5, where is [Client] on [Lens] TODAY? Where do you WANT to be?
+      And where will you realistically END UP if nothing changes?"
+     NEVER ask only one or two of these. The spider diagram requires all three ratings.
+     If you omit target or projected, those values will be fabricated in the report.
    - Questions 2-5 should be exploratory questions with tags from:
      strengths, gaps, friction, future, working, pain_points, support, constraint, context
    - Use the domain pack templates as a STARTING POINT but REFINE them based on:
@@ -455,8 +464,10 @@ QUESTION DESIGN PRINCIPLES:
   A contact centre agent cannot speak to ESG strategy or board-level governance.
   A team leader can speak to daily operational friction and team dynamics.
   Pitch every question at the audience's level of knowledge and experience.
-- The maturity rating question should ask participants to rate current state,
-  target state, and projected state on the 5-level scale
+- MANDATORY: The maturity rating question MUST ask current state, target state,
+  AND projected state (what if nothing changes) — all three in one question.
+  Missing any one of these makes the spider diagram unreliable and forces the
+  summary to fabricate answers.
 - Exploratory questions should surface specific insights about the client's reality
 - Reference actual industry dynamics, company challenges, and competitor landscape
 - Questions should be open-ended and conversational, not yes/no
