@@ -170,12 +170,10 @@ export async function POST(
         .filter(a => !execKeywords.test(a.role))
         .map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
     }
-    // Fallback: filter actorTaxonomy, exclude board/exec
+    // Fallback: use actorTaxonomy as-is — it is already curated (blueprint or research)
     const taxonomy = blueprint?.actorTaxonomy as Array<{ role: string; description?: string }> | undefined;
     if (!Array.isArray(taxonomy) || taxonomy.length === 0) return [];
-    return taxonomy
-      .filter(a => !execKeywords.test(a.role))
-      .map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
+    return taxonomy.map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
   })();
 
   const lensNames: string[] =
