@@ -325,6 +325,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── Prep question set (loaded from DB on mount) ────────
   const prepQuestionsRef = useRef<PrepQuestionSet | null>(null);
+  const [prepQuestionsVersion, setPrepQuestionsVersion] = useState(0); // bumped when ref is set to trigger useMemo
   const [prepLoaded, setPrepLoaded] = useState(false);
 
   // ── "Peeling the Onion" — main question navigation ─────
@@ -359,7 +360,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     const phaseData = prep.phases?.[wp];
     if (!phaseData?.questions?.length) return [];
     return [...phaseData.questions].sort((a, b) => a.order - b.order);
-  }, [dialoguePhase, prepQuestionsRef.current]);
+  }, [dialoguePhase, prepQuestionsVersion]);
 
   const currentMainQ = mainQuestions[mainQuestionIndex] ?? null;
 
@@ -762,6 +763,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         if (data.customQuestions && typeof data.customQuestions === 'object') {
           const cq = data.customQuestions as PrepQuestionSet;
           prepQuestionsRef.current = cq;
+          setPrepQuestionsVersion(v => v + 1); // trigger useMemo re-run (refs don't cause re-renders)
 
           // "Peeling the Onion": load sub-pads for the first main question
           const wp = dialoguePhaseToWorkshopPhase(dialoguePhase);
