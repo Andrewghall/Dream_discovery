@@ -383,6 +383,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           'journeyStages',
           'industryDimensions',
           'actorTaxonomy',
+          'journeyActors',
         ],
       },
     },
