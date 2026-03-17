@@ -15,6 +15,7 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { getIndustryActors } from '@/lib/cognition/industry-actor-model';
+import { getDomainPack } from '@/lib/domain-packs';
 import type {
   LiveJourneyData,
   LiveJourneyInteraction,
@@ -87,7 +88,7 @@ export async function POST(
   // ── Load workshop + blueprint ──────────────────────────────────────
   const workshop = await prisma.workshop.findUnique({
     where: { id: workshopId },
-    select: { id: true, name: true, blueprint: true, prepResearch: true, industry: true },
+    select: { id: true, name: true, blueprint: true, prepResearch: true, industry: true, domainPack: true },
   });
   if (!workshop) {
     return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
@@ -160,34 +161,35 @@ export async function POST(
     [];
 
   // ── Actor resolution (priority order) ────────────────────────────────
-  // 1. DREAM Industry Actor Model (hardcoded by industry — canonical defaults)
-  // 2. Research journeyActors (company-specific, from research agent)
-  // 3. Blueprint actorTaxonomy (fallback for legacy workshops)
-  const execKeywords = /\b(ceo|cfo|coo|cto|cpo|ciso|chro|chief|board|director|president|vp|vice.?president|c-suite|exec)/i;
+  // 1. Domain pack actorTaxonomy — the configured pack for this workshop
+  // 2. DREAM Industry Actor Model — hardcoded by industry
+  // 3. Research journeyActors — company-specific from research agent
+  const domainPackData = workshop.domainPack ? getDomainPack(workshop.domainPack as string) : null;
 
-  const industryActorSet = getIndustryActors(
-    (workshop as any).industry ?? (workshop.prepResearch as any)?.industry ?? '',
-  );
+  const industryActorSet = !domainPackData
+    ? getIndustryActors((workshop as any).industry ?? (workshop.prepResearch as any)?.industry ?? '')
+    : null;
 
   const researchJourneyActors: string[] = (() => {
-    // 1. Industry model match — always use if available
+    // 1. Domain pack actorTaxonomy — always use if pack is configured
+    if (domainPackData?.actorTaxonomy?.length) {
+      return domainPackData.actorTaxonomy.map(
+        a => `- ${a.label}: ${a.description}`,
+      );
+    }
+    // 2. Industry model match
     if (industryActorSet) {
       return industryActorSet.actors.map(
         a => `- ${a.name} (${a.tier})`,
       );
     }
-    // 2. Research journeyActors — company-specific subset
+    // 3. Research journeyActors — company-specific subset
     const r = workshop.prepResearch as Record<string, unknown> | null;
     const ja = r?.journeyActors as Array<{ role: string; description?: string }> | undefined;
     if (Array.isArray(ja) && ja.length > 0) {
-      return ja
-        .filter(a => !execKeywords.test(a.role))
-        .map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
+      return ja.map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
     }
-    // 3. Blueprint actorTaxonomy — already curated, use as-is
-    const taxonomy = blueprint?.actorTaxonomy as Array<{ role: string; description?: string }> | undefined;
-    if (!Array.isArray(taxonomy) || taxonomy.length === 0) return [];
-    return taxonomy.map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
+    return [];
   })();
 
   const lensNames: string[] =
