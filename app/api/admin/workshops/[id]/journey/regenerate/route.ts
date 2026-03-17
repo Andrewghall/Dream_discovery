@@ -153,10 +153,23 @@ export async function POST(
     (versionPayload?.liveJourney as any)?.stages ??
     ['Booking & Pre-trip', 'Check-in & Departure', 'Disruption & Real-time', 'In-flight Experience', 'Arrival & Baggage', 'Post-trip & Recovery', 'Loyalty & Retention'];
 
-  // Blueprint doesn't carry actors — pull from the saved session journey or start empty
+  // Blueprint doesn't carry actors — pull from the saved session journey or start empty.
+  // Also surface customer-journey-relevant actors from the blueprint actorTaxonomy
+  // (operational/frontline/external roles only — NOT board/exec who don't touch the journey).
   const blueprintActors: LiveJourneyActor[] =
     (versionPayload?.liveJourney as any)?.actors ??
     [];
+
+  // Build a hint list from blueprint actorTaxonomy — customer-journey-touching roles only
+  const taxonomyActorHints: string[] = (() => {
+    const taxonomy = blueprint?.actorTaxonomy as Array<{ role: string; description?: string; seniority?: string }> | undefined;
+    if (!Array.isArray(taxonomy) || taxonomy.length === 0) return [];
+    // Include operational, external, and manager-level roles; exclude pure board/exec
+    const execKeywords = /\b(ceo|cfo|coo|cto|ciso|chro|chief|board|director|president|vp|vice president|c-suite|exec)/i;
+    return taxonomy
+      .filter(a => !execKeywords.test(a.role))
+      .map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 80)}` : ''}`);
+  })();
 
   const lensNames: string[] =
     blueprint?.lenses?.map((l: { name: string }) => l.name) ??
@@ -177,7 +190,9 @@ export async function POST(
   const stagesList = stages.map((s, i) => `${i + 1}. ${s}`).join('\n');
   const actorsList = blueprintActors.length > 0
     ? blueprintActors.map(a => `- ${a.name} (${a.role})`).join('\n')
-    : '- Passenger\n- Contact Centre Agent\n- Manager';
+    : taxonomyActorHints.length > 0
+      ? taxonomyActorHints.join('\n')
+      : '- Customer\n- Frontline Operative\n- Supervisor\n- Support Agent';
   const lensesList = lensNames.join(', ');
 
   const nowMs = Date.now();
@@ -191,8 +206,15 @@ Your job is to generate a rich LiveJourneyData object from the workshop evidence
 Journey stages (use these exact stage names):
 ${stagesList}
 
-Key actors to consider (include all relevant ones, add others if evidenced):
+Key actors for this journey (operational/frontline/customer-facing roles who directly interact with the journey stages):
 ${actorsList}
+
+IMPORTANT — Actor selection rules:
+- ONLY include actors who physically or digitally interact with the journey stages above
+- ALWAYS include the Customer (or end-user equivalent) as an actor
+- Include frontline staff, operatives, supervisors, and support agents
+- DO NOT include board members, C-suite, or executives unless they are directly customer-facing in this industry
+- Executives set strategy; they do not appear in customer journey touchpoints
 
 Workshop lenses: ${lensesList}
 
