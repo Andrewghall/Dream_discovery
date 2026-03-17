@@ -160,16 +160,19 @@ export async function POST(
 
   // Use journeyActors from research (intelligent customer-journey-specific subset).
   // Falls back to keyword-filtered actorTaxonomy for older workshops without journeyActors.
+  const execKeywords = /\b(ceo|cfo|coo|cto|cpo|ciso|chro|chief|board|director|president|vp|vice.?president|c-suite|exec)/i;
   const researchJourneyActors: string[] = (() => {
     const r = workshop.prepResearch as Record<string, unknown> | null;
     const ja = r?.journeyActors as Array<{ role: string; description?: string }> | undefined;
     if (Array.isArray(ja) && ja.length > 0) {
-      return ja.map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
+      // Safety net: always strip board/exec even if GPT included them
+      return ja
+        .filter(a => !execKeywords.test(a.role))
+        .map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
     }
     // Fallback: filter actorTaxonomy, exclude board/exec
     const taxonomy = blueprint?.actorTaxonomy as Array<{ role: string; description?: string }> | undefined;
     if (!Array.isArray(taxonomy) || taxonomy.length === 0) return [];
-    const execKeywords = /\b(ceo|cfo|coo|cto|ciso|chro|chief|board|director|president|vp|vice president|c-suite|exec)/i;
     return taxonomy
       .filter(a => !execKeywords.test(a.role))
       .map(a => `- ${a.role}${a.description ? `: ${a.description.slice(0, 100)}` : ''}`);
