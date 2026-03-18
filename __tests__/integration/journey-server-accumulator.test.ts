@@ -20,9 +20,11 @@ import {
   applyMutationToServerJourney,
   mergeWithAccumulatedJourney,
   makeStableInteractionId,
+  makeSemanticKey,
 } from '@/lib/cognition/server-journey-mutator';
 import type { LiveJourneyData, LiveJourneyInteraction } from '@/lib/cognitive-guidance/pipeline';
 import type { JourneyMutationIntent } from '@/lib/cognition/agents/journey-mutation-types';
+import { REMOVE_STAGE_INTERACTION_LIMIT } from '@/lib/cognition/agents/journey-mutation-types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -362,7 +364,10 @@ describe('applyMutationToServerJourney', () => {
 // ── mergeWithAccumulatedJourney ───────────────────────────────────────────────
 
 describe('mergeWithAccumulatedJourney', () => {
-  it('accumulated stages come before base stages', () => {
+  it('accumulated stages are canonical — base stages are NOT re-added', () => {
+    // Canonical stages: once the accumulator is seeded, its stage list is authoritative.
+    // Merging must NOT add base stages back, otherwise rename/remove/merge mutations
+    // would be undone on the very next reassessment cycle.
     const base = emptyJourney(['Discovery', 'Engagement']);
     const accumulated: LiveJourneyData = {
       stages: ['Collection', 'Route Planning'],
@@ -370,10 +375,10 @@ describe('mergeWithAccumulatedJourney', () => {
       interactions: [],
     };
     const merged = mergeWithAccumulatedJourney(base, accumulated);
-    expect(merged.stages[0]).toBe('Collection');
-    expect(merged.stages[1]).toBe('Route Planning');
-    expect(merged.stages).toContain('Discovery');
-    expect(merged.stages).toContain('Engagement');
+    expect(merged.stages).toEqual(['Collection', 'Route Planning']);
+    // Base-only stages must NOT appear
+    expect(merged.stages).not.toContain('Discovery');
+    expect(merged.stages).not.toContain('Engagement');
   });
 
   it('does not duplicate stages present in both base and accumulated', () => {
@@ -424,5 +429,295 @@ describe('mergeWithAccumulatedJourney', () => {
     const merged = mergeWithAccumulatedJourney(base, accumulated);
     expect(merged.interactions[0].id).toBe('acc-ix');
     expect(merged.interactions[1].id).toBe('base-ix');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// New regression tests (round 2 — P1 regression completeness fixes)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── 1. Stage-only accumulator persists ──────────────────────────────────────
+
+describe('Stage-only accumulator state — canonical stages (regression)', () => {
+  it('mergeWithAccumulatedJourney preserves stage-only accumulated state (no actors/interactions)', () => {
+    // Accumulated has only a stage mutation, no actors/interactions yet.
+    // This is the typical state after the FIRST add_stage mutation is applied
+    // but before any actors or interactions have been bootstrapped.
+    const accumulated: LiveJourneyData = {
+      stages: ['Collection', 'Route Planning', 'Disposal'],
+      actors: [],
+      interactions: [],
+    };
+    const base = emptyJourney(['Discovery', 'Engagement']); // cogState base is still the default
+
+    const merged = mergeWithAccumulatedJourney(base, accumulated);
+
+    // Accumulated stages must be used as-is — base stages must NOT be appended
+    expect(merged.stages).toEqual(['Collection', 'Route Planning', 'Disposal']);
+    expect(merged.stages).not.toContain('Discovery');
+    expect(merged.stages).not.toContain('Engagement');
+  });
+
+  it('rename_stage: old name does not come back from base on next reassessment', () => {
+    // Simulate: agent proposes rename_stage Discovery→Awareness.
+    // Accumulated is updated. On next assessment, base still has 'Discovery'.
+    // The old name must NOT reappear.
+    let accumulated = emptyJourney(['Discovery', 'Engagement']);
+
+    const renameIntent = makeIntent('rename_stage', { oldName: 'Discovery', newName: 'Awareness' });
+    accumulated = applyMutationToServerJourney(accumulated, renameIntent);
+    expect(accumulated.stages).toContain('Awareness');
+    expect(accumulated.stages).not.toContain('Discovery');
+
+    // Next reassessment: base still has old names (cogState not updated yet)
+    const base: LiveJourneyData = {
+      stages: ['Discovery', 'Engagement'],
+      actors: [],
+      interactions: [],
+    };
+    const merged = mergeWithAccumulatedJourney(base, accumulated);
+
+    expect(merged.stages).toContain('Awareness');
+    expect(merged.stages).not.toContain('Discovery'); // old name must NOT come back
+    expect(merged.stages).toContain('Engagement'); // unchanged stage still present
+  });
+
+  it('remove_stage: removed stage does not come back from base on next reassessment', () => {
+    let accumulated = emptyJourney(['Discovery', 'Engagement', 'Redundant']);
+
+    const removeIntent = makeIntent('remove_stage', { stageName: 'Redundant' });
+    accumulated = applyMutationToServerJourney(accumulated, removeIntent);
+    expect(accumulated.stages).not.toContain('Redundant');
+
+    // Base still has 'Redundant'
+    const base: LiveJourneyData = {
+      stages: ['Discovery', 'Engagement', 'Redundant'],
+      actors: [],
+      interactions: [],
+    };
+    const merged = mergeWithAccumulatedJourney(base, accumulated);
+
+    expect(merged.stages).not.toContain('Redundant'); // must stay gone
+  });
+
+  it('merge_stage: source stage names do not come back from base on next reassessment', () => {
+    let accumulated = emptyJourney(['Pre-Collection', 'Collection', 'Delivery']);
+
+    const mergeIntent = makeIntent('merge_stage', {
+      sourceStages: ['Pre-Collection', 'Collection'],
+      targetName: 'Collection & Prep',
+    });
+    accumulated = applyMutationToServerJourney(accumulated, mergeIntent);
+    expect(accumulated.stages).not.toContain('Pre-Collection');
+    expect(accumulated.stages).not.toContain('Collection');
+    expect(accumulated.stages).toContain('Collection & Prep');
+
+    // Base still has both source stages
+    const base: LiveJourneyData = {
+      stages: ['Pre-Collection', 'Collection', 'Delivery'],
+      actors: [],
+      interactions: [],
+    };
+    const merged = mergeWithAccumulatedJourney(base, accumulated);
+
+    expect(merged.stages).not.toContain('Pre-Collection'); // must stay gone
+    expect(merged.stages).not.toContain('Collection'); // must stay gone
+    expect(merged.stages).toContain('Collection & Prep');
+    expect(merged.stages).toContain('Delivery');
+  });
+});
+
+// ── 2. Full mutation-type coverage ──────────────────────────────────────────
+
+describe('applyMutationToServerJourney — full mutation type coverage (regression)', () => {
+  describe('merge_stage', () => {
+    it('removes source stages and adds target, migrates interactions', () => {
+      const j: LiveJourneyData = {
+        stages: ['Pre-Collection', 'Collection', 'Delivery'],
+        actors: [],
+        interactions: [
+          makeIx({ stage: 'Pre-Collection', action: 'Pre-prepares bins' }),
+          makeIx({ stage: 'Collection', action: 'Collects waste' }),
+          makeIx({ stage: 'Delivery', action: 'Delivers to depot' }),
+        ],
+      };
+      const result = applyMutationToServerJourney(j, makeIntent('merge_stage', {
+        sourceStages: ['Pre-Collection', 'Collection'],
+        targetName: 'Collection & Prep',
+      }));
+
+      expect(result.stages).not.toContain('Pre-Collection');
+      expect(result.stages).not.toContain('Collection');
+      expect(result.stages).toContain('Collection & Prep');
+      expect(result.stages).toContain('Delivery');
+
+      // Interactions from both source stages migrated to target
+      const migratedStages = result.interactions
+        .filter(ix => ix.action !== 'Delivers to depot')
+        .map(ix => ix.stage);
+      expect(migratedStages.every(s => s === 'Collection & Prep')).toBe(true);
+
+      // Delivery interaction untouched
+      expect(result.interactions.find(ix => ix.action === 'Delivers to depot')?.stage).toBe('Delivery');
+    });
+
+    it('is a no-op if any source stage does not exist', () => {
+      const j = emptyJourney(['Discovery', 'Engagement']);
+      const result = applyMutationToServerJourney(j, makeIntent('merge_stage', {
+        sourceStages: ['Discovery', 'NonExistent'],
+        targetName: 'Combined',
+      }));
+      expect(result).toBe(j); // unchanged reference = pure no-op
+    });
+  });
+
+  describe('remove_stage', () => {
+    it('removes stage and its interactions', () => {
+      const j: LiveJourneyData = {
+        stages: ['Discovery', 'Support', 'Retention'],
+        actors: [],
+        interactions: [
+          makeIx({ stage: 'Support', action: 'Handles complaint' }),
+          makeIx({ stage: 'Discovery', action: 'Browses service' }),
+        ],
+      };
+      const result = applyMutationToServerJourney(j, makeIntent('remove_stage', { stageName: 'Support' }));
+      expect(result.stages).not.toContain('Support');
+      expect(result.interactions.some(ix => ix.stage === 'Support')).toBe(false);
+      expect(result.interactions.some(ix => ix.stage === 'Discovery')).toBe(true); // others untouched
+    });
+
+    it('refuses to remove a stage with >REMOVE_STAGE_INTERACTION_LIMIT interactions without force', () => {
+      const interactions = Array.from({ length: REMOVE_STAGE_INTERACTION_LIMIT + 1 }, (_, i) =>
+        makeIx({ stage: 'Heavy', action: `Action ${i}` }),
+      );
+      const j: LiveJourneyData = {
+        stages: ['Light', 'Heavy'],
+        actors: [],
+        interactions,
+      };
+      const result = applyMutationToServerJourney(j, makeIntent('remove_stage', { stageName: 'Heavy' }));
+      expect(result.stages).toContain('Heavy'); // rejected — no force flag
+
+      // With force=true it proceeds
+      const forced = applyMutationToServerJourney(j, makeIntent('remove_stage', { stageName: 'Heavy', force: true }));
+      expect(forced.stages).not.toContain('Heavy');
+    });
+
+    it('is a no-op if stage does not exist', () => {
+      const j = emptyJourney(['Discovery']);
+      const result = applyMutationToServerJourney(j, makeIntent('remove_stage', { stageName: 'NonExistent' }));
+      expect(result).toBe(j);
+    });
+  });
+
+  describe('update_interaction', () => {
+    it('updates mutable fields on an AI-owned interaction by ID', () => {
+      const ix = makeIx({ id: 'srv:test:interaction:1', addedBy: 'ai', isPainPoint: false, isMomentOfTruth: false });
+      const j: LiveJourneyData = { stages: ['Discovery'], actors: [], interactions: [ix] };
+
+      const result = applyMutationToServerJourney(j, makeIntent('update_interaction', {
+        interactionId: 'srv:test:interaction:1',
+        updates: {
+          isPainPoint: true,
+          isMomentOfTruth: true,
+          aiAgencyNow: 'assisted',
+          aiAgencyFuture: 'autonomous',
+          businessIntensity: 0.9,
+          customerIntensity: 0.8,
+          sentiment: 'critical',
+        },
+      }));
+
+      const updated = result.interactions.find(i => i.id === 'srv:test:interaction:1')!;
+      expect(updated.isPainPoint).toBe(true);
+      expect(updated.isMomentOfTruth).toBe(true);
+      expect(updated.aiAgencyNow).toBe('assisted');
+      expect(updated.aiAgencyFuture).toBe('autonomous');
+      expect(updated.businessIntensity).toBe(0.9);
+      expect(updated.customerIntensity).toBe(0.8);
+      expect(updated.sentiment).toBe('critical');
+    });
+
+    it('is a no-op for a facilitator-owned interaction (manual edit protection)', () => {
+      const ix = makeIx({ id: 'fac:ix:1', addedBy: 'facilitator', isPainPoint: false });
+      const j: LiveJourneyData = { stages: ['Discovery'], actors: [], interactions: [ix] };
+
+      const result = applyMutationToServerJourney(j, makeIntent('update_interaction', {
+        interactionId: 'fac:ix:1',
+        updates: { isPainPoint: true },
+      }));
+
+      expect(result.interactions[0].isPainPoint).toBe(false); // unchanged
+    });
+
+    it('is a no-op if the interaction ID does not exist', () => {
+      const j = emptyJourney();
+      const result = applyMutationToServerJourney(j, makeIntent('update_interaction', {
+        interactionId: 'non-existent',
+        updates: { isPainPoint: true },
+      }));
+      expect(result).toBe(j);
+    });
+  });
+});
+
+// ── 3. Semantic interaction dedup ────────────────────────────────────────────
+
+describe('Semantic interaction dedup — srv: and cog: collapse to one row (regression)', () => {
+  it('mergeWithAccumulatedJourney collapses srv: and cog: interactions with same semantic content', () => {
+    // Accumulated has the srv: copy (created by journey agent on bootstrap)
+    const srvIx = makeIx({
+      id: 'srv:collection_crew:collection:picks_up_waste',
+      actor: 'Collection Crew',
+      stage: 'Collection',
+      action: 'Picks up waste',
+      context: 'Kerbside',
+      addedBy: 'ai',
+      isPainPoint: true, // richer fields set by agent
+    });
+
+    // Base (cogState) has the cog: copy with the same semantic content but a cog: ID
+    const cogIx = makeIx({
+      id: 'cog:interaction:12345',
+      actor: 'Collection Crew',
+      stage: 'Collection',
+      action: 'Picks up waste',
+      context: 'Kerbside',
+      addedBy: 'ai',
+      isPainPoint: false, // cogState copy has fewer fields
+    });
+
+    const accumulated: LiveJourneyData = { stages: ['Collection'], actors: [], interactions: [srvIx] };
+    const base: LiveJourneyData = { stages: ['Collection'], actors: [], interactions: [cogIx] };
+
+    const merged = mergeWithAccumulatedJourney(base, accumulated);
+
+    // Exactly one interaction — they are semantically identical
+    expect(merged.interactions).toHaveLength(1);
+
+    // The accumulated (srv:) copy is kept — it has richer fields
+    expect(merged.interactions[0].id).toContain('srv:');
+    expect(merged.interactions[0].isPainPoint).toBe(true);
+  });
+
+  it('makeSemanticKey normalises case and whitespace', () => {
+    const k1 = makeSemanticKey({ actor: 'Collection Crew', stage: 'Collection', action: 'Picks up waste', context: 'Kerbside' });
+    const k2 = makeSemanticKey({ actor: 'COLLECTION CREW', stage: 'COLLECTION', action: 'PICKS UP WASTE', context: 'KERBSIDE' });
+    const k3 = makeSemanticKey({ actor: '  Collection Crew  ', stage: ' Collection', action: 'Picks  up   waste', context: 'Kerbside ' });
+    expect(k1).toBe(k2);
+    expect(k1).toBe(k3);
+  });
+
+  it('makeSemanticKey treats undefined context same as empty string', () => {
+    const withCtx = makeSemanticKey({ actor: 'A', stage: 'B', action: 'C', context: '' });
+    const withoutCtx = makeSemanticKey({ actor: 'A', stage: 'B', action: 'C' });
+    expect(withCtx).toBe(withoutCtx);
+  });
+
+  it('different actions produce different semantic keys', () => {
+    const k1 = makeSemanticKey({ actor: 'Crew', stage: 'Collection', action: 'Picks up waste' });
+    const k2 = makeSemanticKey({ actor: 'Crew', stage: 'Collection', action: 'Reports missed bin' });
+    expect(k1).not.toBe(k2);
   });
 });

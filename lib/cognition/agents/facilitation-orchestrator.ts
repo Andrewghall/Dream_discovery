@@ -352,7 +352,11 @@ function buildJourneyFromCogState(
 function buildCurrentLiveJourney(cogState: CognitiveState, guidanceState: GuidanceState): LiveJourneyData {
   const base = buildJourneyFromCogState(cogState, guidanceState);
   const accumulated = (guidanceState as any)._accumulatedJourney as LiveJourneyData | undefined;
-  if (!accumulated || (accumulated.actors.length === 0 && accumulated.interactions.length === 0)) {
+  // Guard: accumulated undefined means no mutations have been applied yet — seed from base.
+  // Do NOT guard on empty actors/interactions. Stage-only accumulated state is valid and
+  // must be preserved so rename_stage / remove_stage / merge_stage mutations survive
+  // across reassessment cycles.
+  if (!accumulated) {
     return base;
   }
   return mergeWithAccumulatedJourney(base, accumulated);
