@@ -53,6 +53,7 @@ const ORCHESTRATOR_TIMEOUT_MS = 30_000;      // 30s hard cap (allows journey + e
 const MIN_ENRICHMENT_INTERVAL_MS = 180_000;  // 3 min between enrichment runs
 const MIN_ENRICHMENT_INTERACTIONS = 3;       // Need >=3 interactions to enrich
 const MIN_ENRICHMENT_BELIEFS = 5;            // Need >=5 beliefs for enrichment
+const JOURNEY_ASSESSMENT_INTERVAL_MS = 30_000; // Run journey agent at most every 30s (deterministic, not GPT-optional)
 
 // Default lens names (overridden by blueprint.lenses when available)
 const DEFAULT_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
@@ -574,20 +575,30 @@ async function executeOrchestratorTool(
     case 'consult_journey_completion_agent': {
       const liveJourney = buildJourneyFromCogState(cogState, guidanceState);
 
-      if (liveJourney.actors.length === 0) {
-        return JSON.stringify({ skipped: true, reason: 'No actors detected yet.' });
-      }
+      // No longer gate on actors — agent can bootstrap the map from participant speech
+      // even when cogState.actors is empty (i.e. when roles haven't been explicitly detected yet)
 
       await onConversation?.({
         timestampMs: Date.now(),
         agent: 'orchestrator',
         to: 'journey-completion-agent',
-        message: `Assess journey map: ${liveJourney.actors.length} actors, ${liveJourney.interactions.length} interactions.`,
+        message: `Assess journey map: ${liveJourney.actors.length} actors, ${liveJourney.interactions.length} interactions, ${cogState.beliefs.size} beliefs.`,
         type: 'handoff',
       });
 
+      console.log(`[JourneyPipeline] journey-agent INVOKED workshopId=${workshopId} stages=${liveJourney.stages.length} actors=${liveJourney.actors.length} interactions=${liveJourney.interactions.length} utterances=${cogState.recentUtterances.length}`);
       try {
-        const assessment = await runJourneyCompletionAgent(guidanceState, liveJourney, onConversation);
+        // Pass recent participant speech so the agent can bootstrap interactions
+        // from what was actually discussed, even when cogState.actors is still empty
+        const recentBeliefs = Array.from(cogState.beliefs.values())
+          .sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0))
+          .slice(0, 15)
+          .map(b => `[${b.category}] ${b.label}`);
+        const recentSpeech = cogState.recentUtterances.slice(-8).map(u => u.text);
+        const conversationContext = { recentBeliefs, recentSpeech };
+
+        console.log(`[JourneyPipeline] conversation-context recentBeliefs=${recentBeliefs.length} recentSpeech=${recentSpeech.length}`);
+        const assessment = await runJourneyCompletionAgent(guidanceState, liveJourney, onConversation, conversationContext);
 
         if (assessment) {
           // Merge into guidance state
@@ -613,12 +624,16 @@ async function executeOrchestratorTool(
             liveJourney,  // Full actor + interaction data from cogState
           });
 
+          console.log(`[JourneyPipeline] assessment RECEIVED completion=${assessment.overallCompletionPercent}% gaps=${assessment.gaps.length} mutations=${assessment.suggestedMutations?.length ?? 0}`);
+
           // ── Confidence gate for suggested mutations ──────────
           let mutationsEmitted = 0;
           let mutationsProposed = 0;
           if (assessment.suggestedMutations && assessment.suggestedMutations.length > 0) {
             const { highConfidence, mediumConfidence, lowConfidence } =
               partitionMutationsByConfidence(assessment.suggestedMutations);
+
+            console.log(`[JourneyPipeline] mutations partitioned high=${highConfidence.length} medium=${mediumConfidence.length} low=${lowConfidence.length}`);
 
             // HIGH confidence (>0.75): emit journey.mutation immediately
             for (const m of highConfidence) {
@@ -629,6 +644,7 @@ async function executeOrchestratorTool(
                 sourceNodeIds: m.sourceNodeIds,
                 emittedAtMs: Date.now(),
               };
+              console.log(`[JourneyPipeline] mutation EMITTED type=${m.type} confidence=${m.confidence} payload=${JSON.stringify(m.payload)}`);
               await emitEvent('journey.mutation', intent);
               await onConversation?.({
                 timestampMs: Date.now(),
@@ -915,18 +931,51 @@ export async function runFacilitationOrchestrator(
 ): Promise<void> {
   const guidanceState = getOrCreateGuidanceState(workshopId);
 
-  // Pre-LLM gates
   if (guidanceState.freeflowMode) return;
+  if (!env.OPENAI_API_KEY) return;
+
+  // ── Mandatory journey assessment ─────────────────────────────────────────────
+  // Runs BEFORE belief/pacing gates so the journey map populates from the very
+  // first utterance. First run is immediate; subsequent runs throttled to 30s.
+  //
+  // Requires at least 1 utterance — no belief count needed. This means even
+  // before cognitive analysis has accumulated beliefs, the journey agent can
+  // bootstrap stages and interactions from participant speech.
+  const lastJourneyMs = (guidanceState as any)._lastJourneyAssessmentAtMs ?? 0;
+  const isFirstJourneyRun = lastJourneyMs === 0;
+  const journeyThrottle = isFirstJourneyRun ? 0 : JOURNEY_ASSESSMENT_INTERVAL_MS;
+
+  if (
+    cogState.recentUtterances.length > 0 &&
+    Date.now() - lastJourneyMs >= journeyThrottle
+  ) {
+    (guidanceState as any)._lastJourneyAssessmentAtMs = Date.now();
+    const mandatoryOrchState = {
+      deliberation: {} as DeliberationContext,
+      proposals: [] as PadProposal[],
+      emittedSuggestionKeys: new Set<string>(),
+    };
+    console.log(`[JourneyPipeline] journey-assessment START workshopId=${workshopId} utterances=${cogState.recentUtterances.length} beliefs=${cogState.beliefs.size} firstRun=${isFirstJourneyRun}`);
+    try {
+      await executeOrchestratorTool(
+        'consult_journey_completion_agent', {}, cogState, guidanceState,
+        onConversation, workshopId, mandatoryOrchState, emitEvent,
+      );
+      console.log(`[JourneyPipeline] journey-assessment DONE workshopId=${workshopId}`);
+    } catch (e) {
+      console.warn('[JourneyPipeline] Mandatory journey assessment failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Pre-LLM gates for pad generation (does not affect journey assessment above)
   if (cogState.beliefs.size < 3) return;
 
   guidanceState.utterancesSinceLastPad++;
 
-  // Pacing: only run when generation is due
+  // Pacing: only run pad generation when generation is due
   if (!shouldGeneratePads(cogState, guidanceState)) return;
 
-  if (!env.OPENAI_API_KEY) return;
-
-  // Mark generation started
+  // Mark pad generation started
   guidanceState.lastPadGenerationAtMs = Date.now();
   guidanceState.utterancesSinceLastPad = 0;
 

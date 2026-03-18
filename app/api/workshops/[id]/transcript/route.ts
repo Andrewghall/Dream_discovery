@@ -495,7 +495,9 @@ async function processCompleteUtterance(
       // ── Facilitation Orchestrator (agentic agents) ──────
       // Runs Theme Agent, Facilitation Agent, Constraint Agent
       // with Guardian verification. Emits theme.suggested,
-      // pad.generated, constraint.mapped, and agent.conversation.
+      // pad.generated, constraint.mapped, agent.conversation.
+      // Also runs mandatory journey assessment on every utterance (no belief gate).
+      console.log(`[JourneyPipeline] transcript-received workshopId=${workshopId} text="${text.substring(0, 80)}" beliefs=${cognitiveState.beliefs.size} utterances=${cognitiveState.recentUtterances.length}`);
       try {
         await runFacilitationOrchestrator(
           workshopId,

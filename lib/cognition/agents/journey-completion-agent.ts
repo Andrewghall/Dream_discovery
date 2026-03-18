@@ -247,9 +247,15 @@ function executeJourneyTool(
 // SYSTEM PROMPT
 // ══════════════════════════════════════════════════════════════
 
+export type JourneyConversationContext = {
+  recentBeliefs: string[];  // Recent belief summaries from participant speech
+  recentSpeech: string[];   // Raw recent utterances for context
+};
+
 function buildJourneySystemPrompt(
   guidanceState: GuidanceState,
   liveJourney: LiveJourneyData,
+  conversationContext?: JourneyConversationContext,
 ): string {
   const prep = guidanceState.prepContext;
   const bp = guidanceState.blueprint;
@@ -301,13 +307,34 @@ RULES:
 - Use domain-specific actor names in all questions
 - Each gap's suggestedQuestion should be something a facilitator can naturally ask the room
 
+BOOTSTRAPPING THE MAP (CRITICAL — read carefully):
+If get_journey_state shows 0 interactions AND recent conversation context exists:
+- You MUST propose mutations to populate the map. This is your PRIMARY job on first run.
+- Extract every stage, actor, and interaction you can identify from the recent speech.
+- For each utterance that describes what someone does in the journey, propose add_interaction.
+- If a stage is mentioned that isn't in the map, propose add_stage first.
+- If an actor is mentioned that isn't in the map, propose add_actor first.
+- Set confidence 0.8 for anything clearly stated in speech (e.g. "the driver collects waste" → add_interaction with actor=driver, action="collects waste", confidence=0.85).
+- Populate as much as possible from the first batch of speech — don't wait for perfect data.
+
 MUTATION PROPOSALS (call suggest_mutations AFTER assess_completion):
-- Only propose mutations when get_journey_state shows specific missing fields you can infer from conversation context
-- Confidence >0.75: unambiguous from evidence (e.g. "we handle this by phone" → channel=phone). Auto-emitted immediately.
-- Confidence 0.5–0.75: reasonable evidence but some uncertainty. Proposed to orchestrator for review.
+- Confidence >0.75: unambiguous from evidence. Auto-emitted immediately to the live map.
+- Confidence 0.5–0.75: reasonable evidence but some uncertainty. Proposed for review.
 - Confidence <0.5: do NOT suggest a mutation — generate a pad prompt gap instead
 - NEVER propose update_interaction for interactions where addedBy="facilitator"
-- For structural gaps (stage mentioned in conversation but not in map), prefer add_stage`;
+- For structural gaps (stage mentioned in conversation but not in map), prefer add_stage${
+    conversationContext && (conversationContext.recentSpeech.length > 0 || conversationContext.recentBeliefs.length > 0)
+      ? `\n\n── RECENT CONVERSATION CONTEXT ──\nUse this to bootstrap journey interactions from what participants have described. If a stage, actor, or interaction is mentioned but not yet on the map, propose it with appropriate confidence.\n${
+          conversationContext.recentBeliefs.length > 0
+            ? `\nRecent beliefs/insights extracted:\n${conversationContext.recentBeliefs.map(b => `• ${b}`).join('\n')}`
+            : ''
+        }${
+          conversationContext.recentSpeech.length > 0
+            ? `\nRecent participant speech:\n${conversationContext.recentSpeech.map(u => `> ${u}`).join('\n')}`
+            : ''
+        }`
+      : ''
+  }`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -318,11 +345,13 @@ export async function runJourneyCompletionAgent(
   guidanceState: GuidanceState,
   liveJourney: LiveJourneyData,
   onConversation?: AgentConversationCallback,
+  conversationContext?: JourneyConversationContext,
 ): Promise<JourneyAssessment | null> {
   if (!env.OPENAI_API_KEY) return null;
 
+  console.log(`[JourneyAgent] START stages=${liveJourney.stages.length} actors=${liveJourney.actors.length} interactions=${liveJourney.interactions.length} contextBeliefs=${conversationContext?.recentBeliefs.length ?? 0} contextSpeech=${conversationContext?.recentSpeech.length ?? 0}`);
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const systemPrompt = buildJourneySystemPrompt(guidanceState, liveJourney);
+  const systemPrompt = buildJourneySystemPrompt(guidanceState, liveJourney, conversationContext);
   const startMs = Date.now();
   const existingGaps = guidanceState.journeyCompletionState?.gaps || [];
 
@@ -330,7 +359,9 @@ export async function runJourneyCompletionAgent(
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: 'Assess the current journey map completeness. Use get_journey_state to review what we have, then assess_completion with your findings. If get_journey_state reveals specific missing fields you can infer from context, call suggest_mutations after assess_completion.',
+      content: liveJourney.interactions.length === 0 && conversationContext && (conversationContext.recentSpeech.length > 0 || conversationContext.recentBeliefs.length > 0)
+        ? 'The journey map is EMPTY. Call get_journey_state to confirm, then IMMEDIATELY call suggest_mutations to populate the map from the recent conversation context in your system prompt. Extract every stage, actor, and interaction described in the speech. After suggest_mutations, call assess_completion.'
+        : `Assess the current journey map completeness. Use get_journey_state to review what we have, then assess_completion with your findings.${conversationContext && (conversationContext.recentSpeech.length > 0 || conversationContext.recentBeliefs.length > 0) ? ' Recent conversation context is in your system prompt — use it to propose mutations for anything mentioned verbally but not yet on the map. Call suggest_mutations after assess_completion.' : ' If get_journey_state reveals specific missing fields you can infer from context, call suggest_mutations after assess_completion.'}`,
     },
   ];
 
@@ -486,17 +517,19 @@ export async function runJourneyCompletionAgent(
       }
     }
   } catch (error) {
-    console.error('[Journey Completion Agent] Failed:', error instanceof Error ? error.message : error);
+    console.error('[JourneyAgent] Failed:', error instanceof Error ? error.message : error);
   }
 
   // Return whatever we have
   if (pendingAssessment) {
+    console.log(`[JourneyAgent] DONE assessment=${pendingAssessment.overallCompletionPercent}% gaps=${pendingAssessment.gaps.length} mutations=${collectedMutations.length}`);
     return {
       ...pendingAssessment,
       suggestedMutations: collectedMutations.length > 0 ? collectedMutations : undefined,
     };
   }
 
+  console.log('[JourneyAgent] DONE — no assessment returned');
   return null;
 }
 
