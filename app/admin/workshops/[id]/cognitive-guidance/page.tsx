@@ -350,10 +350,18 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
 
   // ── Client-only: populate seed data after hydration (avoids React #418) ──
+  // getDemoHemisphereNodes uses Math.random + Date.now — must NEVER run during SSR.
+  // By moving it here we guarantee the server always renders an empty array and the
+  // client fills in demo nodes after hydration, preventing the element-count mismatch.
   useEffect(() => {
     setStickyPads(prev => prev.length === 0 ? getSeedPadsForPhase('REIMAGINE').slice(0, 4) : prev);
     if (isRetailDemo) {
       setLiveJourney(getDemoLiveJourney());
+      // Populate demo hemisphere nodes client-side only (Math.random + Date.now → no SSR)
+      const demoNodes = getDemoHemisphereNodes();
+      const nodeMap: Record<string, HemisphereNodeDatum> = {};
+      for (const n of demoNodes) nodeMap[n.dataPointId] = n;
+      setHemisphereNodes(nodeMap);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1778,12 +1786,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     return () => clearInterval(interval);
   }, [listening, workshopId]);
 
-  // Use demo nodes only for retail workshop; otherwise real nodes or empty
+  // Use real nodes if available; otherwise empty array.
+  // Demo nodes for the retail workshop are populated client-side in the useEffect below
+  // (getDemoHemisphereNodes uses Math.random + Date.now → must NOT run during SSR).
   const hemisphereNodeArray = useMemo(() => {
-    const realNodes = Object.values(hemisphereNodes);
-    if (realNodes.length > 0) return realNodes;
-    return isRetailDemo ? getDemoHemisphereNodes() : [];
-  }, [hemisphereNodes, isRetailDemo]);
+    return Object.values(hemisphereNodes);
+  }, [hemisphereNodes]);
 
   // ── Sticky pad actions ─────────────────────────────────
   const handleDismissPad = useCallback((id: string) => {
