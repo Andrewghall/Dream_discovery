@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { nanoid } from 'nanoid';
 
+// Journey agent + cognitive analysis run inside after() — up to 40s per cycle.
+// Without this, Vercel kills the background work before the journey agent completes.
+export const maxDuration = 60;
+
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
