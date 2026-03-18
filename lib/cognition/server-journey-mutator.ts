@@ -117,9 +117,18 @@ export function applyMutationToServerJourney(
       const stages = journey.stages.filter(s => !srcLower.includes(s.toLowerCase()));
       if (!stages.some(s => s.toLowerCase() === targetName.toLowerCase())) stages.push(targetName);
 
-      const interactions = journey.interactions.map(ix =>
+      const rewritten = journey.interactions.map(ix =>
         srcLower.includes(ix.stage.toLowerCase()) ? { ...ix, stage: targetName } : ix,
       );
+      // Dedup by semantic key: interactions from different source stages that share
+      // actor/action/context become identical after stage rewrite — keep first occurrence.
+      const seen = new Set<string>();
+      const interactions = rewritten.filter(ix => {
+        const key = makeSemanticKey(ix);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       return { ...journey, stages, interactions };
     }
 
@@ -292,15 +301,24 @@ export function mergeWithAccumulatedJourney(
   ];
 
   // Interactions: accumulated first, then base interactions not already there.
-  // Dedup by both ID and semantic key so srv: and cog: copies collapse to one row.
+  // Three-layer guard on each base interaction:
+  //   1. Stage-validity: base.interactions whose stage is no longer in accumulated.stages
+  //      (because it was renamed, merged, or removed) must not be added back. Semantic-key
+  //      dedup cannot catch these — the stage name differs so keys never collide.
+  //   2. ID dedup: skip if the same ID already exists in accumulated.
+  //   3. Semantic dedup: skip if same actor+stage+action+context already in accumulated.
   // The accumulated (srv:) copy is preferred — it has aiAgency, intensity, isPainPoint
   // etc. set by the journey agent; the cogState (cog:) copy typically has fewer fields.
+  const accValidStagesLower = new Set(accumulated.stages.map(s => s.toLowerCase()));
   const accIxIds = new Set(accumulated.interactions.map(ix => ix.id));
   const accSemanticKeys = new Set(accumulated.interactions.map(ix => makeSemanticKey(ix)));
   const mergedInteractions = [
     ...accumulated.interactions,
     ...base.interactions.filter(
-      ix => !accIxIds.has(ix.id) && !accSemanticKeys.has(makeSemanticKey(ix)),
+      ix =>
+        accValidStagesLower.has(ix.stage.toLowerCase()) && // stage must still exist in canonical list
+        !accIxIds.has(ix.id) &&
+        !accSemanticKeys.has(makeSemanticKey(ix)),
     ),
   ];
 

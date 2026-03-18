@@ -721,3 +721,115 @@ describe('Semantic interaction dedup — srv: and cog: collapse to one row (regr
     expect(k1).not.toBe(k2);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Stale-interaction leak + merge_stage semantic dedup (regression round 3)
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('mergeWithAccumulatedJourney — stale base interactions do not leak through', () => {
+  it('does not re-add base interactions from a renamed stage', () => {
+    // Accumulated has rename_stage applied: "Discovery" → "Awareness"
+    // Accumulated interaction is already on "Awareness"
+    // Base still has an interaction on the old "Discovery" stage
+    const accIx = makeIx({ id: 'srv:1', stage: 'Awareness', action: 'Explores options' });
+    const accumulated: LiveJourneyData = {
+      stages: ['Awareness', 'Engagement'], // "Discovery" is gone
+      actors: [],
+      interactions: [accIx],
+    };
+    const baseIx = makeIx({ id: 'cog:1', stage: 'Discovery', action: 'Old discovery action' });
+    const base: LiveJourneyData = {
+      stages: ['Discovery', 'Engagement'],
+      actors: [],
+      interactions: [baseIx],
+    };
+
+    const merged = mergeWithAccumulatedJourney(base, accumulated);
+
+    // The stale base interaction (stage: "Discovery") must NOT appear
+    expect(merged.interactions.some(ix => ix.stage === 'Discovery')).toBe(false);
+    expect(merged.interactions.some(ix => ix.id === 'cog:1')).toBe(false);
+    // The accumulated interaction survives
+    expect(merged.interactions.some(ix => ix.id === 'srv:1')).toBe(true);
+  });
+
+  it('does not re-add base interactions from a removed stage', () => {
+    // Accumulated has remove_stage applied: "Support" removed
+    const accumulated: LiveJourneyData = {
+      stages: ['Discovery', 'Engagement'], // "Support" is gone
+      actors: [],
+      interactions: [],
+    };
+    const baseIx = makeIx({ id: 'cog:2', stage: 'Support', action: 'Handles complaint' });
+    const base: LiveJourneyData = {
+      stages: ['Discovery', 'Engagement', 'Support'],
+      actors: [],
+      interactions: [baseIx],
+    };
+
+    const merged = mergeWithAccumulatedJourney(base, accumulated);
+
+    expect(merged.interactions.some(ix => ix.stage === 'Support')).toBe(false);
+    expect(merged.interactions.some(ix => ix.id === 'cog:2')).toBe(false);
+  });
+
+  it('does not re-add base interactions from source stages after merge_stage', () => {
+    // Accumulated has merge_stage: ["Pre-Collection", "Collection"] → "Collection & Prep"
+    // Accumulated interactions are on "Collection & Prep"
+    const accIx = makeIx({ id: 'srv:3', stage: 'Collection & Prep', action: 'Prepares route' });
+    const accumulated: LiveJourneyData = {
+      stages: ['Collection & Prep', 'Delivery'], // source stages gone
+      actors: [],
+      interactions: [accIx],
+    };
+    const basePre = makeIx({ id: 'cog:3a', stage: 'Pre-Collection', action: 'Sets up bins' });
+    const baseColl = makeIx({ id: 'cog:3b', stage: 'Collection', action: 'Collects waste' });
+    const base: LiveJourneyData = {
+      stages: ['Pre-Collection', 'Collection', 'Delivery'],
+      actors: [],
+      interactions: [basePre, baseColl],
+    };
+
+    const merged = mergeWithAccumulatedJourney(base, accumulated);
+
+    // Source-stage interactions must not leak back
+    expect(merged.interactions.some(ix => ix.stage === 'Pre-Collection')).toBe(false);
+    expect(merged.interactions.some(ix => ix.stage === 'Collection')).toBe(false);
+    expect(merged.interactions.some(ix => ix.id === 'cog:3a')).toBe(false);
+    expect(merged.interactions.some(ix => ix.id === 'cog:3b')).toBe(false);
+    // Accumulated interaction survives
+    expect(merged.interactions.some(ix => ix.id === 'srv:3')).toBe(true);
+  });
+});
+
+describe('applyMutationToServerJourney — merge_stage semantic dedup', () => {
+  it('deduplicates semantically identical interactions that land in the same target stage', () => {
+    // Two interactions on different source stages, same actor/action/context.
+    // After merge_stage, both would have the same stage → semantic duplicates.
+    const j: LiveJourneyData = {
+      stages: ['Stage A', 'Stage B', 'Target'],
+      actors: [],
+      interactions: [
+        makeIx({ id: 'ix-a', stage: 'Stage A', actor: 'Crew', action: 'Scans barcode', context: 'On arrival' }),
+        makeIx({ id: 'ix-b', stage: 'Stage B', actor: 'Crew', action: 'Scans barcode', context: 'On arrival' }),
+        makeIx({ id: 'ix-c', stage: 'Stage A', actor: 'Crew', action: 'Unloads truck', context: '' }),
+      ],
+    };
+
+    const result = applyMutationToServerJourney(j, makeIntent('merge_stage', {
+      sourceStages: ['Stage A', 'Stage B'],
+      targetName: 'Target',
+    }));
+
+    // Both "Scans barcode" interactions were semantically identical after rewrite — only one survives
+    const scanBarcodeIxs = result.interactions.filter(ix => ix.action === 'Scans barcode');
+    expect(scanBarcodeIxs).toHaveLength(1);
+
+    // The unique interaction survives intact
+    const unloadIxs = result.interactions.filter(ix => ix.action === 'Unloads truck');
+    expect(unloadIxs).toHaveLength(1);
+
+    // All surviving interactions are on the target stage
+    expect(result.interactions.every(ix => ix.stage === 'Target')).toBe(true);
+  });
+});
