@@ -34,6 +34,10 @@ import {
   buildJourneyContextString,
   partitionMutationsByConfidence,
 } from '../journey-completion-state';
+import {
+  applyMutationToServerJourney,
+  mergeWithAccumulatedJourney,
+} from '../server-journey-mutator';
 import type { LiveJourneyData, LiveJourneyInteraction, AiAgencyLevel, StickyPad } from '@/lib/cognitive-guidance/pipeline';
 import type { AgentConversationCallback } from './agent-types';
 import type { JourneyMutationIntent } from './journey-mutation-types';
@@ -340,6 +344,31 @@ function buildJourneyFromCogState(
   return { stages, actors, interactions };
 }
 
+/**
+ * Build the current live journey by merging the cogState base with previously
+ * applied server-side mutations (accumulated journey). This prevents the journey
+ * agent from re-proposing the same structural changes on every reassessment cycle.
+ */
+function buildCurrentLiveJourney(cogState: CognitiveState, guidanceState: GuidanceState): LiveJourneyData {
+  const base = buildJourneyFromCogState(cogState, guidanceState);
+  const accumulated = (guidanceState as any)._accumulatedJourney as LiveJourneyData | undefined;
+  if (!accumulated || (accumulated.actors.length === 0 && accumulated.interactions.length === 0)) {
+    return base;
+  }
+  return mergeWithAccumulatedJourney(base, accumulated);
+}
+
+// ── Pending pad prompts (stored by background assessment, emitted by normal cycle) ──
+type PendingPadPrompt = { prompt: string; gapId: string; stage: string | null; label: string };
+
+function getPendingPadPrompts(guidanceState: GuidanceState): PendingPadPrompt[] {
+  return (guidanceState as any)._pendingJourneyPadPrompts as PendingPadPrompt[] ?? [];
+}
+
+function setPendingPadPrompts(guidanceState: GuidanceState, pads: PendingPadPrompt[]): void {
+  (guidanceState as any)._pendingJourneyPadPrompts = pads;
+}
+
 // ══════════════════════════════════════════════════════════════
 // ORCHESTRATOR TOOL DEFINITIONS --4 tools
 // ══════════════════════════════════════════════════════════════
@@ -492,6 +521,7 @@ async function executeOrchestratorTool(
     emittedSuggestionKeys: Set<string>;
   },
   emitEvent: (type: string, payload: unknown) => void | Promise<void>,
+  suppressPadEmission = false,
 ): Promise<string> {
   const mainQ = guidanceState.currentMainQuestion;
   const prep = guidanceState.prepContext;
@@ -573,23 +603,20 @@ async function executeOrchestratorTool(
 
     // ── CONSULT JOURNEY COMPLETION AGENT ─────────────────────
     case 'consult_journey_completion_agent': {
-      const liveJourney = buildJourneyFromCogState(cogState, guidanceState);
-
-      // No longer gate on actors — agent can bootstrap the map from participant speech
-      // even when cogState.actors is empty (i.e. when roles haven't been explicitly detected yet)
+      // Use accumulated server-side state so agent sees previously applied mutations.
+      // Prevents re-proposing the same bootstrap stages/actors/interactions on every cycle.
+      const liveJourney = buildCurrentLiveJourney(cogState, guidanceState);
 
       await onConversation?.({
         timestampMs: Date.now(),
         agent: 'orchestrator',
         to: 'journey-completion-agent',
-        message: `Assess journey map: ${liveJourney.actors.length} actors, ${liveJourney.interactions.length} interactions, ${cogState.beliefs.size} beliefs.`,
+        message: `Assess journey map: ${liveJourney.actors.length} actors, ${liveJourney.interactions.length} interactions, ${cogState.beliefs.size} beliefs.${suppressPadEmission ? ' [background — pad emission suppressed]' : ''}`,
         type: 'handoff',
       });
 
-      console.log(`[JourneyPipeline] journey-agent INVOKED workshopId=${workshopId} stages=${liveJourney.stages.length} actors=${liveJourney.actors.length} interactions=${liveJourney.interactions.length} utterances=${cogState.recentUtterances.length}`);
+      console.log(`[JourneyPipeline] journey-agent INVOKED workshopId=${workshopId} stages=${liveJourney.stages.length} actors=${liveJourney.actors.length} interactions=${liveJourney.interactions.length} utterances=${cogState.recentUtterances.length} suppressPads=${suppressPadEmission}`);
       try {
-        // Pass recent participant speech so the agent can bootstrap interactions
-        // from what was actually discussed, even when cogState.actors is still empty
         const recentBeliefs = Array.from(cogState.beliefs.values())
           .sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0))
           .slice(0, 15)
@@ -618,10 +645,10 @@ async function executeOrchestratorTool(
           const journeyContext = buildJourneyContextString(guidanceState.journeyCompletionState);
           state.deliberation.journeyGaps = journeyContext;
 
-          // Persist journey completion + live journey data to outbox
+          // Always emit journey.completion so UI can display the updated map
           await emitEvent('journey.completion', {
             journeyCompletionState: guidanceState.journeyCompletionState,
-            liveJourney,  // Full actor + interaction data from cogState
+            liveJourney,
           });
 
           console.log(`[JourneyPipeline] assessment RECEIVED completion=${assessment.overallCompletionPercent}% gaps=${assessment.gaps.length} mutations=${assessment.suggestedMutations?.length ?? 0}`);
@@ -635,7 +662,7 @@ async function executeOrchestratorTool(
 
             console.log(`[JourneyPipeline] mutations partitioned high=${highConfidence.length} medium=${mediumConfidence.length} low=${lowConfidence.length}`);
 
-            // HIGH confidence (>0.75): emit journey.mutation immediately
+            // HIGH confidence (>0.75): emit journey.mutation AND apply server-side
             for (const m of highConfidence) {
               const intent: JourneyMutationIntent = {
                 id: `jca:${m.type}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
@@ -646,6 +673,13 @@ async function executeOrchestratorTool(
               };
               console.log(`[JourneyPipeline] mutation EMITTED type=${m.type} confidence=${m.confidence} payload=${JSON.stringify(m.payload)}`);
               await emitEvent('journey.mutation', intent);
+
+              // ── Server-side accumulator: apply mutation so next assessment sees it ──
+              // This prevents the same mutation from being re-proposed on the next cycle.
+              const currentAccumulated = (guidanceState as any)._accumulatedJourney as LiveJourneyData | undefined
+                ?? { stages: liveJourney.stages, actors: [], interactions: [] };
+              (guidanceState as any)._accumulatedJourney = applyMutationToServerJourney(currentAccumulated, intent);
+
               await onConversation?.({
                 timestampMs: Date.now(),
                 agent: 'journey-completion-agent',
@@ -659,7 +693,7 @@ async function executeOrchestratorTool(
             // MEDIUM confidence (0.5–0.75): fold into journeyGaps context for orchestrator review
             if (mediumConfidence.length > 0) {
               const proposedLines = mediumConfidence.map(m =>
-                `PROPOSED MUTATION [${m.type}, ${Math.round(m.confidence * 100)}% confidence]: ${m.rationale}`
+                `PROPOSED MUTATION [${m.type}, ${Math.round(m.confidence * 100)}% confidence]: ${m.rationale}`,
               ).join('\n');
               const existingGaps = state.deliberation.journeyGaps || '';
               state.deliberation.journeyGaps = existingGaps
@@ -680,18 +714,47 @@ async function executeOrchestratorTool(
             }
           }
 
-          // Emit suggestedPadPrompts as pad.generated events (composite-key dedup)
-          const mainQuestionIndex = guidanceState.currentMainQuestion ? 0 : -1;
+          // ── Pad prompt emission — separated from mutation pipeline ───────────
+          // suppressPadEmission = true in the mandatory background path (beliefs < 3,
+          // pacing not due). Pad prompts must only surface through the normal orchestrator
+          // pad cycle so they respect belief/pacing governance.
+          //
+          // suppressPadEmission = false in the normal cycle: emit pads AND pick up any
+          // pad prompts stored by previous background runs.
           let suggestedPadsEmitted = 0;
-          for (const sp of assessment.suggestedPadPrompts || []) {
-            if (!sp.prompt) continue;
-            const dedupKey = `${workshopId}:${sp.gapId || ''}:${sp.stage || ''}:${mainQuestionIndex}`;
-            if (state.emittedSuggestionKeys.has(dedupKey)) continue;
-            state.emittedSuggestionKeys.add(dedupKey);
-            const pad = buildStickyPadFromSuggestion(sp, guidanceState);
-            await emitEvent('pad.generated', { pad });
-            guidanceState.surfacedPadPrompts.push(sp.prompt);
-            suggestedPadsEmitted++;
+          const mainQuestionIndex = guidanceState.currentMainQuestion ? 0 : -1;
+
+          if (!suppressPadEmission) {
+            // Pick up pad prompts stored by previous background runs
+            const pendingPads = getPendingPadPrompts(guidanceState);
+            if (pendingPads.length > 0) {
+              setPendingPadPrompts(guidanceState, []);
+            }
+            // Combine pending (from background) + current assessment prompts
+            const allPadsToEmit = [
+              ...pendingPads,
+              ...(assessment.suggestedPadPrompts || []),
+            ];
+            for (const sp of allPadsToEmit) {
+              if (!sp.prompt) continue;
+              const dedupKey = `${workshopId}:${sp.gapId || ''}:${sp.stage || ''}:${mainQuestionIndex}`;
+              if (state.emittedSuggestionKeys.has(dedupKey)) continue;
+              state.emittedSuggestionKeys.add(dedupKey);
+              const pad = buildStickyPadFromSuggestion(sp, guidanceState);
+              await emitEvent('pad.generated', { pad });
+              guidanceState.surfacedPadPrompts.push(sp.prompt);
+              suggestedPadsEmitted++;
+            }
+          } else {
+            // Background path: store pad prompts for pickup by the next normal cycle
+            const existing = getPendingPadPrompts(guidanceState);
+            const newPads = (assessment.suggestedPadPrompts || []).filter(
+              sp => sp.prompt && !existing.some(p => p.gapId === sp.gapId && p.stage === sp.stage),
+            );
+            if (newPads.length > 0) {
+              setPendingPadPrompts(guidanceState, [...existing, ...newPads]);
+              console.log(`[JourneyPipeline] stored ${newPads.length} pad prompt(s) for normal cycle pickup`);
+            }
           }
 
           const topGaps = assessment.gaps.filter(g => g.priority >= 0.5).slice(0, 3);
@@ -701,6 +764,7 @@ async function executeOrchestratorTool(
             gapCount: assessment.gaps.length,
             domainActor: assessment.domainActorName,
             suggestedPadsEmitted,
+            padsSuppressed: suppressPadEmission,
             mutationsEmitted,
             mutationsProposed,
             topGaps: topGaps.map(g => ({
@@ -960,6 +1024,7 @@ export async function runFacilitationOrchestrator(
       await executeOrchestratorTool(
         'consult_journey_completion_agent', {}, cogState, guidanceState,
         onConversation, workshopId, mandatoryOrchState, emitEvent,
+        true, // suppressPadEmission — background path must never emit facilitator pads
       );
       console.log(`[JourneyPipeline] journey-assessment DONE workshopId=${workshopId}`);
     } catch (e) {
