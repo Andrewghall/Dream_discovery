@@ -1798,10 +1798,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     ));
   }, []);
 
-  // Auto-move overflow pads to covered when >maxVisible active
+  // Auto-move overflow pads to covered when >maxVisible active.
+  // Must also set status='snoozed' so they leave allActivePads on the next render —
+  // otherwise the canvas keeps firing onOverflow in a setTimeout loop.
   const handleOverflowPads = useCallback((padIds: string[]) => {
     setStickyPads(prev => prev.map(p =>
-      padIds.includes(p.id) ? { ...p, coverageState: 'covered' as const } : p
+      padIds.includes(p.id) ? { ...p, status: 'snoozed' as const, coverageState: 'covered' as const } : p
     ));
   }, []);
 
@@ -1810,7 +1812,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Computed: sub-pads for current main question ──────────
   const activeSubPads = useMemo(
     () => stickyPads.filter(
-      (p) => p.mainQuestionIndex === mainQuestionIndex && p.source !== 'seed' && p.status === 'active',
+      // Exclude seed AND signal pads — signal pads have their own canvas below
+      (p) => p.mainQuestionIndex === mainQuestionIndex && p.source !== 'seed' && p.source !== 'signal' && p.status === 'active',
     ),
     [stickyPads, mainQuestionIndex],
   );
@@ -2083,6 +2086,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                         onSelectPad={setSelectedPadId}
                         onDismissPad={handleDismissPad}
                         onSnoozePad={handleSnoozePad}
+                        maxVisible={4}
                         customLensColors={customLensColors}
                       />
                     </div>
