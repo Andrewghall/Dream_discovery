@@ -303,16 +303,66 @@ export const INDUSTRY_OPTIONS: string[] = INDUSTRY_ACTOR_MODEL
 
 /**
  * Returns the actor set for the closest matching industry, or null if no match.
- * Matching is case-insensitive and checks industry name and aliases.
+ *
+ * Scoring (deterministic, order-independent):
+ *   100 — industry name exact match (case-insensitive)
+ *    80 — alias exact match
+ *    60 — input contains alias (alias ≥ 4 chars, word-boundary aware)
+ *    30 — alias contains input (input ≥ 4 chars, controlled partial)
+ *
+ * On tie: longest matching alias wins (more specific). Logs a warning if still tied.
  */
 export function getIndustryActors(industry: string): IndustryActorSet | null {
   if (!industry) return null;
   const normalized = industry.toLowerCase().trim();
-  return (
-    INDUSTRY_ACTOR_MODEL.find(
-      (set) =>
-        set.industry.toLowerCase() === normalized ||
-        set.aliases.some((alias) => normalized.includes(alias) || alias.includes(normalized)),
-    ) ?? null
-  );
+
+  let bestSet: IndustryActorSet | null = null;
+  let bestScore = -1;
+  let bestSpecificity = 0; // length of best matching alias (tiebreaker)
+
+  for (const set of INDUSTRY_ACTOR_MODEL) {
+    const industryLower = set.industry.toLowerCase();
+    let score = 0;
+    let specificity = 0;
+
+    // Rule 1: exact industry name match
+    if (industryLower === normalized) {
+      score = 100;
+      specificity = industryLower.length;
+    } else {
+      for (const alias of set.aliases) {
+        const aliasLower = alias.toLowerCase();
+        let aliasScore = 0;
+
+        if (aliasLower === normalized) {
+          // Rule 2: alias exact match
+          aliasScore = 80;
+        } else if (aliasLower.length >= 4 && normalized.includes(aliasLower)) {
+          // Rule 3: input contains alias (alias long enough to be meaningful)
+          aliasScore = 60;
+        } else if (normalized.length >= 4 && aliasLower.includes(normalized)) {
+          // Rule 4: alias contains input (controlled partial)
+          aliasScore = 30;
+        }
+
+        if (aliasScore > score || (aliasScore === score && aliasLower.length > specificity)) {
+          score = aliasScore;
+          specificity = aliasLower.length;
+        }
+      }
+    }
+
+    if (score > bestScore || (score === bestScore && score > 0 && specificity > bestSpecificity)) {
+      if (score === bestScore && score > 0 && bestSet !== null) {
+        console.warn(
+          `[getIndustryActors] Tie (score=${score}) between "${bestSet.industry}" and "${set.industry}" for input "${industry}". Picking more specific.`,
+        );
+      }
+      bestScore = score;
+      bestSpecificity = specificity;
+      bestSet = set;
+    }
+  }
+
+  return bestScore > 0 ? bestSet : null;
 }

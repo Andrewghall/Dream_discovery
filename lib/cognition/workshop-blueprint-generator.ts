@@ -492,10 +492,13 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   }
 
   // Layer 4b: Industry-specific actor taxonomy override
-  // Priority: airline contact centre (curated) → industry actor model (19 industries) → GPT fallback (Layer 3)
+  // Priority: airline contact centre (curated) → industry actor model (no domain pack only) → GPT fallback (Layer 3)
+  // Domain-pack actors (set in Layer 1 via composeBlueprint) are authoritative — never overwrite them here.
   if (hasIndustryOverride) {
     bp.actorTaxonomy = CONTACT_CENTRE_AIRLINE_ACTORS.map((a) => ({ ...a }));
-  } else {
+  } else if (!input.domainPack) {
+    // Only apply industry model when no domain pack is configured.
+    // If a domain pack is set, its actorTaxonomy is already applied in composeBlueprint (Layer 1).
     const industryActorSet = getIndustryActors(input.industry ?? '');
     if (industryActorSet) {
       bp.actorTaxonomy = industryActorSet.actors.map((a) => ({
