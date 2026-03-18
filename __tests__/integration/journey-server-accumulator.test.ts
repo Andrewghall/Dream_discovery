@@ -832,4 +832,49 @@ describe('applyMutationToServerJourney — merge_stage semantic dedup', () => {
     // All surviving interactions are on the target stage
     expect(result.interactions.every(ix => ix.stage === 'Target')).toBe(true);
   });
+
+  it('preserves the existing target-stage interaction when a source interaction is semantically identical', () => {
+    // The target stage already contains a curated interaction (isPainPoint=true, businessIntensity=0.9).
+    // A source stage has a semantically identical interaction (same actor/action/context) with
+    // default/uncurated fields. After merge_stage the source copy must be dropped and the
+    // curated target copy must survive unchanged.
+    const curatedTarget = makeIx({
+      id: 'target-curated',
+      stage: 'Target',
+      actor: 'Crew',
+      action: 'Scans barcode',
+      context: 'On arrival',
+      isPainPoint: true,
+      businessIntensity: 0.9,
+    });
+    const sourceDefault = makeIx({
+      id: 'source-default',
+      stage: 'Source A',
+      actor: 'Crew',
+      action: 'Scans barcode',
+      context: 'On arrival',
+      isPainPoint: false,
+      businessIntensity: 0.5,
+    });
+
+    const j: LiveJourneyData = {
+      stages: ['Source A', 'Target'],
+      actors: [],
+      interactions: [sourceDefault, curatedTarget], // source appears BEFORE target in array
+    };
+
+    const result = applyMutationToServerJourney(j, makeIntent('merge_stage', {
+      sourceStages: ['Source A'],
+      targetName: 'Target',
+    }));
+
+    // Exactly one "Scans barcode" interaction
+    const scanIxs = result.interactions.filter(ix => ix.action === 'Scans barcode');
+    expect(scanIxs).toHaveLength(1);
+
+    // The CURATED target copy survives (not the uncurated source copy)
+    expect(scanIxs[0].id).toBe('target-curated');
+    expect(scanIxs[0].isPainPoint).toBe(true);
+    expect(scanIxs[0].businessIntensity).toBe(0.9);
+  });
 });

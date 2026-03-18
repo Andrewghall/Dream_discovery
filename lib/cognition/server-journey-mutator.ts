@@ -117,18 +117,34 @@ export function applyMutationToServerJourney(
       const stages = journey.stages.filter(s => !srcLower.includes(s.toLowerCase()));
       if (!stages.some(s => s.toLowerCase() === targetName.toLowerCase())) stages.push(targetName);
 
-      const rewritten = journey.interactions.map(ix =>
-        srcLower.includes(ix.stage.toLowerCase()) ? { ...ix, stage: targetName } : ix,
+      // Partition BEFORE rewriting so we know which interactions were originally on
+      // the target stage (may be curated/edited) vs being migrated from source stages.
+      const targetLower = targetName.toLowerCase();
+      const alreadyOnTarget = journey.interactions.filter(
+        ix => ix.stage.toLowerCase() === targetLower,
       );
-      // Dedup by semantic key: interactions from different source stages that share
-      // actor/action/context become identical after stage rewrite — keep first occurrence.
-      const seen = new Set<string>();
-      const interactions = rewritten.filter(ix => {
-        const key = makeSemanticKey(ix);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      const fromSources = journey.interactions.filter(
+        ix => srcLower.includes(ix.stage.toLowerCase()),
+      );
+      const onOtherStages = journey.interactions.filter(
+        ix => !srcLower.includes(ix.stage.toLowerCase()) && ix.stage.toLowerCase() !== targetLower,
+      );
+
+      // Seed dedup set from already-on-target interactions (they are canonical — any
+      // curated fields or prior edits must survive). Source interactions that share the
+      // same semantic identity are dropped rather than overwriting the target version.
+      const seen = new Set<string>(alreadyOnTarget.map(ix => makeSemanticKey(ix)));
+
+      const migratedFromSources = fromSources
+        .map(ix => ({ ...ix, stage: targetName }))
+        .filter(ix => {
+          const key = makeSemanticKey(ix);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+      const interactions = [...alreadyOnTarget, ...migratedFromSources, ...onOtherStages];
       return { ...journey, stages, interactions };
     }
 
