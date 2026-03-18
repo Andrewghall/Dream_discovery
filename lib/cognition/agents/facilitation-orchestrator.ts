@@ -32,6 +32,7 @@ import { runJourneyEnrichmentAgent, type JourneyEnrichment } from './journey-enr
 import {
   mergeAgentAssessment,
   buildJourneyContextString,
+  partitionMutationsByConfidence,
 } from '../journey-completion-state';
 import type { LiveJourneyData, LiveJourneyInteraction, AiAgencyLevel, StickyPad } from '@/lib/cognitive-guidance/pipeline';
 import type { AgentConversationCallback } from './agent-types';
@@ -612,6 +613,57 @@ async function executeOrchestratorTool(
             liveJourney,  // Full actor + interaction data from cogState
           });
 
+          // ── Confidence gate for suggested mutations ──────────
+          let mutationsEmitted = 0;
+          let mutationsProposed = 0;
+          if (assessment.suggestedMutations && assessment.suggestedMutations.length > 0) {
+            const { highConfidence, mediumConfidence, lowConfidence } =
+              partitionMutationsByConfidence(assessment.suggestedMutations);
+
+            // HIGH confidence (>0.75): emit journey.mutation immediately
+            for (const m of highConfidence) {
+              const intent: JourneyMutationIntent = {
+                id: `jca:${m.type}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+                type: m.type as JourneyMutationIntent['type'],
+                payload: m.payload,
+                sourceNodeIds: m.sourceNodeIds,
+                emittedAtMs: Date.now(),
+              };
+              await emitEvent('journey.mutation', intent);
+              await onConversation?.({
+                timestampMs: Date.now(),
+                agent: 'journey-completion-agent',
+                to: '',
+                message: `[HIGH CONFIDENCE] Journey mutation emitted: ${m.type} — ${m.rationale}`,
+                type: 'info',
+              });
+              mutationsEmitted++;
+            }
+
+            // MEDIUM confidence (0.5–0.75): fold into journeyGaps context for orchestrator review
+            if (mediumConfidence.length > 0) {
+              const proposedLines = mediumConfidence.map(m =>
+                `PROPOSED MUTATION [${m.type}, ${Math.round(m.confidence * 100)}% confidence]: ${m.rationale}`
+              ).join('\n');
+              const existingGaps = state.deliberation.journeyGaps || '';
+              state.deliberation.journeyGaps = existingGaps
+                ? `${existingGaps}\n\nPROPOSED MUTATIONS (medium confidence — review before emitting):\n${proposedLines}`
+                : `PROPOSED MUTATIONS (medium confidence — review before emitting):\n${proposedLines}`;
+              mutationsProposed = mediumConfidence.length;
+            }
+
+            // LOW confidence (<0.5): already handled via suggestedPadPrompts path below
+            if (lowConfidence.length > 0) {
+              await onConversation?.({
+                timestampMs: Date.now(),
+                agent: 'journey-completion-agent',
+                to: 'orchestrator',
+                message: `${lowConfidence.length} low-confidence mutation(s) deferred — need more evidence.`,
+                type: 'info',
+              });
+            }
+          }
+
           // Emit suggestedPadPrompts as pad.generated events (composite-key dedup)
           const mainQuestionIndex = guidanceState.currentMainQuestion ? 0 : -1;
           let suggestedPadsEmitted = 0;
@@ -633,6 +685,8 @@ async function executeOrchestratorTool(
             gapCount: assessment.gaps.length,
             domainActor: assessment.domainActorName,
             suggestedPadsEmitted,
+            mutationsEmitted,
+            mutationsProposed,
             topGaps: topGaps.map(g => ({
               type: g.gapType,
               stage: g.stage,

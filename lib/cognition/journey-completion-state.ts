@@ -7,6 +7,7 @@
 
 import type { JourneyCompletionState, JourneyGap } from './guidance-state';
 import type { LiveJourneyData, LiveJourneyInteraction } from '@/lib/cognitive-guidance/pipeline';
+import type { JourneyMutationIntentType } from './agents/journey-mutation-types';
 
 // ══════════════════════════════════════════════════════════
 // FACTORY
@@ -159,6 +160,26 @@ export function calculateDeterministicCompletion(
 // MERGE AGENT ASSESSMENT
 // ══════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════
+// SUGGESTED MUTATION — agent-proposed structural change
+// ══════════════════════════════════════════════════════════
+
+/**
+ * A structural mutation proposed by the Journey Completion Agent.
+ * Confidence determines how the orchestrator handles it:
+ *   > 0.75  — high confidence: emitted immediately as journey.mutation
+ *   0.5-0.75 — medium confidence: proposed to orchestrator for review
+ *   < 0.5   — low confidence: converted to pad prompt (ask a question first)
+ */
+export type SuggestedMutation = {
+  type: JourneyMutationIntentType;
+  payload: Record<string, unknown>;
+  confidence: number;        // 0-1
+  rationale: string;         // why the agent proposes this
+  sourceNodeIds: string[];   // belief/utterance IDs that justify it
+  gapId?: string;            // which JourneyGap this mutation resolves
+};
+
 export type JourneyAssessment = {
   overallCompletionPercent: number;
   stageCompletionPercents: Record<string, number>;
@@ -171,6 +192,7 @@ export type JourneyAssessment = {
     stage: string | null;
     label: string;    // "Journey Mapping" or "Journey: {stage}"
   }>;
+  suggestedMutations?: SuggestedMutation[];  // structural changes proposed by the agent
 };
 
 /**
@@ -237,4 +259,51 @@ export function buildJourneyContextString(
   }
 
   return lines.join('\n');
+}
+
+// ══════════════════════════════════════════════════════════
+// INTERACTION EVIDENCE HELPERS
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Returns the names of completeness fields that are missing or default
+ * for a given interaction. Used by the Journey agent to explain what
+ * evidence it still needs before proposing mutations.
+ */
+export function getInteractionMissingFields(ix: LiveJourneyInteraction): string[] {
+  const missing: string[] = [];
+  if (!ix.context || ix.context.length === 0) missing.push('channel/context');
+  if (ix.sentiment === 'neutral') missing.push('sentiment/EQ');
+  if (ix.aiAgencyNow === 'human' && ix.aiAgencyFuture === 'human') missing.push('AI agency (now/future)');
+  if (ix.aiAgencyNow === ix.aiAgencyFuture) missing.push('Day1 vs end state');
+  if (ix.businessIntensity === 0) missing.push('urgency');
+  if (ix.customerIntensity === 0) missing.push('proactive/reactive');
+  if (!ix.isPainPoint) missing.push('pain point (unconfirmed)');
+  if (!ix.isMomentOfTruth) missing.push('moment of truth (unconfirmed)');
+  return missing;
+}
+
+// ══════════════════════════════════════════════════════════
+// CONFIDENCE GATE — partition mutations by confidence tier
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Partitions agent-proposed mutations into confidence tiers.
+ * Exported so it can be tested independently.
+ *
+ * Tiers:
+ *   highConfidence  (> 0.75) — emit immediately as journey.mutation
+ *   mediumConfidence (0.5-0.75) — surface as proposed mutation for orchestrator review
+ *   lowConfidence   (< 0.5)  — convert to pad prompt (ask more questions first)
+ */
+export function partitionMutationsByConfidence(mutations: SuggestedMutation[]): {
+  highConfidence: SuggestedMutation[];
+  mediumConfidence: SuggestedMutation[];
+  lowConfidence: SuggestedMutation[];
+} {
+  return {
+    highConfidence: mutations.filter(m => m.confidence > 0.75),
+    mediumConfidence: mutations.filter(m => m.confidence >= 0.5 && m.confidence <= 0.75),
+    lowConfidence: mutations.filter(m => m.confidence < 0.5),
+  };
 }

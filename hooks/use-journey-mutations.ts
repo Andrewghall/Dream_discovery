@@ -290,7 +290,15 @@ function applyUpdateInteraction(
   journey: LiveJourneyData,
   payload: UpdateInteractionPayload,
 ): LiveJourneyData {
-  const exists = journey.interactions.some((ix) => ix.id === payload.interactionId);
+  const target = journey.interactions.find((ix) => ix.id === payload.interactionId);
+
+  // Manual edit protection: never allow AI mutations to overwrite facilitator-added interactions
+  if (target?.addedBy === 'facilitator') {
+    console.warn(`[JourneyMutations] Rejected update_interaction: "${payload.interactionId}" is facilitator-owned`);
+    return journey;
+  }
+
+  const exists = !!target;
   if (!exists) {
     console.warn(`[JourneyMutations] Rejected update_interaction: "${payload.interactionId}" not found`);
     return journey;

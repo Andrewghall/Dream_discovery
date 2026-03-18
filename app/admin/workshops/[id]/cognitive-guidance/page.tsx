@@ -60,6 +60,8 @@ import type { WorkshopPhase, FacilitationQuestion, SubQuestion, WorkshopPrepRese
 import { getDimensionColors, darkenHex, lightenHex } from '@/lib/cognition/workshop-dimensions';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { useAudioCapture } from '@/hooks/use-audio-capture';
+import { useJourneyMutations } from '@/hooks/use-journey-mutations';
+import type { JourneyMutationIntent } from '@/lib/cognition/agents/journey-mutation-types';
 import type { StreamTranscript } from '@/lib/captureapi/client';
 import { MicSetupDialog } from '@/components/cognitive-guidance/mic-setup-dialog';
 import VersionHistoryPanel from '@/components/cognitive-guidance/version-history-panel';
@@ -163,9 +165,15 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [stickyPads, setStickyPads] = useState<StickyPad[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [lensCoverage, setLensCoverage] = useState<Map<Lens, LensCoverage>>(new Map());
-  const [liveJourney, setLiveJourney] = useState<LiveJourneyData>(
-    { stages: DEFAULT_JOURNEY_STAGES.REIMAGINE, actors: [], interactions: [] }
-  );
+  const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
+  const {
+    journey: liveJourney,
+    setJourney: setLiveJourney,
+    applyMutationIntent,
+  } = useJourneyMutations({
+    initialJourney: { stages: DEFAULT_JOURNEY_STAGES.REIMAGINE, actors: [], interactions: [] },
+    dialoguePhase,
+  });
   const [sessionConfidence, setSessionConfidence] = useState<SessionConfidence>({
     overallConfidence: 0,
     categorisedRate: 0,
@@ -310,7 +318,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     if (newJourney) setLiveJourney(newJourney);
   };
 
-  const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
   // Keep ref in sync for the audio capture hook (avoids stale closure)
   useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
   const [expandedNode, setExpandedNode] = useState<HemisphereNodeDatum | null>(null);
@@ -1492,6 +1499,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       'belief.stabilised',
       'contradiction.detected',
       'journey.completion',
+      'journey.mutation',
       'agentic.analyzed',
     ].join(',');
 
@@ -1719,6 +1727,14 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             }
             if (jPayload?.liveJourney) {
               setLiveJourney(prev => mergeBackendJourney(prev, jPayload.liveJourney));
+            }
+            break;
+          }
+
+          case 'journey.mutation': {
+            const intent = payload as JourneyMutationIntent;
+            if (intent?.id && intent?.type) {
+              applyMutationIntent(intent);
             }
             break;
           }

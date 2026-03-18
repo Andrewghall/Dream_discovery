@@ -22,14 +22,16 @@ import type { AgentConversationCallback, AgentReview } from './agent-types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import {
   type JourneyAssessment,
+  type SuggestedMutation,
   calculateDeterministicCompletion,
   buildJourneyContextString,
+  getInteractionMissingFields,
 } from '../journey-completion-state';
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 3;
-const LOOP_TIMEOUT_MS = 8_000;
+const MAX_ITERATIONS = 4;
+const LOOP_TIMEOUT_MS = 10_000;
 const MODEL = 'gpt-4o-mini';
 
 // ══════════════════════════════════════════════════════════════
@@ -124,6 +126,37 @@ const JOURNEY_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'suggest_mutations',
+      description: 'Propose structural mutations to the live journey map. Call AFTER assess_completion when you have enough evidence to suggest specific changes. Each mutation MUST include a confidence score (0-1). NEVER propose update_interaction for interactions where addedBy="facilitator".',
+      parameters: {
+        type: 'object',
+        properties: {
+          mutations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['add_stage', 'rename_stage', 'merge_stage', 'remove_stage', 'add_actor', 'rename_actor', 'add_interaction', 'update_interaction'],
+                },
+                payload: { type: 'object', description: 'Mutation-specific payload (e.g. { stageName } for add_stage, { interactionId, updates } for update_interaction).' },
+                confidence: { type: 'number', description: '0-1. >0.75=high (auto-emitted), 0.5–0.75=medium (proposed to orchestrator), <0.5=low (ask a question instead).' },
+                rationale: { type: 'string', description: 'Why you are proposing this mutation — cite specific participant speech or evidence.' },
+                sourceNodeIds: { type: 'array', items: { type: 'string' }, description: 'Belief or utterance node IDs that justify this mutation.' },
+                gapId: { type: 'string', description: 'Which gap ID this mutation resolves (optional).' },
+              },
+              required: ['type', 'payload', 'confidence', 'rationale'],
+            },
+          },
+        },
+        required: ['mutations'],
+      },
+    },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -142,7 +175,9 @@ function executeJourneyTool(
 
       // Build interaction summaries per stage
       const stageDetails: Record<string, Array<{
+        id: string;
         actor: string;
+        addedBy: string;
         action: string;
         hasChannel: boolean;
         hasSentiment: boolean;
@@ -151,12 +186,15 @@ function executeJourneyTool(
         hasPainPoint: boolean;
         hasMomentOfTruth: boolean;
         hasUrgency: boolean;
+        missingFields: string[];
       }>> = {};
 
       for (const interaction of liveJourney.interactions) {
         if (!stageDetails[interaction.stage]) stageDetails[interaction.stage] = [];
         stageDetails[interaction.stage].push({
+          id: interaction.id,
           actor: interaction.actor,
+          addedBy: interaction.addedBy,
           action: interaction.action,
           hasChannel: !!(interaction.context && interaction.context.length > 0),
           hasSentiment: interaction.sentiment !== 'neutral',
@@ -165,6 +203,7 @@ function executeJourneyTool(
           hasPainPoint: interaction.isPainPoint,
           hasMomentOfTruth: interaction.isMomentOfTruth,
           hasUrgency: interaction.businessIntensity > 0,
+          missingFields: getInteractionMissingFields(interaction),
         });
       }
 
@@ -260,7 +299,15 @@ RULES:
 - Prioritize gaps by impact: stages with zero interactions first, then sparse stages, then missing data fields
 - Generate suggestedPadPrompts that are specific and actionable, not vague
 - Use domain-specific actor names in all questions
-- Each gap's suggestedQuestion should be something a facilitator can naturally ask the room`;
+- Each gap's suggestedQuestion should be something a facilitator can naturally ask the room
+
+MUTATION PROPOSALS (call suggest_mutations AFTER assess_completion):
+- Only propose mutations when get_journey_state shows specific missing fields you can infer from conversation context
+- Confidence >0.75: unambiguous from evidence (e.g. "we handle this by phone" → channel=phone). Auto-emitted immediately.
+- Confidence 0.5–0.75: reasonable evidence but some uncertainty. Proposed to orchestrator for review.
+- Confidence <0.5: do NOT suggest a mutation — generate a pad prompt gap instead
+- NEVER propose update_interaction for interactions where addedBy="facilitator"
+- For structural gaps (stage mentioned in conversation but not in map), prefer add_stage`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -283,9 +330,14 @@ export async function runJourneyCompletionAgent(
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: 'Assess the current journey map completeness. Use get_journey_state to review what we have, then assess_completion with your findings and gap analysis.',
+      content: 'Assess the current journey map completeness. Use get_journey_state to review what we have, then assess_completion with your findings. If get_journey_state reveals specific missing fields you can infer from context, call suggest_mutations after assess_completion.',
     },
   ];
+
+  // Accumulate suggested mutations across all iterations
+  const collectedMutations: SuggestedMutation[] = [];
+  // Track whether assess_completion was called (mutations attach to its assessment)
+  let pendingAssessment: JourneyAssessment | null = null;
 
   try {
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
@@ -343,7 +395,7 @@ export async function runJourneyCompletionAgent(
             ? fnArgs.suggestedPadPrompts as Array<Record<string, unknown>>
             : [];
 
-          const assessment: JourneyAssessment = {
+          pendingAssessment = {
             overallCompletionPercent: typeof fnArgs.overallCompletionPercent === 'number'
               ? fnArgs.overallCompletionPercent : 0,
             stageCompletionPercents: (fnArgs.stageCompletionPercents as Record<string, number>) || {},
@@ -368,15 +420,48 @@ export async function runJourneyCompletionAgent(
             timestampMs: Date.now(),
             agent: 'journey-completion-agent',
             to: 'orchestrator',
-            message: `**Journey Assessment**: ${assessment.overallCompletionPercent}% complete. ${gaps.length} gaps identified. ${assessment.domainActorName ? `Using domain actor: "${assessment.domainActorName}".` : ''} ${gapSummary}`,
+            message: `**Journey Assessment**: ${pendingAssessment.overallCompletionPercent}% complete. ${gaps.length} gaps identified. ${pendingAssessment.domainActorName ? `Using domain actor: "${pendingAssessment.domainActorName}".` : ''} ${gapSummary}`,
             type: 'proposal',
-            metadata: {
-              sourceCount: gaps.length,
-            },
+            metadata: { sourceCount: gaps.length },
           });
 
-          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '{"status":"submitted"}' });
-          return assessment;
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '{"status":"submitted","note":"You may now call suggest_mutations if you have high-confidence structural changes to propose."}' });
+          // Don't return yet — allow suggest_mutations in next iteration
+
+        } else if (fnName === 'suggest_mutations') {
+          const rawMuts = Array.isArray(fnArgs.mutations)
+            ? fnArgs.mutations as Array<Record<string, unknown>>
+            : [];
+          for (const m of rawMuts) {
+            collectedMutations.push({
+              type: String(m.type || 'add_interaction') as SuggestedMutation['type'],
+              payload: (m.payload as Record<string, unknown>) || {},
+              confidence: typeof m.confidence === 'number' ? Math.max(0, Math.min(1, m.confidence)) : 0,
+              rationale: String(m.rationale || ''),
+              sourceNodeIds: Array.isArray(m.sourceNodeIds) ? (m.sourceNodeIds as string[]) : [],
+              gapId: m.gapId ? String(m.gapId) : undefined,
+            });
+          }
+          if (collectedMutations.length > 0) {
+            await onConversation?.({
+              timestampMs: Date.now(),
+              agent: 'journey-completion-agent',
+              to: 'orchestrator',
+              message: `Proposed ${collectedMutations.length} mutation(s): ${collectedMutations.map(m => `${m.type} (${Math.round(m.confidence * 100)}% confidence)`).join(', ')}`,
+              type: 'proposal',
+            });
+          }
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify({ status: 'acknowledged', count: rawMuts.length }) });
+
+          // If we already have an assessment, we can return now
+          if (pendingAssessment) {
+            const finalAssessment: JourneyAssessment = {
+              ...pendingAssessment,
+              suggestedMutations: collectedMutations.length > 0 ? collectedMutations : undefined,
+            };
+            return finalAssessment;
+          }
+
         } else {
           const toolResult = executeJourneyTool(fnName, fnArgs, liveJourney, existingGaps);
           messages.push({ role: 'tool', tool_call_id: toolCall.id, content: toolResult.result });
@@ -391,9 +476,25 @@ export async function runJourneyCompletionAgent(
           });
         }
       }
+
+      // If we have a pending assessment and the agent didn't call suggest_mutations, return it
+      if (pendingAssessment && !assistantMessage.tool_calls?.some(tc => tc.type === 'function' && tc.function.name === 'suggest_mutations')) {
+        return {
+          ...pendingAssessment,
+          suggestedMutations: collectedMutations.length > 0 ? collectedMutations : undefined,
+        };
+      }
     }
   } catch (error) {
     console.error('[Journey Completion Agent] Failed:', error instanceof Error ? error.message : error);
+  }
+
+  // Return whatever we have
+  if (pendingAssessment) {
+    return {
+      ...pendingAssessment,
+      suggestedMutations: collectedMutations.length > 0 ? collectedMutations : undefined,
+    };
   }
 
   return null;
