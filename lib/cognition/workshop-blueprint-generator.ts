@@ -472,7 +472,10 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
       }));
     }
 
-    if (input.researchActors && input.researchActors.length > 0) {
+    // Only apply research actors when no domain pack is set.
+    // Domain pack actorTaxonomy (set in Layer 1) is authoritative and must not
+    // be overwritten by GPT research output.
+    if (input.researchActors && input.researchActors.length > 0 && !input.domainPack) {
       bp.actorTaxonomy = input.researchActors.map((a): ActorEntry => ({
         key: a.role.toLowerCase().replace(/[\s\/]+/g, '_').replace(/[^a-z0-9_]/g, ''),
         label: a.role,
