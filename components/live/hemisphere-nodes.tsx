@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 
 export type HemispherePrimaryType =
   | 'VISIONARY'
@@ -194,6 +194,16 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   const tooltipRafRef = useRef<number | null>(null);
   const [tooltip, setTooltip] = useState<{ label: string; conf: number | null } | null>(null);
 
+  // SSR-safe "now" — starts at 0 on server so link-opacity useMemos produce a deterministic
+  // element count (all links render at full opacity when nowRef=0).  Updated once on mount.
+  // This prevents React #418 hydration mismatch: if nodes were ever pre-populated on SSR,
+  // Date.now() would differ between server and client, changing how many links pass the
+  // opacity > 0.02 threshold → different element count → structural HTML mismatch.
+  const nowRef = useRef(0);
+  useEffect(() => {
+    nowRef.current = Date.now();
+  }, []);
+
   const scheduleTooltipPositionUpdate = (attempt = 0) => {
     if (tooltipRafRef.current != null) return;
     tooltipRafRef.current = requestAnimationFrame(() => {
@@ -332,7 +342,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       opacity: number;
     }>;
 
-    const now = Date.now();
+    const now = nowRef.current;
     const recent = positioned.slice(Math.max(0, positioned.length - 96));
 
     const out: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; opacity: number }> = [];
@@ -364,7 +374,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       return [] as Array<{ id: string; x1: number; y1: number; x2: number; y2: number; opacity: number }>;
     }
 
-    const now = Date.now();
+    const now = nowRef.current;
     const recent = positioned.slice(Math.max(0, positioned.length - 140));
 
     const byTheme: Record<string, PositionedNode[]> = {};
