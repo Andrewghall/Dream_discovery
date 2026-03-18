@@ -22,6 +22,7 @@ import {
   type QuestionConstraints,
 } from '@/lib/workshop/blueprint';
 import { getDomainPack } from '@/lib/domain-packs/registry';
+import { getIndustryActors } from '@/lib/cognition/industry-actor-model';
 import type {
   JourneyStageResearch,
   IndustryDimension,
@@ -491,8 +492,18 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   }
 
   // Layer 4b: Industry-specific actor taxonomy override
+  // Priority: airline contact centre (curated) → industry actor model (19 industries) → GPT fallback (Layer 3)
   if (hasIndustryOverride) {
     bp.actorTaxonomy = CONTACT_CENTRE_AIRLINE_ACTORS.map((a) => ({ ...a }));
+  } else {
+    const industryActorSet = getIndustryActors(input.industry ?? '');
+    if (industryActorSet) {
+      bp.actorTaxonomy = industryActorSet.actors.map((a) => ({
+        key: a.name.toLowerCase().replace(/[\s/]+/g, '_').replace(/[^a-z0-9_]/g, ''),
+        label: a.name,
+        description: a.tier,
+      }));
+    }
   }
 
   // Rebuild phase lens policy from whatever lenses ended up winning
