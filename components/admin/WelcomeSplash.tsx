@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -133,6 +135,9 @@ export function WelcomeSplash({ userName, orgLogoUrl, orgPrimaryColor, orgName }
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
+          {/* Visually hidden — satisfies Radix accessibility requirement for screen readers */}
+          <DialogTitle className="sr-only">Welcome to DREAM Discovery</DialogTitle>
+          <DialogDescription className="sr-only">Platform guide — six steps from blank workshop to fully synthesised strategic output.</DialogDescription>
 
           {/* Header */}
           <div
