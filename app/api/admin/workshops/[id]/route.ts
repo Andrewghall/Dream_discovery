@@ -530,6 +530,7 @@ export async function PATCH(
     const blueprintFields = [
       'engagementType', 'domainPack', 'dreamTrack',
       'description', 'businessContext', 'industry', 'clientName',
+      'prepResearch', // research output must trigger blueprint regeneration
     ];
     const blueprintFieldChanged = blueprintFields.some((f) => f in body);
 
@@ -549,8 +550,10 @@ export async function PATCH(
         },
       });
       if (current) {
-        // Extract research data if available
-        const research = current.prepResearch as WorkshopPrepResearch | null;
+        // Use incoming prepResearch if being saved now, otherwise fall back to stored value.
+        // This ensures blueprint regeneration always uses the freshest research data.
+        const research = (updateData.prepResearch as WorkshopPrepResearch | null)
+          ?? (current.prepResearch as WorkshopPrepResearch | null);
         const existingBp = readBlueprintFromJson(current.blueprint);
 
         const merged = {
