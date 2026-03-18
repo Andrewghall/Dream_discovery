@@ -311,6 +311,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
   const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
   const guidanceLoadedRef = useRef(false);
+  // Captured from guidanceState on init load — passed to padStateMachine so
+  // the current main question is restored if the page is refreshed mid-session.
+  const initialMainQuestionRef = useRef<GuidanceStateOverrides['currentMainQuestion']>(undefined);
 
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -366,6 +369,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     journeyCompletionState,
     cogNodes: null, // rely on agent-assessed coverage initially
     onSyncGuidanceState: syncGuidanceState,
+    initialMainQuestion: initialMainQuestionRef.current,
   });
 
   // ── Agentic facilitation: event pipeline hook ───────────────
@@ -563,6 +567,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
           }
           if (data.guidanceState.dialoguePhase) {
             setDialoguePhase(data.guidanceState.dialoguePhase);
+          }
+          // Capture existing currentMainQuestion so the hook can restore it
+          if (data.guidanceState.currentMainQuestion) {
+            initialMainQuestionRef.current = data.guidanceState.currentMainQuestion;
           }
         }
         if (data?.blueprint) {
