@@ -95,8 +95,9 @@ function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
     if (byPhase[phase]) byPhase[phase].push(node);
 
     const primaryType = safeStr(node.classification?.primaryType).toUpperCase();
-    const confidence = node.agenticAnalysis?.overallConfidence ?? node.classification?.confidence ?? 0;
-    if (confidence < 0.5) lowConfidenceCount++;
+    const rawConf = node.agenticAnalysis?.overallConfidence ?? node.classification?.confidence;
+    // Only count nodes that have an explicit confidence score
+    if (rawConf !== undefined && rawConf !== null && rawConf < 0.5) lowConfidenceCount++;
 
     if (['VISIONARY', 'OPPORTUNITY'].includes(primaryType)) {
       transformationalCount++;
@@ -786,16 +787,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         })();
         const totalExpectedDomains = blueprintLensCount;
         const coveragePct = ((domainNames.length / totalExpectedDomains) * 100).toFixed(0);
-        const lowConfPct = aggregated.totalNodes > 0
+        const lowConfPct = aggregated.lowConfidenceCount > 0 && aggregated.totalNodes > 0
           ? ((aggregated.lowConfidenceCount / aggregated.totalNodes) * 100).toFixed(1)
-          : '0';
+          : null;
+        const confidenceLine = lowConfPct !== null
+          ? `• **Signal quality**: ${lowConfPct}% of scored nodes flagged low-confidence`
+          : `• **Signal quality**: All ${aggregated.totalNodes} nodes captured (no confidence scoring applied)`;
+        const qualityVerdict = lowConfPct !== null && Number(lowConfPct) > 50
+          ? '⚠️ High proportion of low-confidence nodes — synthesis will note this.'
+          : '✓ Data quality acceptable for synthesis.';
 
         emit(
           'guardian',
           'orchestrator',
-          `Data quality assessment:\n• **Coverage**: ${coveragePct}% domain coverage (${domainNames.length}/${totalExpectedDomains} domains)\n• **Confidence**: ${lowConfPct}% of data points below 50% confidence threshold\n• **Phase balance**: ${phaseBreakdown}\n• **Actor depth**: ${aggregated.topActors.length} unique actors, top contributor has ${aggregated.topActors[0]?.mentions || 0} mentions\n\n${Number(lowConfPct) > 30 ? '⚠️ High proportion of low-confidence data — synthesis quality may be affected.' : '✓ Data quality is acceptable for synthesis.'}`,
+          `Data quality assessment:\n• **Coverage**: ${coveragePct}% domain coverage (${domainNames.length}/${totalExpectedDomains} domains)\n${confidenceLine}\n• **Phase balance**: ${phaseBreakdown}\n• **Actor depth**: ${aggregated.topActors.length} unique actors, top contributor has ${aggregated.topActors[0]?.mentions || 0} mentions\n\n${qualityVerdict}`,
           'verification',
-          { verdict: Number(lowConfPct) > 50 ? 'modify' : 'approve', reasoning: `${lowConfPct}% low-confidence data points` },
+          { verdict: lowConfPct !== null && Number(lowConfPct) > 50 ? 'modify' : 'approve', reasoning: lowConfPct !== null ? `${lowConfPct}% low-confidence nodes` : 'No confidence scoring — proceeding' },
         );
 
         // ════════════════════════════════════════════════════
