@@ -25,6 +25,7 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { classifyWorkshopArchetype } from '@/lib/output/archetype-classifier';
 import type { ClassifierInput } from '@/lib/output/archetype-classifier';
+import { runV2SynthesisAgent, extractBlueprintKnowledgePack } from '@/lib/output/v2-synthesis-agent';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -1002,6 +1003,54 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         console.log(`[synthesise] ✓ Scratchpad ${existing ? 'updated' : 'created'} for workshop ${workshopId}`);
 
         // ════════════════════════════════════════════════════
+        // STEP 11: V2 Synthesis Agent — knowledge-pack-anchored output
+        // ════════════════════════════════════════════════════
+        emit(
+          'orchestrator',
+          'facilitation-agent',
+          `V1 synthesis saved. Running **V2 Synthesis Agent** — anchoring every output to actor → journey stage → lens using the workshop Knowledge Pack.`,
+          'handoff',
+        );
+
+        try {
+          const knowledgePack = extractBlueprintKnowledgePack(workshop.blueprint);
+          const v2Output = await runV2SynthesisAgent(
+            workshop.name || 'Workshop',
+            workshop.industry || null,
+            knowledgePack,
+            synthesised,
+          );
+
+          if (v2Output) {
+            await prisma.workshopScratchpad.update({
+              where: { workshopId },
+              data: { v2Output: v2Output as unknown as Prisma.InputJsonValue },
+            });
+            emit(
+              'facilitation-agent',
+              'orchestrator',
+              `**V2 Synthesis complete.** Generated structured output across 5 sections (Discover / Reimagine / Constraints / Path Forward / Outcomes), anchored to ${knowledgePack.actors.length} actors, ${knowledgePack.journeyStages.length} journey stages, ${knowledgePack.lenses.length} lenses. Artifact types chosen by agent based on data.`,
+              'info',
+            );
+          } else {
+            emit(
+              'facilitation-agent',
+              'orchestrator',
+              `V2 Synthesis returned no output — V1 synthesis is unaffected. V2 tab will show empty state.`,
+              'info',
+            );
+          }
+        } catch (v2Err) {
+          console.error('[synthesise] V2 agent error (non-fatal):', v2Err);
+          emit(
+            'facilitation-agent',
+            'orchestrator',
+            `V2 Synthesis encountered an error — V1 synthesis is unaffected. Check logs.`,
+            'info',
+          );
+        }
+
+        // ════════════════════════════════════════════════════
         // FINAL: Orchestrator summary
         // ════════════════════════════════════════════════════
         emit(
@@ -1017,6 +1066,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           workshopId,
           snapshotId: snapshot!.id,
           nodesProcessed: aggregated.totalNodes,
+          hasV2Output: true,
         });
 
       } catch (error) {

@@ -697,6 +697,20 @@ export function CustomSectionEditor({
         />
       </div>
 
+      {/* Commentary — shown for GPT-generated sections */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+          Context / Commentary
+        </p>
+        <textarea
+          className="w-full text-sm bg-muted/20 border border-border rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
+          rows={2}
+          value={section.customContent?.commentary ?? ''}
+          onChange={(e) => onUpdate({ customContent: { ...section.customContent, commentary: e.target.value } })}
+          placeholder="Add context or edit this section…"
+        />
+      </div>
+
       {/* Image upload */}
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">

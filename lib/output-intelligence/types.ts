@@ -253,6 +253,7 @@ export interface ReportSectionConfig {
     text?: string;
     imageUrl?: string;
     imageAlt?: string;
+    commentary?: string;  // editable explanation shown below content
   };
 }
 

@@ -15,7 +15,10 @@
  * if synthesis hasn't been run yet.
  */
 
-import { use, useEffect, useState, useCallback } from 'react';
+import { use, useEffect, useState, useCallback, useRef } from 'react';
+import { V2OutputView } from '@/components/v2/V2OutputView';
+import type { V2ReportBlock } from '@/components/v2/V2InquiryBar';
+import type { V2Output } from '@/lib/output/v2-synthesis-agent';
 import Link from 'next/link';
 import {
   Target,
@@ -67,6 +70,7 @@ type ScratchpadData = {
   potentialSolution?: any;
   summaryContent?: any;
   customerJourney?: any;
+  v2Output?: V2Output | null;
 };
 
 type TabKey = 'exec-summary' | 'hemisphere' | 'insights' | 'reimagine' | 'transformation' | 'define-approach';
@@ -1014,6 +1018,16 @@ function DefineApproachSection({
 export default function OutputDashboardPage({ params }: PageProps) {
   const { id: workshopId } = use(params);
   const [activeTab, setActiveTab] = useState<TabKey>('exec-summary');
+  const [outputMode, setOutputMode] = useState<'v1' | 'v2'>('v1');
+
+  // Pending GPT blocks queued from V2 inquiry bars to be added to the report (scratchpad page)
+  // We store them in sessionStorage so the scratchpad page can pick them up.
+  const pendingBlocksRef = useRef<V2ReportBlock[]>([]);
+  const handleAddToReport = useCallback((block: V2ReportBlock) => {
+    pendingBlocksRef.current.push(block);
+    const existing = JSON.parse(sessionStorage.getItem('v2_pending_report_blocks') || '[]') as V2ReportBlock[];
+    sessionStorage.setItem('v2_pending_report_blocks', JSON.stringify([...existing, block]));
+  }, []);
 
   // Workshop metadata
   const [workshopName, setWorkshopName] = useState('');
@@ -1063,6 +1077,7 @@ export default function OutputDashboardPage({ params }: PageProps) {
           potentialSolution: sp.potentialSolution || null,
           summaryContent: sp.summaryContent || null,
           customerJourney: sp.customerJourney || null,
+          v2Output: sp.v2Output || null,
         });
         if (sp.customerJourney?.journeyData) {
           setJourneyData(sp.customerJourney.journeyData);
@@ -1106,19 +1121,37 @@ export default function OutputDashboardPage({ params }: PageProps) {
             <h1 className="text-lg font-semibold text-slate-900">Output</h1>
             <p className="text-xs text-slate-500 mt-0.5">Synthesised workshop output</p>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => fetchScratchpad(true)}
-            disabled={isRefreshing}
-            className="gap-1.5 text-xs text-slate-500 border-slate-200"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-3">
+            {/* V1 / V2 toggle */}
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-semibold">
+              <button
+                onClick={() => setOutputMode('v1')}
+                className={`px-3 py-1.5 transition-colors ${outputMode === 'v1' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+              >
+                V1
+              </button>
+              <button
+                onClick={() => setOutputMode('v2')}
+                className={`px-3 py-1.5 transition-colors ${outputMode === 'v2' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+              >
+                V2
+              </button>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => fetchScratchpad(true)}
+              disabled={isRefreshing}
+              className="gap-1.5 text-xs text-slate-500 border-slate-200"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
-        {/* ── Top-nav tab bar ───────────────────────────────────────────── */}
+        {/* ── Top-nav tab bar (V1 only) ────────────────────────────────── */}
+        {outputMode === 'v1' && (
         <div className="flex gap-0 border-b border-slate-200 -mb-px overflow-x-auto">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -1139,12 +1172,23 @@ export default function OutputDashboardPage({ params }: PageProps) {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* ── Main content ──────────────────────────────────────────────────────── */}
       <main className="px-6 py-8">
 
-        {activeTab === 'exec-summary' && (
+        {/* ── V2 Mode ───────────────────────────────────────────────────────── */}
+        {outputMode === 'v2' && (
+          <V2OutputView
+            v2Output={scratchpad.v2Output || null}
+            workshopId={workshopId}
+            onAddToReport={handleAddToReport}
+          />
+        )}
+
+        {/* ── V1 Mode ───────────────────────────────────────────────────────── */}
+        {outputMode === 'v1' && activeTab === 'exec-summary' && (
           <ExecSummarySection
             workshopName={workshopName}
             outcomes={blueprintOutcomes}
@@ -1153,28 +1197,28 @@ export default function OutputDashboardPage({ params }: PageProps) {
           />
         )}
 
-        {activeTab === 'hemisphere' && (
+        {outputMode === 'v1' && activeTab === 'hemisphere' && (
           <HemispheresSection
             workshopId={workshopId}
             snapshots={snapshots}
           />
         )}
 
-        {activeTab === 'insights' && (
+        {outputMode === 'v1' && activeTab === 'insights' && (
           <InsightsSection discoveryOutput={scratchpad.discoveryOutput} />
         )}
 
-        {activeTab === 'reimagine' && (
+        {outputMode === 'v1' && activeTab === 'reimagine' && (
           <ReimagineSection reimagineContent={scratchpad.reimagineContent} />
         )}
 
-        {activeTab === 'transformation' && (
+        {outputMode === 'v1' && activeTab === 'transformation' && (
           <TransformationSection
             constraintsContent={scratchpad.constraintsContent}
           />
         )}
 
-        {activeTab === 'define-approach' && (
+        {outputMode === 'v1' && activeTab === 'define-approach' && (
           <DefineApproachSection
             summaryContent={scratchpad.summaryContent}
             potentialSolution={scratchpad.potentialSolution}

@@ -9,7 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, PlusCircle } from 'lucide-react';
 
 // ── Output types ──────────────────────────────────────────────────────────────
 
@@ -160,17 +160,46 @@ function BulletsCard({ data }: { data: BulletsOutput }) {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function ReportPromptOutput({ output }: { output: PromptOutput }) {
-  switch (output.type) {
-    case 'text':
-      return <TextCard data={output} />;
-    case 'bar_chart':
-      return <BarChartCard data={output} />;
-    case 'table':
-      return <TableCard data={output} />;
-    case 'bullets':
-      return <BulletsCard data={output} />;
-    default:
-      return null;
-  }
+interface ReportPromptOutputProps {
+  output: PromptOutput;
+  onAddToReport?: (title: string, content: string) => void;
+}
+
+export function ReportPromptOutput({ output, onAddToReport }: ReportPromptOutputProps) {
+  // Build plain-text version of the output for "Add to report"
+  const plainText = (() => {
+    if (output.type === 'text') return output.content;
+    if (output.type === 'bullets') return output.items.join('\n');
+    if (output.type === 'table') return output.rows.map(r => r.join('\t')).join('\n');
+    return output.title;
+  })();
+
+  const card = (() => {
+    switch (output.type) {
+      case 'text':       return <TextCard data={output} />;
+      case 'bar_chart':  return <BarChartCard data={output} />;
+      case 'table':      return <TableCard data={output} />;
+      case 'bullets':    return <BulletsCard data={output} />;
+      default:           return null;
+    }
+  })();
+
+  if (!card) return null;
+
+  return (
+    <div className="relative group">
+      {card}
+      {onAddToReport && (
+        <div className="mt-2 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onAddToReport(output.title, plainText)}
+            className="flex items-center gap-1.5 text-xs font-medium text-indigo-700 hover:text-indigo-900 bg-white border border-indigo-200 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md transition-all"
+          >
+            <PlusCircle className="h-3.5 w-3.5" />
+            Add to report
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }

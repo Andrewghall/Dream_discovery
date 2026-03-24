@@ -120,6 +120,23 @@ export default function DownloadReportPage({ params }: PageProps) {
 
   useEffect(() => {
     void fetchData();
+    // Pick up any V2 GPT blocks queued from the output page's "Add to report" buttons
+    try {
+      const pending = JSON.parse(sessionStorage.getItem('v2_pending_report_blocks') || '[]') as Array<{
+        title: string;
+        content: string;
+        id: string;
+      }>;
+      if (pending.length > 0) {
+        sessionStorage.removeItem('v2_pending_report_blocks');
+        // We delay slightly so layout is initialised before we append
+        setTimeout(() => {
+          for (const block of pending) {
+            addGptSection(block.title, block.content);
+          }
+        }, 800);
+      }
+    } catch { /* non-fatal */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workshopId]);
 
@@ -301,6 +318,28 @@ export default function DownloadReportPage({ params }: PageProps) {
       const next = { ...prev, sections: [...prev.sections, newSection] };
       updateLayout(next);
       return next;
+    });
+  }, [updateLayout]);
+
+  // Add a GPT-generated block directly to the report layout with editable commentary
+  const addGptSection = useCallback((title: string, content: string) => {
+    const newSection: ReportSectionConfig = {
+      id: `gpt_${nanoid(8)}`,
+      type: 'custom',
+      title,
+      enabled: true,
+      collapsed: false,
+      excludedItems: [],
+      customContent: { text: content, imageUrl: '', imageAlt: '', commentary: '' },
+    };
+    setLayout(prev => {
+      const next = { ...prev, sections: [...prev.sections, newSection] };
+      updateLayout(next);
+      return next;
+    });
+    // Scroll to bottom so user sees the new block appear
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     });
   }, [updateLayout]);
 
@@ -657,7 +696,7 @@ export default function DownloadReportPage({ params }: PageProps) {
                   sublabel="Generated on demand — not saved to report"
                 />
                 {promptOutputs.map((output, i) => (
-                  <ReportPromptOutput key={i} output={output} />
+                  <ReportPromptOutput key={i} output={output} onAddToReport={addGptSection} />
                 ))}
               </div>
             )}

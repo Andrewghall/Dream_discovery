@@ -532,6 +532,9 @@ model WorkshopScratchpad {
   clientLogoUrl      String?  // URL to uploaded client logo
   solutionImageUrl   String?  // URL to uploaded solution overview image
 
+  // V2 Output (knowledge-pack-anchored structured output)
+  v2Output           Json?    @map("v2_output")  // V2Output: discover/reimagine/constraints/pathForward/outcomes/futureView
+
   // Output Assessment (archetype classification from deterministic classifier)
   outputAssessment   Json?    // { archetype, secondaryArchetypes, confidence, rationale, requiredSections }
 
