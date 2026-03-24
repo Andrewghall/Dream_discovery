@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Brain, Sparkles, RefreshCw, Loader2, CheckCircle2, AlertCircle, Clock,
   Bot, Zap, TrendingUp, AlertTriangle, Lightbulb, Target, Map, ChevronRight,
@@ -18,6 +18,9 @@ import type {
   EngineKey,
 } from '@/lib/output-intelligence/types';
 import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
+import { V2OutputView } from '@/components/v2/V2OutputView';
+import type { V2Output } from '@/lib/output/v2-synthesis-agent';
+import type { V2ReportBlock } from '@/components/v2/V2InquiryBar';
 
 // ── Signal config — DREAM cognitive function mapping ──────────────────────────
 
@@ -123,11 +126,14 @@ const ENGINE_SECTION_MAP: Record<EngineKey, { sectionId: string; title: string }
 interface IntelligenceHubProps {
   workshopId: string;
   initialStored: StoredOutputIntelligence | null;
+  v2Output?: V2Output | null;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubProps) {
+export function IntelligenceHub({ workshopId, initialStored, v2Output }: IntelligenceHubProps) {
+  const [outputMode, setOutputMode] = useState<'v1' | 'v2'>('v1');
+  const pendingBlocksRef = useRef<V2ReportBlock[]>([]);
   const [activeSignal, setActiveSignal] = useState<EngineKey>('discoveryValidation');
   const [stored, setStored] = useState<StoredOutputIntelligence | null>(initialStored);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -144,6 +150,14 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
   );
 
   const intelligence: WorkshopOutputIntelligence | null = stored?.intelligence ?? null;
+
+  const handleAddToReport = useCallback((block: V2ReportBlock) => {
+    pendingBlocksRef.current.push(block);
+    try {
+      const existing = JSON.parse(sessionStorage.getItem('v2_pending_report_blocks') || '[]');
+      sessionStorage.setItem('v2_pending_report_blocks', JSON.stringify([...existing, block]));
+    } catch { /* ignore */ }
+  }, []);
 
   const handleGenerate = useCallback(async () => {
     setIsGenerating(true);
@@ -278,41 +292,71 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
         </div>
 
         <div className="flex items-center gap-3">
-          {generatedAt && (
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {generatedAt}
-            </span>
+          {/* V1 / V2 toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-semibold">
+            <button
+              onClick={() => setOutputMode('v1')}
+              className={`px-3 py-1.5 transition-colors ${outputMode === 'v1' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              V1
+            </button>
+            <button
+              onClick={() => setOutputMode('v2')}
+              className={`px-3 py-1.5 transition-colors ${outputMode === 'v2' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              V2
+            </button>
+          </div>
+          {outputMode === 'v1' && (
+            <>
+              {generatedAt && (
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {generatedAt}
+                </span>
+              )}
+              {statusMessage && !isGenerating && (
+                <span className="text-xs text-slate-500">{statusMessage}</span>
+              )}
+              {isGenerating && statusMessage && (
+                <span className="text-xs text-blue-600 flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {statusMessage}
+                </span>
+              )}
+              <Button
+                onClick={() => void handleGenerate()}
+                disabled={isGenerating}
+                size="sm"
+                className="gap-2"
+              >
+                {isGenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : hasIntelligence ? (
+                  <RefreshCw className="h-4 w-4" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {isGenerating ? 'Scanning…' : hasIntelligence ? 'Regenerate' : 'Generate Brain Scan'}
+              </Button>
+            </>
           )}
-          {statusMessage && !isGenerating && (
-            <span className="text-xs text-slate-500">{statusMessage}</span>
-          )}
-          {isGenerating && statusMessage && (
-            <span className="text-xs text-blue-600 flex items-center gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {statusMessage}
-            </span>
-          )}
-          <Button
-            onClick={() => void handleGenerate()}
-            disabled={isGenerating}
-            size="sm"
-            className="gap-2"
-          >
-            {isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : hasIntelligence ? (
-              <RefreshCw className="h-4 w-4" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            {isGenerating ? 'Scanning…' : hasIntelligence ? 'Regenerate' : 'Generate Brain Scan'}
-          </Button>
         </div>
       </div>
 
+      {/* ── V2 Output View ───────────────────────────────────────────────────── */}
+      {outputMode === 'v2' && (
+        <div className="flex-1 overflow-y-auto">
+          <V2OutputView
+            v2Output={v2Output ?? null}
+            workshopId={workshopId}
+            onAddToReport={handleAddToReport}
+          />
+        </div>
+      )}
+
       {/* ── Engine progress strip ─────────────────────────────────────────── */}
-      {isGenerating && (
+      {outputMode === 'v1' && isGenerating && (
         <div className="shrink-0 px-6 py-3 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-5 flex-wrap">
             {SIGNALS.map((signal) => {
@@ -346,8 +390,8 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
         </div>
       )}
 
-      {/* ── Main scrollable content ──────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
+      {/* ── Main scrollable content (V1) ─────────────────────────────────────── */}
+      {outputMode === 'v1' && <div className="flex-1 overflow-y-auto">
         <div className="p-6 space-y-6">
 
           {/* ── Empty state ─────────────────────────────────────────────────── */}
@@ -688,7 +732,7 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
           )}
 
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
