@@ -116,14 +116,14 @@ describe('classifyNodeLayer', () => {
     expect(layer).toBe('CONSTRAINT');
   });
 
-  it('classifies ACTUAL_JOB as REIMAGINATION (vision-type)', () => {
+  it('classifies ACTUAL_JOB as CONSTRAINT (current-state evidence, not a vision)', () => {
     const signals = Array.from({ length: 4 }, () =>
       sig({ primaryType: 'ACTUAL_JOB', phase: 'DISCOVERY', sentiment: 'positive', themeLabels: ['ideal service'] }),
     );
     const clusters = buildEvidenceClusters(signals);
     const cluster = clusters.find((c) => c.clusterKey === 'ideal_service')!;
     const { layer } = classifyNodeLayer(cluster);
-    expect(layer).toBe('REIMAGINATION');
+    expect(layer).toBe('CONSTRAINT');
   });
 });
 

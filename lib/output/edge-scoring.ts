@@ -33,6 +33,12 @@ export function assignEdgeTier(score: number): EdgeTier {
   return 'WEAK';
 }
 
+const EDGE_TIER_ORDER: Record<EdgeTier, number> = { WEAK: 0, EMERGING: 1, REINFORCED: 2, SYSTEMIC: 3 };
+
+function capTier(tier: EdgeTier, maxTier: EdgeTier): EdgeTier {
+  return EDGE_TIER_ORDER[tier] <= EDGE_TIER_ORDER[maxTier] ? tier : maxTier;
+}
+
 // ── Edge scoring ──────────────────────────────────────────────────────────────
 
 export interface EdgeScoreInput {
@@ -40,6 +46,20 @@ export interface EdgeScoreInput {
   toSignalIds: string[];
   sharedParticipantIds: string[];
   signalIndex: Map<string, RawSignal>;
+  /**
+   * Jaccard similarity between the two cluster token bags (0–1).
+   * Used to compute semanticOverlapScore and apply tier caps.
+   * Defaults to 0 when omitted (e.g. responds_to which uses participant provenance only).
+   */
+  jaccardSim?: number;
+  /**
+   * When true, a hard tier cap is applied based on jaccardSim:
+   *   < 0.10  → max EMERGING
+   *   < 0.15  → max REINFORCED
+   *   ≥ 0.15  → uncapped
+   * Set false for responds_to (cross-phase participant evidence is sufficient).
+   */
+  requiresSemanticOverlap?: boolean;
 }
 
 export interface EdgeScoreResult {
@@ -67,7 +87,10 @@ const NEGATIVE_POLE = new Set(['concerned', 'critical']);
  * and toSignalIds. Missing signal IDs are silently skipped.
  */
 export function scoreEdge(input: EdgeScoreInput): { score: number; tier: EdgeTier } {
-  const { fromSignalIds, toSignalIds, sharedParticipantIds, signalIndex } = input;
+  const {
+    fromSignalIds, toSignalIds, sharedParticipantIds, signalIndex,
+    jaccardSim = 0, requiresSemanticOverlap = false,
+  } = input;
 
   const allSigIds = [...new Set([...fromSignalIds, ...toSignalIds])];
   const signals = allSigIds
@@ -82,7 +105,7 @@ export function scoreEdge(input: EdgeScoreInput): { score: number; tier: EdgeTie
   // 1. Shared participants (cap at 5 for full score)
   const sharedParticipantScore = Math.min(sharedParticipantIds.length / 5, 1.0);
 
-  // 2. Signal volume (cap at 20 for full score)
+  // 2. Signal volume (cap at 20 for full score; weight reduced to 15 — semantic overlap now carries 10)
   const signalSupportScore = Math.min(totalSignals / 20, 1.0);
 
   // 3. Role diversity (distinct roles across supporting signals / 5, capped)
@@ -103,7 +126,10 @@ export function scoreEdge(input: EdgeScoreInput): { score: number; tier: EdgeTie
   const sources = new Set(signals.map((s) => s.sourceStream));
   const sourceSpreadScore = Math.min(sources.size / 2, 1.0);
 
-  // 7. Contradiction penalty: from-signals that oppose the edge direction
+  // 7. Semantic overlap (jaccardSim, capped at 0.20 for full score)
+  const semanticOverlapScore = Math.min(jaccardSim / 0.20, 1.0);
+
+  // 8. Contradiction penalty: from-signals that oppose the edge direction
   // (i.e., from-signals with NEGATIVE sentiment in an enabler→reimagination edge,
   //  or from-signals with POSITIVE sentiment in a constraint→reimagination edge)
   // We use a simpler proxy: fraction of from-signals with internally contradicting sentiment
@@ -123,17 +149,31 @@ export function scoreEdge(input: EdgeScoreInput): { score: number; tier: EdgeTie
   }
 
   // ── Composite (0–100) ──────────────────────────────────────────────────
+  // Weights sum to 100 net positive: 30+15+15+15+10+5+10 = 100
   const raw =
     sharedParticipantScore * 30 +
-    signalSupportScore     * 25 +
+    signalSupportScore     * 15 +
     roleDiversityScore     * 15 +
     lensSpreadScore        * 15 +
     phaseSpreadScore       * 10 +
-    sourceSpreadScore      *  5 -
+    sourceSpreadScore      *  5 +
+    semanticOverlapScore   * 10 -
     contradictionPenalty   * 20;
 
   const score = Math.max(0, Math.min(100, Math.round(raw)));
-  const tier  = assignEdgeTier(score);
+  let tier = assignEdgeTier(score);
+
+  // ── Hard tier cap based on semantic overlap ─────────────────────────────
+  // Applies to all edge types that require Jaccard evidence (all except responds_to).
+  // Prevents low-overlap edges from being inflated to REINFORCED/SYSTEMIC by
+  // participant count or signal volume alone.
+  if (requiresSemanticOverlap) {
+    if (jaccardSim < 0.10) {
+      tier = capTier(tier, 'EMERGING');
+    } else if (jaccardSim < 0.15) {
+      tier = capTier(tier, 'REINFORCED');
+    }
+  }
 
   return { score, tier };
 }
@@ -148,6 +188,8 @@ export function scoreAllEdges(
     fromSignalIds: string[];
     toSignalIds: string[];
     sharedParticipantIds: string[];
+    jaccardSim?: number;
+    requiresSemanticOverlap?: boolean;
   }>,
   signalIndex: Map<string, RawSignal>,
 ): Map<string, { score: number; tier: EdgeTier }> {
@@ -160,6 +202,8 @@ export function scoreAllEdges(
         toSignalIds:          edge.toSignalIds,
         sharedParticipantIds: edge.sharedParticipantIds,
         signalIndex,
+        jaccardSim:              edge.jaccardSim,
+        requiresSemanticOverlap: edge.requiresSemanticOverlap,
       }),
     );
   }

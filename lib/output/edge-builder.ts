@@ -12,11 +12,13 @@
  *   responds_to     — shared confirmed participant, cross-phase (strongest provenance)
  *   compensates_for — Jaccard ≥ 0.08, ENABLER positive → CONSTRAINT negative
  *   blocks          — Jaccard ≥ 0.15 AND target has contradicting signals
- *   drives          — Jaccard ≥ 0.10 OR shared participant, CONSTRAINT → ENABLER
- *   enables         — Jaccard ≥ 0.08 OR shared participant, ENABLER → REIMAGINATION
- *   constrains      — Jaccard ≥ 0.08 OR shared participant, CONSTRAINT → REIMAGINATION
- *   depends_on      — Jaccard ≥ 0.08 OR shared participant, REIMAGINATION → ENABLER
- *   contradicts     — shared participant, opposing sentiment, same layer
+ *   drives          — Jaccard ≥ 0.10 (Jaccard required), CONSTRAINT → ENABLER
+ *   enables         — Jaccard ≥ 0.10 (raised from 0.08), ENABLER → REIMAGINATION
+ *   constrains      — Jaccard ≥ 0.08 (Jaccard required), CONSTRAINT → REIMAGINATION
+ *   depends_on      — Jaccard ≥ 0.12 (raised from 0.08), REIMAGINATION → ENABLER
+ *   contradicts     — shared participant + Jaccard ≥ 0.10 + opposing sentiment, same layer
+ *
+ * Post-hoc suppression: depends_on(V,E) removed if enables(E,V) already exists (same pair).
  *
  * Note: multiple edge types between the same (A, B) pair are allowed when
  * they represent different semantic claims. Only duplicate (from, to, type)
@@ -82,14 +84,14 @@ function clusterTokens(cluster: EvidenceCluster): Set<string> {
 
 const CONSTRAINT_TYPES = new Set([
   'CONSTRAINT', 'CHALLENGE', 'FRICTION', 'RISK', 'QUESTION',
+  // ACTUAL_JOB is discovery-phase "what I do now" — a current-state constraint, not a vision
+  'ACTUAL_JOB',
 ]);
 const ENABLER_TYPES = new Set([
   'ENABLER', 'ACTION', 'INSIGHT', 'WHAT_WORKS',
 ]);
 const VISION_TYPES = new Set([
   'VISION', 'BELIEF', 'VISIONARY', 'OPPORTUNITY',
-  // ACTUAL_JOB is discovery-phase "what I do now" — current-state constraint
-  'ACTUAL_JOB',
 ]);
 
 // Phase → layer vote mapping
@@ -399,7 +401,7 @@ function tryBlocks(
 
 /**
  * Rule: drives  (CONSTRAINT → ENABLER)
- * Fires when Jaccard ≥ 0.10 OR there is a shared confirmed participant.
+ * Fires when Jaccard ≥ 0.10 (keyword overlap required — participant alone is insufficient).
  * Indicates the constraint is what motivated the enabler to be developed.
  * Suppressed in favour of 'blocks' when blocks is already present for same pair.
  */
@@ -413,10 +415,10 @@ function tryDrives(
   signalIndex: Map<string, RawSignal>,
 ): RelationshipEdge | null {
   const sim = jaccard(constraintTokens, enablerTokens);
+  if (sim < 0.10) return null;
   const sharedIds = [...constraintCluster.distinctParticipantIds].filter((id) =>
     enablerCluster.distinctParticipantIds.has(id),
   );
-  if (sim < 0.10 && sharedIds.length === 0) return null;
 
   const rules: EdgeCreationRule[] = [];
   if (sim >= 0.10) rules.push('DRIVES_JACCARD');
@@ -446,7 +448,7 @@ function tryDrives(
 
 /**
  * Rule: enables  (ENABLER → REIMAGINATION)
- * Fires when Jaccard ≥ 0.08 OR shared confirmed participant.
+ * Fires when Jaccard ≥ 0.10 (keyword overlap required — raised from 0.08 to reduce noise).
  */
 function tryEnables(
   enablerNode: RelationshipNode,
@@ -458,13 +460,13 @@ function tryEnables(
   signalIndex: Map<string, RawSignal>,
 ): RelationshipEdge | null {
   const sim = jaccard(enablerTokens, visionTokens);
+  if (sim < 0.10) return null;
   const sharedIds = [...enablerCluster.distinctParticipantIds].filter((id) =>
     visionCluster.distinctParticipantIds.has(id),
   );
-  if (sim < 0.08 && sharedIds.length === 0) return null;
 
   const rules: EdgeCreationRule[] = [];
-  if (sim >= 0.08) rules.push('ENABLES_JACCARD');
+  if (sim >= 0.10) rules.push('ENABLES_JACCARD');
   if (sharedIds.length > 0) rules.push('ENABLES_SHARED_PARTICIPANT');
 
   const overlapTokens = new Set([...enablerTokens].filter((t) => visionTokens.has(t)));
@@ -487,7 +489,7 @@ function tryEnables(
 
 /**
  * Rule: constrains  (CONSTRAINT → REIMAGINATION)
- * Fires when Jaccard ≥ 0.08 OR shared confirmed participant.
+ * Fires when Jaccard ≥ 0.08 (keyword overlap required — participant alone is insufficient).
  */
 function tryConstrains(
   constraintNode: RelationshipNode,
@@ -499,10 +501,10 @@ function tryConstrains(
   signalIndex: Map<string, RawSignal>,
 ): RelationshipEdge | null {
   const sim = jaccard(constraintTokens, visionTokens);
+  if (sim < 0.08) return null;
   const sharedIds = [...constraintCluster.distinctParticipantIds].filter((id) =>
     visionCluster.distinctParticipantIds.has(id),
   );
-  if (sim < 0.08 && sharedIds.length === 0) return null;
 
   const rules: EdgeCreationRule[] = [];
   if (sim >= 0.08) rules.push('CONSTRAINS_JACCARD');
@@ -523,8 +525,8 @@ function tryConstrains(
 
 /**
  * Rule: depends_on  (REIMAGINATION → ENABLER)
- * Fires when Jaccard ≥ 0.08 OR shared confirmed participant.
- * A vision node depends on the enabler to become real.
+ * Fires when Jaccard ≥ 0.12 (raised threshold — reduces enables/depends_on co-emission).
+ * Post-hoc suppressed when enables(E,V) already exists for the same E/V pair.
  */
 function tryDependsOn(
   visionNode: RelationshipNode,
@@ -536,13 +538,13 @@ function tryDependsOn(
   signalIndex: Map<string, RawSignal>,
 ): RelationshipEdge | null {
   const sim = jaccard(visionTokens, enablerTokens);
+  if (sim < 0.12) return null;
   const sharedIds = [...visionCluster.distinctParticipantIds].filter((id) =>
     enablerCluster.distinctParticipantIds.has(id),
   );
-  if (sim < 0.08 && sharedIds.length === 0) return null;
 
   const rules: EdgeCreationRule[] = [];
-  if (sim >= 0.08) rules.push('DEPENDS_ON_JACCARD');
+  if (sim >= 0.12) rules.push('DEPENDS_ON_JACCARD');
   if (sharedIds.length > 0) rules.push('DEPENDS_ON_SHARED_PARTICIPANT');
 
   return buildEdgeRecord({
@@ -560,13 +562,17 @@ function tryDependsOn(
 
 /**
  * Rule: contradicts  (any → any, same layer)
- * Fires when clusters share a confirmed participant AND have opposing sentiment.
+ * Fires when clusters share a confirmed participant, have opposing sentiment,
+ * AND have topical overlap (Jaccard ≥ 0.10 — prevents unrelated clusters from
+ * being flagged as contradictions just because a participant spoke to both).
  */
 function tryContradicts(
   nodeA: RelationshipNode,
   nodeB: RelationshipNode,
   clusterA: EvidenceCluster,
   clusterB: EvidenceCluster,
+  tokensA: Set<string>,
+  tokensB: Set<string>,
   signalIndex: Map<string, RawSignal>,
 ): RelationshipEdge | null {
   if (nodeA.layer !== nodeB.layer) return null;
@@ -575,6 +581,10 @@ function tryContradicts(
     clusterB.distinctParticipantIds.has(id),
   );
   if (sharedIds.length === 0) return null;
+
+  // Require topical overlap — prevents unrelated-topic clusters from being flagged
+  const sim = jaccard(tokensA, tokensB);
+  if (sim < 0.10) return null;
 
   // Require opposing dominant sentiments
   const aDom = dominantSentiment(clusterA.signals);
@@ -598,12 +608,16 @@ function tryContradicts(
     toSigs:     toCluster.signals.filter(isNegative).map((s) => s.id),
     sharedPtcp: sharedIds,
     rules:      ['CONTRADICTS_SHARED_PARTICIPANT_SENTIMENT'],
-    jaccardSim: 0,
+    jaccardSim: sim,
     signalIndex,
   });
 }
 
 // ── Edge record factory ───────────────────────────────────────────────────────
+
+// responds_to uses cross-phase participant provenance — no Jaccard requirement.
+// All other types require Jaccard evidence, so the semantic overlap tier cap applies.
+const NO_SEMANTIC_OVERLAP_REQUIRED = new Set<RelationshipType>(['responds_to']);
 
 function buildEdgeRecord(params: {
   fromNode:   RelationshipNode;
@@ -619,11 +633,14 @@ function buildEdgeRecord(params: {
   const { fromNode, toNode, type, fromSigs, toSigs, sharedPtcp, rules, jaccardSim, signalIndex } = params;
 
   const edgeId = makeEdgeId(fromNode.nodeId, type, toNode.nodeId);
+  const requiresSemanticOverlap = !NO_SEMANTIC_OVERLAP_REQUIRED.has(type);
   const { score, tier } = scoreEdge({
-    fromSignalIds:       fromSigs,
-    toSignalIds:         toSigs,
-    sharedParticipantIds: sharedPtcp,
+    fromSignalIds:           fromSigs,
+    toSignalIds:             toSigs,
+    sharedParticipantIds:    sharedPtcp,
     signalIndex,
+    jaccardSim,
+    requiresSemanticOverlap,
   });
 
   const rationale = buildRationale(type, fromNode, toNode, sharedPtcp.length, jaccardSim);
@@ -786,7 +803,19 @@ export function buildRelationshipGraph(
       if (nA.layer !== nB.layer) continue;
       const cA = clusterByKey.get(nA.nodeId)!;
       const cB = clusterByKey.get(nB.nodeId)!;
-      addEdge(tryContradicts(nA, nB, cA, cB, signalIndex));
+      const tA = tokenCache.get(nA.nodeId)!;
+      const tB = tokenCache.get(nB.nodeId)!;
+      addEdge(tryContradicts(nA, nB, cA, cB, tA, tB, signalIndex));
+    }
+  }
+
+  // ── Post-hoc: suppress depends_on(V,E) when enables(E,V) already exists ──
+  // enables and depends_on encode the same relationship from opposite directions.
+  // If both fire, keep the canonical enables direction and drop depends_on.
+  for (const [edgeId, edge] of edgeMap) {
+    if (edge.relationshipType === 'depends_on') {
+      const enablesId = makeEdgeId(edge.toNodeId, 'enables', edge.fromNodeId);
+      if (edgeMap.has(enablesId)) edgeMap.delete(edgeId);
     }
   }
 
