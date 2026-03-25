@@ -327,7 +327,7 @@ function pickBestLabel(
 function normaliseLabel(label: string): string {
   return label
     .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '_')
+    .replace(/[^a-z0-9_]/g, '_')   // hyphens → underscores; single canonical separator
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 60);   // cap label length
@@ -355,47 +355,43 @@ export function buildMergeMap(
     tokenSets.set(label, new Set(label.split(/[_-]/)));
   }
 
-  // Union-Find
-  const parent = new Map<string, string>(labels.map(l => [l, l]));
-  const findRoot = (x: string): string => {
-    const p = parent.get(x);
-    if (!p || p === x) return x;
-    const root = findRoot(p);
-    parent.set(x, root);
-    return root;
-  };
-  const unite = (x: string, y: string): void => {
-    const rx = findRoot(x), ry = findRoot(y);
-    if (rx !== ry) parent.set(rx, ry);
-  };
-
-  // Merge labels with Jaccard ≥ THRESHOLD
+  // Complete-linkage clustering — two groups merge only when EVERY cross-group pair
+  // has Jaccard ≥ THRESHOLD.  This prevents transitive over-merging where A and C
+  // (disjoint topics) are incorrectly joined because both overlap an intermediate B.
+  // e.g. "approval" + "system" must NOT merge via "approval_system" as bridge.
+  // n ≤ 60 always, so the O(n³) worst-case cost is negligible.
   const THRESHOLD = 0.40;
-  for (let i = 0; i < labels.length; i++) {
-    for (let j = i + 1; j < labels.length; j++) {
-      const a = tokenSets.get(labels[i])!;
-      const b = tokenSets.get(labels[j])!;
-      const intersection = [...a].filter(t => b.has(t)).length;
-      const union = new Set([...a, ...b]).size;
-      if (union > 0 && intersection / union >= THRESHOLD) {
-        unite(labels[i], labels[j]);
+  const groups: string[][] = labels.map(l => [l]);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer: for (let i = 0; i < groups.length; i++) {
+      for (let j = i + 1; j < groups.length; j++) {
+        // All cross-group pairs must meet the threshold (complete-linkage criterion)
+        const canMerge = groups[i].every(a =>
+          groups[j].every(b => {
+            const ta = tokenSets.get(a)!;
+            const tb = tokenSets.get(b)!;
+            const inter = [...ta].filter(t => tb.has(t)).length;
+            const union = new Set([...ta, ...tb]).size;
+            return union > 0 && inter / union >= THRESHOLD;
+          }),
+        );
+        if (canMerge) {
+          groups[i] = [...groups[i], ...groups[j]];
+          groups.splice(j, 1);
+          changed = true;
+          break outer;   // restart scan after each merge
+        }
       }
     }
   }
 
-  // Collect groups
-  const groups = new Map<string, string[]>();
-  for (const label of labels) {
-    const root = findRoot(label);
-    const g = groups.get(root) ?? [];
-    g.push(label);
-    groups.set(root, g);
-  }
-
   // Pick canonical: prefer highest frequency, then longest (most specific)
   const mergeMap = new Map<string, string>();
-  for (const group of groups.values()) {
-    const canonical = group.sort((a, b) => {
+  for (const group of groups) {
+    const canonical = [...group].sort((a, b) => {
       const fa = frequency?.get(b) ?? 0;
       const fb = frequency?.get(a) ?? 0;
       if (fa !== fb) return fa - fb;          // higher frequency first
@@ -417,22 +413,27 @@ export function buildMergeMap(
  * hemisphere-processed nodes) are left unchanged.
  */
 export function enrichSignalsWithTopics(signals: RawSignal[]): RawSignal[] {
-  // Only process signals that need enrichment
-  const needEnrich = signals.filter(s =>
-    s.themeLabels.length === 0 && s.rawText.trim().length > 5,
-  );
+  if (signals.length === 0) return signals;
+
+  // Tokenise the FULL signal array — including already-labelled signals —
+  // so document frequencies are calibrated against the entire workshop corpus.
+  // Without this, a mini-corpus of 5 unlabelled signals would produce inflated
+  // df scores for terms that are actually background noise across 100 total signals.
+  const allTokenized = signals.map(s => tokenizeAndLemmatize(s.rawText));
+  const N = allTokenized.length;
+  const df = computeDocFreq(allTokenized);
+
+  // Identify signals that need enrichment (no existing themeLabels, non-trivial text)
+  const needEnrich = signals
+    .map((s, i) => ({ signal: s, tokens: allTokenized[i] }))
+    .filter(({ signal: s }) => s.themeLabels.length === 0 && s.rawText.trim().length > 5);
   if (needEnrich.length === 0) return signals;
 
-  // Build corpus — tokenise all signals for document-frequency computation
-  const corpus = needEnrich.map(s => tokenizeAndLemmatize(s.rawText));
-  const N = corpus.length;
-  const df = computeDocFreq(corpus);
-
-  // Extract per-signal labels
+  // Extract per-signal labels using the full-corpus df
   const rawLabel = new Map<string, string>();   // signalId → extracted label
-  for (let i = 0; i < needEnrich.length; i++) {
-    const label = pickBestLabel(corpus[i], df, N);
-    if (label) rawLabel.set(needEnrich[i].id, label);
+  for (const { signal, tokens } of needEnrich) {
+    const label = pickBestLabel(tokens, df, N);
+    if (label) rawLabel.set(signal.id, label);
   }
 
   // Compute label frequencies across signals
@@ -445,7 +446,7 @@ export function enrichSignalsWithTopics(signals: RawSignal[]): RawSignal[] {
   const allLabels = [...new Set(rawLabel.values())];
   const mergeMap = buildMergeMap(allLabels, labelFreq);
 
-  // Apply to signals
+  // Apply labels to signals that needed enrichment; leave all others unchanged
   return signals.map(s => {
     if (s.themeLabels.length > 0) return s;      // already labelled — keep
     const raw = rawLabel.get(s.id);
@@ -547,12 +548,29 @@ Return JSON only — an object with key "merges": { "old_label": "canonical_labe
     const parsed = JSON.parse(raw) as { merges?: Record<string, string> };
     const merges = parsed.merges ?? {};
 
-    // Validate: only accept entries where the value is a non-empty string
+    // Build the master token vocabulary from all input cluster labels.
+    // Used in Guard 2 to prevent the LLM from inventing tokens that don't
+    // appear in any existing cluster label (e.g. "strategic_alignment" when no
+    // input label contains "strategic" or "alignment").
+    const masterTokens = new Set<string>();
+    for (const label of clusterSamples.keys()) {
+      for (const t of label.split('_').filter(Boolean)) masterTokens.add(t);
+    }
+
     const mergeMap = new Map<string, string>();
     for (const [oldLabel, canonical] of Object.entries(merges)) {
-      if (typeof canonical === 'string' && canonical.trim().length > 0) {
-        mergeMap.set(oldLabel, normaliseLabel(canonical));
-      }
+      // Guard 1 — oldLabel must be a known cluster key from the input
+      if (!clusterSamples.has(oldLabel)) continue;
+      if (typeof canonical !== 'string' || canonical.trim().length === 0) continue;
+
+      const normCanonical = normaliseLabel(canonical);
+
+      // Guard 2 — every token in the canonical must exist in the master vocabulary.
+      // This prevents invented labels like "approval → strategic_alignment".
+      const canonTokens = normCanonical.split('_').filter(Boolean);
+      if (!canonTokens.every(t => masterTokens.has(t))) continue;
+
+      mergeMap.set(oldLabel, normCanonical);
     }
     return mergeMap;
   } catch {

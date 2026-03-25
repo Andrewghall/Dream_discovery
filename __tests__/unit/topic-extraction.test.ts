@@ -113,6 +113,32 @@ describe('enrichSignalsWithTopics', () => {
     expect(containsApproval).toBe(true);
   });
 
+  it('includes already-labelled signals in corpus-frequency scoring', () => {
+    // 6 labeled signals all contain "customer" — with full-corpus scoring, customer gets
+    // high df (appears in 7 of 8 total signals including one unlabeled).
+    // The unlabeled signals are about "approval"; position tie-break ensures "approval"
+    // (first domain word in text) wins despite "customer" having higher df score.
+    // Primary assertion: labeled signals are untouched, unlabeled signals receive labels,
+    // and the two unlabeled signals sharing "approval" converge to the same label.
+    const labeled = Array.from({ length: 6 }, (_, i) =>
+      makeSignal(`lbl_${i}`, 'customer complaints require faster resolution times', ['cx']),
+    );
+    const unlabeled = [
+      makeSignal('u1', 'approval process blocks our agents from resolving issues'),
+      makeSignal('u2', 'approval bottleneck is the primary source of agent frustration'),
+    ];
+    const result = enrichSignalsWithTopics([...labeled, ...unlabeled]);
+    // Labeled signals must remain unchanged
+    result.slice(0, 6).forEach(s => expect(s.themeLabels).toEqual(['cx']));
+    // Unlabeled signals must receive exactly one valid label each
+    result.slice(6).forEach(s => {
+      expect(s.themeLabels).toHaveLength(1);
+      expect(s.themeLabels[0]).toBeTruthy();
+    });
+    // Both unlabeled signals share "approval" explicitly → must converge
+    expect(result[6].themeLabels[0]).toBe(result[7].themeLabels[0]);
+  });
+
   it('produces snake_case normalised labels', () => {
     const signals = [
       makeSignal('s1', 'customers want self-service portals and digital channels'),
@@ -121,7 +147,7 @@ describe('enrichSignalsWithTopics', () => {
     const result = enrichSignalsWithTopics(signals);
     for (const s of result) {
       for (const label of s.themeLabels) {
-        expect(label).toMatch(/^[a-z0-9_-]+$/);  // lowercase snake_case only
+        expect(label).toMatch(/^[a-z0-9_]+$/);  // lowercase snake_case, no hyphens
         expect(label.length).toBeGreaterThan(0);
         expect(label.length).toBeLessThanOrEqual(60);
       }
@@ -186,6 +212,19 @@ describe('buildMergeMap', () => {
     expect(map.get('training_gap')).toBe(map.get('training'));
     // knowledge_gap should NOT be in the same group as training
     expect(map.get('knowledge_gap')).toBe('knowledge_gap');
+  });
+
+  it('does NOT transitively merge disjoint labels via a shared intermediate', () => {
+    // "approval" {approval} and "system" {system} share no tokens (J=0).
+    // Both overlap "approval_system" {approval,system} with J=0.5 each.
+    // Union-find would put all 3 in one group; complete-linkage must not,
+    // because the pair (approval, system) fails the threshold (J=0 < 0.4).
+    const labels = ['approval', 'approval_system', 'system'];
+    const map = buildMergeMap(labels);
+    // "approval" and "approval_system" may merge (J=0.5 ✓)
+    // "system" and "approval_system" may merge (J=0.5 ✓)
+    // But they form two separate groups — "approval" and "system" must NOT share canonical
+    expect(map.get('approval')).not.toBe(map.get('system'));
   });
 });
 
