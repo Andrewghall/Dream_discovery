@@ -19,6 +19,12 @@ export interface SessionPayload {
   createdAt: number;
   /** Set when a PLATFORM_ADMIN has entered a tenant workspace via support access. */
   impersonatedBy?: string;
+  /**
+   * For impersonation sessions: the sessionId of the originating PLATFORM_ADMIN session.
+   * verifySessionWithDB checks this parent session is also active, so revoking the admin
+   * session immediately kills any derived impersonation sessions.
+   */
+  parentSessionId?: string;
   [key: string]: unknown;
 }
 
@@ -92,13 +98,8 @@ export async function verifySessionWithDB(token: string): Promise<SessionPayload
   const payload = await verifySessionToken(token);
   if (!payload) return null;
 
-  // Support/impersonation sessions: scoped JWT derived from a valid PLATFORM_ADMIN
-  // session — no DB session row exists for these. JWT signature already proves validity.
-  if (payload.impersonatedBy) {
-    return payload;
-  }
-
-  // All roles (including PLATFORM_ADMIN): verify DB session state
+  // All roles (including PLATFORM_ADMIN and impersonation): verify DB session state.
+  // No signature-only bypass: every session type must have a revocable DB row.
   try {
     const dbSession = await prisma.session.findFirst({
       where: {
@@ -113,11 +114,30 @@ export async function verifySessionWithDB(token: string): Promise<SessionPayload
       return null;
     }
 
+    // For impersonation sessions: also verify the originating PLATFORM_ADMIN session
+    // is still active. This ensures revoking the admin immediately kills support sessions.
+    // Impersonation tokens without parentSessionId are old-format and are rejected.
+    if (payload.impersonatedBy) {
+      if (!payload.parentSessionId) {
+        return null; // old-format impersonation JWT — no revocation chain, reject
+      }
+      const parentSession = await prisma.session.findFirst({
+        where: {
+          id: payload.parentSessionId as string,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        select: { id: true },
+      });
+      if (!parentSession) {
+        return null;
+      }
+    }
+
     return payload;
   } catch (error) {
     console.error('DB session verification failed — rejecting session to maintain revocation guarantees:', error);
     // Fail closed: return null so revoked/expired sessions are not accepted during DB outages.
-    // Trade-off: active users are logged out during outages. Correct security posture.
     return null;
   }
 }
@@ -134,8 +154,8 @@ export async function isSessionExpired(token: string): Promise<boolean> {
 
 /**
  * Get the current session from the request cookies (server-side, App Router only).
- * Reads from the unified 'session' cookie used by all roles.
- * @returns SessionPayload or null if not authenticated
+ * Performs full DB-backed verification — revoked or expired sessions return null.
+ * @returns SessionPayload or null if not authenticated / revoked
  */
 export async function getSession(): Promise<SessionPayload | null> {
   try {
@@ -143,8 +163,7 @@ export async function getSession(): Promise<SessionPayload | null> {
     // Single unified session cookie -- all roles use the same cookie name
     const sessionCookie = cookieStore.get('session');
     if (sessionCookie?.value) {
-      const payload = await verifySessionToken(sessionCookie.value);
-      if (payload) return payload;
+      return await verifySessionWithDB(sessionCookie.value);
     }
     return null;
   } catch {

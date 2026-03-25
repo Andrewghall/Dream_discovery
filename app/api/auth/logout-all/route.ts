@@ -1,47 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
-import { verifySessionToken } from '@/lib/auth/session';
+import { verifySessionWithDB } from '@/lib/auth/session';
 
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get('session');
 
-    let userId: string | null = null;
-
-    if (sessionCookie?.value) {
-      try {
-        const payload = await verifySessionToken(sessionCookie.value);
-        userId = payload?.userId ?? null;
-      } catch {}
+    if (!sessionCookie?.value) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+    // DB-backed verification: rejects revoked/expired sessions
+    const payload = await verifySessionWithDB(sessionCookie.value);
+
+    if (!payload) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Revoke all sessions for this user in the database
-    await prisma.session.updateMany({
-      where: {
-        userId,
-        revokedAt: null,
-      },
-      data: {
-        revokedAt: new Date(),
-      },
-    });
+    const { userId, sessionId } = payload;
 
-    // Clear the session cookie
+    // PLATFORM_ADMIN sessions are stored with userId: null in the DB
+    // (the JWT carries userId='admin' but that is not a DB user row).
+    // For PLATFORM_ADMIN, revoke ALL null-userId sessions — this covers:
+    //   - the admin's own sessions from any browser
+    //   - derived impersonation/support sessions (also stored with userId: null)
+    // For tenant users, revoke all sessions by their real userId.
+    const isAdminPrincipal = userId === 'admin';
+
+    if (isAdminPrincipal) {
+      await prisma.session.updateMany({
+        where: { userId: null, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    } else {
+      await prisma.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+
+    // Clear the session cookie (and backup cookie if present)
     cookieStore.delete('session');
+    cookieStore.delete('dream-admin-session');
 
-    return NextResponse.json({
-      success: true,
-      message: 'All sessions revoked successfully',
-    });
+    return NextResponse.json({ success: true, message: 'All sessions revoked successfully' });
   } catch (error) {
     console.error('Logout all error:', error);
     return NextResponse.json(

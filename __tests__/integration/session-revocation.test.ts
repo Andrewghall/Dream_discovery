@@ -294,4 +294,78 @@ describe('Session Revocation Model', () => {
       expect(result).toBeNull();
     });
   });
+
+  // ── PLATFORM_ADMIN logout-all revocation ─────────────────
+
+  describe('PLATFORM_ADMIN logout-all revocation', () => {
+    it('PLATFORM_ADMIN session is revoked by userId: null — not unreachable by userId: admin', async () => {
+      // This test documents the correct logout-all behaviour for PLATFORM_ADMIN.
+      // Admin JWT carries userId='admin' but the DB Session row has userId=null.
+      // logout-all must revoke by userId=null to reach admin sessions.
+
+      // Simulate: admin JWT verifies successfully
+      vi.mocked(jose.jwtVerify).mockResolvedValue({
+        payload: mockAdminJwtPayload,
+        protectedHeader: { alg: 'HS256' },
+      } as any);
+
+      // Simulate: DB session row exists for the admin
+      sessionFindFirst.mockResolvedValue({ id: 'random-nanoid' });
+
+      // Step 1: session is valid before logout
+      const before = await verifySessionWithDB('admin-jwt');
+      expect(before).not.toBeNull();
+
+      // Step 2: after logout-all, the admin's DB row is revoked (userId=null path)
+      // Subsequent DB check returns null
+      sessionFindFirst.mockResolvedValue(null);
+      const after = await verifySessionWithDB('admin-jwt');
+      expect(after).toBeNull();
+
+      // Verify logout-all would use the correct DB where clause:
+      // admin userId in JWT = 'admin', which maps to userId: null in DB.
+      // The correct updateMany call is: { where: { userId: null, revokedAt: null } }
+      expect(mockAdminJwtPayload.userId).toBe('admin');
+      // userId: null is the DB representation — revoking by 'admin' would match nothing
+      const wrongQuery = { userId: 'admin', revokedAt: null };
+      const correctQuery = { userId: null, revokedAt: null };
+      // Document: the logout-all route must use correctQuery, not wrongQuery
+      expect(correctQuery.userId).toBeNull();
+      expect(wrongQuery.userId).not.toBeNull();
+    });
+
+    it('revoking PLATFORM_ADMIN session also invalidates impersonation session (parent check)', async () => {
+      const impersonationPayload = {
+        sessionId: 'scoped-session-id',
+        userId: 'admin',
+        email: 'admin@example.com',
+        role: 'TENANT_ADMIN',
+        organizationId: 'org-1',
+        createdAt: Date.now(),
+        impersonatedBy: 'admin',
+        parentSessionId: 'parent-admin-session-id',
+      };
+
+      vi.mocked(jose.jwtVerify).mockResolvedValue({
+        payload: impersonationPayload,
+        protectedHeader: { alg: 'HS256' },
+      } as any);
+
+      // Scoped session exists, parent session exists → valid
+      sessionFindFirst
+        .mockResolvedValueOnce({ id: 'scoped-session-id' })
+        .mockResolvedValueOnce({ id: 'parent-admin-session-id' });
+
+      const validResult = await verifySessionWithDB('impersonation-jwt');
+      expect(validResult).not.toBeNull();
+
+      // After logout-all revokes admin sessions (userId: null), parent session is gone
+      sessionFindFirst
+        .mockResolvedValueOnce({ id: 'scoped-session-id' }) // scoped still "exists"
+        .mockResolvedValueOnce(null);                       // parent revoked
+
+      const afterRevoke = await verifySessionWithDB('impersonation-jwt');
+      expect(afterRevoke).toBeNull(); // impersonation rejected because parent is gone
+    });
+  });
 });

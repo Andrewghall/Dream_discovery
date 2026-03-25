@@ -207,10 +207,14 @@ export async function DELETE(
     // 2. Delete password reset tokens
     await tx.passwordResetToken.deleteMany({ where: { userId: id } });
 
-    // 3. Delete login attempts (contain IP/email PII)
-    await tx.loginAttempt.deleteMany({ where: { userId: id } });
+    // 3. Delete login attempts — by userId AND by email.
+    //    Failed-login rows are stored without userId (user not found path) but retain email.
+    //    Both must be deleted to fully erase the subject's login history.
+    await tx.loginAttempt.deleteMany({
+      where: { OR: [{ userId: id }, { email: existing.email }] },
+    });
 
-    // 4. Anonymise the user record — preserves FK but removes all PII
+    // 4. Anonymise the user record — preserves FK but removes all PII.
     //    Email and name are replaced; password is set to an invalid hash so login is impossible.
     await tx.user.update({
       where: { id },
@@ -222,6 +226,32 @@ export async function DELETE(
         organizationId: null,
       },
     });
+
+    // 5. Redact PII from historical audit log rows for this subject.
+    //    Rows where the subject PERFORMED actions: clear userEmail.
+    //    Rows where actions were performed ON the subject: strip targetEmail,
+    //    targetName, and changes.email / changes.name from the metadata JSONB.
+    //    The audit trail (action, resourceId, timestamp) is preserved — only
+    //    direct personal identifiers are removed.
+    await (tx as any).$executeRaw`
+      UPDATE "audit_logs"
+      SET "userEmail" = NULL
+      WHERE "userId" = ${id}
+    `;
+    await (tx as any).$executeRaw`
+      UPDATE "audit_logs"
+      SET "metadata" = CASE
+        WHEN "metadata" IS NOT NULL THEN
+          "metadata"
+          - 'targetEmail'
+          - 'targetName'
+          #- '{changes,email}'
+          #- '{changes,name}'
+        ELSE NULL
+      END
+      WHERE "resourceId" = ${id}
+        AND "resourceType" = 'User'
+    `;
   });
 
   // Write audit log outside the transaction (non-fatal)
@@ -237,7 +267,9 @@ export async function DELETE(
         resourceId: id,
         method: 'DELETE',
         path: `/api/admin/users/${id}`,
-        metadata: { targetEmail: existing.email, targetName: existing.name } as any,
+        // Do NOT log the erased subject's email or name — the erasure action itself
+        // is recorded but personal identifiers must not persist in audit logs post-purge.
+        metadata: { purgedUserId: id, note: 'PII anonymised per GDPR Art. 17' } as any,
         success: true,
       },
     });
