@@ -80,6 +80,12 @@ export function NowNextLaterBoard({ steps }: NowNextLaterBoardProps) {
                         <span className="font-medium text-slate-700">{step.owner}</span>
                       </div>
                     )}
+                    {step.expectedImpact && (
+                      <div className="mt-2 rounded bg-emerald-50 border border-emerald-100 px-2 py-1.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 mb-0.5">Expected impact</div>
+                        <p className="text-xs text-slate-700 leading-relaxed">{step.expectedImpact}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

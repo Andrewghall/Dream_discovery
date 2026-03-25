@@ -63,10 +63,13 @@ function HeatmapChart({ data }: { data: HeatmapData }) {
             {stages.map((stage) => {
               const cell = cells.find((c) => c.actor === actor && c.stage === stage);
               const intensity = cell?.intensity ?? 0;
+              const tipText = cell?.tooltip
+                ? `${actor} / ${stage}: ${intensity}/10 — ${cell.tooltip}`
+                : `${actor} / ${stage}: ${intensity}/10`;
               return (
                 <div
                   key={stage}
-                  title={`${actor} / ${stage}: ${intensity}/10`}
+                  title={tipText}
                   className="rounded flex items-center justify-center text-xs font-bold cursor-default"
                   style={{
                     width: cellSize,

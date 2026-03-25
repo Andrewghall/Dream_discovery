@@ -167,9 +167,15 @@ export function V2OutputView({ v2Output, workshopId, onAddToReport }: V2OutputVi
           {/* Artifact (usually heatmap) */}
           {v2Output.discover.artifact && v2Output.discover.artifact.type !== 'none' && (
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
                 Pain Distribution — Actors × Journey Stages
               </h3>
+              {v2Output.discover.artifact.type === 'heatmap' && (
+                <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 mb-3 text-xs text-slate-600 leading-relaxed">
+                  <span className="font-semibold text-blue-700">How to read this: </span>
+                  Each cell shows the number of friction or pain signals captured for that actor at that journey stage during the workshop. Darker cells = higher concentration of pain. Hover a cell to see what drives that score. Use this to prioritise where intervention will have the most impact.
+                </div>
+              )}
               <ArtifactRenderer artifact={v2Output.discover.artifact} />
             </div>
           )}
@@ -255,6 +261,12 @@ export function V2OutputView({ v2Output, workshopId, onAddToReport }: V2OutputVi
                       <span className="text-xs font-semibold text-red-600">What disappears: </span>
                       <span className="text-xs text-slate-600">{fs.whatDisappears}</span>
                     </div>
+                    {fs.howWeKnow && (
+                      <div className="rounded bg-white/70 border border-pink-100 px-2.5 py-2 mt-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-pink-500 mb-1">Workshop signal</div>
+                        <p className="text-xs italic text-slate-600 leading-relaxed">"{fs.howWeKnow}"</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

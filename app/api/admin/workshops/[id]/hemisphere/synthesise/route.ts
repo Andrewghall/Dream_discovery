@@ -1021,11 +1021,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         try {
           const knowledgePack = extractBlueprintKnowledgePack(workshop.blueprint);
+
+          // Build raw signal package — verbatim node texts + domain breakdown
+          const v2RawSignals = {
+            totalNodes: aggregated.totalNodes,
+            participantCount: discoveryParticipants.length || aggregated.topActors.length,
+            nodesByPhase: {
+              REIMAGINE:        (aggregated.byPhase.REIMAGINE        || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
+              CONSTRAINTS:      (aggregated.byPhase.CONSTRAINTS      || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
+              DEFINE_APPROACH:  (aggregated.byPhase.DEFINE_APPROACH  || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
+            },
+            domainSummary: Object.entries(aggregated.byDomain).map(([domain, bucket]) => ({
+              domain,
+              aspirationCount: bucket.aspirations.length,
+              constraintCount: bucket.constraints.length,
+              topAspirations:  bucket.aspirations.slice(0, 6),
+              topConstraints:  bucket.constraints.slice(0, 6),
+              topEnablers:     bucket.enablers.slice(0, 4),
+            })),
+            topThemes: aggregated.topThemes.slice(0, 15).map(t => ({ label: t.label, count: t.count })),
+            topActors: aggregated.topActors.slice(0, 10).map(a => ({ name: a.name, mentions: a.mentions })),
+          };
+
           const v2Output = await runV2SynthesisAgent(
             workshop.name || 'Workshop',
             workshop.industry || null,
             knowledgePack,
             synthesised,
+            v2RawSignals,
           );
 
           if (v2Output) {
@@ -1036,7 +1059,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             emit(
               'facilitation-agent',
               'orchestrator',
-              `**V2 Synthesis complete.** Generated structured output across 5 sections (Discover / Reimagine / Constraints / Path Forward / Outcomes), anchored to ${knowledgePack.actors.length} actors, ${knowledgePack.journeyStages.length} journey stages, ${knowledgePack.lenses.length} lenses. Artifact types chosen by agent based on data.`,
+              `**V2 Synthesis complete.** Generated consulting-grade output across 5 sections from ${v2RawSignals.totalNodes} signals (${v2RawSignals.nodesByPhase.REIMAGINE.length} Reimagine / ${v2RawSignals.nodesByPhase.CONSTRAINTS.length} Constraints / ${v2RawSignals.nodesByPhase.DEFINE_APPROACH.length} Define Approach). Anchored to ${knowledgePack.actors.length} actors, ${knowledgePack.journeyStages.length} journey stages, ${knowledgePack.lenses.length} lenses.`,
               'info',
             );
           } else {
