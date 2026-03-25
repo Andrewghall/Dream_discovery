@@ -204,7 +204,7 @@ function buildV2Prompt(
     .join('\n');
 
   // Format verbatim node texts per phase
-  const fmt = (texts: string[], max = 30) =>
+  const fmt = (texts: string[], max = 50) =>
     texts.slice(0, max).map((t, i) => `  ${i + 1}. "${t.trim()}"`).join('\n') || '  (none captured)';
 
   // Format domain summary
@@ -240,7 +240,7 @@ Every truth, constraint, and outcome MUST cite verbatim or near-verbatim evidenc
 
 ═══════════════════════════════════════════════
 RAW WORKSHOP DATA — ${rawSignals.totalNodes} total signals from ${rawSignals.participantCount || 'multiple'} participants
-SAMPLING NOTE: Up to 35 representative signals per phase are shown below. Intensity
+SAMPLING NOTE: Up to 50 representative signals per phase are shown below. Intensity
 values in heatmap cells must be estimated from the relative frequency of themes in
 these samples — do not claim exact counts from a dataset you have not seen in full.
 ═══════════════════════════════════════════════
@@ -509,7 +509,7 @@ export async function runV2SynthesisAgent(
     model: 'gpt-4o',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
-    max_tokens: 12000,
+    max_tokens: 16000,
     response_format: { type: 'json_object' },
   }));
 

@@ -26,6 +26,7 @@ import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-acces
 import { classifyWorkshopArchetype } from '@/lib/output/archetype-classifier';
 import type { ClassifierInput } from '@/lib/output/archetype-classifier';
 import { runV2SynthesisAgent, extractBlueprintKnowledgePack } from '@/lib/output/v2-synthesis-agent';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -826,13 +827,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const prompt = buildSynthesisPrompt(workshop.name || 'Workshop', aggregated, themeAnalysis, constraintAnalysis, researchContext, discoveryParticipants.map(p => p.name));
         console.log(`[synthesise] Prompt length: ${prompt.length} chars. Running synthesis for workshop ${workshopId} (${aggregated.totalNodes} nodes)...`);
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.3,
-          max_tokens: 12000,
-          response_format: { type: 'json_object' },
-        });
+        const completion = await openAiBreaker.execute(() =>
+          openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3,
+            max_tokens: 12000,
+            response_format: { type: 'json_object' },
+          }),
+        );
         console.log(`[synthesise] GPT responded. Usage: ${JSON.stringify(completion.usage)}`);
 
         const raw = completion.choices[0]?.message?.content;
@@ -1028,26 +1031,74 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             knowledgePack.actors = aggregated.topActors.slice(0, 8).map(a => a.name).filter(Boolean);
           }
 
-          // Build raw signal package — verbatim node texts + domain breakdown
-          // Sampling rule: up to 35 texts per phase are passed as representative samples.
+          // Build raw signal package — verbatim node texts + domain breakdown.
+          //
+          // Phase bucketing strategy:
+          //   Many live sessions tag all captured nodes under a single dialoguePhase
+          //   (e.g. REIMAGINE) regardless of content. We use primaryType as the
+          //   authoritative signal for the V2 synthesis sections:
+          //
+          //   DISCOVERY  ← explicit DISCOVERY phase nodes, or INSIGHT-type nodes
+          //                (INSIGHT = current-state observation = discovery content)
+          //   REIMAGINE  ← VISIONARY + OPPORTUNITY type nodes (genuine future-state)
+          //   CONSTRAINTS← explicit CONSTRAINTS phase nodes, or CONSTRAINT + RISK types
+          //   DEFINE_APPROACH ← explicit DEFINE_APPROACH nodes, or ACTION + ENABLER types
+          //
+          //   This prevents the V2 agent from receiving empty Discovery / Constraints
+          //   buckets and fabricating output when real evidence exists under a different
+          //   phase label.
+          //
+          // Sample sizes: 50 per bucket (up from 35) — larger samples reduce fabrication.
+
+          const allNodesArr = Object.values(rawNodes as Record<string, SnapshotNode>)
+            .filter((n): n is SnapshotNode => !!(n && n.rawText));
+
+          const textsByType = (types: string[]) =>
+            allNodesArr
+              .filter(n => types.includes(safeStr(n.classification?.primaryType).toUpperCase()))
+              .map(n => (n.rawText as string).trim())
+              .filter(Boolean);
+
+          const phaseTexts = (phase: string) =>
+            (aggregated.byPhase[phase] || [])
+              .map((n: { rawText?: string }) => n.rawText || '')
+              .filter(Boolean);
+
+          const discoveryExplicit = phaseTexts('DISCOVERY');
+          const constraintsExplicit = phaseTexts('CONSTRAINTS');
+
           const v2RawSignals = {
             totalNodes: aggregated.totalNodes,
             participantCount: discoveryParticipants.length || aggregated.topActors.length,
             nodesByPhase: {
-              DISCOVERY:        (aggregated.byPhase.DISCOVERY        || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
-              REIMAGINE:        (aggregated.byPhase.REIMAGINE        || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
-              CONSTRAINTS:      (aggregated.byPhase.CONSTRAINTS      || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
-              DEFINE_APPROACH:  (aggregated.byPhase.DEFINE_APPROACH  || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
+              // DISCOVERY: prefer explicit phase nodes; fall back to INSIGHT-type nodes
+              DISCOVERY: discoveryExplicit.length >= 10
+                ? discoveryExplicit.slice(0, 50)
+                : textsByType(['INSIGHT']).slice(0, 50),
+
+              // REIMAGINE: VISIONARY + OPPORTUNITY = genuine future-state thinking
+              REIMAGINE: textsByType(['VISIONARY', 'OPPORTUNITY']).slice(0, 50),
+
+              // CONSTRAINTS: prefer explicit phase nodes; fall back to CONSTRAINT + RISK types
+              CONSTRAINTS: constraintsExplicit.length >= 10
+                ? constraintsExplicit.slice(0, 50)
+                : textsByType(['CONSTRAINT', 'RISK']).slice(0, 50),
+
+              // DEFINE_APPROACH: explicit phase + ACTION/ENABLER (deduplicated)
+              DEFINE_APPROACH: [
+                ...phaseTexts('DEFINE_APPROACH'),
+                ...textsByType(['ACTION', 'ENABLER']),
+              ].filter((t, i, arr) => arr.indexOf(t) === i).slice(0, 50),
             },
             domainSummary: Object.entries(aggregated.byDomain).map(([domain, bucket]) => ({
               domain,
               aspirationCount: bucket.aspirations.length,
               constraintCount: bucket.constraints.length,
-              topAspirations:  bucket.aspirations.slice(0, 6),
-              topConstraints:  bucket.constraints.slice(0, 6),
-              topEnablers:     bucket.enablers.slice(0, 4),
+              topAspirations:  bucket.aspirations.slice(0, 8),
+              topConstraints:  bucket.constraints.slice(0, 8),
+              topEnablers:     bucket.enablers.slice(0, 5),
             })),
-            topThemes: aggregated.topThemes.slice(0, 15).map(t => ({ label: t.label, count: t.count })),
+            topThemes: aggregated.topThemes.slice(0, 20).map(t => ({ label: t.label, count: t.count })),
             topActors: aggregated.topActors.slice(0, 10).map(a => ({ name: a.name, mentions: a.mentions })),
           };
 
