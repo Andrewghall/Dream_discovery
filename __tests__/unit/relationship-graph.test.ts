@@ -277,6 +277,42 @@ describe('buildRelationshipGraph', () => {
     expect(respondsTo[0].sharedParticipantIds).toContain('p1');
   });
 
+  it('does NOT create responds_to when cross-phase participant exists but topics are unrelated', () => {
+    // p1 participates in both clusters across phases, but the clusters are topically unrelated.
+    // Jaccard should be ~0 — responds_to must NOT fire.
+    const signals = [
+      confirmedSig('p1', 'Manager', 'aircraft maintenance', {
+        primaryType: 'CONSTRAINT', phase: 'CONSTRAINTS', sentiment: 'concerned',
+        rawText: 'Aircraft maintenance schedules are unreliable and unsafe for flight operations',
+      }),
+      confirmedSig('p1', 'Manager', 'flower subscriptions', {
+        primaryType: 'ENABLER', phase: 'DEFINE_APPROACH', sentiment: 'positive',
+        rawText: 'Fresh flower subscriptions improve workplace wellbeing and team morale',
+      }),
+      ...Array.from({ length: 2 }, (_, i) =>
+        confirmedSig(`q${i}`, 'Agent', 'aircraft maintenance', {
+          primaryType: 'CONSTRAINT', phase: 'CONSTRAINTS', sentiment: 'concerned',
+          rawText: 'Aircraft engine maintenance creates safety risks for flight crews',
+        }),
+      ),
+      ...Array.from({ length: 2 }, (_, i) =>
+        confirmedSig(`r${i}`, 'Lead', 'flower subscriptions', {
+          primaryType: 'ENABLER', phase: 'DEFINE_APPROACH', sentiment: 'positive',
+          rawText: 'Weekly flower delivery subscriptions boost morale across the office',
+        }),
+      ),
+    ];
+    const scored = makeScoredClusters(signals);
+    const graph = buildRelationshipGraph(scored, 'test');
+    const crossTopicResponds = graph.edges.filter(
+      (e) =>
+        e.relationshipType === 'responds_to' &&
+        e.fromNodeId === 'flower_subscriptions' &&
+        e.toNodeId === 'aircraft_maintenance',
+    );
+    expect(crossTopicResponds.length).toBe(0);
+  });
+
   it('creates an enables edge between ENABLER and REIMAGINATION clusters', () => {
     const enablerSigs = Array.from({ length: 4 }, (_, i) =>
       confirmedSig(`p${i}`, 'Lead', 'digital_tools', {
@@ -294,6 +330,62 @@ describe('buildRelationshipGraph', () => {
     const graph = buildRelationshipGraph(scored, 'test');
     const enables = graph.edges.filter((e) => e.relationshipType === 'enables');
     expect(enables.length).toBeGreaterThan(0);
+  });
+
+  it('creates depends_on when Jaccard ≥ 0.10 AND shared participants confirm the vision-enabler link', () => {
+    // shared0–shared2 appear in both the vision and enabler clusters (cross-domain continuity).
+    // Both clusters discuss "digital customer self-service platform" — Jaccard well above 0.10.
+    // Expected: enables(E→V) fires (content overlap) AND depends_on(V→E) fires (participant confirms).
+    const sharedVisionSigs = Array.from({ length: 3 }, (_, i) =>
+      confirmedSig(`shared${i}`, 'Director', 'digital customer platform', {
+        primaryType: 'VISION', phase: 'REIMAGINE', sentiment: 'positive',
+        rawText: 'A digital customer self-service platform resolving issues without agent involvement',
+      }),
+    );
+    const sharedEnablerSigs = Array.from({ length: 3 }, (_, i) =>
+      confirmedSig(`shared${i}`, 'Director', 'digital self service tools', {
+        primaryType: 'ENABLER', phase: 'DEFINE_APPROACH', sentiment: 'positive',
+        rawText: 'Digital customer self-service tools and platform investment resolve agent workload',
+      }),
+    );
+    const scored = makeScoredClusters([...sharedVisionSigs, ...sharedEnablerSigs]);
+    const graph = buildRelationshipGraph(scored, 'test');
+    const dependsOn = graph.edges.filter((e) => e.relationshipType === 'depends_on');
+    expect(dependsOn.length).toBeGreaterThan(0);
+    expect(dependsOn[0].sharedParticipantIds.length).toBeGreaterThan(0);
+  });
+
+  it('creates enables but NOT depends_on when topical overlap exists but no shared participants', () => {
+    // Different participants in vision vs enabler — content overlap is high but no one
+    // spans both clusters, so depends_on (which requires participant continuity) must NOT fire.
+    const visionSigs = Array.from({ length: 3 }, (_, i) =>
+      confirmedSig(`v${i}`, 'Director', 'digital customer platform', {
+        primaryType: 'VISION', phase: 'REIMAGINE', sentiment: 'positive',
+        rawText: 'A digital customer self-service platform resolving issues without agent involvement',
+      }),
+    );
+    const enablerSigs = Array.from({ length: 3 }, (_, i) =>
+      confirmedSig(`e${i}`, 'Lead', 'digital self service tools', {
+        primaryType: 'ENABLER', phase: 'DEFINE_APPROACH', sentiment: 'positive',
+        rawText: 'Digital customer self-service tools and platform investment resolve agent workload',
+      }),
+    );
+    const scored = makeScoredClusters([...visionSigs, ...enablerSigs]);
+    const graph = buildRelationshipGraph(scored, 'test');
+    const enables = graph.edges.filter(
+      (e) =>
+        e.relationshipType === 'enables' &&
+        e.fromNodeId === 'digital_self_service_tools' &&
+        e.toNodeId === 'digital_customer_platform',
+    );
+    const dependsOn = graph.edges.filter(
+      (e) =>
+        e.relationshipType === 'depends_on' &&
+        e.fromNodeId === 'digital_customer_platform' &&
+        e.toNodeId === 'digital_self_service_tools',
+    );
+    expect(enables.length).toBe(1);   // content overlap alone → enables fires
+    expect(dependsOn.length).toBe(0); // no shared participants → depends_on suppressed
   });
 
   it('creates a contradicts edge when same-layer clusters share participants but oppose in sentiment', () => {

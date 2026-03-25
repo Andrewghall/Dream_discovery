@@ -9,16 +9,20 @@
  *   4. Sentiment polarity divergence within overlapping topic space
  *
  * Edge type rules (in priority order for deduplication):
- *   responds_to     — shared confirmed participant, cross-phase (strongest provenance)
+ *   responds_to     — Jaccard ≥ 0.08 AND shared confirmed participant cross-phase
  *   compensates_for — Jaccard ≥ 0.08, ENABLER positive → CONSTRAINT negative
  *   blocks          — Jaccard ≥ 0.15 AND target has contradicting signals
  *   drives          — Jaccard ≥ 0.10 (Jaccard required), CONSTRAINT → ENABLER
- *   enables         — Jaccard ≥ 0.10 (raised from 0.08), ENABLER → REIMAGINATION
+ *   enables         — Jaccard ≥ 0.10, ENABLER → REIMAGINATION (content-inferred)
  *   constrains      — Jaccard ≥ 0.08 (Jaccard required), CONSTRAINT → REIMAGINATION
- *   depends_on      — Jaccard ≥ 0.12 (raised from 0.08), REIMAGINATION → ENABLER
+ *   depends_on      — Jaccard ≥ 0.10 AND shared participant, REIMAGINATION → ENABLER
+ *                     (participant-confirmed: same person connects vision to enabler)
  *   contradicts     — shared participant + Jaccard ≥ 0.10 + opposing sentiment, same layer
  *
- * Post-hoc suppression: depends_on(V,E) removed if enables(E,V) already exists (same pair).
+ * enables vs depends_on: enables fires on content overlap alone (inferred relationship).
+ * depends_on fires only when shared participants ALSO confirm the vision-enabler link
+ * (explicit human acknowledgment that the vision requires this enabler). Both can coexist
+ * for the same pair when supported by content + participant evidence.
  *
  * Note: multiple edge types between the same (A, B) pair are allowed when
  * they represent different semantic claims. Only duplicate (from, to, type)
@@ -268,16 +272,29 @@ function isCrossPhase(sigA: RawSignal, sigB: RawSignal): boolean {
 
 /**
  * Rule: responds_to  (ENABLER → CONSTRAINT)
- * Fires when a confirmed participant has signals in both clusters AND
- * those signals span different phases (constraint/discovery ↔ define_approach).
+ * Fires when:
+ *   (a) a confirmed participant has signals in both clusters spanning different phases
+ *       (constraint/discovery ↔ define_approach), AND
+ *   (b) the two clusters have topical overlap (Jaccard ≥ 0.08).
+ *
+ * Topical gating prevents a multi-topic participant from linking unrelated clusters
+ * (e.g. someone who attended both a regulation session and a technology session for
+ * unrelated reasons). Participant continuity boosts the edge but cannot create it
+ * without topic evidence.
  */
 function tryRespondsTo(
   enablerNode: RelationshipNode,
   constraintNode: RelationshipNode,
   enablerCluster: EvidenceCluster,
   constraintCluster: EvidenceCluster,
+  enablerTokens: Set<string>,
+  constraintTokens: Set<string>,
   signalIndex: Map<string, RawSignal>,
 ): RelationshipEdge | null {
+  // Topical gate first — cheap check before iterating signals
+  const sim = jaccard(enablerTokens, constraintTokens);
+  if (sim < 0.08) return null;
+
   const sharedIds = enablerCluster.distinctParticipantIds.size > 0
     ? [...enablerCluster.distinctParticipantIds].filter((id) =>
         constraintCluster.distinctParticipantIds.has(id),
@@ -312,7 +329,7 @@ function tryRespondsTo(
       .filter((x): x is string => Boolean(x)),
   )];
 
-  const edge = buildEdgeRecord({
+  return buildEdgeRecord({
     fromNode:  enablerNode,
     toNode:    constraintNode,
     type:      'responds_to',
@@ -320,10 +337,9 @@ function tryRespondsTo(
     toSigs:    toSigIds,
     sharedPtcp: participantsWithCrossPhase,
     rules:     ['RESPONDS_TO_SHARED_PARTICIPANT_CROSS_PHASE'],
-    jaccardSim: 0,
+    jaccardSim: sim,
     signalIndex,
   });
-  return edge;
 }
 
 /**
@@ -525,8 +541,17 @@ function tryConstrains(
 
 /**
  * Rule: depends_on  (REIMAGINATION → ENABLER)
- * Fires when Jaccard ≥ 0.12 (raised threshold — reduces enables/depends_on co-emission).
- * Post-hoc suppressed when enables(E,V) already exists for the same E/V pair.
+ * Fires when BOTH:
+ *   (a) Jaccard ≥ 0.10 (topical overlap between vision and enabler), AND
+ *   (b) at least one confirmed participant appears in both clusters
+ *       (human acknowledgment that this vision depends on this enabler).
+ *
+ * This makes depends_on genuinely distinct from enables:
+ *   enables(E→V)    fires on content overlap alone — inferred relationship
+ *   depends_on(V→E) fires only when participants also confirm the vision-enabler link
+ *
+ * Both can coexist for the same (V,E) pair when supported by content + participant
+ * evidence. No post-hoc suppression — the two directions are complementary claims.
  */
 function tryDependsOn(
   visionNode: RelationshipNode,
@@ -538,13 +563,15 @@ function tryDependsOn(
   signalIndex: Map<string, RawSignal>,
 ): RelationshipEdge | null {
   const sim = jaccard(visionTokens, enablerTokens);
-  if (sim < 0.12) return null;
+  if (sim < 0.10) return null;
   const sharedIds = [...visionCluster.distinctParticipantIds].filter((id) =>
     enablerCluster.distinctParticipantIds.has(id),
   );
+  // Participant continuity is required — this is what distinguishes depends_on from enables
+  if (sharedIds.length === 0) return null;
 
   const rules: EdgeCreationRule[] = [];
-  if (sim >= 0.12) rules.push('DEPENDS_ON_JACCARD');
+  if (sim >= 0.10) rules.push('DEPENDS_ON_JACCARD');
   if (sharedIds.length > 0) rules.push('DEPENDS_ON_SHARED_PARTICIPANT');
 
   return buildEdgeRecord({
@@ -615,9 +642,8 @@ function tryContradicts(
 
 // ── Edge record factory ───────────────────────────────────────────────────────
 
-// responds_to uses cross-phase participant provenance — no Jaccard requirement.
-// All other types require Jaccard evidence, so the semantic overlap tier cap applies.
-const NO_SEMANTIC_OVERLAP_REQUIRED = new Set<RelationshipType>(['responds_to']);
+// All edge types require Jaccard evidence — the tier cap applies universally.
+// responds_to now requires Jaccard ≥ 0.08 at creation time, so no exemption needed.
 
 function buildEdgeRecord(params: {
   fromNode:   RelationshipNode;
@@ -633,14 +659,13 @@ function buildEdgeRecord(params: {
   const { fromNode, toNode, type, fromSigs, toSigs, sharedPtcp, rules, jaccardSim, signalIndex } = params;
 
   const edgeId = makeEdgeId(fromNode.nodeId, type, toNode.nodeId);
-  const requiresSemanticOverlap = !NO_SEMANTIC_OVERLAP_REQUIRED.has(type);
   const { score, tier } = scoreEdge({
     fromSignalIds:           fromSigs,
     toSignalIds:             toSigs,
     sharedParticipantIds:    sharedPtcp,
     signalIndex,
     jaccardSim,
-    requiresSemanticOverlap,
+    requiresSemanticOverlap: true,
   });
 
   const rationale = buildRationale(type, fromNode, toNode, sharedPtcp.length, jaccardSim);
@@ -718,12 +743,14 @@ export function buildRelationshipGraph(
     edgeMap.set(e.edgeId, e);
   }
 
-  // responds_to: ENABLER → CONSTRAINT (strongest provenance — do first)
+  // responds_to: ENABLER → CONSTRAINT (participant + topical evidence — do first)
   for (const enablerNode of enablerNodes) {
     for (const constraintNode of constraintNodes) {
       const ec = clusterByKey.get(enablerNode.nodeId)!;
       const cc = clusterByKey.get(constraintNode.nodeId)!;
-      addEdge(tryRespondsTo(enablerNode, constraintNode, ec, cc, signalIndex));
+      const eTok = tokenCache.get(enablerNode.nodeId)!;
+      const cTok = tokenCache.get(constraintNode.nodeId)!;
+      addEdge(tryRespondsTo(enablerNode, constraintNode, ec, cc, eTok, cTok, signalIndex));
     }
   }
 
@@ -806,16 +833,6 @@ export function buildRelationshipGraph(
       const tA = tokenCache.get(nA.nodeId)!;
       const tB = tokenCache.get(nB.nodeId)!;
       addEdge(tryContradicts(nA, nB, cA, cB, tA, tB, signalIndex));
-    }
-  }
-
-  // ── Post-hoc: suppress depends_on(V,E) when enables(E,V) already exists ──
-  // enables and depends_on encode the same relationship from opposite directions.
-  // If both fire, keep the canonical enables direction and drop depends_on.
-  for (const [edgeId, edge] of edgeMap) {
-    if (edge.relationshipType === 'depends_on') {
-      const enablesId = makeEdgeId(edge.toNodeId, 'enables', edge.fromNodeId);
-      if (edgeMap.has(enablesId)) edgeMap.delete(edgeId);
     }
   }
 
