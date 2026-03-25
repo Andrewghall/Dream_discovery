@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 
 /**
  * True Agentic Workshop Analyst
@@ -237,7 +238,7 @@ export async function analyzeUtteranceAgentically(params: {
   );
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
       model: 'gpt-4o-mini', // Can upgrade to gpt-4o for better reasoning
       temperature: 0.3, // Lower for more consistent analysis
       messages: [
@@ -245,7 +246,7 @@ export async function analyzeUtteranceAgentically(params: {
         { role: 'user', content: userPrompt },
       ],
       response_format: { type: 'json_object' },
-    });
+    }));
 
     const raw = completion.choices?.[0]?.message?.content || '{}';
     console.log('[Agentic Agent] OpenAI raw response length:', raw.length, 'first 500 chars:', raw.substring(0, 500));
@@ -349,7 +350,7 @@ Return JSON with:
 - agentReasoning: explain your synthesis process`;
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
       model: 'gpt-4o', // Use stronger model for synthesis
       temperature: 0.2,
       messages: [
@@ -357,7 +358,7 @@ Return JSON with:
         { role: 'user', content: userPrompt },
       ],
       response_format: { type: 'json_object' },
-    });
+    }));
 
     const raw = completion.choices?.[0]?.message?.content || '{}';
     return JSON.parse(raw) as any;

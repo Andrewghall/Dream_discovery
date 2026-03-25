@@ -79,8 +79,15 @@ export const mockPrisma = {
   session: {
     create: vi.fn(),
     findUnique: vi.fn(),
+    findFirst: vi.fn(),
     delete: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
+  },
+  workshopShare: {
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    delete: vi.fn(),
   },
   loginAttempt: {
     create: vi.fn(),

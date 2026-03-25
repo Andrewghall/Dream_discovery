@@ -18,6 +18,7 @@
 import OpenAI from 'openai';
 import { nanoid } from 'nanoid';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import { hasDiscoveryData } from './agent-types';
 import type {
   WorkshopQuestionSet,
@@ -771,14 +772,14 @@ export async function runQuestionSetAgent(
 
       console.log(`[Question Set Agent] Iteration ${iteration}${isLastIteration ? ' (forced commit)' : ''}`);
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.4,
         messages,
         tools: QUESTION_SET_TOOLS,
         tool_choice: toolChoice,
         parallel_tool_calls: true,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

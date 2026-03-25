@@ -78,12 +78,9 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 }
 
 /**
- * Verify a JWT AND check DB session state for non-platform-admin users.
+ * Verify a JWT AND check DB session state for all roles including PLATFORM_ADMIN.
  *
- * Platform admin sessions are env-var based and have no DB record,
- * so they are validated by JWT signature only.
- *
- * For all other roles the DB Session row must:
+ * The DB Session row must:
  *   - exist
  *   - not be revoked (revokedAt IS NULL)
  *   - not be expired  (expiresAt > now)
@@ -95,18 +92,13 @@ export async function verifySessionWithDB(token: string): Promise<SessionPayload
   const payload = await verifySessionToken(token);
   if (!payload) return null;
 
-  // Platform admin: env-var auth, no DB session row
-  if (payload.role === 'PLATFORM_ADMIN') {
-    return payload;
-  }
-
   // Support/impersonation sessions: scoped JWT derived from a valid PLATFORM_ADMIN
   // session — no DB session row exists for these. JWT signature already proves validity.
   if (payload.impersonatedBy) {
     return payload;
   }
 
-  // All other roles: verify DB session state
+  // All roles (including PLATFORM_ADMIN): verify DB session state
   try {
     const dbSession = await prisma.session.findFirst({
       where: {
@@ -166,7 +158,7 @@ export async function getSession(): Promise<SessionPayload | null> {
  * @returns New JWT string or null if current token is invalid
  */
 export async function refreshSessionToken(token: string): Promise<string | null> {
-  const payload = await verifySessionToken(token);
+  const payload = await verifySessionWithDB(token);
   if (!payload) {
     return null;
   }

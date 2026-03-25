@@ -9,6 +9,7 @@
  */
 
 import OpenAI from 'openai';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -504,13 +505,13 @@ export async function runV2SynthesisAgent(
 
   console.log(`[v2-synthesis] Prompt: ${(prompt.length / 1000).toFixed(1)}KB · ${rawSignals.totalNodes} nodes · ${rawSignals.nodesByPhase.DISCOVERY.length}Disc/${rawSignals.nodesByPhase.REIMAGINE.length}R/${rawSignals.nodesByPhase.CONSTRAINTS.length}C/${rawSignals.nodesByPhase.DEFINE_APPROACH.length}D phase texts`);
 
-  const completion = await openai.chat.completions.create({
+  const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
     max_tokens: 12000,
     response_format: { type: 'json_object' },
-  });
+  }));
 
   const raw = completion.choices[0]?.message?.content;
   if (!raw) {

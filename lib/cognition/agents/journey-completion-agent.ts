@@ -17,6 +17,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { GuidanceState, JourneyGap, JourneyGapType } from '../guidance-state';
 import type { AgentConversationCallback, AgentReview } from './agent-types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
@@ -379,13 +380,13 @@ export async function runJourneyCompletionAgent(
         ? { type: 'function', function: { name: 'assess_completion' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools: JOURNEY_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);
@@ -608,13 +609,13 @@ Always suggest the most impactful journey data to collect next.`;
         ? { type: 'function', function: { name: 'submit_review' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools: JOURNEY_REVIEW_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

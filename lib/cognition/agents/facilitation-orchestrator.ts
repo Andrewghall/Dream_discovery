@@ -20,6 +20,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { CognitiveState } from '../cognitive-state';
 import {
   getOrCreateGuidanceState,
@@ -1095,13 +1096,13 @@ export async function runFacilitationOrchestrator(
 
       console.log(`[Orchestrator] Iteration ${iteration}${isLastIteration ? ' (forced commit)' : ''}`);
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: ORCHESTRATOR_MODEL,
         temperature: 0.3,
         messages,
         tools: ORCHESTRATOR_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

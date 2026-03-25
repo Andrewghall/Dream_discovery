@@ -95,7 +95,7 @@ export default async function ActiveSessionsPage() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-medium text-gray-900">
-                              {s.user.name} ({s.user.email})
+                              {s.user?.name ?? 'Platform Admin'} ({s.user?.email ?? 'admin'})
                             </p>
                             {isCurrentSession && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -103,11 +103,11 @@ export default async function ActiveSessionsPage() {
                               </span>
                             )}
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              s.user.role === 'PLATFORM_ADMIN'
+                              (s.user?.role ?? 'PLATFORM_ADMIN') === 'PLATFORM_ADMIN'
                                 ? 'bg-purple-100 text-purple-800'
                                 : 'bg-blue-100 text-blue-800'
                             }`}>
-                              {s.user.role.replace('_', ' ')}
+                              {(s.user?.role ?? 'PLATFORM_ADMIN').replace('_', ' ')}
                             </span>
                           </div>
                           <p className="text-xs text-gray-600 mt-1">

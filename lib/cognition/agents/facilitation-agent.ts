@@ -17,6 +17,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState } from '../guidance-state';
 import type { AgentConversationCallback, WorkshopPrepResearch } from './agent-types';
@@ -451,13 +452,13 @@ export async function runFacilitationAgent(
         ? { type: 'function', function: { name: 'generate_pads' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.4,
         messages,
         tools,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

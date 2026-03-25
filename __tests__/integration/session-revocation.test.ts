@@ -170,21 +170,24 @@ describe('Session Revocation Model', () => {
       });
     });
 
-    it('allows platform admin without DB session (JWT-only)', async () => {
+    it('allows platform admin with valid DB session', async () => {
       // Platform admin JWT is valid
       vi.mocked(jose.jwtVerify).mockResolvedValue({
         payload: mockAdminJwtPayload,
         protectedHeader: { alg: 'HS256' },
       } as any);
 
+      // DB session exists and is valid (P0.3: PLATFORM_ADMIN sessions now stored in DB)
+      sessionFindFirst.mockResolvedValue({ id: 'random-nanoid' });
+
       const result = await verifySessionWithDB('admin-jwt');
 
-      // Should return payload WITHOUT hitting DB
+      // Should return payload after DB check
       expect(result).toMatchObject({
         userId: 'admin',
         role: 'PLATFORM_ADMIN',
       });
-      expect(sessionFindFirst).not.toHaveBeenCalled();
+      expect(sessionFindFirst).toHaveBeenCalled();
     });
 
     it('returns null when JWT itself is invalid', async () => {
@@ -195,7 +198,7 @@ describe('Session Revocation Model', () => {
       expect(sessionFindFirst).not.toHaveBeenCalled();
     });
 
-    it('falls back to JWT-only on DB error (graceful degradation)', async () => {
+    it('rejects session on DB error — fail-closed to preserve revocation guarantees', async () => {
       // JWT is valid
       vi.mocked(jose.jwtVerify).mockResolvedValue({
         payload: mockJwtPayload,
@@ -206,11 +209,8 @@ describe('Session Revocation Model', () => {
       sessionFindFirst.mockRejectedValue(new Error('DB connection failed'));
 
       const result = await verifySessionWithDB('valid-jwt');
-      // Should still return payload (graceful degradation)
-      expect(result).toMatchObject({
-        userId: 'tenant-user-id',
-        role: 'TENANT_ADMIN',
-      });
+      // Must return null: failing open would allow revoked sessions during DB outages
+      expect(result).toBeNull();
     });
   });
 

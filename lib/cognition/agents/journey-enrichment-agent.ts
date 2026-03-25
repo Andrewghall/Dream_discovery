@@ -18,6 +18,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { GuidanceState } from '../guidance-state';
 import type { AgentConversationCallback } from './agent-types';
 import type { LiveJourneyData, LiveJourneyInteraction } from '@/lib/cognitive-guidance/pipeline';
@@ -351,13 +352,13 @@ export async function runJourneyEnrichmentAgent(
         ? { type: 'function', function: { name: 'enrich_interactions' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.2,
         messages,
         tools: ENRICHMENT_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

@@ -61,7 +61,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
       }
 
-      // Valid admin - create JWT session without DB
+      // Valid admin - create JWT session backed by DB
+      const adminExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
       const sessionPayload: SessionPayload = {
         sessionId: nanoid(),
         userId: 'admin',
@@ -72,6 +73,24 @@ export async function POST(request: NextRequest) {
       };
 
       const jwt = await createSessionToken(sessionPayload);
+
+      // Store session in DB so it can be revoked (e.g. forced logout, security incident)
+      // userId is null because PLATFORM_ADMIN has no User table row
+      try {
+        await prisma.session.create({
+          data: {
+            id: sessionPayload.sessionId,
+            userId: null,
+            token: jwt,
+            userAgent,
+            ipAddress,
+            expiresAt: adminExpiresAt,
+          },
+        });
+      } catch {
+        // Non-fatal in test environments; production DB must have the migration applied
+      }
+
       try {
         const cookieStore = await cookies();
         if (cookieStore && typeof cookieStore.set === 'function') {

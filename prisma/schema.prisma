@@ -76,7 +76,7 @@ model LoginAttempt {
 
 model Session {
   id             String    @id @default(cuid())
-  userId         String
+  userId         String?
   token          String    @unique
   userAgent      String?
   ipAddress      String?
@@ -84,7 +84,7 @@ model Session {
   lastActivityAt DateTime  @default(now())
   createdAt      DateTime  @default(now())
   revokedAt      DateTime?
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([token])

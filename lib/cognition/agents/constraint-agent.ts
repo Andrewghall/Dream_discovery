@@ -11,6 +11,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, ConstraintFlag } from '../guidance-state';
 import type { AgentConversationCallback, AgentReview, WorkshopPrepResearch } from './agent-types';
@@ -190,13 +191,13 @@ Call map_constraints when ready. Cite sourceBeliefIds for every constraint.`;
         ? { type: 'function', function: { name: 'map_constraints' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);
@@ -362,13 +363,13 @@ REVIEW MODE: Use query_constraint_beliefs to check what constraints exist in the
         ? { type: 'function', function: { name: 'submit_review' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools: reviewTools,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

@@ -527,9 +527,8 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   }
 
   // Layer 4: Question constraints from domain + engagement type
-  // Fall back to 'enterprise' key when dreamTrack is ENTERPRISE and no domainPack is set
-  const domainKey = input.domainPack?.toLowerCase() ??
-    ((input.dreamTrack ?? '').toUpperCase() === 'ENTERPRISE' ? 'enterprise' : '');
+  // Only use domainPack when explicitly provided — no implicit fallback for ENTERPRISE track
+  const domainKey = input.domainPack?.toLowerCase() ?? '';
   const etKey = input.engagementType?.toLowerCase() ?? '';
 
   const domainConstraints = DOMAIN_QUESTION_CONSTRAINTS[domainKey];

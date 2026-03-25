@@ -13,6 +13,7 @@
 import OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { FindingType, SourceStream } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
@@ -380,12 +381,12 @@ export async function analyseCsvAndExtractFindings(params: {
   let dataInterpretation = '';
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const response = await openai.chat.completions.create({
+    const response = await openAiBreaker.execute(() => openai.chat.completions.create({
       model: MODEL,
       messages,
       tools: buildTools(params.lensNames ?? []),
       tool_choice: i === 0 ? { type: 'function', function: { name: 'submit_findings' } } : 'auto',
-    });
+    }));
 
     const choice = response.choices[0];
     if (!choice?.message) break;

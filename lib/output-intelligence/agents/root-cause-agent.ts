@@ -8,6 +8,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopSignals, RootCauseIntelligence } from '../types';
 
 const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
@@ -159,7 +160,7 @@ ${SCHEMA}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 100_000);
     try {
-      const response = await openai.chat.completions.create(
+      const response = await openAiBreaker.execute(() => openai.chat.completions.create(
         {
           model: 'gpt-4o',
           response_format: { type: 'json_object' },
@@ -171,7 +172,7 @@ ${SCHEMA}`;
           max_tokens: 3000,
         },
         { signal: controller.signal }
-      );
+      ));
 
       clearTimeout(timeoutId);
       const raw = response.choices[0]?.message?.content ?? '{}';

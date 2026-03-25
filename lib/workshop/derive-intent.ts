@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 
 function safeIntent(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -51,12 +52,12 @@ Text:\n${JSON.stringify(cleaned)}`;
 
   messages.push({ role: 'user', content: prompt });
 
-  const completion = await openai.chat.completions.create({
+  const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0.2,
     messages,
     response_format: { type: 'json_object' },
-  });
+  }));
 
   const raw = completion.choices?.[0]?.message?.content || '{}';
   let obj: unknown = {};

@@ -6,6 +6,7 @@
  */
 
 import OpenAI from 'openai';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { NarrativeLayer, ParticipantLayerAssignment } from '@/lib/types/discover-analysis';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -70,7 +71,7 @@ export async function classifyParticipantLayers(
         department: p.department || 'Unknown',
       }));
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: 'gpt-4o-mini',
         temperature: 0,
         messages: [
@@ -97,7 +98,7 @@ Return ONLY valid JSON: an array of objects with { id, layer, confidence, reason
           },
         ],
         response_format: { type: 'json_object' },
-      });
+      }));
 
       const raw = completion.choices?.[0]?.message?.content || '{}';
       const parsed = JSON.parse(raw) as {
