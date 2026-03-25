@@ -76,6 +76,7 @@ function safeStr(v: unknown): string {
 function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
   const byDomain: Record<string, DomainBucket> = {};
   const byPhase: Record<string, SnapshotNode[]> = {
+    DISCOVERY: [],
     REIMAGINE: [],
     CONSTRAINTS: [],
     DEFINE_APPROACH: [],
@@ -1021,12 +1022,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         try {
           const knowledgePack = extractBlueprintKnowledgePack(workshop.blueprint);
+          // If blueprint has no actors defined, fall back to the top detected actors so
+          // the V2 agent anchors to real actor names rather than generic placeholders.
+          if (knowledgePack.actors.length === 0) {
+            knowledgePack.actors = aggregated.topActors.slice(0, 8).map(a => a.name).filter(Boolean);
+          }
 
           // Build raw signal package — verbatim node texts + domain breakdown
+          // Sampling rule: up to 35 texts per phase are passed as representative samples.
           const v2RawSignals = {
             totalNodes: aggregated.totalNodes,
             participantCount: discoveryParticipants.length || aggregated.topActors.length,
             nodesByPhase: {
+              DISCOVERY:        (aggregated.byPhase.DISCOVERY        || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
               REIMAGINE:        (aggregated.byPhase.REIMAGINE        || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
               CONSTRAINTS:      (aggregated.byPhase.CONSTRAINTS      || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
               DEFINE_APPROACH:  (aggregated.byPhase.DEFINE_APPROACH  || []).map((n: { rawText?: string }) => n.rawText || '').filter(Boolean).slice(0, 35),
@@ -1059,7 +1067,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             emit(
               'facilitation-agent',
               'orchestrator',
-              `**V2 Synthesis complete.** Generated consulting-grade output across 5 sections from ${v2RawSignals.totalNodes} signals (${v2RawSignals.nodesByPhase.REIMAGINE.length} Reimagine / ${v2RawSignals.nodesByPhase.CONSTRAINTS.length} Constraints / ${v2RawSignals.nodesByPhase.DEFINE_APPROACH.length} Define Approach). Anchored to ${knowledgePack.actors.length} actors, ${knowledgePack.journeyStages.length} journey stages, ${knowledgePack.lenses.length} lenses.`,
+              `**V2 Synthesis complete.** Generated consulting-grade output across 5 sections from ${v2RawSignals.totalNodes} signals (${v2RawSignals.nodesByPhase.DISCOVERY.length} Discovery / ${v2RawSignals.nodesByPhase.REIMAGINE.length} Reimagine / ${v2RawSignals.nodesByPhase.CONSTRAINTS.length} Constraints / ${v2RawSignals.nodesByPhase.DEFINE_APPROACH.length} Define Approach). Anchored to ${knowledgePack.actors.length} actors, ${knowledgePack.journeyStages.length} journey stages, ${knowledgePack.lenses.length} lenses.`,
               'info',
             );
           } else {

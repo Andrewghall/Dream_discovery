@@ -18,6 +18,7 @@ export type RawSignals = {
   totalNodes: number;
   participantCount: number;
   nodesByPhase: {
+    DISCOVERY: string[];
     REIMAGINE: string[];
     CONSTRAINTS: string[];
     DEFINE_APPROACH: string[];
@@ -237,16 +238,22 @@ without a specific object, a specific mechanism, and a specific measurable outco
 Every truth, constraint, and outcome MUST cite verbatim or near-verbatim evidence from the raw data below.
 
 ═══════════════════════════════════════════════
-RAW WORKSHOP DATA — ${rawSignals.totalNodes} signals from ${rawSignals.participantCount || 'multiple'} participants
+RAW WORKSHOP DATA — ${rawSignals.totalNodes} total signals from ${rawSignals.participantCount || 'multiple'} participants
+SAMPLING NOTE: Up to 35 representative signals per phase are shown below. Intensity
+values in heatmap cells must be estimated from the relative frequency of themes in
+these samples — do not claim exact counts from a dataset you have not seen in full.
 ═══════════════════════════════════════════════
 
-REIMAGINE PHASE — ${rawSignals.nodesByPhase.REIMAGINE.length} signals (what participants envision):
+DISCOVERY PHASE — ${rawSignals.nodesByPhase.DISCOVERY.length} signals shown (current-state observations):
+${fmt(rawSignals.nodesByPhase.DISCOVERY)}
+
+REIMAGINE PHASE — ${rawSignals.nodesByPhase.REIMAGINE.length} signals shown (what participants envision):
 ${fmt(rawSignals.nodesByPhase.REIMAGINE)}
 
-CONSTRAINTS PHASE — ${rawSignals.nodesByPhase.CONSTRAINTS.length} signals (what blocks progress):
+CONSTRAINTS PHASE — ${rawSignals.nodesByPhase.CONSTRAINTS.length} signals shown (what blocks progress):
 ${fmt(rawSignals.nodesByPhase.CONSTRAINTS)}
 
-DEFINE APPROACH PHASE — ${rawSignals.nodesByPhase.DEFINE_APPROACH.length} signals (how to move forward):
+DEFINE APPROACH PHASE — ${rawSignals.nodesByPhase.DEFINE_APPROACH.length} signals shown (how to move forward):
 ${fmt(rawSignals.nodesByPhase.DEFINE_APPROACH)}
 
 DOMAIN BREAKDOWN (by lens):
@@ -284,7 +291,7 @@ DISCOVER SECTION:
   * evidence[]: 3-4 DIRECT quotes or close paraphrases from the verbatim data provided above. Do not invent evidence.
   * whyItMatters: 2-3 sentences. What is the business cost if this truth is ignored? Be specific about the cascade effect.
   * evidenceStrength: strong = 5+ signals; moderate = 3-4; weak = 1-2
-- artifact type "heatmap": cells = number of friction/pain signals for that actor at that stage (count from the raw data). tooltip = short explanation of what drives this intensity, e.g. "7 Manager signals at Engagement describe approval bottlenecks slowing customer response times."
+- artifact type "heatmap": cells = relative intensity of friction/pain for that actor at that stage, scored 1–10 based on the frequency and severity of related signals in the samples provided above (not an exact count — you are seeing representative samples, not the full dataset). tooltip = 1-2 sentences explaining what drives this intensity based on specific signals you observed, e.g. "Multiple Manager signals at Engagement describe approval bottlenecks slowing customer response times."
 - painConcentration: 3-4 sentences. WHERE specifically is pain most concentrated? What is the downstream cascade if the highest-intensity intersection is left unresolved?
 - gaps: 3-5 specific blind spots. Not "we need more data" but "We have 9 constraint signals about technology at the Fulfilment stage but zero signals from the Regulation lens — compliance risk of the proposed digital changes is unassessed."
 
@@ -495,7 +502,7 @@ export async function runV2SynthesisAgent(
     rawSignals,
   );
 
-  console.log(`[v2-synthesis] Prompt: ${(prompt.length / 1000).toFixed(1)}KB · ${rawSignals.totalNodes} nodes · ${rawSignals.nodesByPhase.REIMAGINE.length}R/${rawSignals.nodesByPhase.CONSTRAINTS.length}C/${rawSignals.nodesByPhase.DEFINE_APPROACH.length}D phase texts`);
+  console.log(`[v2-synthesis] Prompt: ${(prompt.length / 1000).toFixed(1)}KB · ${rawSignals.totalNodes} nodes · ${rawSignals.nodesByPhase.DISCOVERY.length}Disc/${rawSignals.nodesByPhase.REIMAGINE.length}R/${rawSignals.nodesByPhase.CONSTRAINTS.length}C/${rawSignals.nodesByPhase.DEFINE_APPROACH.length}D phase texts`);
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
