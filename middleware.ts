@@ -56,12 +56,24 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Support session auto-exit: if Andrew navigates to /admin/platform while holding a
+    // Support session auto-exit: if navigating to /admin/platform while holding a
     // scoped TENANT_ADMIN session (impersonatedBy is set), automatically restore the
     // original PLATFORM_ADMIN session from the backup cookie before serving the page.
+    // SECURITY: validate the backup JWT against the DB before reinstating it.
+    // Signature-only validation is insufficient — a revoked admin backup must NOT
+    // be restorable via this path.
     if (session.impersonatedBy && pathname.startsWith('/admin/platform')) {
       const backupJwt = request.cookies.get('dream-admin-session')?.value;
       if (backupJwt) {
+        // DB-backed check: rejects revoked/expired admin backup sessions
+        const backupSession = await verifySessionWithDB(backupJwt).catch(() => null);
+        if (!backupSession) {
+          // Backup is revoked, expired, or invalid — clear the stale cookie and
+          // fall through to normal role-based access control below.
+          const clearResponse = NextResponse.next();
+          clearResponse.cookies.delete('dream-admin-session');
+          return clearResponse;
+        }
         const isProduction = process.env.NODE_ENV === 'production';
         const response = NextResponse.redirect(new URL('/admin/platform', request.url));
         response.cookies.set('session', backupJwt, {
@@ -91,7 +103,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    // Sliding-window token refresh: if the JWT is close to expiry, reissue it
+    // Sliding-window token refresh: if the JWT is close to expiry, reissue it.
+    // IMPORTANT: preserve all revocation-critical fields so that revoking a parent
+    // PLATFORM_ADMIN session still invalidates an impersonation token after refresh.
     const response = NextResponse.next();
     if (shouldRefreshToken(request)) {
       try {
@@ -102,6 +116,10 @@ export async function middleware(request: NextRequest) {
           role: session.role,
           organizationId: session.organizationId,
           createdAt: session.createdAt,
+          // Preserve impersonation linkage — without these the parent-session
+          // revocation chain is broken on the first middleware-driven refresh.
+          ...(session.impersonatedBy !== undefined && { impersonatedBy: session.impersonatedBy }),
+          ...(session.parentSessionId !== undefined && { parentSessionId: session.parentSessionId }),
         });
         response.cookies.set('session', freshJwt, {
           httpOnly: true,
