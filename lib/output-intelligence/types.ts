@@ -4,6 +4,11 @@
  * Defines the signal aggregate (input) and all 5 engine outputs.
  */
 
+import type { GraphIntelligence, CausalChain, EdgeTier } from '@/lib/output/relationship-graph';
+
+// Re-export graph types so consumers can import from a single place
+export type { GraphIntelligence, CausalChain, EdgeTier };
+
 // ── Input Signal Aggregate ──────────────────────────────────────────────────
 
 export interface WorkshopSignals {
@@ -55,6 +60,12 @@ export interface WorkshopSignals {
     chunks: Array<{ text: string; source: string; similarity: number }>;
     queryUsed: string;
   };
+  /**
+   * Deterministic relationship graph intelligence built from live session nodes
+   * and discovery insights. Populated by signal-aggregator when snapshot data
+   * contains theme-labelled nodes. Undefined when insufficient data.
+   */
+  graphIntelligence?: GraphIntelligence;
 }
 
 // ── Engine 1: Discovery Validation ─────────────────────────────────────────
@@ -185,6 +196,65 @@ export interface StrategicImpact {
   confidenceScore: number | null;  // 0-100, null = insufficient evidence
 }
 
+// ── Causal Intelligence (graph-backed) ────────────────────────────────────────
+
+/**
+ * A single board-facing finding derived from relationship graph evidence.
+ * Every field is traceable to specific graph nodes, edges, or intelligence outputs.
+ */
+export interface CausalFinding {
+  findingId: string;
+  /**
+   * ORGANISATIONAL_ISSUE  — bottleneck or high-risk compensating behaviour; gate ≥ REINFORCED
+   * REINFORCED_FINDING    — multi-participant, multi-lens pattern with relationship support
+   * EMERGING_PATTERN      — credible but not yet systemic; clearly labelled as such
+   * CONTRADICTION         — opposing participant views on the same topic
+   * EVIDENCE_GAP          — high-frequency constraint with no response pathway
+   */
+  category: 'ORGANISATIONAL_ISSUE' | 'REINFORCED_FINDING' | 'EMERGING_PATTERN' | 'CONTRADICTION' | 'EVIDENCE_GAP';
+  issueTitle: string;
+  whyItMatters: string;
+  whoItAffects: string;
+  /** Verbatim cluster label + evidence tier that grounds this finding */
+  evidenceBasis: string;
+  /** The causal chain this finding sits within, if applicable */
+  causalChain?: {
+    constraintLabel: string;
+    enablerLabel: string;
+    reimaginationLabel: string;
+    chainStrength: number;
+    weakestLinkTier: EdgeTier;
+  };
+  /** Human-readable description of any bottleneck role this node plays */
+  bottleneckContext?: string;
+  /** Human-readable description of compensating behaviour risk, if applicable */
+  compensatingBehaviourContext?: string;
+  operationalImplication: string;
+  recommendedAction: string;
+  /** Edge IDs from the relationship graph that support this finding */
+  evidenceEdgeIds: string[];
+  /** Node ID from the relationship graph this finding is anchored to */
+  evidenceNodeId?: string;
+}
+
+export interface CausalIntelligence {
+  organisationalIssues: CausalFinding[];
+  reinforcedFindings: CausalFinding[];
+  emergingPatterns: CausalFinding[];
+  contradictions: CausalFinding[];
+  evidenceGaps: CausalFinding[];
+  /** Top causal chains extracted from the graph, with LLM-enriched narrative */
+  dominantCausalChains: Array<{
+    constraintLabel: string;
+    enablerLabel: string;
+    reimaginationLabel: string;
+    chainStrength: number;
+    narrative: string;
+  }>;
+  graphCoverageScore: number;
+  generatedAtMs: number;
+}
+
 // ── Master Output ────────────────────────────────────────────────────────────
 
 export interface WorkshopOutputIntelligence {
@@ -193,6 +263,12 @@ export interface WorkshopOutputIntelligence {
   futureState: FutureStateDesign;
   roadmap: ExecutionRoadmap;
   strategicImpact: StrategicImpact;
+  /**
+   * Graph-backed causal intelligence. Optional — populated when the relationship
+   * graph has sufficient data (graphCoverageScore > 0). Absent for workshops
+   * without theme-labelled live session nodes.
+   */
+  causalIntelligence?: CausalIntelligence;
   generatedAtMs: number;
   lensesUsed: string[];
 }

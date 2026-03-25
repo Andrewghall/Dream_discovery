@@ -20,6 +20,7 @@ import { runRootCauseAgent } from './agents/root-cause-agent';
 import { runFutureStateAgent } from './agents/future-state-agent';
 import { runExecutionRoadmapAgent } from './agents/execution-roadmap-agent';
 import { runStrategicImpactAgent } from './agents/strategic-impact-agent';
+import { runCausalSynthesisAgent } from './agents/causal-synthesis-agent';
 
 export type EngineProgressCallback = (engine: EngineKey, event: 'started' | 'complete' | 'error', detail?: string) => void;
 
@@ -121,13 +122,14 @@ export async function runIntelligencePipeline(
   ];
   engines.forEach((e) => onEngineProgress?.(e, 'started'));
 
-  // Run all 5 agents in parallel
-  const [dv, rc, fs, er, si] = await Promise.allSettled([
+  // Run all 6 agents in parallel (5 LLM agents + 1 graph-backed causal synthesis)
+  const [dv, rc, fs, er, si, cs] = await Promise.allSettled([
     runDiscoveryValidationAgent(signals, (msg) => console.log(msg)),
     runRootCauseAgent(signals, (msg) => console.log(msg)),
     runFutureStateAgent(signals, (msg) => console.log(msg)),
     runExecutionRoadmapAgent(signals, (msg) => console.log(msg)),
     runStrategicImpactAgent(signals, (msg) => console.log(msg)),
+    runCausalSynthesisAgent(signals, (msg) => console.log(msg)),
   ]);
 
   // Compute evidence scores for gating
@@ -172,12 +174,20 @@ export async function runIntelligencePipeline(
   onEngineProgress?.('roadmap', er.status === 'fulfilled' ? 'complete' : 'error', errors.roadmap);
   onEngineProgress?.('strategicImpact', si.status === 'fulfilled' ? 'complete' : 'error', errors.strategicImpact);
 
+  // Causal synthesis — optional, null when graph has insufficient data
+  const causalIntelligence =
+    cs.status === 'fulfilled' && cs.value !== null
+      ? cs.value
+      : undefined;
+  // Causal synthesis failures are silent (no error logged — null result is valid when graph is absent)
+
   const intelligence: WorkshopOutputIntelligence = {
     discoveryValidation,
     rootCause,
     futureState,
     roadmap,
     strategicImpact,
+    causalIntelligence,
     generatedAtMs: Date.now(),
     lensesUsed: signals.context.lenses,
   };

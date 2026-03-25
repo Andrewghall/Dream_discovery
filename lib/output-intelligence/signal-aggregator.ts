@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma';
 import type { WorkshopSignals } from './types';
 import { retrieveRelevant } from '@/lib/embeddings/retrieve';
 import { groupRole } from '@/lib/discover-analysis/compute-alignment';
+import { buildWorkshopGraphIntelligence } from '@/lib/output/build-workshop-graph';
 
 // ── Types from DB shapes ─────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
         discoverAnalysis: true,
         insights: {
           take: 200,
-          select: { text: true, insightType: true, category: true, participantId: true },
+          select: { id: true, text: true, insightType: true, category: true, participantId: true },
         },
         themes: {
           take: 50,
@@ -371,6 +372,32 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       summaryContent,
     },
   };
+
+  // ── Relationship Graph Intelligence ──────────────────────────────────────
+  // Builds a deterministic causal graph from live snapshot nodes + discovery
+  // insights. Gracefully skips when nodes have no theme labels (graph will be
+  // empty) or when no snapshot exists yet.
+  try {
+    const rawNodeMap = latestSnapshot
+      ? ((safeJson<SnapshotPayload>(latestSnapshot.payload)?.nodesById
+          ?? safeJson<SnapshotPayload>(latestSnapshot.payload)?.nodes) ?? {})
+      : {};
+
+    const graphIntelligence = buildWorkshopGraphIntelligence({
+      workshopId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      nodesById: rawNodeMap as any,
+      insights: workshop.insights,
+      participants: workshop.participants,
+    });
+
+    // Only attach when the graph has meaningful coverage
+    if (graphIntelligence.summary.graphCoverageScore > 0 || graphIntelligence.summary.totalChains > 0) {
+      signals.graphIntelligence = graphIntelligence;
+    }
+  } catch (err) {
+    console.error('[signal-aggregator] graph intelligence build failed:', err);
+  }
 
   // ── Historical Memory — cross-workshop semantic retrieval ─────────────────
   // Finds semantically relevant findings from other past workshops in this org.

@@ -125,6 +125,44 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('(Supporting context only — not from this workshop)');
   }
 
+  // ── Relationship graph: bottlenecks + compensating behaviours ───────────
+  // These are deterministic findings from the evidence graph — use them to
+  // anchor root cause analysis in structural evidence rather than inference.
+  if (signals.graphIntelligence) {
+    const gi = signals.graphIntelligence;
+
+    if (gi.bottlenecks.length > 0) {
+      lines.push('\n=== RELATIONSHIP GRAPH: STRUCTURAL BOTTLENECKS ===');
+      lines.push('Constraints that block or drive the most other areas (deterministic, evidence-backed):');
+      for (const b of gi.bottlenecks.slice(0, 5)) {
+        lines.push(`• "${b.displayLabel}" — affects ${b.outDegree} areas, evidence tier: ${b.evidenceTier}, score: ${b.compositeScore}`);
+      }
+      lines.push('These are the highest-leverage root cause candidates — prioritise them in your analysis.');
+    }
+
+    if (gi.compensatingBehaviours.length > 0) {
+      lines.push('\n=== RELATIONSHIP GRAPH: COMPENSATING BEHAVIOURS (WORKAROUNDS) ===');
+      lines.push('Enablers papering over live constraints rather than resolving them:');
+      for (const cb of gi.compensatingBehaviours.slice(0, 5)) {
+        lines.push(`• "${cb.enablerLabel}" compensates for "${cb.constraintLabel}" — risk: ${cb.riskLevel}, constraint frequency: ${cb.constraintRawFrequency} signals`);
+      }
+      lines.push('These represent systemic root causes being managed rather than resolved — flag them as structural risk.');
+    }
+
+    if (gi.brokenChains.filter(bc => bc.brokenChainType === 'CONSTRAINT_NO_RESPONSE' && bc.severity === 'high').length > 0) {
+      lines.push('\n=== RELATIONSHIP GRAPH: UNADDRESSED CONSTRAINTS ===');
+      lines.push('High-frequency constraints with no identified organisational response:');
+      gi.brokenChains
+        .filter(bc => bc.brokenChainType === 'CONSTRAINT_NO_RESPONSE' && bc.severity === 'high')
+        .slice(0, 5)
+        .forEach(bc => lines.push(`• "${bc.displayLabel}" — ${bc.rawFrequency} mentions, ${bc.evidenceTier} tier — no response pathway detected`));
+    }
+
+    if (gi.summary.graphCoverageScore > 0) {
+      lines.push(`\n[Graph coverage: ${gi.summary.graphCoverageScore}% of nodes connected. ${gi.summary.systemicEdgeCount} SYSTEMIC-tier edges detected.]`);
+    }
+  }
+
   return lines.join('\n');
 }
 

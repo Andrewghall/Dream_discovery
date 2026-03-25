@@ -123,6 +123,29 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('(Supporting context only — not from this workshop)');
   }
 
+  // ── Relationship graph: confidence calibration ───────────────────────────
+  // Graph coverage and systemic edge count help calibrate confidenceScore.
+  // Higher coverage + more SYSTEMIC edges = more evidence, higher valid confidence.
+  if (signals.graphIntelligence) {
+    const gi = signals.graphIntelligence;
+    lines.push('\n=== RELATIONSHIP GRAPH: EVIDENCE CONFIDENCE CALIBRATION ===');
+    lines.push(`Graph coverage: ${gi.summary.graphCoverageScore}% of evidence nodes are causally connected.`);
+    lines.push(`SYSTEMIC-tier edges: ${gi.summary.systemicEdgeCount} (highest-evidence relationships).`);
+    lines.push(`Dominant causal chains: ${gi.summary.totalChains} (CONSTRAINT → ENABLER → VISION pathways).`);
+    lines.push(`Compensating behaviours: ${gi.summary.totalCompensatingBehaviours} (workarounds masking live constraints).`);
+    if (gi.summary.graphCoverageScore < 30) {
+      lines.push('Note: graph coverage is low — evidence is thin. Calibrate confidenceScore conservatively (< 50).');
+    } else if (gi.summary.graphCoverageScore >= 70) {
+      lines.push('Note: graph coverage is high — strong evidential basis. ConfidenceScore can reflect this.');
+    }
+    if (gi.dominantCausalChains.length > 0) {
+      lines.push('\nStrongest causal chains (use to anchor efficiency gain estimates):');
+      gi.dominantCausalChains.slice(0, 3).forEach(c =>
+        lines.push(`  • ${c.labels.constraint} → ${c.labels.enabler} → ${c.labels.reimagination} [strength: ${c.chainStrength}]`)
+      );
+    }
+  }
+
   return lines.join('\n');
 }
 

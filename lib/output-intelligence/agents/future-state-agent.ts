@@ -118,6 +118,19 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('(Supporting context only — not from this workshop)');
   }
 
+  // ── Relationship graph: dominant causal chains ───────────────────────────
+  // These evidence-backed chains show what constraints → enablers → visions
+  // look like in practice. Use them to anchor the target operating model in
+  // structural evidence rather than pure aspiration.
+  if (signals.graphIntelligence?.dominantCausalChains.length) {
+    lines.push('\n=== RELATIONSHIP GRAPH: DOMINANT CAUSAL CHAINS ===');
+    lines.push('Evidence-backed pathways from constraints through enablers to visions — these are the proven transformation levers:');
+    for (const c of signals.graphIntelligence.dominantCausalChains) {
+      lines.push(`• CONSTRAINT: "${c.labels.constraint}" → ENABLER: "${c.labels.enabler}" → VISION: "${c.labels.reimagination}" [chain strength: ${c.chainStrength}/100, weakest link: ${c.weakestLinkTier}]`);
+    }
+    lines.push('Design the target operating model and AI/human model to activate these chains — especially the strongest-evidenced paths.');
+  }
+
   return lines.join('\n');
 }
 
