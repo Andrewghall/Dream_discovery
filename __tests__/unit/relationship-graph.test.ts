@@ -133,6 +133,33 @@ describe('classifyNodeLayer', () => {
     const { layer } = classifyNodeLayer(cluster);
     expect(layer).toBe('CONSTRAINT');
   });
+
+  it('overrides ENABLER to CONSTRAINT when ≥ 60% of signals are negative sentiment', () => {
+    // automation_concerns-style clusters: type=INSIGHT (→ENABLER), phase=DEFINE_APPROACH (→ENABLER)
+    // but 100% concerned/critical sentiment — these are risk signals, not positive enablers.
+    const negSignals = Array.from({ length: 5 }, () =>
+      sig({ primaryType: 'INSIGHT', phase: 'DEFINE_APPROACH', sentiment: 'concerned', themeLabels: ['automation concerns'] }),
+    );
+    const clusters = buildEvidenceClusters(negSignals);
+    const cluster = clusters.find((c) => c.clusterKey === 'automation_concerns')!;
+    const { layer } = classifyNodeLayer(cluster);
+    expect(layer).toBe('CONSTRAINT');
+  });
+
+  it('does NOT override ENABLER when negative signals are below 60% threshold', () => {
+    // 3 positive + 2 concerned = 40% negative — normal mixed enabler cluster
+    const mixedSignals = [
+      sig({ primaryType: 'INSIGHT', phase: 'DEFINE_APPROACH', sentiment: 'positive', themeLabels: ['mixed tool'] }),
+      sig({ primaryType: 'INSIGHT', phase: 'DEFINE_APPROACH', sentiment: 'positive', themeLabels: ['mixed tool'] }),
+      sig({ primaryType: 'INSIGHT', phase: 'DEFINE_APPROACH', sentiment: 'positive', themeLabels: ['mixed tool'] }),
+      sig({ primaryType: 'INSIGHT', phase: 'DEFINE_APPROACH', sentiment: 'concerned', themeLabels: ['mixed tool'] }),
+      sig({ primaryType: 'INSIGHT', phase: 'DEFINE_APPROACH', sentiment: 'concerned', themeLabels: ['mixed tool'] }),
+    ];
+    const clusters = buildEvidenceClusters(mixedSignals);
+    const cluster = clusters.find((c) => c.clusterKey === 'mixed_tool')!;
+    const { layer } = classifyNodeLayer(cluster);
+    expect(layer).toBe('ENABLER');
+  });
 });
 
 // ── Edge scoring ──────────────────────────────────────────────────────────────
@@ -322,16 +349,19 @@ describe('buildRelationshipGraph', () => {
   });
 
   it('creates an enables edge between ENABLER and REIMAGINATION clusters', () => {
+    // Use rich domain vocabulary shared across both clusters so IDF-weighted Jaccard
+    // clearly exceeds the 0.12 threshold (generic tokens like "would", "speed", "up"
+    // are now in STOPWORDS and no longer inflate similarity).
     const enablerSigs = Array.from({ length: 4 }, (_, i) =>
       confirmedSig(`p${i}`, 'Lead', 'digital_tools', {
         primaryType: 'ENABLER', phase: 'DEFINE_APPROACH', sentiment: 'positive',
-        rawText: 'Digital tools and automation would speed up customer service workflows',
+        rawText: 'Digital automation tools improve customer resolution workflows and drive service efficiency',
       }),
     );
     const visionSigs = Array.from({ length: 4 }, (_, i) =>
       confirmedSig(`v${i}`, 'Director', 'seamless_digital_service', {
         primaryType: 'VISION', phase: 'REIMAGINE', sentiment: 'positive',
-        rawText: 'A seamless digital service where customers resolve issues without waiting',
+        rawText: 'Digital customer resolution through automation improves service quality and efficiency',
       }),
     );
     const scored = makeScoredClusters([...enablerSigs, ...visionSigs]);
@@ -574,6 +604,38 @@ describe('extractDominantCausalChains', () => {
       expect(chains[i].chainStrength).toBeLessThanOrEqual(chains[i - 1].chainStrength);
     }
   });
+
+  it('deduplicates chains that share the same (constraint, enabler, vision) node ID triplet', () => {
+    // Two edges from the same constraint to the same enabler (responds_to + compensates_for)
+    // create two traversal paths through the same node triple — only the strongest should survive.
+    const constraint = mockNode('slow_approvals', 'CONSTRAINT');
+    const enabler    = mockNode('digital_workflow', 'ENABLER');
+    const vision     = mockNode('fast_service', 'REIMAGINATION');
+
+    const edge1 = mockEdge(
+      'digital_workflow__responds_to__slow_approvals', 'digital_workflow', 'slow_approvals',
+      'responds_to', 70, 'REINFORCED',
+    );
+    const edge2 = mockEdge(
+      'digital_workflow__compensates_for__slow_approvals', 'digital_workflow', 'slow_approvals',
+      'compensates_for', 60, 'REINFORCED',
+    );
+    const enablesEdge = mockEdge(
+      'digital_workflow__enables__fast_service', 'digital_workflow', 'fast_service',
+      'enables', 80, 'REINFORCED',
+    );
+
+    const graph = mockGraph([constraint, enabler, vision], [edge1, edge2, enablesEdge]);
+
+    const chains = extractDominantCausalChains(graph);
+    // Two traversal paths to same node triplet → only one chain should be returned
+    expect(chains).toHaveLength(1);
+    expect(chains[0].constraintNodeId).toBe('slow_approvals');
+    expect(chains[0].enablerNodeId).toBe('digital_workflow');
+    expect(chains[0].reimaginationNodeId).toBe('fast_service');
+    // Must keep the strongest (edge1 score 70 > edge2 score 60: √(70×80) > √(60×80))
+    expect(chains[0].chainStrength).toBe(Math.round(Math.sqrt(70 * 80)));
+  });
 });
 
 describe('findBottlenecks', () => {
@@ -742,6 +804,8 @@ describe('findContradictionPaths', () => {
 
     expect(contradictions.length).toBe(1);
     expect(contradictions[0].sharedParticipantIds.length).toBeGreaterThan(0);
+    // fromNode = more positive cluster; its layer is ENABLER (positive sentiment, ENABLER type)
+    // toNode = sceptical cluster; reclassified to CONSTRAINT by the ≥60% negative override
     expect(contradictions[0].layer).toBe('ENABLER');
   });
 });

@@ -151,9 +151,21 @@ export function extractDominantCausalChains(graph: RelationshipGraph): CausalCha
     }
   }
 
-  // Return ALL valid chains sorted by strength.
-  // Display truncation is the caller's responsibility (report-summary-agent takes slice(0,3)).
-  return chains.sort((a, b) => b.chainStrength - a.chainStrength);
+  // Sort descending by strength, then deduplicate by (constraint, enabler, vision) node ID
+  // triplet — keeping the strongest chain when multiple edges connect the same node triple.
+  // This prevents duplicate-looking board entries when a constraint→enabler pair has both
+  // a `drives` and a `compensates_for` edge (two valid traversal paths, same semantic chain).
+  const sorted = chains.sort((a, b) => b.chainStrength - a.chainStrength);
+  const seen = new Set<string>();
+  const deduped: CausalChain[] = [];
+  for (const chain of sorted) {
+    const key = `${chain.constraintNodeId}::${chain.enablerNodeId}::${chain.reimaginationNodeId}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(chain);
+    }
+  }
+  return deduped;
 }
 
 // ── Bottlenecks ───────────────────────────────────────────────────────────────

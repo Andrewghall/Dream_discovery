@@ -114,7 +114,9 @@ export function extractFindings(graph: GraphIntelligence, clientName: string): C
       operationalImplication: cb.riskLevel === 'high'
         ? `High risk of regression: if the workaround fails or scales, the underlying constraint will surface at greater scale.`
         : `Medium risk: the workaround is viable short-term but creates technical/process debt.`,
-      recommendedAction: `Address root constraint "${cb.constraintLabel}" alongside scaling enabler "${cb.enablerLabel}" — resolve rather than compensate.`,
+      // Deterministic fallback: action targets the CONSTRAINT (root problem), not the
+      // ENABLER (workaround). The LLM enrichment prompt enforces the same rule.
+      recommendedAction: `Eliminate or substantially reduce the root constraint "${cb.constraintLabel}" — do not further invest in the workaround "${cb.enablerLabel}" until the underlying constraint is resolved.`,
       evidenceEdgeIds: [cb.edgeId],
       evidenceNodeId: cb.enablerNodeId,
       // Quotes aligned with evidenceNodeId (the enabler node) — constraint context is
@@ -226,8 +228,10 @@ async function enrichFindings(
   const openai = apiKey ? new OpenAI({ apiKey }) : null;
   if (!openai || findings.length === 0) return new Map();
 
+  const clientName = signals.context.clientName || 'the organisation';
+
   const context = [
-    `Client: ${signals.context.clientName || 'Not specified'}`,
+    `Client: ${clientName}`,
     `Industry: ${signals.context.industry || 'Not specified'}`,
     `Business context: ${signals.context.businessContext || 'Not specified'}`,
   ].join('\n');
@@ -241,7 +245,7 @@ async function enrichFindings(
     compensatingBehaviourContext: f.compensatingBehaviourContext,
   }));
 
-  const prompt = `You are a strategic advisor synthesising workshop relationship graph findings into board-grade language.
+  const prompt = `You are a strategic advisor synthesising workshop relationship graph findings into board-grade language for ${clientName}.
 
 CLIENT CONTEXT:
 ${context}
@@ -249,19 +253,49 @@ ${context}
 FINDINGS TO ENRICH:
 ${JSON.stringify(findingSummaries, null, 2)}
 
-For each finding, return enriched narrative fields. Be specific, evidence-grounded, and written for a C-suite audience.
-Do NOT invent evidence not present in the finding. Use the client name and industry where relevant.
+MANDATORY RULES — violation of any rule makes the output unusable:
 
-Return a JSON array (not an object) with one entry per finding:
-[
-  {
-    "findingId": "string — matches the input findingId exactly",
-    "whyItMatters": "string — 2-3 sentences, board-grade, specific to this client's context",
-    "whoItAffects": "string — specific roles/teams, not generic",
-    "operationalImplication": "string — concrete operational consequence if unaddressed",
-    "recommendedAction": "string — specific, actionable, proportionate to evidence tier"
-  }
-]`;
+1. CLIENT NAME: Use exactly "${clientName}" every time you refer to the client.
+   Never approximate it, abbreviate it, or substitute a variant.
+
+2. BANNED PHRASES — do not use any of the following, even paraphrased:
+   - "fast-paced" (in any context)
+   - "highly competitive" (in any context)
+   - "comprehensive review"
+   - "thorough assessment"
+   - "in the aviation sector" / "aviation industry" / "aviation market"
+     (unless adding a specific operational detail that cannot be stated without it)
+
+3. COMPENSATING BEHAVIOUR FINDINGS (title contains "Workaround masking live constraint: X → Y"):
+   - X is the WORKAROUND (currently functioning, but unsustainable).
+   - Y is the ROOT CONSTRAINT (the actual problem that must be removed or reduced).
+   - recommendedAction MUST target Y — describe how to eliminate or reduce the constraint.
+   - Do NOT recommend improving X, expanding X, or reviewing X.
+   - Correct format: "Replace/retire/restructure [Y] by [specific operational step]."
+   - Wrong format: "Review/enhance/assess [X]..."
+
+4. RECOMMENDED ACTIONS must name a specific operational intervention:
+   - Bad: "Conduct a review of the approval process"
+   - Bad: "Initiate an assessment of training infrastructure"
+   - Good: "Remove the supervisor sign-off requirement for compensation decisions under £200,
+            granting frontline agents standing authority at that level"
+   - Good: "Retire the 1998 reservation system by implementing an API integration layer
+            connecting legacy data to the CRM and compensation platforms"
+
+5. Be evidence-grounded — do not invent data not present in the finding.
+
+Return a JSON object with a "findings" array, one entry per finding:
+{
+  "findings": [
+    {
+      "findingId": "string — matches the input findingId exactly",
+      "whyItMatters": "string — 2-3 sentences, board-grade, specific to ${clientName}",
+      "whoItAffects": "string — specific roles/teams (e.g. 'Contact centre supervisors and frontline agents'), not generic",
+      "operationalImplication": "string — concrete consequence if unaddressed (quantify if evidence supports it)",
+      "recommendedAction": "string — specific operational intervention, targets the root constraint for workaround findings"
+    }
+  ]
+}`;
 
   try {
     const controller = new AbortController();
@@ -276,7 +310,7 @@ Return a JSON array (not an object) with one entry per finding:
               role: 'system',
               content: 'You are a strategic advisor. Return valid JSON only — an object with a "findings" array.',
             },
-            { role: 'user', content: prompt + '\n\nReturn: {"findings": [...]}' },
+            { role: 'user', content: prompt },
           ],
           temperature: 0.3,
           max_tokens: 3000,

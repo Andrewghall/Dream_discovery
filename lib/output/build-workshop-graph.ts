@@ -131,11 +131,29 @@ export async function buildWorkshopGraphIntelligence(
   const scored = scoreAllClusters(clusters, totalRoles);
   if (scored.length === 0) return emptyGraphIntelligence();
 
-  const graph = buildRelationshipGraph(scored, workshopId);
+  // ── Generic-label guard ──────────────────────────────────────────────────
+  // Clusters consolidated by LLM refinement to a single generic word ("data",
+  // "system", "quality", etc.) are excluded from graph edge generation.
+  // They remain in `scored` for quote/evidence access via clusterQuotes, but
+  // do not become nodes that can anchor spurious causal chains.
+  // This preserves the calibrated IDF thresholds — no threshold changes needed.
+  const GENERIC_SINGLE_WORD_LABELS = new Set([
+    'data', 'system', 'process', 'issue', 'issues', 'quality', 'service',
+    'change', 'work', 'risk', 'team', 'time', 'management', 'support',
+    'information', 'communication', 'performance', 'results', 'people',
+  ]);
+
+  const graphClusters = scored.filter(({ cluster }) => {
+    const label = cluster.displayLabel.toLowerCase().trim();
+    const wordCount = label.split(/\s+/).length;
+    return !(wordCount === 1 && GENERIC_SINGLE_WORD_LABELS.has(label));
+  });
+
+  const graph = buildRelationshipGraph(graphClusters, workshopId);
   const intelligence = computeGraphIntelligence(graph);
 
-  // Build cluster quote index for downstream CausalFinding provenance.
-  // Maps clusterKey → top 3 verbatim quotes (text + participantRole + lens).
+  // Build cluster quote index from ALL scored clusters (including generic-label ones)
+  // so they remain accessible for evidence retrieval even when excluded from the graph.
   const clusterQuotes: GraphIntelligence['clusterQuotes'] = {};
   for (const { cluster } of scored) {
     if (cluster.bestQuotes.length > 0) {

@@ -4,20 +4,28 @@
  * Deterministic, LLM-free construction of a RelationshipGraph from scored
  * EvidenceCluster objects. Every edge is justified by at least one of:
  *   1. A shared confirmed participant appearing in both clusters
- *   2. Keyword/token Jaccard similarity ≥ rule-specific threshold
+ *   2. IDF-weighted token Jaccard similarity ≥ rule-specific threshold
  *   3. Phase sequencing (CONSTRAINTS/DISCOVERY → DEFINE_APPROACH)
  *   4. Sentiment polarity divergence within overlapping topic space
  *
+ * Similarity metric: IDF-weighted Jaccard (not raw set Jaccard).
+ * Tokens that appear in many clusters (generic workshop vocabulary: "quality",
+ * "management", "experience") receive low IDF weight and contribute little to
+ * the similarity score. Cluster-specific tokens ("automation", "bpo", "crm",
+ * "coaching") receive high IDF weight and drive edge formation. This prevents
+ * generic token overlap from creating spurious edges between topically unrelated
+ * clusters when signals are full-prose workshop utterances.
+ *
  * Edge type rules (in priority order for deduplication):
- *   responds_to     — Jaccard ≥ 0.08 AND shared confirmed participant cross-phase
- *   compensates_for — Jaccard ≥ 0.08, ENABLER positive → CONSTRAINT negative
- *   blocks          — Jaccard ≥ 0.15 AND target has contradicting signals
- *   drives          — Jaccard ≥ 0.10 (Jaccard required), CONSTRAINT → ENABLER
- *   enables         — Jaccard ≥ 0.10, ENABLER → REIMAGINATION (content-inferred)
- *   constrains      — Jaccard ≥ 0.08 (Jaccard required), CONSTRAINT → REIMAGINATION
- *   depends_on      — Jaccard ≥ 0.10 AND shared participant, REIMAGINATION → ENABLER
+ *   responds_to     — IDF-Jaccard ≥ 0.08 AND shared confirmed participant cross-phase
+ *   compensates_for — IDF-Jaccard ≥ 0.10, ENABLER positive → CONSTRAINT negative
+ *   blocks          — IDF-Jaccard ≥ 0.15 AND target has contradicting signals
+ *   drives          — IDF-Jaccard ≥ 0.12, CONSTRAINT → ENABLER (content required)
+ *   enables         — IDF-Jaccard ≥ 0.12, ENABLER → REIMAGINATION (content-inferred)
+ *   constrains      — IDF-Jaccard ≥ 0.10, CONSTRAINT → REIMAGINATION
+ *   depends_on      — IDF-Jaccard ≥ 0.10 AND shared participant, REIMAGINATION → ENABLER
  *                     (participant-confirmed: same person connects vision to enabler)
- *   contradicts     — shared participant + Jaccard ≥ 0.10 + opposing sentiment, same layer
+ *   contradicts     — shared participant + IDF-Jaccard ≥ 0.10 + opposing sentiment, same layer
  *
  * enables vs depends_on: enables fires on content overlap alone (inferred relationship).
  * depends_on fires only when shared participants ALSO confirm the vision-enabler link
@@ -45,11 +53,32 @@ import { scoreEdge } from './edge-scoring';
 // ── Token normalisation (mirrors build-hemisphere-graph.ts) ──────────────────
 
 const STOPWORDS = new Set([
+  // Basic function words
   'a','an','and','are','as','at','be','but','by','for','from','has','have',
   'i','if','in','into','is','it','its','me','my','no','not','of','on','or',
   'our','so','that','the','their','then','there','these','they','this','to',
   'too','up','us','was','we','were','what','when','where','which','who','why',
   'will','with','you','your',
+  // Modal / auxiliary verbs
+  'can','could','did','does','doing','done','had','let','may','might','must',
+  'shall','should','used','would',
+  // Determiners / pronouns / quantifiers
+  'all','any','both','each','every','few','many','most','much','one','other',
+  'others','same','several','some','those',
+  // Adverbs and connectives
+  'about','across','after','again','against','along','although','among',
+  'around','because','before','below','between','beyond','during','even',
+  'however','including','instead','just','never','now','often','once','only',
+  'perhaps','quite','rather','regardless','since','still','than','though',
+  'through','unless','until','whether','while','without','yet','also',
+  'already','always',
+  // High-frequency generic verbs (not domain-specific)
+  'ask','asked','back','bring','came','come','find','found','gave','get',
+  'gets','give','gives','go','goes','going','gone','got','help','helps',
+  'keep','knew','know','knows','like','look','looks','made','make','makes',
+  'mean','means','need','needs','open','put','run','said','saw','say','says',
+  'seem','seems','see','set','show','shows','start','take','takes','tell',
+  'told','try','turn','use','uses','using','want','wants','went','work','works',
 ]);
 
 function words(text: string): string[] {
@@ -73,6 +102,59 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   for (const x of a) { if (b.has(x)) inter++; }
   const uni = a.size + b.size - inter;
   return uni <= 0 ? 0 : inter / uni;
+}
+
+/**
+ * Compute IDF weights for all tokens across all clusters.
+ * IDF(t) = ln(N / (df(t) + 1)) + 1
+ * Tokens that appear in many clusters (generic workshop vocabulary) receive
+ * low weight. Cluster-specific tokens receive high weight.
+ */
+function computeIdfWeights(tokenCache: Map<string, Set<string>>): Map<string, number> {
+  const N = tokenCache.size;
+  if (N === 0) return new Map();
+
+  // Count document frequency: how many clusters contain each token
+  const df = new Map<string, number>();
+  for (const tokens of tokenCache.values()) {
+    for (const t of tokens) {
+      df.set(t, (df.get(t) ?? 0) + 1);
+    }
+  }
+
+  // IDF: ln(N / (df + 1)) + 1  — smooth variant, always ≥ 1
+  const idf = new Map<string, number>();
+  for (const [t, freq] of df) {
+    idf.set(t, Math.log(N / (freq + 1)) + 1);
+  }
+  return idf;
+}
+
+/**
+ * IDF-weighted Jaccard similarity between two token sets.
+ * Each token's contribution is weighted by its IDF score —
+ * tokens that appear in many clusters contribute less to similarity.
+ */
+function weightedJaccard(
+  a: Set<string>,
+  b: Set<string>,
+  idf: Map<string, number>,
+): number {
+  if (a.size === 0 || b.size === 0) return 0;
+
+  let intersection = 0;
+  let unionWeight = 0;
+
+  for (const t of a) {
+    const w = idf.get(t) ?? 1;
+    if (b.has(t)) intersection += w;
+    unionWeight += w;
+  }
+  for (const t of b) {
+    if (!a.has(t)) unionWeight += idf.get(t) ?? 1;
+  }
+
+  return unionWeight <= 0 ? 0 : intersection / unionWeight;
 }
 
 /** Build a single token bag from all signal texts in a cluster */
@@ -160,6 +242,16 @@ export function classifyNodeLayer(
   } else {
     layer = 'ENABLER';
   }
+
+  // Sentiment override: if a cluster would be ENABLER but ≥ 60 % of its signals are
+  // negative (concerned/critical), it is expressing organisational concern or risk —
+  // not an enabling capability.  Override to CONSTRAINT.
+  // Corrects "automation_concerns"-style clusters that carry INSIGHT/ACTION primary types
+  // but are semantically negative risk signals, not positive enablers.
+  if (layer === 'ENABLER' && n > 0 && negSentiment / n >= 0.6) {
+    layer = 'CONSTRAINT';
+  }
+
   return { layer, scores };
 }
 
@@ -290,9 +382,10 @@ function tryRespondsTo(
   enablerTokens: Set<string>,
   constraintTokens: Set<string>,
   signalIndex: Map<string, RawSignal>,
+  idf: Map<string, number>,
 ): RelationshipEdge | null {
   // Topical gate first — cheap check before iterating signals
-  const sim = jaccard(enablerTokens, constraintTokens);
+  const sim = weightedJaccard(enablerTokens, constraintTokens, idf);
   if (sim < 0.08) return null;
 
   const sharedIds = enablerCluster.distinctParticipantIds.size > 0
@@ -344,7 +437,7 @@ function tryRespondsTo(
 
 /**
  * Rule: compensates_for  (ENABLER → CONSTRAINT)
- * Fires when Jaccard similarity ≥ 0.08 and the enabler has positive signals
+ * Fires when IDF-Jaccard similarity ≥ 0.10 and the enabler has positive signals
  * where the constraint has negative ones.
  */
 function tryCompensatesFor(
@@ -355,9 +448,10 @@ function tryCompensatesFor(
   enablerTokens: Set<string>,
   constraintTokens: Set<string>,
   signalIndex: Map<string, RawSignal>,
+  idf: Map<string, number>,
 ): RelationshipEdge | null {
-  const sim = jaccard(enablerTokens, constraintTokens);
-  if (sim < 0.08) return null;
+  const sim = weightedJaccard(enablerTokens, constraintTokens, idf);
+  if (sim < 0.10) return null;
 
   const posEnablerSigs = enablerCluster.signals.filter(isPositive);
   const negConstraintSigs = constraintCluster.signals.filter(isNegative);
@@ -393,9 +487,10 @@ function tryBlocks(
   constraintTokens: Set<string>,
   enablerTokens: Set<string>,
   signalIndex: Map<string, RawSignal>,
+  idf: Map<string, number>,
 ): RelationshipEdge | null {
   if (enablerCluster.contradictingSignals.length === 0) return null;
-  const sim = jaccard(constraintTokens, enablerTokens);
+  const sim = weightedJaccard(constraintTokens, enablerTokens, idf);
   if (sim < 0.15) return null;
 
   const sharedIds = [...constraintCluster.distinctParticipantIds].filter((id) =>
@@ -417,7 +512,7 @@ function tryBlocks(
 
 /**
  * Rule: drives  (CONSTRAINT → ENABLER)
- * Fires when Jaccard ≥ 0.10 (keyword overlap required — participant alone is insufficient).
+ * Fires when IDF-Jaccard ≥ 0.12 (keyword overlap required — participant alone is insufficient).
  * Indicates the constraint is what motivated the enabler to be developed.
  * Suppressed in favour of 'blocks' when blocks is already present for same pair.
  */
@@ -429,15 +524,16 @@ function tryDrives(
   constraintTokens: Set<string>,
   enablerTokens: Set<string>,
   signalIndex: Map<string, RawSignal>,
+  idf: Map<string, number>,
 ): RelationshipEdge | null {
-  const sim = jaccard(constraintTokens, enablerTokens);
-  if (sim < 0.10) return null;
+  const sim = weightedJaccard(constraintTokens, enablerTokens, idf);
+  if (sim < 0.12) return null;
   const sharedIds = [...constraintCluster.distinctParticipantIds].filter((id) =>
     enablerCluster.distinctParticipantIds.has(id),
   );
 
   const rules: EdgeCreationRule[] = [];
-  if (sim >= 0.10) rules.push('DRIVES_JACCARD');
+  if (sim >= 0.12) rules.push('DRIVES_JACCARD');
   if (sharedIds.length > 0) rules.push('DRIVES_SHARED_PARTICIPANT');
 
   // Use the overlapping tokens to find the most relevant supporting signals
@@ -464,7 +560,7 @@ function tryDrives(
 
 /**
  * Rule: enables  (ENABLER → REIMAGINATION)
- * Fires when Jaccard ≥ 0.10 (keyword overlap required — raised from 0.08 to reduce noise).
+ * Fires when IDF-Jaccard ≥ 0.12 (keyword overlap required — raised to reduce noise).
  */
 function tryEnables(
   enablerNode: RelationshipNode,
@@ -474,15 +570,16 @@ function tryEnables(
   enablerTokens: Set<string>,
   visionTokens: Set<string>,
   signalIndex: Map<string, RawSignal>,
+  idf: Map<string, number>,
 ): RelationshipEdge | null {
-  const sim = jaccard(enablerTokens, visionTokens);
-  if (sim < 0.10) return null;
+  const sim = weightedJaccard(enablerTokens, visionTokens, idf);
+  if (sim < 0.12) return null;
   const sharedIds = [...enablerCluster.distinctParticipantIds].filter((id) =>
     visionCluster.distinctParticipantIds.has(id),
   );
 
   const rules: EdgeCreationRule[] = [];
-  if (sim >= 0.10) rules.push('ENABLES_JACCARD');
+  if (sim >= 0.12) rules.push('ENABLES_JACCARD');
   if (sharedIds.length > 0) rules.push('ENABLES_SHARED_PARTICIPANT');
 
   const overlapTokens = new Set([...enablerTokens].filter((t) => visionTokens.has(t)));
@@ -505,7 +602,7 @@ function tryEnables(
 
 /**
  * Rule: constrains  (CONSTRAINT → REIMAGINATION)
- * Fires when Jaccard ≥ 0.08 (keyword overlap required — participant alone is insufficient).
+ * Fires when IDF-Jaccard ≥ 0.10 (keyword overlap required — participant alone is insufficient).
  */
 function tryConstrains(
   constraintNode: RelationshipNode,
@@ -515,15 +612,16 @@ function tryConstrains(
   constraintTokens: Set<string>,
   visionTokens: Set<string>,
   signalIndex: Map<string, RawSignal>,
+  idf: Map<string, number>,
 ): RelationshipEdge | null {
-  const sim = jaccard(constraintTokens, visionTokens);
-  if (sim < 0.08) return null;
+  const sim = weightedJaccard(constraintTokens, visionTokens, idf);
+  if (sim < 0.10) return null;
   const sharedIds = [...constraintCluster.distinctParticipantIds].filter((id) =>
     visionCluster.distinctParticipantIds.has(id),
   );
 
   const rules: EdgeCreationRule[] = [];
-  if (sim >= 0.08) rules.push('CONSTRAINS_JACCARD');
+  if (sim >= 0.10) rules.push('CONSTRAINS_JACCARD');
   if (sharedIds.length > 0) rules.push('CONSTRAINS_SHARED_PARTICIPANT');
 
   return buildEdgeRecord({
@@ -561,8 +659,9 @@ function tryDependsOn(
   visionTokens: Set<string>,
   enablerTokens: Set<string>,
   signalIndex: Map<string, RawSignal>,
+  idf: Map<string, number>,
 ): RelationshipEdge | null {
-  const sim = jaccard(visionTokens, enablerTokens);
+  const sim = weightedJaccard(visionTokens, enablerTokens, idf);
   if (sim < 0.10) return null;
   const sharedIds = [...visionCluster.distinctParticipantIds].filter((id) =>
     enablerCluster.distinctParticipantIds.has(id),
@@ -588,10 +687,15 @@ function tryDependsOn(
 }
 
 /**
- * Rule: contradicts  (any → any, same layer)
+ * Rule: contradicts  (any → any, any layer)
  * Fires when clusters share a confirmed participant, have opposing sentiment,
- * AND have topical overlap (Jaccard ≥ 0.10 — prevents unrelated clusters from
+ * AND have topical overlap (IDF-Jaccard ≥ 0.10 — prevents unrelated clusters from
  * being flagged as contradictions just because a participant spoke to both).
+ *
+ * Layer restriction removed: cross-layer contradictions (ENABLER ↔ CONSTRAINT) are
+ * semantically valid when the sentiment override reclassifies a negative "concern"
+ * cluster as CONSTRAINT. The three conditions above are sufficient to prevent spurious
+ * cross-layer contradictions. from = the more positive cluster (conventional direction).
  */
 function tryContradicts(
   nodeA: RelationshipNode,
@@ -601,16 +705,15 @@ function tryContradicts(
   tokensA: Set<string>,
   tokensB: Set<string>,
   signalIndex: Map<string, RawSignal>,
+  idf: Map<string, number>,
 ): RelationshipEdge | null {
-  if (nodeA.layer !== nodeB.layer) return null;
-
   const sharedIds = [...clusterA.distinctParticipantIds].filter((id) =>
     clusterB.distinctParticipantIds.has(id),
   );
   if (sharedIds.length === 0) return null;
 
   // Require topical overlap — prevents unrelated-topic clusters from being flagged
-  const sim = jaccard(tokensA, tokensB);
+  const sim = weightedJaccard(tokensA, tokensB, idf);
   if (sim < 0.10) return null;
 
   // Require opposing dominant sentiments
@@ -730,6 +833,9 @@ export function buildRelationshipGraph(
     active.map(({ cluster }) => [cluster.clusterKey, clusterTokens(cluster)]),
   );
 
+  // IDF weights: down-weight generic tokens that appear across many clusters
+  const idfWeights = computeIdfWeights(tokenCache);
+
   // Partition nodes by layer
   const constraintNodes  = nodes.filter((n) => n.layer === 'CONSTRAINT');
   const enablerNodes     = nodes.filter((n) => n.layer === 'ENABLER');
@@ -750,7 +856,7 @@ export function buildRelationshipGraph(
       const cc = clusterByKey.get(constraintNode.nodeId)!;
       const eTok = tokenCache.get(enablerNode.nodeId)!;
       const cTok = tokenCache.get(constraintNode.nodeId)!;
-      addEdge(tryRespondsTo(enablerNode, constraintNode, ec, cc, eTok, cTok, signalIndex));
+      addEdge(tryRespondsTo(enablerNode, constraintNode, ec, cc, eTok, cTok, signalIndex, idfWeights));
     }
   }
 
@@ -761,7 +867,7 @@ export function buildRelationshipGraph(
       const cc = clusterByKey.get(constraintNode.nodeId)!;
       const eTok = tokenCache.get(enablerNode.nodeId)!;
       const cTok = tokenCache.get(constraintNode.nodeId)!;
-      addEdge(tryCompensatesFor(enablerNode, constraintNode, ec, cc, eTok, cTok, signalIndex));
+      addEdge(tryCompensatesFor(enablerNode, constraintNode, ec, cc, eTok, cTok, signalIndex, idfWeights));
     }
   }
 
@@ -772,7 +878,7 @@ export function buildRelationshipGraph(
       const ec = clusterByKey.get(enablerNode.nodeId)!;
       const cTok = tokenCache.get(constraintNode.nodeId)!;
       const eTok = tokenCache.get(enablerNode.nodeId)!;
-      addEdge(tryBlocks(constraintNode, enablerNode, cc, ec, cTok, eTok, signalIndex));
+      addEdge(tryBlocks(constraintNode, enablerNode, cc, ec, cTok, eTok, signalIndex, idfWeights));
     }
   }
 
@@ -785,7 +891,7 @@ export function buildRelationshipGraph(
       const ec = clusterByKey.get(enablerNode.nodeId)!;
       const cTok = tokenCache.get(constraintNode.nodeId)!;
       const eTok = tokenCache.get(enablerNode.nodeId)!;
-      addEdge(tryDrives(constraintNode, enablerNode, cc, ec, cTok, eTok, signalIndex));
+      addEdge(tryDrives(constraintNode, enablerNode, cc, ec, cTok, eTok, signalIndex, idfWeights));
     }
   }
 
@@ -796,7 +902,7 @@ export function buildRelationshipGraph(
       const vc = clusterByKey.get(visionNode.nodeId)!;
       const eTok = tokenCache.get(enablerNode.nodeId)!;
       const vTok = tokenCache.get(visionNode.nodeId)!;
-      addEdge(tryEnables(enablerNode, visionNode, ec, vc, eTok, vTok, signalIndex));
+      addEdge(tryEnables(enablerNode, visionNode, ec, vc, eTok, vTok, signalIndex, idfWeights));
     }
   }
 
@@ -807,7 +913,7 @@ export function buildRelationshipGraph(
       const vc = clusterByKey.get(visionNode.nodeId)!;
       const cTok = tokenCache.get(constraintNode.nodeId)!;
       const vTok = tokenCache.get(visionNode.nodeId)!;
-      addEdge(tryConstrains(constraintNode, visionNode, cc, vc, cTok, vTok, signalIndex));
+      addEdge(tryConstrains(constraintNode, visionNode, cc, vc, cTok, vTok, signalIndex, idfWeights));
     }
   }
 
@@ -818,21 +924,22 @@ export function buildRelationshipGraph(
       const ec = clusterByKey.get(enablerNode.nodeId)!;
       const vTok = tokenCache.get(visionNode.nodeId)!;
       const eTok = tokenCache.get(enablerNode.nodeId)!;
-      addEdge(tryDependsOn(visionNode, enablerNode, vc, ec, vTok, eTok, signalIndex));
+      addEdge(tryDependsOn(visionNode, enablerNode, vc, ec, vTok, eTok, signalIndex, idfWeights));
     }
   }
 
-  // contradicts: same-layer pairs (iterate once: i < j to avoid A→B and B→A)
+  // contradicts: all pairs (iterate once: i < j to avoid A→B and B→A)
+  // Layer restriction removed — cross-layer contradictions are valid when participant +
+  // topical + sentiment conditions are met (see tryContradicts docstring).
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
       const nA = nodes[i];
       const nB = nodes[j];
-      if (nA.layer !== nB.layer) continue;
       const cA = clusterByKey.get(nA.nodeId)!;
       const cB = clusterByKey.get(nB.nodeId)!;
       const tA = tokenCache.get(nA.nodeId)!;
       const tB = tokenCache.get(nB.nodeId)!;
-      addEdge(tryContradicts(nA, nB, cA, cB, tA, tB, signalIndex));
+      addEdge(tryContradicts(nA, nB, cA, cB, tA, tB, signalIndex, idfWeights));
     }
   }
 
