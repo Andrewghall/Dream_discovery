@@ -265,32 +265,35 @@ describe('BLOCKER 2: middleware backup-cookie restore must be DB-backed', () => 
 // This applies to ALL non-PLATFORM_ADMIN sessions regardless of how they arrived.
 // ==============================================================================
 
-describe('BLOCKER 3: /admin/platform is PLATFORM_ADMIN-only', () => {
-  // ── /admin/platform guard logic (inline, no NextRequest needed) ──────────────
+describe('BLOCKER 3: /admin/platform and /api/admin/platform/* are PLATFORM_ADMIN-only', () => {
+  // ── Mirrors the exact guard in middleware.ts ──────────────────────────────────
+  // isPlatformNamespace = pathname.startsWith('/admin/platform') ||
+  //                       pathname.startsWith('/api/admin/platform')
+  // if (isPlatformNamespace && role !== 'PLATFORM_ADMIN') → redirect /login
 
-  function adminPlatformGuard(role: string): 'redirect-login' | 'allow' {
-    // Mirrors the exact new guard in middleware.ts:
-    //   if (pathname.startsWith('/admin/platform') && session.role !== 'PLATFORM_ADMIN')
-    //     return redirect('/login')
-    if (role !== 'PLATFORM_ADMIN') return 'redirect-login';
+  function isPlatformNamespace(pathname: string): boolean {
+    return pathname.startsWith('/admin/platform') || pathname.startsWith('/api/admin/platform');
+  }
+
+  function platformGuard(pathname: string, role: string): 'redirect-login' | 'allow' {
+    if (isPlatformNamespace(pathname) && role !== 'PLATFORM_ADMIN') return 'redirect-login';
     return 'allow';
   }
 
-  it('TENANT_ADMIN with revoked backup cookie is blocked from /admin/platform', async () => {
-    // backup fails DB check
+  // ── /admin/platform (page routes) ────────────────────────────────────────────
+
+  it('TENANT_ADMIN + revoked backup → blocked from /admin/platform', async () => {
     vi.mocked(jose.jwtVerify).mockResolvedValue({
       payload: ADMIN_PAYLOAD, protectedHeader: { alg: 'HS256' },
     } as any);
     sessionFindFirst.mockResolvedValue(null);
     const backup = await verifySessionWithDB('revoked-backup-jwt').catch(() => null);
-    expect(backup).toBeNull(); // clearBackupCookie=true, no restore
+    expect(backup).toBeNull(); // backup not restored
 
-    // scoped session falls through to /admin/platform guard
-    const result = adminPlatformGuard(BASE_IMPERSONATION_PAYLOAD.role); // TENANT_ADMIN
-    expect(result).toBe('redirect-login');
+    expect(platformGuard('/admin/platform', 'TENANT_ADMIN')).toBe('redirect-login');
   });
 
-  it('TENANT_USER with revoked backup cookie is blocked from /admin/platform', async () => {
+  it('TENANT_USER + revoked backup → blocked from /admin/platform', async () => {
     vi.mocked(jose.jwtVerify).mockResolvedValue({
       payload: ADMIN_PAYLOAD, protectedHeader: { alg: 'HS256' },
     } as any);
@@ -298,39 +301,65 @@ describe('BLOCKER 3: /admin/platform is PLATFORM_ADMIN-only', () => {
     const backup = await verifySessionWithDB('revoked-backup-jwt').catch(() => null);
     expect(backup).toBeNull();
 
-    const result = adminPlatformGuard('TENANT_USER');
-    expect(result).toBe('redirect-login');
+    expect(platformGuard('/admin/platform', 'TENANT_USER')).toBe('redirect-login');
   });
 
-  it('valid PLATFORM_ADMIN session is allowed through /admin/platform', () => {
-    const result = adminPlatformGuard('PLATFORM_ADMIN');
-    expect(result).toBe('allow');
+  // ── /api/admin/platform/* (API routes) ───────────────────────────────────────
+
+  it('TENANT_ADMIN + revoked backup → blocked from /api/admin/platform/...', async () => {
+    vi.mocked(jose.jwtVerify).mockResolvedValue({
+      payload: ADMIN_PAYLOAD, protectedHeader: { alg: 'HS256' },
+    } as any);
+    sessionFindFirst.mockResolvedValue(null);
+    const backup = await verifySessionWithDB('revoked-backup-jwt').catch(() => null);
+    expect(backup).toBeNull();
+
+    expect(platformGuard('/api/admin/platform/orgs', 'TENANT_ADMIN')).toBe('redirect-login');
+    expect(platformGuard('/api/admin/platform/users/123', 'TENANT_ADMIN')).toBe('redirect-login');
   });
 
-  it('/admin/platform guard fires before the broad isAdminPath guard — TENANT_ADMIN blocked even though it is in TENANT_ROLES', () => {
-    // The broad guard: isAdminPath && role !== PLATFORM_ADMIN && !TENANT_ROLES.includes(role)
-    // TENANT_ADMIN passes this guard (it IS in TENANT_ROLES) — the old hole.
-    const TENANT_ROLES = ['TENANT_ADMIN', 'TENANT_USER'];
-    const role = 'TENANT_ADMIN';
-    const broadGuardWouldBlock = role !== 'PLATFORM_ADMIN' && !TENANT_ROLES.includes(role);
-    expect(broadGuardWouldBlock).toBe(false); // confirms the hole existed
+  it('TENANT_USER + revoked backup → blocked from /api/admin/platform/...', async () => {
+    vi.mocked(jose.jwtVerify).mockResolvedValue({
+      payload: ADMIN_PAYLOAD, protectedHeader: { alg: 'HS256' },
+    } as any);
+    sessionFindFirst.mockResolvedValue(null);
+    const backup = await verifySessionWithDB('revoked-backup-jwt').catch(() => null);
+    expect(backup).toBeNull();
 
-    // The explicit /admin/platform guard blocks it regardless
-    const platformGuardBlocks = adminPlatformGuard(role);
-    expect(platformGuardBlocks).toBe('redirect-login'); // hole closed
+    expect(platformGuard('/api/admin/platform/orgs', 'TENANT_USER')).toBe('redirect-login');
   });
 
-  it('non-platform /admin routes still use the broad guard (TENANT_ADMIN allowed, unknown role blocked)', () => {
-    // /admin/workshops, /admin/users etc. — the broad guard behaviour is unchanged.
-    // TENANT_ADMIN in TENANT_ROLES → allowed on those paths
-    const TENANT_ROLES = ['TENANT_ADMIN', 'TENANT_USER'];
-    const tenantAdminPassesBroadGuard =
-      !('TENANT_ADMIN' !== 'PLATFORM_ADMIN' && !TENANT_ROLES.includes('TENANT_ADMIN'));
-    expect(tenantAdminPassesBroadGuard).toBe(true); // TENANT_ADMIN allowed on /admin/*
+  // ── PLATFORM_ADMIN allowed through both namespaces ───────────────────────────
 
-    // Unknown role is still blocked on all /admin/* by the broad guard
-    const unknownRoleBlockedByBroadGuard =
-      'VIEWER' !== 'PLATFORM_ADMIN' && !TENANT_ROLES.includes('VIEWER');
-    expect(unknownRoleBlockedByBroadGuard).toBe(true);
+  it('valid PLATFORM_ADMIN is allowed through /admin/platform', () => {
+    expect(platformGuard('/admin/platform', 'PLATFORM_ADMIN')).toBe('allow');
+    expect(platformGuard('/admin/platform/users', 'PLATFORM_ADMIN')).toBe('allow');
+  });
+
+  it('valid PLATFORM_ADMIN is allowed through /api/admin/platform/*', () => {
+    expect(platformGuard('/api/admin/platform/orgs', 'PLATFORM_ADMIN')).toBe('allow');
+    expect(platformGuard('/api/admin/platform/users/123', 'PLATFORM_ADMIN')).toBe('allow');
+  });
+
+  // ── Non-platform routes unaffected ───────────────────────────────────────────
+
+  it('non-platform /admin/* routes not affected by the platform-namespace guard', () => {
+    // These paths are NOT in the platform namespace → guard returns allow
+    // (the broad isAdminPath guard handles them separately)
+    expect(isPlatformNamespace('/admin/workshops')).toBe(false);
+    expect(isPlatformNamespace('/api/admin/workshops/123')).toBe(false);
+    expect(isPlatformNamespace('/admin/users')).toBe(false);
+    expect(isPlatformNamespace('/api/admin/users')).toBe(false);
+  });
+
+  it('platform namespace detection is prefix-strict — no false positives', () => {
+    // Ensure routes that merely contain "platform" elsewhere are not affected
+    expect(isPlatformNamespace('/admin/workshops/platform-notes')).toBe(false);
+    expect(isPlatformNamespace('/api/admin/workshops/platform-notes')).toBe(false);
+    // Real platform routes are matched correctly
+    expect(isPlatformNamespace('/admin/platform')).toBe(true);
+    expect(isPlatformNamespace('/admin/platform/anything')).toBe(true);
+    expect(isPlatformNamespace('/api/admin/platform')).toBe(true);
+    expect(isPlatformNamespace('/api/admin/platform/anything')).toBe(true);
   });
 });

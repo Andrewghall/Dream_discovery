@@ -90,10 +90,14 @@ export async function middleware(request: NextRequest) {
     }
 
     // Role-based access control
-    // /admin/platform is PLATFORM_ADMIN-only. Tenant-scoped and impersonation sessions
-    // must never reach it, including when backup restore has failed and the request
-    // falls back to the scoped tenant session.
-    if (pathname.startsWith('/admin/platform') && session.role !== 'PLATFORM_ADMIN') {
+    // /admin/platform and /api/admin/platform/* are PLATFORM_ADMIN-only.
+    // Tenant-scoped and impersonation sessions must never reach either namespace,
+    // including when backup restore has failed and the request falls back to the
+    // scoped tenant session.
+    const isPlatformNamespace =
+      pathname.startsWith('/admin/platform') ||
+      pathname.startsWith('/api/admin/platform');
+    if (isPlatformNamespace && session.role !== 'PLATFORM_ADMIN') {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
