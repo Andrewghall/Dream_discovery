@@ -74,8 +74,10 @@ export async function POST(request: NextRequest) {
 
       const jwt = await createSessionToken(sessionPayload);
 
-      // Store session in DB so it can be revoked (e.g. forced logout, security incident)
-      // userId is null because PLATFORM_ADMIN has no User table row
+      // DB session MUST be persisted before issuing the JWT.
+      // Without a revocable session row, the PLATFORM_ADMIN cannot be logged out
+      // via session revocation — defeating the entire revocability guarantee.
+      // Fail closed: if the write fails, do NOT set the cookie or return success.
       try {
         await prisma.session.create({
           data: {
@@ -87,10 +89,15 @@ export async function POST(request: NextRequest) {
             expiresAt: adminExpiresAt,
           },
         });
-      } catch {
-        // Non-fatal in test environments; production DB must have the migration applied
+      } catch (dbErr) {
+        console.error('[login] PLATFORM_ADMIN session persistence failed — login refused:', dbErr);
+        return NextResponse.json(
+          { error: 'Authentication service error. Please try again.' },
+          { status: 500 },
+        );
       }
 
+      // Cookie is set only after DB row is confirmed
       try {
         const cookieStore = await cookies();
         if (cookieStore && typeof cookieStore.set === 'function') {

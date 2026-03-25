@@ -60,15 +60,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session cookie not found' }, { status: 400 });
     }
 
-    // Build the scoped JWT — looks like a TENANT_ADMIN for the target org
+    // Build the scoped JWT — looks like a TENANT_ADMIN for the target org.
+    // parentSessionId links this impersonation session to the originating PLATFORM_ADMIN
+    // session so verifySessionWithDB can enforce the revocation chain.
+    const scopedSessionId = nanoid();
+    const scopedExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
     const scopedJwt = await createSessionToken({
-      sessionId: nanoid(),
+      sessionId: scopedSessionId,
       userId: session.userId,
       email: session.email,
       role: 'TENANT_ADMIN',
       organizationId: org.id,
       createdAt: Date.now(),
       impersonatedBy: session.userId,
+      parentSessionId: session.sessionId, // admin session — checked on every request
+    });
+
+    // Persist the impersonation session in DB so it is independently revocable
+    // and so verifySessionWithDB can enforce the parent-session revocation chain.
+    await prisma.session.create({
+      data: {
+        id: scopedSessionId,
+        userId: null,
+        token: scopedJwt,
+        userAgent: request.headers.get('user-agent') || null,
+        ipAddress: getClientIp(request),
+        expiresAt: scopedExpiresAt,
+      },
     });
 
     // Audit log — recorded under the PLATFORM_ADMIN's org (null orgId → use a sentinel)
