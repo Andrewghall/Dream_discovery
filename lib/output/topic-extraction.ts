@@ -18,11 +18,11 @@
  */
 
 import OpenAI from 'openai';
-import { env } from '@/lib/env';
 import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { RawSignal } from './evidence-clustering';
 // NOTE: OpenAI client is constructed lazily inside refineTopicsWithLLM.
-// No module-level instantiation — importing this file is safe in test/jsdom environments.
+// process.env is read directly (not via @/lib/env) so that importing this module
+// never triggers the Zod env validation which throws when DATABASE_URL is absent.
 
 // ── Stop words ────────────────────────────────────────────────────────────────
 // Comprehensive English stop-word list biased toward workshop language.
@@ -487,7 +487,9 @@ export async function refineTopicsWithLLM(
 ): Promise<Map<string, string>> {
   // Construct client lazily — not at module load time — so importing this file
   // is safe in test/jsdom/browser-like environments.
-  const apiKey = env.OPENAI_API_KEY;
+  // Read directly from process.env to avoid importing @/lib/env (which throws at
+  // module evaluation time when DATABASE_URL or other required vars are absent).
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return new Map();
   const openai = new OpenAI({ apiKey });
 

@@ -12,7 +12,7 @@
  * Guard 1 (from previous fix, retained): oldLabel must be a known input cluster key.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import type { RawSignal } from '@/lib/output/evidence-clustering';
 
 vi.mock('openai', () => {
@@ -28,9 +28,10 @@ vi.mock('@/lib/circuit-breaker', () => ({
   openAiBreaker: { execute: (fn: () => unknown) => fn() },
 }));
 
-vi.mock('@/lib/env', () => ({
-  env: { OPENAI_API_KEY: 'test-key' },
-}));
+// topic-extraction.ts reads process.env.OPENAI_API_KEY directly (not via @/lib/env),
+// so we set it here for tests that exercise the LLM path.
+beforeAll(() => { process.env.OPENAI_API_KEY = 'test-key'; });
+afterAll(() => { delete process.env.OPENAI_API_KEY; });
 
 function makeSignal(id: string, themeLabel: string): RawSignal {
   return {
@@ -169,17 +170,31 @@ describe('refineTopicsWithLLM — Guard 2: canonical must be an existing input l
 
 describe('refineTopicsWithLLM — Blocker 3: lazy client construction', () => {
   it('returns empty map when OPENAI_API_KEY is absent (no module-level crash)', async () => {
-    // This test verifies that when the env mock returns no API key, the function
-    // returns gracefully rather than throwing — proving no module-level construction.
-    vi.doMock('@/lib/env', () => ({ env: {} }));   // override: no OPENAI_API_KEY
-    // Re-import to get the module with the overridden env mock
-    const { refineTopicsWithLLM } = await import('@/lib/output/topic-extraction');
-    const signals = [makeSignal('s1', 'approval')];
-    // Should return empty map, not throw
-    const result = await refineTopicsWithLLM(signals, {});
-    expect(result).toBeInstanceOf(Map);
-    expect(result.size).toBe(0);
-    vi.doUnmock('@/lib/env');
+    // This test verifies two things:
+    // 1. topic-extraction.ts does NOT import @/lib/env at module level (which would throw
+    //    when DATABASE_URL is absent, crashing the import).
+    // 2. When OPENAI_API_KEY is absent from process.env, the function returns an empty
+    //    map rather than throwing.
+    //
+    // vi.resetModules() clears the module registry so the next import() genuinely
+    // re-evaluates topic-extraction.ts from scratch — without a cached copy that was
+    // already evaluated. This proves there is no module-level side effect that would crash.
+    vi.resetModules();
+    // Temporarily remove the API key so the no-key code path is exercised.
+    const savedKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      // topic-extraction.ts reads process.env.OPENAI_API_KEY directly — if absent,
+      // refineTopicsWithLLM returns new Map() immediately without constructing a client.
+      const { refineTopicsWithLLM } = await import('@/lib/output/topic-extraction');
+      const signals = [makeSignal('s1', 'approval')];
+      const result = await refineTopicsWithLLM(signals, {});
+      expect(result).toBeInstanceOf(Map);
+      expect(result.size).toBe(0);
+    } finally {
+      // Always restore, even if assertions fail
+      if (savedKey !== undefined) process.env.OPENAI_API_KEY = savedKey;
+    }
   });
 
   it('returns empty map when fewer than 6 clusters exist', async () => {
