@@ -25,7 +25,9 @@ export interface WorkshopGraphInput {
   workshopId: string;
   /**
    * Raw snapshot nodes from the latest LiveWorkshopSnapshot payload.nodesById.
-   * May have agenticAnalysis.themes for clustering; signals without themes go to _unthemed.
+   * When agenticAnalysis.themes is populated (real hemisphere-processed workshops),
+   * fine-grained topic clusters are used. When absent (seeded/older workshops),
+   * a coarser lens+primaryType label is synthesised as the clustering basis.
    */
   nodesById: Record<string, Omit<SnapshotNodeRaw, 'id'>>;
   /** ConversationInsight records from the discovery phase */
@@ -71,14 +73,38 @@ export function buildWorkshopGraphIntelligence(
   const nodeList: SnapshotNodeRaw[] = Object.entries(nodesById).map(
     ([id, n]) => ({ id, ...n }),
   );
-  const liveSignals = snapshotNodesToSignals(
+  const rawLiveSignals = snapshotNodesToSignals(
     nodeList,
     confirmedParticipantIds,
     participantRoleMap,
   );
 
+  // Theme-label enrichment fallback:
+  // Real workshops processed by the hemisphere brain have fine-grained
+  // agenticAnalysis.themes. Older or seeded workshops may have none.
+  // When themes are absent, synthesise a coarser label from lens + primaryType
+  // so the graph builder always has a clustering basis.
+  const liveSignals = rawLiveSignals.map((s) => {
+    if (s.themeLabels.length > 0) return s;
+    const synth: string[] = [];
+    if (s.lens && s.primaryType) synth.push(`${s.lens}_${s.primaryType}`);
+    else if (s.lens) synth.push(s.lens);
+    else if (s.primaryType) synth.push(s.primaryType);
+    return synth.length > 0 ? { ...s, themeLabels: synth } : s;
+  });
+
   // ── Convert discovery insights → RawSignal[] ────────────────────────────
-  const discoverySignals = insightsToSignals(insights, participantRoleMap);
+  // Insights from the discovery phase carry insightType + category.
+  // Use those as fallback theme labels when the insight has no theme.
+  const rawDiscoverySignals = insightsToSignals(insights, participantRoleMap);
+  const discoverySignals = rawDiscoverySignals.map((s) => {
+    if (s.themeLabels.length > 0) return s;
+    const synth: string[] = [];
+    // category (lens area) + primaryType gives a meaningful cluster key
+    if (s.lens && s.primaryType) synth.push(`${s.lens}_${s.primaryType}`);
+    else if (s.primaryType) synth.push(s.primaryType);
+    return synth.length > 0 ? { ...s, themeLabels: synth } : s;
+  });
 
   const allSignals = [...liveSignals, ...discoverySignals];
   if (allSignals.length === 0) return emptyGraphIntelligence();
