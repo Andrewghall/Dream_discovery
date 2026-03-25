@@ -383,12 +383,16 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
           ?? safeJson<SnapshotPayload>(latestSnapshot.payload)?.nodes) ?? {})
       : {};
 
-    const graphIntelligence = buildWorkshopGraphIntelligence({
+    const graphIntelligence = await buildWorkshopGraphIntelligence({
       workshopId,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       nodesById: rawNodeMap as any,
       insights: workshop.insights,
       participants: workshop.participants,
+      clientContext: {
+        clientName: workshop.clientName ?? undefined,
+        industry: workshop.industry ?? undefined,
+      },
     });
 
     // Only attach when the graph has meaningful coverage

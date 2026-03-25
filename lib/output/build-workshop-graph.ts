@@ -5,7 +5,15 @@
  * into a scored RelationshipGraph and GraphIntelligence object.
  *
  * Called from signal-aggregator.ts to populate WorkshopSignals.graphIntelligence.
- * All operations are deterministic and synchronous — no LLM calls.
+ *
+ * Pipeline:
+ *   1. Convert raw nodes → RawSignal[] (live stream)
+ *   2. Convert discovery insights → RawSignal[] (discovery stream)
+ *   3. Enrich both with canonical topic labels (topic-extraction.ts)
+ *      • Deterministic corpus-frequency extraction (always runs)
+ *      • Optional LLM consolidation of near-synonym labels (when API key present)
+ *   4. buildEvidenceClusters → scoreAllClusters → buildRelationshipGraph
+ *   5. computeGraphIntelligence → returned GraphIntelligence
  */
 
 import {
@@ -18,6 +26,11 @@ import { scoreAllClusters } from './evidence-scoring';
 import { buildRelationshipGraph } from './edge-builder';
 import { computeGraphIntelligence } from './graph-intelligence';
 import type { GraphIntelligence } from './relationship-graph';
+import {
+  enrichSignalsWithTopics,
+  refineTopicsWithLLM,
+  applyLabelMergeMap,
+} from './topic-extraction';
 
 // ── Input shape ───────────────────────────────────────────────────────────────
 
@@ -25,9 +38,9 @@ export interface WorkshopGraphInput {
   workshopId: string;
   /**
    * Raw snapshot nodes from the latest LiveWorkshopSnapshot payload.nodesById.
-   * When agenticAnalysis.themes is populated (real hemisphere-processed workshops),
-   * fine-grained topic clusters are used. When absent (seeded/older workshops),
-   * a coarser lens+primaryType label is synthesised as the clustering basis.
+   * When agenticAnalysis.themes is populated (hemisphere-processed nodes),
+   * those fine-grained topic labels are used as-is.
+   * When absent, canonical topics are extracted via topic-extraction.ts.
    */
   nodesById: Record<string, Omit<SnapshotNodeRaw, 'id'>>;
   /** ConversationInsight records from the discovery phase */
@@ -40,6 +53,15 @@ export interface WorkshopGraphInput {
   }>;
   /** Workshop participants for confirmed participant and role resolution */
   participants: Array<{ id: string; role: string | null }>;
+  /**
+   * Client context for LLM topic refinement (optional — improves label quality).
+   */
+  clientContext?: { clientName?: string; industry?: string };
+  /**
+   * Set false to skip LLM topic consolidation (e.g. in tests or offline runs).
+   * Defaults to true (LLM runs when OPENAI_API_KEY is present).
+   */
+  refineClusters?: boolean;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -47,18 +69,12 @@ export interface WorkshopGraphInput {
 /**
  * Build GraphIntelligence from raw workshop data.
  *
- * Steps:
- * 1. Build participant role map and confirmed ID set
- * 2. Convert snapshot nodes → RawSignal[] (live stream, theme-labelled)
- * 3. Convert discovery insights → RawSignal[] (discovery stream)
- * 4. Cluster → score → graph → intelligence
- *
- * Returns an empty-but-valid GraphIntelligence when insufficient data is
- * available (e.g. no themes extracted yet, or workshop has no live nodes).
+ * Async — supports optional LLM topic consolidation before clustering.
+ * Gracefully returns empty-but-valid GraphIntelligence when insufficient data.
  */
-export function buildWorkshopGraphIntelligence(
+export async function buildWorkshopGraphIntelligence(
   input: WorkshopGraphInput,
-): GraphIntelligence {
+): Promise<GraphIntelligence> {
   const { workshopId, nodesById, insights, participants } = input;
 
   // ── Participant maps ─────────────────────────────────────────────────────
@@ -73,44 +89,40 @@ export function buildWorkshopGraphIntelligence(
   const nodeList: SnapshotNodeRaw[] = Object.entries(nodesById).map(
     ([id, n]) => ({ id, ...n }),
   );
-  const rawLiveSignals = snapshotNodesToSignals(
+  const liveSignals = snapshotNodesToSignals(
     nodeList,
     confirmedParticipantIds,
     participantRoleMap,
   );
 
-  // Theme-label enrichment fallback:
-  // Real workshops processed by the hemisphere brain have fine-grained
-  // agenticAnalysis.themes. Older or seeded workshops may have none.
-  // When themes are absent, synthesise a coarser label from lens + primaryType
-  // so the graph builder always has a clustering basis.
-  const liveSignals = rawLiveSignals.map((s) => {
-    if (s.themeLabels.length > 0) return s;
-    const synth: string[] = [];
-    if (s.lens && s.primaryType) synth.push(`${s.lens}_${s.primaryType}`);
-    else if (s.lens) synth.push(s.lens);
-    else if (s.primaryType) synth.push(s.primaryType);
-    return synth.length > 0 ? { ...s, themeLabels: synth } : s;
-  });
-
   // ── Convert discovery insights → RawSignal[] ────────────────────────────
-  // Insights from the discovery phase carry insightType + category.
-  // Use those as fallback theme labels when the insight has no theme.
-  const rawDiscoverySignals = insightsToSignals(insights, participantRoleMap);
-  const discoverySignals = rawDiscoverySignals.map((s) => {
-    if (s.themeLabels.length > 0) return s;
-    const synth: string[] = [];
-    // category (lens area) + primaryType gives a meaningful cluster key
-    if (s.lens && s.primaryType) synth.push(`${s.lens}_${s.primaryType}`);
-    else if (s.primaryType) synth.push(s.primaryType);
-    return synth.length > 0 ? { ...s, themeLabels: synth } : s;
-  });
+  const discoverySignals = insightsToSignals(insights, participantRoleMap);
 
-  const allSignals = [...liveSignals, ...discoverySignals];
-  if (allSignals.length === 0) return emptyGraphIntelligence();
+  const allRawSignals = [...liveSignals, ...discoverySignals];
+  if (allRawSignals.length === 0) return emptyGraphIntelligence();
+
+  // ── Phase 1: Deterministic topic extraction ──────────────────────────────
+  // Adds themeLabels to signals that have none (both live nodes that lack
+  // agenticAnalysis.themes AND discovery insights which never carry themes).
+  // Signals that already have themeLabels are left unchanged.
+  const enriched = enrichSignalsWithTopics(allRawSignals);
+
+  // ── Phase 2: Optional LLM topic consolidation ────────────────────────────
+  // One GPT-4o-mini call merges near-synonym cluster labels that deterministic
+  // Jaccard merging missed (e.g. "system" vs "fragmentation").
+  // Skipped when refineClusters=false, or when OpenAI key is absent.
+  let finalSignals = enriched;
+  if (input.refineClusters !== false) {
+    try {
+      const llmMerges = await refineTopicsWithLLM(enriched, input.clientContext ?? {});
+      finalSignals = applyLabelMergeMap(enriched, llmMerges);
+    } catch {
+      // LLM refinement failure is non-fatal — continue with deterministic labels
+    }
+  }
 
   // ── Build clusters → score → graph → intelligence ────────────────────────
-  const clusters = buildEvidenceClusters(allSignals);
+  const clusters = buildEvidenceClusters(finalSignals);
 
   const totalRoles = participantRoleMap.size > 0
     ? new Set(participantRoleMap.values()).size
