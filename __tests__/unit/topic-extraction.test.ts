@@ -214,6 +214,21 @@ describe('buildMergeMap', () => {
     expect(map.get('knowledge_gap')).toBe('knowledge_gap');
   });
 
+  it('produces the same canonical regardless of input order (deterministic winner)', () => {
+    // "approval_wait" and "wait_approval" token-sets are both {approval, wait} — J=1.0.
+    // The canonical must be the same string whether the list is [A,B] or [B,A].
+    // Without a stable tie-break, the winner would depend on Array.sort stability / input order.
+    const labels1 = ['approval_wait', 'wait_approval'];
+    const labels2 = ['wait_approval', 'approval_wait'];   // reversed
+    const map1 = buildMergeMap(labels1);
+    const map2 = buildMergeMap(labels2);
+    // Both must converge on one canonical
+    expect(map1.get('approval_wait')).toBe(map1.get('wait_approval'));
+    expect(map2.get('approval_wait')).toBe(map2.get('wait_approval'));
+    // And that canonical must be the same regardless of input order
+    expect(map1.get('approval_wait')).toBe(map2.get('approval_wait'));
+  });
+
   it('does NOT transitively merge disjoint labels via a shared intermediate', () => {
     // "approval" {approval} and "system" {system} share no tokens (J=0).
     // Both overlap "approval_system" {approval,system} with J=0.5 each.

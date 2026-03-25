@@ -21,8 +21,8 @@ import OpenAI from 'openai';
 import { env } from '@/lib/env';
 import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { RawSignal } from './evidence-clustering';
-
-const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+// NOTE: OpenAI client is constructed lazily inside refineTopicsWithLLM.
+// No module-level instantiation — importing this file is safe in test/jsdom environments.
 
 // ── Stop words ────────────────────────────────────────────────────────────────
 // Comprehensive English stop-word list biased toward workshop language.
@@ -388,15 +388,23 @@ export function buildMergeMap(
     }
   }
 
-  // Pick canonical: prefer highest frequency, then longest (most specific)
+  // Pick canonical: prefer highest frequency, then longest normalised form, then
+  // alphabetical order on the normalised label as a deterministic final tie-break.
+  // The winner is stored as its NORMALISED form so separator-equivalent labels
+  // (e.g. "self-service" and "self_service") always resolve to the same output string
+  // regardless of which raw variant appears first in the input.
   const mergeMap = new Map<string, string>();
   for (const group of groups) {
-    const canonical = [...group].sort((a, b) => {
+    const best = [...group].sort((a, b) => {
       const fa = frequency?.get(b) ?? 0;
       const fb = frequency?.get(a) ?? 0;
-      if (fa !== fb) return fa - fb;          // higher frequency first
-      return b.length - a.length;             // longer label (more specific) first
+      if (fa !== fb) return fa - fb;                        // higher frequency first
+      const na = normaliseLabel(a);
+      const nb = normaliseLabel(b);
+      if (na.length !== nb.length) return nb.length - na.length;  // longer first
+      return na.localeCompare(nb);                          // alphabetical — stable, order-independent
     })[0];
+    const canonical = normaliseLabel(best);   // always emit normalised form, never raw
     for (const label of group) mergeMap.set(label, canonical);
   }
 
@@ -477,7 +485,11 @@ export async function refineTopicsWithLLM(
   signals: RawSignal[],
   context: LLMRefinementContext = {},
 ): Promise<Map<string, string>> {
-  if (!openai) return new Map();
+  // Construct client lazily — not at module load time — so importing this file
+  // is safe in test/jsdom/browser-like environments.
+  const apiKey = env.OPENAI_API_KEY;
+  if (!apiKey) return new Map();
+  const openai = new OpenAI({ apiKey });
 
   // Collect unique cluster labels + a representative example signal for each
   const clusterSamples = new Map<string, string>();
@@ -548,13 +560,16 @@ Return JSON only — an object with key "merges": { "old_label": "canonical_labe
     const parsed = JSON.parse(raw) as { merges?: Record<string, string> };
     const merges = parsed.merges ?? {};
 
-    // Build the master token vocabulary from all input cluster labels.
-    // Used in Guard 2 to prevent the LLM from inventing tokens that don't
-    // appear in any existing cluster label (e.g. "strategic_alignment" when no
-    // input label contains "strategic" or "alignment").
-    const masterTokens = new Set<string>();
+    // Build the allow-list of normalised input labels.
+    // Guard 2 uses this: the canonical the LLM proposes must exactly match one of
+    // these — token recombination is not sufficient.  "approval_system" is only
+    // accepted if there is already an input cluster whose normalised form IS
+    // "approval_system".  This prevents the LLM composing new labels out of spare
+    // parts (e.g. merging "approval" + "system" tokens from different clusters into
+    // a brand-new "approval_system" label that was never a real cluster).
+    const allowedCanonicals = new Set<string>();
     for (const label of clusterSamples.keys()) {
-      for (const t of label.split('_').filter(Boolean)) masterTokens.add(t);
+      allowedCanonicals.add(normaliseLabel(label));
     }
 
     const mergeMap = new Map<string, string>();
@@ -565,10 +580,10 @@ Return JSON only — an object with key "merges": { "old_label": "canonical_labe
 
       const normCanonical = normaliseLabel(canonical);
 
-      // Guard 2 — every token in the canonical must exist in the master vocabulary.
-      // This prevents invented labels like "approval → strategic_alignment".
-      const canonTokens = normCanonical.split('_').filter(Boolean);
-      if (!canonTokens.every(t => masterTokens.has(t))) continue;
+      // Guard 2 — canonical must be (or normalise to) an existing input cluster label.
+      // Rejects any label the LLM assembled from token fragments that was not itself
+      // already a cluster in the input set.
+      if (!allowedCanonicals.has(normCanonical)) continue;
 
       mergeMap.set(oldLabel, normCanonical);
     }
