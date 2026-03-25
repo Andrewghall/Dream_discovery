@@ -182,7 +182,11 @@ export async function refreshSessionToken(token: string): Promise<string | null>
     return null;
   }
 
-  // Create new token with same data
+  // Create new token with same data.
+  // Impersonation linkage fields MUST be preserved: dropping impersonatedBy or
+  // parentSessionId would sever the parent-session revocation chain, allowing a
+  // refreshed impersonation token to remain valid after the originating admin
+  // session has been revoked.
   return createSessionToken({
     sessionId: payload.sessionId,
     userId: payload.userId,
@@ -190,5 +194,7 @@ export async function refreshSessionToken(token: string): Promise<string | null>
     role: payload.role,
     organizationId: payload.organizationId,
     createdAt: payload.createdAt,
+    ...(payload.impersonatedBy !== undefined && { impersonatedBy: payload.impersonatedBy }),
+    ...(payload.parentSessionId !== undefined && { parentSessionId: payload.parentSessionId }),
   });
 }

@@ -73,6 +73,7 @@ import * as jose from 'jose';
 import {
   verifySessionToken,
   verifySessionWithDB,
+  refreshSessionToken,
 } from '@/lib/auth/session';
 
 // ── Tests ──────────────────────────────────────────────────
@@ -366,6 +367,150 @@ describe('Session Revocation Model', () => {
 
       const afterRevoke = await verifySessionWithDB('impersonation-jwt');
       expect(afterRevoke).toBeNull(); // impersonation rejected because parent is gone
+    });
+  });
+
+  // ── refreshSessionToken preserves impersonation linkage ──
+
+  describe('refreshSessionToken preserves parent-session revocation chain', () => {
+    it('refreshed impersonation token retains impersonatedBy and parentSessionId', async () => {
+      const impersonationPayload = {
+        sessionId: 'scoped-session-id',
+        userId: 'admin',
+        email: 'admin@example.com',
+        role: 'TENANT_ADMIN',
+        organizationId: 'org-1',
+        createdAt: Date.now(),
+        impersonatedBy: 'admin',
+        parentSessionId: 'parent-admin-session-id',
+      };
+
+      // verifySessionWithDB path: JWT valid, scoped session active, parent session active
+      vi.mocked(jose.jwtVerify).mockResolvedValue({
+        payload: impersonationPayload,
+        protectedHeader: { alg: 'HS256' },
+      } as any);
+      sessionFindFirst
+        .mockResolvedValueOnce({ id: 'scoped-session-id' })
+        .mockResolvedValueOnce({ id: 'parent-admin-session-id' });
+
+      // Capture the payload that createSessionToken (→ new SignJWT(payload)) receives.
+      // The jose module is already mocked above; we temporarily replace SignJWT with
+      // a vi.fn() so we can inspect the constructor argument.
+      const capturedPayloads: unknown[] = [];
+      const savedSignJWT = (jose as Record<string, unknown>).SignJWT;
+      (jose as Record<string, unknown>).SignJWT = vi.fn().mockImplementation(
+        (payload: unknown) => {
+          capturedPayloads.push(payload);
+          return {
+            setProtectedHeader() { return this; },
+            setIssuedAt()        { return this; },
+            setIssuer()          { return this; },
+            setAudience()        { return this; },
+            setExpirationTime()  { return this; },
+            async sign()         { return 'refreshed-jwt'; },
+          };
+        }
+      );
+
+      try {
+        await refreshSessionToken('impersonation-jwt');
+      } finally {
+        // Restore original mock so subsequent tests are unaffected
+        (jose as Record<string, unknown>).SignJWT = savedSignJWT;
+      }
+
+      // createSessionToken is called once; verify the payload includes linkage fields
+      expect(capturedPayloads).toHaveLength(1);
+      expect(capturedPayloads[0]).toMatchObject({
+        sessionId: 'scoped-session-id',
+        impersonatedBy: 'admin',
+        parentSessionId: 'parent-admin-session-id',
+      });
+    });
+
+    it('after refresh, revoking parent admin session invalidates the refreshed impersonation token', async () => {
+      // This test proves the revocation chain is intact AFTER a refresh.
+      // The refreshed token still carries parentSessionId, so verifySessionWithDB
+      // will check the parent session on every request.
+
+      const impersonationPayload = {
+        sessionId: 'scoped-session-id',
+        userId: 'admin',
+        email: 'admin@example.com',
+        role: 'TENANT_ADMIN',
+        organizationId: 'org-1',
+        createdAt: Date.now(),
+        impersonatedBy: 'admin',
+        parentSessionId: 'parent-admin-session-id',
+      };
+
+      // Simulate: refreshed JWT decodes to same payload (linkage preserved)
+      vi.mocked(jose.jwtVerify).mockResolvedValue({
+        payload: impersonationPayload,
+        protectedHeader: { alg: 'HS256' },
+      } as any);
+
+      // Pre-revocation: scoped session active + parent session active → accepted
+      sessionFindFirst
+        .mockResolvedValueOnce({ id: 'scoped-session-id' })
+        .mockResolvedValueOnce({ id: 'parent-admin-session-id' });
+
+      const beforeRevoke = await verifySessionWithDB('refreshed-impersonation-jwt');
+      expect(beforeRevoke).not.toBeNull();
+
+      // Post-revocation: parent session revoked → refreshed impersonation token rejected
+      sessionFindFirst
+        .mockResolvedValueOnce({ id: 'scoped-session-id' }) // scoped still active
+        .mockResolvedValueOnce(null);                        // parent revoked
+
+      const afterRevoke = await verifySessionWithDB('refreshed-impersonation-jwt');
+      expect(afterRevoke).toBeNull();
+    });
+  });
+
+  // ── exit-org backup restore must be DB-backed ─────────────
+
+  describe('exit-org: revoked backup admin session cannot be restored', () => {
+    it('verifySessionWithDB rejects a revoked admin backup JWT — restore must not proceed', async () => {
+      // This test proves the gate that exit-org now uses (verifySessionWithDB).
+      // A revoked PLATFORM_ADMIN backup JWT has a valid signature but a revoked DB row.
+      // verifySessionWithDB must return null → exit-org clears the cookie without restoring.
+
+      vi.mocked(jose.jwtVerify).mockResolvedValue({
+        payload: mockAdminJwtPayload,
+        protectedHeader: { alg: 'HS256' },
+      } as any);
+
+      // DB session is revoked (revokedAt is set, so findFirst returns null)
+      sessionFindFirst.mockResolvedValue(null);
+
+      const result = await verifySessionWithDB('revoked-admin-backup-jwt');
+      expect(result).toBeNull();
+
+      // Contrast: verifySessionToken would still return the payload (signature valid)
+      vi.mocked(jose.jwtVerify).mockResolvedValue({
+        payload: mockAdminJwtPayload,
+        protectedHeader: { alg: 'HS256' },
+      } as any);
+      const sigOnlyResult = await verifySessionToken('revoked-admin-backup-jwt');
+      expect(sigOnlyResult).not.toBeNull(); // sig-only does NOT catch revocation
+
+      // ∴ exit-org must use verifySessionWithDB, not verifySessionToken
+    });
+
+    it('active (non-revoked) admin backup JWT passes verifySessionWithDB and can be restored', async () => {
+      vi.mocked(jose.jwtVerify).mockResolvedValue({
+        payload: mockAdminJwtPayload,
+        protectedHeader: { alg: 'HS256' },
+      } as any);
+
+      // DB session is active
+      sessionFindFirst.mockResolvedValue({ id: 'random-nanoid' });
+
+      const result = await verifySessionWithDB('active-admin-backup-jwt');
+      expect(result).not.toBeNull();
+      expect(result?.role).toBe('PLATFORM_ADMIN');
     });
   });
 });

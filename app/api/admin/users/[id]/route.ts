@@ -233,11 +233,22 @@ export async function DELETE(
     //    targetName, and changes.email / changes.name from the metadata JSONB.
     //    The audit trail (action, resourceId, timestamp) is preserved — only
     //    direct personal identifiers are removed.
+    // 5a. Clear userEmail for rows where the subject was the actor.
     await (tx as any).$executeRaw`
       UPDATE "audit_logs"
       SET "userEmail" = NULL
       WHERE "userId" = ${id}
     `;
+    // 5b. Clear IP address and user-agent for rows where the subject was the actor.
+    //     ipAddress and userAgent in these rows belong to the data subject and must
+    //     be erased. (Rows where an admin acted ON the subject carry the admin's IP —
+    //     those are not the subject's personal data and are left intact.)
+    await (tx as any).$executeRaw`
+      UPDATE "audit_logs"
+      SET "ipAddress" = NULL, "userAgent" = NULL
+      WHERE "userId" = ${id}
+    `;
+    // 5c. Strip personal identifiers from metadata on rows about actions ON the subject.
     await (tx as any).$executeRaw`
       UPDATE "audit_logs"
       SET "metadata" = CASE
