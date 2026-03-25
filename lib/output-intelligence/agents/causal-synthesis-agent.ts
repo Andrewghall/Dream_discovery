@@ -21,12 +21,11 @@
  */
 
 import OpenAI from 'openai';
-import { env } from '@/lib/env';
 import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopSignals, CausalFinding, CausalIntelligence } from '../types';
-import type { GraphIntelligence } from '@/lib/output/relationship-graph';
-
-const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+import type { GraphIntelligence, CausalChain } from '@/lib/output/relationship-graph';
+// OpenAI client constructed lazily inside enrichFindings() — never at module load.
+// process.env is used directly to avoid @/lib/env's Zod throw when DATABASE_URL is absent.
 
 // ── Gating constants ──────────────────────────────────────────────────────────
 
@@ -39,9 +38,39 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
   let seq = 0;
   const id = (prefix: string) => `${prefix}_${++seq}`;
 
+  // Build causal chain lookups for populating CausalFinding.causalChain
+  // Maps constraintNodeId → first chain; enablerNodeId → first chain
+  const chainByConstraint = new Map<string, CausalChain>();
+  const chainByEnabler = new Map<string, CausalChain>();
+  for (const chain of graph.dominantCausalChains) {
+    if (!chainByConstraint.has(chain.constraintNodeId)) {
+      chainByConstraint.set(chain.constraintNodeId, chain);
+    }
+    if (!chainByEnabler.has(chain.enablerNodeId)) {
+      chainByEnabler.set(chain.enablerNodeId, chain);
+    }
+  }
+
+  /** Lookup cluster quotes for a node, returning empty array if absent */
+  const quotesFor = (nodeId?: string) =>
+    nodeId ? (graph.clusterQuotes[nodeId] ?? []) : [];
+
+  /** Map a CausalChain to the CausalFinding causalChain shape */
+  function chainShape(c: CausalChain): CausalFinding['causalChain'] {
+    return {
+      constraintLabel: c.labels.constraint,
+      enablerLabel: c.labels.enabler,
+      reimaginationLabel: c.labels.reimagination,
+      chainStrength: c.chainStrength,
+      weakestLinkTier: c.weakestLinkTier,
+    };
+  }
+
   // ── ORGANISATIONAL_ISSUE: Bottlenecks ─────────────────────────────────────
   for (const b of graph.bottlenecks) {
     if (!STRONG_EVIDENCE_TIERS.has(b.evidenceTier)) continue;
+
+    const chain = chainByConstraint.get(b.nodeId) ?? chainByEnabler.get(b.nodeId);
 
     findings.push({
       findingId: id('issue'),
@@ -50,11 +79,13 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
       whyItMatters: `This constraint affects ${b.outDegree} interconnected areas — making it a structural bottleneck across the organisation.`,
       whoItAffects: `Organisation-wide (${b.outDegree} dependent areas)`,
       evidenceBasis: `Evidence cluster "${b.displayLabel}" — ${b.evidenceTier} tier, composite score ${b.compositeScore}`,
+      causalChain: chain ? chainShape(chain) : undefined,
       bottleneckContext: `${b.outDegree} outgoing relationship edges (constrains/blocks/drives) — the highest connected constraint node in the graph.`,
       operationalImplication: `Unresolved, this constraint creates cascading friction across ${b.outDegree} areas simultaneously.`,
       recommendedAction: `Prioritise root-cause investigation and resolution of "${b.displayLabel}" before scaling dependent enablers.`,
       evidenceEdgeIds: b.edgeIds,
       evidenceNodeId: b.nodeId,
+      evidenceQuotes: quotesFor(b.nodeId),
     });
   }
 
@@ -62,6 +93,8 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
   for (const cb of graph.compensatingBehaviours) {
     const category: CausalFinding['category'] =
       cb.riskLevel === 'high' ? 'ORGANISATIONAL_ISSUE' : 'REINFORCED_FINDING';
+
+    const chain = chainByConstraint.get(cb.constraintNodeId) ?? chainByEnabler.get(cb.enablerNodeId);
 
     findings.push({
       findingId: id(cb.riskLevel === 'high' ? 'issue' : 'finding'),
@@ -72,6 +105,7 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
         : `"${cb.enablerLabel}" acts as a workaround for "${cb.constraintLabel}" — addressing symptoms rather than root cause.`,
       whoItAffects: `Teams relying on "${cb.enablerLabel}" without resolving "${cb.constraintLabel}"`,
       evidenceBasis: `compensates_for edge: "${cb.enablerLabel}" → "${cb.constraintLabel}" — constraint raw frequency: ${cb.constraintRawFrequency}`,
+      causalChain: chain ? chainShape(chain) : undefined,
       compensatingBehaviourContext: `Risk level: ${cb.riskLevel}. Constraint "${cb.constraintLabel}" is ${cb.constraintIsLive ? 'still live' : 'lower activity'} with ${cb.constraintRawFrequency} signal mentions.`,
       operationalImplication: cb.riskLevel === 'high'
         ? `High risk of regression: if the workaround fails or scales, the underlying constraint will surface at greater scale.`
@@ -79,6 +113,7 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
       recommendedAction: `Address root constraint "${cb.constraintLabel}" alongside scaling enabler "${cb.enablerLabel}" — resolve rather than compensate.`,
       evidenceEdgeIds: [cb.edgeId],
       evidenceNodeId: cb.enablerNodeId,
+      evidenceQuotes: quotesFor(cb.constraintNodeId),
     });
   }
 
@@ -98,13 +133,16 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
       recommendedAction: `Design or identify an enabler or initiative that directly responds to "${bc.displayLabel}".`,
       evidenceEdgeIds: [],
       evidenceNodeId: bc.nodeId,
+      evidenceQuotes: quotesFor(bc.nodeId),
     });
   }
 
   // ── EMERGING_PATTERN: Enablers leading nowhere ────────────────────────────
   for (const bc of graph.brokenChains) {
     if (bc.brokenChainType !== 'ENABLER_LEADS_NOWHERE') continue;
-    if (bc.evidenceTier === 'WEAK') continue; // don't elevate thin signals
+    if (bc.evidenceTier === 'WEAK') continue;
+
+    const chain = chainByEnabler.get(bc.nodeId);
 
     findings.push({
       findingId: id('pattern'),
@@ -113,10 +151,12 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
       whyItMatters: `"${bc.displayLabel}" is identified as an enabler but has no confirmed connection to a reimagination outcome. It may be underutilised or mis-classified. (Emerging signal — not yet systemic.)`,
       whoItAffects: `Teams investing in "${bc.displayLabel}"`,
       evidenceBasis: `Evidence cluster "${bc.displayLabel}" — ${bc.evidenceTier} tier. No enables edge to any REIMAGINATION node detected.`,
+      causalChain: chain ? chainShape(chain) : undefined,
       operationalImplication: `This capability may be deployed without a clear strategic outcome — effort without direction.`,
       recommendedAction: `Clarify how "${bc.displayLabel}" connects to specific future-state visions. If no vision applies, re-evaluate priority.`,
       evidenceEdgeIds: [],
       evidenceNodeId: bc.nodeId,
+      evidenceQuotes: quotesFor(bc.nodeId),
     });
   }
 
@@ -136,6 +176,7 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
       recommendedAction: `Identify and resource the capability that enables "${bc.displayLabel}" — or de-prioritise if no credible enabler can be named.`,
       evidenceEdgeIds: [],
       evidenceNodeId: bc.nodeId,
+      evidenceQuotes: quotesFor(bc.nodeId),
     });
   }
 
@@ -151,6 +192,10 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
       operationalImplication: `Unresolved contradictions create inconsistent decision-making. Different teams may be working from opposing assumptions.`,
       recommendedAction: `Surface this tension explicitly with senior stakeholders. Align on a single position or acknowledge it as a managed trade-off.`,
       evidenceEdgeIds: [cp.edgeId],
+      evidenceQuotes: [
+        ...quotesFor(cp.nodeAId).slice(0, 1),
+        ...quotesFor(cp.nodeBId).slice(0, 1),
+      ],
     });
   }
 
@@ -171,6 +216,8 @@ async function enrichFindings(
   findings: CausalFinding[],
   signals: WorkshopSignals,
 ): Promise<Map<string, EnrichedFinding>> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const openai = apiKey ? new OpenAI({ apiKey }) : null;
   if (!openai || findings.length === 0) return new Map();
 
   const context = [

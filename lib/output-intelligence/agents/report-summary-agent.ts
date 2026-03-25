@@ -11,11 +11,9 @@
  */
 
 import OpenAI from 'openai';
-import { env } from '@/lib/env';
 import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopOutputIntelligence, WorkshopSignals, ReportSummary } from '../types';
-
-const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+// OpenAI client constructed lazily inside runReportSummaryAgent() — never at module load.
 
 // ── Schema sent to the model ──────────────────────────────────────────────────
 
@@ -241,6 +239,89 @@ function buildContextDump(
     }
   }
 
+  // ── Graph-backed Causal Intelligence ─────────────────────────────────────
+  // These findings are evidence-gated (≥ REINFORCED tier) and deterministically
+  // derived from the relationship graph. Prioritise them as primary sources for
+  // whatWeFound and whatMustChange — they are more specific than LLM inference.
+  if (intelligence.causalIntelligence) {
+    const ci = intelligence.causalIntelligence;
+
+    if (ci.organisationalIssues.length > 0) {
+      lines.push('\n=== GRAPH-BACKED ORGANISATIONAL ISSUES (evidence-gated ≥ REINFORCED — use as primary source for whatWeFound) ===');
+      for (const f of ci.organisationalIssues) {
+        lines.push(`\n[${f.findingId}] ${f.issueTitle}`);
+        lines.push(`  Why it matters: ${f.whyItMatters}`);
+        lines.push(`  Who it affects: ${f.whoItAffects}`);
+        lines.push(`  Evidence: ${f.evidenceBasis}`);
+        if (f.evidenceQuotes && f.evidenceQuotes.length > 0) {
+          lines.push(`  Participant quotes:`);
+          for (const q of f.evidenceQuotes.slice(0, 3)) {
+            const roleTag = q.participantRole ? ` [${q.participantRole}]` : '';
+            lines.push(`    • "${q.text}"${roleTag}`);
+          }
+        }
+        if (f.causalChain) {
+          lines.push(`  Causal chain: "${f.causalChain.constraintLabel}" → "${f.causalChain.enablerLabel}" → "${f.causalChain.reimaginationLabel}" (chain strength: ${f.causalChain.chainStrength}/100, weakest link: ${f.causalChain.weakestLinkTier})`);
+        }
+        lines.push(`  Operational implication: ${f.operationalImplication}`);
+        lines.push(`  Recommended action: ${f.recommendedAction}`);
+        if (f.evidenceNodeId) lines.push(`  [provenance: node=${f.evidenceNodeId}, edges=${f.evidenceEdgeIds.join(', ') || 'none'}]`);
+      }
+    }
+
+    if (ci.reinforcedFindings.length > 0) {
+      lines.push('\n=== GRAPH-BACKED REINFORCED FINDINGS (multi-participant, multi-lens) ===');
+      for (const f of ci.reinforcedFindings.slice(0, 5)) {
+        lines.push(`\n[${f.findingId}] ${f.issueTitle}`);
+        lines.push(`  Evidence: ${f.evidenceBasis}`);
+        if (f.evidenceQuotes && f.evidenceQuotes.length > 0) {
+          for (const q of f.evidenceQuotes.slice(0, 2)) {
+            const roleTag = q.participantRole ? ` [${q.participantRole}]` : '';
+            lines.push(`    • "${q.text}"${roleTag}`);
+          }
+        }
+        if (f.causalChain) {
+          lines.push(`  Chain: "${f.causalChain.constraintLabel}" → "${f.causalChain.enablerLabel}" → "${f.causalChain.reimaginationLabel}"`);
+        }
+        lines.push(`  Implication: ${f.operationalImplication}`);
+        lines.push(`  Action: ${f.recommendedAction}`);
+      }
+    }
+
+    if (ci.emergingPatterns.length > 0) {
+      lines.push('\n=== EMERGING PATTERNS (credible but not yet systemic — label clearly in output) ===');
+      for (const f of ci.emergingPatterns.slice(0, 4)) {
+        lines.push(`  • [EMERGING] ${f.issueTitle} — ${f.operationalImplication}`);
+      }
+    }
+
+    if (ci.contradictions.length > 0) {
+      lines.push('\n=== CONTRADICTIONS (opposing participant views) ===');
+      for (const f of ci.contradictions.slice(0, 3)) {
+        lines.push(`  • ${f.issueTitle}`);
+        if (f.evidenceQuotes && f.evidenceQuotes.length >= 2) {
+          lines.push(`    View A: "${f.evidenceQuotes[0].text}"`);
+          lines.push(`    View B: "${f.evidenceQuotes[1].text}"`);
+        }
+      }
+    }
+
+    if (ci.evidenceGaps.length > 0) {
+      lines.push('\n=== EVIDENCE GAPS (constraints with no identified organisational response) ===');
+      for (const f of ci.evidenceGaps.slice(0, 3)) {
+        lines.push(`  • ${f.issueTitle} — ${f.evidenceBasis}`);
+      }
+    }
+
+    if (ci.dominantCausalChains.length > 0) {
+      lines.push('\n=== DOMINANT CAUSAL CHAINS (structural logic of this workshop) ===');
+      for (const chain of ci.dominantCausalChains.slice(0, 3)) {
+        lines.push(`  • "${chain.constraintLabel}" → "${chain.enablerLabel}" → "${chain.reimaginationLabel}" — strength ${chain.chainStrength}/100`);
+        if (chain.narrative) lines.push(`    ${chain.narrative}`);
+      }
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -324,6 +405,7 @@ export async function runReportSummaryAgent(
 
 EXECUTIVE SUMMARY RULES:
 • Must directly answer the workshop ask — not describe the workshop process
+• GRAPH-BACKED FINDINGS RULE — CRITICAL: If the intelligence contains a "GRAPH-BACKED ORGANISATIONAL ISSUES" or "GRAPH-BACKED REINFORCED FINDINGS" section, these are evidence-gated, deterministic findings from the relationship graph. They MUST appear in whatWeFound with their specific titles, participant quotes, and causal chains. Do not paraphrase or generalise graph-backed findings — use their exact titles and supporting quotes.
 • whatWeFound: MINIMUM 6 items — each must name a specific system, team, metric, or process observed — no generic phrases like "lack of alignment" without naming what is misaligned
 • METRIC CITATION RULE — CRITICAL: Before writing whatWeFound and urgency, scan the entire intelligence for ANY specific percentage, named system, named role, customer tier, or quantified outcome (e.g. "30-40% AHT reduction", "Gold and Platinum tier members", "8 legacy systems", "34% attrition"). Every specific metric or named entity found MUST appear verbatim in at least one finding or the urgency field. Do not paraphrase or generalise a specific number — quote it exactly.
 • lensFindings: produce ONE entry for EVERY lens listed under "Lenses:" in WORKSHOP CONTEXT — no exceptions, no omissions. Consult the "SIGNALS BY LENS" section for evidence. If signals for a lens were thin or absent, write the finding as: "Workshop signals for this lens were limited — [describe what little was captured, or state 'no pads were recorded for this lens']". NEVER omit a lens that the workshop ran.
@@ -335,6 +417,7 @@ SOLUTION SUMMARY RULES:
 • whatMustChange: MINIMUM 4 areas — each currentState must describe the observable reality today using the workshop evidence — not aspirational language about what SHOULD happen
 • successIndicators: MINIMUM 4 — each must be an observable outcome a manager could verify — not "improve efficiency" but "case resolved in single interaction without system switching"
 • rationale must trace directly to the root causes provided — if a root cause is not relevant to the direction, do not reference it
+• If graph-backed causal chains are present, whatMustChange MUST map to those specific chains — each change area should address a named bottleneck, compensating behaviour, or evidence gap from the graph
 
 ABSOLUTE RULES — NO EXCEPTIONS:
 • NEVER invent data, metrics, or findings not present in the provided intelligence
@@ -355,6 +438,8 @@ Based on ALL the above pre-generated intelligence, write the report summary.
 Return JSON matching this schema exactly:
 ${SCHEMA}`;
 
+  const apiKey = process.env.OPENAI_API_KEY;
+  const openai = apiKey ? new OpenAI({ apiKey }) : null;
   if (!openai) throw new Error('OPENAI_API_KEY is not configured');
 
   let lastError: Error | null = null;

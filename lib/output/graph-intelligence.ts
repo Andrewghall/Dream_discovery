@@ -367,5 +367,9 @@ export function computeGraphIntelligence(graph: RelationshipGraph): GraphIntelli
       systemicEdgeCount,
       graphCoverageScore,
     },
+    // clusterQuotes is populated by buildWorkshopGraphIntelligence, not here.
+    // This function only builds the structural graph intelligence; quotes come
+    // from the scored cluster layer and are injected by the calling adapter.
+    clusterQuotes: {},
   };
 }

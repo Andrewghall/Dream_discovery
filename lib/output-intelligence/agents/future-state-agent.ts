@@ -7,11 +7,9 @@
  */
 
 import OpenAI from 'openai';
-import { env } from '@/lib/env';
 import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopSignals, FutureStateDesign } from '../types';
-
-const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+// OpenAI client constructed lazily inside runFutureStateAgent() — never at module load.
 
 const SCHEMA = `{
   "targetOperatingModel": "string — 2-3 paragraph description of what the organisation becomes. Write with strategic clarity and executive authority.",
@@ -158,6 +156,8 @@ Rules:
 Return JSON matching this schema exactly:
 ${SCHEMA}`;
 
+  const apiKey = process.env.OPENAI_API_KEY;
+  const openai = apiKey ? new OpenAI({ apiKey }) : null;
   if (!openai) throw new Error('OPENAI_API_KEY is not configured');
 
   let lastError: Error | null = null;

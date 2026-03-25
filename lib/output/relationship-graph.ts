@@ -225,4 +225,10 @@ export interface GraphIntelligence {
     systemicEdgeCount: number;
     graphCoverageScore: number;
   };
+  /**
+   * Verbatim signal quotes per cluster, keyed by nodeId (= clusterKey).
+   * Up to 3 quotes per cluster, populated by buildWorkshopGraphIntelligence.
+   * Used by causal-synthesis-agent to add evidenceQuotes to CausalFindings.
+   */
+  clusterQuotes: Record<string, Array<{ text: string; participantRole: string | null; lens: string | null }>>;
 }

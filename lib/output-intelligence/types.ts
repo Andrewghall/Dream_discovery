@@ -235,6 +235,8 @@ export interface CausalFinding {
   evidenceEdgeIds: string[];
   /** Node ID from the relationship graph this finding is anchored to */
   evidenceNodeId?: string;
+  /** Up to 3 verbatim participant quotes from the grounding evidence cluster */
+  evidenceQuotes?: Array<{ text: string; participantRole: string | null; lens: string | null }>;
 }
 
 export interface CausalIntelligence {

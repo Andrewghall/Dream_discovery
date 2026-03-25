@@ -132,7 +132,17 @@ export async function buildWorkshopGraphIntelligence(
   if (scored.length === 0) return emptyGraphIntelligence();
 
   const graph = buildRelationshipGraph(scored, workshopId);
-  return computeGraphIntelligence(graph);
+  const intelligence = computeGraphIntelligence(graph);
+
+  // Build cluster quote index for downstream CausalFinding provenance.
+  // Maps clusterKey → top 3 verbatim quotes (text + participantRole + lens).
+  const clusterQuotes: GraphIntelligence['clusterQuotes'] = {};
+  for (const { cluster } of scored) {
+    if (cluster.bestQuotes.length > 0) {
+      clusterQuotes[cluster.clusterKey] = cluster.bestQuotes.slice(0, 3);
+    }
+  }
+  return { ...intelligence, clusterQuotes };
 }
 
 // ── Empty fallback ────────────────────────────────────────────────────────────
@@ -153,5 +163,6 @@ function emptyGraphIntelligence(): GraphIntelligence {
       systemicEdgeCount: 0,
       graphCoverageScore: 0,
     },
+    clusterQuotes: {},
   };
 }
