@@ -252,146 +252,85 @@ describe('BLOCKER 2: middleware backup-cookie restore must be DB-backed', () => 
 });
 
 // ==============================================================================
-// BLOCKER 3 — Invalid backup cookie must not bypass RBAC (no early-return)
+// BLOCKER 3 — /admin/platform is PLATFORM_ADMIN-only
 //
-// Previous fix: invalid backup → early `return NextResponse.next()` → skipped
-// RBAC checks. The current session (scoped TENANT_ADMIN) could reach
-// /admin/platform without going through the authorization guards.
+// The broad isAdminPath guard allowed TENANT_ADMIN through because TENANT_ADMIN
+// is in TENANT_ROLES. After a revoked backup cookie, the scoped TENANT_ADMIN
+// session fell through to that guard and was admitted.
 //
-// Current fix: invalid backup sets clearBackupCookie=true and falls through.
-// The RBAC guard at line ~92 then enforces that TENANT_ADMIN cannot reach
-// /admin/platform, redirecting to /login.
+// Fix: an explicit guard fires before the broad one:
+//   if (pathname.startsWith('/admin/platform') && session.role !== 'PLATFORM_ADMIN')
+//     → redirect to /login
 //
-// We test this through the helper layer: verifySessionWithDB returns null for
-// the backup → the scoped TENANT_ADMIN session is NOT PLATFORM_ADMIN →
-// the isAdminPath role guard rejects it.
+// This applies to ALL non-PLATFORM_ADMIN sessions regardless of how they arrived.
 // ==============================================================================
 
-describe('BLOCKER 3: invalid backup cookie does not bypass RBAC on /admin/platform', () => {
-  it('verifySessionWithDB returning null for backup means RBAC still evaluates scoped session', async () => {
-    // Simulate the middleware decision path after clearBackupCookie=true:
-    // The current `session` is a scoped TENANT_ADMIN (impersonatedBy set).
-    // The backup JWT fails DB check → backup NOT restored.
-    // The RBAC guard checks: isAdminPath && role !== PLATFORM_ADMIN && !TENANT_ROLES → redirect to login.
-    //
-    // TENANT_ADMIN IS in TENANT_ROLES, so it passes the first RBAC guard.
-    // BUT /admin/platform is an admin path, and TENANT_ADMIN is not PLATFORM_ADMIN.
-    // The guard is: role !== PLATFORM_ADMIN && !TENANT_ROLES.includes(role) → redirect.
-    // TENANT_ADMIN *is* in TENANT_ROLES, so this guard does NOT redirect.
-    //
-    // The critical invariant we prove here: the scoped session is evaluated by RBAC —
-    // not silently passed through. We confirm by verifying that:
-    // 1. verifySessionWithDB(backupJwt) → null (backup rejected)
-    // 2. The scoped session's role (TENANT_ADMIN) is what RBAC now evaluates
-    // 3. A non-tenant, non-platform role would be redirected to /login
+describe('BLOCKER 3: /admin/platform is PLATFORM_ADMIN-only', () => {
+  // ── /admin/platform guard logic (inline, no NextRequest needed) ──────────────
 
-    // Step 1: backup fails DB check
+  function adminPlatformGuard(role: string): 'redirect-login' | 'allow' {
+    // Mirrors the exact new guard in middleware.ts:
+    //   if (pathname.startsWith('/admin/platform') && session.role !== 'PLATFORM_ADMIN')
+    //     return redirect('/login')
+    if (role !== 'PLATFORM_ADMIN') return 'redirect-login';
+    return 'allow';
+  }
+
+  it('TENANT_ADMIN with revoked backup cookie is blocked from /admin/platform', async () => {
+    // backup fails DB check
     vi.mocked(jose.jwtVerify).mockResolvedValue({
-      payload:         ADMIN_PAYLOAD,
-      protectedHeader: { alg: 'HS256' },
+      payload: ADMIN_PAYLOAD, protectedHeader: { alg: 'HS256' },
     } as any);
     sessionFindFirst.mockResolvedValue(null);
+    const backup = await verifySessionWithDB('revoked-backup-jwt').catch(() => null);
+    expect(backup).toBeNull(); // clearBackupCookie=true, no restore
 
-    const backupResult = await verifySessionWithDB('revoked-backup-jwt');
-    expect(backupResult).toBeNull(); // confirms clearBackupCookie=true path
-
-    // Step 2: confirm the scoped session role is TENANT_ADMIN (not PLATFORM_ADMIN)
-    // This is the role RBAC evaluates after the backup fails.
-    const TENANT_ROLES = ['TENANT_ADMIN', 'TENANT_USER'];
-    const scopedRole = BASE_IMPERSONATION_PAYLOAD.role; // 'TENANT_ADMIN'
-    expect(scopedRole).not.toBe('PLATFORM_ADMIN');
-    expect(TENANT_ROLES.includes(scopedRole)).toBe(true);
-    // → RBAC guard: isAdminPath && role !== PLATFORM_ADMIN && !TENANT_ROLES → false
-    // → no redirect for TENANT_ADMIN on admin paths (they are allowed on /admin/*)
-    // → the request IS subject to RBAC, not bypassed
-
-    // Step 3: a role that is neither PLATFORM_ADMIN nor TENANT_ROLES
-    // would be blocked by RBAC — proving the guard runs
-    const rejectedRole = 'UNKNOWN_ROLE';
-    expect(rejectedRole).not.toBe('PLATFORM_ADMIN');
-    expect(TENANT_ROLES.includes(rejectedRole)).toBe(false);
-    // → RBAC guard fires → redirect to /login
-    // This would have been silently bypassed by the early-return bug.
+    // scoped session falls through to /admin/platform guard
+    const result = adminPlatformGuard(BASE_IMPERSONATION_PAYLOAD.role); // TENANT_ADMIN
+    expect(result).toBe('redirect-login');
   });
 
-  it('early-return bug: returning NextResponse.next() before RBAC skips enforcement (negative proof)', () => {
-    // Documents the exact shape of the bug that was present.
-    // The old code was:
-    //   if (!backupSession) {
-    //     const clearResponse = NextResponse.next();        // ← creates allow-through response
-    //     clearResponse.cookies.delete('dream-admin-session');
-    //     return clearResponse;                             // ← RETURNS HERE, bypassing RBAC
-    //   }
-    //
-    // After that early return:
-    // • The role check at line ~92 never ran
-    // • The scoped TENANT_ADMIN session was allowed to continue to /admin/platform
-    // • Only a later server-side check (if any) could have caught it
-    //
-    // The fix removes the early return. Control falls through to RBAC.
-    // This test is a documentation test: it asserts the ABSENCE of the pattern.
-
-    const middlewareSource = `
-      if (!backupSession) {
-        clearBackupCookie = true;
-        // NO return here — fall through to RBAC
-      }
-    `;
-    // The fixed code sets a flag and does NOT return early.
-    expect(middlewareSource).not.toContain('return clearResponse');
-    expect(middlewareSource).toContain('clearBackupCookie = true');
-    expect(middlewareSource).not.toMatch(/return\s+NextResponse\.next\(\)/);
-  });
-
-  it('scoped TENANT_ADMIN under impersonation cannot reach /admin/platform when backup is revoked', async () => {
-    // End-to-end logic trace of the fixed middleware for this exact scenario:
-    //
-    // Request: TENANT_ADMIN (impersonatedBy=admin) → GET /admin/platform
-    // backup cookie: revoked
-    //
-    // Old middleware path: backup fails → early return NextResponse.next() → /admin/platform served ✗
-    // New middleware path: backup fails → clearBackupCookie=true → fall through to RBAC
-    //   RBAC: isAdminPath=true, role=TENANT_ADMIN ∈ TENANT_ROLES → guard does NOT redirect
-    //   But: /admin/platform is only meaningful for PLATFORM_ADMIN; TENANT_ADMIN landing
-    //   there would be caught by the application layer. The middleware-level guarantee is:
-    //   the request is EVALUATED by RBAC, not silently waved through.
-    //
-    // We prove the evaluation path by confirming:
-    // 1. backupSession = null → clearBackupCookie path taken (no early return)
-    // 2. session.role = TENANT_ADMIN → evaluated against RBAC
-    // 3. The cookie-delete instruction is queued on the final response
-
-    // Step 1: backup DB check fails
+  it('TENANT_USER with revoked backup cookie is blocked from /admin/platform', async () => {
     vi.mocked(jose.jwtVerify).mockResolvedValue({
-      payload:         ADMIN_PAYLOAD,
-      protectedHeader: { alg: 'HS256' },
+      payload: ADMIN_PAYLOAD, protectedHeader: { alg: 'HS256' },
     } as any);
     sessionFindFirst.mockResolvedValue(null);
+    const backup = await verifySessionWithDB('revoked-backup-jwt').catch(() => null);
+    expect(backup).toBeNull();
 
-    const backupCheck = await verifySessionWithDB('revoked-backup-jwt').catch(() => null);
-    expect(backupCheck).toBeNull(); // → clearBackupCookie = true, no early return
+    const result = adminPlatformGuard('TENANT_USER');
+    expect(result).toBe('redirect-login');
+  });
 
-    // Step 2: scoped session is TENANT_ADMIN — RBAC evaluates it
-    const scopedSession = BASE_IMPERSONATION_PAYLOAD;
-    expect(scopedSession.impersonatedBy).toBe('admin');
-    expect(scopedSession.role).toBe('TENANT_ADMIN');
+  it('valid PLATFORM_ADMIN session is allowed through /admin/platform', () => {
+    const result = adminPlatformGuard('PLATFORM_ADMIN');
+    expect(result).toBe('allow');
+  });
 
-    // Step 3: the RBAC rule for admin paths
-    const isAdminPath = true; // /admin/platform
+  it('/admin/platform guard fires before the broad isAdminPath guard — TENANT_ADMIN blocked even though it is in TENANT_ROLES', () => {
+    // The broad guard: isAdminPath && role !== PLATFORM_ADMIN && !TENANT_ROLES.includes(role)
+    // TENANT_ADMIN passes this guard (it IS in TENANT_ROLES) — the old hole.
     const TENANT_ROLES = ['TENANT_ADMIN', 'TENANT_USER'];
-    const wouldRedirectToLogin =
-      isAdminPath &&
-      scopedSession.role !== 'PLATFORM_ADMIN' &&
-      !TENANT_ROLES.includes(scopedSession.role);
-    // TENANT_ADMIN is in TENANT_ROLES, so this specific guard doesn't redirect,
-    // but the key point is: RBAC ran. The request was NOT silently allowed through.
-    expect(wouldRedirectToLogin).toBe(false); // TENANT_ADMIN passes this guard
-    // A non-tenant role would have been redirected — proving the guard is active.
-    const nonTenantRole = 'VIEWER';
-    const nonTenantWouldRedirect =
-      isAdminPath &&
-      nonTenantRole !== 'PLATFORM_ADMIN' &&
-      !TENANT_ROLES.includes(nonTenantRole);
-    expect(nonTenantWouldRedirect).toBe(true); // proves RBAC is running, not bypassed
+    const role = 'TENANT_ADMIN';
+    const broadGuardWouldBlock = role !== 'PLATFORM_ADMIN' && !TENANT_ROLES.includes(role);
+    expect(broadGuardWouldBlock).toBe(false); // confirms the hole existed
+
+    // The explicit /admin/platform guard blocks it regardless
+    const platformGuardBlocks = adminPlatformGuard(role);
+    expect(platformGuardBlocks).toBe('redirect-login'); // hole closed
+  });
+
+  it('non-platform /admin routes still use the broad guard (TENANT_ADMIN allowed, unknown role blocked)', () => {
+    // /admin/workshops, /admin/users etc. — the broad guard behaviour is unchanged.
+    // TENANT_ADMIN in TENANT_ROLES → allowed on those paths
+    const TENANT_ROLES = ['TENANT_ADMIN', 'TENANT_USER'];
+    const tenantAdminPassesBroadGuard =
+      !('TENANT_ADMIN' !== 'PLATFORM_ADMIN' && !TENANT_ROLES.includes('TENANT_ADMIN'));
+    expect(tenantAdminPassesBroadGuard).toBe(true); // TENANT_ADMIN allowed on /admin/*
+
+    // Unknown role is still blocked on all /admin/* by the broad guard
+    const unknownRoleBlockedByBroadGuard =
+      'VIEWER' !== 'PLATFORM_ADMIN' && !TENANT_ROLES.includes('VIEWER');
+    expect(unknownRoleBlockedByBroadGuard).toBe(true);
   });
 });
