@@ -363,7 +363,7 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
           {addingActor && (
             <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border-t border-blue-100">
               <input
-                className="text-xs px-2 py-1 rounded border border-blue-200 bg-white flex-1"
+                className="text-xs px-2 py-1 rounded border border-blue-200 bg-white flex-1 text-gray-900 placeholder:text-gray-400"
                 placeholder="Actor name..."
                 value={newActorName}
                 onChange={e => setNewActorName(e.target.value)}
@@ -371,7 +371,7 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                 onKeyDown={e => e.key === 'Enter' && addActor()}
               />
               <input
-                className="text-xs px-2 py-1 rounded border border-blue-200 bg-white flex-1"
+                className="text-xs px-2 py-1 rounded border border-blue-200 bg-white flex-1 text-gray-900 placeholder:text-gray-400"
                 placeholder="Role..."
                 value={newActorRole}
                 onChange={e => setNewActorRole(e.target.value)}
@@ -408,7 +408,7 @@ export default function LiveJourneyMap({ data, onChange, expanded = true, onTogg
                     {!isOutput && editingStage === idx ? (
                       <div className="flex items-center gap-1">
                         <input
-                          className="text-xs px-1.5 py-0.5 rounded border bg-white flex-1 text-center font-semibold uppercase"
+                          className="text-xs px-1.5 py-0.5 rounded border bg-white flex-1 text-center font-semibold uppercase text-gray-900"
                           value={editStageValue}
                           onChange={e => setEditStageValue(e.target.value)}
                           autoFocus
@@ -837,23 +837,23 @@ function EditForm({
   onCancel: () => void;
 }) {
   return (
-    <div className="p-2.5 rounded-lg border-2 border-blue-300 bg-blue-50 space-y-2">
+    <div className="p-2.5 rounded-lg border-2 border-blue-300 bg-blue-50 space-y-2 [color-scheme:light]">
       <input
-        className="w-full text-xs p-1.5 rounded border border-blue-200 bg-white"
+        className="w-full text-xs p-1.5 rounded border border-blue-200 bg-white text-gray-900 placeholder:text-gray-400"
         value={editForm.action || ''}
         onChange={e => setEditForm({ ...editForm, action: e.target.value })}
         placeholder="Action..."
         autoFocus
       />
       <input
-        className="w-full text-xs p-1.5 rounded border border-blue-200 bg-white"
+        className="w-full text-xs p-1.5 rounded border border-blue-200 bg-white text-gray-900 placeholder:text-gray-400"
         value={editForm.context || ''}
         onChange={e => setEditForm({ ...editForm, context: e.target.value })}
         placeholder="Context..."
       />
       <div className="grid grid-cols-2 gap-2">
         <select
-          className="text-xs p-1 rounded border border-blue-200 bg-white"
+          className="text-xs p-1 rounded border border-blue-200 bg-white text-gray-900"
           value={editForm.sentiment || 'neutral'}
           onChange={e => setEditForm({ ...editForm, sentiment: e.target.value as LiveJourneyInteraction['sentiment'] })}
         >
@@ -863,7 +863,7 @@ function EditForm({
           <option value="critical">Critical</option>
         </select>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 text-[10px]">
+          <label className="flex items-center gap-1 text-[10px] text-gray-700">
             <input
               type="checkbox"
               checked={!!editForm.isPainPoint}
@@ -871,7 +871,7 @@ function EditForm({
             />
             Pain
           </label>
-          <label className="flex items-center gap-1 text-[10px]">
+          <label className="flex items-center gap-1 text-[10px] text-gray-700">
             <input
               type="checkbox"
               checked={!!editForm.isMomentOfTruth}
@@ -885,7 +885,7 @@ function EditForm({
       {/* Intensity sliders */}
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-medium w-20">Biz intensity</span>
+          <span className="text-[10px] font-medium w-20 text-gray-700">Biz intensity</span>
           <input
             type="range"
             min="0"
@@ -895,10 +895,10 @@ function EditForm({
             onChange={e => setEditForm({ ...editForm, businessIntensity: parseFloat(e.target.value) })}
             className="flex-1 h-1.5 accent-blue-500"
           />
-          <span className="text-[10px] w-8 text-right">{Math.round((editForm.businessIntensity ?? 0.5) * 100)}%</span>
+          <span className="text-[10px] w-8 text-right text-gray-700">{Math.round((editForm.businessIntensity ?? 0.5) * 100)}%</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-medium w-20">Cust intensity</span>
+          <span className="text-[10px] font-medium w-20 text-gray-700">Cust intensity</span>
           <input
             type="range"
             min="0"
@@ -908,16 +908,16 @@ function EditForm({
             onChange={e => setEditForm({ ...editForm, customerIntensity: parseFloat(e.target.value) })}
             className="flex-1 h-1.5 accent-purple-500"
           />
-          <span className="text-[10px] w-8 text-right">{Math.round((editForm.customerIntensity ?? 0.5) * 100)}%</span>
+          <span className="text-[10px] w-8 text-right text-gray-700">{Math.round((editForm.customerIntensity ?? 0.5) * 100)}%</span>
         </div>
       </div>
 
       {/* AI agency selectors */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-medium block mb-0.5">AI Day 1</label>
+          <label className="text-[10px] font-medium block mb-0.5 text-gray-700">AI Day 1</label>
           <select
-            className="w-full text-xs p-1 rounded border border-blue-200 bg-white"
+            className="w-full text-xs p-1 rounded border border-blue-200 bg-white text-gray-900"
             value={editForm.aiAgencyNow || 'human'}
             onChange={e => setEditForm({ ...editForm, aiAgencyNow: e.target.value as AiAgencyLevel })}
           >
@@ -927,9 +927,9 @@ function EditForm({
           </select>
         </div>
         <div>
-          <label className="text-[10px] font-medium block mb-0.5">AI Future</label>
+          <label className="text-[10px] font-medium block mb-0.5 text-gray-700">AI Future</label>
           <select
-            className="w-full text-xs p-1 rounded border border-blue-200 bg-white"
+            className="w-full text-xs p-1 rounded border border-blue-200 bg-white text-gray-900"
             value={editForm.aiAgencyFuture || 'assisted'}
             onChange={e => setEditForm({ ...editForm, aiAgencyFuture: e.target.value as AiAgencyLevel })}
           >
