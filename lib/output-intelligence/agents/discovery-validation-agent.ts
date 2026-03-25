@@ -71,9 +71,9 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push(`\nDefine approach pads:\n${signals.liveSession.defineApproachPads.slice(0, 20).map((p) => `• ${p.text}`).join('\n')}`);
   }
 
-  if (signals.scratchpad.execSummary) {
-    lines.push(`\n=== SYNTHESISED EXECUTIVE SUMMARY ===\n${signals.scratchpad.execSummary}`);
-  }
+  // NOTE: scratchpad exec summary intentionally excluded — it is a prior LLM
+  // output, not raw evidence. Including it creates a summary-of-summary path
+  // where GPT output reinforces GPT output rather than raw participant signals.
 
   if (signals.discovery.cohortBreakdown?.length) {
     lines.push('\n=== SIGNALS BY PARTICIPANT COHORT ===');

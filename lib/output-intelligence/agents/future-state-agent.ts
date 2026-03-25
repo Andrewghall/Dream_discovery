@@ -79,15 +79,9 @@ function buildSignalDump(signals: WorkshopSignals): string {
     }
   }
 
-  if (signals.scratchpad.potentialSolution) {
-    lines.push('\n=== POTENTIAL SOLUTION (PRE-SYNTHESISED) ===');
-    lines.push(signals.scratchpad.potentialSolution);
-  }
-
-  if (signals.scratchpad.execSummary) {
-    lines.push('\n=== EXECUTIVE SUMMARY (PRE-SYNTHESISED) ===');
-    lines.push(signals.scratchpad.execSummary);
-  }
+  // NOTE: scratchpad potential solution and exec summary intentionally excluded.
+  // These are prior LLM outputs — including them as evidence creates a
+  // summary-of-summary path. Ground this agent in raw participant signals only.
 
   lines.push('\n=== CONSTRAINTS TO ACKNOWLEDGE ===');
   if (signals.liveSession.constraintPads.length > 0) {

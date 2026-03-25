@@ -1106,7 +1106,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             workshop.name || 'Workshop',
             workshop.industry || null,
             knowledgePack,
-            synthesised,
             v2RawSignals,
           );
 

@@ -180,28 +180,11 @@ function buildV2Prompt(
   actors: string[],
   journeyStages: string[],
   lenses: string[],
-  existingSynthesis: Record<string, unknown>,
   rawSignals: RawSignals,
 ): string {
   const actorList = actors.length > 0 ? actors.join(', ') : 'Customer, Staff, Manager, Partner';
   const stageList = journeyStages.length > 0 ? journeyStages.join(', ') : 'Awareness, Engagement, Commitment, Fulfilment, Support';
   const lensList = lenses.length > 0 ? lenses.join(', ') : 'People, Organisation, Customer, Technology, Regulation';
-
-  const execOverview = safeGet(existingSynthesis, 'execSummary.overview') || '';
-  const discoverySummary = safeGet(existingSynthesis, 'discoveryOutput._aiSummary') ||
-    safeGet(existingSynthesis, 'discoveryOutput.operationalReality.insight') || '';
-  const reimagineSummary = safeGet(existingSynthesis, 'reimagineContent._aiSummary') || '';
-  const constraintsSummary = safeGet(existingSynthesis, 'constraintsContent._aiSummary') || '';
-  const solutionSummary = safeGet(existingSynthesis, 'potentialSolution._aiSummary') || '';
-
-  const metrics = getArr(existingSynthesis, 'summaryContent.successMetrics')
-    .map((m: Record<string, unknown>) => `${m.metric}: baseline ${m.baseline} → target ${m.target}`)
-    .join('\n');
-
-  const nextSteps = getArr(existingSynthesis, 'summaryContent.recommendedNextSteps')
-    .slice(0, 6)
-    .map((s: Record<string, unknown>) => `${s.step || ''} (${s.timeframe || ''}, ${s.owner || ''})`)
-    .join('\n');
 
   // Format verbatim node texts per phase
   const fmt = (texts: string[], max = 50) =>
@@ -262,17 +245,6 @@ ${domainBlock || '(domain data not available — use phase data above)'}
 
 TOP THEMES (frequency): ${themeBlock || '(not available)'}
 TOP ACTORS (mentions): ${actorBlock || '(not available)'}
-
-═══════════════════════════════════════════════
-V1 SYNTHESIS CONTEXT (for cross-referencing only — do not copy verbatim)
-═══════════════════════════════════════════════
-Executive overview: ${execOverview}
-Discovery: ${discoverySummary}
-Reimagine: ${reimagineSummary}
-Constraints: ${constraintsSummary}
-Solution direction: ${solutionSummary}
-Success metrics from V1: ${metrics || '(not yet defined)'}
-Recommended next steps: ${nextSteps || '(see define approach data above)'}
 
 ═══════════════════════════════════════════════
 KNOWLEDGE PACK — anchor EVERY item to these exact names
@@ -490,7 +462,6 @@ export async function runV2SynthesisAgent(
   workshopName: string,
   industry: string | null,
   blueprint: { actors: string[]; journeyStages: string[]; lenses: string[] },
-  existingSynthesis: Record<string, unknown>,
   rawSignals: RawSignals,
 ): Promise<V2Output | null> {
   const prompt = buildV2Prompt(
@@ -499,7 +470,6 @@ export async function runV2SynthesisAgent(
     blueprint.actors,
     blueprint.journeyStages,
     blueprint.lenses,
-    existingSynthesis,
     rawSignals,
   );
 

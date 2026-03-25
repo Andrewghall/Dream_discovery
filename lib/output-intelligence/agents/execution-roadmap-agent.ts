@@ -93,10 +93,8 @@ function buildSignalDump(signals: WorkshopSignals): string {
     });
   }
 
-  if (signals.scratchpad.potentialSolution) {
-    lines.push('\n=== POTENTIAL SOLUTION (PRE-SYNTHESISED) ===');
-    lines.push(signals.scratchpad.potentialSolution);
-  }
+  // NOTE: scratchpad potential solution intentionally excluded — prior LLM
+  // output is not raw evidence. Ground roadmap in participant signals only.
 
   if (signals.discovery.cohortBreakdown?.length) {
     lines.push('\n=== SIGNALS BY PARTICIPANT COHORT ===');

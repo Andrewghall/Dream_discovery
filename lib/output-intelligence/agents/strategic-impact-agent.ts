@@ -86,15 +86,9 @@ function buildSignalDump(signals: WorkshopSignals): string {
     }
   }
 
-  if (signals.scratchpad.execSummary) {
-    lines.push('\n=== EXECUTIVE SUMMARY (PRE-SYNTHESISED) ===');
-    lines.push(signals.scratchpad.execSummary);
-  }
-
-  if (signals.scratchpad.summaryContent) {
-    lines.push('\n=== SUMMARY (PRE-SYNTHESISED) ===');
-    lines.push(signals.scratchpad.summaryContent);
-  }
+  // NOTE: scratchpad exec summary and summary content intentionally excluded.
+  // These are prior LLM outputs — including them creates a summary-of-summary
+  // path. This agent must be grounded in raw signals only.
 
   lines.push('\n=== CONSTRAINTS ===');
   const constraints = [
