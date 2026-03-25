@@ -35,7 +35,7 @@ const MODEL = 'gpt-4o-mini';
 // TOOL DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 
-const DEFAULT_FACILITATION_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+const DEFAULT_FACILITATION_DOMAINS = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
 const DEFAULT_FACILITATION_LENSES = ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'];
 
 function buildFacilitationTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {

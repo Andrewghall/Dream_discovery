@@ -28,7 +28,7 @@ const MODEL = 'gpt-4o-mini';
 // TOOL DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 
-const DEFAULT_CONSTRAINT_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+const DEFAULT_CONSTRAINT_DOMAINS = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
 
 function buildConstraintTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
   const domainEnum = dimensions?.length ? dimensions : DEFAULT_CONSTRAINT_DOMAINS;

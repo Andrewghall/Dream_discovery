@@ -30,7 +30,7 @@ const MODEL = 'gpt-4o-mini';
 // TOOL DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 
-const DEFAULT_THEME_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+const DEFAULT_THEME_DOMAINS = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
 const DEFAULT_THEME_LENSES = ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'];
 
 function buildThemeTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {

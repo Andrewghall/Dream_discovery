@@ -29,8 +29,8 @@ export const DEFAULT_DIMENSIONS: IndustryDimension[] = [
     color: '#bfdbfe',
   },
   {
-    name: 'Operations',
-    description: 'Processes, workflows, decision-making, governance',
+    name: 'Organisation',
+    description: 'Structure, governance, processes, operating model, and strategic alignment',
     keywords: [
       'organi', 'department', 'team', 'structure', 'process', 'workflow',
       'operat', 'management', 'staff', 'employ', 'HR', 'budget', 'resource',

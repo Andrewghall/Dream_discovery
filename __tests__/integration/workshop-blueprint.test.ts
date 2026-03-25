@@ -38,7 +38,7 @@ describe('DEFAULT_BLUEPRINT', () => {
     expect(DEFAULT_BLUEPRINT.lenses).toHaveLength(5);
     const names = DEFAULT_BLUEPRINT.lenses.map((l) => l.name);
     expect(names).toContain('People');
-    expect(names).toContain('Operations');
+    expect(names).toContain('Organisation');
     expect(names).toContain('Customer');
     expect(names).toContain('Technology');
     expect(names).toContain('Regulation');

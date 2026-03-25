@@ -61,7 +61,7 @@ const MIN_ENRICHMENT_BELIEFS = 5;            // Need >=5 beliefs for enrichment
 const JOURNEY_ASSESSMENT_INTERVAL_MS = 30_000; // Run journey agent at most every 30s (deterministic, not GPT-optional)
 
 // Default lens names (overridden by blueprint.lenses when available)
-const DEFAULT_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+const DEFAULT_DOMAINS = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
 
 // Default journey stages (overridden by blueprint.journeyStages when available)
 const DEFAULT_STAGES = ['Discovery', 'Engagement', 'Commitment', 'Fulfilment', 'Support', 'Growth'];
