@@ -62,29 +62,30 @@ export async function middleware(request: NextRequest) {
     // SECURITY: validate the backup JWT against the DB before reinstating it.
     // Signature-only validation is insufficient — a revoked admin backup must NOT
     // be restorable via this path.
+    let clearBackupCookie = false; // set when backup is stale; applied to final response
     if (session.impersonatedBy && pathname.startsWith('/admin/platform')) {
       const backupJwt = request.cookies.get('dream-admin-session')?.value;
       if (backupJwt) {
         // DB-backed check: rejects revoked/expired admin backup sessions
         const backupSession = await verifySessionWithDB(backupJwt).catch(() => null);
         if (!backupSession) {
-          // Backup is revoked, expired, or invalid — clear the stale cookie and
-          // fall through to normal role-based access control below.
-          const clearResponse = NextResponse.next();
-          clearResponse.cookies.delete('dream-admin-session');
-          return clearResponse;
+          // Backup is revoked, expired, or invalid — mark the cookie for deletion
+          // but DO NOT early-return.  Fall through so the remaining RBAC guards
+          // (role check, /admin/platform access) still evaluate the current session.
+          clearBackupCookie = true;
+        } else {
+          const isProduction = process.env.NODE_ENV === 'production';
+          const response = NextResponse.redirect(new URL('/admin/platform', request.url));
+          response.cookies.set('session', backupJwt, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: 'strict',
+            path: '/',
+            maxAge: 60 * 60 * 24,
+          });
+          response.cookies.delete('dream-admin-session');
+          return response;
         }
-        const isProduction = process.env.NODE_ENV === 'production';
-        const response = NextResponse.redirect(new URL('/admin/platform', request.url));
-        response.cookies.set('session', backupJwt, {
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: 'strict',
-          path: '/',
-          maxAge: 60 * 60 * 24,
-        });
-        response.cookies.delete('dream-admin-session');
-        return response;
       }
     }
 
@@ -107,6 +108,9 @@ export async function middleware(request: NextRequest) {
     // IMPORTANT: preserve all revocation-critical fields so that revoking a parent
     // PLATFORM_ADMIN session still invalidates an impersonation token after refresh.
     const response = NextResponse.next();
+    if (clearBackupCookie) {
+      response.cookies.delete('dream-admin-session');
+    }
     if (shouldRefreshToken(request)) {
       try {
         const freshJwt = await createSessionToken({
