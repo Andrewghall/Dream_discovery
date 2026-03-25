@@ -33,7 +33,11 @@ const STRONG_EVIDENCE_TIERS = new Set(['REINFORCED', 'ESTABLISHED', 'ORGANISATIO
 
 // ── Deterministic extraction ──────────────────────────────────────────────────
 
-function extractFindings(graph: GraphIntelligence, clientName: string): CausalFinding[] {
+/**
+ * Extract CausalFindings deterministically from GraphIntelligence.
+ * Exported for unit testing (@internal — not part of the public API).
+ */
+export function extractFindings(graph: GraphIntelligence, clientName: string): CausalFinding[] {
   const findings: CausalFinding[] = [];
   let seq = 0;
   const id = (prefix: string) => `${prefix}_${++seq}`;
@@ -113,7 +117,9 @@ function extractFindings(graph: GraphIntelligence, clientName: string): CausalFi
       recommendedAction: `Address root constraint "${cb.constraintLabel}" alongside scaling enabler "${cb.enablerLabel}" — resolve rather than compensate.`,
       evidenceEdgeIds: [cb.edgeId],
       evidenceNodeId: cb.enablerNodeId,
-      evidenceQuotes: quotesFor(cb.constraintNodeId),
+      // Quotes aligned with evidenceNodeId (the enabler node) — constraint context is
+      // already present in issueTitle, evidenceBasis, and compensatingBehaviourContext.
+      evidenceQuotes: quotesFor(cb.enablerNodeId),
     });
   }
 

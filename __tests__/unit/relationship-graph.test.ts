@@ -22,6 +22,14 @@ import {
   findContradictionPaths,
   computeGraphIntelligence,
 } from '@/lib/output/graph-intelligence';
+import type {
+  RelationshipGraph,
+  RelationshipNode,
+  RelationshipEdge,
+  NodeLayer,
+  RelationshipType,
+  EdgeTier,
+} from '@/lib/output/relationship-graph';
 
 // ── Signal factories ──────────────────────────────────────────────────────────
 
@@ -546,10 +554,17 @@ describe('extractDominantCausalChains', () => {
     }
   });
 
-  it('returns at most 5 chains', () => {
+  it('returns all valid chains without truncation', () => {
+    // Truncation is the caller's responsibility; extractor must not drop valid chains.
     const graph = buildTestGraph();
     const chains = extractDominantCausalChains(graph);
-    expect(chains.length).toBeLessThanOrEqual(5);
+    expect(Array.isArray(chains)).toBe(true);
+    for (const c of chains) {
+      expect(c.constraintNodeId).toBeTruthy();
+      expect(c.enablerNodeId).toBeTruthy();
+      expect(c.reimaginationNodeId).toBeTruthy();
+      expect(c.chainStrength).toBeGreaterThanOrEqual(0);
+    }
   });
 
   it('returns chains sorted by chainStrength descending', () => {
@@ -761,5 +776,175 @@ describe('computeGraphIntelligence', () => {
     const emptyGraph = buildRelationshipGraph([], 'empty');
     const intel = computeGraphIntelligence(emptyGraph);
     expect(intel.summary.graphCoverageScore).toBe(0);
+  });
+});
+
+// ── Mock graph helpers (for directional-edge unit tests) ──────────────────────
+// These build raw RelationshipGraph objects without going through the full pipeline,
+// allowing precise control of edge direction for direction-sensitive logic.
+
+function mockNode(
+  nodeId: string,
+  layer: NodeLayer,
+  overrides: Partial<RelationshipNode> = {},
+): RelationshipNode {
+  return {
+    nodeId,
+    displayLabel: nodeId.replace(/_/g, ' '),
+    layer,
+    layerScores: { constraint: layer === 'CONSTRAINT' ? 0.9 : 0.05, enabler: layer === 'ENABLER' ? 0.9 : 0.05, reimagination: layer === 'REIMAGINATION' ? 0.9 : 0.05 },
+    rawFrequency: overrides.rawFrequency ?? 4,
+    distinctParticipants: 2,
+    participantRoles: [],
+    lensSpread: [],
+    phaseSpread: [],
+    sourceStreams: ['live'],
+    allSignalIds: [],
+    contradictingSignalCount: 0,
+    compositeScore: overrides.compositeScore ?? 50,
+    evidenceTier: overrides.evidenceTier ?? 'REINFORCED',
+    isContested: false,
+    ...overrides,
+  };
+}
+
+function mockEdge(
+  edgeId: string,
+  fromNodeId: string,
+  toNodeId: string,
+  relationshipType: RelationshipType,
+  score: number,
+  tier: EdgeTier,
+): RelationshipEdge {
+  return {
+    edgeId,
+    fromNodeId,
+    toNodeId,
+    relationshipType,
+    fromSignalIds: [],
+    toSignalIds: [],
+    sharedParticipantIds: [],
+    score,
+    tier,
+    rules: [],
+    rationale: `Mock ${relationshipType} edge`,
+  };
+}
+
+function mockGraph(nodes: RelationshipNode[], edges: RelationshipEdge[]): RelationshipGraph {
+  const layerCounts = { CONSTRAINT: 0, ENABLER: 0, REIMAGINATION: 0 };
+  for (const n of nodes) layerCounts[n.layer]++;
+  const edgeTypeCounts: Partial<Record<RelationshipType, number>> = {};
+  for (const e of edges) edgeTypeCounts[e.relationshipType] = (edgeTypeCounts[e.relationshipType] ?? 0) + 1;
+  return {
+    workshopId: 'mock-ws',
+    nodes,
+    edges,
+    nodeCount: nodes.length,
+    edgeCount: edges.length,
+    layerCounts,
+    edgeTypeCounts,
+    builtAtMs: Date.now(),
+  };
+}
+
+// ── Blocker 1: responds_to / compensates_for chain extraction direction ────────
+
+describe('extractDominantCausalChains — directional edge traversal', () => {
+  it('extracts chain via responds_to edge stored as ENABLER→CONSTRAINT direction', () => {
+    // responds_to: fromNodeId=digital_tools (ENABLER), toNodeId=approval_delay (CONSTRAINT)
+    // Chain: approval_delay ←[responds_to]← digital_tools →[enables]→ self_service
+    const constraint = mockNode('approval_delay', 'CONSTRAINT');
+    const enabler    = mockNode('digital_tools', 'ENABLER');
+    const vision     = mockNode('self_service', 'REIMAGINATION');
+
+    const respondsTo = mockEdge(
+      'digital_tools__responds_to__approval_delay',
+      'digital_tools', 'approval_delay', 'responds_to', 55, 'REINFORCED',
+    );
+    const enables = mockEdge(
+      'digital_tools__enables__self_service',
+      'digital_tools', 'self_service', 'enables', 60, 'REINFORCED',
+    );
+
+    const graph = mockGraph([constraint, enabler, vision], [respondsTo, enables]);
+    const chains = extractDominantCausalChains(graph);
+
+    expect(chains).toHaveLength(1);
+    expect(chains[0].constraintNodeId).toBe('approval_delay');
+    expect(chains[0].enablerNodeId).toBe('digital_tools');
+    expect(chains[0].reimaginationNodeId).toBe('self_service');
+    expect(chains[0].chainStrength).toBe(Math.round(Math.sqrt(55 * 60)));
+  });
+
+  it('extracts chain via compensates_for edge stored as ENABLER→CONSTRAINT direction', () => {
+    // compensates_for: fromNodeId=manual_process (ENABLER), toNodeId=system_gap (CONSTRAINT)
+    const constraint = mockNode('system_gap', 'CONSTRAINT');
+    const enabler    = mockNode('manual_process', 'ENABLER');
+    const vision     = mockNode('unified_platform', 'REIMAGINATION');
+
+    const compensates = mockEdge(
+      'manual_process__compensates_for__system_gap',
+      'manual_process', 'system_gap', 'compensates_for', 40, 'EMERGING',
+    );
+    const enables = mockEdge(
+      'manual_process__enables__unified_platform',
+      'manual_process', 'unified_platform', 'enables', 50, 'REINFORCED',
+    );
+
+    const graph = mockGraph([constraint, enabler, vision], [compensates, enables]);
+    const chains = extractDominantCausalChains(graph);
+
+    expect(chains).toHaveLength(1);
+    expect(chains[0].constraintNodeId).toBe('system_gap');
+    expect(chains[0].enablerNodeId).toBe('manual_process');
+    expect(chains[0].reimaginationNodeId).toBe('unified_platform');
+  });
+
+  it('returns no chains when CONSTRAINT has only outgoing drives but enabler has no enables edge', () => {
+    const constraint = mockNode('c', 'CONSTRAINT');
+    const enabler    = mockNode('e', 'ENABLER');
+    // No vision, no enables edge
+    const drives = mockEdge('c__drives__e', 'c', 'e', 'drives', 50, 'REINFORCED');
+    const graph = mockGraph([constraint, enabler], [drives]);
+    const chains = extractDominantCausalChains(graph);
+    expect(chains).toHaveLength(0);
+  });
+});
+
+// ── Blocker 2: CONSTRAINT_NO_RESPONSE must respect incoming responds_to ────────
+
+describe('findBrokenChains — responds_to direction fix', () => {
+  it('does NOT flag a constraint as CONSTRAINT_NO_RESPONSE when an incoming responds_to edge exists', () => {
+    // responds_to: fromNodeId=digital_tools (ENABLER), toNodeId=slow_approval (CONSTRAINT)
+    // This IS a valid organisational response — should NOT produce a CONSTRAINT_NO_RESPONSE finding.
+    const constraint = mockNode('slow_approval', 'CONSTRAINT', { compositeScore: 60 });
+    const enabler    = mockNode('digital_tools', 'ENABLER');
+
+    const respondsTo = mockEdge(
+      'digital_tools__responds_to__slow_approval',
+      'digital_tools', 'slow_approval', 'responds_to', 50, 'REINFORCED',
+    );
+
+    const graph = mockGraph([constraint, enabler], [respondsTo]);
+    const broken = findBrokenChains(graph);
+    const noResponse = broken.filter((bc) => bc.brokenChainType === 'CONSTRAINT_NO_RESPONSE');
+    expect(noResponse.find((bc) => bc.nodeId === 'slow_approval')).toBeUndefined();
+  });
+
+  it('still flags a constraint with ONLY an unrelated outgoing constrains edge (no drives, no responds_to)', () => {
+    // constrains is not a response edge — constraint should still be CONSTRAINT_NO_RESPONSE
+    const constraint = mockNode('unaddressed', 'CONSTRAINT', { compositeScore: 60 });
+    const vision     = mockNode('some_vision', 'REIMAGINATION');
+
+    const constrainsEdge = mockEdge(
+      'unaddressed__constrains__some_vision',
+      'unaddressed', 'some_vision', 'constrains', 40, 'EMERGING',
+    );
+
+    const graph = mockGraph([constraint, vision], [constrainsEdge]);
+    const broken = findBrokenChains(graph);
+    const noResponse = broken.filter((bc) => bc.brokenChainType === 'CONSTRAINT_NO_RESPONSE');
+    expect(noResponse.find((bc) => bc.nodeId === 'unaddressed')).toBeDefined();
   });
 });

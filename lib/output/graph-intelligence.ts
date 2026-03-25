@@ -63,34 +63,60 @@ function weakestTier(a: EdgeTier, b: EdgeTier): EdgeTier {
 
 // ── Causal chains ─────────────────────────────────────────────────────────────
 
-const CONSTRAINT_TO_ENABLER_TYPES = new Set<RelationshipType>([
-  'drives', 'responds_to', 'compensates_for', 'blocks',
-]);
+/**
+ * Forward CONSTRAINT → ENABLER edge types: stored as fromNode=CONSTRAINT, toNode=ENABLER.
+ * These are looked up via outgoing edges from the constraint node.
+ */
+const FORWARD_CE_TYPES = new Set<RelationshipType>(['drives', 'blocks']);
+
+/**
+ * Reverse ENABLER → CONSTRAINT edge types: stored as fromNode=ENABLER, toNode=CONSTRAINT.
+ * These are looked up via incoming edges to the constraint node.
+ * (responds_to and compensates_for go from the enabler TO the constraint it addresses.)
+ */
+const REVERSE_CE_TYPES = new Set<RelationshipType>(['responds_to', 'compensates_for']);
+
 const ENABLER_TO_REIMAG_TYPES = new Set<RelationshipType>([
   'enables',
 ]);
 
+/** A resolved constraint→enabler link for chain building, direction-agnostic */
+interface CeLink { edge: RelationshipEdge; enablerNodeId: string }
+
 /**
- * Find the top-5 dominant causal chains: CONSTRAINT → ENABLER → REIMAGINATION.
+ * Find all dominant causal chains: CONSTRAINT → ENABLER → REIMAGINATION.
+ *
+ * The constraint→enabler hop is found via:
+ *   - Outgoing `drives`/`blocks` edges from the constraint (CONSTRAINT→ENABLER direction)
+ *   - Incoming `responds_to`/`compensates_for` edges to the constraint (ENABLER→CONSTRAINT
+ *     direction — the enabler is the `fromNodeId` of these edges)
  *
  * Chain strength = geometric mean of the two edge scores, 0–100.
- * Only chains where both edges have score > 0 are included.
+ * All valid chains are returned (sorted by strength) — callers truncate for display.
  */
 export function extractDominantCausalChains(graph: RelationshipGraph): CausalChain[] {
-  const nodes     = nodeById(graph.nodes);
-  const adj       = buildAdjacencyIndex(graph.edges);
+  const nodes = nodeById(graph.nodes);
+  const adj   = buildAdjacencyIndex(graph.edges);
   const chains: CausalChain[] = [];
 
   for (const constraintNode of graph.nodes.filter((n) => n.layer === 'CONSTRAINT')) {
     const outgoing = adj.byFromNode.get(constraintNode.nodeId) ?? [];
-    const toEnablers = outgoing.filter(
-      (e) =>
-        CONSTRAINT_TO_ENABLER_TYPES.has(e.relationshipType) &&
-        nodes.get(e.toNodeId)?.layer === 'ENABLER',
-    );
+    const incoming = adj.byToNode.get(constraintNode.nodeId) ?? [];
 
-    for (const cToE of toEnablers) {
-      const enablerNode = nodes.get(cToE.toNodeId);
+    // Build the list of (edge, enablerNodeId) pairs for the first hop
+    const ceLinks: CeLink[] = [
+      // Forward: edge goes constraint → enabler; enabler is toNodeId
+      ...outgoing
+        .filter((e) => FORWARD_CE_TYPES.has(e.relationshipType) && nodes.get(e.toNodeId)?.layer === 'ENABLER')
+        .map((e) => ({ edge: e, enablerNodeId: e.toNodeId })),
+      // Reverse: edge goes enabler → constraint; enabler is fromNodeId
+      ...incoming
+        .filter((e) => REVERSE_CE_TYPES.has(e.relationshipType) && nodes.get(e.fromNodeId)?.layer === 'ENABLER')
+        .map((e) => ({ edge: e, enablerNodeId: e.fromNodeId })),
+    ];
+
+    for (const { edge: cToE, enablerNodeId } of ceLinks) {
+      const enablerNode = nodes.get(enablerNodeId);
       if (!enablerNode) continue;
 
       const enablerOutgoing = adj.byFromNode.get(enablerNode.nodeId) ?? [];
@@ -125,9 +151,9 @@ export function extractDominantCausalChains(graph: RelationshipGraph): CausalCha
     }
   }
 
-  return chains
-    .sort((a, b) => b.chainStrength - a.chainStrength)
-    .slice(0, 5);
+  // Return ALL valid chains sorted by strength.
+  // Display truncation is the caller's responsibility (report-summary-agent takes slice(0,3)).
+  return chains.sort((a, b) => b.chainStrength - a.chainStrength);
 }
 
 // ── Bottlenecks ───────────────────────────────────────────────────────────────
@@ -231,13 +257,19 @@ export function findBrokenChains(graph: RelationshipGraph): BrokenChain[] {
   const nodes = nodeById(graph.nodes);
   const result: BrokenChain[] = [];
 
-  const RESPONSE_TYPES      = new Set<RelationshipType>(['responds_to', 'drives']);
   const VISION_SUPPORT_TYPES = new Set<RelationshipType>(['enables', 'depends_on']);
 
   // (a) Unaddressed constraints
+  // A constraint is "addressed" when:
+  //   - it has an outgoing `drives` edge (CONSTRAINT→ENABLER), OR
+  //   - it has an incoming `responds_to` edge (ENABLER→CONSTRAINT — the enabler targets it directly)
+  // Note: responds_to is stored as ENABLER→CONSTRAINT so it appears in byToNode, not byFromNode.
   for (const node of graph.nodes.filter((n) => n.layer === 'CONSTRAINT')) {
     const outgoing = adj.byFromNode.get(node.nodeId) ?? [];
-    const hasResponse = outgoing.some((e) => RESPONSE_TYPES.has(e.relationshipType));
+    const incoming = adj.byToNode.get(node.nodeId) ?? [];
+    const hasResponse =
+      outgoing.some((e) => e.relationshipType === 'drives') ||
+      incoming.some((e) => e.relationshipType === 'responds_to');
     if (!hasResponse) {
       result.push({
         nodeId:          node.nodeId,
