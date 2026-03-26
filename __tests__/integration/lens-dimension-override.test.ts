@@ -24,7 +24,16 @@ import type {
   WorkshopPhase,
   PrepContext,
   LensSource,
+  FacilitationQuestion,
 } from '@/lib/cognition/agents/agent-types';
+
+function makePhases(lens: string): Map<WorkshopPhase, FacilitationQuestion[]> {
+  const m = new Map<WorkshopPhase, FacilitationQuestion[]>();
+  for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as WorkshopPhase[]) {
+    m.set(phase, [{ id: 'q1', phase, lens, text: 'Test', purpose: 'Test', order: 1, subQuestions: [] }]);
+  }
+  return m;
+}
 
 // ── Test fixtures ───────────────────────────────────────────
 
@@ -138,7 +147,7 @@ describe('getPhaseLensOrder', () => {
 
 describe('buildWorkshopQuestionSet', () => {
   it('stores research dimension names in lensOrder when research has dimensions', () => {
-    const qs = buildWorkshopQuestionSet(new Map(), 'test rationale', RESEARCH_WITH_DIMENSIONS);
+    const qs = buildWorkshopQuestionSet(makePhases('Student Experience'), 'test rationale', RESEARCH_WITH_DIMENSIONS);
     for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as WorkshopPhase[]) {
       expect(qs.phases[phase].lensOrder).toEqual([
         'Student Experience',
@@ -163,7 +172,7 @@ describe('buildWorkshopQuestionSet', () => {
   });
 
   it('does not include generic lens names when research dimensions exist', () => {
-    const qs = buildWorkshopQuestionSet(new Map(), 'test rationale', RESEARCH_WITH_DIMENSIONS);
+    const qs = buildWorkshopQuestionSet(makePhases('Student Experience'), 'test rationale', RESEARCH_WITH_DIMENSIONS);
     for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as WorkshopPhase[]) {
       for (const genericLens of GENERIC_LENSES) {
         expect(qs.phases[phase].lensOrder).not.toContain(genericLens);
@@ -235,7 +244,7 @@ describe('dimension priority guard', () => {
   });
 
   it('buildWorkshopQuestionSet lensOrder never contains generic lenses when research dimensions exist', () => {
-    const qs = buildWorkshopQuestionSet(new Map(), 'rationale', RESEARCH_WITH_DIMENSIONS);
+    const qs = buildWorkshopQuestionSet(makePhases('Student Experience'), 'rationale', RESEARCH_WITH_DIMENSIONS);
     const phases: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
     for (const phase of phases) {
       for (const genericLens of GENERIC_LENSES) {
