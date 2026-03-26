@@ -619,21 +619,25 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   }, [snapshots, searchParams, selectedSnapshotId]);
 
   // Fetch hemisphere data — only fires after snapshots have loaded.
-  // Prefers the snapshot path (full raw corpus from liveWorkshopSnapshot.payload.nodesById).
-  // Falls back to the session-based path when no snapshot has been saved yet so the
-  // hemisphere remains usable during and after a live session without a manual save.
+  // Snapshot path only — reads from liveWorkshopSnapshot.payload.nodesById (full raw corpus).
+  // If no snapshot exists, shows an explicit error. Never falls back to session-based data.
   useEffect(() => {
     // Wait for the snapshots list fetch to settle before deciding which path to use.
     if (!snapshotsLoaded) return;
 
     const fetchData = async () => {
+      // No snapshot saved yet — show explicit error, do not fall back to session data.
+      if (!selectedSnapshotId) {
+        setData(null);
+        setError('No snapshot data available. Save a snapshot from the live session to view hemisphere data.');
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
-        // Use snapshot path when a snapshot is selected; fall back to session-based path otherwise.
-        const url = selectedSnapshotId
-          ? `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?source=snapshot&snapshotId=${encodeURIComponent(selectedSnapshotId)}&bust=${Date.now()}`
-          : `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?runType=${encodeURIComponent(runType)}&bust=${Date.now()}`;
+        const url = `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?source=snapshot&snapshotId=${encodeURIComponent(selectedSnapshotId)}&bust=${Date.now()}`;
         const r = await fetch(url, { cache: 'no-store' });
         const json = (await r.json().catch(() => null)) as (HemisphereResponse & { workshopOrgName?: string }) | null;
         if (!r.ok || !json || !json.ok) {

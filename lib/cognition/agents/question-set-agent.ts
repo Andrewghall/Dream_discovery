@@ -976,20 +976,13 @@ export function buildWorkshopQuestionSet(
   for (const phase of allPhases) {
     const designed = designedPhases.get(phase);
     const phaseLabel = phase === 'DEFINE_APPROACH' ? 'Define Approach' : phase.charAt(0) + phase.slice(1).toLowerCase();
-    let lenses: string[];
-    try {
-      lenses = getPhaseLensOrder(phase, research, blueprint).lenses;
-    } catch {
-      // Blueprint and research dimensions are unavailable for this workshop.
-      // Proceed with an empty lensOrder rather than crashing question set assembly.
-      lenses = [];
-    }
+    const lenses = getPhaseLensOrder(phase, research, blueprint).lenses;
 
     phases[phase] = {
       label: phaseLabel,
       description: PHASE_GUIDANCE[phase],
       lensOrder: lenses,
-      questions: designed || generateFallbackPhaseQuestions(phase),
+      questions: designed ?? [],
     };
   }
 
