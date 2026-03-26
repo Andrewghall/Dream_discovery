@@ -898,16 +898,10 @@ export async function runQuestionSetAgent(
       }
     }
 
-    // Loop ended without commit -- build from whatever phases were designed
-    console.log('[Question Set Agent] Loop ended without commit -- building from designed phases');
-    return buildWorkshopQuestionSet(
-      designedPhases,
-      'Workshop facilitation questions designed based on company context.',
-      research,
-      context.blueprint,
-      'moderate',
-      ['Agent loop ended without explicit commit -- confidence assessment may be incomplete'],
-    );
+  throw new Error(
+    '[Question Set Agent] Loop ended without explicit commit — question set is incomplete. ' +
+    'Re-run question generation to produce a valid question set.',
+  );
 }
 
 // Helper to extract all commit args from the committed message

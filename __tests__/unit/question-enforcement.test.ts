@@ -5,15 +5,15 @@
  *   1. fallbackQuestionSet does not exist in the question-set-agent module
  *   2. generateFallbackPhaseQuestions does not exist in the question-set-agent module
  *   3. buildWorkshopQuestionSet throws on any phase with no questions
- *   4. The manual save validation function (validateQuestionSet) rejects:
- *      - null / non-object input
- *      - missing phases object
- *      - any missing required phase
- *      - any phase with zero questions
+ *   4. validateQuestionSet (the REAL function from question-set-validator, used by the route)
+ *      rejects null / non-object / missing phase / zero questions
+ *   5. runQuestionSetAgent throws when the agent loop ends without an explicit commit
+ *      (no silent salvage from partial designedPhases)
  */
 
 import { describe, it, expect } from 'vitest';
 import * as questionSetAgent from '@/lib/cognition/agents/question-set-agent';
+import { validateQuestionSet } from '@/lib/cognition/agents/question-set-validator';
 import type { WorkshopPhase, FacilitationQuestion } from '@/lib/cognition/agents/agent-types';
 
 // ================================================================
@@ -37,7 +37,7 @@ describe('fallback functions removed', () => {
 const REQUIRED_PHASES: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
 
 function phasesWith(overrides: Partial<Record<WorkshopPhase, FacilitationQuestion[]>>): Map<WorkshopPhase, FacilitationQuestion[]> {
-  const base: Map<WorkshopPhase, FacilitationQuestion[]> = new Map();
+  const base = new Map<WorkshopPhase, FacilitationQuestion[]>();
   const defaultQ: FacilitationQuestion = {
     id: 'q1', phase: 'REIMAGINE', lens: 'TestLens', text: 'Q', purpose: 'P', order: 1, subQuestions: [],
   };
@@ -67,82 +67,47 @@ const mockResearch = {
 
 describe('buildWorkshopQuestionSet — incomplete phase rejection', () => {
   it('throws when all phases are empty (no questions)', () => {
-    const emptyMap = new Map<WorkshopPhase, FacilitationQuestion[]>();
-    expect(() => questionSetAgent.buildWorkshopQuestionSet(emptyMap, 'rationale', mockResearch))
+    expect(() => questionSetAgent.buildWorkshopQuestionSet(new Map(), 'rationale', mockResearch))
       .toThrow(/has no questions/);
   });
 
   it('throws when REIMAGINE has no questions', () => {
-    const phases = phasesWith({ REIMAGINE: [] });
-    expect(() => questionSetAgent.buildWorkshopQuestionSet(phases, 'rationale', mockResearch))
+    expect(() => questionSetAgent.buildWorkshopQuestionSet(phasesWith({ REIMAGINE: [] }), 'rationale', mockResearch))
       .toThrow(/Phase "REIMAGINE" has no questions/);
   });
 
   it('throws when CONSTRAINTS has no questions', () => {
-    const phases = phasesWith({ CONSTRAINTS: [] });
-    expect(() => questionSetAgent.buildWorkshopQuestionSet(phases, 'rationale', mockResearch))
+    expect(() => questionSetAgent.buildWorkshopQuestionSet(phasesWith({ CONSTRAINTS: [] }), 'rationale', mockResearch))
       .toThrow(/Phase "CONSTRAINTS" has no questions/);
   });
 
   it('throws when DEFINE_APPROACH has no questions', () => {
-    const phases = phasesWith({ DEFINE_APPROACH: [] });
-    expect(() => questionSetAgent.buildWorkshopQuestionSet(phases, 'rationale', mockResearch))
+    expect(() => questionSetAgent.buildWorkshopQuestionSet(phasesWith({ DEFINE_APPROACH: [] }), 'rationale', mockResearch))
       .toThrow(/Phase "DEFINE_APPROACH" has no questions/);
   });
 
   it('succeeds when all phases have at least one question', () => {
-    const phases = phasesWith({});
-    expect(() => questionSetAgent.buildWorkshopQuestionSet(phases, 'rationale', mockResearch))
+    expect(() => questionSetAgent.buildWorkshopQuestionSet(phasesWith({}), 'rationale', mockResearch))
       .not.toThrow();
   });
 });
 
 // ================================================================
-// 3. Manual save validation (validateQuestionSet)
-//    Tested indirectly — we test the shape the route enforces
-//    by constructing the same logic and asserting the correct
-//    rejection messages.
-//
-//    This mirrors the route's validateQuestionSet function exactly
-//    so that any change to route validation is caught here.
+// 3. Manual save validation — tests import the REAL validateQuestionSet
+//    from question-set-validator (the same module the route imports).
+//    If the route's import changes or the validator is deleted,
+//    these tests will fail.
 // ================================================================
-
-const REQUIRED_PHASE_NAMES = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const;
-
-function validateQuestionSet(qs: unknown): string | null {
-  if (!qs || typeof qs !== 'object' || Array.isArray(qs)) {
-    return 'customQuestions must be a non-null object';
-  }
-  const obj = qs as Record<string, unknown>;
-  if (!obj.phases || typeof obj.phases !== 'object' || Array.isArray(obj.phases)) {
-    return 'customQuestions.phases is missing or malformed';
-  }
-  const phases = obj.phases as Record<string, unknown>;
-  for (const phase of REQUIRED_PHASE_NAMES) {
-    if (!(phase in phases)) {
-      return `Missing required phase: ${phase}`;
-    }
-    const p = phases[phase];
-    if (!p || typeof p !== 'object' || Array.isArray(p)) {
-      return `Phase ${phase} is malformed`;
-    }
-    const phaseObj = p as Record<string, unknown>;
-    if (!Array.isArray(phaseObj.questions) || phaseObj.questions.length === 0) {
-      return `Phase ${phase} has no questions — incomplete question sets cannot be saved`;
-    }
-  }
-  return null;
-}
 
 function validQuestionSet() {
   const phases: Record<string, unknown> = {};
-  for (const phase of REQUIRED_PHASE_NAMES) {
+  for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH']) {
     phases[phase] = { questions: [{ id: 'q1', text: 'Test question' }], lensOrder: ['TestLens'] };
   }
   return { phases, designRationale: 'Test', generatedAtMs: Date.now(), dataConfidence: 'high', dataSufficiencyNotes: [] };
 }
 
-describe('manual save validation — prep/questions PUT route', () => {
+describe('validateQuestionSet — real function from question-set-validator', () => {
   it('rejects null', () => {
     expect(validateQuestionSet(null)).toBe('customQuestions must be a non-null object');
   });
