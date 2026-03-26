@@ -619,28 +619,21 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   }, [snapshots, searchParams, selectedSnapshotId]);
 
   // Fetch hemisphere data — only fires after snapshots have loaded.
-  // The hemisphere ONLY reads from the persisted snapshot dataset (liveWorkshopSnapshot.payload.nodesById).
-  // It never falls back to the session-insights path (ConversationInsight records), which is a curated
-  // subset and not the full set of captured sentences.
+  // Prefers the snapshot path (full raw corpus from liveWorkshopSnapshot.payload.nodesById).
+  // Falls back to the session-based path when no snapshot has been saved yet so the
+  // hemisphere remains usable during and after a live session without a manual save.
   useEffect(() => {
     // Wait for the snapshots list fetch to settle before deciding which path to use.
     if (!snapshotsLoaded) return;
 
     const fetchData = async () => {
-      // If snapshots are loaded but none exist and no snapshot is selected, surface an explicit
-      // error rather than silently substituting session-insights data.
-      if (!selectedSnapshotId) {
-        setData(null);
-        setError('No snapshot data available. Save a snapshot from the live session to view hemisphere data.');
-        setLoading(false);
-        return;
-      }
-
       try {
         setLoading(true);
         setError(null);
-        // Always use the snapshot path — the only valid hemisphere data source.
-        const url = `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?source=snapshot&snapshotId=${encodeURIComponent(selectedSnapshotId)}&bust=${Date.now()}`;
+        // Use snapshot path when a snapshot is selected; fall back to session-based path otherwise.
+        const url = selectedSnapshotId
+          ? `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?source=snapshot&snapshotId=${encodeURIComponent(selectedSnapshotId)}&bust=${Date.now()}`
+          : `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?runType=${encodeURIComponent(runType)}&bust=${Date.now()}`;
         const r = await fetch(url, { cache: 'no-store' });
         const json = (await r.json().catch(() => null)) as (HemisphereResponse & { workshopOrgName?: string }) | null;
         if (!r.ok || !json || !json.ok) {

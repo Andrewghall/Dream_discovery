@@ -149,17 +149,22 @@ describe('buildWorkshopQuestionSet', () => {
     }
   });
 
-  // Rule: no generic fallback — throw if no lens set
-  it('throws when called with no research dimensions', () => {
-    expect(() => buildWorkshopQuestionSet(new Map(), 'test rationale', null)).toThrow(
-      /Workshop lens set is required/,
-    );
+  // When no lens set is available, buildWorkshopQuestionSet returns a question set with empty
+  // lensOrder rather than throwing — this lets question generation succeed and persist to DB
+  // even for workshops that haven't completed prep. getPhaseLensOrder() still throws at the
+  // lower level; only the assembly wrapper catches and continues gracefully.
+  it('returns empty lensOrder when called with no research dimensions', () => {
+    const qs = buildWorkshopQuestionSet(new Map(), 'test rationale', null);
+    for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as WorkshopPhase[]) {
+      expect(qs.phases[phase].lensOrder).toEqual([]);
+    }
   });
 
-  it('throws when research has no industry dimensions', () => {
-    expect(() =>
-      buildWorkshopQuestionSet(new Map(), 'test rationale', RESEARCH_WITHOUT_DIMENSIONS),
-    ).toThrow(/Workshop lens set is required/);
+  it('returns empty lensOrder when research has no industry dimensions', () => {
+    const qs = buildWorkshopQuestionSet(new Map(), 'test rationale', RESEARCH_WITHOUT_DIMENSIONS);
+    for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as WorkshopPhase[]) {
+      expect(qs.phases[phase].lensOrder).toEqual([]);
+    }
   });
 
   it('does not include generic lens names when research dimensions exist', () => {

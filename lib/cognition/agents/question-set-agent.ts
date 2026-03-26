@@ -824,7 +824,12 @@ export async function runQuestionSetAgent(
             }
           }
 
-          const { source: lensSourceLabel } = getPhaseLensOrder('REIMAGINE', research, context.blueprint);
+          let lensSourceLabel: LensSource | undefined;
+          try {
+            lensSourceLabel = getPhaseLensOrder('REIMAGINE', research, context.blueprint).source;
+          } catch {
+            lensSourceLabel = undefined;
+          }
           const confidenceLabel = String(fnArgs.dataConfidence || 'moderate');
           const sufficiencyNotes = Array.isArray(fnArgs.dataSufficiencyNotes) ? fnArgs.dataSufficiencyNotes.map(String) : [];
           const sufficiencyBlock = sufficiencyNotes.length > 0
@@ -971,7 +976,14 @@ export function buildWorkshopQuestionSet(
   for (const phase of allPhases) {
     const designed = designedPhases.get(phase);
     const phaseLabel = phase === 'DEFINE_APPROACH' ? 'Define Approach' : phase.charAt(0) + phase.slice(1).toLowerCase();
-    const { lenses } = getPhaseLensOrder(phase, research, blueprint);
+    let lenses: string[];
+    try {
+      lenses = getPhaseLensOrder(phase, research, blueprint).lenses;
+    } catch {
+      // Blueprint and research dimensions are unavailable for this workshop.
+      // Proceed with an empty lensOrder rather than crashing question set assembly.
+      lenses = [];
+    }
 
     phases[phase] = {
       label: phaseLabel,

@@ -80,10 +80,11 @@ function getPacing(gs: GuidanceState) {
 function getActiveLensNames(gs: GuidanceState): string[] {
   const lenses = gs.blueprint?.lenses?.map(l => l.name).filter(Boolean);
   if (!lenses?.length) {
-    throw new Error(
-      'Workshop blueprint.lenses is missing — cannot run live session without a prep-configured lens set. ' +
-      'Complete workshop prep before starting the live facilitation session.',
-    );
+    // Blueprint lenses are unavailable (prep not completed or blueprint not yet loaded).
+    // Return an empty array so orchestration cycles continue — lens-specific logic
+    // (missing-dimension signals etc.) will simply produce no output until blueprint loads.
+    console.warn('[facilitation-orchestrator] blueprint.lenses missing — lens-based signals disabled until blueprint loads');
+    return [];
   }
   return lenses;
 }
