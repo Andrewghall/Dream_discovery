@@ -39,18 +39,10 @@ const MAX_ITERATIONS = 6;
 const LOOP_TIMEOUT_MS = 40_000;
 const MODEL = 'gpt-4o-mini';
 
-// ── Phase context: what lenses apply and in what order ──────
-
-const DEFAULT_PHASE_LENS_ORDER: Record<WorkshopPhase, string[]> = {
-  REIMAGINE: ['People', 'Customer', 'Organisation'],
-  CONSTRAINTS: ['Regulation', 'Customer', 'Technology', 'Organisation', 'People'],
-  DEFINE_APPROACH: ['People', 'Organisation', 'Technology', 'Customer', 'Regulation'],
-};
-
 /**
  * Get lens order for a phase.
- * Priority: blueprint phaseLensPolicy > research dimensions > hardcoded defaults.
- * Returns both the lens list and the source for tracking.
+ * Priority: blueprint phaseLensPolicy > research dimensions.
+ * THROWS if neither is available — never falls back to a hardcoded default order.
  */
 export function getPhaseLensOrder(
   phase: WorkshopPhase,
@@ -64,11 +56,11 @@ export function getPhaseLensOrder(
   if (research?.industryDimensions?.length) {
     return { lenses: research.industryDimensions.map(d => d.name), source: 'research_dimensions' };
   }
-  return { lenses: DEFAULT_PHASE_LENS_ORDER[phase], source: 'generic_fallback' };
+  throw new Error(
+    `Workshop lens set is required for phase "${phase}" — no fallback to generic defaults. ` +
+    'Ensure workshop prep (blueprint or research dimensions) is completed before generating questions.',
+  );
 }
-
-/** @deprecated Use getPhaseLensOrder - kept for backward compat */
-const PHASE_LENS_ORDER = DEFAULT_PHASE_LENS_ORDER;
 
 const PHASE_GUIDANCE: Record<WorkshopPhase, string> = {
   REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Customer, and Organisation lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
@@ -476,7 +468,7 @@ function executeQuestionSetTool(
             },
           },
         }),
-        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE APPROACH (${defineApproach.lenses.length} dimensions).${lensSource !== 'generic_fallback' ? ` Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}.` : ' Using generic default lenses.'} Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
+        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE APPROACH (${defineApproach.lenses.length} dimensions). Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}. Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
       };
     }
 

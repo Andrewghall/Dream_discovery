@@ -184,7 +184,13 @@ function buildV2Prompt(
 ): string {
   const actorList = actors.length > 0 ? actors.join(', ') : 'Customer, Staff, Manager, Partner';
   const stageList = journeyStages.length > 0 ? journeyStages.join(', ') : 'Awareness, Engagement, Commitment, Fulfilment, Support';
-  const lensList = lenses.length > 0 ? lenses.join(', ') : 'People, Organisation, Customer, Technology, Regulation';
+  if (lenses.length === 0) {
+    throw new Error(
+      'Workshop lens set is required in synthesis prompt — no fallback to generic taxonomy. ' +
+      'Ensure blueprint.lenses is populated from prep before running synthesis.',
+    );
+  }
+  const lensList = lenses.join(', ');
 
   // Format verbatim node texts per phase
   const fmt = (texts: string[], max = 50) =>

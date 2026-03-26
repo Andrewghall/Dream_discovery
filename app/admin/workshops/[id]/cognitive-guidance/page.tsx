@@ -21,7 +21,6 @@ import {
   type DialoguePhase,
   type LiveJourneyData,
   type LiveJourneyInteraction,
-  ALL_LENSES,
   ALL_PHASES,
   PHASE_LABELS,
   DEFAULT_JOURNEY_STAGES,

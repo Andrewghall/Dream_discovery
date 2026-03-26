@@ -22,20 +22,19 @@ export type CogNodeType =
   | 'UNCLASSIFIED';
 
 // Widened to string to support research-driven dynamic dimensions.
-// Default lenses: People, Organisation, Technology, Regulation, Customer
 export type Lens = string;
 
-export const DEFAULT_LENSES: Lens[] = ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'];
-
-/** @deprecated Use DEFAULT_LENSES or getAllLenses(research) --kept for backward compatibility */
-export const ALL_LENSES: Lens[] = DEFAULT_LENSES;
-
 /**
- * Get effective lenses --from research dimensions or defaults.
+ * Get effective lenses from the workshop blueprint/research dimensions.
+ * THROWS if no lens set is provided — never falls back to a default taxonomy.
+ * Every caller must supply the prep-configured lens set.
  */
 export function getAllLenses(customDimensionNames?: string[] | null): string[] {
   if (customDimensionNames?.length) return customDimensionNames;
-  return DEFAULT_LENSES;
+  throw new Error(
+    'Workshop lens set is required — no fallback to default 5-lens taxonomy. ' +
+    'Ensure blueprint.lenses is populated from prep before calling getAllLenses().',
+  );
 }
 
 export type CogNode = {
@@ -539,7 +538,7 @@ export function applyLensMapping(
   if (!agenticAnalysis) return node;
 
   const domainToLens = options?.domainToLens || DEFAULT_DOMAIN_TO_LENS;
-  const effectiveLenses = options?.effectiveLenses || DEFAULT_LENSES;
+  const effectiveLenses = options?.effectiveLenses ?? [];
 
   const apiLenses = agenticAnalysis.domains
     .filter(d => d.relevance >= LENS_RELEVANCE_THRESHOLD && d.reasoning)
@@ -575,7 +574,7 @@ export function applyLensMapping(
  */
 export function calculateLensCoverage(nodes: CogNode[], effectiveLenses?: string[]): Map<Lens, LensCoverage> {
   const coverage = new Map<Lens, LensCoverage>();
-  const lensesToCheck = effectiveLenses?.length ? effectiveLenses : ALL_LENSES;
+  const lensesToCheck = effectiveLenses ?? [];
 
   for (const lens of lensesToCheck) {
     const lensNodes = nodes.filter(n => n.lenses.some(l => l.lens === lens));
@@ -647,7 +646,7 @@ export function detectSignals(
   nowMs: number,
   effectiveLenses?: string[],
 ): Signal[] {
-  const lensesToCheck = effectiveLenses?.length ? effectiveLenses : ALL_LENSES;
+  const lensesToCheck = effectiveLenses ?? [];
   const signals: Signal[] = [];
   const totalNodes = nodes.length;
   if (totalNodes < 3) return signals;
@@ -777,7 +776,7 @@ export function detectSignals(
   }
 
   // --- Risk clusters: ≥3 FRICTION/CONSTRAINT in same lens within 120s ---
-  for (const lens of ALL_LENSES) {
+  for (const lens of lensesToCheck) {
     const riskNodes = nodes
       .filter(n => (n.nodeType === 'CONSTRAINT' || n.nodeType === 'FRICTION') &&
         n.lenses.some(l => l.lens === lens))
@@ -1297,7 +1296,7 @@ export function calculateSessionConfidence(
   return {
     overallConfidence: totalConf / total,
     categorisedRate: categorised / total,
-    lensCoverageRate: lensesWithNodes / ALL_LENSES.length,
+    lensCoverageRate: lensCoverage.size > 0 ? lensesWithNodes / lensCoverage.size : 0,
     contradictionCount: contradictions.filter(c => !c.resolved).length,
     stabilisedBeliefCount: stabilisedCount,
   };

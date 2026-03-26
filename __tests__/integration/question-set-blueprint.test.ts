@@ -2,7 +2,7 @@
  * Question Set Agent -- Blueprint Integration Tests
  *
  * Covers:
- *  - getPhaseLensOrder() priority: blueprint > research > defaults
+ *  - getPhaseLensOrder() priority: blueprint > research (throws if neither present)
  *  - buildQuestionSetSystemPrompt() with/without blueprint constraints
  *  - buildWorkshopQuestionSet() includes dataConfidence and dataSufficiencyNotes
  *  - get_blueprint_constraints tool handler behavior
@@ -102,10 +102,10 @@ describe('getPhaseLensOrder -- blueprint priority', () => {
     expect(result.source).toBe('research_dimensions');
   });
 
-  it('falls back to default lenses when both blueprint and research are null', () => {
-    const result = getPhaseLensOrder('REIMAGINE', null, null);
-    expect(result.lenses).toEqual(['People', 'Customer', 'Organisation']);
-    expect(result.source).toBe('generic_fallback');
+  it('throws when both blueprint and research are null (no generic fallback allowed)', () => {
+    expect(() => getPhaseLensOrder('REIMAGINE', null, null)).toThrow(
+      /Workshop lens set is required/,
+    );
   });
 
   it('blueprint takes priority over research even when both are provided', () => {
@@ -257,7 +257,7 @@ describe('buildWorkshopQuestionSet -- data sufficiency', () => {
 
   it('defaults to low confidence when not provided', () => {
     const result = buildWorkshopQuestionSet(
-      emptyPhases, 'Test rationale', null,
+      emptyPhases, 'Test rationale', mockResearch,
     );
     expect(result.dataConfidence).toBe('low');
     expect(result.dataSufficiencyNotes).toEqual(['No data confidence assessment available']);
@@ -275,7 +275,7 @@ describe('buildWorkshopQuestionSet -- data sufficiency', () => {
 
   it('always has all 3 phases even with empty designed phases', () => {
     const result = buildWorkshopQuestionSet(
-      emptyPhases, 'Test rationale', null,
+      emptyPhases, 'Test rationale', mockResearch,
     );
     expect(result.phases.REIMAGINE).toBeDefined();
     expect(result.phases.CONSTRAINTS).toBeDefined();
@@ -285,7 +285,7 @@ describe('buildWorkshopQuestionSet -- data sufficiency', () => {
   it('has generatedAtMs timestamp', () => {
     const before = Date.now();
     const result = buildWorkshopQuestionSet(
-      emptyPhases, 'Test rationale', null,
+      emptyPhases, 'Test rationale', mockResearch,
     );
     expect(result.generatedAtMs).toBeGreaterThanOrEqual(before);
   });

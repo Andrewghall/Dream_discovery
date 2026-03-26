@@ -93,27 +93,24 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   }
 
   // ── Context: Lenses ─────────────────────────────────────────────────────
+  // Blueprint is the single source of truth for lens configuration.
+  // discoveryQuestions is NOT a lens source — it holds interview question structures.
 
   let lenses: string[] = [];
 
-  // Try blueprint first — blueprint stores lenses as { name, description, color, keywords }
-  // (Some older blueprints may use `label` instead of `name` — handle both)
+  // Blueprint stores lenses as { name, description, color, keywords }.
+  // Older blueprints may use `label` instead of `name` — both come from the same blueprint object.
   const blueprint = safeJson<{ lenses?: Array<{ name?: string; label?: string }> }>(workshop.blueprint);
   if (blueprint?.lenses && Array.isArray(blueprint.lenses)) {
     lenses = blueprint.lenses.map((l) => l.name ?? l.label ?? '').filter(Boolean);
   }
 
-  // Fall back to discoveryQuestions
+  // No fallback — fail explicitly if blueprint has no lens configuration.
   if (lenses.length === 0) {
-    const dq = safeJson<Array<{ lens?: string; label?: string }>>(workshop.discoveryQuestions);
-    if (Array.isArray(dq)) {
-      lenses = [...new Set(dq.map((q) => q.lens ?? q.label ?? '').filter(Boolean))];
-    }
-  }
-
-  // Final fallback — only if blueprint and discoveryQuestions both have no lenses
-  if (lenses.length === 0) {
-    lenses = ['People', 'Organisation', 'Customer', 'Technology'];
+    throw new Error(
+      `Workshop ${workshopId} has no lens configuration. ` +
+      'Complete workshop prep (blueprint.lenses) before running output intelligence.',
+    );
   }
 
   // ── Context: Objectives — full Plan phase context ────────────────────────

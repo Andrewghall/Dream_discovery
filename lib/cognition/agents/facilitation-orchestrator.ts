@@ -60,9 +60,6 @@ const MIN_ENRICHMENT_INTERACTIONS = 3;       // Need >=3 interactions to enrich
 const MIN_ENRICHMENT_BELIEFS = 5;            // Need >=5 beliefs for enrichment
 const JOURNEY_ASSESSMENT_INTERVAL_MS = 30_000; // Run journey agent at most every 30s (deterministic, not GPT-optional)
 
-// Default lens names (overridden by blueprint.lenses when available)
-const DEFAULT_DOMAINS = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
-
 // Default journey stages (overridden by blueprint.journeyStages when available)
 const DEFAULT_STAGES = ['Discovery', 'Engagement', 'Commitment', 'Fulfilment', 'Support', 'Growth'];
 
@@ -81,7 +78,14 @@ function getPacing(gs: GuidanceState) {
 }
 
 function getActiveLensNames(gs: GuidanceState): string[] {
-  return gs.blueprint?.lenses?.map(l => l.name) ?? DEFAULT_DOMAINS;
+  const lenses = gs.blueprint?.lenses?.map(l => l.name).filter(Boolean);
+  if (!lenses?.length) {
+    throw new Error(
+      'Workshop blueprint.lenses is missing — cannot run live session without a prep-configured lens set. ' +
+      'Complete workshop prep before starting the live facilitation session.',
+    );
+  }
+  return lenses;
 }
 
 function getActiveJourneyStages(gs: GuidanceState): string[] {
