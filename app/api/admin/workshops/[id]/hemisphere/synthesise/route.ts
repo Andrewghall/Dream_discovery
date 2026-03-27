@@ -240,6 +240,20 @@ function buildSynthesisPrompt(workshopName: string, data: ReturnType<typeof aggr
     'regulation': '📋', 'default': '🔍',
   };
 
+  // Compute per-domain utterance counts from DISCOVERY phase signals only
+  const discoveryDomainCounts: Record<string, number> = {};
+  for (const node of data.byPhase['DISCOVERY'] ?? []) {
+    const rawDomains = Array.isArray(node.agenticAnalysis?.domains) ? node.agenticAnalysis!.domains : [];
+    const domainList: string[] = rawDomains.length > 0
+      ? rawDomains.map((d: { domain: string }) => d.domain)
+      : typeof (node as any).lens === 'string' && (node as any).lens.trim()
+        ? [(node as any).lens.trim()]
+        : [];
+    for (const d of domainList) {
+      if (d) discoveryDomainCounts[d] = (discoveryDomainCounts[d] || 0) + 1;
+    }
+  }
+
   return `You are the DREAM Organisational Brain Scanner — a system that scans and interprets the organisational brain, revealing how a company thinks, what it wants to achieve, what blocks progress, and how it can transform. Your output is strategic intelligence, not a workshop report. Every insight must be derived from the workshop signals and grounded in evidence. If signal strength is insufficient, say so rather than generating filler.
 
 Workshop: "${workshopName}"
@@ -283,18 +297,16 @@ Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components
   },
   "discoveryOutput": {
     "_aiSummary": "string — 3-5 sentence PERCEPTION SIGNAL summary drawn ONLY from DISCOVERY PHASE signals. This is how the organisation currently sees itself and its environment — current state only, no future visions or solutions. Identify: operational friction patterns, capability maturity signals, actor misalignment, and mindset distribution. State the dominant perception the organisation holds — and where that perception diverges from reality. Be specific and evidence-grounded.",
-    "participants": ${JSON.stringify(participantNames.length > 0 ? participantNames : data.topActors.slice(0, 8).map(a => a.name))},
-    "totalUtterances": ${data.totalNodes},
+    "participants": ${JSON.stringify(participantNames.length > 0 ? participantNames : [])},
+    "totalUtterances": ${data.byPhase['DISCOVERY']?.length ?? 0},
     "sections": [
 ${domainNames.map((dn, i) => {
-  const bucket = data.byDomain[dn];
-  const total = (bucket?.aspirations?.length || 0) + (bucket?.constraints?.length || 0) + (bucket?.enablers?.length || 0) + (bucket?.opportunities?.length || 0) + (bucket?.actions?.length || 0);
   const icon = domainIcons[dn.toLowerCase()] || domainIcons['default'];
   return `      {
         "domain": "${dn}",
         "icon": "${icon}",
         "color": "${domainColors[i % domainColors.length]}",
-        "utteranceCount": ${total},
+        "utteranceCount": ${discoveryDomainCounts[dn] ?? 0},
         "topThemes": ["generate 3-5 top theme labels for ${dn}"],
         "wordCloud": [{"word": "string", "size": 1-4}],
         "quotes": [{"text": "representative quote from the data", "author": "speaker role"}],
@@ -354,10 +366,10 @@ ${domainNames.map((dn, i) => {
         "details": ["3-4 supporting detail points"]
       },
       "horizonVision": {
-        "title": "Horizon Vision Alignment",
+        "title": "Desired Future State",
         "columns": [
-          {"title": "Horizon 1: Foundation (Months 1-6)", "points": ["3-5 initiative points"]},
-          {"title": "Horizon 2: Transformation (Months 6-18)", "points": ["3-5 initiative points"]}
+          {"title": "Near-term vision: what good looks like", "points": ["3-5 aspiration points — desired outcomes only, no plans or timelines"]},
+          {"title": "Long-term ambition: the transformed organisation", "points": ["3-5 aspiration points — the ideal future state this organisation is aiming for"]}
         ]
       }
     }
@@ -445,14 +457,14 @@ STRUCTURAL RULES:
 - execSummary.keyFindings: 5-7 findings. metrics values must be NUMBERS not strings.
 - discoveryOutput.sections: exactly ${domainNames.length} sections. Each needs 8-10 wordCloud items (size 1-4). Sentiment MUST sum to 100.
 - discoveryOutput must include: operationalReality, organisationalMisalignment, systemicFriction, transformationReadiness (each with insight string + evidence array of exactly 4 strings from DISCOVERY phase signals only), and finalDiscoverySummary string. These are the primary executive intelligence outputs — do not use generic language.
-- reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes. All from REIMAGINE phase signals only.
+- reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes. horizonVision describes desired future states only — no timelines, no initiative language, no month ranges. All from REIMAGINE phase signals only.
 - constraintsContent: 2-3 items per category. All from CONSTRAINTS phase signals only.
 - potentialSolution.enablers: 5-8 items. implementationPath: 3 phases. All from DEFINE_APPROACH phase signals only.
 - commercialContent.deliveryPhases: 3 phases. riskAssessment: 3-5 risks.
 - customerJourney: 6 stages, 5-6 actors, 15-20 interactions. Mark 3-4 as isPainPoint:true, 2 as isMomentOfTruth:true.
 - summaryContent.keyFindings: 3-4 categories. recommendedNextSteps: 3 steps. successMetrics: 4 metrics.
 
-━━━ CROSS-PHASE CONTEXT ━━━
+━━━ CROSS-PHASE CONTEXT (NOT FOR PHASE SECTIONS) ━━━
 The sections below apply ONLY to: execSummary, commercialContent, customerJourney, summaryContent.
 They MUST NOT be used as sources for discoveryOutput, reimagineContent, constraintsContent, or potentialSolution.
 Those four sections draw exclusively from the phase-separated signals above.
