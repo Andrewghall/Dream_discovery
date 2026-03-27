@@ -46,14 +46,24 @@ vi.mock('@/lib/prisma', () => ({
         blueprint: null,
       }),
       update: vi.fn().mockResolvedValue({}),
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: 'ws-fork' }),
     },
   },
+}));
+
+vi.mock('@/lib/cognition/agents/question-set-agent', () => ({
+  runQuestionSetAgent: vi.fn(),
+  buildWorkshopQuestionSet: vi.fn(),
+  getPhaseLensOrder: vi.fn(),
+  buildQuestionSetSystemPrompt: vi.fn(),
 }));
 
 // ── Import route handlers after mocks ─────────────────────────
 
 import { PUT } from '@/app/api/workshops/[id]/prep/questions/route';
 import { PATCH } from '@/app/api/admin/workshops/[id]/route';
+import { POST as FORK_POST } from '@/app/api/admin/workshops/[id]/fork/route';
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -69,6 +79,13 @@ function makePatchRequest(body: unknown): NextRequest {
   return new NextRequest('http://localhost/api/admin/workshops/ws-test', {
     method: 'PATCH',
     body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function makeForkRequest(): NextRequest {
+  return new NextRequest('http://localhost/api/admin/workshops/ws-test/fork', {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
 }
@@ -195,5 +212,79 @@ describe('PATCH admin/workshops/[id] — customQuestions validation', () => {
       const callArg = updateSpy.mock.calls[0][0] as { data: Record<string, unknown> };
       expect(callArg.data).not.toHaveProperty('customQuestions');
     }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// POST /api/admin/workshops/[id]/fork — customQuestions validation
+// Proves the fork route validates before copying customQuestions.
+// ══════════════════════════════════════════════════════════════
+
+describe('POST fork/route — customQuestions validation on copy', () => {
+  it('omits customQuestions in fork when source has invalid (empty phases) question set', async () => {
+    const { prisma } = await import('@/lib/prisma');
+    // Source workshop has an invalid question set (missing questions in phases)
+    vi.spyOn(prisma.workshop, 'findUnique').mockResolvedValueOnce({
+      id: 'ws-source',
+      name: 'Example Workshop',
+      isExample: true,
+      customQuestions: {
+        phases: {
+          REIMAGINE: { questions: [], lensOrder: [] },   // empty — invalid
+          CONSTRAINTS: { questions: [], lensOrder: [] },
+          DEFINE_APPROACH: { questions: [], lensOrder: [] },
+        },
+        designRationale: '',
+        generatedAtMs: Date.now(),
+        dataConfidence: 'low',
+        dataSufficiencyNotes: [],
+      },
+    } as never);
+    vi.spyOn(prisma.workshop, 'findFirst').mockResolvedValueOnce(null); // no existing fork
+    const createSpy = vi.spyOn(prisma.workshop, 'create').mockResolvedValueOnce({ id: 'ws-fork' } as never);
+
+    await FORK_POST(makeForkRequest(), { params: resolvedParams });
+
+    expect(createSpy).toHaveBeenCalled();
+    const createData = (createSpy.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    // customQuestions must NOT be set — invalid source data must not propagate
+    expect(createData.customQuestions).toBeUndefined();
+  });
+
+  it('copies customQuestions in fork when source has a valid question set', async () => {
+    const { prisma } = await import('@/lib/prisma');
+    const validQs = validQuestionSet();
+    vi.spyOn(prisma.workshop, 'findUnique').mockResolvedValueOnce({
+      id: 'ws-source',
+      name: 'Example Workshop',
+      isExample: true,
+      customQuestions: validQs,
+    } as never);
+    vi.spyOn(prisma.workshop, 'findFirst').mockResolvedValueOnce(null);
+    const createSpy = vi.spyOn(prisma.workshop, 'create').mockResolvedValueOnce({ id: 'ws-fork' } as never);
+
+    await FORK_POST(makeForkRequest(), { params: resolvedParams });
+
+    expect(createSpy).toHaveBeenCalled();
+    const createData = (createSpy.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    // Valid customQuestions must be copied
+    expect(createData.customQuestions).toBeDefined();
+  });
+
+  it('omits customQuestions in fork when source has null question set', async () => {
+    const { prisma } = await import('@/lib/prisma');
+    vi.spyOn(prisma.workshop, 'findUnique').mockResolvedValueOnce({
+      id: 'ws-source',
+      name: 'Example Workshop',
+      isExample: true,
+      customQuestions: null,
+    } as never);
+    vi.spyOn(prisma.workshop, 'findFirst').mockResolvedValueOnce(null);
+    const createSpy = vi.spyOn(prisma.workshop, 'create').mockResolvedValueOnce({ id: 'ws-fork' } as never);
+
+    await FORK_POST(makeForkRequest(), { params: resolvedParams });
+
+    const createData = (createSpy.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(createData.customQuestions).toBeUndefined();
   });
 });

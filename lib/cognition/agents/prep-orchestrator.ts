@@ -15,6 +15,7 @@
 import { prisma } from '@/lib/prisma';
 import { runResearchAgent } from './research-agent';
 import { runQuestionSetAgent } from './question-set-agent';
+import { validateQuestionSet } from './question-set-validator';
 import type {
   PrepContext,
   AgentConversationCallback,
@@ -105,6 +106,12 @@ export async function runPrepOrchestrator(
   try {
     questionSet = await runQuestionSetAgent(context, research, onConversation);
 
+    // Validate before persisting — defence-in-depth over TypeScript type guarantees
+    const qsValidationError = validateQuestionSet(questionSet);
+    if (qsValidationError) {
+      throw new Error(`Question set failed validation before save: ${qsValidationError}`);
+    }
+
     // Store question set
     await prisma.workshop.update({
       where: { id: context.workshopId },
@@ -132,7 +139,7 @@ export async function runPrepOrchestrator(
       timestampMs: Date.now(),
       agent: 'prep-orchestrator',
       to: '',
-      message: `The Question Set Agent encountered an issue: ${msg}. The base question set will be used as a fallback. The facilitator can manually edit questions on the prep page.`,
+      message: `Question generation failed: ${msg}. The facilitator must run question generation again before starting the live session.`,
       type: 'info',
     });
   }

@@ -117,6 +117,12 @@ export async function POST(
           sendEvent('agent.conversation', entry);
         }, discoveryBriefing);
 
+        // Validate before persisting — defence-in-depth over TypeScript type guarantees
+        const qsValidationError = validateQuestionSet(questionSet);
+        if (qsValidationError) {
+          throw new Error(`Question set failed validation before save: ${qsValidationError}`);
+        }
+
         // Store in workshop
         await prisma.workshop.update({
           where: { id: workshopId },
