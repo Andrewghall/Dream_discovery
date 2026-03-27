@@ -247,6 +247,21 @@ Total data points analysed: ${data.totalNodes}
 Domains identified: ${domainNames.join(', ')}
 Phases covered: ${Object.entries(data.byPhase).filter(([, v]) => v.length > 0).map(([k, v]) => `${k} (${v.length} utterances)`).join(', ')}
 
+─── PHASE-SEPARATED WORKSHOP SIGNALS ───
+Use the correct phase source for each report section (see CRITICAL RULES below).
+
+DISCOVERY PHASE — ${data.byPhase['DISCOVERY']?.length ?? 0} signals (current-state observations — what IS true today):
+${(data.byPhase['DISCOVERY'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "${n.rawText.trim()}"`).join('\n') || '  (none captured)'}
+
+REIMAGINE PHASE — ${data.byPhase['REIMAGINE']?.length ?? 0} signals (what participants envision — pure future vision):
+${(data.byPhase['REIMAGINE'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "${n.rawText.trim()}"`).join('\n') || '  (none captured)'}
+
+CONSTRAINTS PHASE — ${data.byPhase['CONSTRAINTS']?.length ?? 0} signals (what blocks progress — barriers only):
+${(data.byPhase['CONSTRAINTS'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "${n.rawText.trim()}"`).join('\n') || '  (none captured)'}
+
+DEFINE APPROACH PHASE — ${data.byPhase['DEFINE_APPROACH']?.length ?? 0} signals (how to move forward — enablers and plan):
+${(data.byPhase['DEFINE_APPROACH'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "${n.rawText.trim()}"`).join('\n') || '  (none captured)'}
+
 ─── THEME AGENT ANALYSIS ───
 ${themeAnalysis}
 
@@ -273,7 +288,7 @@ Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components
     ]
   },
   "discoveryOutput": {
-    "_aiSummary": "string — 3-5 sentence PERCEPTION SIGNAL summary. This is how the organisation currently sees itself and its environment. Identify: operational friction patterns, capability maturity signals, actor misalignment, and mindset distribution. State the dominant perception the organisation holds — and where that perception diverges from reality. Be specific and evidence-grounded.",
+    "_aiSummary": "string — 3-5 sentence PERCEPTION SIGNAL summary drawn ONLY from DISCOVERY PHASE signals. This is how the organisation currently sees itself and its environment — current state only, no future visions or solutions. Identify: operational friction patterns, capability maturity signals, actor misalignment, and mindset distribution. State the dominant perception the organisation holds — and where that perception diverges from reality. Be specific and evidence-grounded.",
     "participants": ${JSON.stringify(participantNames.length > 0 ? participantNames : data.topActors.slice(0, 8).map(a => a.name))},
     "totalUtterances": ${data.totalNodes},
     "sections": [
@@ -313,7 +328,7 @@ ${domainNames.map((dn, i) => {
     "finalDiscoverySummary": "string — 2-3 sentence executive diagnosis. The strategic spine of this discovery. State: what the workshop most clearly revealed about this organisation's operational reality, and what that means for transformation. Be direct — not a summary of summaries."
   },
   "reimagineContent": {
-    "_aiSummary": "string — 3-5 sentence IMAGINATION SIGNAL summary. This is what future the organisation believes is possible. Identify: ambition clusters, desired outcomes, transformation opportunities, and innovation signals. What does this organisation dare to imagine? What does that ambition reveal about its aspirations and self-belief? Be specific and evidence-grounded.",
+    "_aiSummary": "string — 3-5 sentence IMAGINATION SIGNAL summary drawn ONLY from REIMAGINE PHASE signals. Pure future vision — no constraints, no current-state problems, no implementation steps. This is what participants dare to imagine, unconstrained. Identify: ambition clusters, desired outcomes, transformation opportunities, and innovation signals. What does that ambition reveal about aspirations and self-belief? Be specific and evidence-grounded.",
     "reimagineContent": {
       "title": "string — compelling title for the reimagine output",
       "description": "string — 2-3 sentence overview of what the reimagine session revealed",
@@ -354,7 +369,7 @@ ${domainNames.map((dn, i) => {
     }
   },
   "constraintsContent": {
-    "_aiSummary": "string — 3-5 sentence INHIBITION SIGNAL summary. These are the forces preventing transformation. Identify: governance barriers, technology fragmentation, decision bottlenecks, cross-team friction, and knowledge silos. What is the primary inhibition pattern? Which constraint, if removed first, would unlock the most momentum? Be specific and evidence-grounded.",
+    "_aiSummary": "string — 3-5 sentence INHIBITION SIGNAL summary drawn ONLY from CONSTRAINTS PHASE signals. What blocks the vision — no solutions, no enablers, no roadmap items. Identify: governance barriers, technology fragmentation, decision bottlenecks, cross-team friction, and knowledge silos. What is the primary inhibition pattern? Which constraint, if removed first, would unlock the most momentum? Be specific and evidence-grounded.",
     "regulatory": [
       {"title": "string", "description": "string — 1-2 sentences", "impact": "Critical or High or Medium or Low", "mitigation": "string — mitigation strategy"}
     ],
@@ -369,7 +384,7 @@ ${domainNames.map((dn, i) => {
     ]
   },
   "potentialSolution": {
-    "_aiSummary": "string — 3-5 sentence EXECUTION SIGNAL summary. This is how transformation can actually happen. Identify: initiative clusters, dependency chains, transformation horizons, and capability development pathways. What is the logical sequence? What must be built first? What are the critical enablers? Be specific and evidence-grounded.",
+    "_aiSummary": "string — 3-5 sentence EXECUTION SIGNAL summary drawn ONLY from DEFINE APPROACH PHASE signals. Concrete path forward — no current-state descriptions, no raw constraint statements. Identify: initiative clusters, dependency chains, transformation horizons, and capability development pathways. What is the logical sequence? What must be built first? What are the critical enablers? Be specific and evidence-grounded.",
     "overview": "string — 1-2 paragraphs on the proposed solution approach",
     "enablers": [
       {"title": "string", "domain": "string", "priority": "HIGH or MEDIUM or LOW", "description": "string", "dependencies": ["string array"]}
@@ -418,21 +433,30 @@ ${domainNames.map((dn, i) => {
 }
 
 CRITICAL RULES:
-- Use ONLY the source material below. Do not invent facts.
+- Use ONLY the source material above. Do not invent facts.
 - Be CONCISE. Keep descriptions to 1-2 sentences. Do NOT write essays.
 - Write in confident, board-level language suitable for C-suite audiences.
+
+PHASE PURITY — MANDATORY. Each section draws from exactly one phase:
+- discoveryOutput: Draw EXCLUSIVELY from DISCOVERY PHASE signals. Do NOT include reimagined futures, aspirations, solutions, enablers, or anything from Reimagine/Constraints/Define Approach phases. Discovery = current state only — what IS true right now.
+- reimagineContent: Draw EXCLUSIVELY from REIMAGINE PHASE signals. Do NOT include constraints, blockers, implementation steps, or current-state problem descriptions. Reimagine = pure future vision — what participants dare to imagine, unconstrained.
+- constraintsContent: Draw EXCLUSIVELY from CONSTRAINTS PHASE signals. Do NOT include solutions, enablers, or roadmap items. Constraints = only what blocks the reimagined vision.
+- potentialSolution: Draw EXCLUSIVELY from DEFINE APPROACH PHASE signals. Do NOT include current-state descriptions or raw constraint statements. Way Forward = the concrete plan bridging current → vision.
+- execSummary, commercialContent, customerJourney, summaryContent: May synthesise across all phases.
+
+STRUCTURAL RULES:
 - _aiSummary fields: Each is a COGNITIVE SIGNAL summary framed through the DREAM Organisational Brain model. Every summary must be a specific signal reading — not a generic summary. Reference evidence from the data. Identify what the signal reveals about how this organisation thinks. Every sentence must carry weight. NEVER use generic consulting filler or restate findings without interpretation.
 - execSummary.keyFindings: 5-7 findings. metrics values must be NUMBERS not strings.
 - discoveryOutput.sections: exactly ${domainNames.length} sections. Each needs 8-10 wordCloud items (size 1-4). Sentiment MUST sum to 100.
-- discoveryOutput must include: operationalReality, organisationalMisalignment, systemicFriction, transformationReadiness (each with insight string + evidence array of exactly 4 strings grounded in workshop signals), and finalDiscoverySummary string. These are the primary executive intelligence outputs — do not use generic language.
-- reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes.
-- constraintsContent: 2-3 items per category.
-- potentialSolution.enablers: 5-8 items. implementationPath: 3 phases.
+- discoveryOutput must include: operationalReality, organisationalMisalignment, systemicFriction, transformationReadiness (each with insight string + evidence array of exactly 4 strings from DISCOVERY phase signals only), and finalDiscoverySummary string. These are the primary executive intelligence outputs — do not use generic language.
+- reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes. All from REIMAGINE phase signals only.
+- constraintsContent: 2-3 items per category. All from CONSTRAINTS phase signals only.
+- potentialSolution.enablers: 5-8 items. implementationPath: 3 phases. All from DEFINE_APPROACH phase signals only.
 - commercialContent.deliveryPhases: 3 phases. riskAssessment: 3-5 risks.
 - customerJourney: 6 stages, 5-6 actors, 15-20 interactions. Mark 3-4 as isPainPoint:true, 2 as isMomentOfTruth:true.
 - summaryContent.keyFindings: 3-4 categories. recommendedNextSteps: 3 steps. successMetrics: 4 metrics.
 
-─── DOMAIN ANALYSIS ───
+─── DOMAIN ANALYSIS (cross-phase context — background only, not primary source for any single section) ───
 ${domainText}
 
 ─── TOP ACTORS & INTERACTIONS ───
@@ -468,11 +492,22 @@ ${domainNames.map(d => {
   return `${d}: ${b.aspirations.length} aspirations, ${b.constraints.length} constraints, ${b.enablers.length} enablers, ${b.opportunities.length} opportunities`;
 }).join('\n')}
 
+PHASE SIGNAL DISTRIBUTION:
+${Object.entries(data.byPhase).filter(([, v]) => v.length > 0).map(([phase, nodes]) => {
+  const phaseDescriptions: Record<string, string> = {
+    DISCOVERY: 'current-state observations',
+    REIMAGINE: 'future vision signals',
+    CONSTRAINTS: 'blocker and barrier signals',
+    DEFINE_APPROACH: 'enabler and action signals',
+  };
+  return `${phase} (${nodes.length} signals — ${phaseDescriptions[phase] ?? 'general'}): ${nodes.slice(0, 3).map(n => `"${n.rawText.trim().slice(0, 80)}"`).join(' | ')}`;
+}).join('\n')}
+
 Provide a concise thematic analysis (3-5 paragraphs) covering:
 1. The dominant strategic narrative emerging from the themes
-2. Cross-domain theme connections (themes that span multiple domains)
+2. Which themes are strongest in which phases (Discovery vs Reimagine vs Constraints vs Define Approach)
 3. Thematic gaps or underexplored areas
-4. The strategic implication of the theme distribution
+4. The strategic implication of the theme distribution across phases
 
 Write as a senior strategy consultant. Be specific and evidence-grounded.`;
 
@@ -493,19 +528,27 @@ async function runConstraintAgentAnalysis(workshopName: string, data: ReturnType
     return { domain: d, constraints: b.constraints.slice(0, 5), count: b.constraints.length };
   }).filter(d => d.count > 0);
 
-  const prompt = `You are the Constraint Agent for the DREAM Discovery workshop "${workshopName}". Analyse the constraint landscape from the workshop data.
+  // Extract CONSTRAINTS phase signals specifically — these are the authoritative source
+  const constraintsPhaseSignals = (data.byPhase['CONSTRAINTS'] ?? []).slice(0, 30);
 
-CONSTRAINT DATA BY DOMAIN:
-${constraintData.map(d => `${d.domain} (${d.count} constraints):\n${d.constraints.map(c => `  - ${c.slice(0, 120)}`).join('\n')}`).join('\n\n')}
+  const prompt = `You are the Constraint Agent for the DREAM Discovery workshop "${workshopName}". Analyse the constraint landscape — focusing ONLY on what blocks transformation.
 
-TOTAL: ${constraintData.reduce((s, d) => s + d.count, 0)} constraints across ${constraintData.length} domains
+PRIMARY SOURCE — CONSTRAINTS PHASE SIGNALS (${constraintsPhaseSignals.length} signals captured during the Constraints phase):
+${constraintsPhaseSignals.map((n, i) => `  ${i + 1}. "${n.rawText.trim().slice(0, 150)}"`).join('\n') || '  (none captured)'}
+
+SUPPLEMENTARY — CONSTRAINT-TYPE SIGNALS BY DOMAIN (may include signals from other phases classified as constraints):
+${constraintData.map(d => `${d.domain} (${d.count} constraint-type signals):\n${d.constraints.map(c => `  - ${c.slice(0, 120)}`).join('\n')}`).join('\n\n')}
+
+TOTAL: ${constraintData.reduce((s, d) => s + d.count, 0)} constraint-type signals across ${constraintData.length} domains
 RISK INDICATORS: ${data.topKeywords.filter(k => ['risk', 'challenge', 'barrier', 'concern', 'issue', 'problem', 'limitation', 'compliance', 'regulation'].includes(k.word)).map(k => `${k.word}(${k.count})`).join(', ') || 'None detected'}
 
 Provide a concise constraint analysis (2-4 paragraphs) covering:
-1. The most critical constraints that could block transformation
+1. The most critical constraints from the CONSTRAINTS phase that could block the transformation vision
 2. Constraint clusters and dependencies between domains
 3. Which constraints are manageable vs potentially blocking
 4. Risk-adjusted priority ranking
+
+IMPORTANT: Only report constraints — do not include solutions, enablers, or recommendations. Those belong in the Way Forward section.
 
 Write as a risk analyst. Be direct and actionable.`;
 
