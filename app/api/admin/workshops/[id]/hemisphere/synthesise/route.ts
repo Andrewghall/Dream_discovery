@@ -262,12 +262,6 @@ ${(data.byPhase['CONSTRAINTS'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "$
 DEFINE APPROACH PHASE — ${data.byPhase['DEFINE_APPROACH']?.length ?? 0} signals (how to move forward — enablers and plan):
 ${(data.byPhase['DEFINE_APPROACH'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "${n.rawText.trim()}"`).join('\n') || '  (none captured)'}
 
-─── THEME AGENT ANALYSIS ───
-${themeAnalysis}
-
-─── CONSTRAINT AGENT ANALYSIS ───
-${constraintAnalysis}
-${researchContext ? `\n─── RESEARCH AGENT CONTEXT ───\n${researchContext}\n` : ''}
 Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components depend on these exact property names and structures:
 
 {
@@ -371,16 +365,16 @@ ${domainNames.map((dn, i) => {
   "constraintsContent": {
     "_aiSummary": "string — 3-5 sentence INHIBITION SIGNAL summary drawn ONLY from CONSTRAINTS PHASE signals. What blocks the vision — no solutions, no enablers, no roadmap items. Identify: governance barriers, technology fragmentation, decision bottlenecks, cross-team friction, and knowledge silos. What is the primary inhibition pattern? Which constraint, if removed first, would unlock the most momentum? Be specific and evidence-grounded.",
     "regulatory": [
-      {"title": "string", "description": "string — 1-2 sentences", "impact": "Critical or High or Medium or Low", "mitigation": "string — mitigation strategy"}
+      {"title": "string", "description": "string — 1-2 sentences describing the blocker only. No solutions or mitigations.", "impact": "Critical or High or Medium or Low"}
     ],
     "technical": [
-      {"title": "string", "description": "string", "impact": "Critical or High or Medium or Low", "mitigation": "string"}
+      {"title": "string", "description": "string — blocker only, no solutions", "impact": "Critical or High or Medium or Low"}
     ],
     "commercial": [
-      {"title": "string", "description": "string", "impact": "Critical or High or Medium or Low", "mitigation": "string"}
+      {"title": "string", "description": "string — blocker only, no solutions", "impact": "Critical or High or Medium or Low"}
     ],
     "organizational": [
-      {"title": "string", "description": "string", "impact": "Critical or High or Medium or Low", "mitigation": "string"}
+      {"title": "string", "description": "string — blocker only, no solutions", "impact": "Critical or High or Medium or Low"}
     ]
   },
   "potentialSolution": {
@@ -438,11 +432,13 @@ CRITICAL RULES:
 - Write in confident, board-level language suitable for C-suite audiences.
 
 PHASE PURITY — MANDATORY. Each section draws from exactly one phase:
-- discoveryOutput: Draw EXCLUSIVELY from DISCOVERY PHASE signals. Do NOT include reimagined futures, aspirations, solutions, enablers, or anything from Reimagine/Constraints/Define Approach phases. Discovery = current state only — what IS true right now.
-- reimagineContent: Draw EXCLUSIVELY from REIMAGINE PHASE signals. Do NOT include constraints, blockers, implementation steps, or current-state problem descriptions. Reimagine = pure future vision — what participants dare to imagine, unconstrained.
-- constraintsContent: Draw EXCLUSIVELY from CONSTRAINTS PHASE signals. Do NOT include solutions, enablers, or roadmap items. Constraints = only what blocks the reimagined vision.
-- potentialSolution: Draw EXCLUSIVELY from DEFINE APPROACH PHASE signals. Do NOT include current-state descriptions or raw constraint statements. Way Forward = the concrete plan bridging current → vision.
-- execSummary, commercialContent, customerJourney, summaryContent: May synthesise across all phases.
+- discoveryOutput: Draw EXCLUSIVELY from DISCOVERY PHASE signals listed above. Ignore ALL other analyses (Theme Agent, Constraint Agent, domain analysis). Discovery = current state only — what IS true right now. No futures, no solutions, no aspirations.
+- reimagineContent: Draw EXCLUSIVELY from REIMAGINE PHASE signals listed above. Ignore ALL other analyses. Reimagine = pure future vision only — no constraints, no blockers, no current-state problems, no implementation steps.
+- constraintsContent: Draw EXCLUSIVELY from CONSTRAINTS PHASE signals listed above. Ignore ALL other analyses. Constraints = blockers only — no solutions, no mitigations, no enablers, no roadmap items.
+- potentialSolution: Draw EXCLUSIVELY from DEFINE APPROACH PHASE signals listed above. Ignore ALL other analyses. Way Forward = the concrete plan only — no current-state descriptions, no raw constraint statements.
+- execSummary, commercialContent, customerJourney, summaryContent: May use the cross-phase context block below the rules.
+
+The Theme Agent analysis, Constraint Agent analysis, research context, and domain analysis that appear AFTER this rules block are ONLY for: execSummary, commercialContent, customerJourney, summaryContent. They are invisible to the four phase-specific sections.
 
 STRUCTURAL RULES:
 - _aiSummary fields: Each is a COGNITIVE SIGNAL summary framed through the DREAM Organisational Brain model. Every summary must be a specific signal reading — not a generic summary. Reference evidence from the data. Identify what the signal reveals about how this organisation thinks. Every sentence must carry weight. NEVER use generic consulting filler or restate findings without interpretation.
@@ -456,7 +452,18 @@ STRUCTURAL RULES:
 - customerJourney: 6 stages, 5-6 actors, 15-20 interactions. Mark 3-4 as isPainPoint:true, 2 as isMomentOfTruth:true.
 - summaryContent.keyFindings: 3-4 categories. recommendedNextSteps: 3 steps. successMetrics: 4 metrics.
 
-─── DOMAIN ANALYSIS (cross-phase context — background only, not primary source for any single section) ───
+━━━ CROSS-PHASE CONTEXT ━━━
+The sections below apply ONLY to: execSummary, commercialContent, customerJourney, summaryContent.
+They MUST NOT be used as sources for discoveryOutput, reimagineContent, constraintsContent, or potentialSolution.
+Those four sections draw exclusively from the phase-separated signals above.
+
+─── THEME AGENT ANALYSIS (cross-phase — execSummary / summaryContent use only) ───
+${themeAnalysis}
+
+─── CONSTRAINT AGENT ANALYSIS (cross-phase — execSummary / commercialContent use only) ───
+${constraintAnalysis}
+${researchContext ? `\n─── RESEARCH AGENT CONTEXT (background — customerJourney / execSummary use only) ───\n${researchContext}\n` : ''}
+─── DOMAIN ANALYSIS (cross-phase — execSummary / summaryContent use only) ───
 ${domainText}
 
 ─── TOP ACTORS & INTERACTIONS ───
@@ -522,35 +529,27 @@ Write as a senior strategy consultant. Be specific and evidence-grounded.`;
 }
 
 async function runConstraintAgentAnalysis(workshopName: string, data: ReturnType<typeof aggregateNodes>): Promise<string> {
-  const domainNames = Object.keys(data.byDomain);
-  const constraintData = domainNames.map(d => {
-    const b = data.byDomain[d];
-    return { domain: d, constraints: b.constraints.slice(0, 5), count: b.constraints.length };
-  }).filter(d => d.count > 0);
+  // Use CONSTRAINTS phase signals only — no cross-phase domain data
+  const constraintsPhaseSignals = (data.byPhase['CONSTRAINTS'] ?? []).slice(0, 40);
 
-  // Extract CONSTRAINTS phase signals specifically — these are the authoritative source
-  const constraintsPhaseSignals = (data.byPhase['CONSTRAINTS'] ?? []).slice(0, 30);
+  const prompt = `You are the Constraint Agent for the DREAM Discovery workshop "${workshopName}". Analyse ONLY what blocks transformation — no solutions, no mitigations, no enablers.
 
-  const prompt = `You are the Constraint Agent for the DREAM Discovery workshop "${workshopName}". Analyse the constraint landscape — focusing ONLY on what blocks transformation.
-
-PRIMARY SOURCE — CONSTRAINTS PHASE SIGNALS (${constraintsPhaseSignals.length} signals captured during the Constraints phase):
+SOURCE: CONSTRAINTS PHASE SIGNALS ONLY (${constraintsPhaseSignals.length} signals):
 ${constraintsPhaseSignals.map((n, i) => `  ${i + 1}. "${n.rawText.trim().slice(0, 150)}"`).join('\n') || '  (none captured)'}
 
-SUPPLEMENTARY — CONSTRAINT-TYPE SIGNALS BY DOMAIN (may include signals from other phases classified as constraints):
-${constraintData.map(d => `${d.domain} (${d.count} constraint-type signals):\n${d.constraints.map(c => `  - ${c.slice(0, 120)}`).join('\n')}`).join('\n\n')}
-
-TOTAL: ${constraintData.reduce((s, d) => s + d.count, 0)} constraint-type signals across ${constraintData.length} domains
 RISK INDICATORS: ${data.topKeywords.filter(k => ['risk', 'challenge', 'barrier', 'concern', 'issue', 'problem', 'limitation', 'compliance', 'regulation'].includes(k.word)).map(k => `${k.word}(${k.count})`).join(', ') || 'None detected'}
 
 Provide a concise constraint analysis (2-4 paragraphs) covering:
-1. The most critical constraints from the CONSTRAINTS phase that could block the transformation vision
-2. Constraint clusters and dependencies between domains
-3. Which constraints are manageable vs potentially blocking
-4. Risk-adjusted priority ranking
+1. The most critical blockers that prevent transformation
+2. Constraint clusters and dependencies
+3. Which constraints are existential vs manageable
 
-IMPORTANT: Only report constraints — do not include solutions, enablers, or recommendations. Those belong in the Way Forward section.
+STRICT RULES:
+- Use ONLY the Constraints phase signals above. Do not draw from other phases.
+- Report blockers only. Do not include solutions, mitigations, or recommendations.
+- If a signal describes a solution or enabler, ignore it — it belongs to a different phase.
 
-Write as a risk analyst. Be direct and actionable.`;
+Write as a risk analyst. Be direct and factual.`;
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
