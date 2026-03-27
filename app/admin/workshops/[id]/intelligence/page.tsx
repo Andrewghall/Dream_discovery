@@ -22,7 +22,7 @@ export default async function IntelligencePage({ params }: Props) {
   const [workshop, scratchpad] = await Promise.all([
     prisma.workshop.findUnique({
       where: { id: workshopId },
-      select: { name: true, domainPack: true, outputIntelligence: true },
+      select: { name: true, description: true, domainPack: true, outputIntelligence: true },
     }),
     prisma.workshopScratchpad.findUnique({
       where: { workshopId },
@@ -44,6 +44,8 @@ export default async function IntelligencePage({ params }: Props) {
         workshopId={workshopId}
         initialStored={stored}
         v2Output={v2Output}
+        workshopDescription={workshop.description}
+        domainPack={workshop.domainPack}
       />
     </div>
   );

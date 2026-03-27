@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Brain, Sparkles, RefreshCw, Loader2, CheckCircle2, AlertCircle, Clock,
-  Bot, Zap, TrendingUp, AlertTriangle, Lightbulb, Target, Map, ChevronRight,
+  Zap, TrendingUp, AlertTriangle, Lightbulb, Target, Map, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EngineShell, type EngineStatus } from './EngineShell';
@@ -11,13 +11,13 @@ import { DiscoveryValidationPanel } from './DiscoveryValidationPanel';
 import { RootCausePanel } from './RootCausePanel';
 import { FutureStatePanel } from './FutureStatePanel';
 import { ExecutionRoadmapPanel } from './ExecutionRoadmapPanel';
-import { StrategicImpactPanel } from './StrategicImpactPanel';
 import type {
   StoredOutputIntelligence,
   WorkshopOutputIntelligence,
   EngineKey,
 } from '@/lib/output-intelligence/types';
 import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
+import { ConnectedModelPanel } from '@/components/connected-model/ConnectedModelPanel';
 import { V2OutputView } from '@/components/v2/V2OutputView';
 import type { V2Output } from '@/lib/output/v2-synthesis-agent';
 import type { V2ReportBlock } from '@/components/v2/V2InquiryBar';
@@ -45,15 +45,6 @@ const SIGNALS: Signal[] = [
     Icon: Target,
   },
   {
-    key: 'rootCause',
-    name: 'Constraints',
-    phase: 'Constraints',
-    color: 'rose',
-    description: 'Forces preventing transformation',
-    getMetric: (i) => `${i.rootCause.rootCauses.length} systemic barriers`,
-    Icon: AlertTriangle,
-  },
-  {
     key: 'futureState',
     name: 'Reimagine',
     phase: 'Reimagine',
@@ -63,6 +54,15 @@ const SIGNALS: Signal[] = [
       ? `${i.strategicImpact.automationPotential.percentage}% automation potential`
       : `${i.futureState.redesignPrinciples.length} design principles`,
     Icon: Lightbulb,
+  },
+  {
+    key: 'rootCause',
+    name: 'Constraints',
+    phase: 'Constraints',
+    color: 'rose',
+    description: 'Forces preventing transformation',
+    getMetric: (i) => `${i.rootCause.rootCauses.length} systemic barriers`,
+    Icon: AlertTriangle,
   },
   {
     key: 'roadmap',
@@ -127,11 +127,14 @@ interface IntelligenceHubProps {
   workshopId: string;
   initialStored: StoredOutputIntelligence | null;
   v2Output?: V2Output | null;
+  workshopDescription?: string | null;
+  /** Domain pack key (e.g. "contact_centre", "contact_centre_airline") — gates domain-specific panels */
+  domainPack?: string | null;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function IntelligenceHub({ workshopId, initialStored, v2Output }: IntelligenceHubProps) {
+export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopDescription, domainPack }: IntelligenceHubProps) {
   const [outputMode, setOutputMode] = useState<'v1' | 'v2'>('v1');
   const pendingBlocksRef = useRef<V2ReportBlock[]>([]);
   const [activeSignal, setActiveSignal] = useState<EngineKey>('discoveryValidation');
@@ -555,11 +558,7 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output }: Intelli
                           <RootCausePanel data={intelligence.rootCause} />
                         )}
                         {intelligence && signal.key === 'futureState' && (
-                          <>
-                            <FutureStatePanel data={intelligence.futureState} />
-                            <div className="border-t border-slate-100 mx-4" />
-                            <StrategicImpactPanel data={intelligence.strategicImpact} />
-                          </>
+                          <FutureStatePanel data={intelligence.futureState} />
                         )}
                         {intelligence && signal.key === 'roadmap' && (
                           <ExecutionRoadmapPanel data={intelligence.roadmap} />
@@ -583,7 +582,8 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output }: Intelli
           )}
 
           {/* ── Contact Centre Domain Module ────────────────────────────────── */}
-          {intelligence && (
+          {/* Only render when this is explicitly a contact_centre workshop */}
+          {intelligence && domainPack?.startsWith('contact_centre') && (
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
@@ -646,62 +646,6 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output }: Intelli
                   </div>
                 </div>
 
-                {/* Workforce Model */}
-                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <p className="text-xs font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
-                    <Bot className="h-3.5 w-3.5 text-violet-500" />
-                    Workforce Model
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 mb-4">
-                    <div className="rounded-lg bg-rose-50 border border-rose-100 p-3 text-center">
-                      {intelligence.strategicImpact.automationPotential !== null ? (
-                        <p className="text-xl font-bold text-rose-600">
-                          {intelligence.strategicImpact.automationPotential.percentage}%
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400 italic">—</p>
-                      )}
-                      <p className="text-[10px] text-rose-500 font-medium mt-0.5">AI Only</p>
-                    </div>
-                    <div className="rounded-lg bg-violet-50 border border-violet-100 p-3 text-center">
-                      {intelligence.strategicImpact.aiAssistedWork !== null ? (
-                        <p className="text-xl font-bold text-violet-600">
-                          {intelligence.strategicImpact.aiAssistedWork.percentage}%
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400 italic">—</p>
-                      )}
-                      <p className="text-[10px] text-violet-500 font-medium mt-0.5">AI Assisted</p>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-center">
-                      {intelligence.strategicImpact.humanOnlyWork !== null ? (
-                        <p className="text-xl font-bold text-slate-600">
-                          {intelligence.strategicImpact.humanOnlyWork.percentage}%
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400 italic">—</p>
-                      )}
-                      <p className="text-[10px] text-slate-500 font-medium mt-0.5">Human Only</p>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    {intelligence.futureState.aiHumanModel.slice(0, 5).map((task, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                          task.recommendation === 'AI Only'
-                            ? 'bg-rose-100 text-rose-600'
-                            : task.recommendation === 'AI Assisted'
-                            ? 'bg-violet-100 text-violet-600'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}>
-                          {task.recommendation}
-                        </span>
-                        <span className="text-[10px] text-slate-600 truncate">{task.task}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Future Contact Centre Model */}
                 <div className="rounded-xl border border-slate-200 bg-white p-5">
                   <p className="text-xs font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
@@ -728,6 +672,34 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output }: Intelli
                 </div>
 
               </div>
+            </div>
+          )}
+
+          {/* ── Connected Model ──────────────────────────────────────────────── */}
+          {intelligence?.causalIntelligence && (
+            <div>
+              {/* Section header */}
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Connected Model
+                  </p>
+                  <span className="text-[10px] text-slate-300">·</span>
+                  <span className="text-[10px] text-slate-400">
+                    Derived from fixed hemisphere layer assignments
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Each finding answers four questions: what we learned, what validates it,
+                  what it connects to, and what action it implies.
+                  Click any chain node or finding row to explore the full evidence.
+                </p>
+              </div>
+              <ConnectedModelPanel
+                causalIntelligence={intelligence.causalIntelligence}
+                lensesUsed={stored?.lensesUsed ?? []}
+                workshopGoal={workshopDescription}
+              />
             </div>
           )}
 
