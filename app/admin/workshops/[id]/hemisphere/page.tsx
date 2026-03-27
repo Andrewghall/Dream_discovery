@@ -70,6 +70,7 @@ type HemisphereResponse = {
   hemisphereGraph: HemisphereGraph;
   snapshotId?: string;
   snapshotName?: string;
+  totalSignalCount?: number; // full corpus size before visualisation cap
   error?: string;
   industryDimensions?: IndustryDimension[] | null;
 };
@@ -1578,7 +1579,10 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
             {!loading && !error && selectedSnapshotId && data?.snapshotName && (
               <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2">
                 <div className="rounded-md px-3 py-1.5 text-xs bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
-                  Viewing: {data.snapshotName} · {nodes.length} node{nodes.length !== 1 ? 's' : ''}
+                  Viewing: {data.snapshotName}
+                  {data.totalSignalCount && data.totalSignalCount > nodes.length
+                    ? ` · top ${nodes.length} of ${data.totalSignalCount} signals`
+                    : ` · ${nodes.length} node${nodes.length !== 1 ? 's' : ''}`}
                 </div>
               </div>
             )}
