@@ -20,7 +20,8 @@ const GANTT_PHASE_WEEKS = [
   { start: 13, end: 52 }, // Phase 3 — Advanced Automation
 ] as const;
 
-const GANTT_PHASE_COLORS = ['#3b82f6', '#f59e0b', '#10b981'] as const;
+// Colours match the phase card headers: blue-600, purple-700, emerald-700
+const GANTT_PHASE_COLORS = ['#2563eb', '#7e22ce', '#047857'] as const;
 
 function RoadmapGantt({ phases }: { phases: RoadmapPhase[] }) {
   if (!phases?.length) return null;
