@@ -372,7 +372,10 @@ function ResolutionSummary({ constraints }: { constraints: WorkshopConstraint[] 
 
   return (
     <div className="rounded-2xl border border-slate-200 p-6 bg-gradient-to-br from-slate-50 to-white">
-      <h3 className="text-base font-bold text-slate-900 mb-5">Does the Vision Break Through?</h3>
+      <h3 className="text-base font-bold text-slate-900 mb-1">Does the Vision Break Through?</h3>
+      <p className="text-xs text-slate-400 mb-5">
+        Of the {total} constraints identified, how many does the Reimagine vision explicitly address?
+      </p>
       <div className="flex items-center gap-8">
         {/* SVG ring — larger */}
         <div className="shrink-0 relative w-28 h-28">
@@ -400,12 +403,12 @@ function ResolutionSummary({ constraints }: { constraints: WorkshopConstraint[] 
             const { Icon } = conf;
             const textClass = conf.style.split(' ').find(s => s.startsWith('text-')) ?? 'text-slate-600';
             return (
-              <div key={status} className="flex items-center gap-3">
+              <div key={status} className="flex items-center gap-2.5">
                 <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${conf.style.split(' ').find(s => s.startsWith('bg-'))} border ${conf.style.split(' ').find(s => s.startsWith('border-'))}`}>
                   <Icon className={`h-3.5 w-3.5 ${textClass}`} />
                 </div>
-                <span className="text-xs text-slate-600 flex-1 leading-snug">{status}</span>
-                <span className="text-sm font-black text-slate-900">{count}</span>
+                <span className="text-xs text-slate-600 leading-snug">{status}</span>
+                <span className="shrink-0 w-6 h-6 rounded-full bg-slate-100 text-slate-800 text-xs font-black flex items-center justify-center ml-auto">{count}</span>
               </div>
             );
           })}
