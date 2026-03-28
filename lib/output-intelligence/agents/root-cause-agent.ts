@@ -98,7 +98,8 @@ function buildSignalDump(signals: WorkshopSignals): string {
   // ── CONSTRAINTS phase — participant voice preserved ───────────────────────
   if (signals.liveSession.constraintPads.length > 0) {
     lines.push('\n=== CONSTRAINT WORKSHOP SIGNALS (participant voice — use these verbatim in participantVoice field) ===');
-    signals.liveSession.constraintPads.slice(0, 40).forEach((p) => {
+    lines.push(`(${signals.liveSession.constraintPads.length} total signals — read all of them, each distinct constraint should become its own workshopConstraint entry)`);
+    signals.liveSession.constraintPads.forEach((p) => {
       lines.push(`• ${p.text}${p.lens ? ` [${p.lens}]` : ''}${p.actor ? ` — ${p.actor}` : ''}`);
     });
   }
@@ -203,7 +204,7 @@ CRITICAL RULES:
 
 forceFieldHeadline: Make it memorable and specific. Capture the essential tension in one sentence. Not "The organisation faces challenges" — something like "A workforce ready to change, trapped by infrastructure that cannot keep up."
 
-workshopConstraints (6-10 items):
+workshopConstraints (12-20 items — a 2-hour constraints workshop surfaces many distinct constraints; be thorough and don't collapse distinct issues into one):
 - These are what PARTICIPANTS named as constraints in their own words
 - participantVoice MUST be a near-verbatim quote or very close paraphrase from the actual signals — do not rewrite into consulting language
 - type must be one of: Structural / Cultural / Technical / Regulatory / Resource / Leadership
@@ -216,7 +217,7 @@ drivingForces (4-6 items):
 
 systemicPattern: Write a diagnosis, not a list. Name the underlying pattern driving ALL the constraints. What is the organisation's fundamental challenge?
 
-rootCauses: 5-8 ranked causes. Go deeper than symptoms. WHY does the constraint exist?
+rootCauses: 8-12 ranked causes. Go deeper than symptoms. WHY does the constraint exist? Each cause should be distinct — don't merge separate issues.
 
 frictionMap: If journey stages exist, use them. If not, create stages based on the lenses (e.g. "Customer Contact", "Agent Resolution", "Back Office Processing", "Compliance Review").
 
@@ -245,7 +246,7 @@ ${SCHEMA}`;
             { role: 'user', content: userMessage },
           ],
           temperature: 0.3,
-          max_tokens: 5000,
+          max_tokens: 8000,
         },
         { signal: controller.signal }
       ));
