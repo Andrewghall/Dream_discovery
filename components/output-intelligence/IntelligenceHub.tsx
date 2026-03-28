@@ -17,14 +17,15 @@ import type {
 } from '@/lib/output-intelligence/types';
 import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
 import { ConnectedModelPanel } from '@/components/connected-model/ConnectedModelPanel';
+import { TransformationLogicMapPanel } from './TransformationLogicMapPanel';
 import { V2OutputView } from '@/components/v2/V2OutputView';
 import type { V2Output } from '@/lib/output/v2-synthesis-agent';
 import type { V2ReportBlock } from '@/components/v2/V2InquiryBar';
 
 // ── Signal config — DREAM cognitive function mapping ──────────────────────────
 
-/** Union of EngineKey + the Connected Model tab (display-only, not engine-backed) */
-type ActiveView = EngineKey | 'connectedModel';
+/** Union of EngineKey + display-only tabs (not engine-backed) */
+type ActiveView = EngineKey | 'connectedModel' | 'transformationLogicMap';
 
 interface Signal {
   key: ActiveView;
@@ -59,6 +60,17 @@ const SIGNALS: Signal[] = [
     description: 'Forces preventing transformation',
     getMetric: (i) => `${i.rootCause.rootCauses.length} systemic barriers`,
     Icon: AlertTriangle,
+  },
+  {
+    key: 'transformationLogicMap',
+    name: 'Logic Map',
+    phase: 'Transformation Logic Map',
+    color: 'indigo',
+    description: 'Coalescence, orphans & valid transformation chains — derived from the relationship graph',
+    getMetric: (i) => i.transformationLogicMap
+      ? `${i.transformationLogicMap.coverageScore}% constraint coverage · ${i.transformationLogicMap.strongestChains.length} chains`
+      : 'Logic map',
+    Icon: Network,
   },
   {
     key: 'roadmap',
@@ -536,6 +548,35 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
               {SIGNALS.map((signal) => {
                 if (signal.key !== activeSignal) return null;
                 const colors = SIGNAL_COLORS[signal.color];
+
+                // Transformation Logic Map tab — deterministic, not engine-backed
+                if (signal.key === 'transformationLogicMap') {
+                  if (!intelligence?.transformationLogicMap) {
+                    return (
+                      <div key="transformationLogicMap" className={`rounded-xl border ${colors.border} p-8 text-center`}>
+                        <Network className="h-8 w-8 text-slate-300 mx-auto mb-3" />
+                        <p className="text-sm text-slate-500 font-medium">Transformation Logic Map not yet available</p>
+                        <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
+                          Run a full Brain Scan after a live workshop session with classified signals — the Logic Map builds automatically from the relationship graph.
+                        </p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key="transformationLogicMap">
+                      <div className={`rounded-t-xl ${colors.headerBg} border ${colors.border} border-b-0 px-5 py-3 flex items-center gap-2`}>
+                        <span className={`text-xs font-bold ${colors.accent}`}>Transformation Logic Map</span>
+                        <ChevronRight className={`h-3 w-3 ${colors.accent}`} />
+                        <span className="text-xs text-slate-500 italic hidden sm:block">
+                          Coalescence, orphans &amp; valid chains — derived from the hemisphere relationship graph
+                        </span>
+                      </div>
+                      <div className={`rounded-b-xl border ${colors.border} overflow-hidden`}>
+                        <TransformationLogicMapPanel data={intelligence.transformationLogicMap} />
+                      </div>
+                    </div>
+                  );
+                }
 
                 // Connected Model tab: render directly without EngineShell (not engine-backed)
                 if (signal.key === 'connectedModel') {

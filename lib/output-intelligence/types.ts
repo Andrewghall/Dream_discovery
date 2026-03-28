@@ -377,6 +377,80 @@ export interface CausalIntelligence {
   generatedAtMs: number;
 }
 
+// ── Transformation Logic Map ──────────────────────────────────────────────────
+//
+// A purely deterministic, graph-derived visual model that answers:
+//   • Are constraints being addressed by the transformation plan?
+//   • Where do problems converge into transformation pressure points?
+//   • Where is effort disconnected from real problems?
+//   • Where is vision disconnected from execution?
+//
+// Computed from GraphIntelligence — no LLM call required.
+
+/** A node in the Transformation Logic Map — one evidence cluster */
+export interface TLMNode {
+  nodeId: string;
+  displayLabel: string;
+  layer: 'CONSTRAINT' | 'ENABLER' | 'REIMAGINATION';
+  // Classification flags (non-exclusive)
+  isCoalescent: boolean;    // Bottleneck / high out-degree convergence point
+  isOrphan: boolean;        // No credible causal connection
+  orphanType?: 'CONSTRAINT_NO_RESPONSE' | 'REIMAGINATION_UNSUPPORTED' | 'ENABLER_LEADS_NOWHERE';
+  inValidChain: boolean;    // Part of a dominant constraint→enabler→reimagination chain
+  isCompensating: boolean;  // Workaround enabler (compensates_for edge to a live constraint)
+  // Scoring — drives node prominence in the visual layout
+  compositeScore: number;   // 0–100
+  rawFrequency: number;     // Mention count
+  connectionDegree: number; // Total edges — higher = more central in force layout
+  // Evidence
+  quotes: Array<{ text: string; participantRole: string | null; lens: string | null }>;
+}
+
+/** A directional relationship between two TLM nodes */
+export interface TLMEdge {
+  edgeId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  relationshipType: 'drives' | 'enables' | 'constrains' | 'compensates_for' | 'responds_to' | 'contradicts' | 'blocks' | 'depends_on';
+  score: number;         // 0–100
+  tier: EdgeTier;
+  isChainEdge: boolean;  // Part of a dominant causal chain — rendered prominently
+  rationale: string;
+}
+
+export interface TransformationLogicMap {
+  nodes: TLMNode[];
+  edges: TLMEdge[];
+  /** Nodes where many links converge — transformation pressure points */
+  coalescencePoints: Array<{
+    nodeId: string;
+    label: string;
+    layer: string;
+    outDegree: number;
+    affectedCount: number;
+    compositeScore: number;
+  }>;
+  /** Summary of disconnected nodes by layer */
+  orphanSummary: {
+    constraintOrphans: number;   // Known problems with no transformation plan
+    enablerOrphans: number;      // Activity without purpose
+    visionOrphans: number;       // Strategy without execution path
+    topOrphanLabels: string[];
+  };
+  /** The strongest complete constraint→enabler→vision chains */
+  strongestChains: Array<{
+    chainId: string;
+    constraintLabel: string;
+    enablerLabel: string;
+    reimaginationLabel: string;
+    chainStrength: number;
+  }>;
+  /** % of constraint nodes that are part of at least one valid chain */
+  coverageScore: number;
+  /** 2-3 sentence interpretation of what the map reveals about this organisation */
+  interpretationSummary: string;
+}
+
 // ── Master Output ────────────────────────────────────────────────────────────
 
 export interface WorkshopOutputIntelligence {
@@ -391,6 +465,12 @@ export interface WorkshopOutputIntelligence {
    * without theme-labelled live session nodes.
    */
   causalIntelligence?: CausalIntelligence;
+  /**
+   * Transformation Logic Map — deterministic visual model derived from the
+   * relationship graph. Shows coalescence, orphans, valid chains, and islands.
+   * Optional — absent when graphIntelligence has no meaningful coverage.
+   */
+  transformationLogicMap?: TransformationLogicMap;
   generatedAtMs: number;
   lensesUsed: string[];
 }

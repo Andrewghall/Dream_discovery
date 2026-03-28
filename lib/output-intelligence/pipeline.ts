@@ -21,6 +21,7 @@ import { runFutureStateAgent } from './agents/future-state-agent';
 import { runExecutionRoadmapAgent } from './agents/execution-roadmap-agent';
 import { runStrategicImpactAgent } from './agents/strategic-impact-agent';
 import { runCausalSynthesisAgent } from './agents/causal-synthesis-agent';
+import { buildTransformationLogicMap } from './engines/transformation-logic-engine';
 
 export type EngineProgressCallback = (engine: EngineKey, event: 'started' | 'complete' | 'error', detail?: string) => void;
 
@@ -181,6 +182,20 @@ export async function runIntelligencePipeline(
       : undefined;
   // Causal synthesis failures are silent (no error logged — null result is valid when graph is absent)
 
+  // Transformation Logic Map — deterministic, no LLM — derived from graphIntelligence
+  let transformationLogicMap: WorkshopOutputIntelligence['transformationLogicMap'];
+  if (signals.graphIntelligence && (
+    signals.graphIntelligence.dominantCausalChains.length > 0 ||
+    signals.graphIntelligence.bottlenecks.length > 0 ||
+    signals.graphIntelligence.brokenChains.length > 0
+  )) {
+    try {
+      transformationLogicMap = buildTransformationLogicMap(signals.graphIntelligence);
+    } catch (err) {
+      console.error('[pipeline] transformation logic map build failed:', err);
+    }
+  }
+
   const intelligence: WorkshopOutputIntelligence = {
     discoveryValidation,
     rootCause,
@@ -188,6 +203,7 @@ export async function runIntelligencePipeline(
     roadmap,
     strategicImpact,
     causalIntelligence,
+    transformationLogicMap,
     generatedAtMs: Date.now(),
     lensesUsed: signals.context.lenses,
   };
