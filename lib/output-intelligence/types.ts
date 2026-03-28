@@ -44,9 +44,16 @@ export interface WorkshopSignals {
     }>;
   };
   liveSession: {
-    reimaginePads: Array<{ text: string; type?: string; lens?: string }>;
-    constraintPads: Array<{ text: string; type?: string; lens?: string }>;
-    defineApproachPads: Array<{ text: string; type?: string; lens?: string }>;
+    reimaginePads: Array<{ text: string; type?: string; lens?: string; actor?: string }>;
+    constraintPads: Array<{ text: string; type?: string; lens?: string; actor?: string }>;
+    defineApproachPads: Array<{ text: string; type?: string; lens?: string; actor?: string }>;
+    /**
+     * DISCOVERY phase signals from the live snapshot — present alongside
+     * the structured discovery.insights. These carry actor (speakerId) labels
+     * and lens tags directly from participant nodes, enabling role-specific
+     * analysis of the current-state pain that the reimagined future must address.
+     */
+    discoveryPads: Array<{ text: string; type?: string; lens?: string; actor?: string }>;
     journey: Array<{ stage: string; description?: string; aiScore?: number; painPoints?: string[] }>;
     hemisphereShift: number | null;  // 0-1 shift from left to right brain
   };
@@ -174,6 +181,24 @@ export interface FutureStateDesign {
   };
   /** 2-3 sentences on what 3-5 year success looks like */
   horizonVision?: string;
+  /**
+   * Actor-perspective future journey — what each role now experiences
+   * in the reimagined operating model. Built from actor-tagged REIMAGINE
+   * signals cross-referenced with DISCOVERY current-pain signals.
+   */
+  reimaginedJourney?: {
+    headline: string;
+    actorJourneys: Array<{
+      /** e.g. "Customer & Passenger", "Frontline Agent", "BPO Agent" */
+      actor: string;
+      /** 2-3 sentences on their current reality grounded in discovery signals */
+      currentReality: string;
+      /** 3-4 vivid sentences painting their future experience from reimagine signals */
+      reimaginedExperience: string;
+      /** 2-3 specific enablers that make this actor's future possible */
+      keyEnablers: string[];
+    }>;
+  };
 }
 
 // ── Engine 4: Execution Roadmap ─────────────────────────────────────────────

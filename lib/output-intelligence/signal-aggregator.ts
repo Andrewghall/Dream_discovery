@@ -24,8 +24,21 @@ type DiscoverAnalysis = {
 };
 
 type SnapshotPayload = {
-  nodesById?: Record<string, { rawText: string; dialoguePhase?: string; classification?: { primaryType?: string }; lens?: string }>;
-  nodes?: Record<string, { rawText: string; dialoguePhase?: string; classification?: { primaryType?: string }; lens?: string }>;
+  nodesById?: Record<string, {
+    rawText: string;
+    dialoguePhase?: string;
+    classification?: { primaryType?: string };
+    lens?: string;
+    /** Actor label — set to participant role or speakerId from corpus generation */
+    speakerId?: string;
+  }>;
+  nodes?: Record<string, {
+    rawText: string;
+    dialoguePhase?: string;
+    classification?: { primaryType?: string };
+    lens?: string;
+    speakerId?: string;
+  }>;
   journey?: Array<{ stage: string; description?: string; aiAgencyScore?: number; painPoints?: string[] }>;
   hemisphereShift?: number;
 };
@@ -250,6 +263,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   const reimaginePads: WorkshopSignals['liveSession']['reimaginePads'] = [];
   const constraintPads: WorkshopSignals['liveSession']['constraintPads'] = [];
   const defineApproachPads: WorkshopSignals['liveSession']['defineApproachPads'] = [];
+  const discoveryPads: WorkshopSignals['liveSession']['discoveryPads'] = [];
   let journey: WorkshopSignals['liveSession']['journey'] = [];
   let hemisphereShift: number | null = null;
 
@@ -264,11 +278,13 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
         text: truncate(node.rawText, 400),
         type: node.classification?.primaryType ?? undefined,
         lens: node.lens ?? undefined,
+        actor: node.speakerId ?? undefined,
       };
       const phase = node.dialoguePhase?.toUpperCase();
       if (phase === 'REIMAGINE') reimaginePads.push(pad);
       else if (phase === 'CONSTRAINTS') constraintPads.push(pad);
       else if (phase === 'DEFINE_APPROACH') defineApproachPads.push(pad);
+      else if (phase === 'DISCOVERY') discoveryPads.push(pad);
     }
 
     if (Array.isArray(payload?.journey)) {
@@ -360,6 +376,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       reimaginePads,
       constraintPads,
       defineApproachPads,
+      discoveryPads,
       journey,
       hemisphereShift,
     },
