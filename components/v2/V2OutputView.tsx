@@ -1,12 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Sparkles, Shield, ArrowRight, Target, Image as ImageIcon, Loader2, Check } from 'lucide-react';
+import { Sparkles, Shield, ArrowRight, Target, Image as ImageIcon, Loader2, Check } from 'lucide-react';
 import { AiInsightCard } from '@/components/scratchpad/AiInsightCard';
 import { ThreeHousesFramework } from '@/components/scratchpad/ThreeHousesFramework';
 import { SectionHeader } from './SectionHeader';
 import { ArtifactRenderer } from './ArtifactRenderer';
-import { TruthCard } from './TruthCard';
 import { ConstraintCluster } from './ConstraintCluster';
 import { NowNextLaterBoard } from './NowNextLaterBoard';
 import { OutcomeRow } from './OutcomeRow';
@@ -14,11 +13,13 @@ import { V2InquiryBar, type V2ReportBlock } from './V2InquiryBar';
 import type { V2Output } from '@/lib/output/v2-synthesis-agent';
 
 // ── Tab config ─────────────────────────────────────────────────────────────
+// NOTE: 'discover' tab deliberately excluded — Discovery content lives exclusively on
+// the Discovery Output page (/discovery-output). Brain Scan (V2 mode) covers
+// Reimagine, Constraints, Path Forward, and Outcomes only.
 
-type V2Tab = 'discover' | 'reimagine' | 'constraints' | 'pathForward' | 'outcomes';
+type V2Tab = 'reimagine' | 'constraints' | 'pathForward' | 'outcomes';
 
 const V2_TABS: { key: V2Tab; label: string; icon: React.ElementType; color: string }[] = [
-  { key: 'discover',     label: 'Discover',      icon: Search,     color: 'text-blue-600'    },
   { key: 'reimagine',    label: 'Reimagine',     icon: Sparkles,   color: 'text-pink-600'    },
   { key: 'constraints',  label: 'Constraints',   icon: Shield,     color: 'text-amber-600'   },
   { key: 'pathForward',  label: 'Path Forward',  icon: ArrowRight, color: 'text-emerald-600' },
@@ -96,16 +97,13 @@ interface V2OutputViewProps {
 }
 
 export function V2OutputView({ v2Output, workshopId, onAddToReport }: V2OutputViewProps) {
-  const [activeTab, setActiveTab] = useState<V2Tab>('discover');
+  const [activeTab, setActiveTab] = useState<V2Tab>('reimagine');
   const [worldImageUrl, setWorldImageUrl] = useState<string | null>(null);
 
   if (!v2Output) return <V2EmptyState />;
 
   // Build section context string for each tab's inquiry bar
   const sectionContexts: Record<V2Tab, string> = {
-    discover: v2Output.discover
-      ? `DISCOVER section. Exec: ${v2Output.discover.execSummary}. Key truths: ${v2Output.discover.truths?.map(t => t.statement).join('; ')}. Pain concentration: ${v2Output.discover.painConcentration}. Gaps: ${v2Output.discover.gaps?.join('; ')}`
-      : '',
     reimagine: v2Output.reimagine
       ? `REIMAGINE section. Exec: ${v2Output.reimagine.execSummary}. Future states: ${v2Output.reimagine.futureStates?.map(f => f.title).join('; ')}. Actor shifts: ${v2Output.reimagine.actorJourneyShifts?.map(s => `${s.actor}: ${s.from} → ${s.to}`).join('; ')}`
       : '',
@@ -144,73 +142,8 @@ export function V2OutputView({ v2Output, workshopId, onAddToReport }: V2OutputVi
         })}
       </div>
 
-      {/* ── DISCOVER ── */}
-      {activeTab === 'discover' && v2Output.discover && (
-        <div className="space-y-6">
-          <SectionHeader
-            section="Discover"
-            purpose="What is true today — mapped to where it happens and who it affects."
-            interpretation="Each truth is anchored to an actor, journey stage, and lens. Evidence strength indicates signal reliability."
-          />
-          <AiInsightCard summary={v2Output.discover.execSummary} />
-
-          {/* Top 5 truths */}
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Top 5 Truths</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {v2Output.discover.truths?.map((truth, i) => (
-                <TruthCard key={i} truth={truth} index={i} />
-              ))}
-            </div>
-          </div>
-
-          {/* Artifact (usually heatmap) */}
-          {v2Output.discover.artifact && v2Output.discover.artifact.type !== 'none' && (
-            <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-                Pain Distribution — Actors × Journey Stages
-              </h3>
-              {v2Output.discover.artifact.type === 'heatmap' && (
-                <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 mb-3 text-xs text-slate-600 leading-relaxed">
-                  <span className="font-semibold text-blue-700">How to read this: </span>
-                  Each cell shows the number of friction or pain signals captured for that actor at that journey stage during the workshop. Darker cells = higher concentration of pain. Hover a cell to see what drives that score. Use this to prioritise where intervention will have the most impact.
-                </div>
-              )}
-              <ArtifactRenderer artifact={v2Output.discover.artifact} />
-            </div>
-          )}
-
-          {/* Pain concentration + gaps */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {v2Output.discover.painConcentration && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-5">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-red-600 mb-2">Pain Concentration</h4>
-                <p className="text-sm text-slate-700 leading-relaxed">{v2Output.discover.painConcentration}</p>
-              </div>
-            )}
-            {v2Output.discover.gaps?.length > 0 && (
-              <div className="rounded-xl border border-slate-200 bg-white p-5">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Evidence Gaps</h4>
-                <ul className="space-y-1.5">
-                  {v2Output.discover.gaps.map((g, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
-                      <span className="flex-shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-300" />
-                      {g}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-
-          <V2InquiryBar
-            workshopId={workshopId}
-            sectionContext={sectionContexts.discover}
-            sectionLabel="Discover"
-            onAddToReport={onAddToReport}
-          />
-        </div>
-      )}
+      {/* NOTE: Discover tab removed — Discovery content lives exclusively on the
+          Discovery Output page (/discovery-output). */}
 
       {/* ── REIMAGINE ── */}
       {activeTab === 'reimagine' && v2Output.reimagine && (

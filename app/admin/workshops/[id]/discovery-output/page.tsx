@@ -1248,7 +1248,12 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
 
             {/* ── Tab 1: Executive Diagnostic ──────────────────────── */}
             <TabsContent value="executive-diagnostic" className="mt-0 p-6">
-              <div className="flex justify-end mb-4">
+              <div className="flex justify-end gap-2 mb-4">
+                <ReportSectionToggle
+                  workshopId={workshopId}
+                  sectionId="supporting_evidence"
+                  title="Supporting Evidence"
+                />
                 <ReportSectionToggle
                   workshopId={workshopId}
                   sectionId="discovery_diagnostic"

@@ -1,11 +1,109 @@
 'use client';
 
 import { AlertTriangle } from 'lucide-react';
-import type { ExecutionRoadmap } from '@/lib/output-intelligence/types';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Cell, ReferenceLine,
+} from 'recharts';
+import type { ExecutionRoadmap, RoadmapPhase } from '@/lib/output-intelligence/types';
 
 interface Props {
   data: ExecutionRoadmap;
 }
+
+// ── Gantt chart — derived from V1 roadmap phases ──────────────────────────
+
+/** Fixed week windows per phase (aligns with V2 synthesis agent conventions) */
+const GANTT_PHASE_WEEKS = [
+  { start: 1,  end: 4  }, // Phase 1 — Immediate Enablement
+  { start: 5,  end: 12 }, // Phase 2 — Structural Transformation
+  { start: 13, end: 52 }, // Phase 3 — Advanced Automation
+] as const;
+
+const GANTT_PHASE_COLORS = ['#3b82f6', '#f59e0b', '#10b981'] as const;
+
+function RoadmapGantt({ phases }: { phases: RoadmapPhase[] }) {
+  if (!phases?.length) return null;
+
+  // Build one row per initiative, spread evenly within the phase window
+  const rows: Array<{ name: string; phaseLabel: string; color: string; offset: number; duration: number }> = [];
+
+  phases.forEach((phase, phaseIdx) => {
+    const window = GANTT_PHASE_WEEKS[phaseIdx] ?? GANTT_PHASE_WEEKS[0];
+    const color = GANTT_PHASE_COLORS[phaseIdx] ?? GANTT_PHASE_COLORS[0];
+    const phaseLabel = phase.phase.split(' — ')[0] ?? `Phase ${phaseIdx + 1}`;
+    const inits = phase.initiatives ?? [];
+    const count = Math.max(inits.length, 1);
+    const span = window.end - window.start;
+
+    inits.forEach((init, initIdx) => {
+      const segSize = Math.floor(span / count);
+      const startWeek = window.start + initIdx * segSize;
+      const endWeek = initIdx === count - 1 ? window.end : startWeek + segSize;
+      rows.push({
+        name: init.title.length > 30 ? init.title.slice(0, 28) + '…' : init.title,
+        phaseLabel,
+        color,
+        offset: startWeek - 1,    // invisible offset bar (0-based for Recharts)
+        duration: endWeek - startWeek + 1,
+      });
+    });
+  });
+
+  if (!rows.length) return null;
+
+  return (
+    <div>
+      <ResponsiveContainer width="100%" height={Math.max(rows.length * 42 + 60, 180)}>
+        <BarChart data={rows} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 28 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+          <XAxis
+            type="number"
+            domain={[0, 52]}
+            ticks={[0, 4, 12, 26, 52]}
+            tickFormatter={(v) => v === 0 ? 'Now' : `W${v}`}
+            tick={{ fontSize: 10 }}
+            label={{ value: 'Weeks from kickoff', position: 'insideBottom', offset: -12, fontSize: 11 }}
+          />
+          <YAxis dataKey="name" type="category" width={170} tick={{ fontSize: 10 }} />
+          <Tooltip
+            formatter={(value, name) =>
+              name === 'duration' ? [`${value} weeks`, 'Duration'] : [null, null]
+            }
+            labelFormatter={(label) => {
+              const row = rows.find((r) => r.name === label);
+              return row ? `${label}  ·  ${row.phaseLabel}` : label;
+            }}
+          />
+          {/* Transparent offset bar pushes real bar to correct start position */}
+          <Bar dataKey="offset" stackId="g" fill="transparent" legendType="none" isAnimationActive={false} />
+          {/* Duration bar — coloured per phase */}
+          <Bar dataKey="duration" stackId="g" radius={[0, 3, 3, 0]} isAnimationActive={false}>
+            {rows.map((row, i) => <Cell key={i} fill={row.color} />)}
+          </Bar>
+          <ReferenceLine x={0} stroke="#64748b" strokeDasharray="4 2" />
+        </BarChart>
+      </ResponsiveContainer>
+      {/* Phase colour legend */}
+      <div className="flex flex-wrap gap-4 mt-1 ml-2">
+        {phases.map((phase, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <div
+              className="w-3 h-3 rounded-sm flex-shrink-0"
+              style={{ backgroundColor: GANTT_PHASE_COLORS[i] ?? GANTT_PHASE_COLORS[0] }}
+            />
+            <span className="text-xs text-slate-500">
+              {phase.phase.split(' — ')[0]}
+              {phase.timeframe ? ` (${phase.timeframe})` : ''}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Phase card colours ─────────────────────────────────────────────────────
 
 const PHASE_COLORS = [
   {
@@ -34,6 +132,19 @@ const PHASE_COLORS = [
 export function ExecutionRoadmapPanel({ data }: Props) {
   return (
     <div className="space-y-8">
+
+      {/* ── Delivery Timeline (Gantt) ──────────────────────────────────────── */}
+      {(data.phases ?? []).length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+            Delivery Timeline
+          </p>
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <RoadmapGantt phases={data.phases} />
+          </div>
+        </div>
+      )}
+
       {/* Critical path */}
       {data.criticalPath && (
         <div className="p-4 rounded-xl border border-amber-200 bg-amber-50">

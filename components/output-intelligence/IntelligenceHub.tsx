@@ -3,11 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Brain, Sparkles, RefreshCw, Loader2, CheckCircle2, AlertCircle, Clock,
-  Zap, TrendingUp, AlertTriangle, Lightbulb, Target, Map, ChevronRight, Network,
+  Zap, TrendingUp, AlertTriangle, Lightbulb, Map, ChevronRight, Network,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EngineShell, type EngineStatus } from './EngineShell';
-import { DiscoveryValidationPanel } from './DiscoveryValidationPanel';
 import { RootCausePanel } from './RootCausePanel';
 import { FutureStatePanel } from './FutureStatePanel';
 import { ExecutionRoadmapPanel } from './ExecutionRoadmapPanel';
@@ -37,16 +36,10 @@ interface Signal {
   Icon: React.ComponentType<{ className?: string }>;
 }
 
+// NOTE: 'discoveryValidation' engine still runs during Brain Scan generation (its
+// hypothesisAccuracy feeds the Transformation Thesis hero card), but Discovery is
+// NOT a tab in Brain Scan — it lives exclusively in the Discovery Output page.
 const SIGNALS: Signal[] = [
-  {
-    key: 'discoveryValidation',
-    name: 'Discovery',
-    phase: 'Discovery',
-    color: 'indigo',
-    description: 'How the organisation sees itself',
-    getMetric: (i) => `${i.discoveryValidation.hypothesisAccuracy ?? 0}% hypothesis confirmed`,
-    Icon: Target,
-  },
   {
     key: 'futureState',
     name: 'Reimagine',
@@ -129,8 +122,9 @@ const SIGNAL_COLORS = {
 
 // ── Report section IDs for each engine panel ──────────────────────────────────
 
-const ENGINE_SECTION_MAP: Record<EngineKey, { sectionId: string; title: string }> = {
-  discoveryValidation: { sectionId: 'supporting_evidence', title: 'Supporting Evidence' },
+// Note: discoveryValidation tab removed from Brain Scan — its report toggle lives on the
+// Discovery Output page. ENGINE_SECTION_MAP only covers tabs that ARE in Brain Scan.
+const ENGINE_SECTION_MAP: Partial<Record<EngineKey, { sectionId: string; title: string }>> = {
   rootCause:           { sectionId: 'root_causes',         title: 'Root Causes'         },
   futureState:         { sectionId: 'solution_direction',  title: 'Solution Direction'  },
   roadmap:             { sectionId: 'solution_direction',  title: 'Solution Direction'  },
@@ -153,7 +147,7 @@ interface IntelligenceHubProps {
 export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopDescription, domainPack }: IntelligenceHubProps) {
   const [outputMode, setOutputMode] = useState<'v1' | 'v2'>('v1');
   const pendingBlocksRef = useRef<V2ReportBlock[]>([]);
-  const [activeSignal, setActiveSignal] = useState<ActiveView>('discoveryValidation');
+  const [activeSignal, setActiveSignal] = useState<ActiveView>('futureState');
   const [stored, setStored] = useState<StoredOutputIntelligence | null>(initialStored);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -479,13 +473,13 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
             </div>
           )}
 
-          {/* ── Five Cognitive Signal Cards + Connected Model ────────────────── */}
+          {/* ── Four Cognitive Signal Cards + Connected Model ────────────────── */}
           {(hasIntelligence || isGenerating) && (
             <div>
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
                 Workshop Stages
               </p>
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 {SIGNALS.map((signal) => {
                   const colors = SIGNAL_COLORS[signal.color];
                   const isActive = activeSignal === signal.key;
@@ -595,11 +589,13 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
                       <ChevronRight className={`h-3 w-3 ${colors.accent}`} />
                       <span className="text-xs text-slate-500 italic hidden sm:block">{signal.description}</span>
                       <div className="ml-auto">
-                        <ReportSectionToggle
-                          workshopId={workshopId}
-                          sectionId={ENGINE_SECTION_MAP[engineKey].sectionId}
-                          title={ENGINE_SECTION_MAP[engineKey].title}
-                        />
+                        {ENGINE_SECTION_MAP[engineKey] && (
+                          <ReportSectionToggle
+                            workshopId={workshopId}
+                            sectionId={ENGINE_SECTION_MAP[engineKey]!.sectionId}
+                            title={ENGINE_SECTION_MAP[engineKey]!.title}
+                          />
+                        )}
                       </div>
                     </div>
                     <div className={`rounded-b-xl border ${colors.border} overflow-hidden`}>
@@ -608,9 +604,6 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
                         description={signal.description}
                         status={status}
                       >
-                        {intelligence && signal.key === 'discoveryValidation' && (
-                          <DiscoveryValidationPanel data={intelligence.discoveryValidation} />
-                        )}
                         {intelligence && signal.key === 'rootCause' && (
                           <RootCausePanel data={intelligence.rootCause} />
                         )}
