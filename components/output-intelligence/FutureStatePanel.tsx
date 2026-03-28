@@ -287,7 +287,7 @@ export function FutureStatePanel({ data }: Props) {
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="flex flex-col items-center text-center p-5 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="relative w-28 h-24 mb-3">
+                  <div className="relative w-56 h-48 mb-3">
                     <Image src="/framework/house-old.png" alt="Current state" fill className="object-contain" />
                   </div>
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Today</p>
@@ -295,7 +295,7 @@ export function FutureStatePanel({ data }: Props) {
                   <p className="text-xs text-slate-500 leading-snug">{data.threeHouses.current.description}</p>
                 </div>
                 <div className="flex flex-col items-center text-center p-5 rounded-xl bg-indigo-50 border border-indigo-200">
-                  <div className="relative w-28 h-24 mb-3">
+                  <div className="relative w-56 h-48 mb-3">
                     <Image src="/framework/house-refreshed.png" alt="In transition" fill className="object-contain" />
                   </div>
                   <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-1">In Progress</p>
@@ -303,7 +303,7 @@ export function FutureStatePanel({ data }: Props) {
                   <p className="text-xs text-indigo-500 leading-snug">{data.threeHouses.transition.description}</p>
                 </div>
                 <div className="flex flex-col items-center text-center p-5 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <div className="relative w-28 h-24 mb-3">
+                  <div className="relative w-56 h-48 mb-3">
                     <Image src="/framework/house-ideal.png" alt="Future vision" fill className="object-contain" />
                   </div>
                   <p className="text-xs font-semibold text-emerald-500 uppercase tracking-wider mb-1">Vision</p>
