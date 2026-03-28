@@ -19,8 +19,8 @@ const TYPE_CONFIG: Record<WorkshopConstraint['type'], { bg: string; text: string
   Leadership:  { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-500' },
 };
 
-function TypeBadge({ type }: { type: WorkshopConstraint['type'] }) {
-  const c = TYPE_CONFIG[type];
+function TypeBadge({ type }: { type: string }) {
+  const c = TYPE_CONFIG[type as WorkshopConstraint['type']] ?? TYPE_CONFIG['Structural'];
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border ${c.bg} ${c.text} ${c.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
@@ -68,17 +68,19 @@ function ForceField({
   drivers: DrivingForce[];
   headline?: string;
 }) {
+  const sevScore: Record<string, number> = { critical: 3, significant: 2, moderate: 1 };
   const topC = [...constraints]
-    .sort((a, b) => ({ critical: 3, significant: 2, moderate: 1 }[b.severity] - { critical: 3, significant: 2, moderate: 1 }[a.severity]))
+    .sort((a, b) => (sevScore[b.severity] ?? 1) - (sevScore[a.severity] ?? 1))
     .slice(0, 7);
+  const strScore: Record<string, number> = { strong: 3, moderate: 2, emerging: 1 };
   const topD = [...drivers]
-    .sort((a, b) => ({ strong: 3, moderate: 2, emerging: 1 }[b.strength] - { strong: 3, moderate: 2, emerging: 1 }[a.strength]))
+    .sort((a, b) => (strScore[b.strength] ?? 1) - (strScore[a.strength] ?? 1))
     .slice(0, 7);
   const rows = Math.max(topC.length, topD.length);
 
-  const cBarPct: Record<WorkshopConstraint['severity'], number> = { critical: 100, significant: 72, moderate: 44 };
-  const dBarPct: Record<DrivingForce['strength'], number>       = { strong: 100, moderate: 70, emerging: 42 };
-  const dBarColor: Record<DrivingForce['strength'], string>     = { strong: 'bg-emerald-500', moderate: 'bg-emerald-400', emerging: 'bg-emerald-300' };
+  const cBarPct: Record<string, number> = { critical: 100, significant: 72, moderate: 44 };
+  const dBarPct: Record<string, number> = { strong: 100, moderate: 70, emerging: 42 };
+  const dBarColor: Record<string, string> = { strong: 'bg-emerald-500', moderate: 'bg-emerald-400', emerging: 'bg-emerald-300' };
 
   return (
     <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
@@ -119,14 +121,14 @@ function ForceField({
                   <>
                     {/* Severity bar */}
                     <div className="shrink-0 flex flex-col items-center gap-1 pt-1">
-                      <div className={`w-1.5 rounded-full ${SEV[c.severity].bar}`} style={{ height: `${cBarPct[c.severity] * 0.36 + 8}px` }} />
+                      <div className={`w-1.5 rounded-full ${(SEV[c.severity] ?? SEV.moderate).bar}`} style={{ height: `${cBarPct[c.severity] * 0.36 + 8}px` }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-900 leading-snug">{c.title}</p>
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         <TypeBadge type={c.type} />
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${SEV[c.severity].label}`}>
-                          {SEV[c.severity].text}
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${(SEV[c.severity] ?? SEV.moderate).label}`}>
+                          {(SEV[c.severity] ?? SEV.moderate).text}
                         </span>
                       </div>
                     </div>
@@ -203,7 +205,7 @@ function ConstraintTypeBreakdown({ constraints }: { constraints: WorkshopConstra
         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Constraint Types</p>
         <div className="space-y-2.5">
           {sorted.map(([type, count]) => {
-            const c = TYPE_CONFIG[type];
+            const c = TYPE_CONFIG[type as WorkshopConstraint['type']] ?? TYPE_CONFIG['Structural'];
             const pct = Math.round((count / max) * 100);
             return (
               <div key={type} className="flex items-center gap-3">
@@ -280,7 +282,7 @@ function ConstraintExplorer({ constraints }: { constraints: WorkshopConstraint[]
                     : 'hover:bg-slate-50 border-l-4 border-l-transparent'
                 }`}
               >
-                <span className={`shrink-0 mt-1.5 w-2 h-2 rounded-full ${SEV[c.severity].dot}`} />
+                <span className={`shrink-0 mt-1.5 w-2 h-2 rounded-full ${(SEV[c.severity] ?? SEV.moderate).dot}`} />
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-semibold leading-snug ${isActive ? 'text-rose-900' : 'text-slate-800'}`}>
                     {c.title}
@@ -303,8 +305,8 @@ function ConstraintExplorer({ constraints }: { constraints: WorkshopConstraint[]
                 <div className="flex-1">
                   <div className="flex flex-wrap gap-2 mb-2">
                     <TypeBadge type={active.type} />
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border uppercase ${SEV[active.severity].label}`}>
-                      {SEV[active.severity].text}
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border uppercase ${(SEV[active.severity] ?? SEV.moderate).label}`}>
+                      {(SEV[active.severity] ?? SEV.moderate).text}
                     </span>
                   </div>
                   <h4 className="text-base font-bold text-slate-900 leading-snug">{active.title}</h4>
@@ -431,7 +433,7 @@ function RootCausesList({ causes }: { causes: RootCauseIntelligence['rootCauses'
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
                 <p className="text-sm font-semibold text-slate-900">{cause.cause}</p>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border uppercase shrink-0 ${SEV[cause.severity].label}`}>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border uppercase shrink-0 ${(SEV[cause.severity] ?? SEV.moderate).label}`}>
                   {SEV[cause.severity].text}
                 </span>
               </div>
