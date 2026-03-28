@@ -1,9 +1,9 @@
 /**
  * Engine 3: Future State Design Agent
  *
- * Transforms creative workshop signals into a coherent target operating model.
- * Defines what the organisation should become — AI/human model, operating
- * model changes, and redesign principles.
+ * Transforms creative workshop signals into a high-quality target operating model.
+ * Outputs the full PAM-quality structure: title, three houses, direction of travel,
+ * primary themes (5), supporting themes (3), vision alignment, and horizon vision.
  */
 
 import OpenAI from 'openai';
@@ -13,6 +13,8 @@ import type { WorkshopSignals, FutureStateDesign } from '../types';
 
 const SCHEMA = `{
   "targetOperatingModel": "string — 2-3 paragraph description of what the organisation becomes. Write with strategic clarity and executive authority.",
+  "narrative": "string — 1 paragraph strategic narrative about the transformation journey and what success looks like",
+  "redesignPrinciples": ["string — 5-8 bold, memorable principles"],
   "aiHumanModel": [
     {
       "task": "string — specific task or activity",
@@ -22,17 +24,52 @@ const SCHEMA = `{
   ],
   "operatingModelChanges": [
     {
-      "area": "string — organisational area (e.g. Customer Service, Operations, Compliance)",
+      "area": "string — organisational area",
       "currentState": "string — what exists today",
       "futureState": "string — what it becomes",
-      "enabler": "string — what enables the change (AI, process redesign, culture shift etc)"
+      "enabler": "string — what enables the change"
     }
   ],
-  "redesignPrinciples": [
-    "string — principle 1",
-    "string — principle 2"
+  "title": "string — compelling 8-14 word headline capturing the core transformation vision",
+  "description": "string — 2-3 sentences summarising the transformation in plain language for an executive audience",
+  "threeHouses": {
+    "current":    { "label": "string — 3-5 word label for today's state", "description": "string — 1 sentence describing the pain or limitation" },
+    "transition": { "label": "string — 3-5 word label for the transition state", "description": "string — 1 sentence describing what changes first" },
+    "future":     { "label": "string — 3-5 word label for the desired future", "description": "string — 1 sentence describing the transformed experience" }
+  },
+  "directionOfTravel": [
+    { "from": "string — current state phrase (max 8 words)", "to": "string — future state phrase (max 8 words)" },
+    { "from": "...", "to": "..." },
+    { "from": "...", "to": "..." },
+    { "from": "...", "to": "..." },
+    { "from": "...", "to": "..." }
   ],
-  "narrative": "string — 1 paragraph strategic narrative about the transformation journey and what success looks like"
+  "primaryThemes": [
+    {
+      "title": "string — theme name (4-8 words)",
+      "badge": "very high | high",
+      "description": "string — 2-3 sentences grounded in workshop signals",
+      "subSections": [
+        { "title": "string — sub-section name", "detail": "string — 2-3 sentences with specific evidence from signals" },
+        { "title": "string", "detail": "string" }
+      ]
+    }
+  ],
+  "supportingThemes": [
+    {
+      "title": "string — theme name (4-8 words)",
+      "badge": "medium",
+      "description": "string — 1-2 sentences",
+      "subSections": [
+        { "title": "string", "detail": "string — 1-2 sentences" }
+      ]
+    }
+  ],
+  "visionAlignment": {
+    "corePrinciples": ["string — 4-6 short, bold principle statements"],
+    "platformPosition": "string — 2-3 sentences describing the strategic market/operational positioning"
+  },
+  "horizonVision": "string — 2-3 sentences describing what measurable success looks like in 3-5 years"
 }`;
 
 function buildSignalDump(signals: WorkshopSignals): string {
@@ -117,9 +154,6 @@ function buildSignalDump(signals: WorkshopSignals): string {
   }
 
   // ── Relationship graph: dominant causal chains ───────────────────────────
-  // These evidence-backed chains show what constraints → enablers → visions
-  // look like in practice. Use them to anchor the target operating model in
-  // structural evidence rather than pure aspiration.
   if (signals.graphIntelligence?.dominantCausalChains.length) {
     lines.push('\n=== RELATIONSHIP GRAPH: DOMINANT CAUSAL CHAINS ===');
     lines.push('Evidence-backed pathways from constraints through enablers to visions — these are the proven transformation levers:');
@@ -138,18 +172,26 @@ export async function runFutureStateAgent(
 ): Promise<FutureStateDesign> {
   onProgress?.('Future State Design: generating target operating model…');
 
-  const systemPrompt = `You are the DREAM IMAGINATION Signal engine — scanning what future this organisation believes is possible. Transform workshop creative signals into a coherent target operating model. Identify ambition clusters, desired outcomes, transformation opportunities, and innovation signals. Define what the organisation should become. Every output must be grounded in specific workshop evidence.
+  const systemPrompt = `You are the DREAM IMAGINATION Signal engine — scanning what future this organisation believes is possible. Transform workshop creative signals into a rich, executive-quality reimagined future state output.
 
-Your role is to synthesise the creative signals from the workshop into a coherent, actionable future state.
+Your output must match a high-quality consulting standard. You are producing the "Reimagine" chapter of a strategic workshop report.
 
-Rules:
-• Build the future state from the reimagine and define approach signals — these are the source of truth
-• The AI/human model should be driven by the tasks and activities mentioned in workshop signals
-• Never invent AI capabilities not mentioned or implied by the signals
-• The aiHumanModel should have 6-10 tasks minimum — be comprehensive
-• operatingModelChanges should cover each lens area where signals exist
-• redesignPrinciples should be 5-8 bold, memorable principles
-• Output MUST be valid JSON matching the schema — no commentary outside JSON`;
+CRITICAL OUTPUT RULES:
+• title: compelling 8-14 word headline that captures the transformation vision — make it memorable and specific to this client
+• description: 2-3 plain-language sentences for an executive audience, no jargon
+• threeHouses: three stages of transformation — name each stage with a crisp label and one-sentence description grounded in signals
+• directionOfTravel: EXACTLY 5 shifts. Each "from" describes a real current pain (max 8 words), each "to" describes the desired future (max 8 words). Make these specific to the client, not generic
+• primaryThemes: EXACTLY 5 themes. First 2-3 get badge "very high", remaining get "high". Each theme has 2-3 subSections. SubSections must be named and detailed — no vague placeholders. Ground each in specific signals.
+• supportingThemes: EXACTLY 3 themes, each with badge "medium" and 1-2 subSections
+• visionAlignment.corePrinciples: 4-6 bold, memorable statements (max 10 words each)
+• visionAlignment.platformPosition: 2-3 sentences on strategic positioning
+• horizonVision: 2-3 sentences on what 3-5 year success looks like — use measurable language where signals support it
+• aiHumanModel: 6-10 tasks minimum, driven by tasks mentioned in signals
+• operatingModelChanges: cover each lens area where signals exist
+• redesignPrinciples: 5-8 principles
+
+Every output must be grounded in specific workshop evidence. Never invent AI capabilities not mentioned or implied by the signals.
+Output MUST be valid JSON matching the schema exactly — no commentary outside JSON.`;
 
   const userMessage = `${buildSignalDump(signals)}
 
@@ -163,7 +205,7 @@ ${SCHEMA}`;
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 100_000);
+    const timeoutId = setTimeout(() => controller.abort(), 120_000);
     try {
       const response = await openAiBreaker.execute(() => openai.chat.completions.create(
         {
@@ -174,7 +216,7 @@ ${SCHEMA}`;
             { role: 'user', content: userMessage },
           ],
           temperature: 0.4,
-          max_tokens: 4000,
+          max_tokens: 6000,
         },
         { signal: controller.signal }
       ));

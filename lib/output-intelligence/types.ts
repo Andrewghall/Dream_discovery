@@ -135,12 +135,45 @@ export interface OperatingModelChange {
   enabler: string;
 }
 
+export interface FutureStateTheme {
+  title: string;
+  badge: 'very high' | 'high' | 'medium';
+  description: string;
+  subSections: Array<{ title: string; detail: string }>;
+}
+
 export interface FutureStateDesign {
+  // ── Core (legacy — always present) ───────────────────────────────────────
   targetOperatingModel: string;
   aiHumanModel: AiHumanTask[];
   operatingModelChanges: OperatingModelChange[];
   redesignPrinciples: string[];
   narrative: string;
+
+  // ── PAM-quality extended fields (present on new generations) ─────────────
+  /** Compelling headline for the reimagined future */
+  title?: string;
+  /** 2-3 sentence overview of the transformation vision */
+  description?: string;
+  /** Three-stage transformation arc */
+  threeHouses?: {
+    current: { label: string; description: string };
+    transition: { label: string; description: string };
+    future: { label: string; description: string };
+  };
+  /** 5 directional shifts — from current → to future */
+  directionOfTravel?: Array<{ from: string; to: string }>;
+  /** Exactly 5 primary themes (very high / high priority) */
+  primaryThemes?: FutureStateTheme[];
+  /** Exactly 3 supporting themes (medium priority, numbered 6-8) */
+  supportingThemes?: FutureStateTheme[];
+  /** Strategic alignment framing */
+  visionAlignment?: {
+    corePrinciples: string[];
+    platformPosition: string;
+  };
+  /** 2-3 sentences on what 3-5 year success looks like */
+  horizonVision?: string;
 }
 
 // ── Engine 4: Execution Roadmap ─────────────────────────────────────────────
