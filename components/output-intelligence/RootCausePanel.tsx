@@ -183,9 +183,20 @@ function ForceField({
   );
 }
 
-// ── Constraint type breakdown ─────────────────────────────────────────────────
+// ── Constraint type breakdown (clickable filter) ──────────────────────────────
 
-function ConstraintTypeBreakdown({ constraints }: { constraints: WorkshopConstraint[] }) {
+type ActiveFilter =
+  | { kind: 'severity'; value: WorkshopConstraint['severity'] }
+  | { kind: 'type';     value: WorkshopConstraint['type']     }
+  | null;
+
+interface BreakdownProps {
+  constraints: WorkshopConstraint[];
+  activeFilter: ActiveFilter;
+  setFilter: (f: ActiveFilter) => void;
+}
+
+function ConstraintTypeBreakdown({ constraints, activeFilter, setFilter }: BreakdownProps) {
   const counts = {} as Record<WorkshopConstraint['type'], number>;
   for (const c of constraints) counts[c.type] = (counts[c.type] ?? 0) + 1;
   const sorted = (Object.entries(counts) as [WorkshopConstraint['type'], number][])
@@ -193,55 +204,97 @@ function ConstraintTypeBreakdown({ constraints }: { constraints: WorkshopConstra
   const max = sorted[0]?.[1] ?? 1;
 
   const severitySplit = {
-    critical: constraints.filter(c => c.severity === 'critical').length,
+    critical:    constraints.filter(c => c.severity === 'critical').length,
     significant: constraints.filter(c => c.severity === 'significant').length,
-    moderate: constraints.filter(c => c.severity === 'moderate').length,
+    moderate:    constraints.filter(c => c.severity === 'moderate').length,
   };
+
+  function toggleSeverity(key: WorkshopConstraint['severity']) {
+    if (activeFilter?.kind === 'severity' && activeFilter.value === key) {
+      setFilter(null);
+    } else {
+      setFilter({ kind: 'severity', value: key });
+    }
+  }
+
+  function toggleType(key: WorkshopConstraint['type']) {
+    if (activeFilter?.kind === 'type' && activeFilter.value === key) {
+      setFilter(null);
+    } else {
+      setFilter({ kind: 'type', value: key });
+    }
+  }
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {/* Type breakdown */}
       <div className="rounded-2xl border border-slate-200 p-5 bg-white">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Constraint Types</p>
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Constraint Types</p>
+        <p className="text-[10px] text-slate-400 mb-4">Click a type to filter the list below</p>
         <div className="space-y-2.5">
           {sorted.map(([type, count]) => {
             const c = TYPE_CONFIG[type as WorkshopConstraint['type']] ?? TYPE_CONFIG['Structural'];
             const pct = Math.round((count / max) * 100);
+            const isActive = activeFilter?.kind === 'type' && activeFilter.value === type;
             return (
-              <div key={type} className="flex items-center gap-3">
-                <span className={`shrink-0 text-xs font-semibold w-20 ${c.text}`}>{type}</span>
-                <div className="flex-1 h-5 rounded-full bg-slate-100 overflow-hidden">
+              <button
+                key={type}
+                onClick={() => toggleType(type as WorkshopConstraint['type'])}
+                className={`w-full flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 transition-colors ${isActive ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+              >
+                <span className={`shrink-0 text-xs font-semibold text-left w-28 leading-tight ${c.text}`}>{type}</span>
+                <div className="flex-1 h-4 rounded-full bg-slate-100 overflow-hidden">
                   <div
                     className={`h-full rounded-full ${c.dot} transition-all`}
-                    style={{ width: `${pct}%`, opacity: 0.7 }}
+                    style={{ width: `${pct}%`, opacity: isActive ? 1 : 0.65 }}
                   />
                 </div>
-                <span className="shrink-0 text-xs font-bold text-slate-700 w-4 text-right">{count}</span>
-              </div>
+                <span className={`shrink-0 text-xs font-black w-5 text-right ${c.text}`}>{count}</span>
+                {isActive && <span className="shrink-0 text-[9px] text-slate-500">✕</span>}
+              </button>
             );
           })}
         </div>
       </div>
 
-      {/* Severity split */}
+      {/* Severity split — clickable */}
       <div className="rounded-2xl border border-slate-200 p-5 bg-white">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Severity Profile</p>
-        <div className="space-y-4">
-          {[
-            { key: 'critical' as const,    label: 'Critical',    color: 'bg-red-500',   text: 'text-red-700',   desc: 'Blocking transformation now' },
-            { key: 'significant' as const, label: 'Significant', color: 'bg-amber-400', text: 'text-amber-700', desc: 'Major friction, needs addressing' },
-            { key: 'moderate' as const,    label: 'Moderate',    color: 'bg-slate-300', text: 'text-slate-600', desc: 'Manageable with planning' },
-          ].map(({ key, label, color, text, desc }) => (
-            <div key={key} className="flex items-center gap-4">
-              <div className={`shrink-0 w-10 h-10 rounded-xl ${color} flex items-center justify-center`}>
-                <span className="text-white text-base font-black">{severitySplit[key]}</span>
-              </div>
-              <div>
-                <p className={`text-sm font-bold ${text}`}>{label}</p>
-                <p className="text-xs text-slate-400">{desc}</p>
-              </div>
-            </div>
-          ))}
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Severity Profile</p>
+        <p className="text-[10px] text-slate-400 mb-4">Click to filter — see only those constraints below</p>
+        <div className="space-y-3">
+          {([
+            { key: 'critical'    as const, label: 'Critical',    activeBg: 'bg-red-500',   ring: 'ring-red-400',   text: 'text-red-700',   desc: 'Blocking transformation now'    },
+            { key: 'significant' as const, label: 'Significant', activeBg: 'bg-amber-400', ring: 'ring-amber-400', text: 'text-amber-700', desc: 'Major friction, needs addressing' },
+            { key: 'moderate'    as const, label: 'Moderate',    activeBg: 'bg-slate-400', ring: 'ring-slate-400', text: 'text-slate-600', desc: 'Manageable with planning'          },
+          ] as const).map(({ key, label, activeBg, ring, text, desc }) => {
+            const isActive = activeFilter?.kind === 'severity' && activeFilter.value === key;
+            const n = severitySplit[key];
+            if (n === 0) return null;
+            return (
+              <button
+                key={key}
+                onClick={() => toggleSeverity(key)}
+                className={`w-full flex items-center gap-4 p-3 rounded-xl border transition-all text-left ${
+                  isActive
+                    ? `border-slate-300 bg-slate-50 ring-2 ${ring}`
+                    : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <div className={`shrink-0 w-10 h-10 rounded-xl ${activeBg} flex items-center justify-center shadow-sm`}>
+                  <span className="text-white text-base font-black">{n}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-bold ${text}`}>{label}</p>
+                  <p className="text-xs text-slate-400 leading-snug">{desc}</p>
+                </div>
+                {isActive && (
+                  <span className="shrink-0 text-[10px] font-bold text-slate-400 bg-slate-200 rounded-full px-2 py-0.5">
+                    Filtering ✕
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -250,27 +303,55 @@ function ConstraintTypeBreakdown({ constraints }: { constraints: WorkshopConstra
 
 // ── Constraint explorer (two-panel) ──────────────────────────────────────────
 
-function ConstraintExplorer({ constraints }: { constraints: WorkshopConstraint[] }) {
+interface ExplorerProps {
+  constraints: WorkshopConstraint[];     // all constraints (for total count)
+  filtered: WorkshopConstraint[];        // currently visible (may equal all)
+  activeFilter: ActiveFilter;
+  clearFilter: () => void;
+}
+
+function ConstraintExplorer({ constraints, filtered, activeFilter, clearFilter }: ExplorerProps) {
   const [selected, setSelected] = useState(0);
-  const active = constraints[selected];
+
+  // Reset selection when filter changes
+  const prevFilter = useState(activeFilter)[0];
+  if (prevFilter !== activeFilter && selected !== 0) setSelected(0);
+
+  const visible = filtered.length > 0 ? filtered : constraints;
+  const active = visible[selected] ?? visible[0];
+
+  const filterLabel = activeFilter
+    ? activeFilter.kind === 'severity'
+      ? `${activeFilter.value.charAt(0).toUpperCase() + activeFilter.value.slice(1)} constraints`
+      : `${activeFilter.value} constraints`
+    : null;
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="flex items-center justify-center w-9 h-9 rounded-full bg-rose-600 text-white text-xs font-bold shrink-0">
           {constraints.length}
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h3 className="text-base font-bold text-slate-900">What the Room Named</h3>
           <p className="text-xs text-slate-500">Every constraint surfaced — in participants' own words</p>
         </div>
+        {filterLabel && (
+          <button
+            onClick={clearFilter}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 text-white text-xs font-semibold hover:bg-slate-700 transition-colors"
+          >
+            Showing: {filterLabel} ({visible.length})
+            <span className="text-slate-400 ml-1">✕ clear</span>
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
 
         {/* LEFT — scrollable list */}
         <div className="border-r border-slate-200 bg-white divide-y divide-slate-100 max-h-[520px] overflow-y-auto">
-          {constraints.map((c, i) => {
+          {visible.map((c, i) => {
             const isActive = selected === i;
             return (
               <button
@@ -403,12 +484,12 @@ function ResolutionSummary({ constraints }: { constraints: WorkshopConstraint[] 
             const { Icon } = conf;
             const textClass = conf.style.split(' ').find(s => s.startsWith('text-')) ?? 'text-slate-600';
             return (
-              <div key={status} className="flex items-center gap-2.5">
+              <div key={status} className="flex items-center gap-2">
                 <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${conf.style.split(' ').find(s => s.startsWith('bg-'))} border ${conf.style.split(' ').find(s => s.startsWith('border-'))}`}>
                   <Icon className={`h-3.5 w-3.5 ${textClass}`} />
                 </div>
                 <span className="text-xs text-slate-600 leading-snug">{status}</span>
-                <span className="shrink-0 w-6 h-6 rounded-full bg-slate-100 text-slate-800 text-xs font-black flex items-center justify-center ml-auto">{count}</span>
+                <span className="shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-black flex items-center justify-center">{count}</span>
               </div>
             );
           })}
@@ -501,6 +582,16 @@ function FrictionMap({ frictionMap }: { frictionMap: RootCauseIntelligence['fric
 
 export function RootCausePanel({ data }: Props) {
   const hasNewFormat = !!(data.workshopConstraints?.length || data.drivingForces?.length);
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>(null);
+
+  const allConstraints = data.workshopConstraints ?? [];
+  const filteredConstraints = activeFilter
+    ? allConstraints.filter(c =>
+        activeFilter.kind === 'severity'
+          ? c.severity === activeFilter.value
+          : c.type === activeFilter.value
+      )
+    : allConstraints;
 
   return (
     <div className="space-y-8">
@@ -522,19 +613,28 @@ export function RootCausePanel({ data }: Props) {
         />
       )}
 
-      {/* 3. Type breakdown + severity profile */}
-      {hasNewFormat && data.workshopConstraints && data.workshopConstraints.length > 0 && (
-        <ConstraintTypeBreakdown constraints={data.workshopConstraints} />
+      {/* 3. Type breakdown + severity profile — clickable filters */}
+      {hasNewFormat && allConstraints.length > 0 && (
+        <ConstraintTypeBreakdown
+          constraints={allConstraints}
+          activeFilter={activeFilter}
+          setFilter={setActiveFilter}
+        />
       )}
 
       {/* 4. Resolution scorecard */}
-      {hasNewFormat && data.workshopConstraints && data.workshopConstraints.length > 0 && (
-        <ResolutionSummary constraints={data.workshopConstraints} />
+      {hasNewFormat && allConstraints.length > 0 && (
+        <ResolutionSummary constraints={allConstraints} />
       )}
 
-      {/* 5. Constraint explorer */}
-      {hasNewFormat && data.workshopConstraints && data.workshopConstraints.length > 0 && (
-        <ConstraintExplorer constraints={data.workshopConstraints} />
+      {/* 5. Constraint explorer — filtered */}
+      {hasNewFormat && allConstraints.length > 0 && (
+        <ConstraintExplorer
+          constraints={allConstraints}
+          filtered={filteredConstraints}
+          activeFilter={activeFilter}
+          clearFilter={() => setActiveFilter(null)}
+        />
       )}
 
       {/* 6. Root causes */}
