@@ -349,21 +349,37 @@ ${domainNames.map((dn, i) => {
         {"title": "string", "description": "string", "points": ["3-5 points"]}
       ],
       "journeyMapping": {"title": "Customer Journey Mapping"},
+      "directionOfTravel": [
+        {"from": "string — short label for the current state e.g. 'reactive management'", "to": "string — short evocative label for the desired future e.g. 'confident control'"}
+      ],
       "primaryThemes": [
-        {"title": "string — theme name", "weighting": "string — e.g. Mentioned by 85% of participants", "badge": "PRIMARY or CRITICAL", "description": "string — 2-3 sentence explanation of this theme and its significance", "details": ["3-4 supporting detail points for this theme"]}
+        {
+          "title": "string — evocative, specific theme name",
+          "weighting": "very high or high",
+          "badge": "very high or high — must match weighting",
+          "description": "string — 2-3 sentence explanation of why this theme dominated the discussion and what it reveals about the organisation's aspirations",
+          "subSections": [
+            {"title": "string — named sub-topic heading that unpacks one dimension of this theme", "description": "string — 2-3 sentences on this specific aspect, grounded in what participants said"}
+          ],
+          "details": ["3-4 specific evidence-grounded supporting detail points"]
+        }
       ],
-      "shiftOne": {
-        "title": "string — first key strategic shift",
-        "description": "string — 2-3 sentence explanation",
-        "details": ["3-4 supporting detail points"]
-      },
       "supportingThemes": [
-        {"title": "string", "weighting": "string", "badge": "SUPPORTING or EMERGING", "description": "string — 2-3 sentence explanation of this supporting theme", "details": ["3-4 supporting detail points"]}
+        {
+          "title": "string — evocative, specific theme name",
+          "weighting": "medium",
+          "badge": "medium",
+          "description": "string — 2-3 sentence explanation of this supporting theme and why it matters",
+          "subSections": [
+            {"title": "string — named sub-topic heading", "description": "string — 2-3 sentences on this specific aspect"}
+          ],
+          "details": ["3-4 evidence-grounded supporting detail points"]
+        }
       ],
-      "shiftTwo": {
-        "title": "string — second key strategic shift",
-        "description": "string — 2-3 sentence explanation",
-        "details": ["3-4 supporting detail points"]
+      "visionAlignment": {
+        "context": "string — 1 sentence framing what the workshop confirmed about the future model must prioritise",
+        "corePrinciples": ["4-5 core design principles for the future operating model — specific, actionable, grounded in reimagine signals"],
+        "platformPosition": ["3-4 points about how the platform or product enables and unlocks this vision"]
       },
       "horizonVision": {
         "title": "Desired Future State",
@@ -457,7 +473,7 @@ STRUCTURAL RULES:
 - execSummary.keyFindings: 5-7 findings. metrics values must be NUMBERS not strings.
 - discoveryOutput.sections: exactly ${domainNames.length} sections. Each needs 8-10 wordCloud items (size 1-4). Sentiment MUST sum to 100.
 - discoveryOutput must include: operationalReality, organisationalMisalignment, systemicFriction, transformationReadiness (each with insight string + evidence array of exactly 4 strings from DISCOVERY phase signals only), and finalDiscoverySummary string. These are the primary executive intelligence outputs — do not use generic language.
-- reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes. horizonVision describes desired future states only — no timelines, no initiative language, no month ranges. All from REIMAGINE phase signals only.
+- reimagineContent: exactly 5 primaryThemes (weighting: "very high" or "high") and exactly 3 supportingThemes (weighting: "medium"). Each theme must have 1-2 subSections with named headings that unpack specific dimensions of the theme. directionOfTravel: exactly 5 transformation pairs (from → to) that capture the overall shift the organisation is moving towards. visionAlignment: 4-5 corePrinciples + 3-4 platformPosition points. horizonVision describes desired future states only — no timelines, no initiative language, no month ranges. All from REIMAGINE phase signals only.
 - constraintsContent: 2-3 items per category. All from CONSTRAINTS phase signals only.
 - potentialSolution.enablers: 5-8 items. implementationPath: 3 phases. All from DEFINE_APPROACH phase signals only.
 - commercialContent.deliveryPhases: 3 phases. riskAssessment: 3-5 risks.

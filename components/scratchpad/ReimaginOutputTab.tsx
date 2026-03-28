@@ -333,6 +333,31 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
         ))}
       </div>
 
+      {/* Overall direction of travel */}
+      {data?.reimagineContent?.directionOfTravel?.length > 0 && (
+        <div>
+          <h3 className="font-bold text-3xl mb-2 text-gray-900">Overall direction of travel</h3>
+          <p className="text-base text-gray-600 mb-6 leading-relaxed">Taken together, the workshop defined a clear direction:</p>
+          <div className="bg-white rounded-2xl p-8 shadow-sm space-y-3">
+            {data.reimagineContent.directionOfTravel.map((shift: any, index: number) => (
+              <div key={index} className="flex items-center gap-5 p-5 rounded-xl bg-slate-50 border border-slate-100">
+                <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm flex-shrink-0">
+                  {index + 1}
+                </div>
+                <span className="text-gray-500 font-medium text-base min-w-0 flex-1 truncate">{shift.from}</span>
+                <span className="text-gray-300 flex-shrink-0 text-xl font-light">→</span>
+                <span className="text-orange-700 font-bold text-base min-w-0 flex-1 truncate">{shift.to}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 p-5 bg-emerald-50 rounded-xl border border-emerald-200">
+            <p className="text-sm text-emerald-800 leading-relaxed">
+              This weighted view reflects not just what was discussed, but <strong>what mattered most</strong> during the Reimagine session. It provides a clear guide for what the future model must prioritise as the organisation moves forward.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Journey Mapping — compact grid or placeholder */}
       {(data?.reimagineContent?.journeyMapping || hasJourneyData) && (
         <div>
@@ -360,7 +385,12 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
           <div className="bg-white rounded-2xl p-10 shadow-sm">
             <h3 className="font-bold text-3xl mb-8 text-gray-900">Primary themes</h3>
             <div className="space-y-5">
-            {data?.reimagineContent?.primaryThemes?.map((theme: any, index: number) => (
+            {data?.reimagineContent?.primaryThemes?.map((theme: any, index: number) => {
+              const badgePill =
+                theme.badge === 'very high' ? 'bg-rose-100 text-rose-700 border border-rose-200' :
+                theme.badge === 'high'      ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                                              'bg-slate-100 text-slate-500 border border-slate-200';
+              return (
               <div
                 key={index}
                 className={`p-6 border-l-[6px] rounded-lg cursor-pointer transition-all duration-200 ${
@@ -376,34 +406,22 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
                       selectedPrimaryTheme === index ? 'bg-orange-800 scale-110' : 'bg-orange-700'
                     } transition-all duration-200`}>{index + 1}</div>
                     <div className="flex-1">
-                      <span className="font-semibold text-gray-900 text-lg block mb-2">
+                      <span className="font-semibold text-gray-900 text-lg block mb-1">
                         <EditableText
                           value={theme.title}
                           onChange={(v) => update((d) => { d.reimagineContent.primaryThemes[index].title = v; })}
                           className="font-semibold text-gray-900 text-lg"
                         />
                       </span>
-                      {theme.weighting && (
-                        <span className="text-xs text-gray-500 italic">
-                          <EditableText
-                            value={theme.weighting}
-                            onChange={(v) => update((d) => { d.reimagineContent.primaryThemes[index].weighting = v; })}
-                            className="text-xs text-gray-500 italic"
-                          />
-                        </span>
-                      )}
                     </div>
                   </div>
-                  <span className="px-4 py-2 rounded-full text-xs font-bold bg-orange-700 text-white uppercase tracking-wider flex-shrink-0">
-                    <EditableText
-                      value={theme.badge}
-                      onChange={(v) => update((d) => { d.reimagineContent.primaryThemes[index].badge = v; })}
-                      className="text-xs font-bold text-white uppercase tracking-wider"
-                    />
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize flex-shrink-0 ${badgePill}`}>
+                    {theme.badge || 'high'}
                   </span>
                 </div>
               </div>
-            )) || (
+              );
+            }) || (
               <div className="text-gray-500 italic">No primary themes defined yet</div>
             )}
             </div>
@@ -424,7 +442,7 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-amber-700 text-white flex items-center justify-center font-bold">{pt! + 1}</div>
                         <div className="text-xs uppercase tracking-[0.15em] text-amber-900 font-bold">
-                          {theme.badge || 'THEME'}
+                          {theme.badge ? `${theme.badge} weighting` : 'THEME'}
                         </div>
                       </div>
                       <button
@@ -438,32 +456,35 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
                       {theme.title}
                     </h4>
                   </div>
-                  <div className="p-8 flex-1">
-                    <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
+                  <div className="p-8 flex-1 space-y-5">
+                    <div className="text-sm text-gray-700 leading-relaxed">
                       <EditableText
                         value={theme.description || 'Click to add a description for this theme...'}
                         onChange={(v) => update((d) => { d.reimagineContent.primaryThemes[pt!].description = v; })}
-                        className="text-sm text-gray-800 leading-relaxed font-medium"
+                        className="text-sm text-gray-700 leading-relaxed"
                         multiline
                       />
                     </div>
+                    {/* Named sub-sections */}
+                    {theme.subSections?.length > 0 && (
+                      <div className="space-y-3">
+                        {theme.subSections.map((sub: any, si: number) => (
+                          <div key={si} className="bg-emerald-50 rounded-xl p-5 border border-emerald-100">
+                            <p className="font-semibold text-sm text-gray-900 mb-2">{sub.title}</p>
+                            <p className="text-sm text-gray-700 leading-relaxed">{sub.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Supporting detail points */}
                     <div className="text-sm text-gray-700 leading-relaxed font-medium">
-                      {theme.details?.length > 0 ? (
+                      {(theme.details?.length > 0) && (
                         <EditableList
                           items={theme.details}
                           onChange={(items) => update((d) => { d.reimagineContent.primaryThemes[pt!].details = items; })}
                           bullet="•"
-                          bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
-                          itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
-                          addLabel="+ Add detail"
-                        />
-                      ) : (
-                        <EditableList
-                          items={['Key detail point']}
-                          onChange={(items) => update((d) => { d.reimagineContent.primaryThemes[pt!].details = items; })}
-                          bullet="•"
-                          bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
-                          itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
+                          bulletClassName="text-gray-400 font-medium mt-0.5 flex-shrink-0"
+                          itemClassName="text-sm text-gray-700 leading-relaxed"
                           addLabel="+ Add detail"
                         />
                       )}
@@ -528,7 +549,10 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
           <div className="bg-white rounded-2xl p-10 shadow-sm">
             <h3 className="font-bold text-3xl mb-8 text-gray-900">Supporting themes</h3>
             <div className="space-y-5">
-            {data?.reimagineContent?.supportingThemes?.map((theme: any, index: number) => (
+            {data?.reimagineContent?.supportingThemes?.map((theme: any, index: number) => {
+              const primaryCount = data?.reimagineContent?.primaryThemes?.length ?? 5;
+              const absoluteNum = primaryCount + index + 1;
+              return (
               <div
                 key={index}
                 className={`p-6 border-l-[6px] rounded-lg cursor-pointer transition-all duration-200 ${
@@ -542,36 +566,24 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
                   <div className="flex items-start gap-4 flex-1">
                     <div className={`w-10 h-10 rounded-full text-white flex items-center justify-center font-bold text-base flex-shrink-0 ${
                       selectedSupportingTheme === index ? 'bg-sky-600 scale-110' : 'bg-sky-500'
-                    } transition-all duration-200`}>{index + 1}</div>
+                    } transition-all duration-200`}>{absoluteNum}</div>
                     <div className="flex-1">
-                      <span className="font-semibold text-gray-900 text-lg block mb-2">
+                      <span className="font-semibold text-gray-900 text-lg block mb-1">
                         <EditableText
                           value={theme.title}
                           onChange={(v) => update((d) => { d.reimagineContent.supportingThemes[index].title = v; })}
                           className="font-semibold text-gray-900 text-lg"
                         />
                       </span>
-                      {theme.weighting && (
-                        <span className="text-xs text-gray-500 italic">
-                          <EditableText
-                            value={theme.weighting}
-                            onChange={(v) => update((d) => { d.reimagineContent.supportingThemes[index].weighting = v; })}
-                            className="text-xs text-gray-500 italic"
-                          />
-                        </span>
-                      )}
                     </div>
                   </div>
-                  <span className="px-4 py-2 rounded-full text-xs font-bold bg-sky-500 text-white uppercase tracking-wider flex-shrink-0">
-                    <EditableText
-                      value={theme.badge}
-                      onChange={(v) => update((d) => { d.reimagineContent.supportingThemes[index].badge = v; })}
-                      className="text-xs font-bold text-white uppercase tracking-wider"
-                    />
+                  <span className="px-3 py-1 rounded-full text-xs font-semibold capitalize flex-shrink-0 bg-slate-100 text-slate-500 border border-slate-200">
+                    medium
                   </span>
                 </div>
               </div>
-            )) || (
+              );
+            }) || (
               <div className="text-gray-500 italic">No supporting themes defined yet</div>
             )}
             </div>
@@ -590,9 +602,11 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
                   <div className="p-8 bg-gradient-to-br from-sky-100 via-blue-100 to-indigo-200">
                     <div className="flex items-center justify-between mb-5">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-sky-700 text-white flex items-center justify-center font-bold">{st! + 1}</div>
+                        <div className="w-10 h-10 rounded-full bg-sky-700 text-white flex items-center justify-center font-bold">
+                          {(data?.reimagineContent?.primaryThemes?.length ?? 5) + st! + 1}
+                        </div>
                         <div className="text-xs uppercase tracking-[0.15em] text-sky-900 font-bold">
-                          {theme.badge || 'THEME'}
+                          medium weighting
                         </div>
                       </div>
                       <button
@@ -606,36 +620,36 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
                       {theme.title}
                     </h4>
                   </div>
-                  <div className="p-8 flex-1">
-                    <div className="text-sm text-gray-800 mb-5 leading-relaxed font-medium">
+                  <div className="p-8 flex-1 space-y-5">
+                    <div className="text-sm text-gray-700 leading-relaxed">
                       <EditableText
                         value={theme.description || 'Click to add a description for this theme...'}
                         onChange={(v) => update((d) => { d.reimagineContent.supportingThemes[st!].description = v; })}
-                        className="text-sm text-gray-800 leading-relaxed font-medium"
+                        className="text-sm text-gray-700 leading-relaxed"
                         multiline
                       />
                     </div>
-                    <div className="text-sm text-gray-700 leading-relaxed font-medium">
-                      {theme.details?.length > 0 ? (
-                        <EditableList
-                          items={theme.details}
-                          onChange={(items) => update((d) => { d.reimagineContent.supportingThemes[st!].details = items; })}
-                          bullet="•"
-                          bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
-                          itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
-                          addLabel="+ Add detail"
-                        />
-                      ) : (
-                        <EditableList
-                          items={['Key detail point']}
-                          onChange={(items) => update((d) => { d.reimagineContent.supportingThemes[st!].details = items; })}
-                          bullet="•"
-                          bulletClassName="text-gray-700 font-medium mt-0.5 flex-shrink-0"
-                          itemClassName="text-sm text-gray-700 leading-relaxed font-medium"
-                          addLabel="+ Add detail"
-                        />
-                      )}
-                    </div>
+                    {/* Named sub-sections */}
+                    {theme.subSections?.length > 0 && (
+                      <div className="space-y-3">
+                        {theme.subSections.map((sub: any, si: number) => (
+                          <div key={si} className="bg-sky-50 rounded-xl p-5 border border-sky-100">
+                            <p className="font-semibold text-sm text-gray-900 mb-2">{sub.title}</p>
+                            <p className="text-sm text-gray-700 leading-relaxed">{sub.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {theme.details?.length > 0 && (
+                      <EditableList
+                        items={theme.details}
+                        onChange={(items) => update((d) => { d.reimagineContent.supportingThemes[st!].details = items; })}
+                        bullet="•"
+                        bulletClassName="text-gray-400 font-medium mt-0.5 flex-shrink-0"
+                        itemClassName="text-sm text-gray-700 leading-relaxed"
+                        addLabel="+ Add detail"
+                      />
+                    )}
                   </div>
                 </div>
               );
@@ -689,6 +703,40 @@ export function ReimaginOutputTab({ data, customerJourney, onChange }: ReimaginO
           })()}
         </div>
       </div>
+
+      {/* Platform Vision Alignment */}
+      {data?.reimagineContent?.visionAlignment && (
+        <div className="bg-white rounded-2xl p-10 shadow-sm">
+          <h3 className="font-bold text-3xl mb-3 text-gray-900">Platform Vision Alignment</h3>
+          <p className="text-base text-gray-600 mb-8 leading-relaxed">
+            {data.reimagineContent.visionAlignment.context || 'The workshop confirmed that the future model must:'}
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-8 rounded-xl border border-gray-100 bg-gray-50">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-5">Core Principles</p>
+              <ul className="space-y-3">
+                {(data.reimagineContent.visionAlignment.corePrinciples ?? []).map((p: string, i: number) => (
+                  <li key={i} className="flex items-start gap-3 text-sm text-emerald-800 leading-relaxed">
+                    <span className="text-emerald-400 flex-shrink-0 mt-0.5 font-bold">•</span>
+                    {p}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="p-8 rounded-xl border border-blue-100 bg-blue-50">
+              <p className="text-xs font-semibold text-blue-600 uppercase tracking-widest mb-5">Platform Position</p>
+              <ul className="space-y-3">
+                {(data.reimagineContent.visionAlignment.platformPosition ?? []).map((p: string, i: number) => (
+                  <li key={i} className="flex items-start gap-3 text-sm text-blue-900 leading-relaxed">
+                    <span className="text-blue-400 flex-shrink-0 mt-0.5 font-bold">•</span>
+                    {p}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Horizon Vision Alignment */}
       <div>
