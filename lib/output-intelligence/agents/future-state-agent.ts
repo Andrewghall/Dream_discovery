@@ -177,15 +177,18 @@ export async function runFutureStateAgent(
 Your output must match a high-quality consulting standard. You are producing the "Reimagine" chapter of a strategic workshop report.
 
 CRITICAL OUTPUT RULES:
-• title: compelling 8-14 word headline that captures the transformation vision — make it memorable and specific to this client
-• description: 2-3 plain-language sentences for an executive audience, no jargon
-• threeHouses: three stages of transformation — name each stage with a crisp label and one-sentence description grounded in signals
-• directionOfTravel: EXACTLY 5 shifts. Each "from" describes a real current pain (max 8 words), each "to" describes the desired future (max 8 words). Make these specific to the client, not generic
-• primaryThemes: EXACTLY 5 themes. First 2-3 get badge "very high", remaining get "high". Each theme has 2-3 subSections. SubSections must be named and detailed — no vague placeholders. Ground each in specific signals.
-• supportingThemes: EXACTLY 3 themes, each with badge "medium" and 1-2 subSections
-• visionAlignment.corePrinciples: 4-6 bold, memorable statements (max 10 words each)
-• visionAlignment.platformPosition: 2-3 sentences on strategic positioning
-• horizonVision: 2-3 sentences on what 3-5 year success looks like — use measurable language where signals support it
+
+WRITING QUALITY: You are painting a DREAM. The output must inspire. Every sentence should feel like a vision being brought to life. Be specific, evocative, and grounded — not generic consulting bullet points. Use the client's actual language, their specific challenges, their named systems and roles where signals provide them.
+
+• title: compelling 8-14 word headline — memorable, specific to this client's context and industry. Not generic.
+• description: 3 sentences. First: name the transformation. Second: what it means for the people involved (staff and customers). Third: what it unlocks. Make it feel real, not abstract.
+• threeHouses: each stage has a crisp label AND a 2-sentence description. Current = the honest pain. Transition = the first wave of change. Future = the dream fully realised.
+• directionOfTravel: EXACTLY 5 shifts. "from" = raw pain in client's own words (max 8 words). "to" = the vivid alternative (max 8 words). These must feel earned by the signals, not invented.
+• primaryThemes: EXACTLY 5 themes. Themes 1-2 get badge "very high", themes 3-4 get "high", theme 5 gets "high". EACH theme has EXACTLY 2 subSections. Each subSection title is specific (e.g. "Giving Agents Real Authority" not "Process Change"). Each subSection detail is 4-5 full sentences: describe the current problem, why it matters, what changes in the future, who benefits, and what it feels like when it works. Write with narrative quality.
+• supportingThemes: EXACTLY 3 themes, badge "medium". Each has 1-2 subSections with 3-4 sentence detail blocks. Still rich, just shorter.
+• visionAlignment.corePrinciples: 5-6 bold statements. Each is a design principle — a commitment the organisation is making. Not platitudes. Ground them in signals.
+• visionAlignment.platformPosition: 3 sentences. What position does this organisation now occupy? What makes it different? What is the promise it can now keep?
+• horizonVision: 3 sentences. Paint the scene 3-5 years out. What does a customer experience that they couldn't before? What does a staff member feel? What does the business measure that it couldn't before?
 • aiHumanModel: 6-10 tasks minimum, driven by tasks mentioned in signals
 • operatingModelChanges: cover each lens area where signals exist
 • redesignPrinciples: 5-8 principles
