@@ -160,10 +160,45 @@ export interface RoadmapPhase {
   constraints: string[];
 }
 
+// ── ROI & Benefits Realisation ─────────────────────────────────────────────
+
+export interface RoiPhaseEstimate {
+  /** Short phase label e.g. "Phase 1" */
+  phase: string;
+  /** Cost range to deliver this phase e.g. "£150k – £300k" */
+  estimatedCost: string;
+  /** Annualised benefit once delivered e.g. "£380k – £520k / yr" */
+  estimatedAnnualBenefit: string;
+  /** 2-3 concrete benefit drivers e.g. ["FTE efficiency gain", "Reduced escalation handling"] */
+  benefitDrivers: string[];
+  /** When cumulative benefit exceeds cost e.g. "8–12 months" */
+  breakEvenTimeline: string;
+  /** ROI multiple over the full programme horizon e.g. "2.6×" */
+  roiMultiple: string;
+  /** Evidence quality for this estimate */
+  confidenceLevel: 'High' | 'Medium' | 'Low';
+}
+
+export interface RoiSummary {
+  phases: RoiPhaseEstimate[];
+  /** Total programme investment e.g. "£600k – £1.1m" */
+  totalProgrammeCost: string;
+  /** Total 3-year cumulative benefit e.g. "£2.3m – £3.8m" */
+  totalThreeYearBenefit: string;
+  /** Programme-level payback e.g. "12–18 months" */
+  paybackPeriod: string;
+  /** 2-4 grounding assumptions surfaced from workshop signals */
+  keyAssumptions: string[];
+  /** 1-2 sentence narrative summary of the business case */
+  narrative: string;
+}
+
 export interface ExecutionRoadmap {
   phases: RoadmapPhase[];
   criticalPath: string;
   keyRisks: string[];
+  /** Workshop-grounded ROI and benefits realisation estimates — generated with roadmap */
+  roiSummary?: RoiSummary;
 }
 
 // ── Engine 5: Strategic Impact ──────────────────────────────────────────────

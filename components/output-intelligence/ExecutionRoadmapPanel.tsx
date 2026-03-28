@@ -1,11 +1,11 @@
 'use client';
 
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, TrendingUp, DollarSign, CheckCircle2, Info } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts';
-import type { ExecutionRoadmap, RoadmapPhase } from '@/lib/output-intelligence/types';
+import type { ExecutionRoadmap, RoadmapPhase, RoiSummary } from '@/lib/output-intelligence/types';
 
 interface Props {
   data: ExecutionRoadmap;
@@ -100,6 +100,122 @@ function RoadmapGantt({ phases }: { phases: RoadmapPhase[] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── ROI & Benefits Realisation Table ──────────────────────────────────────
+
+const CONFIDENCE_STYLES: Record<string, { label: string; className: string }> = {
+  High:   { label: 'High',   className: 'bg-emerald-100 text-emerald-700' },
+  Medium: { label: 'Medium', className: 'bg-amber-100 text-amber-700'     },
+  Low:    { label: 'Low',    className: 'bg-slate-100 text-slate-500'     },
+};
+
+const PHASE_ROI_ACCENTS = ['border-blue-300', 'border-purple-300', 'border-emerald-300'];
+const PHASE_ROI_HEADER  = ['text-blue-700',   'text-purple-700',   'text-emerald-700' ];
+
+function RoiTable({ roi }: { roi: RoiSummary }) {
+  return (
+    <div className="space-y-5">
+
+      {/* ── Per-phase grid ── */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="text-left px-3 py-2.5 font-semibold text-slate-600 w-24">Phase</th>
+              <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Investment cost</th>
+              <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Annual benefit</th>
+              <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Key benefit drivers</th>
+              <th className="text-left px-3 py-2.5 font-semibold text-slate-600 whitespace-nowrap">Break-even</th>
+              <th className="text-left px-3 py-2.5 font-semibold text-slate-600 whitespace-nowrap">ROI multiple</th>
+              <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roi.phases.map((p, i) => {
+              const conf = CONFIDENCE_STYLES[p.confidenceLevel] ?? CONFIDENCE_STYLES.Low;
+              return (
+                <tr key={i} className={`border-b border-slate-100 border-l-2 ${PHASE_ROI_ACCENTS[i] ?? ''}`}>
+                  <td className={`px-3 py-3 font-bold whitespace-nowrap ${PHASE_ROI_HEADER[i] ?? 'text-slate-700'}`}>
+                    {p.phase}
+                  </td>
+                  <td className="px-3 py-3 text-slate-700 font-medium whitespace-nowrap">{p.estimatedCost}</td>
+                  <td className="px-3 py-3 text-emerald-700 font-medium whitespace-nowrap">{p.estimatedAnnualBenefit}</td>
+                  <td className="px-3 py-3 text-slate-600">
+                    <ul className="space-y-0.5">
+                      {(p.benefitDrivers ?? []).map((d, j) => (
+                        <li key={j} className="flex items-start gap-1.5">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-400 flex-shrink-0 mt-0.5" />
+                          {d}
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{p.breakEvenTimeline}</td>
+                  <td className="px-3 py-3 font-bold text-slate-800 whitespace-nowrap">{p.roiMultiple}</td>
+                  <td className="px-3 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${conf.className}`}>
+                      {conf.label}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Programme totals strip ── */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 flex items-center gap-3">
+          <DollarSign className="h-5 w-5 text-slate-400 flex-shrink-0" />
+          <div>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Total programme cost</p>
+            <p className="text-sm font-bold text-slate-800 mt-0.5">{roi.totalProgrammeCost}</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3">
+          <TrendingUp className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+          <div>
+            <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">3-year cumulative benefit</p>
+            <p className="text-sm font-bold text-emerald-800 mt-0.5">{roi.totalThreeYearBenefit}</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex items-center gap-3">
+          <TrendingUp className="h-5 w-5 text-blue-500 flex-shrink-0" />
+          <div>
+            <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide">Programme payback</p>
+            <p className="text-sm font-bold text-blue-800 mt-0.5">{roi.paybackPeriod}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Narrative ── */}
+      {roi.narrative && (
+        <p className="text-xs text-slate-600 leading-relaxed italic border-l-2 border-slate-300 pl-3">
+          {roi.narrative}
+        </p>
+      )}
+
+      {/* ── Key assumptions ── */}
+      {roi.keyAssumptions?.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <Info className="h-3 w-3" />
+            Grounding assumptions
+          </p>
+          <ul className="space-y-1">
+            {roi.keyAssumptions.map((a, i) => (
+              <li key={i} className="text-xs text-slate-600 flex items-start gap-2">
+                <span className="text-slate-400 flex-shrink-0 mt-0.5">·</span>
+                {a}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -286,6 +402,20 @@ export function ExecutionRoadmapPanel({ data }: Props) {
           </div>
         </div>
       )}
+
+      {/* ── ROI & Benefits Realisation ────────────────────────────────────── */}
+      {data.roiSummary?.phases?.length ? (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+            <h3 className="text-sm font-semibold text-slate-700">ROI &amp; Benefits Realisation</h3>
+            <span className="text-[10px] text-slate-400 italic">
+              — estimates grounded in workshop signals, not guarantees
+            </span>
+          </div>
+          <RoiTable roi={data.roiSummary} />
+        </div>
+      ) : null}
     </div>
   );
 }
