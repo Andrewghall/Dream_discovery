@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Brain, Sparkles, RefreshCw, Loader2, CheckCircle2, AlertCircle, Clock,
-  Zap, TrendingUp, AlertTriangle, Lightbulb, Target, Map, ChevronRight,
+  Zap, TrendingUp, AlertTriangle, Lightbulb, Target, Map, ChevronRight, Network,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EngineShell, type EngineStatus } from './EngineShell';
@@ -24,8 +24,11 @@ import type { V2ReportBlock } from '@/components/v2/V2InquiryBar';
 
 // ── Signal config — DREAM cognitive function mapping ──────────────────────────
 
+/** Union of EngineKey + the Connected Model tab (display-only, not engine-backed) */
+type ActiveView = EngineKey | 'connectedModel';
+
 interface Signal {
-  key: EngineKey;
+  key: ActiveView;
   name: string;
   phase: string;
   color: 'indigo' | 'rose' | 'violet' | 'emerald' | 'amber';
@@ -73,6 +76,17 @@ const SIGNALS: Signal[] = [
     getMetric: () => '3-phase transformation roadmap',
     Icon: Map,
   },
+  {
+    key: 'connectedModel',
+    name: 'Connected Model',
+    phase: 'Connected Model',
+    color: 'emerald',
+    description: 'Causal chains, bottlenecks & unlock paths',
+    getMetric: (i) => i.causalIntelligence
+      ? `${i.causalIntelligence.organisationalIssues.length + i.causalIntelligence.reinforcedFindings.length} causal findings`
+      : 'Causal intelligence',
+    Icon: Network,
+  },
 ];
 
 const ENGINE_LABELS: Record<EngineKey, string> = {
@@ -82,6 +96,8 @@ const ENGINE_LABELS: Record<EngineKey, string> = {
   roadmap: 'Way Forward',
   strategicImpact: 'Reimagine',
 };
+
+// Connected Model is display-only — not engine-backed — so excluded from ENGINE_LABELS.
 
 const SIGNAL_COLORS = {
   indigo: {
@@ -137,7 +153,7 @@ interface IntelligenceHubProps {
 export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopDescription, domainPack }: IntelligenceHubProps) {
   const [outputMode, setOutputMode] = useState<'v1' | 'v2'>('v1');
   const pendingBlocksRef = useRef<V2ReportBlock[]>([]);
-  const [activeSignal, setActiveSignal] = useState<EngineKey>('discoveryValidation');
+  const [activeSignal, setActiveSignal] = useState<ActiveView>('discoveryValidation');
   const [stored, setStored] = useState<StoredOutputIntelligence | null>(initialStored);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -362,8 +378,9 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
       {outputMode === 'v1' && isGenerating && (
         <div className="shrink-0 px-6 py-3 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-5 flex-wrap">
-            {SIGNALS.map((signal) => {
+            {SIGNALS.filter((s) => s.key !== 'connectedModel').map((signal) => {
               // Reimagine combines futureState + strategicImpact — show running if either is active
+              const engineKey = signal.key as EngineKey;
               const status = signal.key === 'futureState'
                 ? engineStatuses.futureState === 'running' || engineStatuses.strategicImpact === 'running'
                   ? 'running'
@@ -372,7 +389,7 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
                   : engineStatuses.futureState === 'error' || engineStatuses.strategicImpact === 'error'
                   ? 'error'
                   : 'idle'
-                : engineStatuses[signal.key];
+                : engineStatuses[engineKey];
               return (
                 <div key={signal.key} className="flex items-center gap-1.5 text-xs">
                   {status === 'idle' && <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
@@ -462,17 +479,20 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
             </div>
           )}
 
-          {/* ── Five Cognitive Signal Cards ─────────────────────────────────── */}
+          {/* ── Five Cognitive Signal Cards + Connected Model ────────────────── */}
           {(hasIntelligence || isGenerating) && (
             <div>
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
                 Workshop Stages
               </p>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-5 gap-3">
                 {SIGNALS.map((signal) => {
                   const colors = SIGNAL_COLORS[signal.color];
                   const isActive = activeSignal === signal.key;
-                  const status = engineStatuses[signal.key];
+                  // Connected Model is display-only — not engine-backed — so no engine status
+                  const status = signal.key === 'connectedModel'
+                    ? (intelligence?.causalIntelligence ? 'complete' : 'idle')
+                    : engineStatuses[signal.key as EngineKey];
                   const { Icon } = signal;
 
                   return (
@@ -522,9 +542,46 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
               {SIGNALS.map((signal) => {
                 if (signal.key !== activeSignal) return null;
                 const colors = SIGNAL_COLORS[signal.color];
+
+                // Connected Model tab: render directly without EngineShell (not engine-backed)
+                if (signal.key === 'connectedModel') {
+                  if (!intelligence?.causalIntelligence) {
+                    return (
+                      <div key="connectedModel" className={`rounded-xl border ${colors.border} p-8 text-center`}>
+                        <Network className="h-8 w-8 text-slate-300 mx-auto mb-3" />
+                        <p className="text-sm text-slate-500 font-medium">Connected Model not yet generated</p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Run a full Brain Scan — the Connected Model builds automatically from graph intelligence.
+                        </p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key="connectedModel">
+                      {/* Section identity strip */}
+                      <div className={`rounded-t-xl ${colors.headerBg} border ${colors.border} border-b-0 px-5 py-3 flex items-center gap-2`}>
+                        <span className={`text-xs font-bold ${colors.accent}`}>Connected Model</span>
+                        <ChevronRight className={`h-3 w-3 ${colors.accent}`} />
+                        <span className="text-xs text-slate-500 italic hidden sm:block">
+                          Causal chains, bottlenecks &amp; unlock paths — derived from hemisphere graph intelligence
+                        </span>
+                      </div>
+                      <div className={`rounded-b-xl border ${colors.border} overflow-hidden p-4`}>
+                        <ConnectedModelPanel
+                          causalIntelligence={intelligence.causalIntelligence}
+                          lensesUsed={stored?.lensesUsed ?? []}
+                          workshopGoal={workshopDescription}
+                        />
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Engine-backed tabs (Discovery, Reimagine, Constraints, Way Forward)
+                const engineKey = signal.key as EngineKey;
                 const status: EngineStatus = !hasIntelligence
-                  ? isGenerating && engineStatuses[signal.key] !== 'idle'
-                    ? engineStatuses[signal.key]
+                  ? isGenerating && engineStatuses[engineKey] !== 'idle'
+                    ? engineStatuses[engineKey]
                     : 'idle'
                   : 'complete';
 
@@ -540,8 +597,8 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
                       <div className="ml-auto">
                         <ReportSectionToggle
                           workshopId={workshopId}
-                          sectionId={ENGINE_SECTION_MAP[signal.key].sectionId}
-                          title={ENGINE_SECTION_MAP[signal.key].title}
+                          sectionId={ENGINE_SECTION_MAP[engineKey].sectionId}
+                          title={ENGINE_SECTION_MAP[engineKey].title}
                         />
                       </div>
                     </div>
@@ -563,13 +620,13 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
                         {intelligence && signal.key === 'roadmap' && (
                           <ExecutionRoadmapPanel data={intelligence.roadmap} />
                         )}
-                        {engineErrors[signal.key] && (
+                        {engineErrors[engineKey] && (
                           <div className="m-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
                             <p className="text-xs font-semibold text-amber-700 mb-1">
                               Engine failed — showing fallback data
                             </p>
                             <p className="text-xs text-amber-600 font-mono break-all">
-                              {engineErrors[signal.key]}
+                              {engineErrors[engineKey]}
                             </p>
                           </div>
                         )}
@@ -675,33 +732,7 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
             </div>
           )}
 
-          {/* ── Connected Model ──────────────────────────────────────────────── */}
-          {intelligence?.causalIntelligence && (
-            <div>
-              {/* Section header */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    Connected Model
-                  </p>
-                  <span className="text-[10px] text-slate-300">·</span>
-                  <span className="text-[10px] text-slate-400">
-                    Derived from fixed hemisphere layer assignments
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Each finding answers four questions: what we learned, what validates it,
-                  what it connects to, and what action it implies.
-                  Click any chain node or finding row to explore the full evidence.
-                </p>
-              </div>
-              <ConnectedModelPanel
-                causalIntelligence={intelligence.causalIntelligence}
-                lensesUsed={stored?.lensesUsed ?? []}
-                workshopGoal={workshopDescription}
-              />
-            </div>
-          )}
+          {/* Connected Model is now scoped to its own tab — see activeSignal === 'connectedModel' above */}
 
         </div>
       </div>}
