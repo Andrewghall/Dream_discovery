@@ -121,10 +121,37 @@ export interface FrictionPoint {
   primaryCause: string;
 }
 
+/** A constraint surfaced directly by participants during the workshop */
+export interface WorkshopConstraint {
+  title: string;
+  type: 'Structural' | 'Cultural' | 'Technical' | 'Regulatory' | 'Resource' | 'Leadership';
+  severity: 'critical' | 'significant' | 'moderate';
+  /** Representative quote or close paraphrase in participant language */
+  participantVoice: string;
+  affectedLenses: string[];
+  /** 2-3 sentences on why this constraint exists at a systemic level */
+  rootCause: string;
+  resolutionStatus: 'Addressed in Vision' | 'Partially Addressed' | 'Requires Enabler' | 'Structural — Hard to Change';
+}
+
+/** A force working in favour of transformation */
+export interface DrivingForce {
+  force: string;
+  strength: 'strong' | 'moderate' | 'emerging';
+  /** Where this driving force comes from e.g. "Leadership mandate", "Staff aspiration" */
+  source: string;
+}
+
 export interface RootCauseIntelligence {
   rootCauses: RootCause[];
   systemicPattern: string;
   frictionMap: FrictionPoint[];
+  /** One memorable sentence capturing the essential tension — used as force field headline */
+  forceFieldHeadline?: string;
+  /** Constraints as named by workshop participants, with their voice preserved */
+  workshopConstraints?: WorkshopConstraint[];
+  /** Forces working in favour of transformation — the other side of the force field */
+  drivingForces?: DrivingForce[];
 }
 
 // ── Engine 3: Future State Design ──────────────────────────────────────────

@@ -1,17 +1,36 @@
 /**
  * Engine 2: Root Cause Intelligence Agent
  *
- * Analyses workshop signals to surface systemic root causes — not symptoms.
- * Produces a ranked list of root causes, a friction map by journey stage,
- * and a systemic pattern narrative.
+ * Analyses workshop signals to surface systemic root causes AND the force field
+ * of constraining vs driving forces. Preserves participant voice. Maps each
+ * constraint to whether the reimagined vision addresses it.
  */
 
 import OpenAI from 'openai';
 import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopSignals, RootCauseIntelligence } from '../types';
-// OpenAI client constructed lazily inside runRootCauseAgent() — never at module load.
 
 const SCHEMA = `{
+  "forceFieldHeadline": "string — one memorable sentence capturing the essential tension e.g. 'A willing organisation held back by its own infrastructure'",
+  "systemicPattern": "string — 1-2 paragraph diagnosis of the deeper structural pattern. Write with authority. Name the pattern, not the symptoms.",
+  "workshopConstraints": [
+    {
+      "title": "string — constraint name (5-10 words, specific)",
+      "type": "Structural | Cultural | Technical | Regulatory | Resource | Leadership",
+      "severity": "critical | significant | moderate",
+      "participantVoice": "string — a representative quote or close paraphrase capturing this constraint in the participant's OWN language. Use their words, not consulting language.",
+      "affectedLenses": ["string — lens names"],
+      "rootCause": "string — 2-3 sentences on WHY this constraint exists at a systemic level. What created it? What keeps it in place?",
+      "resolutionStatus": "Addressed in Vision | Partially Addressed | Requires Enabler | Structural — Hard to Change"
+    }
+  ],
+  "drivingForces": [
+    {
+      "force": "string — what is working in favour of transformation (specific, not generic)",
+      "strength": "strong | moderate | emerging",
+      "source": "string — where this comes from e.g. 'Leadership mandate from COO', 'Staff aspiration signals across all cohorts', 'Regulatory deadline creating urgency'"
+    }
+  ],
   "rootCauses": [
     {
       "rank": 1,
@@ -23,7 +42,6 @@ const SCHEMA = `{
       "severity": "critical | significant | moderate"
     }
   ],
-  "systemicPattern": "string — 1-2 paragraph diagnosis of the deeper structural pattern driving these causes",
   "frictionMap": [
     {
       "stage": "string — journey stage name",
@@ -51,7 +69,7 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('No tensions identified in discovery phase.');
   }
 
-  lines.push('\n=== CONSTRAINTS ===');
+  lines.push('\n=== CONSTRAINTS (structured discovery) ===');
   if (signals.discovery.constraints.length > 0) {
     signals.discovery.constraints.forEach((c) => {
       lines.push(`• ${c.title}${c.description ? ': ' + c.description : ''} [${c.type ?? 'general'}]`);
@@ -77,15 +95,26 @@ function buildSignalDump(signals: WorkshopSignals): string {
     });
   }
 
+  // ── CONSTRAINTS phase — participant voice preserved ───────────────────────
   if (signals.liveSession.constraintPads.length > 0) {
-    lines.push('\n=== CONSTRAINT PADS (LIVE WORKSHOP) ===');
-    signals.liveSession.constraintPads.slice(0, 25).forEach((p) => {
-      lines.push(`• ${p.text}${p.lens ? ` [${p.lens}]` : ''}`);
+    lines.push('\n=== CONSTRAINT WORKSHOP SIGNALS (participant voice — use these verbatim in participantVoice field) ===');
+    signals.liveSession.constraintPads.slice(0, 40).forEach((p) => {
+      lines.push(`• ${p.text}${p.lens ? ` [${p.lens}]` : ''}${p.actor ? ` — ${p.actor}` : ''}`);
     });
   }
 
+  // ── DISCOVERY phase signals — current-state pain ─────────────────────────
+  const discoveryPads = signals.liveSession.discoveryPads ?? [];
+  if (discoveryPads.length > 0) {
+    lines.push('\n=== DISCOVERY SIGNALS — CURRENT PAIN BY ACTOR ===');
+    discoveryPads.slice(0, 40).forEach((p) => {
+      lines.push(`• ${p.text}${p.lens ? ` [${p.lens}]` : ''}${p.actor ? ` — ${p.actor}` : ''}`);
+    });
+  }
+
+  // ── Reimagine signals — driving forces evidence ──────────────────────────
   if (signals.liveSession.reimaginePads.length > 0) {
-    lines.push('\n=== REIMAGINE PADS (WHAT NEEDS TO CHANGE) ===');
+    lines.push('\n=== REIMAGINE SIGNALS (use these to assess resolutionStatus AND to identify drivingForces) ===');
     signals.liveSession.reimaginePads.slice(0, 25).forEach((p) => {
       lines.push(`• ${p.text}${p.lens ? ` [${p.lens}]` : ''}`);
     });
@@ -99,6 +128,14 @@ function buildSignalDump(signals: WorkshopSignals): string {
       lines.push('\n=== KEY CHALLENGES FROM PARTICIPANTS ===');
       challenges.forEach((i) => lines.push(`• ${i.text}`));
     }
+
+    const enablers = signals.discovery.insights
+      .filter((i) => i.type === 'ENABLER' || i.type === 'OPPORTUNITY' || i.type === 'VISION')
+      .slice(0, 10);
+    if (enablers.length > 0) {
+      lines.push('\n=== ENABLING SIGNALS (driving forces evidence) ===');
+      enablers.forEach((i) => lines.push(`• ${i.text}`));
+    }
   }
 
   if (signals.discovery.cohortBreakdown?.length) {
@@ -111,53 +148,41 @@ function buildSignalDump(signals: WorkshopSignals): string {
       if (cohort.topAspirations.length)
         lines.push(`  Top aspirations:\n${cohort.topAspirations.map((a) => `    • ${a}`).join('\n')}`);
     }
-    lines.push('\nUse cohort divergence to identify role-specific root causes and where cohorts must move in lockstep for transformation to succeed.');
+    lines.push('\nHigh aspiration ratio = driving force. Low aspiration + high friction = deep constraint.');
   }
 
   if (signals.historicalMemory?.chunks.length) {
     lines.push('\n=== CROSS-WORKSHOP HISTORICAL MEMORY ===');
-    lines.push('Relevant findings from past workshops in this organisation:');
     for (const c of signals.historicalMemory.chunks) {
       lines.push(`• [${c.source}, ${c.similarity.toFixed(2)}] ${c.text}`);
     }
-    lines.push('(Supporting context only — not from this workshop)');
+    lines.push('(Supporting context only)');
   }
 
-  // ── Relationship graph: bottlenecks + compensating behaviours ───────────
-  // These are deterministic findings from the evidence graph — use them to
-  // anchor root cause analysis in structural evidence rather than inference.
   if (signals.graphIntelligence) {
     const gi = signals.graphIntelligence;
 
     if (gi.bottlenecks.length > 0) {
       lines.push('\n=== RELATIONSHIP GRAPH: STRUCTURAL BOTTLENECKS ===');
-      lines.push('Constraints that block or drive the most other areas (deterministic, evidence-backed):');
+      lines.push('Highest-leverage constraint candidates (evidence-backed):');
       for (const b of gi.bottlenecks.slice(0, 5)) {
-        lines.push(`• "${b.displayLabel}" — affects ${b.outDegree} areas, evidence tier: ${b.evidenceTier}, score: ${b.compositeScore}`);
+        lines.push(`• "${b.displayLabel}" — affects ${b.outDegree} areas, tier: ${b.evidenceTier}, score: ${b.compositeScore}`);
       }
-      lines.push('These are the highest-leverage root cause candidates — prioritise them in your analysis.');
     }
 
     if (gi.compensatingBehaviours.length > 0) {
-      lines.push('\n=== RELATIONSHIP GRAPH: COMPENSATING BEHAVIOURS (WORKAROUNDS) ===');
-      lines.push('Enablers papering over live constraints rather than resolving them:');
+      lines.push('\n=== RELATIONSHIP GRAPH: COMPENSATING BEHAVIOURS ===');
       for (const cb of gi.compensatingBehaviours.slice(0, 5)) {
-        lines.push(`• "${cb.enablerLabel}" compensates for "${cb.constraintLabel}" — risk: ${cb.riskLevel}, constraint frequency: ${cb.constraintRawFrequency} signals`);
+        lines.push(`• "${cb.enablerLabel}" compensates for "${cb.constraintLabel}" — risk: ${cb.riskLevel}`);
       }
-      lines.push('These represent systemic root causes being managed rather than resolved — flag them as structural risk.');
     }
 
     if (gi.brokenChains.filter(bc => bc.brokenChainType === 'CONSTRAINT_NO_RESPONSE' && bc.severity === 'high').length > 0) {
       lines.push('\n=== RELATIONSHIP GRAPH: UNADDRESSED CONSTRAINTS ===');
-      lines.push('High-frequency constraints with no identified organisational response:');
       gi.brokenChains
         .filter(bc => bc.brokenChainType === 'CONSTRAINT_NO_RESPONSE' && bc.severity === 'high')
         .slice(0, 5)
-        .forEach(bc => lines.push(`• "${bc.displayLabel}" — ${bc.rawFrequency} mentions, ${bc.evidenceTier} tier — no response pathway detected`));
-    }
-
-    if (gi.summary.graphCoverageScore > 0) {
-      lines.push(`\n[Graph coverage: ${gi.summary.graphCoverageScore}% of nodes connected. ${gi.summary.systemicEdgeCount} SYSTEMIC-tier edges detected.]`);
+        .forEach(bc => lines.push(`• "${bc.displayLabel}" — ${bc.rawFrequency} mentions, no response pathway detected`));
     }
   }
 
@@ -170,19 +195,32 @@ export async function runRootCauseAgent(
 ): Promise<RootCauseIntelligence> {
   onProgress?.('Root Cause Intelligence: analysing systemic causes…');
 
-  const systemPrompt = `You are the DREAM INHIBITION Signal engine — scanning the forces preventing transformation in this organisation. Identify governance barriers, technology fragmentation, decision bottlenecks, cross-team friction, and knowledge silos. Move beyond symptoms to systemic causes. Rank constraints by their power to block transformation. Every output must be grounded in specific workshop evidence.
+  const systemPrompt = `You are the DREAM INHIBITION Signal engine — scanning the forces preventing transformation in this organisation.
 
-Your role is to identify SYSTEMIC ROOT CAUSES — not surface symptoms.
-Look for patterns across lenses, tensions, constraints, and journey stages that reveal WHY the organisation is experiencing its challenges.
+YOUR JOB IS TO PRODUCE A FORCE FIELD ANALYSIS. There are forces RESTRAINING transformation (constraints) and forces DRIVING it forward. You must identify both sides with equal rigour.
 
-Rules:
-• Use ONLY the signals provided — never invent evidence
-• Rank root causes by severity and evidence strength
-• If evidence is weak, note this in the cause description
-• frictionLevel must be 0-10 (10 = maximum friction)
-• Generate frictionMap entries for each journey stage provided
-• If no journey stages exist, create a generic frictionMap based on lenses
-• Output MUST be valid JSON matching the schema — no commentary outside JSON`;
+CRITICAL RULES:
+
+forceFieldHeadline: Make it memorable and specific. Capture the essential tension in one sentence. Not "The organisation faces challenges" — something like "A workforce ready to change, trapped by infrastructure that cannot keep up."
+
+workshopConstraints (6-10 items):
+- These are what PARTICIPANTS named as constraints in their own words
+- participantVoice MUST be a near-verbatim quote or very close paraphrase from the actual signals — do not rewrite into consulting language
+- type must be one of: Structural / Cultural / Technical / Regulatory / Resource / Leadership
+- resolutionStatus: honestly assess whether the reimagine signals address this constraint. "Addressed in Vision" = clear reimagine signal resolves it. "Requires Enabler" = vision aspires to it but no clear mechanism. "Structural — Hard to Change" = not addressed, likely systemic.
+
+drivingForces (4-6 items):
+- The genuine forces working in FAVOUR of transformation
+- Ground each in specific signals — aspiration signals, leadership signals, competitive pressure, regulatory deadlines
+- Be honest about strength: "emerging" if it's tentative
+
+systemicPattern: Write a diagnosis, not a list. Name the underlying pattern driving ALL the constraints. What is the organisation's fundamental challenge?
+
+rootCauses: 5-8 ranked causes. Go deeper than symptoms. WHY does the constraint exist?
+
+frictionMap: If journey stages exist, use them. If not, create stages based on the lenses (e.g. "Customer Contact", "Agent Resolution", "Back Office Processing", "Compliance Review").
+
+Use ONLY signals provided. Output MUST be valid JSON. No commentary outside JSON.`;
 
   const userMessage = `${buildSignalDump(signals)}
 
@@ -207,7 +245,7 @@ ${SCHEMA}`;
             { role: 'user', content: userMessage },
           ],
           temperature: 0.3,
-          max_tokens: 3000,
+          max_tokens: 5000,
         },
         { signal: controller.signal }
       ));
