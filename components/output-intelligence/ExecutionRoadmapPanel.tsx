@@ -3,7 +3,7 @@
 import { AlertTriangle, TrendingUp, DollarSign, CheckCircle2, Info } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, ReferenceLine,
+  ResponsiveContainer, Cell, ReferenceLine, ReferenceArea,
 } from 'recharts';
 import type { ExecutionRoadmap, RoadmapPhase, RoiSummary } from '@/lib/output-intelligence/types';
 
@@ -23,7 +23,20 @@ const GANTT_PHASE_WEEKS = [
 // Colours match the phase card headers: blue-600, purple-700, emerald-700
 const GANTT_PHASE_COLORS = ['#2563eb', '#7e22ce', '#047857'] as const;
 
-function RoadmapGantt({ phases }: { phases: RoadmapPhase[] }) {
+// Phase band definitions for reference areas: [x1, x2, midpoint, color, fillOpacity]
+const PHASE_BANDS = [
+  { x1: 0,  x2: 4,  mid: 2,  color: GANTT_PHASE_COLORS[0], fill: '#2563eb' },
+  { x1: 4,  x2: 12, mid: 8,  color: GANTT_PHASE_COLORS[1], fill: '#7e22ce' },
+  { x1: 12, x2: 52, mid: 32, color: GANTT_PHASE_COLORS[2], fill: '#047857' },
+] as const;
+
+function RoadmapGantt({
+  phases,
+  roiSummary,
+}: {
+  phases: RoadmapPhase[];
+  roiSummary?: RoiSummary | null;
+}) {
   if (!phases?.length) return null;
 
   // Build one row per initiative, spread evenly within the phase window
@@ -45,7 +58,7 @@ function RoadmapGantt({ phases }: { phases: RoadmapPhase[] }) {
         name: init.title.length > 30 ? init.title.slice(0, 28) + '…' : init.title,
         phaseLabel,
         color,
-        offset: startWeek - 1,    // invisible offset bar (0-based for Recharts)
+        offset: startWeek - 1,
         duration: endWeek - startWeek + 1,
       });
     });
@@ -58,6 +71,40 @@ function RoadmapGantt({ phases }: { phases: RoadmapPhase[] }) {
       <ResponsiveContainer width="100%" height={Math.max(rows.length * 42 + 60, 180)}>
         <BarChart data={rows} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 28 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+
+          {/* ── Phase background bands with cost overlay ── */}
+          {PHASE_BANDS.map((band, i) => (
+            <ReferenceArea
+              key={i}
+              x1={band.x1}
+              x2={band.x2}
+              fill={band.fill}
+              fillOpacity={0.06}
+              stroke={band.fill}
+              strokeOpacity={0.2}
+              strokeWidth={1}
+            />
+          ))}
+
+          {/* ── Cost labels at top of each phase band ── */}
+          {PHASE_BANDS.map((band, i) => {
+            const cost = roiSummary?.phases?.[i]?.estimatedCost;
+            return cost ? (
+              <ReferenceLine
+                key={`cost-${i}`}
+                x={band.mid}
+                stroke="transparent"
+                label={{
+                  value: `💰 ${cost}`,
+                  position: 'insideTop',
+                  fill: band.fill,
+                  fontSize: 9,
+                  fontWeight: 700,
+                }}
+              />
+            ) : null;
+          })}
+
           <XAxis
             type="number"
             domain={[0, 52]}
@@ -73,29 +120,32 @@ function RoadmapGantt({ phases }: { phases: RoadmapPhase[] }) {
             }
             labelFormatter={(label) => {
               const row = rows.find((r) => r.name === label);
-              return row ? `${label}  ·  ${row.phaseLabel}` : label;
+              const phaseIdx = PHASE_BANDS.findIndex((_, i) => row?.phaseLabel === `Phase ${i + 1}`);
+              const cost = roiSummary?.phases?.[phaseIdx]?.estimatedCost;
+              return row
+                ? `${label}  ·  ${row.phaseLabel}${cost ? `  ·  ${cost}` : ''}`
+                : label;
             }}
           />
-          {/* Transparent offset bar pushes real bar to correct start position */}
           <Bar dataKey="offset" stackId="g" fill="transparent" legendType="none" isAnimationActive={false} />
-          {/* Duration bar — coloured per phase */}
           <Bar dataKey="duration" stackId="g" radius={[0, 3, 3, 0]} isAnimationActive={false}>
             {rows.map((row, i) => <Cell key={i} fill={row.color} />)}
           </Bar>
           <ReferenceLine x={0} stroke="#64748b" strokeDasharray="4 2" />
         </BarChart>
       </ResponsiveContainer>
-      {/* Phase colour legend */}
+
+      {/* Phase legend */}
       <div className="flex flex-wrap gap-4 mt-1 ml-2">
         {phases.map((phase, i) => (
           <div key={i} className="flex items-center gap-1.5">
-            <div
-              className="w-3 h-3 rounded-sm flex-shrink-0"
-              style={{ backgroundColor: GANTT_PHASE_COLORS[i] ?? GANTT_PHASE_COLORS[0] }}
-            />
+            <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: GANTT_PHASE_COLORS[i] ?? GANTT_PHASE_COLORS[0] }} />
             <span className="text-xs text-slate-500">
               {phase.phase.split(' — ')[0]}
               {phase.timeframe ? ` (${phase.timeframe})` : ''}
+              {roiSummary?.phases?.[i]?.estimatedCost
+                ? ` · ${roiSummary.phases[i].estimatedCost}`
+                : ''}
             </span>
           </div>
         ))}
@@ -257,8 +307,27 @@ export function ExecutionRoadmapPanel({ data }: Props) {
             Delivery Timeline
           </p>
           <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <RoadmapGantt phases={data.phases} />
+            <RoadmapGantt phases={data.phases} roiSummary={data.roiSummary} />
           </div>
+        </div>
+      )}
+
+      {/* ── ROI & Benefits Realisation ────────────────────────────────────── */}
+      {data.roiSummary?.phases?.length ? (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+            <h3 className="text-sm font-semibold text-slate-700">ROI &amp; Benefits Realisation</h3>
+            <span className="text-[10px] text-slate-400 italic">
+              — estimates grounded in workshop signals, not guarantees
+            </span>
+          </div>
+          <RoiTable roi={data.roiSummary} />
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center">
+          <TrendingUp className="h-6 w-6 text-slate-300 mx-auto mb-2" />
+          <p className="text-xs text-slate-400">ROI &amp; benefits estimates will appear here after regenerating Brain Scan</p>
         </div>
       )}
 
@@ -403,19 +472,6 @@ export function ExecutionRoadmapPanel({ data }: Props) {
         </div>
       )}
 
-      {/* ── ROI & Benefits Realisation ────────────────────────────────────── */}
-      {data.roiSummary?.phases?.length ? (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="h-4 w-4 text-emerald-500" />
-            <h3 className="text-sm font-semibold text-slate-700">ROI &amp; Benefits Realisation</h3>
-            <span className="text-[10px] text-slate-400 italic">
-              — estimates grounded in workshop signals, not guarantees
-            </span>
-          </div>
-          <RoiTable roi={data.roiSummary} />
-        </div>
-      ) : null}
     </div>
   );
 }
