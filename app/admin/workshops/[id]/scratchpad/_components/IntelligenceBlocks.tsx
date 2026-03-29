@@ -28,6 +28,9 @@ export function ExecutiveSummaryBlock({
   onToggleItem?: (id: string) => void;
 }) {
   const es = summary.executiveSummary;
+  if (!es) return null;
+  const whatWeFound = es.whatWeFound ?? [];
+  const lensFindings = es.lensFindings ?? [];
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -69,7 +72,7 @@ export function ExecutiveSummaryBlock({
             What We Found
           </p>
           <ul className="space-y-3">
-            {es.whatWeFound.map((finding, i) => (
+            {whatWeFound.map((finding, i) => (
               <ItemToggle key={i} id={`finding:${i}`} excluded={excludedItems.includes(`finding:${i}`)} onToggle={onToggleItem}>
                 <div className="flex items-start gap-3 group/finding">
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary mt-0.5">
@@ -78,14 +81,14 @@ export function ExecutiveSummaryBlock({
                   <EditableText
                     value={finding}
                     onSave={(v) => {
-                      const updated = es.whatWeFound.map((f, j) => j === i ? v : f);
+                      const updated = whatWeFound.map((f, j) => j === i ? v : f);
                       onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
                     }}
                     className="flex-1 text-sm text-foreground leading-relaxed"
                   />
                   <button
                     onClick={() => {
-                      const updated = es.whatWeFound.filter((_, j) => j !== i);
+                      const updated = whatWeFound.filter((_, j) => j !== i);
                       onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
                     }}
                     className="opacity-0 group-hover/finding:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
@@ -98,19 +101,19 @@ export function ExecutiveSummaryBlock({
             ))}
           </ul>
           <AddItemInput
-            onAdd={(text) => onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: [...es.whatWeFound, text] } })}
+            onAdd={(text) => onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: [...whatWeFound, text] } })}
             placeholder="Add a finding — name a system, metric, or process"
           />
         </div>
 
         {/* Per-Lens Findings */}
-        {es.lensFindings && es.lensFindings.length > 0 && (
+        {lensFindings.length > 0 && (
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
               Findings by Lens
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {es.lensFindings.map((lf, i) => (
+              {lensFindings.map((lf, i) => (
                 <ItemToggle key={i} id={`lens:${lf.lens}`} excluded={excludedItems.includes(`lens:${lf.lens}`)} onToggle={onToggleItem}>
                   <div className="rounded-xl border border-border bg-muted/20 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
@@ -119,7 +122,7 @@ export function ExecutiveSummaryBlock({
                     <EditableText
                       value={lf.finding}
                       onSave={(v) => {
-                        const updated = es.lensFindings.map((f, j) => j === i ? { ...f, finding: v } : f);
+                        const updated = lensFindings.map((f, j) => j === i ? { ...f, finding: v } : f);
                         onUpdate({ ...summary, executiveSummary: { ...es, lensFindings: updated } });
                       }}
                       multiline
@@ -203,12 +206,15 @@ export function SupportingEvidenceBlock({
   onToggleItem?: (id: string) => void;
 }) {
   const [showNew, setShowNew] = useState(false);
-  const { discoveryValidation } = intelligence;
+  const discoveryValidation = intelligence.discoveryValidation;
+  if (!discoveryValidation) return null;
+  const confirmedIssues = discoveryValidation.confirmedIssues ?? [];
+  const newIssues = discoveryValidation.newIssues ?? [];
 
   return (
     <div className="space-y-4">
       {/* Confirmed Issues */}
-      {discoveryValidation.confirmedIssues.length > 0 && (
+      {confirmedIssues.length > 0 && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="px-5 py-3.5 border-b border-border bg-muted/30 flex items-center justify-between">
             <p className="text-xs font-semibold text-foreground">Confirmed Issues</p>
@@ -217,7 +223,7 @@ export function SupportingEvidenceBlock({
             </span>
           </div>
           <div className="divide-y divide-border">
-            {discoveryValidation.confirmedIssues.map((ci, i) => (
+            {confirmedIssues.map((ci, i) => (
               <ItemToggle key={i} id={`confirmed:${i}`} excluded={excludedItems.includes(`confirmed:${i}`)} onToggle={onToggleItem} className="px-5 py-3.5">
                 <div className="flex items-start gap-3">
                   <span
@@ -243,7 +249,7 @@ export function SupportingEvidenceBlock({
       )}
 
       {/* New Issues */}
-      {discoveryValidation.newIssues.length > 0 && (
+      {newIssues.length > 0 && (
         <div className="rounded-xl border border-blue-200 bg-card overflow-hidden">
           <button
             onClick={() => setShowNew((v) => !v)}
@@ -252,7 +258,7 @@ export function SupportingEvidenceBlock({
             <p className="text-xs font-semibold text-blue-800">
               New Issues — Surfaced in Workshop
               <span className="ml-2 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px]">
-                {discoveryValidation.newIssues.length}
+                {newIssues.length}
               </span>
             </p>
             {showNew ? (
@@ -263,7 +269,7 @@ export function SupportingEvidenceBlock({
           </button>
           {showNew && (
             <div className="divide-y divide-blue-100">
-              {discoveryValidation.newIssues.map((ni, i) => (
+              {newIssues.map((ni, i) => (
                 <ItemToggle key={i} id={`new:${i}`} excluded={excludedItems.includes(`new:${i}`)} onToggle={onToggleItem} className="px-5 py-3.5">
                   <div>
                     <p className="text-sm font-medium text-foreground">{ni.issue}</p>
@@ -291,7 +297,9 @@ export function RootCausesBlock({
   excludedItems?: string[];
   onToggleItem?: (id: string) => void;
 }) {
-  const { rootCause } = intelligence;
+  const rootCause = intelligence.rootCause;
+  if (!rootCause) return null;
+  const rootCauses = rootCause.rootCauses ?? [];
   const severityColor: Record<string, string> = {
     critical: 'bg-red-100 text-red-700 border-red-200',
     significant: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -310,7 +318,7 @@ export function RootCausesBlock({
 
       {/* Cause cards */}
       <div className="grid gap-3">
-        {rootCause.rootCauses.map((rc) => (
+        {rootCauses.map((rc) => (
           <ItemToggle key={rc.rank} id={`cause:${rc.rank}`} excluded={excludedItems.includes(`cause:${rc.rank}`)} onToggle={onToggleItem}>
             <div className="rounded-xl border border-border bg-card px-5 py-4 flex items-start gap-4">
               <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
@@ -326,9 +334,9 @@ export function RootCausesBlock({
               <div className="flex-1 min-w-0 space-y-1.5">
                 <p className="text-sm font-semibold text-foreground">{rc.cause}</p>
                 <p className="text-xs text-muted-foreground">{rc.category}</p>
-                {rc.evidence.length > 0 && (
+                {(rc.evidence ?? []).length > 0 && (
                   <ul className="mt-1 space-y-0.5">
-                    {rc.evidence.slice(0, 2).map((e, i) => (
+                    {(rc.evidence ?? []).slice(0, 2).map((e, i) => (
                       <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
                         <span className="shrink-0 mt-0.5">·</span>
                         {e}
@@ -336,9 +344,9 @@ export function RootCausesBlock({
                     ))}
                   </ul>
                 )}
-                {rc.affectedLenses.length > 0 && (
+                {(rc.affectedLenses ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1">
-                    {rc.affectedLenses.map((l) => (
+                    {(rc.affectedLenses ?? []).map((l) => (
                       <span key={l} className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground">
                         {l}
                       </span>
@@ -370,7 +378,9 @@ export function SolutionDirectionBlock({
   onToggleItem?: (id: string) => void;
 }) {
   const ss = summary.solutionSummary;
-  const { roadmap, futureState } = intelligence;
+  if (!ss) return null;
+  const roadmap = intelligence.roadmap;
+  const futureState = intelligence.futureState;
 
   return (
     <div className="space-y-6">
@@ -406,13 +416,13 @@ export function SolutionDirectionBlock({
           What Must Change
         </p>
         <div className="space-y-3">
-          {ss.whatMustChange.map((item, i) => (
+          {(ss.whatMustChange ?? []).map((item, i) => (
             <ItemToggle key={i} id={`step:${i}`} excluded={excludedItems.includes(`step:${i}`)} onToggle={onToggleItem}>
               <div className="rounded-xl border border-border bg-card p-4">
                 <EditableText
                   value={item.area}
                   onSave={(v) => {
-                    const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, area: v } : x);
+                    const updated = (ss.whatMustChange ?? []).map((x, j) => j === i ? { ...x, area: v } : x);
                     onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
                   }}
                   className="text-xs font-bold text-foreground mb-2.5"
@@ -425,7 +435,7 @@ export function SolutionDirectionBlock({
                     <EditableText
                       value={item.currentState}
                       onSave={(v) => {
-                        const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, currentState: v } : x);
+                        const updated = (ss.whatMustChange ?? []).map((x, j) => j === i ? { ...x, currentState: v } : x);
                         onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
                       }}
                       multiline
@@ -439,7 +449,7 @@ export function SolutionDirectionBlock({
                     <EditableText
                       value={item.requiredChange}
                       onSave={(v) => {
-                        const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, requiredChange: v } : x);
+                        const updated = (ss.whatMustChange ?? []).map((x, j) => j === i ? { ...x, requiredChange: v } : x);
                         onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
                       }}
                       multiline
@@ -454,23 +464,23 @@ export function SolutionDirectionBlock({
       </div>
 
       {/* Target Operating Model */}
-      {futureState.targetOperatingModel && (
+      {futureState?.targetOperatingModel && (
         <div className="rounded-xl border border-border bg-card px-5 py-5 space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Target Operating Model
           </p>
-          <p className="text-sm text-foreground leading-relaxed">{futureState.targetOperatingModel}</p>
+          <p className="text-sm text-foreground leading-relaxed">{futureState?.targetOperatingModel}</p>
         </div>
       )}
 
       {/* Redesign Principles */}
-      {futureState.redesignPrinciples.length > 0 && (
+      {(futureState?.redesignPrinciples ?? []).length > 0 && (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
             Redesign Principles
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {futureState.redesignPrinciples.map((p, i) => (
+            {(futureState?.redesignPrinciples ?? []).map((p, i) => (
               <div key={i} className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 flex items-start gap-2">
                 <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
                 <p className="text-xs text-foreground">{p}</p>
@@ -481,13 +491,13 @@ export function SolutionDirectionBlock({
       )}
 
       {/* Transformation Roadmap */}
-      {roadmap.phases.length > 0 && (
+      {(roadmap?.phases ?? []).length > 0 && (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
             Transformation Roadmap
           </p>
           <div className="space-y-3">
-            {roadmap.phases.map((phase, i) => {
+            {(roadmap?.phases ?? []).map((phase, i) => {
               const colors = PHASE_COLORS[i] ?? PHASE_COLORS[0];
               return (
                 <ItemToggle key={i} id={`phase:${i}`} excluded={excludedItems.includes(`phase:${i}`)} onToggle={onToggleItem}>
@@ -501,9 +511,9 @@ export function SolutionDirectionBlock({
                           <p className={`text-sm font-bold ${colors.label}`}>{phase.phase}</p>
                           <span className="text-xs text-muted-foreground shrink-0">{phase.timeframe}</span>
                         </div>
-                        {phase.initiatives.length > 0 && (
+                        {(phase.initiatives ?? []).length > 0 && (
                           <ul className="space-y-1.5">
-                            {phase.initiatives.map((init, j) => (
+                            {(phase.initiatives ?? []).map((init, j) => (
                               <li key={j} className="flex items-start gap-2">
                                 <span className="text-muted-foreground shrink-0 text-xs mt-0.5">·</span>
                                 <span className="text-xs text-foreground">
@@ -514,9 +524,9 @@ export function SolutionDirectionBlock({
                             ))}
                           </ul>
                         )}
-                        {phase.capabilities.length > 0 && (
+                        {(phase.capabilities ?? []).length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1">
-                            {phase.capabilities.map((c) => (
+                            {(phase.capabilities ?? []).map((c) => (
                               <span key={c} className="px-1.5 py-0.5 rounded bg-white/60 border border-white text-[10px] text-foreground/70">
                                 {c}
                               </span>
@@ -531,22 +541,22 @@ export function SolutionDirectionBlock({
             })}
           </div>
 
-          {roadmap.criticalPath && (
+          {roadmap?.criticalPath && (
             <div className="mt-3 rounded-lg border border-border bg-muted/20 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
                 Critical Path
               </p>
-              <p className="text-sm text-foreground">{roadmap.criticalPath}</p>
+              <p className="text-sm text-foreground">{roadmap?.criticalPath}</p>
             </div>
           )}
 
-          {roadmap.keyRisks.length > 0 && (
+          {(roadmap?.keyRisks ?? []).length > 0 && (
             <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-700 mb-1.5">
                 Key Risks
               </p>
               <ul className="space-y-1">
-                {roadmap.keyRisks.map((r, i) => (
+                {(roadmap?.keyRisks ?? []).map((r, i) => (
                   <li key={i} className="text-xs text-amber-900 flex items-start gap-2">
                     <span className="shrink-0">·</span>{r}
                   </li>
@@ -576,20 +586,20 @@ export function SolutionDirectionBlock({
             Success Looks Like
           </p>
           <ul className="space-y-2">
-            {ss.successIndicators.map((indicator, i) => (
+            {(ss.successIndicators ?? []).map((indicator, i) => (
               <li key={i} className="flex items-start gap-2.5 group/item">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                 <EditableText
                   value={indicator}
                   onSave={(v) => {
-                    const updated = ss.successIndicators.map((x, j) => j === i ? v : x);
+                    const updated = (ss.successIndicators ?? []).map((x, j) => j === i ? v : x);
                     onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: updated } });
                   }}
                   className="flex-1 text-sm text-foreground"
                 />
                 <button
                   onClick={() => {
-                    const updated = ss.successIndicators.filter((_, j) => j !== i);
+                    const updated = (ss.successIndicators ?? []).filter((_, j) => j !== i);
                     onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: updated } });
                   }}
                   className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all"
@@ -601,7 +611,7 @@ export function SolutionDirectionBlock({
             ))}
           </ul>
           <AddItemInput
-            onAdd={(text) => onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: [...ss.successIndicators, text] } })}
+            onAdd={(text) => onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: [...(ss.successIndicators ?? []), text] } })}
             placeholder="Add a success indicator — must be observable"
           />
         </div>
@@ -623,6 +633,7 @@ export function StrategicImpactBlock({
   onToggleItem?: (id: string) => void;
 }) {
   const si = intelligence.strategicImpact;
+  if (!si) return null;
 
   const statItems = [
     { id: 'automation', label: 'Automation Potential', pct: si.automationPotential?.percentage ?? null, color: 'bg-violet-100 text-violet-700 border-violet-200' },
@@ -658,7 +669,7 @@ export function StrategicImpactBlock({
       </div>
 
       {/* Efficiency gains table */}
-      {si.efficiencyGains.length > 0 && (
+      {(si.efficiencyGains ?? []).length > 0 && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="px-5 py-3 border-b border-border bg-muted/30">
             <p className="text-xs font-semibold text-foreground">Efficiency Gains</p>
@@ -672,7 +683,7 @@ export function StrategicImpactBlock({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {si.efficiencyGains.map((g, i) => (
+              {(si.efficiencyGains ?? []).map((g, i) => (
                 <tr key={i}>
                   <td className="px-4 py-2.5 font-medium text-foreground">{g.metric}</td>
                   <td className="px-4 py-2.5 text-emerald-700 font-semibold">{g.estimated}</td>
