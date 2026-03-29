@@ -960,9 +960,6 @@ function WayForwardSection({
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold leading-snug" style={{ color: phase.textColor }}>
                         {item.label}
-                        {item.isManual && (
-                          <span className="ml-1.5 text-[9px] font-normal text-slate-400">(added)</span>
-                        )}
                       </p>
                       <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">{item.description}</p>
                     </div>
@@ -1011,7 +1008,10 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
   const [selected,      setSelected]      = useState<string | null>(null);
   const [activeFilter,  setActiveFilter]  = useState<Status | null>(null);
   const [selectedEdge,  setSelectedEdge]  = useState<VisEdge | null>(null);
-  const [wayForwardIds, setWayForwardIds] = useState<Set<string>>(new Set());
+  // Priority nodes are in the Way Forward by default — user can deselect and re-select
+  const [wayForwardIds, setWayForwardIds] = useState<Set<string>>(
+    () => new Set(computePriorityNodes(data).map(p => p.nodeId)),
+  );
 
   const all = useMemo(() => enrich(data), [data]);
 
