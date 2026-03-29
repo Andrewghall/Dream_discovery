@@ -214,11 +214,22 @@ function positionNodes(featured: EN[], cw: number): Map<string, { x: number; y: 
 
 // ── Edge lines between featured nodes ────────────────────────────────────────
 
+interface EdgeEvidence {
+  mentionCount: number;
+  actorCount: number;
+  quotes: Array<{ text: string; participantRole: string | null; lens: string | null }>;
+  rationale: string;
+  relationshipType: string;
+}
+
 interface VisEdge {
   x1: number; y1: number;
   x2: number; y2: number;
   score: number;
   isChain: boolean;
+  evidence: EdgeEvidence;
+  fromLabel: string;
+  toLabel: string;
 }
 
 function buildVisEdges(
@@ -226,73 +237,79 @@ function buildVisEdges(
   featuredIds: Set<string>,
   pos: Map<string, { x: number; y: number }>,
 ): VisEdge[] {
-  // Collect all edges between featured nodes (both endpoints must be visible).
-  // No minimum score filter — density is preserved by design.
-  const candidateEdges: Array<{ key: string; e: (typeof tlm.edges)[0] }> = [];
-  const edgeByKey = new Map<string, (typeof tlm.edges)[0]>();
+  const byId = new Map(tlm.nodes.map(n => [n.nodeId, n]));
 
+  // Collect all edges between featured nodes.
+  // Filter: must have evidence.mentionCount >= 2 (backed by multiple utterances).
+  const edgeByKey = new Map<string, (typeof tlm.edges)[0]>();
   for (const e of tlm.edges) {
     if (!featuredIds.has(e.fromNodeId) || !featuredIds.has(e.toNodeId)) continue;
+    // Evidence gate: skip single-mention links (unverifiable)
+    if (e.evidence.mentionCount < 2) continue;
     const key = [e.fromNodeId, e.toNodeId].sort().join('|');
-    // Keep highest-score version if duplicates
     const existing = edgeByKey.get(key);
-    if (!existing || e.score > existing.score) {
-      edgeByKey.set(key, e);
-    }
-    candidateEdges.push({ key, e });
+    if (!existing || e.score > existing.score) edgeByKey.set(key, e);
   }
 
-  // For every featured node, select its top 5 connections (by score, any direction,
-  // chain or non-chain). This guarantees density without inventing new links.
+  // Per-node top-5 selection: guarantees every featured node has connections shown.
   const selectedKeys = new Set<string>();
   for (const id of featuredIds) {
-    const connected = [...edgeByKey.entries()]
-      .filter(([k]) => {
-        const [a, b] = k.split('|');
-        return a === id || b === id;
-      })
+    [...edgeByKey.entries()]
+      .filter(([k]) => { const [a, b] = k.split('|'); return a === id || b === id; })
       .sort((x, y) => y[1].score - x[1].score)
-      .slice(0, 5); // top 5 per node
-    connected.forEach(([k]) => selectedKeys.add(k));
+      .slice(0, 5)
+      .forEach(([k]) => selectedKeys.add(k));
   }
 
-  // Build output VisEdges from the selected keys
   const seen = new Set<string>();
   const out: VisEdge[] = [];
   for (const [key, e] of edgeByKey) {
-    if (!selectedKeys.has(key)) continue;
-    if (seen.has(key)) continue;
+    if (!selectedKeys.has(key) || seen.has(key)) continue;
     seen.add(key);
     const f = pos.get(e.fromNodeId);
     const t = pos.get(e.toNodeId);
     if (!f || !t) continue;
-    out.push({ x1: f.x, y1: f.y, x2: t.x, y2: t.y, score: e.score, isChain: e.isChainEdge });
+    out.push({
+      x1: f.x, y1: f.y, x2: t.x, y2: t.y,
+      score: e.score,
+      isChain: e.isChainEdge,
+      fromLabel: byId.get(e.fromNodeId)?.displayLabel ?? e.fromNodeId,
+      toLabel:   byId.get(e.toNodeId)?.displayLabel   ?? e.toNodeId,
+      evidence: {
+        mentionCount:     e.evidence.mentionCount,
+        actorCount:       e.evidence.actorCount,
+        quotes:           e.evidence.quotes,
+        rationale:        e.rationale,
+        relationshipType: e.relationshipType,
+      },
+    });
   }
   return out;
 }
 
 // ── SVG edge component ────────────────────────────────────────────────────────
 
-function Edge({ x1, y1, x2, y2, score, isChain, dim }: VisEdge & { dim: boolean }) {
+function Edge({ x1, y1, x2, y2, score, isChain, dim, onClick, selected }:
+  VisEdge & { dim: boolean; onClick: () => void; selected: boolean }) {
   const midY = (y1 + y2) / 2;
   const d    = `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`;
 
-  // Opacity: base 0.30 for weak links, up to 0.85 for strong ones
-  const op    = dim ? 0.06 : 0.30 + (score / 100) * 0.55;
-  // Stroke width: 1.5 (weak) → 4 (strong), chain edges slightly thicker
+  const op    = dim ? 0.06 : selected ? 1 : 0.30 + (score / 100) * 0.55;
   const sw    = dim ? 1 : isChain
     ? 1.5 + (score / 100) * 3.5
     : 1.5 + (score / 100) * 2.5;
-  const color = isChain ? '#f97316' : '#6366f1';
+  const color = selected ? '#0ea5e9' : isChain ? '#f97316' : '#6366f1';
 
   return (
-    <>
-      {/* Soft glow halo for strong/chain edges */}
-      {!dim && score >= 50 && (
-        <path d={d} fill="none" stroke={color} strokeWidth={sw + 6} opacity={0.08} strokeLinecap="round" />
+    <g onClick={onClick} style={{ cursor: 'pointer' }}>
+      {/* Wide invisible hit area — edges are thin, need a larger target */}
+      <path d={d} fill="none" stroke="transparent" strokeWidth={18} />
+      {/* Glow halo for strong/selected edges */}
+      {!dim && (score >= 50 || selected) && (
+        <path d={d} fill="none" stroke={color} strokeWidth={sw + 6} opacity={selected ? 0.25 : 0.08} strokeLinecap="round" />
       )}
-      <path d={d} fill="none" stroke={color} strokeWidth={sw} opacity={op} strokeLinecap="round" />
-    </>
+      <path d={d} fill="none" stroke={color} strokeWidth={selected ? sw + 1 : sw} opacity={op} strokeLinecap="round" />
+    </g>
   );
 }
 
@@ -674,7 +691,87 @@ function Legend() {
           {v.label}
         </span>
       ))}
-      <span className="ml-1 text-slate-300 italic">Click any node to explore</span>
+      <span className="ml-1 text-slate-300 italic">Click any node or link to explore</span>
+    </div>
+  );
+}
+
+// ── Edge evidence panel ───────────────────────────────────────────────────────
+
+function EdgeEvidencePanel({ edge, onClose }: { edge: VisEdge; onClose: () => void }) {
+  const relLabel: Record<string, string> = {
+    drives:          'Drives →',
+    enables:         'Enables →',
+    constrains:      'Constrains',
+    compensates_for: 'Workaround for',
+    responds_to:     'Responds to',
+    contradicts:     '⟷ Contradicts',
+    blocks:          'Blocks',
+    depends_on:      'Depends on',
+  };
+  const label = relLabel[edge.evidence.relationshipType] ?? edge.evidence.relationshipType;
+  const { mentionCount, actorCount, quotes, rationale } = edge.evidence;
+
+  return (
+    <div className="rounded-xl border border-sky-200 bg-sky-50 p-5">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-sky-500 mb-1">Link Evidence</p>
+          <p className="text-sm font-semibold text-slate-800 leading-snug">
+            {formatLabel(edge.fromLabel)}
+            <span className="mx-2 text-sky-400 font-normal text-xs">{label}</span>
+            {formatLabel(edge.toLabel)}
+          </p>
+        </div>
+        <button onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600 p-1">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Strength metrics */}
+      <div className="flex gap-4 mb-3">
+        <div className="text-center">
+          <p className="text-xl font-black text-sky-700 leading-none">{mentionCount}</p>
+          <p className="text-[9px] text-slate-500 uppercase tracking-wide mt-0.5">mentions</p>
+        </div>
+        <div className="text-center">
+          <p className="text-xl font-black text-sky-700 leading-none">{actorCount}</p>
+          <p className="text-[9px] text-slate-500 uppercase tracking-wide mt-0.5">actors</p>
+        </div>
+        <div className="text-center">
+          <p className="text-xl font-black text-sky-700 leading-none">{edge.score}</p>
+          <p className="text-[9px] text-slate-500 uppercase tracking-wide mt-0.5">strength</p>
+        </div>
+      </div>
+
+      {/* Rationale */}
+      {rationale && (
+        <p className="text-xs text-slate-600 italic mb-3 border-l-2 border-sky-200 pl-2">{rationale}</p>
+      )}
+
+      {/* Quotes */}
+      {quotes.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Evidence quotes</p>
+          {quotes.map((q, i) => (
+            <div key={i} className="bg-white border border-sky-100 rounded-lg p-2.5">
+              <p className="text-xs italic text-slate-600 mb-1">&ldquo;{q.text}&rdquo;</p>
+              <div className="flex items-center gap-2">
+                {q.participantRole && (
+                  <span className="text-[9px] text-slate-400">— {q.participantRole}</span>
+                )}
+                {q.lens && (
+                  <span className="text-[9px] text-slate-300">· {q.lens}</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {quotes.length === 0 && (
+        <p className="text-xs text-slate-400 italic">No direct quotes available for this relationship.</p>
+      )}
     </div>
   );
 }
@@ -684,9 +781,10 @@ function Legend() {
 interface Props { data: TransformationLogicMap }
 
 export function TransformationLogicMapPanel({ data }: Props) {
-  const [selected,     setSelected]     = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<Status | null>(null);
-  const [sensitivity,  setSensitivity]  = useState<SensitivityMode>('balanced');
+  const [selected,      setSelected]      = useState<string | null>(null);
+  const [activeFilter,  setActiveFilter]  = useState<Status | null>(null);
+  const [sensitivity,   setSensitivity]   = useState<SensitivityMode>('balanced');
+  const [selectedEdge,  setSelectedEdge]  = useState<VisEdge | null>(null);
 
   const all = useMemo(() => enrich(data), [data]);
 
@@ -782,14 +880,28 @@ export function TransformationLogicMapPanel({ data }: Props) {
               >
                 <LaneBands cw={canvasW} />
 
-                {/* Edges (sensitivity-filtered) */}
+                {/* Edges (sensitivity-filtered, evidence-backed, clickable) */}
                 {sensEdges.map((e, i) => {
-                  const dim = selected !== null && connectedIds !== null && (() => {
+                  const nodeDim = selected !== null && connectedIds !== null && (() => {
                     const sp = pos.get(selected)!;
                     const isTouching = (e.x1 === sp.x && e.y1 === sp.y) || (e.x2 === sp.x && e.y2 === sp.y);
                     return !isTouching;
                   })();
-                  return <Edge key={i} {...e} dim={dim} />;
+                  const isEdgeSel = selectedEdge !== null &&
+                    selectedEdge.x1 === e.x1 && selectedEdge.y1 === e.y1 &&
+                    selectedEdge.x2 === e.x2 && selectedEdge.y2 === e.y2;
+                  return (
+                    <Edge
+                      key={i}
+                      {...e}
+                      dim={nodeDim}
+                      selected={isEdgeSel}
+                      onClick={() => setSelectedEdge(prev =>
+                        prev && prev.x1 === e.x1 && prev.y1 === e.y1 && prev.x2 === e.x2 && prev.y2 === e.y2
+                          ? null : e
+                      )}
+                    />
+                  );
                 })}
 
                 {/* Nodes — positions stable; below-threshold nodes faded not removed */}
@@ -827,9 +939,14 @@ export function TransformationLogicMapPanel({ data }: Props) {
         </div>
       </div>
 
+      {/* ── Selected edge evidence ─────────────────────────── */}
+      {selectedEdge && !selectedEN && (
+        <EdgeEvidencePanel edge={selectedEdge} onClose={() => setSelectedEdge(null)} />
+      )}
+
       {/* ── Selected node detail ────────────────────────────── */}
       {selectedEN && (
-        <NodeDetail en={selectedEN} onClose={() => setSelected(null)} />
+        <NodeDetail en={selectedEN} onClose={() => { setSelected(null); setSelectedEdge(null); }} />
       )}
 
       {/* ── Remaining dropdown (filtered when active) ──────── */}

@@ -105,6 +105,32 @@ function buildInterpretationSummary(
 
 // ── Main engine ───────────────────────────────────────────────────────────────
 
+// ── Evidence helper ───────────────────────────────────────────────────────────
+
+function buildEdgeEvidence(
+  fromNodeId: string,
+  toNodeId: string,
+  clusterQuotes: GraphIntelligence['clusterQuotes'],
+  mentionCountOverride?: number,
+): TLMEdge['evidence'] {
+  const fromQ = clusterQuotes[fromNodeId] ?? [];
+  const toQ   = clusterQuotes[toNodeId]   ?? [];
+  // Merge quotes, deduplicate by text
+  const seen   = new Set<string>();
+  const quotes: typeof fromQ = [];
+  for (const q of [...fromQ, ...toQ]) {
+    if (!seen.has(q.text)) { seen.add(q.text); quotes.push(q); }
+  }
+  const actorCount = new Set(
+    quotes.map(q => q.participantRole).filter((r): r is string => Boolean(r)),
+  ).size;
+  return {
+    mentionCount: mentionCountOverride ?? quotes.length,
+    actorCount,
+    quotes: quotes.slice(0, 4),
+  };
+}
+
 export function buildTransformationLogicMap(graphIntelligence: GraphIntelligence): TransformationLogicMap {
   const nodeMap = new Map<string, TLMNode>();
   const edgeList: TLMEdge[] = [];
@@ -142,6 +168,7 @@ export function buildTransformationLogicMap(graphIntelligence: GraphIntelligence
       tier: chain.weakestLinkTier,
       isChainEdge: true,
       rationale: `${chain.labels.constraint} motivates ${chain.labels.enabler}`,
+      evidence: buildEdgeEvidence(chain.constraintNodeId, chain.enablerNodeId, graphIntelligence.clusterQuotes),
     });
 
     addEdge({
@@ -153,6 +180,7 @@ export function buildTransformationLogicMap(graphIntelligence: GraphIntelligence
       tier: chain.weakestLinkTier,
       isChainEdge: true,
       rationale: `${chain.labels.enabler} makes ${chain.labels.reimagination} achievable`,
+      evidence: buildEdgeEvidence(chain.enablerNodeId, chain.reimaginationNodeId, graphIntelligence.clusterQuotes),
     });
   }
 
@@ -193,6 +221,12 @@ export function buildTransformationLogicMap(graphIntelligence: GraphIntelligence
       tier,
       isChainEdge: false,
       rationale: `"${cb.enablerLabel}" works around "${cb.constraintLabel}" — constraint remains live (${cb.constraintRawFrequency} mentions)`,
+      evidence: buildEdgeEvidence(
+        cb.enablerNodeId,
+        cb.constraintNodeId,
+        graphIntelligence.clusterQuotes,
+        cb.constraintRawFrequency,
+      ),
     });
   }
 
@@ -210,6 +244,12 @@ export function buildTransformationLogicMap(graphIntelligence: GraphIntelligence
       tier: 'EMERGING',
       isChainEdge: false,
       rationale: 'Opposing participant views on related concerns',
+      evidence: buildEdgeEvidence(
+        cp.nodeAId,
+        cp.nodeBId,
+        graphIntelligence.clusterQuotes,
+        cp.fromSignalIds.length + cp.toSignalIds.length,
+      ),
     });
   }
 
