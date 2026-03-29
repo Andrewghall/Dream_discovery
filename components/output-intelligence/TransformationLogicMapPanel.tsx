@@ -39,64 +39,7 @@ const LAYER_STYLE: Record<TLMNode['layer'], { dot: string; label: string }> = {
   CONSTRAINT:    { dot: '#ef4444', label: 'Challenge' },
 };
 
-// ── Sensitivity modes ─────────────────────────────────────────────────────────
-
-type SensitivityMode = 'executive' | 'balanced' | 'analyst';
-
-interface SensCfg {
-  nodeScoreMin:     number;
-  edgeScoreMin:     number;
-  showPartial:      boolean;
-  showDisconnected: boolean;
-  dimOpacity:       number;
-}
-
-const SENSITIVITY: Record<SensitivityMode, SensCfg> = {
-  executive: { nodeScoreMin: 55, edgeScoreMin: 1, showPartial: false, showDisconnected: false, dimOpacity: 0.06 },
-  balanced:  { nodeScoreMin: 15, edgeScoreMin: 1, showPartial: true,  showDisconnected: false, dimOpacity: 0.15 },
-  analyst:   { nodeScoreMin:  0, edgeScoreMin: 1, showPartial: true,  showDisconnected: true,  dimOpacity: 0.25 },
-};
-
-const SENS_META: Record<SensitivityMode, { label: string; desc: string; color: string }> = {
-  executive: { label: 'Executive', desc: 'Strongest signals — high-confidence pathways only', color: '#7c3aed' },
-  balanced:  { label: 'Balanced',  desc: 'Critical issues + validated connections',           color: '#2563eb' },
-  analyst:   { label: 'Analyst',   desc: 'Full structure — all nodes and weak links visible', color: '#059669' },
-};
-
-function nodePassesSens(en: EN, cfg: SensCfg): boolean {
-  if (en.status === 'disconnected' && !cfg.showDisconnected) return false;
-  if (en.status === 'partial'      && !cfg.showPartial)      return false;
-  if (en.score < cfg.nodeScoreMin)                           return false;
-  return true;
-}
-
-function SensitivityControl({ value, onChange }: { value: SensitivityMode; onChange: (m: SensitivityMode) => void }) {
-  const modes: SensitivityMode[] = ['executive', 'balanced', 'analyst'];
-  return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Detail</span>
-      <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-        {modes.map(m => {
-          const meta   = SENS_META[m];
-          const active = m === value;
-          return (
-            <button
-              key={m}
-              onClick={() => onChange(m)}
-              className={`px-3 py-1.5 text-[11px] font-semibold transition-colors border-r border-slate-200 last:border-r-0 ${
-                active ? 'text-white' : 'text-slate-500 bg-white hover:bg-slate-50'
-              }`}
-              style={active ? { background: meta.color } : {}}
-            >
-              {meta.label}
-            </button>
-          );
-        })}
-      </div>
-      <span className="text-[10px] text-slate-400 hidden sm:block">{SENS_META[value].desc}</span>
-    </div>
-  );
-}
+// (sensitivity modes replaced by score-proportional node sizing — no threshold controls needed)
 
 // ── Weighted scoring model ────────────────────────────────────────────────────
 
@@ -168,15 +111,17 @@ const LANE_Y: Record<TLMNode['layer'], number> = {
 const PAD_X    = 60;
 const NODE_SLOT = 54;
 
-function radius(en: EN, maxPerLane: number, maxFreq: number): number {
-  const base = maxPerLane > 16 ? 14
-             : maxPerLane > 10 ? 18
-             : maxPerLane > 6  ? 22
-             : 26;
-  // Scale +0 to +8px based on rawFrequency — high-mention nodes are physically larger
-  const freqBoost = Math.round((en.n.rawFrequency / Math.max(maxFreq, 1)) * 8);
-  const adjusted = (en.n.isCoalescent ? base + 6 : en.n.isOrphan ? base - 2 : base) + freqBoost;
-  return adjusted;
+// Node size encodes combined seniority + frequency score (en.score 0-100)
+// High-signal nodes are visibly larger; low-signal nodes stay small but never disappear
+function radius(en: EN, maxPerLane: number): number {
+  // Base: tighten when many nodes share a lane
+  const base = maxPerLane > 16 ? 9
+             : maxPerLane > 10 ? 12
+             : maxPerLane > 6  ? 16
+             : 20;
+  // Scale +0 to +14px by combined score — coalescent nodes get an extra boost
+  const scoreBoost = Math.round((en.score / 100) * 14);
+  return (en.n.isCoalescent ? base + 4 : en.n.isOrphan ? base - 1 : base) + scoreBoost;
 }
 
 function dynCW(maxPerLane: number): number {
@@ -325,12 +270,12 @@ function EdgeBundle({
 // ── SVG node component ────────────────────────────────────────────────────────
 
 function MapNode({
-  en, x, y, selected, dim, onClick, maxPerLane, maxFreq, dimOpacity = 0.22,
-}: { en: EN; x: number; y: number; selected: boolean; dim: boolean; onClick: () => void; maxPerLane: number; maxFreq: number; dimOpacity?: number }) {
-  const r   = radius(en, maxPerLane, maxFreq);
+  en, x, y, selected, dim, onClick, maxPerLane,
+}: { en: EN; x: number; y: number; selected: boolean; dim: boolean; onClick: () => void; maxPerLane: number }) {
+  const r   = radius(en, maxPerLane);
   const ss  = STATUS_STYLE[en.status];
   const ls  = LAYER_STYLE[en.n.layer];
-  const op  = dim ? dimOpacity : 1;
+  const op  = dim ? 0.22 : 1;
   const rawLabel = formatLabel(en.n.displayLabel);
   const label = rawLabel.length > 26 ? rawLabel.slice(0, 24) + '…' : rawLabel;
 
@@ -345,10 +290,9 @@ function MapNode({
   if (cur) lines.push(cur);
   const twoLines = lines.slice(0, 2);
 
-  // Coalescence: amber animated pressure-point ring
-  const isCoalescentVisible = en.n.isCoalescent && !dim;
-  // Orphan constraint: red warning dot at top-right
-  const showOrphanDot = en.n.isOrphan && en.n.layer === 'CONSTRAINT' && !dim;
+  // Coalescence ring and orphan dot always visible (nodes are never fully hidden)
+  const isCoalescentVisible = en.n.isCoalescent;
+  const showOrphanDot = en.n.isOrphan && en.n.layer === 'CONSTRAINT';
 
   return (
     <g onClick={onClick} style={{ cursor: 'pointer', opacity: op }}>
@@ -1050,7 +994,6 @@ interface Props {
 export function TransformationLogicMapPanel({ data, workshopId }: Props) {
   const [selected,      setSelected]      = useState<string | null>(null);
   const [activeFilter,  setActiveFilter]  = useState<Status | null>(null);
-  const [sensitivity,   setSensitivity]   = useState<SensitivityMode>('balanced');
   const [selectedEdge,  setSelectedEdge]  = useState<VisEdge | null>(null);
   const [wayForwardIds, setWayForwardIds] = useState<Set<string>>(new Set());
 
@@ -1084,11 +1027,6 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
     );
     return Math.max(...counts, 1);
   }, [featured]);
-
-  const maxFreq = useMemo(
-    () => Math.max(...featured.map(e => e.n.rawFrequency), 1),
-    [featured],
-  );
 
   const canvasW  = dynCW(maxPerLane);
   const pos      = useMemo(() => positionNodes(featured, canvasW), [featured, canvasW]);
@@ -1146,20 +1084,18 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
       {/* ══ PRIMARY EVIDENCE: Transformation Logic Map ══ */}
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
 
-        {/* Map header: stats · sensitivity · report toggle */}
+        {/* Map header: stats · report toggle */}
         <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100 gap-3 flex-wrap">
           <div className="shrink-0">
             <span className="text-xs font-bold text-slate-700">{featured.length} nodes mapped</span>
             <span className="ml-2 text-[10px] text-slate-400">
               {data.strongestChains.length} valid chain{data.strongestChains.length !== 1 ? 's' : ''} · {data.coverageScore}% constraint coverage
             </span>
+            <span className="ml-2 text-[10px] text-slate-300">· circle size = seniority × mentions</span>
           </div>
-          <div className="flex items-center gap-3">
-            <SensitivityControl value={sensitivity} onChange={m => { setSensitivity(m); setSelected(null); }} />
-            {workshopId && (
-              <ReportSectionToggle workshopId={workshopId} sectionId="transformation_priorities" title="Transformation Logic Map" />
-            )}
-          </div>
+          {workshopId && (
+            <ReportSectionToggle workshopId={workshopId} sectionId="transformation_priorities" title="Transformation Logic Map" />
+          )}
         </div>
 
         {/* Clickable filter strip — drill into the map */}
@@ -1172,27 +1108,20 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
         {/* SVG — always visible, full width */}
         <div className="overflow-x-auto">
           {(() => {
-            const sensCfg = SENSITIVITY[sensitivity];
-
-            // Nodes visible = pass sensitivity threshold AND active filter (if set)
-            const visibleNodeIds = new Set(
+            // Edges only where both endpoints pass the active filter
+            const filterNodeIds = new Set(
               featured
-                .filter(en => nodePassesSens(en, sensCfg) && (activeFilter === null || en.status === activeFilter))
+                .filter(en => activeFilter === null || en.status === activeFilter)
                 .map(en => en.n.nodeId),
             );
-
-            // Reverse position map so we can look up nodeId by (x,y)
             const coordToId = new Map<string, string>();
             for (const [nodeId, p] of pos.entries()) {
               coordToId.set(`${p.x},${p.y}`, nodeId);
             }
-
-            // Only render edges where BOTH endpoints are visible — no orphan lines
-            const sensEdges = visEdges.filter(e => {
-              if (e.score < sensCfg.edgeScoreMin) return false;
+            const visibleEdges = visEdges.filter(e => {
               const fromId = coordToId.get(`${e.x1},${e.y1}`);
               const toId   = coordToId.get(`${e.x2},${e.y2}`);
-              return Boolean(fromId && toId && visibleNodeIds.has(fromId) && visibleNodeIds.has(toId));
+              return Boolean(fromId && toId && filterNodeIds.has(fromId) && filterNodeIds.has(toId));
             });
             return (
               <svg
@@ -1203,7 +1132,7 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
                 <LaneBands cw={canvasW} />
 
                 {/* Edges — weakest first so strong ones paint on top */}
-                {sensEdges.map((e, i) => {
+                {visibleEdges.map((e, i) => {
                   const nodeDim = selected !== null && connectedIds !== null && (() => {
                     const sp = pos.get(selected)!;
                     return !((e.x1 === sp.x && e.y1 === sp.y) || (e.x2 === sp.x && e.y2 === sp.y));
@@ -1224,26 +1153,22 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
                   );
                 })}
 
-                {/* Nodes — sizes reflect frequency; coalescence rings; orphan dots */}
+                {/* Nodes — circle size encodes seniority × frequency score */}
                 {featured.map(en => {
                   const p = pos.get(en.n.nodeId);
                   if (!p) return null;
-                  const sensDim   = !nodePassesSens(en, sensCfg);
                   const filterDim = activeFilter !== null && en.status !== activeFilter;
                   const selectDim = selected !== null && selected !== en.n.nodeId &&
                                     !(connectedIds?.has(en.n.nodeId) ?? false);
-                  const dim = sensDim || filterDim || selectDim;
+                  const dim = filterDim || selectDim;
                   return (
                     <MapNode
                       key={en.n.nodeId}
                       en={en} x={p.x} y={p.y}
                       selected={selected === en.n.nodeId}
                       dim={dim}
-                      dimOpacity={sensDim ? sensCfg.dimOpacity : 0.22}
                       maxPerLane={maxPerLane}
-                      maxFreq={maxFreq}
                       onClick={() => {
-                        if (sensDim) return;
                         setSelected(prev => prev === en.n.nodeId ? null : en.n.nodeId);
                         setSelectedEdge(null);
                       }}
