@@ -211,6 +211,7 @@ function GanttOverlay({
         position: 'absolute', top: 0, left: 0,
         width: '100%', height: '100%',
         pointerEvents: 'none', overflow: 'visible',
+        zIndex: 10,
       }}
       viewBox={`0 0 ${containerW} ${containerH}`}
       preserveAspectRatio="none"
@@ -226,11 +227,12 @@ function GanttOverlay({
       <path d={benefitAreaPath} fill="url(#roi-benefit-grad)" />
 
       {/* Cumulative cost (dashed red) */}
-      <path d={costPath} fill="none" stroke="#ef4444" strokeWidth="2"
-            strokeDasharray="6,3" opacity="0.85" />
+      <path d={costPath} fill="none" stroke="#dc2626" strokeWidth="3"
+            strokeDasharray="8,4" opacity="1" strokeLinecap="round" />
 
       {/* Cumulative benefit (solid green) */}
-      <path d={benefitPath} fill="none" stroke="#10b981" strokeWidth="2.5" opacity="0.9" />
+      <path d={benefitPath} fill="none" stroke="#059669" strokeWidth="3.5"
+            opacity="1" strokeLinecap="round" />
 
       {/* Payback marker */}
       {payback && (
@@ -307,16 +309,24 @@ function RoadmapGantt({
   editableRoi?: RoiSummary;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [containerW, setContainerW] = useState(800);
+  const [containerW, setContainerW] = useState(0);
 
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
-    setContainerW(el.clientWidth);
-    const ro = new ResizeObserver(([entry]) => setContainerW(entry.contentRect.width));
+    setContainerW(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver(([entry]) =>
+      setContainerW(entry.contentRect.width)
+    );
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // ── MUST be before early returns to satisfy Rules of Hooks ────────────────
+  const roiCurve = useMemo(
+    () => editableRoi?.phases?.length ? buildRoiCurve(editableRoi.phases) : [],
+    [editableRoi],
+  );
 
   if (!phases?.length) return null;
 
@@ -344,12 +354,6 @@ function RoadmapGantt({
   if (!rows.length) return null;
 
   const ganttHeight = Math.max(rows.length * 42 + 60, 180);
-
-  // ROI curve from editable data
-  const roiCurve = useMemo(
-    () => editableRoi?.phases?.length ? buildRoiCurve(editableRoi.phases) : [],
-    [editableRoi],
-  );
 
   return (
     <div>
@@ -407,8 +411,8 @@ function RoadmapGantt({
           </BarChart>
         </ResponsiveContainer>
 
-        {/* ROI line overlay */}
-        {roiCurve.length > 0 && (
+        {/* ROI line overlay — only render once ResizeObserver has the real width */}
+        {roiCurve.length > 0 && containerW > 0 && (
           <GanttOverlay
             roiCurve={roiCurve}
             containerW={containerW}
