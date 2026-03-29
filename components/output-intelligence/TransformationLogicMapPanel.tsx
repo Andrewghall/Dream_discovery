@@ -250,7 +250,7 @@ function buildVisEdges(
     if (!featuredIds.has(e.fromNodeId) || !featuredIds.has(e.toNodeId)) continue;
     const mc = e.evidence?.mentionCount ?? 0;
     if (mc > 0 && mc < 2) continue;              // drop provably single-mention
-    if (mc === 0 && e.score < 10) continue;       // drop weak/synthetic on old data
+    if (mc === 0 && e.score < 3) continue;        // drop near-zero noise on old data; keep weak chains
     const key = [e.fromNodeId, e.toNodeId].sort().join('|');
     const ex  = edgeByKey.get(key);
     if (!ex || e.score > ex.score) edgeByKey.set(key, e);
