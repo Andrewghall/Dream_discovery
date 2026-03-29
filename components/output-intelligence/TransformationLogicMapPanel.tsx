@@ -240,12 +240,13 @@ function buildVisEdges(
   const byId = new Map(tlm.nodes.map(n => [n.nodeId, n]));
 
   // Collect all edges between featured nodes.
-  // Filter: must have evidence.mentionCount >= 2 (backed by multiple utterances).
+  // Evidence gate: skip single-mention links where evidence data is available.
+  // Old stored data may not have evidence field — those edges are always included.
   const edgeByKey = new Map<string, (typeof tlm.edges)[0]>();
   for (const e of tlm.edges) {
     if (!featuredIds.has(e.fromNodeId) || !featuredIds.has(e.toNodeId)) continue;
-    // Evidence gate: skip single-mention links (unverifiable)
-    if (e.evidence.mentionCount < 2) continue;
+    const mentionCount = e.evidence?.mentionCount ?? 0;
+    if (mentionCount > 0 && mentionCount < 2) continue; // only filter when evidence exists
     const key = [e.fromNodeId, e.toNodeId].sort().join('|');
     const existing = edgeByKey.get(key);
     if (!existing || e.score > existing.score) edgeByKey.set(key, e);
@@ -276,9 +277,9 @@ function buildVisEdges(
       fromLabel: byId.get(e.fromNodeId)?.displayLabel ?? e.fromNodeId,
       toLabel:   byId.get(e.toNodeId)?.displayLabel   ?? e.toNodeId,
       evidence: {
-        mentionCount:     e.evidence.mentionCount,
-        actorCount:       e.evidence.actorCount,
-        quotes:           e.evidence.quotes,
+        mentionCount:     e.evidence?.mentionCount ?? 0,
+        actorCount:       e.evidence?.actorCount   ?? 0,
+        quotes:           e.evidence?.quotes       ?? [],
         rationale:        e.rationale,
         relationshipType: e.relationshipType,
       },
