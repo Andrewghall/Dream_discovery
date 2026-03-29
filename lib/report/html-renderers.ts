@@ -11,7 +11,14 @@ import type {
   ReportLayout,
   ReportSectionConfig,
   WorkshopOutputIntelligence,
+  TransformationLogicMap,
 } from '@/lib/output-intelligence/types';
+import {
+  computePriorityNodes,
+  buildWayForward,
+  buildExecSummary,
+  formatLabel,
+} from '@/lib/output-intelligence/engines/priority-engine';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 
@@ -618,6 +625,112 @@ export function renderFacilitatorBackPage(reportSummary: ReportSummary, dreamLog
     </div>`;
 }
 
+// ── Transformation Priorities ─────────────────────────────────────────────────
+
+export function renderTransformationPriorities(tlm: TransformationLogicMap | undefined): string {
+  if (!tlm) return '';
+  const priorities = computePriorityNodes(tlm);
+  if (!priorities.length) return '';
+
+  const sigColor: Record<string, string> = {
+    critical: '#b91c1c', high: '#9a3412', medium: '#475569',
+  };
+  const sigBg: Record<string, string> = {
+    critical: '#fef2f2', high: '#fff7ed', medium: '#f8fafc',
+  };
+  const clsColor: Record<string, string> = {
+    systemic: '#1e40af', structural: '#5b21b6', local: '#166534', symptomatic: '#9a3412',
+  };
+  const clsBg: Record<string, string> = {
+    systemic: '#eff6ff', structural: '#f5f3ff', local: '#f0fdf4', symptomatic: '#fff7ed',
+  };
+
+  const execSum = buildExecSummary(tlm);
+
+  const cards = priorities.map(p => {
+    const layerLabel = p.layer === 'REIMAGINATION' ? 'Vision' : p.layer === 'ENABLER' ? 'Enabler' : 'Challenge';
+    const layerColor = p.layer === 'REIMAGINATION' ? '#10b981' : p.layer === 'ENABLER' ? '#3b82f6' : '#ef4444';
+    const rolesList  = p.distinctRoles.length > 0
+      ? p.distinctRoles.slice(0, 4).map(r => `<span class="tp-role">${esc(r)}</span>`).join('')
+      : '';
+    return `
+      <div class="tp-card">
+        <div class="tp-card-header">
+          <div class="tp-rank">${String(p.rank).padStart(2, '0')}</div>
+          <div class="tp-card-meta">
+            <div class="tp-card-title">${esc(formatLabel(p.displayLabel))}</div>
+            <div class="tp-badges">
+              <span class="tp-badge" style="background:${sigBg[p.significance]};color:${sigColor[p.significance]};border:1px solid ${sigColor[p.significance]}44">${esc(p.significance.charAt(0).toUpperCase() + p.significance.slice(1))}</span>
+              <span class="tp-badge" style="background:${clsBg[p.classification]};color:${clsColor[p.classification]};border:1px solid ${clsColor[p.classification]}44">${esc(p.classification)}</span>
+              <span class="tp-badge" style="background:${layerColor}18;color:${layerColor};border:1px solid ${layerColor}40">${layerLabel}</span>
+              ${p.isCoalescent ? '<span class="tp-badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d">Pressure point</span>' : ''}
+            </div>
+          </div>
+        </div>
+        <p class="tp-classification-reason">${esc(p.classificationReason)}</p>
+        <div class="tp-body-label">Why this matters to the business</div>
+        <p class="tp-why">${esc(p.whyMatters)}</p>
+        ${p.riskIfIgnored ? `<div class="tp-body-label tp-risk-label">Risk if ignored</div><p class="tp-risk">${esc(p.riskIfIgnored)}</p>` : ''}
+        ${p.suggestedAction ? `<div class="tp-action-box"><div class="tp-body-label tp-action-label">Suggested action</div><p class="tp-action-text">${esc(p.suggestedAction)}</p></div>` : ''}
+        ${rolesList ? `<div class="tp-roles">${rolesList}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Transformation Priorities</div></div>
+      <div class="tp-summary-bar">
+        <p class="tp-summary-headline">${esc(execSum.headline)}</p>
+        ${execSum.pressure ? `<p class="tp-summary-sub">${esc(execSum.pressure)}</p>` : ''}
+      </div>
+      <div class="tp-cards">${cards}</div>
+    </section>`;
+}
+
+// ── Way Forward ───────────────────────────────────────────────────────────────
+
+export function renderWayForward(tlm: TransformationLogicMap | undefined): string {
+  if (!tlm) return '';
+  const phases = buildWayForward(tlm, new Set());
+  const totalItems = phases.reduce((s, p) => s + p.items.length, 0);
+  if (totalItems === 0) return '';
+
+  const phaseHtml = phases.map(phase => {
+    const items = phase.items.map(item => `
+      <div class="wf-item">
+        <div class="wf-item-dot" style="background:${phase.color}"></div>
+        <div class="wf-item-body">
+          <div class="wf-item-label">${esc(item.label)}</div>
+          <div class="wf-item-desc">${esc(item.description)}</div>
+        </div>
+      </div>`).join('');
+
+    return `
+      <div class="wf-phase" style="border-top:3px solid ${phase.color}">
+        <div class="wf-phase-header">
+          <div class="wf-phase-num" style="background:${phase.color}">${phase.phase}</div>
+          <div>
+            <div class="wf-phase-name" style="color:${phase.textColor}">${esc(phase.name)}</div>
+            <div class="wf-phase-timeline">${esc(phase.timeline)}</div>
+          </div>
+        </div>
+        <div class="wf-items">${items}</div>
+        <div class="wf-outcome-box" style="border-color:${phase.borderColor}">
+          <div class="wf-outcome-label" style="color:${phase.color}">Expected outcome</div>
+          <p class="wf-outcome-text">${esc(phase.expectedOutcome)}</p>
+        </div>
+        <p class="wf-dependencies"><strong>Requires:</strong> ${esc(phase.dependencies)}</p>
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Way Forward</div></div>
+      <p class="wf-intro">A sequenced, three-phase plan derived from the transformation logic map — ordered by structural dependency, not urgency.</p>
+      <div class="wf-grid">${phaseHtml}</div>
+    </section>`;
+}
+
 export function renderCustomSection(cfg: ReportSectionConfig): string {
   const content = cfg.customContent ?? {};
   return `
@@ -927,6 +1040,48 @@ export const PDF_STYLES = `
   .next-step-content { flex: 1; }
   .next-step-title { font-size: 10.5pt; font-weight: 700; color: #111827; margin-bottom: 3px; }
   .next-step-desc { font-size: 9.5pt; color: #6b7280; line-height: 1.5; }
+
+  /* ── Transformation Priorities ─── */
+  .tp-summary-bar { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; }
+  .tp-summary-headline { font-size: 10.5pt; font-weight: 600; color: #1e293b; line-height: 1.6; margin-bottom: 6px; }
+  .tp-summary-sub { font-size: 9.5pt; color: #64748b; line-height: 1.6; margin: 0; }
+  .tp-cards { display: flex; flex-direction: column; gap: 14px; }
+  .tp-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px; background: #ffffff; }
+  .tp-card-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 10px; }
+  .tp-rank { flex-shrink: 0; width: 28px; height: 28px; background: #0f172a; color: white; border-radius: 8px; font-size: 9pt; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .tp-card-meta { flex: 1; }
+  .tp-card-title { font-size: 11pt; font-weight: 700; color: #0f172a; margin-bottom: 7px; }
+  .tp-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tp-badge { font-size: 7.5pt; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: capitalize; letter-spacing: 0.02em; }
+  .tp-classification-reason { font-size: 8.5pt; color: #64748b; line-height: 1.65; margin-bottom: 10px; background: #f8fafc; border-radius: 6px; padding: 8px 10px; border: 1px solid #f1f5f9; }
+  .tp-body-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: #94a3b8; margin-bottom: 5px; }
+  .tp-risk-label { color: #b45309; margin-top: 10px; }
+  .tp-why { font-size: 9.5pt; color: #334155; line-height: 1.7; margin-bottom: 0; }
+  .tp-risk { font-size: 9.5pt; color: #78350f; line-height: 1.7; margin-bottom: 0; }
+  .tp-action-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+  .tp-action-label { color: #d97706; margin-bottom: 5px; }
+  .tp-action-text { font-size: 9.5pt; color: #92400e; line-height: 1.7; margin: 0; }
+  .tp-roles { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .tp-role { font-size: 7.5pt; color: #475569; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 20px; padding: 2px 8px; }
+
+  /* ── Way Forward ─── */
+  .wf-intro { font-size: 9.5pt; color: #64748b; line-height: 1.7; margin-bottom: 20px; }
+  .wf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .wf-phase { border-radius: 10px; border: 1px solid #e2e8f0; padding: 16px; background: #ffffff; }
+  .wf-phase-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .wf-phase-num { width: 30px; height: 30px; border-radius: 8px; color: white; font-size: 12pt; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .wf-phase-name { font-size: 11pt; font-weight: 700; line-height: 1.2; }
+  .wf-phase-timeline { font-size: 8pt; color: #94a3b8; margin-top: 2px; }
+  .wf-items { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .wf-item { display: flex; gap: 8px; align-items: flex-start; }
+  .wf-item-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .wf-item-body { flex: 1; }
+  .wf-item-label { font-size: 9pt; font-weight: 600; color: #1e293b; margin-bottom: 2px; }
+  .wf-item-desc { font-size: 8pt; color: #64748b; line-height: 1.55; }
+  .wf-outcome-box { border: 1px solid; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: #ffffff; }
+  .wf-outcome-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 5px; }
+  .wf-outcome-text { font-size: 8.5pt; color: #475569; line-height: 1.6; margin: 0; }
+  .wf-dependencies { font-size: 8pt; color: #94a3b8; line-height: 1.55; margin: 0; }
 `;
 
 // ── buildReportHtml ───────────────────────────────────────────────────────────
@@ -975,10 +1130,12 @@ export function buildReportHtml(
       case 'structural_narrative': return renderStructuralNarrative(discoverAnalysis);
       case 'structural_tensions':  return renderStructuralTensions(discoverAnalysis);
       case 'structural_barriers':  return renderStructuralBarriers(discoverAnalysis);
-      case 'structural_confidence':return renderStructuralConfidence(discoverAnalysis);
-      case 'discovery_signal_map': return renderSignalMap(reportSummary, discoverAnalysis);
-      case 'facilitator_contact':  return renderFacilitatorBackPage(reportSummary, dreamLogoBase64);
-      case 'report_conclusion':    return renderConclusion(reportSummary);
+      case 'structural_confidence':      return renderStructuralConfidence(discoverAnalysis);
+      case 'discovery_signal_map':       return renderSignalMap(reportSummary, discoverAnalysis);
+      case 'facilitator_contact':        return renderFacilitatorBackPage(reportSummary, dreamLogoBase64);
+      case 'report_conclusion':          return renderConclusion(reportSummary);
+      case 'transformation_priorities':  return renderTransformationPriorities(intelligence.transformationLogicMap);
+      case 'way_forward':                return renderWayForward(intelligence.transformationLogicMap);
       default: return '';
     }
   }).join('\n');
