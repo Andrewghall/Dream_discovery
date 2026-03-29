@@ -29,6 +29,70 @@ const LAYER_STYLE: Record<TLMNode['layer'], { dot: string; label: string }> = {
   CONSTRAINT:    { dot: '#ef4444', label: 'Challenge'  },
 };
 
+// ── Sensitivity modes ─────────────────────────────────────────────────────────
+// Controls how much of the real structure is revealed. No new links are invented.
+
+type SensitivityMode = 'executive' | 'balanced' | 'analyst';
+
+interface SensCfg {
+  nodeScoreMin:     number;   // 0–100: nodes below this score are faded
+  edgeScoreMin:     number;   // raw edge score: edges below this are hidden
+  showPartial:      boolean;  // fully render partial-status nodes
+  showDisconnected: boolean;  // fully render disconnected/orphan nodes
+  dimOpacity:       number;   // opacity for below-threshold nodes (they stay in position)
+}
+
+const SENSITIVITY: Record<SensitivityMode, SensCfg> = {
+  executive: { nodeScoreMin: 55, edgeScoreMin: 45, showPartial: false, showDisconnected: false, dimOpacity: 0.06 },
+  balanced:  { nodeScoreMin: 15, edgeScoreMin: 20, showPartial: true,  showDisconnected: false, dimOpacity: 0.15 },
+  analyst:   { nodeScoreMin:  0, edgeScoreMin:  8, showPartial: true,  showDisconnected: true,  dimOpacity: 0.25 },
+};
+
+const SENS_META: Record<SensitivityMode, { label: string; desc: string; color: string }> = {
+  executive: { label: 'Executive', desc: 'Strongest signals — high-confidence pathways only', color: '#7c3aed' },
+  balanced:  { label: 'Balanced',  desc: 'Critical issues + validated connections',           color: '#2563eb' },
+  analyst:   { label: 'Analyst',   desc: 'Full structure — all nodes and weak links visible', color: '#059669' },
+};
+
+function nodePassesSens(en: EN, cfg: SensCfg): boolean {
+  if (en.status === 'disconnected' && !cfg.showDisconnected) return false;
+  if (en.status === 'partial'      && !cfg.showPartial)      return false;
+  if (en.score < cfg.nodeScoreMin)                           return false;
+  return true;
+}
+
+// ── Sensitivity control UI ────────────────────────────────────────────────────
+
+function SensitivityControl({
+  value, onChange,
+}: { value: SensitivityMode; onChange: (m: SensitivityMode) => void }) {
+  const modes: SensitivityMode[] = ['executive', 'balanced', 'analyst'];
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Detail</span>
+      <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+        {modes.map(m => {
+          const meta   = SENS_META[m];
+          const active = m === value;
+          return (
+            <button
+              key={m}
+              onClick={() => onChange(m)}
+              className={`px-3 py-1.5 text-[11px] font-semibold transition-colors border-r border-slate-200 last:border-r-0 ${
+                active ? 'text-white' : 'text-slate-500 bg-white hover:bg-slate-50'
+              }`}
+              style={active ? { background: meta.color } : {}}
+            >
+              {meta.label}
+            </button>
+          );
+        })}
+      </div>
+      <span className="text-[10px] text-slate-400 hidden sm:block">{SENS_META[value].desc}</span>
+    </div>
+  );
+}
+
 // ── Weighted scoring model ────────────────────────────────────────────────────
 // score = (mention_count × 0.6) + (seniority_weight_sum × 0.4)
 // Normalised 0–100. Generic labels penalised.
@@ -197,12 +261,12 @@ function Edge({ x1, y1, x2, y2, score, isChain, dim }: VisEdge & { dim: boolean 
 // ── SVG node component ────────────────────────────────────────────────────────
 
 function MapNode({
-  en, x, y, selected, dim, onClick, maxPerLane,
-}: { en: EN; x: number; y: number; selected: boolean; dim: boolean; onClick: () => void; maxPerLane: number }) {
+  en, x, y, selected, dim, onClick, maxPerLane, dimOpacity = 0.22,
+}: { en: EN; x: number; y: number; selected: boolean; dim: boolean; onClick: () => void; maxPerLane: number; dimOpacity?: number }) {
   const r   = radius(en, maxPerLane);
   const ss  = STATUS_STYLE[en.status];
   const ls  = LAYER_STYLE[en.n.layer];
-  const op  = dim ? 0.22 : 1;
+  const op  = dim ? dimOpacity : 1;
   const rawLabel = formatLabel(en.n.displayLabel);
   const label = rawLabel.length > 26 ? rawLabel.slice(0, 24) + '…' : rawLabel;
 
@@ -584,6 +648,7 @@ interface Props { data: TransformationLogicMap }
 export function TransformationLogicMapPanel({ data }: Props) {
   const [selected,     setSelected]     = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<Status | null>(null);
+  const [sensitivity,  setSensitivity]  = useState<SensitivityMode>('balanced');
 
   const all = useMemo(() => enrich(data), [data]);
 
@@ -652,59 +717,71 @@ export function TransformationLogicMapPanel({ data }: Props) {
 
       {/* ── Visual map ─────────────────────────────────────── */}
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50">
-          <div>
+        {/* Header row: node count + sensitivity control */}
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50 gap-3 flex-wrap">
+          <div className="shrink-0">
             <span className="text-xs font-bold text-slate-700">
-              {featured.length} priority nodes
+              {featured.length} nodes mapped
             </span>
             <span className="ml-2 text-[10px] text-slate-400">
-              All critical + key enablers/vision — the {Math.round(featured.length / Math.max(all.length, 1) * 100)}% requiring action
+              {data.strongestChains.length} valid chain{data.strongestChains.length !== 1 ? 's' : ''} · {data.coverageScore}% constraint coverage
             </span>
           </div>
-          <span className="text-[10px] text-slate-400">
-            {data.strongestChains.length} valid chain{data.strongestChains.length !== 1 ? 's' : ''} · {data.coverageScore}% constraint coverage
-          </span>
+          <SensitivityControl value={sensitivity} onChange={m => { setSensitivity(m); setSelected(null); }} />
         </div>
 
         <div className="overflow-x-auto">
-          <svg
-            width={canvasW}
-            height={CH}
-            viewBox={`0 0 ${canvasW} ${CH}`}
-            style={{ display: 'block', minWidth: canvasW }}
-          >
-            {/* Lane backgrounds + labels */}
-            <LaneBands cw={canvasW} />
+          {(() => {
+            const sensCfg = SENSITIVITY[sensitivity];
+            // Edges: only show those meeting the threshold
+            const sensEdges = visEdges.filter(e => e.score >= sensCfg.edgeScoreMin);
+            return (
+              <svg
+                width={canvasW}
+                height={CH}
+                viewBox={`0 0 ${canvasW} ${CH}`}
+                style={{ display: 'block', minWidth: canvasW }}
+              >
+                <LaneBands cw={canvasW} />
 
-            {/* Edges */}
-            {visEdges.map((e, i) => {
-              const dim = selected !== null && connectedIds !== null && (() => {
-                const sp = pos.get(selected)!;
-                const isTouching = (e.x1 === sp.x && e.y1 === sp.y) || (e.x2 === sp.x && e.y2 === sp.y);
-                return !isTouching;
-              })();
-              return <Edge key={i} {...e} dim={dim} />;
-            })}
+                {/* Edges (sensitivity-filtered) */}
+                {sensEdges.map((e, i) => {
+                  const dim = selected !== null && connectedIds !== null && (() => {
+                    const sp = pos.get(selected)!;
+                    const isTouching = (e.x1 === sp.x && e.y1 === sp.y) || (e.x2 === sp.x && e.y2 === sp.y);
+                    return !isTouching;
+                  })();
+                  return <Edge key={i} {...e} dim={dim} />;
+                })}
 
-            {/* Nodes */}
-            {featured.map(en => {
-              const p = pos.get(en.n.nodeId);
-              if (!p) return null;
-              const filterDim = activeFilter !== null && en.status !== activeFilter;
-              const dim = filterDim || (selected !== null && selected !== en.n.nodeId &&
-                          !(connectedIds?.has(en.n.nodeId) ?? false));
-              return (
-                <MapNode
-                  key={en.n.nodeId}
-                  en={en} x={p.x} y={p.y}
-                  selected={selected === en.n.nodeId}
-                  dim={dim}
-                  maxPerLane={maxPerLane}
-                  onClick={() => setSelected(prev => prev === en.n.nodeId ? null : en.n.nodeId)}
-                />
-              );
-            })}
-          </svg>
+                {/* Nodes — positions stable; below-threshold nodes faded not removed */}
+                {featured.map(en => {
+                  const p = pos.get(en.n.nodeId);
+                  if (!p) return null;
+                  // Sensitivity dim: node doesn't pass threshold → use dimOpacity
+                  const sensDim    = !nodePassesSens(en, sensCfg);
+                  const filterDim  = activeFilter !== null && en.status !== activeFilter;
+                  const selectDim  = selected !== null && selected !== en.n.nodeId &&
+                                     !(connectedIds?.has(en.n.nodeId) ?? false);
+                  const dim = sensDim || filterDim || selectDim;
+                  return (
+                    <MapNode
+                      key={en.n.nodeId}
+                      en={en} x={p.x} y={p.y}
+                      selected={selected === en.n.nodeId}
+                      dim={dim}
+                      dimOpacity={sensDim ? sensCfg.dimOpacity : 0.22}
+                      maxPerLane={maxPerLane}
+                      onClick={() => {
+                        if (sensDim) return; // can't select faded nodes
+                        setSelected(prev => prev === en.n.nodeId ? null : en.n.nodeId);
+                      }}
+                    />
+                  );
+                })}
+              </svg>
+            );
+          })()}
         </div>
 
         <div className="border-t border-slate-100 px-4 py-2.5">
