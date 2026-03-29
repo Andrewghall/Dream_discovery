@@ -1172,8 +1172,28 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
         {/* SVG — always visible, full width */}
         <div className="overflow-x-auto">
           {(() => {
-            const sensCfg   = SENSITIVITY[sensitivity];
-            const sensEdges = visEdges.filter(e => e.score >= sensCfg.edgeScoreMin);
+            const sensCfg = SENSITIVITY[sensitivity];
+
+            // Nodes visible = pass sensitivity threshold AND active filter (if set)
+            const visibleNodeIds = new Set(
+              featured
+                .filter(en => nodePassesSens(en, sensCfg) && (activeFilter === null || en.status === activeFilter))
+                .map(en => en.n.nodeId),
+            );
+
+            // Reverse position map so we can look up nodeId by (x,y)
+            const coordToId = new Map<string, string>();
+            for (const [nodeId, p] of pos.entries()) {
+              coordToId.set(`${p.x},${p.y}`, nodeId);
+            }
+
+            // Only render edges where BOTH endpoints are visible — no orphan lines
+            const sensEdges = visEdges.filter(e => {
+              if (e.score < sensCfg.edgeScoreMin) return false;
+              const fromId = coordToId.get(`${e.x1},${e.y1}`);
+              const toId   = coordToId.get(`${e.x2},${e.y2}`);
+              return Boolean(fromId && toId && visibleNodeIds.has(fromId) && visibleNodeIds.has(toId));
+            });
             return (
               <svg
                 width={canvasW} height={CH}
