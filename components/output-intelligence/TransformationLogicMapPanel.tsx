@@ -230,6 +230,7 @@ interface VisEdge {
   evidence: EdgeEvidence;
   fromLabel: string;
   toLabel: string;
+  strandCount: number;  // 1–4: one strand per actor, capped at 4
 }
 
 function buildVisEdges(
@@ -270,16 +271,22 @@ function buildVisEdges(
     const f = pos.get(e.fromNodeId);
     const t = pos.get(e.toNodeId);
     if (!f || !t) continue;
+    const mc = e.evidence?.mentionCount ?? 0;
+    const ac = e.evidence?.actorCount   ?? 0;
+    // strandCount: one strand per distinct actor, min 1, max 4
+    // Old data (no evidence) defaults to 1 strand
+    const strandCount = mc < 2 ? 1 : Math.min(Math.max(ac, 1), 4);
     out.push({
       x1: f.x, y1: f.y, x2: t.x, y2: t.y,
       score: e.score,
       isChain: e.isChainEdge,
       fromLabel: byId.get(e.fromNodeId)?.displayLabel ?? e.fromNodeId,
       toLabel:   byId.get(e.toNodeId)?.displayLabel   ?? e.toNodeId,
+      strandCount,
       evidence: {
-        mentionCount:     e.evidence?.mentionCount ?? 0,
-        actorCount:       e.evidence?.actorCount   ?? 0,
-        quotes:           e.evidence?.quotes       ?? [],
+        mentionCount:     mc,
+        actorCount:       ac,
+        quotes:           e.evidence?.quotes ?? [],
         rationale:        e.rationale,
         relationshipType: e.relationshipType,
       },
@@ -288,28 +295,79 @@ function buildVisEdges(
   return out;
 }
 
-// ── SVG edge component ────────────────────────────────────────────────────────
+// ── Edge bundle renderer ──────────────────────────────────────────────────────
+// Renders one strand per actor. Thickness scales with signal strength.
+// Inline count badge shows mention × actor evidence at a glance.
 
-function Edge({ x1, y1, x2, y2, score, isChain, dim, onClick, selected }:
-  VisEdge & { dim: boolean; onClick: () => void; selected: boolean }) {
-  const midY = (y1 + y2) / 2;
-  const d    = `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`;
+function perpOffset(x1: number, y1: number, x2: number, y2: number, d: number) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  return { ox: (-dy / len) * d, oy: (dx / len) * d };
+}
 
-  const op    = dim ? 0.06 : selected ? 1 : 0.30 + (score / 100) * 0.55;
-  const sw    = dim ? 1 : isChain
-    ? 1.5 + (score / 100) * 3.5
-    : 1.5 + (score / 100) * 2.5;
+function EdgeBundle({
+  x1, y1, x2, y2, score, isChain, dim, evidence, fromLabel, toLabel, strandCount, onClick, selected,
+}: VisEdge & { dim: boolean; onClick: () => void; selected: boolean }) {
+  const mc    = evidence?.mentionCount ?? 0;
+  const ac    = evidence?.actorCount   ?? 0;
   const color = selected ? '#0ea5e9' : isChain ? '#f97316' : '#6366f1';
+  const STRAND_GAP = 4; // px between adjacent strands
+
+  // Per-strand stroke width: stronger signal = thicker each strand
+  const sw = dim ? 0.7 : Math.max(0.8, 0.8 + (score / 100) * 2.2);
+
+  const strands = Array.from({ length: strandCount }, (_, i) => {
+    const offset = (i - (strandCount - 1) / 2) * STRAND_GAP;
+    const { ox, oy } = perpOffset(x1, y1, x2, y2, offset);
+    const sx1 = x1 + ox, sy1 = y1 + oy;
+    const sx2 = x2 + ox, sy2 = y2 + oy;
+    const cmY = (sy1 + sy2) / 2;
+    const path = `M${sx1},${sy1} C${sx1},${cmY} ${sx2},${cmY} ${sx2},${sy2}`;
+    // Alternate strands slightly different opacity for texture
+    const op = dim ? 0.05 : (0.28 + (score / 100) * 0.50) * (i % 2 === 0 ? 1 : 0.75);
+    return { path, op };
+  });
+
+  // Mid-point of centre strand for the badge
+  const ci = Math.floor(strandCount / 2);
+  const { ox: cox, oy: coy } = perpOffset(x1, y1, x2, y2, (ci - (strandCount - 1) / 2) * STRAND_GAP);
+  const bx = (x1 + cox + x2 + cox) / 2 + cox;
+  const by = (y1 + coy + y2 + coy) / 2 + coy;
+
+  // Centre path for hit area
+  const { ox: hox, oy: hoy } = perpOffset(x1, y1, x2, y2, 0);
+  const hsx1 = x1 + hox, hsy1 = y1 + hoy, hsx2 = x2 + hox, hsy2 = y2 + hoy;
+  const hmY  = (hsy1 + hsy2) / 2;
+  const hitPath = `M${hsx1},${hsy1} C${hsx1},${hmY} ${hsx2},${hmY} ${hsx2},${hsy2}`;
+
+  const label = `${formatLabel(fromLabel)} → ${formatLabel(toLabel)}${mc ? `: ${mc} mentions, ${ac} actors` : ''}`;
 
   return (
     <g onClick={onClick} style={{ cursor: 'pointer' }}>
-      {/* Wide invisible hit area — edges are thin, need a larger target */}
-      <path d={d} fill="none" stroke="transparent" strokeWidth={18} />
-      {/* Glow halo for strong/selected edges */}
-      {!dim && (score >= 50 || selected) && (
-        <path d={d} fill="none" stroke={color} strokeWidth={sw + 6} opacity={selected ? 0.25 : 0.08} strokeLinecap="round" />
+      <title>{label}</title>
+      {/* Wide invisible hit area */}
+      <path d={hitPath} fill="none" stroke="transparent" strokeWidth={20} />
+      {/* Selection halo behind strands */}
+      {selected && (
+        <path d={hitPath} fill="none" stroke={color}
+          strokeWidth={(strandCount * STRAND_GAP) + sw + 6} opacity={0.18} strokeLinecap="round" />
       )}
-      <path d={d} fill="none" stroke={color} strokeWidth={selected ? sw + 1 : sw} opacity={op} strokeLinecap="round" />
+      {/* Individual strands — one per actor */}
+      {strands.map((s, i) => (
+        <path key={i} d={s.path} fill="none" stroke={color}
+          strokeWidth={selected ? sw + 0.5 : sw} opacity={s.op} strokeLinecap="round" />
+      ))}
+      {/* Inline evidence badge — only when evidence exists and not dimmed */}
+      {!dim && mc >= 2 && (
+        <g transform={`translate(${bx},${by})`}>
+          <rect x={-15} y={-7} width={30} height={13} rx={3}
+            fill="white" stroke={color} strokeWidth={0.5} opacity={0.92} />
+          <text fontSize={7} fill={color} textAnchor="middle" dominantBaseline="middle"
+            fontWeight="700" letterSpacing="0.3">
+            {mc}×{ac > 1 ? ` ${ac}↑` : ''}
+          </text>
+        </g>
+      )}
     </g>
   );
 }
@@ -893,7 +951,7 @@ export function TransformationLogicMapPanel({ data }: Props) {
                     selectedEdge.x1 === e.x1 && selectedEdge.y1 === e.y1 &&
                     selectedEdge.x2 === e.x2 && selectedEdge.y2 === e.y2;
                   return (
-                    <Edge
+                    <EdgeBundle
                       key={i}
                       {...e}
                       dim={nodeDim}
