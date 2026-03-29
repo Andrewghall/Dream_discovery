@@ -742,9 +742,9 @@ export function renderConnectedModel(
   if (!causal) return '';
 
   const allFindings: CausalFinding[] = [
-    ...causal.organisationalIssues,
-    ...causal.reinforcedFindings,
-    ...causal.emergingPatterns,
+    ...(causal.organisationalIssues ?? []),
+    ...(causal.reinforcedFindings   ?? []),
+    ...(causal.emergingPatterns     ?? []),
   ].filter(f => !cfg.excludedItems.includes(f.findingId));
 
   if (!allFindings.length) return '';

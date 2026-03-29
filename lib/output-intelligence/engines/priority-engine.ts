@@ -76,14 +76,16 @@ export function weightedSignificance(
   node: TLMNode,
   allNodes: TLMNode[],
 ): NodeSignificance {
-  const maxFreq   = Math.max(...allNodes.map(n => n.rawFrequency), 1);
-  const maxDegree = Math.max(...allNodes.map(n => n.connectionDegree), 1);
+  // Defensive: older stored nodes may be missing fields added after initial creation
+  const safeNodes = allNodes.filter(Boolean);
+  const maxFreq   = Math.max(...safeNodes.map(n => n.rawFrequency  ?? 0), 1);
+  const maxDegree = Math.max(...safeNodes.map(n => n.connectionDegree ?? 0), 1);
   const maxDistinctRoles = Math.max(
-    ...allNodes.map(n => new Set(n.quotes.map(q => q.participantRole).filter(Boolean)).size),
+    ...safeNodes.map(n => new Set((n.quotes ?? []).map(q => q.participantRole).filter(Boolean)).size),
     1,
   );
 
-  const quotes = node.quotes;
+  const quotes = node.quotes ?? [];
 
   // 1. Actor seniority — average weight per quote, normalised to max possible (2.0)
   const senioritySum  = quotes.reduce((s, q) => s + seniorityWeight(q.participantRole), 0);
@@ -96,15 +98,15 @@ export function weightedSignificance(
   const actorSpreadNorm = distinctRoles.length / maxDistinctRoles;
 
   // 3. Connection density — node degree relative to most-connected node
-  const densityNorm = node.connectionDegree / maxDegree;
+  const densityNorm = (node.connectionDegree ?? 0) / maxDegree;
 
   // 4. Structural position — coalescent > orphan constraint > in valid chain > compensating > default
   const structuralScore =
-    node.isCoalescent                                ? 1.00
-    : node.isOrphan && node.layer === 'CONSTRAINT'   ? 0.80
-    : node.inValidChain                              ? 0.60
-    : node.isCompensating                            ? 0.55
-    : node.isOrphan                                  ? 0.25
+    (node.isCoalescent ?? false)                                    ? 1.00
+    : (node.isOrphan ?? false) && node.layer === 'CONSTRAINT'       ? 0.80
+    : (node.inValidChain ?? false)                                  ? 0.60
+    : (node.isCompensating ?? false)                               ? 0.55
+    : (node.isOrphan ?? false)                                     ? 0.25
     : 0.35;
 
   // 5. Mention frequency (lowest weight — volume alone ≠ importance)
@@ -220,22 +222,25 @@ export interface ExecSummaryData {
  * structural position 15%, frequency 5%) — not by raw mention count.
  */
 export function computePriorityNodes(data: TransformationLogicMap): PriorityNode[] {
-  if (!data.nodes.length) return [];
-  const byId = new Map(data.nodes.map(n => [n.nodeId, n]));
+  const nodes = data.nodes ?? [];
+  const edges = data.edges ?? [];
+  if (!nodes.length) return [];
+  const byId = new Map(nodes.map(n => [n.nodeId, n]));
 
   // Pre-compute all significance scores for ranking
-  const sigMap = new Map(data.nodes.map(n => [n.nodeId, weightedSignificance(n, data.nodes)]));
+  const sigMap = new Map(nodes.map(n => [n.nodeId, weightedSignificance(n, nodes)]));
 
-  return data.nodes
+  return nodes
     .map(node => {
       const sig = sigMap.get(node.nodeId)!;
 
+      const nodeQuotes = node.quotes ?? [];
       const distinctRoles = [...new Set(
-        node.quotes.map(q => q.participantRole).filter((r): r is string => Boolean(r)),
+        nodeQuotes.map(q => q.participantRole).filter((r): r is string => Boolean(r)),
       )];
 
       // Outgoing edges → driven enablers (1-hop)
-      const outEdges = data.edges.filter(e => e.fromNodeId === node.nodeId);
+      const outEdges = edges.filter(e => e.fromNodeId === node.nodeId);
       const drives = outEdges
         .map(e => byId.get(e.toNodeId))
         .filter((t): t is TLMNode => Boolean(t) && t!.layer === 'ENABLER')
@@ -247,7 +252,7 @@ export function computePriorityNodes(data: TransformationLogicMap): PriorityNode
         outEdges.map(e => e.toNodeId).filter(id => byId.get(id)?.layer === 'ENABLER'),
       );
       const unlocks = [...new Set([
-        ...data.edges
+        ...edges
           .filter(e => enablerIds.has(e.fromNodeId) && byId.get(e.toNodeId)?.layer === 'REIMAGINATION')
           .map(e => formatLabel(byId.get(e.toNodeId)!.displayLabel)),
         ...outEdges
@@ -267,11 +272,11 @@ export function computePriorityNodes(data: TransformationLogicMap): PriorityNode
       let suggestedAction = '';
 
       if (node.layer === 'CONSTRAINT') {
-        if (node.isCoalescent) {
-          whyMatters      = `${label} is the highest-pressure convergence point in the system — ${node.connectionDegree} factors connect through it. Unresolved, it acts as a multiplier across every downstream initiative, degrading the value of every response built on top.`;
+        if (node.isCoalescent ?? false) {
+          whyMatters      = `${label} is the highest-pressure convergence point in the system — ${node.connectionDegree ?? 0} factors connect through it. Unresolved, it acts as a multiplier across every downstream initiative, degrading the value of every response built on top.`;
           riskIfIgnored   = `Every enabler and transformation initiative dependent on resolving this constraint will be delayed or degraded. The compounding effect grows with each phase of the programme.`;
           suggestedAction = `Assign a cross-functional owner this week. Commission a 30-day diagnostic to map sub-causes and establish a resolution roadmap with milestone gates before Phase 2 begins.`;
-        } else if (node.isOrphan) {
+        } else if (node.isOrphan ?? false) {
           whyMatters      = `${label} is a confirmed problem raised by ${spreadDesc} — and the transformation programme has no planned response to it. It is being managed around, not resolved.`;
           riskIfIgnored   = `Without intervention this issue continues to absorb capacity while embedding itself as permanent background noise — actively undermining the transformation programme.`;
           suggestedAction = `Assign an accountable owner immediately. Produce a written response plan within 30 days — even if full resolution is long-term. The transformation narrative must acknowledge this issue.`;
@@ -281,11 +286,11 @@ export function computePriorityNodes(data: TransformationLogicMap): PriorityNode
           suggestedAction = `Review the existing response pathway. Confirm it is sufficient in scope and pace. If this constraint is still generating signals, the current solution is undersized.`;
         }
       } else if (node.layer === 'ENABLER') {
-        if (node.isOrphan) {
+        if (node.isOrphan ?? false) {
           whyMatters      = `${label} represents active investment or capability that is currently disconnected from any strategic outcome. Resource is being committed without a clear line to transformation value.`;
           riskIfIgnored   = `Effort and budget continue to flow into an activity with no measurable return. In a constrained environment, this displaces investment from higher-leverage priorities.`;
           suggestedAction = `Either connect this capability to a specific transformation outcome with accountable metrics within 60 days, or pause the investment until the strategic case is established.`;
-        } else if (node.isCompensating) {
+        } else if (node.isCompensating ?? false) {
           whyMatters      = `${label} is functioning as a workaround rather than a fix. It manages visible symptoms but the root constraint remains live and will continue generating the same organisational pressure.`;
           riskIfIgnored   = `The workaround becomes permanent infrastructure. The underlying constraint embeds more deeply and becomes progressively harder and more expensive to address.`;
           suggestedAction = `Document this as a temporary measure with an explicit sunset date. Escalate the root constraint to Phase 1 of the transformation plan with direct ownership.`;
@@ -296,7 +301,7 @@ export function computePriorityNodes(data: TransformationLogicMap): PriorityNode
           suggestedAction = `Confirm this is fully resourced, staffed, and has a named owner. Establish a measurable delivery milestone in the next 90 days.`;
         }
       } else { // REIMAGINATION
-        if (node.isOrphan) {
+        if (node.isOrphan ?? false) {
           whyMatters      = `${label} is an articulated strategic aspiration with no current execution path. The vision has been stated but the enabling conditions have not been established.`;
           riskIfIgnored   = `The gap between stated aspiration and operational reality widens. Credibility with the workforce erodes when transformation is announced but the building blocks are absent.`;
           suggestedAction = `Either fund and assign the missing enablers within 60 days, or formally descope this aspiration from the current programme. Ambiguity is more damaging than a clear decision.`;
@@ -323,11 +328,11 @@ export function computePriorityNodes(data: TransformationLogicMap): PriorityNode
         whyMatters,
         riskIfIgnored,
         suggestedAction,
-        quotes:         node.quotes,
-        isOrphan:       node.isOrphan,
-        isCoalescent:   node.isCoalescent,
-        isCompensating: node.isCompensating,
-        inValidChain:   node.inValidChain,
+        quotes:         nodeQuotes,
+        isOrphan:       node.isOrphan       ?? false,
+        isCoalescent:   node.isCoalescent   ?? false,
+        isCompensating: node.isCompensating ?? false,
+        inValidChain:   node.inValidChain   ?? false,
       };
     })
     .sort((a, b) => b.priorityScore - a.priorityScore)
@@ -341,16 +346,17 @@ export function buildWayForward(
   data: TransformationLogicMap,
   manualNodeIds: Set<string>,
 ): WayForwardPhase[] {
-  const byId   = new Map(data.nodes.map(n => [n.nodeId, n]));
-  const sigMap = new Map(data.nodes.map(n => [n.nodeId, weightedSignificance(n, data.nodes)]));
+  const wfNodes = data.nodes ?? [];
+  const byId    = new Map(wfNodes.map(n => [n.nodeId, n]));
+  const sigMap  = new Map(wfNodes.map(n => [n.nodeId, weightedSignificance(n, wfNodes)]));
 
   // Phase 1 — Stabilise: highest-significance orphan constraints + coalescent nodes
   const p1Auto = [
-    ...data.nodes
-      .filter(n => n.isOrphan && n.layer === 'CONSTRAINT')
+    ...wfNodes
+      .filter(n => (n.isOrphan ?? false) && n.layer === 'CONSTRAINT')
       .sort((a, b) => (sigMap.get(b.nodeId)?.score ?? 0) - (sigMap.get(a.nodeId)?.score ?? 0))
       .slice(0, 5),
-    ...data.nodes.filter(n => n.isCoalescent).slice(0, 2),
+    ...wfNodes.filter(n => n.isCoalescent ?? false).slice(0, 2),
   ];
   const p1Ids = new Set([
     ...p1Auto.map(n => n.nodeId),
@@ -359,11 +365,11 @@ export function buildWayForward(
 
   // Phase 2 — Enable: highest-significance chain enablers + compensating behaviours
   const p2Auto = [
-    ...data.nodes
-      .filter(n => n.inValidChain && n.layer === 'ENABLER')
-      .sort((a, b) => b.compositeScore - a.compositeScore)
+    ...wfNodes
+      .filter(n => (n.inValidChain ?? false) && n.layer === 'ENABLER')
+      .sort((a, b) => (sigMap.get(b.nodeId)?.score ?? 0) - (sigMap.get(a.nodeId)?.score ?? 0))
       .slice(0, 5),
-    ...data.nodes.filter(n => n.isCompensating && n.layer === 'ENABLER').slice(0, 2),
+    ...wfNodes.filter(n => (n.isCompensating ?? false) && n.layer === 'ENABLER').slice(0, 2),
   ];
   const p2Ids = new Set([
     ...p2Auto.map(n => n.nodeId).filter(id => !p1Ids.has(id)),
@@ -371,7 +377,7 @@ export function buildWayForward(
   ]);
 
   // Phase 3 — Transform: reimagination nodes by significance
-  const p3Auto = data.nodes
+  const p3Auto = wfNodes
     .filter(n => n.layer === 'REIMAGINATION')
     .sort((a, b) => (sigMap.get(b.nodeId)?.score ?? 0) - (sigMap.get(a.nodeId)?.score ?? 0))
     .slice(0, 6);
@@ -390,17 +396,17 @@ export function buildWayForward(
                      :                                    'Medium significance';
       let description = '';
       if (n.layer === 'CONSTRAINT') {
-        description = n.isCoalescent
-          ? `Systemic pressure point — ${n.connectionDegree} dependencies converge here. Assign cross-functional owner; commission 30-day diagnostic.`
-          : n.isOrphan
+        description = (n.isCoalescent ?? false)
+          ? `Systemic pressure point — ${n.connectionDegree ?? 0} dependencies converge here. Assign cross-functional owner; commission 30-day diagnostic.`
+          : (n.isOrphan ?? false)
           ? `${sigLabel} unaddressed constraint. Assign an owner and produce a written response plan within 30 days.`
           : `Active constraint requiring direct intervention and a named owner.`;
       } else if (n.layer === 'ENABLER') {
-        description = n.isCompensating
+        description = (n.isCompensating ?? false)
           ? `Workaround masking a root constraint. Transition to direct solution once Phase 1 constraints are addressed.`
           : `Key enabling capability — ${sigLabel}. Confirm resourcing, staffing, and 90-day delivery milestone.`;
       } else {
-        description = n.isOrphan
+        description = (n.isOrphan ?? false)
           ? `Strategic aspiration without an execution path — fund and assign enablers, or formally descope.`
           : `Strategic outcome with validated enabling conditions. Assign executive sponsor and quarterly review.`;
       }
@@ -413,7 +419,7 @@ export function buildWayForward(
     }).filter((x): x is WayForwardItem => Boolean(x));
   }
 
-  const orphanCount = data.orphanSummary.constraintOrphans;
+  const orphanCount = data.orphanSummary?.constraintOrphans ?? 0;
 
   return [
     {
@@ -437,7 +443,7 @@ export function buildWayForward(
       color: '#10b981', borderColor: '#a7f3d0', textColor: '#065f46', bgColor: '#f0fdf4',
       items: toItems(p3Ids),
       dependencies: 'Phase 2 enablers must be active. Executive sponsorship and accountability structures must be in place.',
-      expectedOutcome: `Strategic outcomes in active delivery. ${Math.min(data.coverageScore + 25, 85)}%+ constraint coverage achieved as a measure of systemic health.`,
+      expectedOutcome: `Strategic outcomes in active delivery. ${Math.min((data.coverageScore ?? 0) + 25, 85)}%+ constraint coverage achieved as a measure of systemic health.`,
     },
   ];
 }
@@ -445,12 +451,13 @@ export function buildWayForward(
 // ── Executive summary ─────────────────────────────────────────────────────────
 
 export function buildExecSummary(data: TransformationLogicMap): ExecSummaryData {
-  const constraints       = data.nodes.filter(n => n.layer === 'CONSTRAINT');
-  const enablers          = data.nodes.filter(n => n.layer === 'ENABLER');
-  const orphanConstraints = constraints.filter(n => n.isOrphan);
-  const orphanEnablers    = enablers.filter(n => n.isOrphan);
-  const coalPoints        = data.coalescencePoints;
-  const coverage          = data.coverageScore;
+  const esNodes           = data.nodes ?? [];
+  const constraints       = esNodes.filter(n => n.layer === 'CONSTRAINT');
+  const enablers          = esNodes.filter(n => n.layer === 'ENABLER');
+  const orphanConstraints = constraints.filter(n => n.isOrphan ?? false);
+  const orphanEnablers    = enablers.filter(n => n.isOrphan ?? false);
+  const coalPoints        = data.coalescencePoints ?? [];
+  const coverage          = data.coverageScore ?? 0;
 
   const headline =
     coverage < 30
@@ -464,23 +471,25 @@ export function buildExecSummary(data: TransformationLogicMap): ExecSummaryData 
     ? `Pressure is concentrated in "${formatLabel(topCoal.label)}", which connects ${topCoal.outDegree} dependent nodes — this is the highest-leverage intervention point in the system.`
     : `The analysis identified ${constraints.length} constraints across ${data.nodes.length} total signals, with pressure distributed across multiple areas.`;
 
+  const visionOrphans = data.orphanSummary?.visionOrphans ?? 0;
   const gap = orphanConstraints.length > 0
     ? `${orphanConstraints.length} known problem${orphanConstraints.length !== 1 ? 's are' : ' is'} currently without a planned response.${orphanEnablers.length > 0 ? ` Additionally, ${orphanEnablers.length} enabling activit${orphanEnablers.length !== 1 ? 'ies have' : 'y has'} no connection to a strategic outcome.` : ''}`
-    : data.orphanSummary.visionOrphans > 0
-    ? `The constraints are addressed but ${data.orphanSummary.visionOrphans} transformation outcome${data.orphanSummary.visionOrphans !== 1 ? 's lack' : ' lacks'} the enabling capabilities to be executable.`
+    : visionOrphans > 0
+    ? `The constraints are addressed but ${visionOrphans} transformation outcome${visionOrphans !== 1 ? 's lack' : ' lacks'} the enabling capabilities to be executable.`
     : `Coverage is strong. Focus should be on execution quality and pace rather than discovering new issues.`;
 
   // Highest-significance action point — ranked by weighted score, not frequency
-  const sigMap = new Map(data.nodes.map(n => [n.nodeId, weightedSignificance(n, data.nodes)]));
+  const esSigMap = new Map(esNodes.map(n => [n.nodeId, weightedSignificance(n, esNodes)]));
   const topActionNode = [
-    ...data.nodes.filter(n => n.isCoalescent),
-    ...data.nodes.filter(n => n.isOrphan && n.layer === 'CONSTRAINT'),
-  ].sort((a, b) => (sigMap.get(b.nodeId)?.score ?? 0) - (sigMap.get(a.nodeId)?.score ?? 0))[0];
+    ...esNodes.filter(n => n.isCoalescent ?? false),
+    ...esNodes.filter(n => (n.isOrphan ?? false) && n.layer === 'CONSTRAINT'),
+  ].sort((a, b) => (esSigMap.get(b.nodeId)?.score ?? 0) - (esSigMap.get(a.nodeId)?.score ?? 0))[0];
 
+  const strongestChains = data.strongestChains ?? [];
   const action = topActionNode
     ? `The immediate priority is "${formatLabel(topActionNode.displayLabel)}" — assign ownership, establish a 30-day response plan, and ensure this issue is reflected in the transformation programme.`
-    : data.strongestChains.length > 0
-    ? `The strongest validated pathway runs from "${data.strongestChains[0].constraintLabel}" through "${data.strongestChains[0].enablerLabel}" to "${data.strongestChains[0].reimaginationLabel}" — accelerate this chain first.`
+    : strongestChains.length > 0
+    ? `The strongest validated pathway runs from "${strongestChains[0].constraintLabel}" through "${strongestChains[0].enablerLabel}" to "${strongestChains[0].reimaginationLabel}" — accelerate this chain first.`
     : `Establish clear ownership for each constraint and create explicit links between known problems and the enabling capabilities in the transformation plan.`;
 
   return { headline, pressure, gap, action };

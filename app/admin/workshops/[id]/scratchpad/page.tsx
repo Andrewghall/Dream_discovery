@@ -1003,9 +1003,9 @@ export default function DownloadReportPage({ params }: PageProps) {
                         {/* ── Connected Model ── */}
                         {cfg.id === 'connected_model' && intelligence?.causalIntelligence && (() => {
                           const findings = [
-                            ...intelligence.causalIntelligence.organisationalIssues,
-                            ...intelligence.causalIntelligence.reinforcedFindings,
-                            ...intelligence.causalIntelligence.emergingPatterns,
+                            ...(intelligence.causalIntelligence.organisationalIssues ?? []),
+                            ...(intelligence.causalIntelligence.reinforcedFindings   ?? []),
+                            ...(intelligence.causalIntelligence.emergingPatterns     ?? []),
                           ];
                           if (!findings.length) return null;
                           return (
