@@ -1025,7 +1025,7 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
     const chosen = new Set<string>();
 
     // 1. Both endpoints of every TLM edge (prevents chain constraints being excluded)
-    for (const edge of data.edges) {
+    for (const edge of (data.edges ?? [])) {
       const f = byId.get(edge.fromNodeId);
       const t = byId.get(edge.toNodeId);
       if (f) chosen.add(f.n.nodeId);
