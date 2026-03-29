@@ -68,7 +68,7 @@ const SIGNALS: Signal[] = [
     color: 'indigo',
     description: 'Coalescence, orphans & valid transformation chains — derived from the relationship graph',
     getMetric: (i) => i.transformationLogicMap
-      ? `${i.transformationLogicMap.coverageScore}% constraint coverage · ${i.transformationLogicMap.strongestChains.length} chains`
+      ? `${i.transformationLogicMap.coverageScore ?? 0}% constraint coverage · ${(i.transformationLogicMap.strongestChains ?? []).length} chains`
       : 'Logic map',
     Icon: Network,
   },

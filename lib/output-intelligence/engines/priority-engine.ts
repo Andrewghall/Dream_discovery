@@ -469,7 +469,7 @@ export function buildExecSummary(data: TransformationLogicMap): ExecSummaryData 
   const topCoal  = coalPoints[0];
   const pressure = topCoal
     ? `Pressure is concentrated in "${formatLabel(topCoal.label)}", which connects ${topCoal.outDegree} dependent nodes — this is the highest-leverage intervention point in the system.`
-    : `The analysis identified ${constraints.length} constraints across ${data.nodes.length} total signals, with pressure distributed across multiple areas.`;
+    : `The analysis identified ${constraints.length} constraints across ${esNodes.length} total signals, with pressure distributed across multiple areas.`;
 
   const visionOrphans = data.orphanSummary?.visionOrphans ?? 0;
   const gap = orphanConstraints.length > 0
