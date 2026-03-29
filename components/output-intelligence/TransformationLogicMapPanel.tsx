@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, X, Plus, CheckCircle2, Target, AlertTriangle, Zap, Eye } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, Plus, CheckCircle2 } from 'lucide-react';
 import type { TransformationLogicMap, TLMNode } from '@/lib/output-intelligence/types';
 import {
   computePriorityNodes,
@@ -168,12 +168,15 @@ const LANE_Y: Record<TLMNode['layer'], number> = {
 const PAD_X    = 60;
 const NODE_SLOT = 54;
 
-function radius(en: EN, maxPerLane: number): number {
-  const base = maxPerLane > 16 ? 17
-             : maxPerLane > 10 ? 21
-             : maxPerLane > 6  ? 26
-             : 31;
-  return en.n.isCoalescent ? base + 6 : en.n.isOrphan ? base - 3 : base;
+function radius(en: EN, maxPerLane: number, maxFreq: number): number {
+  const base = maxPerLane > 16 ? 14
+             : maxPerLane > 10 ? 18
+             : maxPerLane > 6  ? 22
+             : 26;
+  // Scale +0 to +8px based on rawFrequency — high-mention nodes are physically larger
+  const freqBoost = Math.round((en.n.rawFrequency / Math.max(maxFreq, 1)) * 8);
+  const adjusted = (en.n.isCoalescent ? base + 6 : en.n.isOrphan ? base - 2 : base) + freqBoost;
+  return adjusted;
 }
 
 function dynCW(maxPerLane: number): number {
@@ -322,9 +325,9 @@ function EdgeBundle({
 // ── SVG node component ────────────────────────────────────────────────────────
 
 function MapNode({
-  en, x, y, selected, dim, onClick, maxPerLane, dimOpacity = 0.22,
-}: { en: EN; x: number; y: number; selected: boolean; dim: boolean; onClick: () => void; maxPerLane: number; dimOpacity?: number }) {
-  const r   = radius(en, maxPerLane);
+  en, x, y, selected, dim, onClick, maxPerLane, maxFreq, dimOpacity = 0.22,
+}: { en: EN; x: number; y: number; selected: boolean; dim: boolean; onClick: () => void; maxPerLane: number; maxFreq: number; dimOpacity?: number }) {
+  const r   = radius(en, maxPerLane, maxFreq);
   const ss  = STATUS_STYLE[en.status];
   const ls  = LAYER_STYLE[en.n.layer];
   const op  = dim ? dimOpacity : 1;
@@ -342,20 +345,39 @@ function MapNode({
   if (cur) lines.push(cur);
   const twoLines = lines.slice(0, 2);
 
+  // Coalescence: amber animated pressure-point ring
+  const isCoalescentVisible = en.n.isCoalescent && !dim;
+  // Orphan constraint: red warning dot at top-right
+  const showOrphanDot = en.n.isOrphan && en.n.layer === 'CONSTRAINT' && !dim;
+
   return (
     <g onClick={onClick} style={{ cursor: 'pointer', opacity: op }}>
-      {selected && (
-        <circle cx={x} cy={y} r={r + 8} fill="none" stroke={ss.stroke} strokeWidth="2" opacity="0.4" />
+      {/* Coalescence ring — amber outer halo indicating pressure point */}
+      {isCoalescentVisible && (
+        <circle cx={x} cy={y} r={r + 10} fill="none" stroke="#f59e0b" strokeWidth="2" opacity="0.5"
+          strokeDasharray="6 3" />
       )}
+      {/* Selection ring */}
+      {selected && (
+        <circle cx={x} cy={y} r={r + 7} fill="none" stroke={ss.stroke} strokeWidth="2" opacity="0.5" />
+      )}
+      {/* Main circle */}
       <circle
         cx={x} cy={y} r={r}
         fill={ss.fill}
         stroke={ss.stroke}
         strokeWidth={selected ? 3 : en.n.isCoalescent ? 2.5 : 1.75}
-        strokeDasharray={en.n.isOrphan ? '5,3' : undefined}
+        strokeDasharray={en.n.isOrphan && !en.n.isCoalescent ? '5,3' : undefined}
       />
+      {/* Layer dot (top-left) */}
       <circle cx={x - r * 0.62} cy={y - r * 0.62} r={5}
         fill={ls.dot} stroke="white" strokeWidth="1.5" />
+      {/* Orphan constraint warning dot (top-right) */}
+      {showOrphanDot && (
+        <circle cx={x + r * 0.62} cy={y - r * 0.62} r={5}
+          fill="#ef4444" stroke="white" strokeWidth="1.5" />
+      )}
+      {/* Label below circle */}
       {twoLines.map((line, li) => (
         <text
           key={li}
@@ -700,37 +722,16 @@ function FilterStrip({ all, activeFilter, onFilter }: { all: EN[]; activeFilter:
 // DECISION ENGINE SECTIONS
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ── Executive Summary ─────────────────────────────────────────────────────────
+// ── Compact map interpretation (single sentence below the SVG) ────────────────
 
-function ExecutiveSummarySection({ data }: { data: TransformationLogicMap }) {
+function MapInterpretation({ data }: { data: TransformationLogicMap }) {
   const summary = useMemo(() => buildExecSummary(data), [data]);
-
+  // Build a compact single-sentence from the key data points
+  const sentence = [summary.headline, summary.pressure].filter(Boolean).join(' ');
   return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-      <div className="px-5 py-4 bg-gradient-to-r from-slate-800 to-slate-700">
-        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">What the data reveals</p>
-        <p className="text-sm font-semibold text-white leading-relaxed">{summary.headline}</p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
-        <div className="px-5 py-3.5">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 flex items-center gap-1.5">
-            <Target className="h-3 w-3" /> Where pressure concentrates
-          </p>
-          <p className="text-xs text-slate-700 leading-relaxed">{summary.pressure}</p>
-        </div>
-        <div className="px-5 py-3.5">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 flex items-center gap-1.5">
-            <AlertTriangle className="h-3 w-3 text-amber-500" /> What is currently missing
-          </p>
-          <p className="text-xs text-slate-700 leading-relaxed">{summary.gap}</p>
-        </div>
-        <div className="px-5 py-3.5">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 flex items-center gap-1.5">
-            <Zap className="h-3 w-3 text-amber-500" /> What must happen first
-          </p>
-          <p className="text-xs text-slate-700 leading-relaxed">{summary.action}</p>
-        </div>
-      </div>
+    <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 flex items-start gap-2">
+      <span className="text-slate-300 mt-0.5 shrink-0 text-xs">ⓘ</span>
+      <p className="text-[11px] text-slate-500 leading-relaxed italic">{sentence}</p>
     </div>
   );
 }
@@ -1047,12 +1048,11 @@ interface Props {
 }
 
 export function TransformationLogicMapPanel({ data, workshopId }: Props) {
-  const [selected,         setSelected]         = useState<string | null>(null);
-  const [activeFilter,     setActiveFilter]      = useState<Status | null>(null);
-  const [sensitivity,      setSensitivity]       = useState<SensitivityMode>('balanced');
-  const [selectedEdge,     setSelectedEdge]      = useState<VisEdge | null>(null);
-  const [wayForwardIds,    setWayForwardIds]      = useState<Set<string>>(new Set());
-  const [mapCollapsed,     setMapCollapsed]       = useState(true);
+  const [selected,      setSelected]      = useState<string | null>(null);
+  const [activeFilter,  setActiveFilter]  = useState<Status | null>(null);
+  const [sensitivity,   setSensitivity]   = useState<SensitivityMode>('balanced');
+  const [selectedEdge,  setSelectedEdge]  = useState<VisEdge | null>(null);
+  const [wayForwardIds, setWayForwardIds] = useState<Set<string>>(new Set());
 
   const all = useMemo(() => enrich(data), [data]);
 
@@ -1084,6 +1084,11 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
     );
     return Math.max(...counts, 1);
   }, [featured]);
+
+  const maxFreq = useMemo(
+    () => Math.max(...featured.map(e => e.n.rawFrequency), 1),
+    [featured],
+  );
 
   const canvasW  = dynCW(maxPerLane);
   const pos      = useMemo(() => positionNodes(featured, canvasW), [featured, canvasW]);
@@ -1138,10 +1143,127 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
   return (
     <div className="space-y-4 p-4">
 
-      {/* ── Executive Summary ─────────────────────────── */}
-      <ExecutiveSummarySection data={data} />
+      {/* ══ PRIMARY EVIDENCE: Transformation Logic Map ══ */}
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
 
-      {/* ── Top Priorities ───────────────────────────── */}
+        {/* Map header: stats · sensitivity · report toggle */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100 gap-3 flex-wrap">
+          <div className="shrink-0">
+            <span className="text-xs font-bold text-slate-700">{featured.length} nodes mapped</span>
+            <span className="ml-2 text-[10px] text-slate-400">
+              {data.strongestChains.length} valid chain{data.strongestChains.length !== 1 ? 's' : ''} · {data.coverageScore}% constraint coverage
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <SensitivityControl value={sensitivity} onChange={m => { setSensitivity(m); setSelected(null); }} />
+            {workshopId && (
+              <ReportSectionToggle workshopId={workshopId} sectionId="transformation_priorities" title="Transformation Logic Map" />
+            )}
+          </div>
+        </div>
+
+        {/* Clickable filter strip — drill into the map */}
+        <FilterStrip
+          all={all}
+          activeFilter={activeFilter}
+          onFilter={f => { setActiveFilter(f); setSelected(null); }}
+        />
+
+        {/* SVG — always visible, full width */}
+        <div className="overflow-x-auto">
+          {(() => {
+            const sensCfg   = SENSITIVITY[sensitivity];
+            const sensEdges = visEdges.filter(e => e.score >= sensCfg.edgeScoreMin);
+            return (
+              <svg
+                width={canvasW} height={CH}
+                viewBox={`0 0 ${canvasW} ${CH}`}
+                style={{ display: 'block', minWidth: canvasW }}
+              >
+                <LaneBands cw={canvasW} />
+
+                {/* Edges — weakest first so strong ones paint on top */}
+                {sensEdges.map((e, i) => {
+                  const nodeDim = selected !== null && connectedIds !== null && (() => {
+                    const sp = pos.get(selected)!;
+                    return !((e.x1 === sp.x && e.y1 === sp.y) || (e.x2 === sp.x && e.y2 === sp.y));
+                  })();
+                  const isEdgeSel = selectedEdge !== null &&
+                    selectedEdge.x1 === e.x1 && selectedEdge.y1 === e.y1 &&
+                    selectedEdge.x2 === e.x2 && selectedEdge.y2 === e.y2;
+                  return (
+                    <EdgeBundle
+                      key={i} {...e}
+                      dim={nodeDim}
+                      selected={isEdgeSel}
+                      onClick={() => setSelectedEdge(prev =>
+                        prev && prev.x1 === e.x1 && prev.y1 === e.y1 &&
+                        prev.x2 === e.x2 && prev.y2 === e.y2 ? null : e,
+                      )}
+                    />
+                  );
+                })}
+
+                {/* Nodes — sizes reflect frequency; coalescence rings; orphan dots */}
+                {featured.map(en => {
+                  const p = pos.get(en.n.nodeId);
+                  if (!p) return null;
+                  const sensDim   = !nodePassesSens(en, sensCfg);
+                  const filterDim = activeFilter !== null && en.status !== activeFilter;
+                  const selectDim = selected !== null && selected !== en.n.nodeId &&
+                                    !(connectedIds?.has(en.n.nodeId) ?? false);
+                  const dim = sensDim || filterDim || selectDim;
+                  return (
+                    <MapNode
+                      key={en.n.nodeId}
+                      en={en} x={p.x} y={p.y}
+                      selected={selected === en.n.nodeId}
+                      dim={dim}
+                      dimOpacity={sensDim ? sensCfg.dimOpacity : 0.22}
+                      maxPerLane={maxPerLane}
+                      maxFreq={maxFreq}
+                      onClick={() => {
+                        if (sensDim) return;
+                        setSelected(prev => prev === en.n.nodeId ? null : en.n.nodeId);
+                        setSelectedEdge(null);
+                      }}
+                    />
+                  );
+                })}
+              </svg>
+            );
+          })()}
+        </div>
+
+        {/* Legend */}
+        <div className="border-t border-slate-100 px-4 py-2">
+          <Legend />
+        </div>
+
+        {/* Compact interpretation sentence */}
+        <MapInterpretation data={data} />
+
+        {/* Node detail — inline below map */}
+        {selectedEN && (
+          <div className="border-t border-slate-100 px-4 pb-4 pt-3">
+            <NodeDetail
+              en={selectedEN}
+              onClose={() => { setSelected(null); setSelectedEdge(null); }}
+              isInWayForward={wayForwardIds.has(selectedEN.n.nodeId)}
+              onAddToWayForward={handleAddToWayForward}
+            />
+          </div>
+        )}
+
+        {/* Edge evidence panel — inline below map */}
+        {selectedEdge && !selectedEN && (
+          <div className="border-t border-slate-100 px-4 pb-4 pt-3">
+            <EdgeEvidencePanel edge={selectedEdge} onClose={() => setSelectedEdge(null)} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Top Priorities (drilldown after seeing the map) ── */}
       <PrioritySection
         data={data}
         wayForwardIds={wayForwardIds}
@@ -1157,134 +1279,8 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
         workshopId={workshopId}
       />
 
-      {/* ── Supporting Evidence (collapsible map) ────── */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <button
-          onClick={() => setMapCollapsed(c => !c)}
-          className="w-full flex items-center justify-between px-5 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
-        >
-          <div className="flex items-center gap-2">
-            <Eye className="h-3.5 w-3.5 text-slate-400" />
-            <span className="text-xs font-bold text-slate-600">Supporting Evidence</span>
-            <span className="text-[10px] text-slate-400">— Transformation Logic Map</span>
-            <span className="ml-2 text-[10px] text-slate-400">
-              {featured.length} nodes · {data.strongestChains.length} chain{data.strongestChains.length !== 1 ? 's' : ''} · {data.coverageScore}% coverage
-            </span>
-          </div>
-          {mapCollapsed
-            ? <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />
-            : <ChevronUp   className="h-4 w-4 text-slate-400 shrink-0" />
-          }
-        </button>
-
-        {!mapCollapsed && (
-          <>
-            <FilterStrip
-              all={all}
-              activeFilter={activeFilter}
-              onFilter={f => { setActiveFilter(f); setSelected(null); }}
-            />
-
-            {/* Sensitivity control */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 gap-3 flex-wrap">
-              <SensitivityControl value={sensitivity} onChange={m => { setSensitivity(m); setSelected(null); }} />
-            </div>
-
-            <div className="overflow-x-auto">
-              {(() => {
-                const sensCfg   = SENSITIVITY[sensitivity];
-                const sensEdges = visEdges.filter(e => e.score >= sensCfg.edgeScoreMin);
-                return (
-                  <svg
-                    width={canvasW} height={CH}
-                    viewBox={`0 0 ${canvasW} ${CH}`}
-                    style={{ display: 'block', minWidth: canvasW }}
-                  >
-                    <LaneBands cw={canvasW} />
-                    {sensEdges.map((e, i) => {
-                      const nodeDim = selected !== null && connectedIds !== null && (() => {
-                        const sp = pos.get(selected)!;
-                        return !((e.x1 === sp.x && e.y1 === sp.y) || (e.x2 === sp.x && e.y2 === sp.y));
-                      })();
-                      const isEdgeSel = selectedEdge !== null &&
-                        selectedEdge.x1 === e.x1 && selectedEdge.y1 === e.y1 &&
-                        selectedEdge.x2 === e.x2 && selectedEdge.y2 === e.y2;
-                      return (
-                        <EdgeBundle
-                          key={i} {...e}
-                          dim={nodeDim}
-                          selected={isEdgeSel}
-                          onClick={() => setSelectedEdge(prev =>
-                            prev && prev.x1 === e.x1 && prev.y1 === e.y1 &&
-                            prev.x2 === e.x2 && prev.y2 === e.y2 ? null : e,
-                          )}
-                        />
-                      );
-                    })}
-                    {featured.map(en => {
-                      const p = pos.get(en.n.nodeId);
-                      if (!p) return null;
-                      const sensDim   = !nodePassesSens(en, sensCfg);
-                      const filterDim = activeFilter !== null && en.status !== activeFilter;
-                      const selectDim = selected !== null && selected !== en.n.nodeId &&
-                                        !(connectedIds?.has(en.n.nodeId) ?? false);
-                      const dim = sensDim || filterDim || selectDim;
-                      return (
-                        <MapNode
-                          key={en.n.nodeId}
-                          en={en} x={p.x} y={p.y}
-                          selected={selected === en.n.nodeId}
-                          dim={dim}
-                          dimOpacity={sensDim ? sensCfg.dimOpacity : 0.22}
-                          maxPerLane={maxPerLane}
-                          onClick={() => {
-                            if (sensDim) return;
-                            setSelected(prev => prev === en.n.nodeId ? null : en.n.nodeId);
-                          }}
-                        />
-                      );
-                    })}
-                  </svg>
-                );
-              })()}
-            </div>
-
-            <div className="border-t border-slate-100 px-4 py-2.5">
-              <Legend />
-            </div>
-
-            {/* Edge evidence panel */}
-            {selectedEdge && !selectedEN && (
-              <div className="px-4 pb-4">
-                <EdgeEvidencePanel edge={selectedEdge} onClose={() => setSelectedEdge(null)} />
-              </div>
-            )}
-
-            {/* Node detail with Add to Way Forward */}
-            {selectedEN && (
-              <div className="px-4 pb-4">
-                <NodeDetail
-                  en={selectedEN}
-                  onClose={() => { setSelected(null); setSelectedEdge(null); }}
-                  isInWayForward={wayForwardIds.has(selectedEN.n.nodeId)}
-                  onAddToWayForward={handleAddToWayForward}
-                />
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
       {/* ── Remaining issues ─────────────────────────── */}
       <RemainingList nodes={activeFilter ? remaining.filter(e => e.status === activeFilter) : remaining} />
-
-      {/* ── Interpretation ───────────────────────────── */}
-      {data.interpretationSummary && (
-        <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Graph interpretation</p>
-          <p className="text-xs text-slate-600 leading-relaxed">{data.interpretationSummary}</p>
-        </div>
-      )}
     </div>
   );
 }
