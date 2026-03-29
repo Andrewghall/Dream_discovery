@@ -240,41 +240,31 @@ function buildVisEdges(
 ): VisEdge[] {
   const byId = new Map(tlm.nodes.map(n => [n.nodeId, n]));
 
-  // Collect all edges between featured nodes.
-  // Evidence gate: skip single-mention links where evidence data is available.
-  // Old stored data may not have evidence field — those edges are always included.
+  // Show ALL edges between featured nodes — no per-node cap.
+  // Evidence gate:
+  //   - If evidence exists → require mentionCount >= 2 (multi-utterance)
+  //   - If no evidence (old stored data) → require score >= 10 (real edges only)
+  // Dedup by node-pair, keeping highest-score edge.
   const edgeByKey = new Map<string, (typeof tlm.edges)[0]>();
   for (const e of tlm.edges) {
     if (!featuredIds.has(e.fromNodeId) || !featuredIds.has(e.toNodeId)) continue;
-    const mentionCount = e.evidence?.mentionCount ?? 0;
-    if (mentionCount > 0 && mentionCount < 2) continue; // only filter when evidence exists
+    const mc = e.evidence?.mentionCount ?? 0;
+    if (mc > 0 && mc < 2) continue;              // drop provably single-mention
+    if (mc === 0 && e.score < 10) continue;       // drop weak/synthetic on old data
     const key = [e.fromNodeId, e.toNodeId].sort().join('|');
-    const existing = edgeByKey.get(key);
-    if (!existing || e.score > existing.score) edgeByKey.set(key, e);
+    const ex  = edgeByKey.get(key);
+    if (!ex || e.score > ex.score) edgeByKey.set(key, e);
   }
 
-  // Per-node top-5 selection: guarantees every featured node has connections shown.
-  const selectedKeys = new Set<string>();
-  for (const id of featuredIds) {
-    [...edgeByKey.entries()]
-      .filter(([k]) => { const [a, b] = k.split('|'); return a === id || b === id; })
-      .sort((x, y) => y[1].score - x[1].score)
-      .slice(0, 5)
-      .forEach(([k]) => selectedKeys.add(k));
-  }
-
-  const seen = new Set<string>();
   const out: VisEdge[] = [];
-  for (const [key, e] of edgeByKey) {
-    if (!selectedKeys.has(key) || seen.has(key)) continue;
-    seen.add(key);
+  for (const e of edgeByKey.values()) {
     const f = pos.get(e.fromNodeId);
     const t = pos.get(e.toNodeId);
     if (!f || !t) continue;
     const mc = e.evidence?.mentionCount ?? 0;
     const ac = e.evidence?.actorCount   ?? 0;
-    // strandCount: one strand per distinct actor, min 1, max 4
-    // Old data (no evidence) defaults to 1 strand
+    // strandCount: one strand per distinct actor (1–4).
+    // Old data without evidence defaults to 1 strand.
     const strandCount = mc < 2 ? 1 : Math.min(Math.max(ac, 1), 4);
     out.push({
       x1: f.x, y1: f.y, x2: t.x, y2: t.y,
@@ -292,18 +282,14 @@ function buildVisEdges(
       },
     });
   }
-  return out;
+  // Render weakest edges first so strong connections paint on top
+  return out.sort((a, b) => a.score - b.score);
 }
 
 // ── Edge bundle renderer ──────────────────────────────────────────────────────
-// Renders one strand per actor. Thickness scales with signal strength.
-// Inline count badge shows mention × actor evidence at a glance.
-
-function perpOffset(x1: number, y1: number, x2: number, y2: number, d: number) {
-  const dx = x2 - x1, dy = y2 - y1;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  return { ox: (-dy / len) * d, oy: (dx / len) * d };
-}
+// Strands share EXACT node endpoints and fan through their control points.
+// This means all strands from different connections converge on the same node
+// center — creating natural visual pressure / coalescence at high-degree nodes.
 
 function EdgeBundle({
   x1, y1, x2, y2, score, isChain, dim, evidence, fromLabel, toLabel, strandCount, onClick, selected,
@@ -311,34 +297,40 @@ function EdgeBundle({
   const mc    = evidence?.mentionCount ?? 0;
   const ac    = evidence?.actorCount   ?? 0;
   const color = selected ? '#0ea5e9' : isChain ? '#f97316' : '#6366f1';
-  const STRAND_GAP = 4; // px between adjacent strands
 
-  // Per-strand stroke width: stronger signal = thicker each strand
-  const sw = dim ? 0.7 : Math.max(0.8, 0.8 + (score / 100) * 2.2);
+  // Control-point spread: how far strands fan apart at the curve midpoint.
+  // More strands = wider fan so individual curves remain distinguishable.
+  const CTRL_SPREAD = 14;
+  const midY = (y1 + y2) / 2;
+  const midX = (x1 + x2) / 2;
+  const isHorizontal = Math.abs(y2 - y1) < Math.abs(x2 - x1) * 0.4;
+
+  // Per-strand stroke width: stronger signal = thicker line
+  const sw = dim ? 0.6 : Math.max(0.7, 0.7 + (score / 100) * 2.0);
 
   const strands = Array.from({ length: strandCount }, (_, i) => {
-    const offset = (i - (strandCount - 1) / 2) * STRAND_GAP;
-    const { ox, oy } = perpOffset(x1, y1, x2, y2, offset);
-    const sx1 = x1 + ox, sy1 = y1 + oy;
-    const sx2 = x2 + ox, sy2 = y2 + oy;
-    const cmY = (sy1 + sy2) / 2;
-    const path = `M${sx1},${sy1} C${sx1},${cmY} ${sx2},${cmY} ${sx2},${sy2}`;
-    // Alternate strands slightly different opacity for texture
-    const op = dim ? 0.05 : (0.28 + (score / 100) * 0.50) * (i % 2 === 0 ? 1 : 0.75);
+    const offset = (i - (strandCount - 1) / 2) * CTRL_SPREAD;
+    let path: string;
+    if (isHorizontal) {
+      // Same-lane connection: arc up/down to avoid flat lines
+      const arc = 35 + offset;
+      path = `M${x1},${y1} C${midX},${y1 - arc} ${midX},${y2 - arc} ${x2},${y2}`;
+    } else {
+      // Cross-lane (vertical): fan control-point Y
+      path = `M${x1},${y1} C${x1},${midY + offset} ${x2},${midY + offset} ${x2},${y2}`;
+    }
+    // Outer strands slightly more transparent — creates depth
+    const distFromCentre = Math.abs(i - (strandCount - 1) / 2) / Math.max((strandCount - 1) / 2, 1);
+    const op = dim ? 0.04 : (0.30 + (score / 100) * 0.48) * (1 - distFromCentre * 0.35);
     return { path, op };
   });
 
-  // Mid-point of centre strand for the badge
-  const ci = Math.floor(strandCount / 2);
-  const { ox: cox, oy: coy } = perpOffset(x1, y1, x2, y2, (ci - (strandCount - 1) / 2) * STRAND_GAP);
-  const bx = (x1 + cox + x2 + cox) / 2 + cox;
-  const by = (y1 + coy + y2 + coy) / 2 + coy;
-
-  // Centre path for hit area
-  const { ox: hox, oy: hoy } = perpOffset(x1, y1, x2, y2, 0);
-  const hsx1 = x1 + hox, hsy1 = y1 + hoy, hsx2 = x2 + hox, hsy2 = y2 + hoy;
-  const hmY  = (hsy1 + hsy2) / 2;
-  const hitPath = `M${hsx1},${hsy1} C${hsx1},${hmY} ${hsx2},${hmY} ${hsx2},${hsy2}`;
+  // Centre path for hit area + badge
+  const centrePath = isHorizontal
+    ? `M${x1},${y1} C${midX},${y1 - 35} ${midX},${y2 - 35} ${x2},${y2}`
+    : `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`;
+  const bx = midX;
+  const by = isHorizontal ? midY - 35 : midY;
 
   const label = `${formatLabel(fromLabel)} → ${formatLabel(toLabel)}${mc ? `: ${mc} mentions, ${ac} actors` : ''}`;
 
@@ -346,25 +338,24 @@ function EdgeBundle({
     <g onClick={onClick} style={{ cursor: 'pointer' }}>
       <title>{label}</title>
       {/* Wide invisible hit area */}
-      <path d={hitPath} fill="none" stroke="transparent" strokeWidth={20} />
-      {/* Selection halo behind strands */}
+      <path d={centrePath} fill="none" stroke="transparent" strokeWidth={20} />
+      {/* Selection halo */}
       {selected && (
-        <path d={hitPath} fill="none" stroke={color}
-          strokeWidth={(strandCount * STRAND_GAP) + sw + 6} opacity={0.18} strokeLinecap="round" />
+        <path d={centrePath} fill="none" stroke={color}
+          strokeWidth={(strandCount * CTRL_SPREAD * 0.4) + sw + 4} opacity={0.15} strokeLinecap="round" />
       )}
-      {/* Individual strands — one per actor */}
+      {/* Individual strands — weakest edges first (sorted upstream), outer strands dimmer */}
       {strands.map((s, i) => (
         <path key={i} d={s.path} fill="none" stroke={color}
-          strokeWidth={selected ? sw + 0.5 : sw} opacity={s.op} strokeLinecap="round" />
+          strokeWidth={selected ? sw + 0.4 : sw} opacity={s.op} strokeLinecap="round" />
       ))}
-      {/* Inline evidence badge — only when evidence exists and not dimmed */}
+      {/* Inline evidence badge */}
       {!dim && mc >= 2 && (
         <g transform={`translate(${bx},${by})`}>
-          <rect x={-15} y={-7} width={30} height={13} rx={3}
-            fill="white" stroke={color} strokeWidth={0.5} opacity={0.92} />
-          <text fontSize={7} fill={color} textAnchor="middle" dominantBaseline="middle"
-            fontWeight="700" letterSpacing="0.3">
-            {mc}×{ac > 1 ? ` ${ac}↑` : ''}
+          <rect x={-16} y={-7} width={32} height={13} rx={3}
+            fill="white" stroke={color} strokeWidth={0.5} opacity={0.90} />
+          <text fontSize={7} fill={color} textAnchor="middle" dominantBaseline="middle" fontWeight="700">
+            {mc}{ac > 1 ? `×${ac}↑` : `×`}
           </text>
         </g>
       )}
