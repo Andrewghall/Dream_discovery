@@ -22,6 +22,51 @@
 
 import type { TransformationLogicMap, TLMNode } from '@/lib/output-intelligence/types';
 
+// ── Normalization — fill all defaults so downstream code never sees undefined ─
+
+/**
+ * Normalise a single TLMNode from stored data.
+ * Older snapshots may be missing fields added after initial creation.
+ * After this function every field is safe to access without nullish guards.
+ */
+export function normalizeNode(raw: Partial<TLMNode>): TLMNode {
+  return {
+    nodeId:           raw.nodeId          ?? '',
+    displayLabel:     raw.displayLabel    ?? '',
+    layer:            raw.layer           ?? 'CONSTRAINT',
+    isCoalescent:     raw.isCoalescent    ?? false,
+    isOrphan:         raw.isOrphan        ?? false,
+    orphanType:       raw.orphanType,
+    inValidChain:     raw.inValidChain    ?? false,
+    isCompensating:   raw.isCompensating  ?? false,
+    compositeScore:   raw.compositeScore  ?? 0,
+    rawFrequency:     raw.rawFrequency    ?? 0,
+    connectionDegree: raw.connectionDegree ?? 0,
+    quotes:           Array.isArray(raw.quotes) ? raw.quotes : [],
+  };
+}
+
+/**
+ * Normalise a full TransformationLogicMap from stored data.
+ * Returns a structurally complete object — every array and sub-object is
+ * guaranteed to exist so no consumer needs its own nullish guards.
+ */
+export function normalizeTLM(raw: Partial<TransformationLogicMap> | null | undefined): TransformationLogicMap {
+  const nodes = Array.isArray(raw?.nodes) ? raw!.nodes.filter(Boolean).map(n => normalizeNode(n as Partial<TLMNode>)) : [];
+  const edges = Array.isArray(raw?.edges) ? raw!.edges.filter(Boolean) : [];
+  return {
+    nodes,
+    edges,
+    coalescencePoints: Array.isArray(raw?.coalescencePoints) ? raw!.coalescencePoints : [],
+    orphanSummary: raw?.orphanSummary ?? {
+      constraintOrphans: 0, enablerOrphans: 0, visionOrphans: 0, topOrphanLabels: [],
+    },
+    strongestChains:       Array.isArray(raw?.strongestChains) ? raw!.strongestChains : [],
+    coverageScore:         raw?.coverageScore         ?? 0,
+    interpretationSummary: raw?.interpretationSummary ?? '',
+  };
+}
+
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 export function formatLabel(raw: string): string {
@@ -110,7 +155,7 @@ export function weightedSignificance(
     : 0.35;
 
   // 5. Mention frequency (lowest weight — volume alone ≠ importance)
-  const freqNorm = node.rawFrequency / maxFreq;
+  const freqNorm = (node.rawFrequency ?? 0) / maxFreq;
 
   // Weighted composite
   const raw =
@@ -144,7 +189,7 @@ export function weightedSignificance(
   if (densityNorm > 0.45 && actorSpreadNorm > 0.30) {
     classification = 'systemic';
     classificationReason =
-      `Raised across ${distinctRoles.length} distinct role${distinctRoles.length !== 1 ? 's' : ''} and connected to ${node.connectionDegree} other factors — a system-wide pattern, not an isolated issue.`;
+      `Raised across ${distinctRoles.length} distinct role${distinctRoles.length !== 1 ? 's' : ''} and connected to ${node.connectionDegree ?? 0} other factors — a system-wide pattern, not an isolated issue.`;
   } else if (seniorityNorm > 0.50 && structuralScore >= 0.55) {
     classification = 'structural';
     classificationReason =
@@ -222,8 +267,9 @@ export interface ExecSummaryData {
  * structural position 15%, frequency 5%) — not by raw mention count.
  */
 export function computePriorityNodes(data: TransformationLogicMap): PriorityNode[] {
-  const nodes = data.nodes ?? [];
-  const edges = data.edges ?? [];
+  const safe  = normalizeTLM(data);
+  const nodes = safe.nodes;
+  const edges = safe.edges;
   if (!nodes.length) return [];
   const byId = new Map(nodes.map(n => [n.nodeId, n]));
 
@@ -346,7 +392,8 @@ export function buildWayForward(
   data: TransformationLogicMap,
   manualNodeIds: Set<string>,
 ): WayForwardPhase[] {
-  const wfNodes = data.nodes ?? [];
+  const safe    = normalizeTLM(data);
+  const wfNodes = safe.nodes;
   const byId    = new Map(wfNodes.map(n => [n.nodeId, n]));
   const sigMap  = new Map(wfNodes.map(n => [n.nodeId, weightedSignificance(n, wfNodes)]));
 
@@ -419,7 +466,7 @@ export function buildWayForward(
     }).filter((x): x is WayForwardItem => Boolean(x));
   }
 
-  const orphanCount = data.orphanSummary?.constraintOrphans ?? 0;
+  const orphanCount = safe.orphanSummary.constraintOrphans;
 
   return [
     {
@@ -443,7 +490,7 @@ export function buildWayForward(
       color: '#10b981', borderColor: '#a7f3d0', textColor: '#065f46', bgColor: '#f0fdf4',
       items: toItems(p3Ids),
       dependencies: 'Phase 2 enablers must be active. Executive sponsorship and accountability structures must be in place.',
-      expectedOutcome: `Strategic outcomes in active delivery. ${Math.min((data.coverageScore ?? 0) + 25, 85)}%+ constraint coverage achieved as a measure of systemic health.`,
+      expectedOutcome: `Strategic outcomes in active delivery. ${Math.min(safe.coverageScore + 25, 85)}%+ constraint coverage achieved as a measure of systemic health.`,
     },
   ];
 }
@@ -451,13 +498,14 @@ export function buildWayForward(
 // ── Executive summary ─────────────────────────────────────────────────────────
 
 export function buildExecSummary(data: TransformationLogicMap): ExecSummaryData {
-  const esNodes           = data.nodes ?? [];
+  const safe              = normalizeTLM(data);
+  const esNodes           = safe.nodes;
   const constraints       = esNodes.filter(n => n.layer === 'CONSTRAINT');
   const enablers          = esNodes.filter(n => n.layer === 'ENABLER');
-  const orphanConstraints = constraints.filter(n => n.isOrphan ?? false);
-  const orphanEnablers    = enablers.filter(n => n.isOrphan ?? false);
-  const coalPoints        = data.coalescencePoints ?? [];
-  const coverage          = data.coverageScore ?? 0;
+  const orphanConstraints = constraints.filter(n => n.isOrphan);
+  const orphanEnablers    = enablers.filter(n => n.isOrphan);
+  const coalPoints        = safe.coalescencePoints;
+  const coverage          = safe.coverageScore;
 
   const headline =
     coverage < 30
@@ -471,7 +519,7 @@ export function buildExecSummary(data: TransformationLogicMap): ExecSummaryData 
     ? `Pressure is concentrated in "${formatLabel(topCoal.label)}", which connects ${topCoal.outDegree} dependent nodes — this is the highest-leverage intervention point in the system.`
     : `The analysis identified ${constraints.length} constraints across ${esNodes.length} total signals, with pressure distributed across multiple areas.`;
 
-  const visionOrphans = data.orphanSummary?.visionOrphans ?? 0;
+  const visionOrphans = safe.orphanSummary.visionOrphans;
   const gap = orphanConstraints.length > 0
     ? `${orphanConstraints.length} known problem${orphanConstraints.length !== 1 ? 's are' : ' is'} currently without a planned response.${orphanEnablers.length > 0 ? ` Additionally, ${orphanEnablers.length} enabling activit${orphanEnablers.length !== 1 ? 'ies have' : 'y has'} no connection to a strategic outcome.` : ''}`
     : visionOrphans > 0
@@ -481,11 +529,11 @@ export function buildExecSummary(data: TransformationLogicMap): ExecSummaryData 
   // Highest-significance action point — ranked by weighted score, not frequency
   const esSigMap = new Map(esNodes.map(n => [n.nodeId, weightedSignificance(n, esNodes)]));
   const topActionNode = [
-    ...esNodes.filter(n => n.isCoalescent ?? false),
-    ...esNodes.filter(n => (n.isOrphan ?? false) && n.layer === 'CONSTRAINT'),
+    ...esNodes.filter(n => n.isCoalescent),
+    ...esNodes.filter(n => n.isOrphan && n.layer === 'CONSTRAINT'),
   ].sort((a, b) => (esSigMap.get(b.nodeId)?.score ?? 0) - (esSigMap.get(a.nodeId)?.score ?? 0))[0];
 
-  const strongestChains = data.strongestChains ?? [];
+  const strongestChains = safe.strongestChains;
   const action = topActionNode
     ? `The immediate priority is "${formatLabel(topActionNode.displayLabel)}" — assign ownership, establish a 30-day response plan, and ensure this issue is reflected in the transformation programme.`
     : strongestChains.length > 0

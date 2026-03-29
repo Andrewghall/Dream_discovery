@@ -10,6 +10,7 @@ import {
   formatLabel,
   seniorityWeight,
   weightedSignificance,
+  normalizeTLM,
   type PriorityNode,
   type WayForwardPhase,
   type SignificanceLevel,
@@ -1008,7 +1009,12 @@ interface Props {
   workshopId?: string;
 }
 
-export function TransformationLogicMapPanel({ data, workshopId }: Props) {
+export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props) {
+  // Normalise once at the entry point — all downstream functions receive
+  // a complete, structurally-safe TLM object regardless of what fields
+  // were missing in the stored snapshot.
+  const data = useMemo(() => normalizeTLM(rawData), [rawData]);
+
   const [selected,      setSelected]      = useState<string | null>(null);
   const [activeFilter,  setActiveFilter]  = useState<Status | null>(null);
   const [selectedEdge,  setSelectedEdge]  = useState<VisEdge | null>(null);
