@@ -69,7 +69,23 @@ export const SEVERITY_COLORS: Record<string, { bg: string; text: string }> = {
 export function renderExecutiveSummary(summary: ReportSummary, cfg: ReportSectionConfig): string {
   const es = summary.executiveSummary;
   const ss = summary.solutionSummary;
+  if (!es) return '';
 
+  // ── The Question Asked ────────────────────────────────────────────────────
+  const askBand = es.theAsk ? `
+    <div class="es-ask-band">
+      <div class="es-band-label">The Question Asked</div>
+      <p class="es-ask-text">${esc(es.theAsk)}</p>
+    </div>` : '';
+
+  // ── The Answer (hero) ─────────────────────────────────────────────────────
+  const answerBand = es.theAnswer ? `
+    <div class="es-answer-band">
+      <div class="es-band-label es-band-label-primary">The Answer</div>
+      <p class="es-answer-text">${esc(es.theAnswer)}</p>
+    </div>` : '';
+
+  // ── What We Found ─────────────────────────────────────────────────────────
   const findings = (es.whatWeFound ?? [])
     .filter((_, i) => !isExcluded(cfg, `finding:${i}`))
     .map((f, i) => `
@@ -78,40 +94,64 @@ export function renderExecutiveSummary(summary: ReportSummary, cfg: ReportSectio
         <p>${esc(f)}</p>
       </div>`).join('');
 
+  // ── Findings by Lens ──────────────────────────────────────────────────────
   const lensRows = (es.lensFindings ?? [])
     .filter(lf => !isExcluded(cfg, `lens:${lf.lens}`))
     .map(lf => `
-      <div class="lens-row">
+      <div class="lens-card">
         <div class="lens-name">${esc(lf.lens)}</div>
         <div class="lens-finding">${esc(lf.finding)}</div>
       </div>`).join('');
 
-  const qaBlock = !isExcluded(cfg, 'qa') ? `
-    <div class="qa-card">
-      <div class="qa-question">${esc(es.theAsk ?? '')}</div>
-      <div class="qa-answer">${esc(es.theAnswer ?? '')}</div>
-      <div class="qa-urgency">${esc(es.urgency ?? '')}</div>
+  // ── Why It Matters / Opportunity ──────────────────────────────────────────
+  const matttersBlock = (es.whyItMatters || es.opportunityOrRisk) ? `
+    <div class="es-two-col">
+      ${es.whyItMatters ? `
+        <div class="es-muted-card">
+          <div class="es-band-label">Why It Matters</div>
+          <p class="es-body-text">${esc(es.whyItMatters)}</p>
+        </div>` : '<div></div>'}
+      ${es.opportunityOrRisk ? `
+        <div class="es-amber-card">
+          <div class="es-band-label es-band-label-amber">Opportunity / Risk</div>
+          <p class="es-amber-text">${esc(es.opportunityOrRisk)}</p>
+        </div>` : '<div></div>'}
     </div>` : '';
 
-  const transformDir = !isExcluded(cfg, 'transformation') ? `
+  // ── Urgency ───────────────────────────────────────────────────────────────
+  const urgencyBlock = es.urgency ? `
+    <div class="es-urgency-band">
+      <div class="es-urgency-icon">⚠</div>
+      <div>
+        <div class="es-band-label">Why Act Now</div>
+        <p class="es-body-text">${esc(es.urgency)}</p>
+      </div>
+    </div>` : '';
+
+  // ── Transformation Direction (from summary) ───────────────────────────────
+  const transformDir = !isExcluded(cfg, 'transformation') && summary.transformationDirection ? `
     <div class="transform-block">
       <div class="transform-label">Transformation Direction</div>
-      <div>${esc(summary.transformationDirection ?? '')}</div>
+      <div>${esc(summary.transformationDirection)}</div>
     </div>` : '';
 
+  // ── Solution preview ──────────────────────────────────────────────────────
   const solutionBlock = ss && !isExcluded(cfg, 'solution') ? `
-    <div class="solution-card">
+    <div class="es-solution-preview">
+      <div class="es-band-label" style="color:#10b981">Transformation Direction</div>
       <div class="sol-title">${esc(ss.direction ?? '')}</div>
       <div class="sol-rationale">${esc(ss.rationale ?? '')}</div>
-      ${(ss.successIndicators ?? []).filter((_, i) => !isExcluded(cfg, `benefit:${i}`)).map((b: string) => `<div class="sol-benefit">✓ ${esc(b)}</div>`).join('')}
     </div>` : '';
 
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Executive Summary</div></div>
-      ${qaBlock}
-      ${findings ? `<div class="findings-list">${findings}</div>` : ''}
-      ${lensRows ? `<div class="lens-grid">${lensRows}</div>` : ''}
+      ${askBand}
+      ${answerBand}
+      ${findings ? `<div class="es-section-label">What We Found</div><div class="findings-list">${findings}</div>` : ''}
+      ${lensRows ? `<div class="es-section-label">Findings by Lens</div><div class="lens-grid">${lensRows}</div>` : ''}
+      ${matttersBlock}
+      ${urgencyBlock}
       ${transformDir}
       ${solutionBlock}
     </section>`;
@@ -168,6 +208,7 @@ export function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: 
     .filter(rc => !isExcluded(cfg, `cause:${rc.rank}`))
     .map(rc => {
       const col = SEVERITY_COLORS[rc.severity] ?? SEVERITY_COLORS.moderate;
+      const lenses = (rc.affectedLenses ?? []).map(l => `<span class="cause-lens">${esc(l)}</span>`).join('');
       return `
         <div class="cause-card">
           <div class="cause-meta">
@@ -177,7 +218,8 @@ export function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: 
           <div class="cause-body">
             <div class="cause-title">${esc(rc.cause)}</div>
             <div class="cause-cat">${esc(rc.category)}</div>
-            ${(rc.evidence ?? []).slice(0, 2).map(e => `<div class="cause-ev">• ${esc(e)}</div>`).join('')}
+            ${(rc.evidence ?? []).slice(0, 2).map(e => `<div class="cause-ev">· ${esc(e)}</div>`).join('')}
+            ${lenses ? `<div class="cause-lenses">${lenses}</div>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -192,28 +234,131 @@ export function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: 
 
 export function renderSolutionDirection(summary: ReportSummary, intelligence: WorkshopOutputIntelligence, cfg: ReportSectionConfig): string {
   const ss = summary.solutionSummary;
-  const { roadmap } = intelligence;
+  const { roadmap, futureState } = intelligence;
 
-  const steps = (ss.whatMustChange ?? [])
+  // ── Direction hero ────────────────────────────────────────────────────────
+  const directionHero = ss.direction ? `
+    <div class="sd-direction-hero">
+      <div class="sd-direction-label">Transformation Direction</div>
+      <div class="sd-direction-text">${esc(ss.direction)}</div>
+    </div>` : '';
+
+  // ── Rationale ─────────────────────────────────────────────────────────────
+  const rationaleBlock = ss.rationale ? `
+    <div class="sd-section-card">
+      <div class="sd-sub-label">The Rationale</div>
+      <p class="sd-body-text">${esc(ss.rationale)}</p>
+    </div>` : '';
+
+  // ── What Must Change — Today's Reality vs Required Change ─────────────────
+  const wmc = (ss.whatMustChange ?? [])
     .filter((_, i) => !isExcluded(cfg, `step:${i}`))
-    .map((s, i) => `<div class="step-item"><span class="step-num">${i + 1}</span><div><strong>${esc(s.area)}</strong><br/><span class="step-change">${esc(s.requiredChange)}</span></div></div>`).join('');
+    .map((s) => `
+      <div class="wmc-item">
+        <div class="wmc-area-label">${esc(s.area)}</div>
+        <div class="wmc-split">
+          <div class="wmc-today">
+            <div class="wmc-split-label wmc-today-label">Today&apos;s Reality</div>
+            <p class="wmc-split-text">${esc(s.currentState ?? '')}</p>
+          </div>
+          <div class="wmc-required">
+            <div class="wmc-split-label wmc-required-label">Required Change</div>
+            <p class="wmc-split-text">${esc(s.requiredChange ?? '')}</p>
+          </div>
+        </div>
+      </div>`).join('');
+
+  // ── Target Operating Model ────────────────────────────────────────────────
+  const tomBlock = futureState?.targetOperatingModel ? `
+    <div class="sd-section-card">
+      <div class="sd-sub-label">Target Operating Model</div>
+      <p class="sd-body-text">${esc(futureState.targetOperatingModel)}</p>
+    </div>` : '';
+
+  // ── Redesign Principles ───────────────────────────────────────────────────
+  const principles = (futureState?.redesignPrinciples ?? []);
+  const principlesBlock = principles.length > 0 ? `
+    <div class="sd-principles-grid">
+      ${principles.map(p => `
+        <div class="sd-principle-item">
+          <span class="sd-principle-check">✓</span>
+          <span class="sd-principle-text">${esc(p)}</span>
+        </div>`).join('')}
+    </div>` : '';
+
+  // ── Roadmap phases ────────────────────────────────────────────────────────
+  const PHASE_COLORS_PDF = [
+    { border: '#6366f1', bg: '#eff2ff', numBg: '#6366f1', label: '#4338ca' },
+    { border: '#10b981', bg: '#ecfdf5', numBg: '#10b981', label: '#065f46' },
+    { border: '#8b5cf6', bg: '#f5f3ff', numBg: '#8b5cf6', label: '#6d28d9' },
+  ];
 
   const phases = (roadmap?.phases ?? [])
     .filter((_, i) => !isExcluded(cfg, `phase:${i}`))
-    .map(p => `
-      <div class="phase-card">
-        <div class="phase-name">${esc(p.phase ?? '')}</div>
-        <div class="phase-horizon">${esc(p.timeframe ?? '')}</div>
-        ${(p.initiatives ?? []).slice(0, 3).map(a => `<div class="phase-action">• ${esc(a.title)}</div>`).join('')}
-      </div>`).join('');
+    .map((p, i) => {
+      const c = PHASE_COLORS_PDF[i] ?? PHASE_COLORS_PDF[0];
+      const initiatives = (p.initiatives ?? []).slice(0, 5).map(init =>
+        `<div class="sd-phase-init">· <span class="sd-phase-init-title">${esc(init.title)}</span>${init.outcome ? ` — ${esc(init.outcome)}` : ''}</div>`
+      ).join('');
+      const caps = (p.capabilities ?? []).map(cap => `<span class="sd-phase-cap">${esc(cap)}</span>`).join('');
+      return `
+        <div class="sd-phase-card" style="border-color:${c.border};background:${c.bg}">
+          <div class="sd-phase-header">
+            <div class="sd-phase-num" style="background:${c.numBg}">${i + 1}</div>
+            <div class="sd-phase-title-wrap">
+              <div class="sd-phase-name" style="color:${c.label}">${esc(p.phase ?? '')}</div>
+              ${p.timeframe ? `<div class="sd-phase-timeframe">${esc(p.timeframe)}</div>` : ''}
+            </div>
+          </div>
+          ${initiatives ? `<div class="sd-phase-initiatives">${initiatives}</div>` : ''}
+          ${caps ? `<div class="sd-phase-caps">${caps}</div>` : ''}
+        </div>`;
+    }).join('');
+
+  const criticalPath = roadmap?.criticalPath ? `
+    <div class="sd-section-card">
+      <div class="sd-sub-label">Critical Path</div>
+      <p class="sd-body-text">${esc(roadmap.criticalPath)}</p>
+    </div>` : '';
+
+  const keyRisks = (roadmap?.keyRisks ?? []);
+  const risksBlock = keyRisks.length > 0 ? `
+    <div class="sd-risks-card">
+      <div class="sd-risks-label">Key Risks</div>
+      ${keyRisks.map(r => `<div class="sd-risk-item">· ${esc(r)}</div>`).join('')}
+    </div>` : '';
+
+  // ── Starting Point + Success Indicators ──────────────────────────────────
+  const startSuccessBlock = (ss.startingPoint || (ss.successIndicators ?? []).length > 0) ? `
+    <div class="sd-start-success-grid">
+      ${ss.startingPoint ? `
+        <div class="sd-section-card">
+          <div class="sd-sub-label">Starting Point</div>
+          <p class="sd-body-text">${esc(ss.startingPoint)}</p>
+        </div>` : '<div></div>'}
+      ${(ss.successIndicators ?? []).length > 0 ? `
+        <div class="sd-section-card">
+          <div class="sd-sub-label">Success Looks Like</div>
+          ${(ss.successIndicators ?? []).map(s => `
+            <div class="sd-success-item">
+              <span class="sd-success-check">✓</span>
+              <span class="sd-success-text">${esc(s)}</span>
+            </div>`).join('')}
+        </div>` : '<div></div>'}
+    </div>` : '';
 
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Solution Direction</div></div>
-      <div class="sol-vision">${esc(ss.direction ?? '')}</div>
-      <p class="sol-rationale-text">${esc(ss.rationale ?? '')}</p>
-      ${steps ? `<div class="step-list">${steps}</div>` : ''}
-      ${phases ? `<div class="phases-grid">${phases}</div>` : ''}
+      ${directionHero}
+      ${rationaleBlock}
+      ${wmc ? `<div class="sd-section-label">What Must Change</div><div class="sd-wmc-list">${wmc}</div>` : ''}
+      ${tomBlock}
+      ${principlesBlock ? `<div class="sd-section-label">Redesign Principles</div>${principlesBlock}` : ''}
+      ${phases ? `<div class="sd-section-label">Transformation Roadmap</div><div class="sd-phases-list">${phases}</div>` : ''}
+      ${criticalPath}
+      ${risksBlock}
+      ${startSuccessBlock}
     </section>`;
 }
 
@@ -627,6 +772,132 @@ export function renderFacilitatorBackPage(reportSummary: ReportSummary, dreamLog
     </div>`;
 }
 
+// ── TLM Graph SVG ─────────────────────────────────────────────────────────────
+
+export function renderTLMGraph(tlm: TransformationLogicMap | undefined): string {
+  if (!tlm || !tlm.nodes?.length) return '';
+
+  const constraints   = tlm.nodes.filter(n => n.layer === 'CONSTRAINT');
+  const enablers      = tlm.nodes.filter(n => n.layer === 'ENABLER');
+  const visions       = tlm.nodes.filter(n => n.layer === 'REIMAGINATION');
+
+  // SVG dimensions
+  const W = 760;
+  const COL_W = W / 3;
+  const NODE_R = 18;
+  const ROW_H = 48;
+  const HEADER_H = 38;
+  const PAD_TOP = 10;
+  const PAD_BOTTOM = 20;
+
+  const maxRows = Math.max(constraints.length, enablers.length, visions.length, 1);
+  const H = HEADER_H + PAD_TOP + maxRows * ROW_H + PAD_BOTTOM;
+
+  // Build node position map
+  type NodePos = { cx: number; cy: number; r: number; layer: string; label: string; isCoalescent: boolean; isOrphan: boolean; freq: number };
+  const positions = new Map<string, NodePos>();
+
+  const maxFreq = Math.max(...tlm.nodes.map(n => n.rawFrequency ?? 0), 1);
+
+  const placeNodes = (nodes: typeof tlm.nodes, colIndex: number) => {
+    nodes.forEach((n, i) => {
+      const freqBoost = Math.round(((n.rawFrequency ?? 0) / maxFreq) * 5);
+      const r = (n.isCoalescent ? NODE_R + 4 : n.isOrphan ? NODE_R - 3 : NODE_R) + freqBoost;
+      const cx = colIndex * COL_W + COL_W / 2;
+      const cy = HEADER_H + PAD_TOP + i * ROW_H + ROW_H / 2;
+      positions.set(n.nodeId, { cx, cy, r, layer: n.layer, label: n.displayLabel, isCoalescent: n.isCoalescent ?? false, isOrphan: n.isOrphan ?? false, freq: n.rawFrequency ?? 0 });
+    });
+  };
+
+  placeNodes(constraints, 0);
+  placeNodes(enablers,    1);
+  placeNodes(visions,     2);
+
+  // Edge lines
+  const edgeSvg = (tlm.edges ?? []).map(e => {
+    const src = positions.get(e.fromNodeId);
+    const tgt = positions.get(e.toNodeId);
+    if (!src || !tgt) return '';
+    const strength = (e.score ?? 50) / 100;
+    const opacity = 0.12 + strength * 0.45;
+    const stroke = e.relationshipType === 'enables' ? '#6366f1'
+      : e.relationshipType === 'constrains' || e.relationshipType === 'blocks' ? '#ef4444'
+      : '#94a3b8';
+    const sw = e.isChainEdge ? 2.5 : 1 + strength * 1.5;
+    return `<line x1="${src.cx}" y1="${src.cy}" x2="${tgt.cx}" y2="${tgt.cy}" stroke="${stroke}" stroke-width="${sw}" stroke-opacity="${opacity}" />`;
+  }).join('');
+
+  // Node circles
+  const nodeSvg = Array.from(positions.values()).map(p => {
+    const fill  = p.layer === 'CONSTRAINT' ? '#fef2f2' : p.layer === 'ENABLER' ? '#eff6ff' : '#f0fdf4';
+    const stroke = p.layer === 'CONSTRAINT' ? '#ef4444' : p.layer === 'ENABLER' ? '#6366f1' : '#10b981';
+    const textColor = p.layer === 'CONSTRAINT' ? '#b91c1c' : p.layer === 'ENABLER' ? '#3730a3' : '#065f46';
+    const label = p.label.length > 14 ? p.label.slice(0, 13) + '…' : p.label;
+
+    const coalRing = p.isCoalescent
+      ? `<circle cx="${p.cx}" cy="${p.cy}" r="${p.r + 8}" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-opacity="0.5" stroke-dasharray="4 3" />`
+      : '';
+    const orphanDot = p.isOrphan
+      ? `<circle cx="${p.cx + p.r - 2}" cy="${p.cy - p.r + 2}" r="4" fill="#ef4444" />`
+      : '';
+
+    return `
+      ${coalRing}
+      <circle cx="${p.cx}" cy="${p.cy}" r="${p.r}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" />
+      ${orphanDot}
+      <text x="${p.cx}" y="${p.cy + 3}" text-anchor="middle" font-size="6" font-family="Inter,sans-serif" fill="${textColor}" font-weight="600">${esc(label)}</text>`;
+  }).join('');
+
+  // Column headers
+  const headers = [
+    { label: 'Challenges', count: constraints.length, color: '#ef4444', bg: '#fef2f2' },
+    { label: 'Enablers',   count: enablers.length,    color: '#6366f1', bg: '#eff6ff' },
+    { label: 'Vision',     count: visions.length,     color: '#10b981', bg: '#f0fdf4' },
+  ].map((h, i) => `
+    <rect x="${i * COL_W}" y="0" width="${COL_W}" height="${HEADER_H}" fill="${h.bg}" />
+    <rect x="${i * COL_W}" y="0" width="${COL_W}" height="3" fill="${h.color}" />
+    <text x="${i * COL_W + COL_W / 2}" y="${HEADER_H / 2 + 2}" text-anchor="middle" font-size="8" font-family="Inter,sans-serif" font-weight="700" fill="${h.color}">${h.label}</text>
+    <text x="${i * COL_W + COL_W / 2}" y="${HEADER_H / 2 + 13}" text-anchor="middle" font-size="7" font-family="Inter,sans-serif" fill="${h.color}" opacity="0.7">${h.count} node${h.count !== 1 ? 's' : ''}</text>
+  `).join('');
+
+  // Column separator lines
+  const dividers = [1, 2].map(i =>
+    `<line x1="${i * COL_W}" y1="${HEADER_H}" x2="${i * COL_W}" y2="${H}" stroke="#e2e8f0" stroke-width="1" />`
+  ).join('');
+
+  const coverageBar = tlm.coverageScore != null ? (() => {
+    const pct = Math.round((tlm.coverageScore ?? 0) * 100);
+    const barW = Math.round((pct / 100) * (W - 160));
+    return `
+      <rect x="0" y="${H - 18}" width="${W}" height="18" fill="#f8fafc" />
+      <text x="8" y="${H - 6}" font-size="7" font-family="Inter,sans-serif" fill="#94a3b8" font-weight="600">COVERAGE</text>
+      <rect x="80" y="${H - 14}" width="${W - 160}" height="6" rx="3" fill="#e2e8f0" />
+      <rect x="80" y="${H - 14}" width="${barW}" height="6" rx="3" fill="#10b981" />
+      <text x="${W - 70}" y="${H - 6}" font-size="7" font-family="Inter,sans-serif" fill="#10b981" font-weight="700">${pct}% addressed</text>`;
+  })() : '';
+
+  const svgH = H + (tlm.coverageScore != null ? 0 : 0);
+
+  return `
+    <div class="tlm-graph-wrap">
+      <svg viewBox="0 0 ${W} ${svgH}" xmlns="http://www.w3.org/2000/svg" class="tlm-graph-svg" style="width:100%;height:auto;display:block;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <rect width="${W}" height="${svgH}" fill="#ffffff" />
+        ${headers}
+        ${dividers}
+        <g class="edges">${edgeSvg}</g>
+        <g class="nodes">${nodeSvg}</g>
+        ${coverageBar}
+      </svg>
+      <div class="tlm-legend">
+        <div class="tlm-legend-item"><span class="tlm-leg-dot" style="background:#ef4444"></span>Challenge</div>
+        <div class="tlm-legend-item"><span class="tlm-leg-dot" style="background:#6366f1"></span>Enabler</div>
+        <div class="tlm-legend-item"><span class="tlm-leg-dot" style="background:#10b981"></span>Vision</div>
+        <div class="tlm-legend-item"><span style="display:inline-block;width:10px;height:10px;border:1.5px dashed #f59e0b;border-radius:50%;margin-right:4px;vertical-align:middle"></span>Pressure point</div>
+        <div class="tlm-legend-item"><span class="tlm-leg-dot" style="background:#ef4444;width:7px;height:7px"></span>Orphan</div>
+      </div>
+    </div>`;
+}
+
 // ── Transformation Priorities ─────────────────────────────────────────────────
 
 export function renderTransformationPriorities(tlm: TransformationLogicMap | undefined): string {
@@ -685,6 +956,7 @@ export function renderTransformationPriorities(tlm: TransformationLogicMap | und
         <p class="tp-summary-headline">${esc(execSum.headline)}</p>
         ${execSum.pressure ? `<p class="tp-summary-sub">${esc(execSum.pressure)}</p>` : ''}
       </div>
+      ${renderTLMGraph(tlm)}
       <div class="tp-cards">${cards}</div>
     </section>`;
 }
@@ -897,23 +1169,43 @@ export const PDF_STYLES = `
   .section-title { font-size: 13pt; font-weight: 700; color: #111827; letter-spacing: -0.01em; }
 
   /* ── Executive summary ─── */
+  /* legacy classes kept for any old snapshots */
   .qa-card { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
   .qa-question { font-size: 9pt; font-weight: 500; color: #9ca3af; margin-bottom: 8px; line-height: 1.5; }
   .qa-answer { font-size: 12pt; font-weight: 700; color: #111827; line-height: 1.35; margin-bottom: 10px; }
   .qa-urgency { font-size: 10pt; color: #475569; font-style: italic; line-height: 1.5; }
-  .findings-list { margin-bottom: 20px; }
+  /* new banded layout */
+  .es-ask-band { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+  .es-ask-text { font-size: 10.5pt; color: #374151; line-height: 1.7; margin: 0; }
+  .es-answer-band { background: linear-gradient(135deg, #4338ca 0%, #6366f1 100%); border-radius: 10px; padding: 18px 22px; margin-bottom: 18px; }
+  .es-band-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: #6b7280; margin-bottom: 6px; }
+  .es-band-label-primary { color: rgba(255,255,255,0.6); }
+  .es-band-label-amber { color: #b45309; }
+  .es-answer-text { font-size: 13pt; font-weight: 700; color: #ffffff; line-height: 1.35; margin: 0; }
+  .es-section-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: #9ca3af; margin-bottom: 10px; margin-top: 18px; }
+  .findings-list { margin-bottom: 6px; }
   .finding-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
   .finding-num { flex-shrink: 0; width: 22px; height: 22px; background: #0f172a; color: white; border-radius: 50%; font-size: 8pt; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
   .finding-item p { font-size: 10pt; color: #374151; line-height: 1.6; }
-  .lens-grid { display: grid; grid-template-columns: 1fr; gap: 6px; margin-bottom: 20px; }
+  .lens-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+  .lens-card { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #6366f1; border-radius: 0 8px 8px 0; padding: 10px 14px; }
   .lens-row { display: grid; grid-template-columns: 150px 1fr; gap: 14px; background: #f8fafc; border-left: 3px solid #6366f1; border-radius: 0 8px 8px 0; padding: 9px 14px; }
-  .lens-name { font-size: 9pt; font-weight: 700; color: #374151; }
+  .lens-name { font-size: 8.5pt; font-weight: 700; color: #374151; margin-bottom: 3px; }
   .lens-finding { font-size: 9pt; color: #6b7280; line-height: 1.5; }
-  .transform-block { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; }
+  .es-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; margin-top: 6px; }
+  .es-muted-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; }
+  .es-amber-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px 18px; }
+  .es-amber-text { font-size: 10pt; color: #78350f; line-height: 1.6; margin: 0; }
+  .es-body-text { font-size: 10pt; color: #374151; line-height: 1.6; margin: 0; }
+  .es-urgency-band { display: flex; gap: 12px; align-items: flex-start; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+  .es-urgency-icon { font-size: 16pt; line-height: 1; flex-shrink: 0; color: #d97706; margin-top: 1px; }
+  .es-solution-preview { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 14px 18px; margin-top: 12px; }
+  .transform-block { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; margin-top: 6px; }
   .transform-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #16a34a; margin-bottom: 6px; }
   .solution-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 16px 18px; }
-  .sol-title { font-size: 12pt; font-weight: 700; color: #92400e; margin-bottom: 8px; }
-  .sol-rationale { font-size: 9.5pt; color: #78350f; margin-bottom: 10px; line-height: 1.6; }
+  .sol-title { font-size: 12pt; font-weight: 700; color: #065f46; margin-bottom: 6px; }
+  .sol-rationale { font-size: 9.5pt; color: #374151; margin-bottom: 10px; line-height: 1.6; }
+  .sol-rationale-text { font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 20px; }
   .sol-benefit { font-size: 9.5pt; color: #78350f; padding: 3px 0; }
 
   /* ── Supporting evidence ─── */
@@ -941,6 +1233,8 @@ export const PDF_STYLES = `
   .cause-title { font-size: 10.5pt; font-weight: 600; color: #111827; margin-bottom: 3px; }
   .cause-cat { font-size: 8.5pt; color: #9ca3af; margin-bottom: 6px; }
   .cause-ev { font-size: 9pt; color: #6b7280; padding: 2px 0; line-height: 1.5; }
+  .cause-lenses { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+  .cause-lens { font-size: 7.5pt; color: #64748b; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1px 7px; }
 
   /* ── Solution direction ─── */
   .sol-vision { font-size: 12pt; font-weight: 700; color: #111827; margin-bottom: 8px; line-height: 1.35; }
@@ -954,6 +1248,49 @@ export const PDF_STYLES = `
   .phase-name { font-size: 9.5pt; font-weight: 700; color: #111827; margin-bottom: 3px; }
   .phase-horizon { font-size: 8pt; color: #9ca3af; margin-bottom: 8px; font-weight: 500; }
   .phase-action { font-size: 9pt; color: #374151; padding: 2px 0; line-height: 1.5; }
+  /* new solution direction layout */
+  .sd-direction-hero { background: linear-gradient(135deg, #4338ca 0%, #6366f1 100%); border-radius: 12px; padding: 20px 24px; margin-bottom: 14px; }
+  .sd-direction-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: rgba(255,255,255,0.6); margin-bottom: 6px; }
+  .sd-direction-text { font-size: 13pt; font-weight: 700; color: #ffffff; line-height: 1.35; }
+  .sd-section-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+  .sd-sub-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: #9ca3af; margin-bottom: 8px; }
+  .sd-body-text { font-size: 10pt; color: #374151; line-height: 1.7; margin: 0; }
+  .sd-section-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: #9ca3af; margin-bottom: 10px; margin-top: 18px; }
+  .sd-wmc-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 6px; }
+  .wmc-item { border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; background: #ffffff; }
+  .wmc-area-label { font-size: 9pt; font-weight: 700; color: #0f172a; margin-bottom: 10px; }
+  .wmc-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .wmc-today { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 12px; }
+  .wmc-required { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; }
+  .wmc-split-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 4px; }
+  .wmc-today-label { color: #dc2626; }
+  .wmc-required-label { color: #16a34a; }
+  .wmc-split-text { font-size: 9pt; line-height: 1.6; margin: 0; }
+  .wmc-today .wmc-split-text { color: #7f1d1d; }
+  .wmc-required .wmc-split-text { color: #14532d; }
+  .sd-principles-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+  .sd-principle-item { display: flex; gap: 8px; align-items: flex-start; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; }
+  .sd-principle-check { color: #6366f1; font-weight: 700; font-size: 10pt; flex-shrink: 0; }
+  .sd-principle-text { font-size: 9pt; color: #374151; line-height: 1.5; }
+  .sd-phases-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 6px; }
+  .sd-phase-card { border: 1px solid; border-radius: 10px; padding: 14px 16px; }
+  .sd-phase-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+  .sd-phase-num { width: 28px; height: 28px; border-radius: 50%; color: white; font-size: 10pt; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sd-phase-title-wrap { flex: 1; }
+  .sd-phase-name { font-size: 10.5pt; font-weight: 700; line-height: 1.2; margin-bottom: 2px; }
+  .sd-phase-timeframe { font-size: 8pt; color: #94a3b8; }
+  .sd-phase-initiatives { display: flex; flex-direction: column; gap: 4px; }
+  .sd-phase-init { font-size: 9pt; color: #374151; line-height: 1.5; }
+  .sd-phase-init-title { font-weight: 600; }
+  .sd-phase-caps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .sd-phase-cap { font-size: 7.5pt; color: #64748b; background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.9); border-radius: 20px; padding: 1px 7px; }
+  .sd-risks-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+  .sd-risks-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #b45309; margin-bottom: 8px; }
+  .sd-risk-item { font-size: 9.5pt; color: #78350f; line-height: 1.6; padding: 2px 0; }
+  .sd-start-success-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+  .sd-success-item { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; }
+  .sd-success-check { color: #10b981; font-weight: 700; font-size: 10pt; flex-shrink: 0; }
+  .sd-success-text { font-size: 9.5pt; color: #374151; line-height: 1.5; }
 
   /* ── Journey map ─── */
   .journey-intro { font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 16px; }
@@ -1107,6 +1444,13 @@ export const PDF_STYLES = `
   .next-step-content { flex: 1; }
   .next-step-title { font-size: 10.5pt; font-weight: 700; color: #111827; margin-bottom: 3px; }
   .next-step-desc { font-size: 9.5pt; color: #6b7280; line-height: 1.5; }
+
+  /* ── TLM Graph ─── */
+  .tlm-graph-wrap { margin-bottom: 20px; }
+  .tlm-graph-svg { max-height: 320px; }
+  .tlm-legend { display: flex; flex-wrap: wrap; gap: 10px 20px; margin-top: 8px; }
+  .tlm-legend-item { display: flex; align-items: center; gap: 5px; font-size: 8pt; color: #374151; }
+  .tlm-leg-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
 
   /* ── Transformation Priorities ─── */
   .tp-summary-bar { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; }
