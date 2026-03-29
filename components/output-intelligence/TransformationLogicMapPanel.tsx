@@ -83,32 +83,40 @@ function enrich(tlm: TransformationLogicMap): EN[] {
 
 // ── Canvas constants ──────────────────────────────────────────────────────────
 
-const CW = 820;
 const CH = 430;
 const LANE_Y: Record<TLMNode['layer'], number> = {
   REIMAGINATION: 78,
   ENABLER:       215,
   CONSTRAINT:    358,
 };
-const PAD_X = 80;
+const PAD_X = 60;
+const NODE_SLOT = 54; // px per node slot (diameter + gap)
 
-// Radius: coalescent = large, orphan = small, default = medium
-function radius(en: EN): number {
-  return en.n.isCoalescent ? 38 : en.n.isOrphan ? 24 : 31;
+// Radius: scale down when there are many nodes in the densest lane
+function radius(en: EN, maxPerLane: number): number {
+  const base = maxPerLane > 16 ? 17
+             : maxPerLane > 10 ? 21
+             : maxPerLane > 6  ? 26
+             : 31;
+  return en.n.isCoalescent ? base + 6 : en.n.isOrphan ? base - 3 : base;
+}
+
+// Dynamic canvas width grows to fit the widest lane
+function dynCW(maxPerLane: number): number {
+  return Math.max(820, maxPerLane * NODE_SLOT + PAD_X * 2);
 }
 
 // ── Position featured nodes in 3-lane grid ────────────────────────────────────
 
-function positionNodes(featured: EN[]): Map<string, { x: number; y: number }> {
+function positionNodes(featured: EN[], cw: number): Map<string, { x: number; y: number }> {
   const pos = new Map<string, { x: number; y: number }>();
   const layers: TLMNode['layer'][] = ['REIMAGINATION', 'ENABLER', 'CONSTRAINT'];
   for (const layer of layers) {
     const group = featured.filter(e => e.n.layer === layer);
     const n     = group.length;
     group.forEach((en, i) => {
-      const x = n === 0 ? CW / 2 :
-                n === 1 ? CW / 2 :
-                PAD_X + (i / (n - 1)) * (CW - PAD_X * 2);
+      const x = n <= 1 ? cw / 2
+              : PAD_X + (i / (n - 1)) * (cw - PAD_X * 2);
       pos.set(en.n.nodeId, { x, y: LANE_Y[layer] });
     });
   }
@@ -166,9 +174,9 @@ function Edge({ x1, y1, x2, y2, score, isChain, dim }: VisEdge & { dim: boolean 
 // ── SVG node component ────────────────────────────────────────────────────────
 
 function MapNode({
-  en, x, y, selected, dim, onClick,
-}: { en: EN; x: number; y: number; selected: boolean; dim: boolean; onClick: () => void }) {
-  const r   = radius(en);
+  en, x, y, selected, dim, onClick, maxPerLane,
+}: { en: EN; x: number; y: number; selected: boolean; dim: boolean; onClick: () => void; maxPerLane: number }) {
+  const r   = radius(en, maxPerLane);
   const ss  = STATUS_STYLE[en.status];
   const ls  = LAYER_STYLE[en.n.layer];
   const op  = dim ? 0.22 : 1;
@@ -228,7 +236,7 @@ function MapNode({
 
 const BAND_H = 96;
 
-function LaneBands() {
+function LaneBands({ cw }: { cw: number }) {
   return (
     <>
       {(['REIMAGINATION', 'ENABLER', 'CONSTRAINT'] as const).map(layer => {
@@ -239,7 +247,7 @@ function LaneBands() {
                    :                              '#fef2f2';
         return (
           <g key={layer}>
-            <rect x={0} y={y} width={CW} height={BAND_H} fill={fill} fillOpacity={0.5} />
+            <rect x={0} y={y} width={cw} height={BAND_H} fill={fill} fillOpacity={0.5} />
             <text
               x={10} y={LANE_Y[layer]}
               dominantBaseline="middle"
@@ -416,7 +424,7 @@ function AnswerStrip({ all }: { all: EN[] }) {
   return (
     <div className="grid grid-cols-3 gap-3">
       {[
-        { q: 'Fix first',         v: `${critCount} critical`,         s: 'Shown top-left in the map below', c: '#ef4444', bg: '#fef2f2', b: '#fca5a5' },
+        { q: 'Fix first',         v: `${critCount} critical`,         s: 'All shown in map below — no pathway', c: '#ef4444', bg: '#fef2f2', b: '#fca5a5' },
         { q: 'Being addressed',   v: `${addressed} of ${total} (${pct}%)`, s: 'Nodes with a valid transformation path', c: '#3b82f6', bg: '#eff6ff', b: '#bfdbfe' },
         { q: 'Being ignored',     v: ignored > 0 ? `${ignored} constraints` : 'None', s: ignored > 0 ? 'Known problems with no plan' : 'All constraints have some pathway', c: ignored > 0 ? '#dc2626' : '#10b981', bg: ignored > 0 ? '#fef2f2' : '#f0fdf4', b: ignored > 0 ? '#fca5a5' : '#bbf7d0' },
       ].map((it, i) => (
@@ -463,32 +471,29 @@ export function TransformationLogicMapPanel({ data }: Props) {
 
   const all = useMemo(() => enrich(data), [data]);
 
-  // ── 80/20 split — balanced across layers ────────────────────────────────
-  // ALL hooks must be before any early return (React rules of hooks).
-  // Guarantee at least 2 nodes per populated layer so connections are visible,
-  // then fill remaining slots with highest-scoring nodes from any layer.
-  const featuredCount = Math.max(8, Math.min(14, Math.ceil(all.length * 0.20)));
+  // ── Featured selection — ALL hooks before early return ──────────────────
+  // Show ALL critical nodes (these ARE the 20-30% requiring action),
+  // plus top enablers/vision that provide context for the chains.
   const featured = useMemo(() => {
     if (all.length === 0) return [];
-    const byLayer: Record<TLMNode['layer'], EN[]> = {
-      REIMAGINATION: all.filter(e => e.n.layer === 'REIMAGINATION'),
-      ENABLER:       all.filter(e => e.n.layer === 'ENABLER'),
-      CONSTRAINT:    all.filter(e => e.n.layer === 'CONSTRAINT'),
-    };
-    const chosen = new Set<string>();
-    // Guaranteed floor: top 2 from each populated layer
-    (['REIMAGINATION', 'ENABLER', 'CONSTRAINT'] as const).forEach(layer => {
-      byLayer[layer].slice(0, 2).forEach(e => chosen.add(e.n.nodeId));
-    });
-    // Fill remaining slots by score
-    for (const e of all) {
-      if (chosen.size >= featuredCount) break;
-      chosen.add(e.n.nodeId);
-    }
+    const critical = all.filter(e => e.status === 'critical');
+    const partial  = all.filter(e => e.status === 'partial').slice(0, 5);
+    const enablers = all.filter(e => e.n.layer === 'ENABLER'       && e.status !== 'critical').slice(0, 5);
+    const vision   = all.filter(e => e.n.layer === 'REIMAGINATION' && e.status !== 'critical').slice(0, 4);
+    const chosen   = new Set<string>();
+    [...critical, ...enablers, ...vision, ...partial].forEach(e => chosen.add(e.n.nodeId));
     return all.filter(e => chosen.has(e.n.nodeId));
-  }, [all, featuredCount]);
+  }, [all]);
 
-  const pos      = useMemo(() => positionNodes(featured), [featured]);
+  const maxPerLane = useMemo(() => {
+    const counts = (['REIMAGINATION', 'ENABLER', 'CONSTRAINT'] as const).map(
+      l => featured.filter(e => e.n.layer === l).length
+    );
+    return Math.max(...counts, 1);
+  }, [featured]);
+
+  const canvasW  = dynCW(maxPerLane);
+  const pos      = useMemo(() => positionNodes(featured, canvasW), [featured, canvasW]);
   const visEdges = useMemo(() => {
     const ids = new Set(featured.map(e => e.n.nodeId));
     return buildVisEdges(data, ids, pos);
@@ -534,10 +539,10 @@ export function TransformationLogicMapPanel({ data }: Props) {
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50">
           <div>
             <span className="text-xs font-bold text-slate-700">
-              Top {featuredCount} priority nodes
+              {featured.length} priority nodes
             </span>
             <span className="ml-2 text-[10px] text-slate-400">
-              The 20% driving 80% of transformation risk
+              All critical + key enablers/vision — the {Math.round(featured.length / Math.max(all.length, 1) * 100)}% requiring action
             </span>
           </div>
           <span className="text-[10px] text-slate-400">
@@ -547,13 +552,13 @@ export function TransformationLogicMapPanel({ data }: Props) {
 
         <div className="overflow-x-auto">
           <svg
-            width={CW}
+            width={canvasW}
             height={CH}
-            viewBox={`0 0 ${CW} ${CH}`}
-            style={{ display: 'block', minWidth: CW }}
+            viewBox={`0 0 ${canvasW} ${CH}`}
+            style={{ display: 'block', minWidth: canvasW }}
           >
             {/* Lane backgrounds + labels */}
-            <LaneBands />
+            <LaneBands cw={canvasW} />
 
             {/* Edges */}
             {visEdges.map((e, i) => {
@@ -577,6 +582,7 @@ export function TransformationLogicMapPanel({ data }: Props) {
                   en={en} x={p.x} y={p.y}
                   selected={selected === en.n.nodeId}
                   dim={dim}
+                  maxPerLane={maxPerLane}
                   onClick={() => setSelected(prev => prev === en.n.nodeId ? null : en.n.nodeId)}
                 />
               );
