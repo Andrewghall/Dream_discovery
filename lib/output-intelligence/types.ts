@@ -570,9 +570,12 @@ export function defaultReportLayout(): ReportLayout {
       { id: 'structural_confidence',   type: 'builtin', title: 'Transformation Readiness', enabled: false, collapsed: false, excludedItems: [] },
       // Discovery Signal Map + Facilitator — disabled until toggled on
       { id: 'discovery_signal_map',    type: 'builtin', title: 'Discovery Signal Map',     enabled: false, collapsed: false, excludedItems: [] },
-      { id: 'facilitator_contact',     type: 'builtin', title: 'Facilitator Contact',      enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'facilitator_contact',       type: 'builtin', title: 'Facilitator Contact',      enabled: false, collapsed: false, excludedItems: [] },
+      // Decision engine sections — disabled until toggled on from Transformation Logic Map
+      { id: 'transformation_priorities', type: 'builtin', title: 'Transformation Priorities', enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'way_forward',               type: 'builtin', title: 'Way Forward',               enabled: false, collapsed: false, excludedItems: [] },
       // Conclusion — enabled by default, positioned last
-      { id: 'report_conclusion',       type: 'builtin', title: 'Summary & Next Steps',     enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'report_conclusion',         type: 'builtin', title: 'Summary & Next Steps',     enabled: true,  collapsed: false, excludedItems: [] },
     ],
   };
 }

@@ -572,7 +572,7 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
                         </span>
                       </div>
                       <div className={`rounded-b-xl border ${colors.border} overflow-hidden`}>
-                        <TransformationLogicMapPanel data={intelligence.transformationLogicMap} />
+                        <TransformationLogicMapPanel data={intelligence.transformationLogicMap} workshopId={workshopId} />
                       </div>
                     </div>
                   );
