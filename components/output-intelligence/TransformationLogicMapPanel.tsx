@@ -29,43 +29,66 @@ const LAYER_STYLE: Record<TLMNode['layer'], { dot: string; label: string }> = {
   CONSTRAINT:    { dot: '#ef4444', label: 'Challenge'  },
 };
 
-// ── Scoring ───────────────────────────────────────────────────────────────────
+// ── Weighted scoring model ────────────────────────────────────────────────────
+// score = (mention_count × 0.6) + (seniority_weight_sum × 0.4)
+// Normalised 0–100. Generic labels penalised.
 
-function calcScore(n: TLMNode, maxDeg: number, maxFreq: number): number {
-  let s = 0;
-  if (n.isCoalescent)                                              s += 28;
-  if (n.isOrphan && n.layer === 'CONSTRAINT')                      s += 35;
-  if (n.isOrphan && n.layer === 'REIMAGINATION')                   s += 18;
-  if (n.isOrphan && n.layer === 'ENABLER')                         s += 10;
-  if (!n.inValidChain && !n.isOrphan && n.layer === 'CONSTRAINT')  s += 18;
-  if (maxDeg  > 0) s += (n.connectionDegree / maxDeg)  * 16;
-  if (maxFreq > 0) s += (n.rawFrequency     / maxFreq) * 10;
-  const lenses = new Set(n.quotes.map(q => q.lens).filter(Boolean)).size;
-  s += Math.min(12, lenses * 3);
-  return Math.min(100, Math.round(s));
+function seniorityWeight(role: string | null | undefined): number {
+  if (!role) return 1.0;
+  const r = role.toLowerCase();
+  if (r.includes('chief') || r.includes('exec') || r.includes('director') ||
+      r.includes('ceo') || r.includes('coo') || r.includes('cto')) return 2.0;
+  if (r.includes('head of') || r.includes('senior manager') ||
+      r.includes('vp') || r.includes('vice president'))           return 1.5;
+  if (r.includes('manager') || r.includes('lead') ||
+      r.includes('supervisor'))                                    return 1.2;
+  return 1.0;
+}
+
+const GENERIC_LABELS = new Set([
+  'customer', 'system', 'process', 'team', 'people', 'issue', 'problem',
+  'thing', 'area', 'work', 'staff', 'data', 'service', 'time', 'way',
+  'information', 'support', 'change', 'business', 'day',
+]);
+
+function isGeneric(label: string): boolean {
+  const l = label.toLowerCase().trim();
+  return GENERIC_LABELS.has(l) || l.length <= 3;
 }
 
 // ── Enriched node ─────────────────────────────────────────────────────────────
 
 interface EN {
-  n:       TLMNode;
-  status:  Status;
-  score:   number;
-  lenses:  number;
+  n:        TLMNode;
+  status:   Status;
+  score:    number;   // 0–100 normalised
+  rawScore: number;   // pre-normalisation (for tooltip/debug)
+  lenses:   number;
   connects: Array<{ label: string; layer: TLMNode['layer'] }>;
 }
 
 function enrich(tlm: TransformationLogicMap): EN[] {
   if (!tlm.nodes.length) return [];
-  const maxDeg  = Math.max(...tlm.nodes.map(n => n.connectionDegree), 1);
-  const maxFreq = Math.max(...tlm.nodes.map(n => n.rawFrequency), 1);
-  const byId    = new Map(tlm.nodes.map(n => [n.nodeId, n]));
+  const byId = new Map(tlm.nodes.map(n => [n.nodeId, n]));
 
+  // Pass 1 — compute raw weighted scores
+  const rawMap = new Map<string, number>();
+  for (const n of tlm.nodes) {
+    const mentions   = n.rawFrequency;
+    const senWeight  = n.quotes.reduce((s, q) => s + seniorityWeight(q.participantRole), 0);
+    let raw = (mentions * 0.6) + (senWeight * 0.4);
+    if (isGeneric(n.displayLabel)) raw *= 0.35;
+    rawMap.set(n.nodeId, raw);
+  }
+  const maxRaw = Math.max(...rawMap.values(), 1);
+
+  // Pass 2 — build enriched nodes, normalise scores
   return tlm.nodes
     .map(n => {
-      const status = calcStatus(n);
-      const score  = calcScore(n, maxDeg, maxFreq);
-      const lenses = new Set(n.quotes.map(q => q.lens).filter(Boolean)).size;
+      const status   = calcStatus(n);
+      const rawScore = rawMap.get(n.nodeId) ?? 0;
+      const score    = Math.round((rawScore / maxRaw) * 100);
+      const lenses   = new Set(n.quotes.map(q => q.lens).filter(Boolean)).size;
       const connects = tlm.edges
         .filter(e => (e.fromNodeId === n.nodeId || e.toNodeId === n.nodeId) && e.score >= 25)
         .sort((a, b) => b.score - a.score)
@@ -76,7 +99,7 @@ function enrich(tlm: TransformationLogicMap): EN[] {
           return o ? { label: o.displayLabel, layer: o.layer } : null;
         })
         .filter(Boolean) as Array<{ label: string; layer: TLMNode['layer'] }>;
-      return { n, status, score, lenses, connects };
+      return { n, status, score, rawScore, lenses, connects };
     })
     .sort((a, b) => b.score - a.score);
 }
@@ -292,9 +315,12 @@ function NodeDetail({ en, onClose }: { en: EN; onClose: () => void }) {
           </div>
           <h4 className="text-sm font-bold text-slate-900 leading-snug">{en.n.displayLabel}</h4>
           <p className="text-[10px] text-slate-500 mt-1">
-            Priority score: <strong>{en.score}</strong>
-            {en.n.rawFrequency > 0 && <> · {en.n.rawFrequency} signals</>}
-            {en.lenses > 0 && <> · {en.lenses} {en.lenses === 1 ? 'lens' : 'lenses'}</>}
+            Weighted score: <strong>{en.score}</strong>
+            {en.n.rawFrequency > 0 && <> · <strong>{en.n.rawFrequency}</strong> mentions × 0.6</>}
+            {en.n.quotes.length > 0 && (
+              <> · seniority Σ{en.n.quotes.reduce((s, q) => +(s + seniorityWeight(q.participantRole)).toFixed(1), 0)} × 0.4</>
+            )}
+            {isGeneric(en.n.displayLabel) && <span className="text-amber-500"> · generic penalty applied</span>}
           </p>
         </div>
         <button onClick={onClose} className="p-1 rounded hover:bg-white/60 shrink-0">
@@ -412,28 +438,56 @@ function RemainingList({ nodes }: { nodes: EN[] }) {
   );
 }
 
-// ── 3-question strip ──────────────────────────────────────────────────────────
+// ── 3-metric strip (clickable filters) ───────────────────────────────────────
 
-function AnswerStrip({ all }: { all: EN[] }) {
-  const critCount  = all.filter(e => e.status === 'critical').length;
-  const addressed  = all.filter(e => e.status === 'addressed').length;
-  const ignored    = all.filter(e => e.status === 'critical' && e.n.isOrphan && e.n.layer === 'CONSTRAINT').length;
-  const total      = all.length;
-  const pct        = Math.round((addressed / Math.max(total, 1)) * 100);
+function AnswerStrip({
+  all, activeFilter, onFilter,
+}: {
+  all: EN[];
+  activeFilter: Status | null;
+  onFilter: (f: Status | null) => void;
+}) {
+  const critCount = all.filter(e => e.status === 'critical').length;
+  const addressed = all.filter(e => e.status === 'addressed').length;
+  const ignored   = all.filter(e => e.status === 'critical' && e.n.isOrphan && e.n.layer === 'CONSTRAINT').length;
+  const total     = all.length;
+  const pct       = Math.round((addressed / Math.max(total, 1)) * 100);
+
+  const items = [
+    { filter: 'critical' as Status,    q: 'Fix first',       v: `${critCount} critical`,              s: 'Scored clusters with no transformation pathway', c: '#ef4444', bg: '#fef2f2', b: '#fca5a5' },
+    { filter: 'addressed' as Status,   q: 'Being addressed', v: `${addressed} of ${total} (${pct}%)`, s: 'Weighted clusters with a valid pathway',          c: '#3b82f6', bg: '#eff6ff', b: '#bfdbfe' },
+    { filter: 'critical' as Status,    q: 'Being ignored',   v: ignored > 0 ? `${ignored} orphan constraints` : 'None', s: ignored > 0 ? 'High-frequency issues with no plan — sorted by score' : 'All constraints have some pathway', c: ignored > 0 ? '#dc2626' : '#10b981', bg: ignored > 0 ? '#fef2f2' : '#f0fdf4', b: ignored > 0 ? '#fca5a5' : '#bbf7d0' },
+  ];
 
   return (
     <div className="grid grid-cols-3 gap-3">
-      {[
-        { q: 'Fix first',         v: `${critCount} critical`,         s: 'All shown in map below — no pathway', c: '#ef4444', bg: '#fef2f2', b: '#fca5a5' },
-        { q: 'Being addressed',   v: `${addressed} of ${total} (${pct}%)`, s: 'Nodes with a valid transformation path', c: '#3b82f6', bg: '#eff6ff', b: '#bfdbfe' },
-        { q: 'Being ignored',     v: ignored > 0 ? `${ignored} constraints` : 'None', s: ignored > 0 ? 'Known problems with no plan' : 'All constraints have some pathway', c: ignored > 0 ? '#dc2626' : '#10b981', bg: ignored > 0 ? '#fef2f2' : '#f0fdf4', b: ignored > 0 ? '#fca5a5' : '#bbf7d0' },
-      ].map((it, i) => (
-        <div key={i} className="rounded-xl px-4 py-3" style={{ background: it.bg, border: `1px solid ${it.b}` }}>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">{it.q}</p>
-          <p className="text-base font-black leading-none mb-1" style={{ color: it.c }}>{it.v}</p>
-          <p className="text-[10px] text-slate-400 leading-tight">{it.s}</p>
-        </div>
-      ))}
+      {items.map((it, i) => {
+        const active = activeFilter === it.filter && i === (activeFilter === 'critical' ? (activeFilter === it.filter && i === 0 ? 0 : 2) : 1);
+        const isActive = activeFilter !== null && (
+          (i === 0 && activeFilter === 'critical') ||
+          (i === 1 && activeFilter === 'addressed') ||
+          (i === 2 && activeFilter === 'critical')
+        );
+        return (
+          <button
+            key={i}
+            onClick={() => onFilter(isActive ? null : it.filter)}
+            className="rounded-xl px-4 py-3 text-left transition-all hover:opacity-80"
+            style={{
+              background: it.bg,
+              border: `1px solid ${isActive ? it.c : it.b}`,
+              boxShadow: isActive ? `0 0 0 2px ${it.c}44` : undefined,
+            }}
+          >
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">{it.q}</p>
+            <p className="text-base font-black leading-none mb-1" style={{ color: it.c }}>{it.v}</p>
+            <p className="text-[10px] text-slate-400 leading-tight">{it.s}</p>
+            {isActive && (
+              <p className="text-[9px] font-bold mt-1" style={{ color: it.c }}>Click to clear filter ×</p>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -467,7 +521,8 @@ function Legend() {
 interface Props { data: TransformationLogicMap }
 
 export function TransformationLogicMapPanel({ data }: Props) {
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected,     setSelected]     = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<Status | null>(null);
 
   const all = useMemo(() => enrich(data), [data]);
 
@@ -532,7 +587,7 @@ export function TransformationLogicMapPanel({ data }: Props) {
     <div className="space-y-4">
 
       {/* ── Three answers ──────────────────────────────────── */}
-      <AnswerStrip all={all} />
+      <AnswerStrip all={all} activeFilter={activeFilter} onFilter={f => { setActiveFilter(f); setSelected(null); }} />
 
       {/* ── Visual map ─────────────────────────────────────── */}
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
@@ -574,8 +629,9 @@ export function TransformationLogicMapPanel({ data }: Props) {
             {featured.map(en => {
               const p = pos.get(en.n.nodeId);
               if (!p) return null;
-              const dim = selected !== null && selected !== en.n.nodeId &&
-                          !(connectedIds?.has(en.n.nodeId) ?? false);
+              const filterDim = activeFilter !== null && en.status !== activeFilter;
+              const dim = filterDim || (selected !== null && selected !== en.n.nodeId &&
+                          !(connectedIds?.has(en.n.nodeId) ?? false));
               return (
                 <MapNode
                   key={en.n.nodeId}
@@ -600,8 +656,8 @@ export function TransformationLogicMapPanel({ data }: Props) {
         <NodeDetail en={selectedEN} onClose={() => setSelected(null)} />
       )}
 
-      {/* ── Remaining 80% dropdown ─────────────────────────── */}
-      <RemainingList nodes={remaining} />
+      {/* ── Remaining dropdown (filtered when active) ──────── */}
+      <RemainingList nodes={activeFilter ? remaining.filter(e => e.status === activeFilter) : remaining} />
 
       {/* ── Interpretation ─────────────────────────────────── */}
       {data.interpretationSummary && (
