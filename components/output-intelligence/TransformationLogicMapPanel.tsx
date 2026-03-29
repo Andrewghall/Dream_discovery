@@ -9,8 +9,13 @@ import {
   buildExecSummary,
   formatLabel,
   seniorityWeight,
+  weightedSignificance,
   type PriorityNode,
   type WayForwardPhase,
+  type SignificanceLevel,
+  type ConfidenceLevel,
+  type NodeClassification,
+  type NodeSignificance,
 } from '@/lib/output-intelligence/engines/priority-engine';
 import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
 
@@ -41,26 +46,13 @@ const LAYER_STYLE: Record<TLMNode['layer'], { dot: string; label: string }> = {
 
 // (sensitivity modes replaced by score-proportional node sizing — no threshold controls needed)
 
-// ── Weighted scoring model ────────────────────────────────────────────────────
-
-const GENERIC_LABELS = new Set([
-  'customer', 'system', 'process', 'team', 'people', 'issue', 'problem',
-  'thing', 'area', 'work', 'staff', 'data', 'service', 'time', 'way',
-  'information', 'support', 'change', 'business', 'day',
-]);
-
-function isGeneric(label: string): boolean {
-  const l = label.toLowerCase().trim();
-  return GENERIC_LABELS.has(l) || l.length <= 3;
-}
-
 // ── Enriched node ─────────────────────────────────────────────────────────────
 
 interface EN {
   n:        TLMNode;
   status:   Status;
-  score:    number;
-  rawScore: number;
+  score:    number;   // = sig.score (0–100), used for radius + sort
+  sig:      NodeSignificance;
   lenses:   number;
   connects: Array<{ label: string; layer: TLMNode['layer'] }>;
 }
@@ -69,22 +61,11 @@ function enrich(tlm: TransformationLogicMap): EN[] {
   if (!tlm.nodes.length) return [];
   const byId = new Map(tlm.nodes.map(n => [n.nodeId, n]));
 
-  const rawMap = new Map<string, number>();
-  for (const n of tlm.nodes) {
-    const mentions  = n.rawFrequency;
-    const senWeight = n.quotes.reduce((s, q) => s + seniorityWeight(q.participantRole), 0);
-    let raw = (mentions * 0.6) + (senWeight * 0.4);
-    if (isGeneric(n.displayLabel)) raw *= 0.35;
-    rawMap.set(n.nodeId, raw);
-  }
-  const maxRaw = Math.max(...rawMap.values(), 1);
-
   return tlm.nodes
     .map(n => {
-      const status   = calcStatus(n);
-      const rawScore = rawMap.get(n.nodeId) ?? 0;
-      const score    = Math.round((rawScore / maxRaw) * 100);
-      const lenses   = new Set(n.quotes.map(q => q.lens).filter(Boolean)).size;
+      const status = calcStatus(n);
+      const sig    = weightedSignificance(n, tlm.nodes);
+      const lenses = new Set(n.quotes.map(q => q.lens).filter(Boolean)).size;
       const connects = tlm.edges
         .filter(e => (e.fromNodeId === n.nodeId || e.toNodeId === n.nodeId) && e.score >= 25)
         .sort((a, b) => b.score - a.score)
@@ -95,7 +76,7 @@ function enrich(tlm: TransformationLogicMap): EN[] {
           return o ? { label: o.displayLabel, layer: o.layer } : null;
         })
         .filter(Boolean) as Array<{ label: string; layer: TLMNode['layer'] }>;
-      return { n, status, score, rawScore, lenses, connects };
+      return { n, status, score: sig.score, sig, lenses, connects };
     })
     .sort((a, b) => b.score - a.score);
 }
@@ -398,11 +379,12 @@ function NodeDetail({
             )}
           </div>
           <h4 className="text-sm font-bold text-slate-900 leading-snug">{formatLabel(en.n.displayLabel)}</h4>
-          <p className="text-[10px] text-slate-500 mt-1">
-            Weighted score: <strong>{en.score}</strong>
-            {en.n.rawFrequency > 0 && <> · <strong>{en.n.rawFrequency}</strong> mentions</>}
-            {isGeneric(en.n.displayLabel) && <span className="text-amber-500"> · generic penalty applied</span>}
-          </p>
+          <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+            <SignificancePill level={en.sig.significance} />
+            <ConfidencePill level={en.sig.confidence} />
+            <ClassificationPill type={en.sig.classification} />
+          </div>
+          <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">{en.sig.classificationReason}</p>
         </div>
         <button onClick={onClose} className="p-1 rounded hover:bg-white/60 shrink-0">
           <X className="h-4 w-4 text-slate-400" />
@@ -519,7 +501,7 @@ function EdgeEvidencePanel({ edge, onClose }: { edge: VisEdge; onClose: () => vo
         </button>
       </div>
       <div className="flex gap-4 mb-3">
-        {[['mentions', mentionCount], ['actors', actorCount], ['strength', edge.score]].map(([k, v]) => (
+        {[['co-occurrences', mentionCount], ['actor groups', actorCount], ['strength', edge.score]].map(([k, v]) => (
           <div key={k} className="text-center">
             <p className="text-xl font-black text-sky-700 leading-none">{v}</p>
             <p className="text-[9px] text-slate-500 uppercase tracking-wide mt-0.5">{k}</p>
@@ -585,31 +567,23 @@ function RemainingList({ nodes }: { nodes: EN[] }) {
               </div>
               <p className="text-[10px] text-slate-400 mb-3 pl-4">{g.sub}</p>
               <div className="space-y-1.5">
-                {[...g.items].sort((a, b) => b.n.rawFrequency - a.n.rawFrequency).map(en => {
+                {[...g.items].sort((a, b) => b.score - a.score).map(en => {
                   const ls     = LAYER_STYLE[en.n.layer];
                   const topRole = en.n.quotes.find(q => q.participantRole)?.participantRole;
                   const senW   = seniorityWeight(topRole);
                   return (
                     <div key={en.n.nodeId} className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg bg-white border border-slate-100">
-                      <span className="w-2 h-2 rounded-full mt-1 shrink-0" style={{ background: ls.dot }} />
+                      <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: ls.dot }} />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-slate-800 leading-snug">{formatLabel(en.n.displayLabel)}</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">
-                          {ls.label}
-                          {topRole && (
-                            <span className="ml-1.5">
-                              · raised by <span className="font-medium text-slate-500">{topRole}</span>
-                              {senW >= 1.5 && <span className="ml-1 text-amber-500 font-bold">↑ senior</span>}
-                            </span>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                          <ClassificationPill type={en.sig.classification} />
+                          <SignificancePill level={en.sig.significance} />
+                          {topRole && senW >= 1.5 && (
+                            <span className="text-[9px] text-amber-600 font-semibold">↑ senior voice</span>
                           )}
-                        </p>
-                      </div>
-                      {en.n.rawFrequency > 0 && (
-                        <div className="shrink-0 text-right">
-                          <p className="text-sm font-black tabular-nums leading-none text-slate-700">{en.n.rawFrequency}</p>
-                          <p className="text-[8px] text-slate-400 uppercase tracking-wide">mentions</p>
                         </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })}
@@ -680,18 +654,50 @@ function MapInterpretation({ data }: { data: TransformationLogicMap }) {
   );
 }
 
-// ── Risk level pill ───────────────────────────────────────────────────────────
+// ── Significance / Confidence / Classification badges ─────────────────────────
 
-function RiskPill({ level }: { level: PriorityNode['riskLevel'] }) {
-  const cfg = {
+function SignificancePill({ level }: { level: SignificanceLevel }) {
+  const cfg: Record<SignificanceLevel, { bg: string; border: string; text: string; label: string }> = {
     critical: { bg: '#fef2f2', border: '#fca5a5', text: '#991b1b', label: 'Critical' },
     high:     { bg: '#fff7ed', border: '#fed7aa', text: '#9a3412', label: 'High'     },
-    medium:   { bg: '#f0fdf4', border: '#bbf7d0', text: '#166534', label: 'Medium'   },
-  }[level];
+    medium:   { bg: '#f8fafc', border: '#cbd5e1', text: '#475569', label: 'Medium'   },
+  };
+  const c = cfg[level];
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border"
-          style={{ background: cfg.bg, borderColor: cfg.border, color: cfg.text }}>
-      {cfg.label}
+          style={{ background: c.bg, borderColor: c.border, color: c.text }}>
+      {c.label}
+    </span>
+  );
+}
+
+function ConfidencePill({ level }: { level: ConfidenceLevel }) {
+  const cfg: Record<ConfidenceLevel, { bg: string; border: string; text: string }> = {
+    high:   { bg: '#f0fdf4', border: '#bbf7d0', text: '#166534' },
+    medium: { bg: '#fefce8', border: '#fde68a', text: '#854d0e' },
+    low:    { bg: '#f8fafc', border: '#e2e8f0', text: '#64748b' },
+  };
+  const c = cfg[level];
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border"
+          style={{ background: c.bg, borderColor: c.border, color: c.text }}>
+      {level} confidence
+    </span>
+  );
+}
+
+function ClassificationPill({ type }: { type: NodeClassification }) {
+  const cfg: Record<NodeClassification, { bg: string; border: string; text: string; icon: string }> = {
+    systemic:    { bg: '#eff6ff', border: '#bfdbfe', text: '#1e40af', icon: '⬡' },
+    structural:  { bg: '#f5f3ff', border: '#ddd6fe', text: '#5b21b6', icon: '◈' },
+    local:       { bg: '#f0fdf4', border: '#bbf7d0', text: '#166534', icon: '◎' },
+    symptomatic: { bg: '#fff7ed', border: '#fed7aa', text: '#9a3412', icon: '△' },
+  };
+  const c = cfg[type];
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border capitalize"
+          style={{ background: c.bg, borderColor: c.border, color: c.text }}>
+      <span className="text-[9px]">{c.icon}</span>{type}
     </span>
   );
 }
@@ -725,9 +731,8 @@ function DecisionCard({
         </span>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
+          <div className="flex items-center gap-2 flex-wrap mb-1.5">
             <span className="text-sm font-bold text-slate-900">{formatLabel(p.displayLabel)}</span>
-            <RiskPill level={p.riskLevel} />
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                   style={{ background: ls.dot + '22', color: ls.dot }}>
               {ls.label}
@@ -743,13 +748,19 @@ function DecisionCard({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 text-[10px] text-slate-400">
-            <span><strong className="text-slate-600">{p.mentionCount}</strong> mentions</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <SignificancePill level={p.significance} />
+            <ConfidencePill level={p.confidence} />
+            <ClassificationPill type={p.classification} />
             {p.distinctRoles.length > 0 && (
-              <span><strong className="text-slate-600">{p.distinctRoles.length}</strong> role{p.distinctRoles.length !== 1 ? 's' : ''}</span>
+              <span className="text-[10px] text-slate-400">
+                <strong className="text-slate-600">{p.distinctRoles.length}</strong> actor group{p.distinctRoles.length !== 1 ? 's' : ''}
+              </span>
             )}
             {p.drives.length > 0 && (
-              <span><strong className="text-slate-600">{p.drives.length}</strong> connection{p.drives.length !== 1 ? 's' : ''}</span>
+              <span className="text-[10px] text-slate-400">
+                <strong className="text-slate-600">{p.drives.length}</strong> connection{p.drives.length !== 1 ? 's' : ''}
+              </span>
             )}
           </div>
         </div>
@@ -762,9 +773,14 @@ function DecisionCard({
       {/* Body — only when expanded */}
       {isExpanded && (
         <div className="border-t border-slate-100 px-5 py-4 space-y-4 bg-slate-50/50">
+          {/* Classification context */}
+          <div className="px-3 py-2 rounded-lg bg-white border border-slate-100 text-[10px] text-slate-500 leading-relaxed">
+            {p.classificationReason}
+          </div>
+
           {/* Why this matters */}
           <div>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Why this matters</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Why this matters to the business</p>
             <p className="text-xs text-slate-700 leading-relaxed">{p.whyMatters}</p>
           </div>
 
