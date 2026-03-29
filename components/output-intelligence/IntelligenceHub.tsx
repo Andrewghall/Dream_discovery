@@ -491,7 +491,7 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
                 Workshop Stages
               </p>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-5 gap-3">
                 {SIGNALS.map((signal) => {
                   const colors = SIGNAL_COLORS[signal.color];
                   const isActive = activeSignal === signal.key;
