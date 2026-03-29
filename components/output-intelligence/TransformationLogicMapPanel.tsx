@@ -840,18 +840,33 @@ export function TransformationLogicMapPanel({ data }: Props) {
   const all = useMemo(() => enrich(data), [data]);
 
   // ── Featured selection — ALL hooks before early return ──────────────────
-  // Show ALL critical nodes (these ARE the 20-30% requiring action),
-  // plus top enablers/vision that provide context for the chains.
+  // Featured selection — ALL nodes that appear as edge endpoints must be included,
+  // or those edges will be silently dropped from the visual.
   const featured = useMemo(() => {
     if (all.length === 0) return [];
-    const critical = all.filter(e => e.status === 'critical');
-    const partial  = all.filter(e => e.status === 'partial').slice(0, 5);
-    const enablers = all.filter(e => e.n.layer === 'ENABLER'       && e.status !== 'critical').slice(0, 5);
-    const vision   = all.filter(e => e.n.layer === 'REIMAGINATION' && e.status !== 'critical').slice(0, 4);
-    const chosen   = new Set<string>();
-    [...critical, ...enablers, ...vision, ...partial].forEach(e => chosen.add(e.n.nodeId));
+    const byId  = new Map(all.map(e => [e.n.nodeId, e]));
+    const chosen = new Set<string>();
+
+    // 1. Always include BOTH endpoints of every TLM edge.
+    //    Chain constraints have status='addressed' and would otherwise be excluded,
+    //    causing constraint→enabler edges to disappear entirely.
+    for (const edge of data.edges) {
+      const f = byId.get(edge.fromNodeId);
+      const t = byId.get(edge.toNodeId);
+      if (f) chosen.add(f.n.nodeId);
+      if (t) chosen.add(t.n.nodeId);
+    }
+
+    // 2. All critical nodes (orphan constraints, coalescent without chain)
+    all.filter(e => e.status === 'critical').forEach(e => chosen.add(e.n.nodeId));
+
+    // 3. Top partial, extra enablers, extra vision
+    all.filter(e => e.status === 'partial').slice(0, 6).forEach(e => chosen.add(e.n.nodeId));
+    all.filter(e => e.n.layer === 'ENABLER'       && !chosen.has(e.n.nodeId)).slice(0, 5).forEach(e => chosen.add(e.n.nodeId));
+    all.filter(e => e.n.layer === 'REIMAGINATION' && !chosen.has(e.n.nodeId)).slice(0, 4).forEach(e => chosen.add(e.n.nodeId));
+
     return all.filter(e => chosen.has(e.n.nodeId));
-  }, [all]);
+  }, [all, data.edges]);
 
   const maxPerLane = useMemo(() => {
     const counts = (['REIMAGINATION', 'ENABLER', 'CONSTRAINT'] as const).map(
