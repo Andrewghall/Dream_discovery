@@ -463,6 +463,37 @@ export function TransformationLogicMapPanel({ data }: Props) {
 
   const all = useMemo(() => enrich(data), [data]);
 
+  // ── 80/20 split — balanced across layers ────────────────────────────────
+  // ALL hooks must be before any early return (React rules of hooks).
+  // Guarantee at least 2 nodes per populated layer so connections are visible,
+  // then fill remaining slots with highest-scoring nodes from any layer.
+  const featuredCount = Math.max(8, Math.min(14, Math.ceil(all.length * 0.20)));
+  const featured = useMemo(() => {
+    if (all.length === 0) return [];
+    const byLayer: Record<TLMNode['layer'], EN[]> = {
+      REIMAGINATION: all.filter(e => e.n.layer === 'REIMAGINATION'),
+      ENABLER:       all.filter(e => e.n.layer === 'ENABLER'),
+      CONSTRAINT:    all.filter(e => e.n.layer === 'CONSTRAINT'),
+    };
+    const chosen = new Set<string>();
+    // Guaranteed floor: top 2 from each populated layer
+    (['REIMAGINATION', 'ENABLER', 'CONSTRAINT'] as const).forEach(layer => {
+      byLayer[layer].slice(0, 2).forEach(e => chosen.add(e.n.nodeId));
+    });
+    // Fill remaining slots by score
+    for (const e of all) {
+      if (chosen.size >= featuredCount) break;
+      chosen.add(e.n.nodeId);
+    }
+    return all.filter(e => chosen.has(e.n.nodeId));
+  }, [all, featuredCount]);
+
+  const pos      = useMemo(() => positionNodes(featured), [featured]);
+  const visEdges = useMemo(() => {
+    const ids = new Set(featured.map(e => e.n.nodeId));
+    return buildVisEdges(data, ids, pos);
+  }, [data, featured, pos]);
+
   if (all.length === 0) {
     return (
       <div className="py-16 text-center">
@@ -471,14 +502,7 @@ export function TransformationLogicMapPanel({ data }: Props) {
     );
   }
 
-  // ── 80/20 split ──────────────────────────────────────────────────────────
-  const featuredCount = Math.max(8, Math.min(14, Math.ceil(all.length * 0.20)));
-  const featured      = all.slice(0, featuredCount);
-  const remaining     = all.slice(featuredCount);
-
-  const featuredIds   = new Set(featured.map(e => e.n.nodeId));
-  const pos           = useMemo(() => positionNodes(featured), [featured]);
-  const visEdges      = useMemo(() => buildVisEdges(data, featuredIds, pos), [data, featuredIds, pos]);
+  const remaining = all.filter(e => !featured.some(f => f.n.nodeId === e.n.nodeId));
 
   const selectedEN    = selected ? featured.find(e => e.n.nodeId === selected) ?? null : null;
 
