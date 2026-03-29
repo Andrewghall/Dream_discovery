@@ -12,6 +12,8 @@ import type {
   ReportSectionConfig,
   WorkshopOutputIntelligence,
   TransformationLogicMap,
+  CausalIntelligence,
+  CausalFinding,
 } from '@/lib/output-intelligence/types';
 import {
   computePriorityNodes,
@@ -731,6 +733,71 @@ export function renderWayForward(tlm: TransformationLogicMap | undefined): strin
     </section>`;
 }
 
+// ── Connected Model ───────────────────────────────────────────────────────────
+
+export function renderConnectedModel(
+  causal: CausalIntelligence | undefined,
+  cfg: ReportSectionConfig,
+): string {
+  if (!causal) return '';
+
+  const allFindings: CausalFinding[] = [
+    ...causal.organisationalIssues,
+    ...causal.reinforcedFindings,
+    ...causal.emergingPatterns,
+  ].filter(f => !cfg.excludedItems.includes(f.findingId));
+
+  if (!allFindings.length) return '';
+
+  const catLabel: Record<string, string> = {
+    ORGANISATIONAL_ISSUE: 'Organisational Issue',
+    REINFORCED_FINDING:   'Reinforced Finding',
+    EMERGING_PATTERN:     'Emerging Pattern',
+    CONTRADICTION:        'Contradiction',
+    EVIDENCE_GAP:         'Evidence Gap',
+  };
+  const catColor: Record<string, { bg: string; text: string; border: string }> = {
+    ORGANISATIONAL_ISSUE: { bg: '#fef2f2', text: '#991b1b', border: '#fca5a5' },
+    REINFORCED_FINDING:   { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa' },
+    EMERGING_PATTERN:     { bg: '#eff6ff', text: '#1e40af', border: '#bfdbfe' },
+    CONTRADICTION:        { bg: '#f5f3ff', text: '#5b21b6', border: '#ddd6fe' },
+    EVIDENCE_GAP:         { bg: '#f8fafc', text: '#475569', border: '#e2e8f0' },
+  };
+
+  const cards = allFindings.map((f, i) => {
+    const c = catColor[f.category] ?? catColor.EVIDENCE_GAP;
+    const chain = f.causalChain
+      ? `<div class="cm-chain">${esc(f.causalChain.constraintLabel)} → ${esc(f.causalChain.enablerLabel)} → ${esc(f.causalChain.reimaginationLabel)}</div>`
+      : '';
+    const quote = f.evidenceQuotes?.[0]
+      ? `<div class="cm-quote">"${esc(f.evidenceQuotes[0].text)}"${f.evidenceQuotes[0].participantRole ? ` <span class="cm-quote-role">— ${esc(f.evidenceQuotes[0].participantRole)}</span>` : ''}</div>`
+      : '';
+    return `
+      <div class="cm-card" style="border-left:3px solid ${c.border}">
+        <div class="cm-card-header">
+          <span class="cm-rank">${i + 1}</span>
+          <div class="cm-card-meta">
+            <div class="cm-badge" style="background:${c.bg};color:${c.text};border:1px solid ${c.border}">${catLabel[f.category] ?? f.category}</div>
+            <div class="cm-title">${esc(f.issueTitle)}</div>
+          </div>
+        </div>
+        ${f.whyItMatters  ? `<p class="cm-why">${esc(f.whyItMatters)}</p>` : ''}
+        ${chain}
+        ${f.operationalImplication ? `<div class="cm-impl-label">Operational implication</div><p class="cm-impl">${esc(f.operationalImplication)}</p>` : ''}
+        ${f.recommendedAction ? `<div class="cm-action-box"><div class="cm-action-label">Recommended action</div><p class="cm-action-text">${esc(f.recommendedAction)}</p></div>` : ''}
+        ${f.whoItAffects ? `<p class="cm-who"><strong>Owner:</strong> ${esc(f.whoItAffects)}</p>` : ''}
+        ${quote}
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="report-section">
+      <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Connected Model</div></div>
+      <p class="cm-intro">Causal chains, bottlenecks and unlock paths derived from the hemisphere graph — ${allFindings.length} finding${allFindings.length !== 1 ? 's' : ''}.</p>
+      <div class="cm-cards">${cards}</div>
+    </section>`;
+}
+
 export function renderCustomSection(cfg: ReportSectionConfig): string {
   const content = cfg.customContent ?? {};
   return `
@@ -1082,6 +1149,26 @@ export const PDF_STYLES = `
   .wf-outcome-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 5px; }
   .wf-outcome-text { font-size: 8.5pt; color: #475569; line-height: 1.6; margin: 0; }
   .wf-dependencies { font-size: 8pt; color: #94a3b8; line-height: 1.55; margin: 0; }
+
+  /* ── Connected Model ─── */
+  .cm-intro { font-size: 9.5pt; color: #64748b; line-height: 1.7; margin-bottom: 20px; }
+  .cm-cards { display: flex; flex-direction: column; gap: 14px; }
+  .cm-card { padding: 14px 16px 14px 14px; border: 1px solid #e2e8f0; border-radius: 10px; background: #ffffff; }
+  .cm-card-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+  .cm-rank { flex-shrink: 0; width: 22px; height: 22px; background: #1e293b; color: white; border-radius: 6px; font-size: 8pt; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .cm-card-meta { flex: 1; }
+  .cm-badge { display: inline-block; font-size: 7.5pt; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-bottom: 6px; }
+  .cm-title { font-size: 10.5pt; font-weight: 700; color: #0f172a; line-height: 1.35; }
+  .cm-why { font-size: 9.5pt; color: #334155; line-height: 1.7; margin-bottom: 8px; }
+  .cm-chain { font-size: 8pt; color: #6366f1; font-weight: 600; background: #eef2ff; border-radius: 4px; padding: 4px 8px; margin-bottom: 8px; }
+  .cm-impl-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #b45309; margin-bottom: 4px; }
+  .cm-impl { font-size: 9pt; color: #78350f; line-height: 1.65; margin-bottom: 8px; }
+  .cm-action-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .cm-action-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #d97706; margin-bottom: 4px; }
+  .cm-action-text { font-size: 9pt; color: #92400e; line-height: 1.65; margin: 0; }
+  .cm-who { font-size: 8.5pt; color: #64748b; margin-bottom: 6px; }
+  .cm-quote { font-size: 8.5pt; color: #64748b; font-style: italic; border-left: 2px solid #e2e8f0; padding-left: 10px; margin-top: 8px; line-height: 1.6; }
+  .cm-quote-role { font-style: normal; font-weight: 500; color: #94a3b8; }
 `;
 
 // ── buildReportHtml ───────────────────────────────────────────────────────────
@@ -1136,6 +1223,7 @@ export function buildReportHtml(
       case 'report_conclusion':          return renderConclusion(reportSummary);
       case 'transformation_priorities':  return renderTransformationPriorities(intelligence.transformationLogicMap);
       case 'way_forward':                return renderWayForward(intelligence.transformationLogicMap);
+      case 'connected_model':            return renderConnectedModel(intelligence.causalIntelligence, cfg);
       default: return '';
     }
   }).join('\n');

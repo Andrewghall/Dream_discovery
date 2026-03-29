@@ -574,6 +574,8 @@ export function defaultReportLayout(): ReportLayout {
       // Decision engine sections — disabled until toggled on from Transformation Logic Map
       { id: 'transformation_priorities', type: 'builtin', title: 'Transformation Priorities', enabled: false, collapsed: false, excludedItems: [] },
       { id: 'way_forward',               type: 'builtin', title: 'Way Forward',               enabled: false, collapsed: false, excludedItems: [] },
+      // Connected Model — causal chains, bottlenecks & unlock paths
+      { id: 'connected_model',           type: 'builtin', title: 'Connected Model',           enabled: false, collapsed: false, excludedItems: [] },
       // Conclusion — enabled by default, positioned last
       { id: 'report_conclusion',         type: 'builtin', title: 'Summary & Next Steps',     enabled: true,  collapsed: false, excludedItems: [] },
     ],

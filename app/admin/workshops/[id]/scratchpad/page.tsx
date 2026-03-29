@@ -1000,6 +1000,40 @@ export default function DownloadReportPage({ params }: PageProps) {
                           </div>
                         )}
 
+                        {/* ── Connected Model ── */}
+                        {cfg.id === 'connected_model' && intelligence?.causalIntelligence && (() => {
+                          const findings = [
+                            ...intelligence.causalIntelligence.organisationalIssues,
+                            ...intelligence.causalIntelligence.reinforcedFindings,
+                            ...intelligence.causalIntelligence.emergingPatterns,
+                          ];
+                          if (!findings.length) return null;
+                          return (
+                            <div className="p-3 space-y-1">
+                              <p className="text-[10px] text-slate-400 px-1 mb-2">Toggle findings to include or exclude from the report</p>
+                              {findings.map(f => {
+                                const excluded = cfg.excludedItems.includes(f.findingId);
+                                return (
+                                  <button
+                                    key={f.findingId}
+                                    onClick={() => toggleItem(cfg.id, f.findingId)}
+                                    className={`w-full text-left flex items-start gap-2.5 px-3 py-2 rounded-lg border text-xs transition-all ${
+                                      excluded
+                                        ? 'border-slate-100 bg-slate-50 text-slate-300 line-through'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                    }`}
+                                  >
+                                    <span className={`mt-0.5 shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center ${excluded ? 'border-slate-200 bg-white' : 'border-indigo-400 bg-indigo-50'}`}>
+                                      {!excluded && <span className="w-1.5 h-1.5 rounded-sm bg-indigo-500" />}
+                                    </span>
+                                    <span className="leading-snug">{f.issueTitle}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+
                         {/* ── Insight Map Summary ── */}
                         {cfg.id === 'insight_summary' && (
                           <div className="p-4">

@@ -600,6 +600,13 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
                         <span className="text-xs text-slate-500 italic hidden sm:block">
                           Causal chains, bottlenecks &amp; unlock paths — derived from hemisphere graph intelligence
                         </span>
+                        <div className="ml-auto">
+                          <ReportSectionToggle
+                            workshopId={workshopId}
+                            sectionId="connected_model"
+                            title="Connected Model"
+                          />
+                        </div>
                       </div>
                       <div className={`rounded-b-xl border ${colors.border} overflow-hidden p-4`}>
                         <ConnectedModelPanel
