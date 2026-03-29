@@ -390,7 +390,7 @@ export function computePriorityNodes(data: TransformationLogicMap): PriorityNode
 
 export function buildWayForward(
   data: TransformationLogicMap,
-  manualNodeIds: Set<string>,
+  manualNodeIds: Set<string> = new Set(),
 ): WayForwardPhase[] {
   const safe    = normalizeTLM(data);
   const wfNodes = safe.nodes;
