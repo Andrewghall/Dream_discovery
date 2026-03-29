@@ -203,9 +203,8 @@ function MapNode({
   const ss  = STATUS_STYLE[en.status];
   const ls  = LAYER_STYLE[en.n.layer];
   const op  = dim ? 0.22 : 1;
-  const label = en.n.displayLabel.length > 26
-    ? en.n.displayLabel.slice(0, 24) + '…'
-    : en.n.displayLabel;
+  const rawLabel = formatLabel(en.n.displayLabel);
+  const label = rawLabel.length > 26 ? rawLabel.slice(0, 24) + '…' : rawLabel;
 
   // Wrap long labels into 2 lines
   const words = label.split(' ');
@@ -313,7 +312,7 @@ function NodeDetail({ en, onClose }: { en: EN; onClose: () => void }) {
                     style={{ background: '#fef3c7', color: '#92400e' }}>Pressure point</span>
             )}
           </div>
-          <h4 className="text-sm font-bold text-slate-900 leading-snug">{en.n.displayLabel}</h4>
+          <h4 className="text-sm font-bold text-slate-900 leading-snug">{formatLabel(en.n.displayLabel)}</h4>
           <p className="text-[10px] text-slate-500 mt-1">
             Weighted score: <strong>{en.score}</strong>
             {en.n.rawFrequency > 0 && <> · <strong>{en.n.rawFrequency}</strong> mentions × 0.6</>}
@@ -371,20 +370,52 @@ function NodeDetail({ en, onClose }: { en: EN; onClose: () => void }) {
   );
 }
 
+// ── Label formatter ───────────────────────────────────────────────────────────
+
+function formatLabel(raw: string): string {
+  return raw
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // ── Remaining nodes dropdown ──────────────────────────────────────────────────
 
 function RemainingList({ nodes }: { nodes: EN[] }) {
   const [open, setOpen] = useState(false);
   if (nodes.length === 0) return null;
 
-  const critical = nodes.filter(e => e.status === 'critical');
-  const partial  = nodes.filter(e => e.status === 'partial');
-  const rest     = nodes.filter(e => e.status !== 'critical' && e.status !== 'partial');
-
+  // Split by status — each group has its own meaning
   const groups = [
-    { label: 'Critical — no pathway', items: critical, dot: '#ef4444' },
-    { label: 'Partial',               items: partial,  dot: '#f59e0b' },
-    { label: 'Addressed / Low',       items: rest,     dot: '#94a3b8' },
+    {
+      status: 'critical' as Status,
+      label: 'No pathway — being ignored',
+      sub: 'High-frequency issues with no transformation response',
+      dot: '#ef4444',
+      items: nodes.filter(e => e.status === 'critical'),
+    },
+    {
+      status: 'partial' as Status,
+      label: 'Partially addressed',
+      sub: 'Some coverage exists but gaps remain',
+      dot: '#f59e0b',
+      items: nodes.filter(e => e.status === 'partial'),
+    },
+    {
+      status: 'addressed' as Status,
+      label: 'Has a transformation pathway',
+      sub: 'Connected to the vision through valid chains',
+      dot: '#10b981',
+      items: nodes.filter(e => e.status === 'addressed'),
+    },
+    {
+      status: 'disconnected' as Status,
+      label: 'Disconnected — no strong links',
+      sub: 'Appears in the hemisphere but is isolated from the main transformation logic',
+      dot: '#94a3b8',
+      items: nodes.filter(e => e.status === 'disconnected'),
+    },
   ].filter(g => g.items.length > 0);
 
   return (
@@ -394,8 +425,10 @@ function RemainingList({ nodes }: { nodes: EN[] }) {
         onClick={() => setOpen(o => !o)}
       >
         <div>
-          <span className="text-xs font-bold text-slate-700">Remaining {nodes.length} nodes</span>
-          <span className="ml-2 text-[10px] text-slate-400">The other 80% — sorted by priority score</span>
+          <span className="text-xs font-bold text-slate-700">
+            {nodes.length} further issue{nodes.length !== 1 ? 's' : ''}
+          </span>
+          <span className="ml-2 text-[10px] text-slate-400">not in visual map — expand to review</span>
         </div>
         {open
           ? <ChevronUp   className="h-4 w-4 text-slate-400 shrink-0" />
@@ -404,28 +437,56 @@ function RemainingList({ nodes }: { nodes: EN[] }) {
       </button>
 
       {open && (
-        <div className="p-4 space-y-4">
-          {groups.map((g, gi) => (
-            <div key={gi}>
-              <p className="text-[9px] font-bold uppercase tracking-widest mb-2 flex items-center gap-1.5"
-                 style={{ color: g.dot }}>
-                <span className="w-2 h-2 rounded-full" style={{ background: g.dot }} />
-                {g.label} ({g.items.length})
-              </p>
-              <div className="space-y-1">
-                {g.items.map(en => {
-                  const ss = STATUS_STYLE[en.status];
-                  const ls = LAYER_STYLE[en.n.layer];
+        <div className="divide-y divide-slate-100">
+          {groups.map((g) => (
+            <div key={g.status} className="p-4">
+              {/* Group header */}
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: g.dot }} />
+                <span className="text-xs font-bold text-slate-700">{g.label}</span>
+                <span className="ml-auto text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                  {g.items.length}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 mb-3 pl-4">{g.sub}</p>
+
+              {/* Rows — sorted by rawFrequency desc within group */}
+              <div className="space-y-1.5">
+                {[...g.items].sort((a, b) => b.n.rawFrequency - a.n.rawFrequency).map(en => {
+                  const ls      = LAYER_STYLE[en.n.layer];
+                  const topRole = en.n.quotes.find(q => q.participantRole)?.participantRole;
+                  const senW    = seniorityWeight(topRole);
                   return (
                     <div key={en.n.nodeId}
-                         className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ls.dot }} />
-                      <span className="text-xs text-slate-700 flex-1 leading-snug">{en.n.displayLabel}</span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white shrink-0"
-                            style={{ background: ss.stroke }}>
-                        {ss.label}
-                      </span>
-                      <span className="text-[10px] font-bold tabular-nums shrink-0 text-slate-400">{en.score}</span>
+                         className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg bg-white border border-slate-100">
+                      {/* Layer dot */}
+                      <span className="w-2 h-2 rounded-full mt-1 shrink-0" style={{ background: ls.dot }} />
+
+                      {/* Label + context */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-slate-800 leading-snug">
+                          {formatLabel(en.n.displayLabel)}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {ls.label}
+                          {topRole && (
+                            <span className="ml-1.5">
+                              · raised by <span className="font-medium text-slate-500">{topRole}</span>
+                              {senW >= 1.5 && <span className="ml-1 text-amber-500 font-bold">↑ senior</span>}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* Mentions count — the actual signal, not a meaningless normalized score */}
+                      {en.n.rawFrequency > 0 && (
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-black tabular-nums leading-none text-slate-700">
+                            {en.n.rawFrequency}
+                          </p>
+                          <p className="text-[8px] text-slate-400 uppercase tracking-wide">mentions</p>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
