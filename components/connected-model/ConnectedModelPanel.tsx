@@ -54,7 +54,7 @@ function computeActorImpact(finding: CausalFinding): { score: number; count: num
 
 function scoreFinding(finding: CausalFinding): ScoredFinding {
   const chainScore = normStrength(finding.causalChain?.chainStrength ?? 0);
-  const densityScore = Math.min(1, finding.evidenceEdgeIds.length / EDGE_DENSITY_MAX);
+  const densityScore = Math.min(1, (finding.evidenceEdgeIds ?? []).length / EDGE_DENSITY_MAX);
 
   const distinctLenses = new Set(
     (finding.evidenceQuotes ?? []).map(q => q.lens).filter((l): l is string => l !== null),
@@ -425,7 +425,12 @@ export function ConnectedModelPanel({ causalIntelligence, lensesUsed, workshopGo
   const [selectedNodeLayer, setSelectedNodeLayer] = useState<'CONSTRAINT' | 'ENABLER' | 'REIMAGINATION' | undefined>();
   const [showGaps, setShowGaps] = useState(false);
 
-  const { dominantCausalChains, organisationalIssues, reinforcedFindings, emergingPatterns, contradictions, evidenceGaps } = causalIntelligence;
+  const dominantCausalChains = causalIntelligence.dominantCausalChains ?? [];
+  const organisationalIssues = causalIntelligence.organisationalIssues ?? [];
+  const reinforcedFindings   = causalIntelligence.reinforcedFindings   ?? [];
+  const emergingPatterns     = causalIntelligence.emergingPatterns      ?? [];
+  const contradictions       = causalIntelligence.contradictions        ?? [];
+  const evidenceGaps         = causalIntelligence.evidenceGaps          ?? [];
 
   const allFindings: CausalFinding[] = [...organisationalIssues, ...reinforcedFindings, ...emergingPatterns];
 

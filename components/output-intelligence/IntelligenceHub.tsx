@@ -47,9 +47,9 @@ const SIGNALS: Signal[] = [
     phase: 'Reimagine',
     color: 'violet',
     description: 'Vision, design principles & impact',
-    getMetric: (i) => i.strategicImpact.automationPotential !== null
+    getMetric: (i) => i.strategicImpact?.automationPotential != null
       ? `${i.strategicImpact.automationPotential.percentage}% automation potential`
-      : `${i.futureState.redesignPrinciples.length} design principles`,
+      : `${(i.futureState?.redesignPrinciples ?? []).length} design principles`,
     Icon: Lightbulb,
   },
   {
@@ -58,7 +58,7 @@ const SIGNALS: Signal[] = [
     phase: 'Constraints',
     color: 'rose',
     description: 'Forces preventing transformation',
-    getMetric: (i) => `${i.rootCause.rootCauses.length} systemic barriers`,
+    getMetric: (i) => `${(i.rootCause?.rootCauses ?? []).length} systemic barriers`,
     Icon: AlertTriangle,
   },
   {
@@ -88,7 +88,7 @@ const SIGNALS: Signal[] = [
     color: 'emerald',
     description: 'Causal chains, bottlenecks & unlock paths',
     getMetric: (i) => i.causalIntelligence
-      ? `${i.causalIntelligence.organisationalIssues.length + i.causalIntelligence.reinforcedFindings.length} causal findings`
+      ? `${(i.causalIntelligence.organisationalIssues ?? []).length + (i.causalIntelligence.reinforcedFindings ?? []).length} causal findings`
       : 'Causal intelligence',
     Icon: Network,
   },
