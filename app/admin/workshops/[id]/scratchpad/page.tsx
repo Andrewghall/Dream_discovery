@@ -166,10 +166,20 @@ export default function DownloadReportPage({ params }: PageProps) {
         if (d.reportSummary) {
           const rs = d.reportSummary as ReportSummary;
           setReportSummary(rs);
-          // Restore saved layout if it exists
+          // Restore saved layout if it exists, merging in any new built-in sections
+          // from defaultReportLayout() that aren't yet in the stored layout
           if (rs.layout?.sections?.length) {
-            setLayout(rs.layout);
-            if (rs.layout.clientLogoUrl) setClientLogoUrl(rs.layout.clientLogoUrl);
+            const stored   = rs.layout;
+            const defaults = defaultReportLayout();
+            const storedIds = new Set(stored.sections.map(s => s.id));
+            const newBuiltins = defaults.sections.filter(
+              s => s.type === 'builtin' && !storedIds.has(s.id),
+            );
+            const merged = newBuiltins.length > 0
+              ? { ...stored, sections: [...stored.sections, ...newBuiltins] }
+              : stored;
+            setLayout(merged);
+            if (stored.clientLogoUrl) setClientLogoUrl(stored.clientLogoUrl);
           }
         }
       }
