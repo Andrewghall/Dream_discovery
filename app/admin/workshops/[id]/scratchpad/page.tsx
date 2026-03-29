@@ -641,14 +641,14 @@ export default function DownloadReportPage({ params }: PageProps) {
               </span>
             )}
             {/* Quality indicator — admin only, never exported */}
-            {reportSummary && !reportSummary.validationPassed && reportSummary.validationGaps.length > 0 && (
+            {reportSummary && !reportSummary.validationPassed && (reportSummary.validationGaps ?? []).length > 0 && (
               <button
                 onClick={() => setReportSummary(null)}
                 className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
-                title={`Click to regenerate\n\n${reportSummary.validationGaps.join('\n')}`}
+                title={`Click to regenerate\n\n${(reportSummary.validationGaps ?? []).join('\n')}`}
               >
                 <AlertTriangle className="h-3 w-3" />
-                {reportSummary.validationGaps.length} quality gap{reportSummary.validationGaps.length > 1 ? 's' : ''} — click to regenerate
+                {(reportSummary.validationGaps ?? []).length} quality gap{(reportSummary.validationGaps ?? []).length > 1 ? 's' : ''} — click to regenerate
               </button>
             )}
             {reportSummary && (
