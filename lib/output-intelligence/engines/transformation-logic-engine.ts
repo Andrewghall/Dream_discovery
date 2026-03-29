@@ -253,6 +253,45 @@ export function buildTransformationLogicMap(graphIntelligence: GraphIntelligence
     });
   }
 
+  // ── 5b. Raw graph edges between TLM nodes ────────────────────────────────────
+  // After all pattern-based edges are added, sweep ALL raw relationship edges
+  // and include any that connect two nodes already in the TLM node map AND
+  // have real multi-utterance evidence (fromSignalIds + toSignalIds >= 2).
+  // This surfaces partial, sideways, and weak connections that don't belong to
+  // a dominant chain, compensating behaviour, or contradiction — no semantics.
+  if (graphIntelligence.rawGraph) {
+    for (const re of graphIntelligence.rawGraph.edges) {
+      if (!nodeMap.has(re.fromNodeId) || !nodeMap.has(re.toNodeId)) continue;
+      const mentionCount = re.fromSignalIds.length + re.toSignalIds.length;
+      if (mentionCount < 2) continue; // must have multiple real utterances
+      // Determine actor coverage from shared participants
+      const actorCount = re.sharedParticipantIds.length;
+      // Build quotes for this specific edge from both node clusters
+      const fromQ = graphIntelligence.clusterQuotes[re.fromNodeId] ?? [];
+      const toQ   = graphIntelligence.clusterQuotes[re.toNodeId]   ?? [];
+      const seenText = new Set<string>();
+      const quotes: TLMEdge['evidence'] extends undefined ? never : NonNullable<TLMEdge['evidence']>['quotes'] = [];
+      for (const q of [...fromQ, ...toQ]) {
+        if (!seenText.has(q.text)) { seenText.add(q.text); quotes.push(q); }
+      }
+      addEdge({
+        edgeId: re.edgeId,
+        fromNodeId: re.fromNodeId,
+        toNodeId:   re.toNodeId,
+        relationshipType: re.relationshipType as TLMEdge['relationshipType'],
+        score: re.score,
+        tier:  re.tier,
+        isChainEdge: false,
+        rationale: re.rationale,
+        evidence: {
+          mentionCount,
+          actorCount,
+          quotes: quotes.slice(0, 4),
+        },
+      });
+    }
+  }
+
   // ── 6. Update connection degrees from edge list ──────────────────────────────
   for (const edge of edgeList) {
     const from = nodeMap.get(edge.fromNodeId);

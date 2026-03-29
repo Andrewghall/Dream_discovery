@@ -160,7 +160,7 @@ export async function buildWorkshopGraphIntelligence(
       clusterQuotes[cluster.clusterKey] = cluster.bestQuotes.slice(0, 3);
     }
   }
-  return { ...intelligence, clusterQuotes };
+  return { ...intelligence, clusterQuotes, rawGraph: graph };
 }
 
 // ── Empty fallback ────────────────────────────────────────────────────────────

@@ -231,4 +231,10 @@ export interface GraphIntelligence {
    * Used by causal-synthesis-agent to add evidenceQuotes to CausalFindings.
    */
   clusterQuotes: Record<string, Array<{ text: string; participantRole: string | null; lens: string | null }>>;
+  /**
+   * Full raw relationship graph — included so the TLM engine can surface
+   * ALL evidence-backed edges between cluster nodes, not just those that
+   * belong to chains, bottlenecks, or other extracted patterns.
+   */
+  rawGraph?: RelationshipGraph;
 }
