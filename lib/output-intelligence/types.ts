@@ -416,8 +416,9 @@ export interface TLMEdge {
   tier: EdgeTier;
   isChainEdge: boolean;  // Part of a dominant causal chain — rendered prominently
   rationale: string;
-  /** Evidence backing this link — derived from real utterances, not semantic inference */
-  evidence: {
+  /** Evidence backing this link — derived from real utterances, not semantic inference.
+   *  Optional: absent on Brain Scan output generated before this field was added. */
+  evidence?: {
     mentionCount: number;   // Total utterances (proxy: sum of quote counts for both nodes)
     actorCount: number;     // Distinct participant roles across both nodes' quotes
     quotes: Array<{ text: string; participantRole: string | null; lens: string | null }>;
