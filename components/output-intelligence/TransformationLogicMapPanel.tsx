@@ -24,10 +24,10 @@ import { ReportSectionToggle } from '@/components/report-builder/ReportSectionTo
 type Status = 'critical' | 'partial' | 'addressed' | 'disconnected';
 
 function calcStatus(n: TLMNode): Status {
-  if (n.isOrphan && n.layer === 'CONSTRAINT')  return 'critical';
-  if (n.isCoalescent && !n.inValidChain)       return 'critical';
-  if (n.inValidChain)                          return 'addressed';
-  if (n.isOrphan)                              return 'disconnected';
+  if ((n.isOrphan ?? false) && n.layer === 'CONSTRAINT')  return 'critical';
+  if ((n.isCoalescent ?? false) && !(n.inValidChain ?? false)) return 'critical';
+  if (n.inValidChain ?? false)                            return 'addressed';
+  if (n.isOrphan ?? false)                                return 'disconnected';
   return 'partial';
 }
 
@@ -58,15 +58,17 @@ interface EN {
 }
 
 function enrich(tlm: TransformationLogicMap): EN[] {
-  if (!tlm.nodes.length) return [];
-  const byId = new Map(tlm.nodes.map(n => [n.nodeId, n]));
+  const tlmNodes = tlm.nodes ?? [];
+  const tlmEdges = tlm.edges ?? [];
+  if (!tlmNodes.length) return [];
+  const byId = new Map(tlmNodes.map(n => [n.nodeId, n]));
 
-  return tlm.nodes
+  return tlmNodes
     .map(n => {
       const status = calcStatus(n);
-      const sig    = weightedSignificance(n, tlm.nodes);
-      const lenses = new Set(n.quotes.map(q => q.lens).filter(Boolean)).size;
-      const connects = tlm.edges
+      const sig    = weightedSignificance(n, tlmNodes);
+      const lenses = new Set((n.quotes ?? []).map(q => q.lens).filter(Boolean)).size;
+      const connects = tlmEdges
         .filter(e => (e.fromNodeId === n.nodeId || e.toNodeId === n.nodeId) && e.score >= 25)
         .sort((a, b) => b.score - a.score)
         .slice(0, 5)
@@ -150,10 +152,12 @@ function buildVisEdges(
   featuredIds: Set<string>,
   pos: Map<string, { x: number; y: number }>,
 ): VisEdge[] {
-  const byId = new Map(tlm.nodes.map(n => [n.nodeId, n]));
+  const bvNodes = tlm.nodes ?? [];
+  const bvEdges = tlm.edges ?? [];
+  const byId = new Map(bvNodes.map(n => [n.nodeId, n]));
 
-  const edgeByKey = new Map<string, (typeof tlm.edges)[0]>();
-  for (const e of tlm.edges) {
+  const edgeByKey = new Map<string, (typeof bvEdges)[0]>();
+  for (const e of bvEdges) {
     if (!featuredIds.has(e.fromNodeId) || !featuredIds.has(e.toNodeId)) continue;
     const mc = e.evidence?.mentionCount ?? 0;
     if (mc > 0 && mc < 2) continue;
@@ -360,7 +364,7 @@ function NodeDetail({
 }) {
   const ss  = STATUS_STYLE[en.status];
   const ls  = LAYER_STYLE[en.n.layer];
-  const q   = en.n.quotes[0] ?? null;
+  const q   = (en.n.quotes ?? [])[0] ?? null;
   return (
     <div
       className="rounded-xl border p-4 space-y-3 mt-3"
@@ -569,7 +573,7 @@ function RemainingList({ nodes }: { nodes: EN[] }) {
               <div className="space-y-1.5">
                 {[...g.items].sort((a, b) => b.score - a.score).map(en => {
                   const ls     = LAYER_STYLE[en.n.layer];
-                  const topRole = en.n.quotes.find(q => q.participantRole)?.participantRole;
+                  const topRole = (en.n.quotes ?? []).find(q => q.participantRole)?.participantRole;
                   const senW   = seniorityWeight(topRole);
                   return (
                     <div key={en.n.nodeId} className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg bg-white border border-slate-100">
@@ -714,7 +718,7 @@ function DecisionCard({
   onAddToWayForward: (nodeId: string) => void;
 }) {
   const ls  = LAYER_STYLE[p.layer];
-  const topQuote = p.quotes[0] ?? null;
+  const topQuote = (p.quotes ?? [])[0] ?? null;
 
   return (
     <div className={`rounded-xl border transition-all overflow-hidden ${
@@ -1105,7 +1109,7 @@ export function TransformationLogicMapPanel({ data, workshopId }: Props) {
           <div className="shrink-0">
             <span className="text-xs font-bold text-slate-700">{featured.length} nodes mapped</span>
             <span className="ml-2 text-[10px] text-slate-400">
-              {data.strongestChains.length} valid chain{data.strongestChains.length !== 1 ? 's' : ''} · {data.coverageScore}% constraint coverage
+              {(data.strongestChains ?? []).length} valid chain{(data.strongestChains ?? []).length !== 1 ? 's' : ''} · {data.coverageScore ?? 0}% constraint coverage
             </span>
             <span className="ml-2 text-[10px] text-slate-300">· circle size = seniority × mentions</span>
           </div>
