@@ -43,9 +43,11 @@ interface SensCfg {
 }
 
 const SENSITIVITY: Record<SensitivityMode, SensCfg> = {
-  executive: { nodeScoreMin: 55, edgeScoreMin: 45, showPartial: false, showDisconnected: false, dimOpacity: 0.06 },
-  balanced:  { nodeScoreMin: 15, edgeScoreMin: 20, showPartial: true,  showDisconnected: false, dimOpacity: 0.15 },
-  analyst:   { nodeScoreMin:  0, edgeScoreMin:  8, showPartial: true,  showDisconnected: true,  dimOpacity: 0.25 },
+  // edgeScoreMin is intentionally near-zero — link density is controlled by
+  // top-N-per-node selection in buildVisEdges, not by score thresholds here.
+  executive: { nodeScoreMin: 55, edgeScoreMin: 1, showPartial: false, showDisconnected: false, dimOpacity: 0.06 },
+  balanced:  { nodeScoreMin: 15, edgeScoreMin: 1, showPartial: true,  showDisconnected: false, dimOpacity: 0.15 },
+  analyst:   { nodeScoreMin:  0, edgeScoreMin: 1, showPartial: true,  showDisconnected: true,  dimOpacity: 0.25 },
 };
 
 const SENS_META: Record<SensitivityMode, { label: string; desc: string; color: string }> = {
@@ -224,12 +226,41 @@ function buildVisEdges(
   featuredIds: Set<string>,
   pos: Map<string, { x: number; y: number }>,
 ): VisEdge[] {
-  const seen = new Set<string>();
-  const out: VisEdge[] = [];
+  // Collect all edges between featured nodes (both endpoints must be visible).
+  // No minimum score filter — density is preserved by design.
+  const candidateEdges: Array<{ key: string; e: (typeof tlm.edges)[0] }> = [];
+  const edgeByKey = new Map<string, (typeof tlm.edges)[0]>();
+
   for (const e of tlm.edges) {
     if (!featuredIds.has(e.fromNodeId) || !featuredIds.has(e.toNodeId)) continue;
-    if (e.score < 20) continue;
     const key = [e.fromNodeId, e.toNodeId].sort().join('|');
+    // Keep highest-score version if duplicates
+    const existing = edgeByKey.get(key);
+    if (!existing || e.score > existing.score) {
+      edgeByKey.set(key, e);
+    }
+    candidateEdges.push({ key, e });
+  }
+
+  // For every featured node, select its top 5 connections (by score, any direction,
+  // chain or non-chain). This guarantees density without inventing new links.
+  const selectedKeys = new Set<string>();
+  for (const id of featuredIds) {
+    const connected = [...edgeByKey.entries()]
+      .filter(([k]) => {
+        const [a, b] = k.split('|');
+        return a === id || b === id;
+      })
+      .sort((x, y) => y[1].score - x[1].score)
+      .slice(0, 5); // top 5 per node
+    connected.forEach(([k]) => selectedKeys.add(k));
+  }
+
+  // Build output VisEdges from the selected keys
+  const seen = new Set<string>();
+  const out: VisEdge[] = [];
+  for (const [key, e] of edgeByKey) {
+    if (!selectedKeys.has(key)) continue;
     if (seen.has(key)) continue;
     seen.add(key);
     const f = pos.get(e.fromNodeId);
@@ -243,15 +274,22 @@ function buildVisEdges(
 // ── SVG edge component ────────────────────────────────────────────────────────
 
 function Edge({ x1, y1, x2, y2, score, isChain, dim }: VisEdge & { dim: boolean }) {
-  const midY  = (y1 + y2) / 2;
-  const d     = `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`;
-  const op    = dim ? 0.08 : 0.18 + (score / 100) * 0.55;
-  const color = isChain ? '#f97316' : '#94a3b8';
-  const sw    = isChain ? 2.5 : 1.5;
+  const midY = (y1 + y2) / 2;
+  const d    = `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`;
+
+  // Opacity: base 0.30 for weak links, up to 0.85 for strong ones
+  const op    = dim ? 0.06 : 0.30 + (score / 100) * 0.55;
+  // Stroke width: 1.5 (weak) → 4 (strong), chain edges slightly thicker
+  const sw    = dim ? 1 : isChain
+    ? 1.5 + (score / 100) * 3.5
+    : 1.5 + (score / 100) * 2.5;
+  const color = isChain ? '#f97316' : '#6366f1';
+
   return (
     <>
-      {isChain && !dim && (
-        <path d={d} fill="none" stroke={color} strokeWidth={8} opacity={0.10} strokeLinecap="round" />
+      {/* Soft glow halo for strong/chain edges */}
+      {!dim && score >= 50 && (
+        <path d={d} fill="none" stroke={color} strokeWidth={sw + 6} opacity={0.08} strokeLinecap="round" />
       )}
       <path d={d} fill="none" stroke={color} strokeWidth={sw} opacity={op} strokeLinecap="round" />
     </>
