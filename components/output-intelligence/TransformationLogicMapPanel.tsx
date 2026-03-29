@@ -710,8 +710,9 @@ function EdgeEvidencePanel({ edge, onClose }: { edge: VisEdge; onClose: () => vo
     blocks:          'Blocks',
     depends_on:      'Depends on',
   };
-  const label = relLabel[edge.evidence.relationshipType] ?? edge.evidence.relationshipType;
-  const { mentionCount, actorCount, quotes, rationale } = edge.evidence;
+  const ev = edge.evidence ?? { mentionCount: 0, actorCount: 0, quotes: [], rationale: '', relationshipType: '' };
+  const label = relLabel[ev.relationshipType] ?? ev.relationshipType;
+  const { mentionCount, actorCount, quotes, rationale } = ev;
 
   return (
     <div className="rounded-xl border border-sky-200 bg-sky-50 p-5">
