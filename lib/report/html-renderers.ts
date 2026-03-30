@@ -38,6 +38,7 @@ export interface ReportHtmlBody {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   discoveryOutput?: any;
   discoverAnalysis?: DiscoverAnalysis;
+  houseImages?: { old: string | null; refreshed: string | null; ideal: string | null };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -49,6 +50,37 @@ export function esc(s: unknown): string {
 export function isExcluded(config: ReportSectionConfig, id: string): boolean {
   return config.excludedItems.includes(id);
 }
+
+// ── Section intro helper ──────────────────────────────────────────────────────
+
+function sectionIntro(text: string): string {
+  return `<div class="section-intro"><span class="section-intro-label">Section Overview</span><p>${esc(text)}</p></div>`;
+}
+
+// ── TOC sub-items map ─────────────────────────────────────────────────────────
+
+const TOC_SUBITEMS: Record<string, string[]> = {
+  executive_summary:         ['What We Were Asked', 'What We Found', 'Approach & Timeline', 'Indicative ROI'],
+  supporting_evidence:       ['Confirmed Issues', 'New Issues Surfaced'],
+  root_causes:               ['Primary Root Causes', 'Lens Breakdown'],
+  solution_direction:        ['Transformation Direction', 'Three Houses Framework', 'What Must Change', 'Roadmap Phases'],
+  journey_map:               ['Customer Journey Stages', 'Pain Point Analysis'],
+  strategic_impact:          ['Automation Potential', 'Efficiency Gains', 'Business Case'],
+  discovery_diagnostic:      ['Operational Reality', 'Leadership Alignment', 'Systemic Friction', 'Transformation Readiness'],
+  discovery_signals:         ['Sentiment by Domain', 'Agreement Levels', 'Tension Areas'],
+  discovery_signal_map:      ['Signal Distribution', 'Coverage Map'],
+  structural_alignment:      ['Alignment Gap Analysis', 'Most Divergent Areas'],
+  structural_narrative:      ['Competing Narratives', 'Perspective Divergence'],
+  structural_tensions:       ['Active Tensions', 'Severity Ranking'],
+  structural_barriers:       ['Structural Inhibitors', 'Barrier Classification'],
+  structural_confidence:     ['Readiness Assessment', 'Confidence by Capability'],
+  transformation_priorities: ['Priority Nodes', 'Why They Matter'],
+  way_forward:               ['Stabilise (0–90 days)', 'Enable (90–180 days)', 'Transform (180+ days)'],
+  connected_model:           ['Causal Chain', 'Enabler Pathways'],
+  report_conclusion:         ['Summary', 'Agreed Next Steps'],
+  insight_summary:           ['Hypothesis Accuracy', 'Confirmed & New Issues'],
+  facilitator_contact:       ['Contact Details'],
+};
 
 // ── Colour constants ──────────────────────────────────────────────────────────
 
@@ -67,26 +99,27 @@ export const SEVERITY_COLORS: Record<string, { bg: string; text: string }> = {
 
 // ── Section renderers ─────────────────────────────────────────────────────────
 
-export function renderExecutiveSummary(summary: ReportSummary, cfg: ReportSectionConfig): string {
+export function renderExecutiveSummary(summary: ReportSummary, intelligence: WorkshopOutputIntelligence, cfg: ReportSectionConfig): string {
   const es = summary.executiveSummary;
   const ss = summary.solutionSummary;
   if (!es) return '';
 
-  // ── The Question Asked ────────────────────────────────────────────────────
-  const askBand = es.theAsk ? `
+  // ── Block 1: What We Were Asked ──────────────────────────────────────────
+  const askText = es.theAsk || summary.workshopAsk || '';
+  const askBand = askText ? `
     <div class="es-ask-band">
-      <div class="es-band-label">The Question Asked</div>
-      <p class="es-ask-text">${esc(es.theAsk)}</p>
+      <div class="es-band-label">What We Were Asked</div>
+      <p class="es-ask-text">${esc(askText)}</p>
     </div>` : '';
 
-  // ── The Answer (hero) ─────────────────────────────────────────────────────
+  // ── Block 2: The Answer (hero) ────────────────────────────────────────────
   const answerBand = es.theAnswer ? `
     <div class="es-answer-band">
       <div class="es-band-label es-band-label-primary">The Answer</div>
       <p class="es-answer-text">${esc(es.theAnswer)}</p>
     </div>` : '';
 
-  // ── What We Found ─────────────────────────────────────────────────────────
+  // ── Block 3: What We Found ────────────────────────────────────────────────
   const findings = (es.whatWeFound ?? [])
     .filter((_, i) => !isExcluded(cfg, `finding:${i}`))
     .map((f, i) => `
@@ -95,7 +128,6 @@ export function renderExecutiveSummary(summary: ReportSummary, cfg: ReportSectio
         <p>${esc(f)}</p>
       </div>`).join('');
 
-  // ── Findings by Lens ──────────────────────────────────────────────────────
   const lensRows = (es.lensFindings ?? [])
     .filter(lf => !isExcluded(cfg, `lens:${lf.lens}`))
     .map(lf => `
@@ -104,24 +136,44 @@ export function renderExecutiveSummary(summary: ReportSummary, cfg: ReportSectio
         <div class="lens-finding">${esc(lf.finding)}</div>
       </div>`).join('');
 
-  // ── Why It Matters / Opportunity ──────────────────────────────────────────
-  const matttersBlock = (es.whyItMatters || es.opportunityOrRisk) ? `
-    <div class="es-two-col">
-      ${es.whyItMatters ? `
-        <div class="es-muted-card">
+  // ── Block 4: Approach to Resolve ─────────────────────────────────────────
+  const approachBlock = (ss?.direction || es.whyItMatters || es.opportunityOrRisk) ? `
+    <div class="es-section-label">Approach to Resolve</div>
+    <div class="es-approach-grid">
+      <div>
+        ${ss?.direction ? `<div class="es-solution-preview">
+          <div class="es-band-label" style="color:#10b981">Transformation Direction</div>
+          <div class="sol-title">${esc(ss.direction)}</div>
+          ${ss?.rationale ? `<div class="sol-rationale">${esc(ss.rationale)}</div>` : ''}
+        </div>` : ''}
+      </div>
+      <div>
+        ${es.whyItMatters ? `<div class="es-muted-card">
           <div class="es-band-label">Why It Matters</div>
           <p class="es-body-text">${esc(es.whyItMatters)}</p>
-        </div>` : '<div></div>'}
-      ${es.opportunityOrRisk ? `
-        <div class="es-amber-card">
+        </div>` : ''}
+        ${es.opportunityOrRisk ? `<div class="es-amber-card" style="margin-top:10px">
           <div class="es-band-label es-band-label-amber">Opportunity / Risk</div>
           <p class="es-amber-text">${esc(es.opportunityOrRisk)}</p>
-        </div>` : '<div></div>'}
+        </div>` : ''}
+      </div>
     </div>` : '';
 
-  // ── Urgency ───────────────────────────────────────────────────────────────
-  const urgencyBlock = es.urgency ? `
-    <div class="es-urgency-band">
+  // ── Block 5: Timeline ─────────────────────────────────────────────────────
+  const roadmapPhases = intelligence.roadmap?.phases ?? [];
+  const timelineCards = roadmapPhases.slice(0, 3).map((p, i) => {
+    const colors = ['#6366f1', '#10b981', '#8b5cf6'];
+    const c = colors[i] ?? colors[0];
+    return `
+      <div class="es-timeline-card" style="border-top:3px solid ${c}">
+        <div class="es-timeline-num" style="color:${c}">${i + 1}</div>
+        <div class="es-timeline-phase">${esc(p.phase ?? `Phase ${i + 1}`)}</div>
+        ${p.timeframe ? `<div class="es-timeline-tf">${esc(p.timeframe)}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  const urgencyBand = es.urgency ? `
+    <div class="es-urgency-band" style="margin-top:12px">
       <div class="es-urgency-icon">⚠</div>
       <div>
         <div class="es-band-label">Why Act Now</div>
@@ -129,20 +181,33 @@ export function renderExecutiveSummary(summary: ReportSummary, cfg: ReportSectio
       </div>
     </div>` : '';
 
-  // ── Transformation Direction (from summary) ───────────────────────────────
-  const transformDir = !isExcluded(cfg, 'transformation') && summary.transformationDirection ? `
-    <div class="transform-block">
-      <div class="transform-label">Transformation Direction</div>
-      <div>${esc(summary.transformationDirection)}</div>
-    </div>` : '';
+  const timelineBlock = (timelineCards || urgencyBand) ? `
+    <div class="es-section-label">Timeline</div>
+    ${timelineCards ? `<div class="es-timeline-grid">${timelineCards}</div>` : ''}
+    ${urgencyBand}` : '';
 
-  // ── Solution preview ──────────────────────────────────────────────────────
-  const solutionBlock = ss && !isExcluded(cfg, 'solution') ? `
-    <div class="es-solution-preview">
-      <div class="es-band-label" style="color:#10b981">Transformation Direction</div>
-      <div class="sol-title">${esc(ss.direction ?? '')}</div>
-      <div class="sol-rationale">${esc(ss.rationale ?? '')}</div>
-    </div>` : '';
+  // ── Block 6: Indicative ROI ───────────────────────────────────────────────
+  const roi = intelligence.roadmap?.roiSummary;
+  let roiBlock = '';
+  if (roi) {
+    const stats = [
+      roi.totalProgrammeCost   ? `<div class="es-roi-stat"><div class="es-roi-val">${esc(roi.totalProgrammeCost)}</div><div class="es-roi-lbl">Investment</div></div>` : '',
+      roi.totalThreeYearBenefit ? `<div class="es-roi-stat"><div class="es-roi-val" style="color:#10b981">${esc(roi.totalThreeYearBenefit)}</div><div class="es-roi-lbl">3-Year Benefit</div></div>` : '',
+      roi.paybackPeriod        ? `<div class="es-roi-stat"><div class="es-roi-val" style="color:#6366f1">${esc(roi.paybackPeriod)}</div><div class="es-roi-lbl">Payback Period</div></div>` : '',
+    ].filter(Boolean).join('');
+    roiBlock = `
+      <div class="es-section-label">Indicative ROI</div>
+      <div class="es-roi-box">
+        ${stats ? `<div class="es-roi-stats">${stats}</div>` : ''}
+        ${roi.narrative ? `<p class="es-roi-narrative">${esc(roi.narrative)}</p>` : ''}
+      </div>`;
+  } else if (intelligence.strategicImpact?.businessCaseSummary) {
+    roiBlock = `
+      <div class="es-section-label">Indicative ROI</div>
+      <div class="es-roi-box">
+        <p class="es-roi-narrative">${esc(intelligence.strategicImpact.businessCaseSummary)}</p>
+      </div>`;
+  }
 
   return `
     <section class="report-section">
@@ -150,10 +215,10 @@ export function renderExecutiveSummary(summary: ReportSummary, cfg: ReportSectio
       ${askBand}
       ${answerBand}
       ${findings ? `<div class="es-section-label">What We Found</div><div class="findings-list">${findings}</div>` : ''}
-      ${lensRows ? `<div class="es-section-label">Findings by Lens</div><div class="lens-grid">${lensRows}</div>` : ''}
-      ${matttersBlock}
-      ${urgencyBlock}
-      ${solutionBlock}
+      ${lensRows ? `<div class="es-section-label">Evidence to Address</div><div class="lens-grid">${lensRows}</div>` : ''}
+      ${approachBlock}
+      ${timelineBlock}
+      ${roiBlock}
     </section>`;
 }
 
@@ -186,6 +251,7 @@ export function renderSupportingEvidence(intelligence: WorkshopOutputIntelligenc
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Supporting Evidence</div></div>
+      ${sectionIntro('What the data confirms — validated issues with confidence levels and evidence drawn directly from the discovery process.')}
       <div class="evidence-card">
         <div class="evidence-header">
           Confirmed Issues
@@ -227,14 +293,42 @@ export function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: 
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Root Causes</div></div>
+      ${sectionIntro('The underlying drivers behind the symptoms. These are the structural causes that, if unaddressed, will regenerate the same problems regardless of the solution applied.')}
       <div class="systemic-pattern">${esc(rootCause.systemicPattern ?? '')}</div>
       <div class="cause-list">${causes}</div>
     </section>`;
 }
 
-export function renderSolutionDirection(summary: ReportSummary, intelligence: WorkshopOutputIntelligence, cfg: ReportSectionConfig): string {
+export function renderSolutionDirection(
+  summary: ReportSummary,
+  intelligence: WorkshopOutputIntelligence,
+  cfg: ReportSectionConfig,
+  houseImages?: { old: string | null; refreshed: string | null; ideal: string | null },
+): string {
   const ss = summary.solutionSummary;
   const { roadmap, futureState } = intelligence;
+
+  // ── Three Houses framework ────────────────────────────────────────────────
+  const defaultHouses = {
+    current:    { label: 'The Noisy, Cluttered Present',  description: "Today's constrained reality — legacy systems, accumulated baggage, and internal noise that prevents forward movement." },
+    transition: { label: 'The Trap of Small Fixes',       description: 'Incremental improvements that look like progress but leave the fundamental system unchanged. Feels like running in place.' },
+    future:     { label: 'True Reimagination',             description: 'A fundamentally different operating model where structural constraints are removed and the vision can actually be delivered.' },
+  };
+  const houses = futureState?.threeHouses ?? defaultHouses;
+  const houseCards = [
+    { key: 'current',    img: houseImages?.old,       cls: 'house-current',    h: houses.current },
+    { key: 'transition', img: houseImages?.refreshed, cls: 'house-transition', h: houses.transition },
+    { key: 'future',     img: houseImages?.ideal,     cls: 'house-future',     h: houses.future },
+  ].map(({ img, cls, h }) => `
+    <div class="house-card ${cls}">
+      ${img ? `<div class="house-img-wrap"><img src="${img}" alt="${esc(h.label)}" class="house-img" /></div>` : ''}
+      <div class="house-label">${esc(h.label)}</div>
+      <p class="house-desc">${esc(h.description)}</p>
+    </div>`).join('');
+
+  const threeHousesBlock = `
+    <div class="sd-section-label">The Reimagination Framework</div>
+    <div class="house-grid">${houseCards}</div>`;
 
   // ── Direction hero ────────────────────────────────────────────────────────
   const directionHero = ss.direction ? `
@@ -350,8 +444,10 @@ export function renderSolutionDirection(summary: ReportSummary, intelligence: Wo
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Solution Direction</div></div>
+      ${sectionIntro('The recommended transformation path — what must change, how to approach it, and the reimagined future state the organisation is working towards.')}
       ${directionHero}
       ${rationaleBlock}
+      ${threeHousesBlock}
       ${wmc ? `<div class="sd-section-label">What Must Change</div><div class="sd-wmc-list">${wmc}</div>` : ''}
       ${tomBlock}
       ${principlesBlock ? `<div class="sd-section-label">Redesign Principles</div>${principlesBlock}` : ''}
@@ -394,6 +490,7 @@ export function renderJourneyMap(journey: LiveJourneyData, intro: string | undef
   return `
     <section class="report-section journey-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Customer Journey</div></div>
+      ${sectionIntro('The customer experience today — mapped across all touchpoints and actor groups to identify where friction compounds and where AI and process change can unlock the most value.')}
       ${intro ? `<p class="journey-intro">${esc(intro)}</p>` : ''}
       <div class="journey-table-wrap">
         <table class="journey-table">
@@ -428,6 +525,7 @@ export function renderStrategicImpact(intelligence: WorkshopOutputIntelligence, 
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Strategic Impact</div></div>
+      ${sectionIntro('The measurable business case for change — automation potential, efficiency gains, and customer experience improvements derived from workshop signals.')}
       <div class="si-summary">${esc(si.businessCaseSummary)}</div>
       <p class="si-confidence">Confidence score: <strong>${si.confidenceScore !== null ? `${si.confidenceScore}%` : '—'}</strong></p>
       ${statBoxes.length ? `<div class="si-stats">${statBoxes.map(s => `
@@ -474,6 +572,7 @@ export function renderDiscoveryDiagnostic(discoveryOutput: any): string {
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Diagnostic</div></div>
+      ${sectionIntro('How the organisation is performing across four critical diagnostic dimensions — Operational Reality, Leadership Alignment, Systemic Friction, and Transformation Readiness — derived from participant signals.')}
       ${discoveryOutput.finalDiscoverySummary ? `<p class="diag-summary">${esc(discoveryOutput.finalDiscoverySummary)}</p>` : ''}
       <div class="diag-grid">${cards}</div>
     </section>`;
@@ -515,6 +614,7 @@ export function renderDiscoverySignals(discoveryOutput: any): string {
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Signals</div></div>
+      ${sectionIntro('The emotional tone and agreement levels across each organisational lens — surfacing where concern concentrates and where genuine opportunity exists.')}
       ${discoveryOutput._aiSummary ? `
         <div class="sig-perception-box">
           <div class="sig-perception-label">Organisational Perception</div>
@@ -558,6 +658,7 @@ export function renderStructuralAlignment(discoverAnalysis: DiscoverAnalysis | u
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Domain Misalignment</div></div>
+      ${sectionIntro('Where leadership narratives diverge from frontline experience — the alignment gap that undermines execution and creates invisible drag on organisational performance.')}
       <p class="struct-subtitle">Top divergent actor × theme pairs — negative scores indicate misalignment</p>
       <div class="struct-table-wrap">
         <table class="struct-table">
@@ -595,6 +696,7 @@ export function renderStructuralNarrative(discoverAnalysis: DiscoverAnalysis | u
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Narrative Divergence</div></div>
+      ${sectionIntro('Competing stories in the organisation — identified through divergent participant perspectives on the same challenges, revealing where leadership and frontline narratives pull apart.')}
       <p class="struct-subtitle">Language and sentiment differences across organisational layers</p>
       <div class="narr-grid">${cards}</div>
     </section>`;
@@ -626,6 +728,7 @@ export function renderStructuralTensions(discoverAnalysis: DiscoverAnalysis | un
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Transformation Tensions</div></div>
+      ${sectionIntro('The unresolved tensions that create drag on progress — areas where the organisation is simultaneously pulling in different directions, making consistent execution difficult.')}
       <p class="struct-subtitle">Ranked unresolved tensions — competing perspectives slowing transformation</p>
       <div class="tension-list">${items}</div>
     </section>`;
@@ -652,6 +755,7 @@ export function renderStructuralBarriers(discoverAnalysis: DiscoverAnalysis | un
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Structural Barriers</div></div>
+      ${sectionIntro('The structural inhibitors to transformation — systemic blockers that surface repeatedly across multiple lenses and roles, indicating deep-rooted organisational constraints.')}
       <p class="struct-subtitle">Weighted constraints ranked by severity and frequency</p>
       <div class="struct-table-wrap">
         <table class="struct-table">
@@ -715,6 +819,7 @@ export function renderStructuralConfidence(discoverAnalysis: DiscoverAnalysis | 
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Transformation Readiness</div></div>
+      ${sectionIntro("The organisation's own assessment of its readiness to transform — confidence levels across change capabilities, leadership alignment, and execution capacity.")}
       <p class="struct-subtitle">Certainty, hedging and uncertainty across domains — signals of organisational confidence to execute change</p>
       <div class="conf-overall">
         <div class="conf-bar-wrap conf-overall-bar">
@@ -963,6 +1068,7 @@ export function renderTransformationPriorities(tlm: TransformationLogicMap | und
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Transformation Priorities</div></div>
+      ${sectionIntro('The highest-leverage nodes in the system — ranked by structural significance and cross-role impact, not just frequency of mention. These are the issues to act on first.')}
       <div class="tp-summary-bar">
         <p class="tp-summary-headline">${esc(execSum.headline)}</p>
         ${execSum.pressure ? `<p class="tp-summary-sub">${esc(execSum.pressure)}</p>` : ''}
@@ -1052,6 +1158,7 @@ export function renderWayForward(tlm: TransformationLogicMap | undefined): strin
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Way Forward</div></div>
+      ${sectionIntro('A sequenced, three-phase plan derived from the transformation logic map — ordered by structural dependency, not urgency, to ensure each phase builds on solid foundations.')}
       <p class="wf-intro">A sequenced, three-phase plan derived from the transformation logic map — ordered by structural dependency, not urgency.</p>
       ${renderWayForwardGantt(phases)}
       <div class="wf-grid">${phaseHtml}</div>
@@ -1118,6 +1225,7 @@ export function renderConnectedModel(
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Connected Model</div></div>
+      ${sectionIntro('How the root causes, enablers, and outcomes connect — the causal chain showing how current constraints block the vision, and what pathways exist to resolve them.')}
       <p class="cm-intro">Causal chains, bottlenecks and unlock paths derived from the hemisphere graph — ${allFindings.length} finding${allFindings.length !== 1 ? 's' : ''}.</p>
       <div class="cm-cards">${cards}</div>
     </section>`;
@@ -1159,6 +1267,7 @@ export function renderConclusion(reportSummary: ReportSummary): string {
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Summary &amp; Next Steps</div></div>
+      ${sectionIntro('Agreed actions and the critical next decisions coming out of this discovery engagement — what happens now, who owns it, and what success looks like in the next 90 days.')}
       <div class="conclusion-summary">${esc(conclusion.summary)}</div>
       <div class="next-steps-heading">Recommended Next Steps</div>
       <div class="next-step-list">${steps}</div>
@@ -1576,6 +1685,42 @@ export const PDF_STYLES = `
   .cm-who { font-size: 8.5pt; color: #64748b; margin-bottom: 6px; }
   .cm-quote { font-size: 8.5pt; color: #64748b; font-style: italic; border-left: 2px solid #e2e8f0; padding-left: 10px; margin-top: 8px; line-height: 1.6; }
   .cm-quote-role { font-style: normal; font-weight: 500; color: #94a3b8; }
+
+  /* ── Section intro ─── */
+  .section-intro { background: #f8fafc; border-left: 3px solid #6366f1; border-radius: 0 8px 8px 0; padding: 10px 14px; margin-bottom: 18px; break-inside: avoid; page-break-inside: avoid; }
+  .section-intro-label { font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #94a3b8; display: block; margin-bottom: 4px; }
+  .section-intro p { font-size: 9.5pt; color: #475569; line-height: 1.65; margin: 0; }
+
+  /* ── Executive Summary — new blocks ─── */
+  .es-approach-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .es-timeline-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; break-inside: avoid; page-break-inside: avoid; }
+  .es-timeline-card { border-radius: 8px; border: 1px solid #e2e8f0; padding: 12px 14px; background: #ffffff; break-inside: avoid; page-break-inside: avoid; }
+  .es-timeline-num { font-size: 18pt; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+  .es-timeline-phase { font-size: 8.5pt; font-weight: 600; color: #0f172a; line-height: 1.3; margin-bottom: 4px; }
+  .es-timeline-tf { font-size: 8pt; color: #94a3b8; }
+  .es-roi-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 16px 18px; break-inside: avoid; page-break-inside: avoid; }
+  .es-roi-stats { display: flex; gap: 24px; margin-bottom: 10px; }
+  .es-roi-stat { flex: 1; }
+  .es-roi-val { font-size: 14pt; font-weight: 800; color: #0f172a; line-height: 1.1; }
+  .es-roi-lbl { font-size: 7.5pt; font-weight: 500; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .es-roi-narrative { font-size: 9.5pt; color: #334155; line-height: 1.7; margin: 0; }
+
+  /* ── TOC hierarchy ─── */
+  .toc-title-group { flex: 1; min-width: 0; }
+  .toc-subitems { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 4px; }
+  .toc-subitems span { font-size: 7.5pt; color: #9ca3af; }
+  .toc-subitems span::before { content: '–  '; }
+
+  /* ── Three Houses ─── */
+  .house-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 12px 0 22px; break-inside: avoid; page-break-inside: avoid; }
+  .house-card { border-radius: 10px; border: 1px solid #e2e8f0; padding: 12px 14px; background: #ffffff; break-inside: avoid; page-break-inside: avoid; }
+  .house-current { border-top: 3px solid #ef4444; }
+  .house-transition { border-top: 3px solid #f59e0b; }
+  .house-future { border-top: 3px solid #10b981; }
+  .house-img-wrap { width: 100%; border-radius: 6px; margin-bottom: 10px; overflow: hidden; background: #f8fafc; }
+  .house-img { width: 100%; height: auto; display: block; object-fit: contain; }
+  .house-label { font-size: 9.5pt; font-weight: 700; color: #0f172a; margin-bottom: 5px; line-height: 1.3; }
+  .house-desc { font-size: 8.5pt; color: #64748b; line-height: 1.6; margin: 0; }
 `;
 
 // ── buildReportHtml ───────────────────────────────────────────────────────────
@@ -1587,7 +1732,7 @@ export function buildReportHtml(
   clientLogoBase64: string | null,
 ): string {
   void tenantLogoBase64; // reserved for future use
-  const { reportSummary, intelligence, layout, liveJourneyData, workshopName, orgName, discoveryOutput, discoverAnalysis } = body;
+  const { reportSummary, intelligence, layout, liveJourneyData, workshopName, orgName, discoveryOutput, discoverAnalysis, houseImages } = body;
 
   const enabledSections = layout.sections.filter(s => s.enabled);
 
@@ -1600,9 +1745,16 @@ export function buildReportHtml(
       </div>`;
     }
     tocNum++;
+    const subItems = TOC_SUBITEMS[cfg.id] ?? [];
+    const subItemsHtml = subItems.length > 0
+      ? `<div class="toc-subitems">${subItems.map(s => `<span>${esc(s)}</span>`).join('')}</div>`
+      : '';
     return `<div class="toc-row">
-      <span class="toc-num">${tocNum}</span>
-      <span class="toc-title">${esc(cfg.title)}</span>
+      <span class="toc-num">${String(tocNum).padStart(2, '0')}</span>
+      <div class="toc-title-group">
+        <span class="toc-title">${esc(cfg.title)}</span>
+        ${subItemsHtml}
+      </div>
       <span class="toc-dots"></span>
     </div>`;
   }).join('');
@@ -1611,10 +1763,10 @@ export function buildReportHtml(
     if (cfg.type === 'chapter') return renderChapter(cfg);
     if (cfg.type === 'custom')  return renderCustomSection(cfg);
     switch (cfg.id) {
-      case 'executive_summary':    return renderExecutiveSummary(reportSummary, cfg);
+      case 'executive_summary':    return renderExecutiveSummary(reportSummary, intelligence, cfg);
       case 'supporting_evidence':  return renderSupportingEvidence(intelligence, cfg);
       case 'root_causes':          return renderRootCauses(intelligence, cfg);
-      case 'solution_direction':   return renderSolutionDirection(reportSummary, intelligence, cfg);
+      case 'solution_direction':   return renderSolutionDirection(reportSummary, intelligence, cfg, houseImages);
       case 'journey_map':          return liveJourneyData ? renderJourneyMap(liveJourneyData, reportSummary.journeyIntro, cfg) : '';
       case 'strategic_impact':     return renderStrategicImpact(intelligence, cfg);
       case 'discovery_diagnostic': return renderDiscoveryDiagnostic(discoveryOutput);
