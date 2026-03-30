@@ -558,38 +558,38 @@ export interface ReportSectionConfig {
 
 export interface ReportLayout {
   sections: ReportSectionConfig[];
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   clientLogoUrl?: string;   // Client logo embedded on PDF cover page
 }
 
 export function defaultReportLayout(): ReportLayout {
   return {
-    version: 3,
+    version: 4,
     sections: [
       // ── Executive Summary — ALWAYS FIRST ─────────────────────────────────
       { id: 'executive_summary',       type: 'builtin',  title: 'Executive Summary',           enabled: true,  collapsed: false, excludedItems: [] },
-      // ── Chapter 1: Discovery ──────────────────────────────────────────────
-      { id: 'ch_discovery',            type: 'chapter',  title: 'Discovery',                   enabled: true,  collapsed: false, excludedItems: [] },
+      // ── Chapter 1: Discovery Diagnostic ──────────────────────────────────
+      { id: 'ch_discovery',            type: 'chapter',  title: 'Discovery Diagnostic',        enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'discovery_diagnostic',    type: 'builtin',  title: 'Discovery Diagnostic',        enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'discovery_signals',       type: 'builtin',  title: 'Discovery Signals',           enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'discovery_signal_map',    type: 'builtin',  title: 'Discovery Signal Map',        enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'structural_alignment',    type: 'builtin',  title: 'Domain Misalignment',         enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'structural_narrative',    type: 'builtin',  title: 'Narrative Divergence',        enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'journey_map',             type: 'builtin',  title: 'Customer Journey Map',        enabled: true,  collapsed: false, excludedItems: [] },
+      // ── Chapter 2: Reimagine ─────────────────────────────────────────────
+      { id: 'ch_reimagine',            type: 'chapter',  title: 'Reimagine',                   enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'solution_direction',      type: 'builtin',  title: 'Solution Direction',          enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'strategic_impact',        type: 'builtin',  title: 'Strategic Impact',            enabled: true,  collapsed: false, excludedItems: [] },
+      // ── Chapter 3: Constraints ───────────────────────────────────────────
+      { id: 'ch_constraints',          type: 'chapter',  title: 'Constraints',                 enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'structural_tensions',     type: 'builtin',  title: 'Transformation Tensions',     enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'structural_barriers',     type: 'builtin',  title: 'Structural Barriers',         enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'structural_confidence',   type: 'builtin',  title: 'Transformation Readiness',    enabled: true,  collapsed: false, excludedItems: [] },
-      // ── Chapter 2: Customer Journey ───────────────────────────────────────
-      { id: 'ch_journey',              type: 'chapter',  title: 'Customer Journey',            enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'journey_map',             type: 'builtin',  title: 'Customer Journey Map',        enabled: true,  collapsed: false, excludedItems: [] },
-      // ── Chapter 3: Brain Scan ─────────────────────────────────────────────
-      { id: 'ch_brainscan',            type: 'chapter',  title: 'Brain Scan',                  enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'supporting_evidence',     type: 'builtin',  title: 'Supporting Evidence',         enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'root_causes',             type: 'builtin',  title: 'Root Causes',                 enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'solution_direction',      type: 'builtin',  title: 'Solution Direction',          enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'strategic_impact',        type: 'builtin',  title: 'Strategic Impact',            enabled: true,  collapsed: false, excludedItems: [] },
-      // ── Way Forward (Gantt) ───────────────────────────────────────────────
+      // ── Chapter 4: Way Forward ───────────────────────────────────────────
+      { id: 'ch_wayforward',           type: 'chapter',  title: 'Way Forward',                 enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'way_forward',             type: 'builtin',  title: 'Way Forward',                 enabled: true,  collapsed: false, excludedItems: [] },
-      // ── Account Summary ───────────────────────────────────────────────────
       { id: 'report_conclusion',       type: 'builtin',  title: 'Summary & Next Steps',        enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'facilitator_contact',     type: 'builtin',  title: 'Facilitator Contact',         enabled: false, collapsed: false, excludedItems: [] },
       // ── Available but off by default ─────────────────────────────────────
