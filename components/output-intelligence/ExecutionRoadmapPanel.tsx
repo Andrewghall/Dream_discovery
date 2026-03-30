@@ -38,36 +38,46 @@ function parseBreakEvenWeek(timeline: string, phaseEndWeek: number): number {
   return phaseEndWeek + 26;
 }
 
-// Real delivery windows in weeks (Phase 1 = 0–3 months, Phase 2 = 3–9 months, Phase 3 = 9–18 months)
-// Previously used compressed chart units [0,4],[4,12],[12,52] which caused break-even calc to place
-// benefit accrual start mostly beyond the visible range — benefit line never crossed cost.
+// Phase delivery windows (real weeks): Phase 1 = 0–3 months, Phase 2 = 3–9 months, Phase 3 = 9–18 months
 const PHASE_WINDOWS: [number, number][] = [[0, 13], [13, 39], [39, 78]];
 
-/** Build cumulative cost + benefit curve at 2-week intervals, 0–156 (3 years) */
+// Benefit ramp: each phase's benefit ramps from 0→100% over this many weeks post-delivery
+const BENEFIT_RAMP_WEEKS = 13; // 3 months
+
+/**
+ * Phase-driven financial model:
+ *   Costs  — accumulate during each phase delivery window (W0–W13, W13–W39, W39–W78)
+ *   Benefits — triggered at phase DELIVERY COMPLETION (W13, W39, W78), ramp over 3 months,
+ *              then run at full annual rate. Cumulative across phases.
+ * Chart runs 0–W156 (3 years) so all phase break-evens are visible.
+ */
 function buildRoiCurve(
   phases: RoiPhaseEstimate[],
 ): Array<{ week: number; cost: number; benefit: number }> {
-  const costs    = phases.map(p => parseMidKGBP(p.estimatedCost));
-  const benefits = phases.map(p => parseMidKGBP(p.estimatedAnnualBenefit) / 52); // per week
-  const breakEvens = phases.map((p, i) =>
-    parseBreakEvenWeek(p.breakEvenTimeline, PHASE_WINDOWS[i]?.[1] ?? 78)
-  );
+  const costs          = phases.map(p => parseMidKGBP(p.estimatedCost));
+  const weeklyBenefits = phases.map(p => parseMidKGBP(p.estimatedAnnualBenefit) / 52);
+  const deliveryEnds   = PHASE_WINDOWS.map(w => w[1]); // [13, 39, 78]
 
   const STEP = 2;
   let cCost = 0, cBenefit = 0;
   const points: Array<{ week: number; cost: number; benefit: number }> = [];
 
-  // Extend to W156 (3 years) so the benefit line has room to cross the cost line
   for (let w = 0; w <= 156; w += STEP) {
+    // Cost: accumulates linearly during each phase delivery window
     for (let ph = 0; ph < phases.length; ph++) {
       const [start, end] = PHASE_WINDOWS[ph] ?? [0, 13];
       if (w > start && w <= end) {
         cCost += (costs[ph] / (end - start)) * STEP;
       }
     }
+    // Benefit: phase-triggered at delivery end, ramps 0→100% over BENEFIT_RAMP_WEEKS
     for (let ph = 0; ph < phases.length; ph++) {
-      const be = breakEvens[ph] ?? 999;
-      if (w >= be) cBenefit += benefits[ph] * STEP;
+      const delivEnd = deliveryEnds[ph] ?? 78;
+      if (w > delivEnd) {
+        const weeksSince = w - delivEnd;
+        const ramp = Math.min(weeksSince / BENEFIT_RAMP_WEEKS, 1.0);
+        cBenefit += weeklyBenefits[ph] * ramp * STEP;
+      }
     }
     points.push({ week: w, cost: Math.round(cCost), benefit: Math.round(cBenefit) });
   }
@@ -148,7 +158,7 @@ const PHASE_BANDS = [
 
 // Recharts margins — must match exactly for SVG overlay alignment
 const CHART_MARGIN = { top: 8, right: 24, bottom: 28, left: 8 } as const;
-const Y_AXIS_W = 170;
+const Y_AXIS_W = 210; // wider so full initiative names are readable
 // Effective chart area offsets:
 //   left  = CHART_MARGIN.left + Y_AXIS_W
 //   right = CHART_MARGIN.right
@@ -159,55 +169,87 @@ function GanttOverlay({
   roiCurve,
   containerW,
   containerH,
+  editableRoi,
+  chartMaxWeek,
 }: {
   roiCurve: Array<{ week: number; cost: number; benefit: number }>;
   containerW: number;
   containerH: number;
+  editableRoi?: RoiSummary;
+  chartMaxWeek: number;
 }) {
   if (!roiCurve.length || containerW < 10 || containerH < 10) return null;
 
   const left   = CHART_MARGIN.left + Y_AXIS_W;
   const right  = CHART_MARGIN.right;
   const top    = CHART_MARGIN.top;
-  const bottom = 40; // CHART_MARGIN.bottom + axis label
+  const bottom = 40;
 
   const cW = containerW - left - right;
   const cH = containerH - top - bottom;
 
   const maxVal = Math.max(...roiCurve.map(p => Math.max(p.cost, p.benefit)), 100);
-  const yMax   = maxVal * 1.3;
+  const yMax   = maxVal * 1.25;
 
-  const xPx = (week: number) => left + (week / 156) * cW; // 156 = 3yr chart domain
+  const xPx = (week: number) => left + (week / chartMaxWeek) * cW;
   const yPx = (val: number)  => top  + cH * (1 - val / yMax);
 
-  // SVG path helpers
-  const costPts    = roiCurve.map(p => `${xPx(p.week).toFixed(1)},${yPx(p.cost).toFixed(1)}`);
-  const benefitPts = roiCurve.map(p => `${xPx(p.week).toFixed(1)},${yPx(p.benefit).toFixed(1)}`);
-  const costPath    = `M${costPts.join(' L')}`;
-  const benefitPath = `M${benefitPts.join(' L')}`;
-
-  // Benefit area fill (under the benefit line)
+  // Paths
+  const costPath    = 'M' + roiCurve.map(p => `${xPx(p.week).toFixed(1)},${yPx(p.cost).toFixed(1)}`).join(' L');
+  const benefitPath = 'M' + roiCurve.map(p => `${xPx(p.week).toFixed(1)},${yPx(p.benefit).toFixed(1)}`).join(' L');
   const benefitAreaPath = [
     `M${xPx(0).toFixed(1)},${yPx(0).toFixed(1)}`,
     ...roiCurve.map(p => `L${xPx(p.week).toFixed(1)},${yPx(p.benefit).toFixed(1)}`),
-    `L${xPx(156).toFixed(1)},${yPx(0).toFixed(1)}`,
-    'Z',
+    `L${xPx(chartMaxWeek).toFixed(1)},${yPx(0).toFixed(1)} Z`,
   ].join(' ');
 
-  // Find payback crossover
-  let payback: { week: number; val: number } | null = null;
-  for (let i = 1; i < roiCurve.length; i++) {
-    if (roiCurve[i].benefit >= roiCurve[i].cost &&
-        roiCurve[i - 1].benefit < roiCurve[i - 1].cost) {
-      payback = { week: roiCurve[i].week, val: roiCurve[i].cost };
-      break;
+  // ── 3 per-phase break-even markers ──────────────────────────────────────────
+  // Phase N break-even = first week where cumulative benefit ≥ cumulative cost
+  // through Phase N (i.e. cost threshold = sum of Phase 1..N costs).
+  const phases       = editableRoi?.phases ?? [];
+  const phaseCosts   = phases.map(p => parseMidKGBP(p.estimatedCost));
+  const cumCostThresholds = phaseCosts.map((_, pi) =>
+    phaseCosts.slice(0, pi + 1).reduce((a, b) => a + b, 0)
+  );
+  // Also compute cumulative ROI at each phase delivery end (W13, W39, W78)
+  const phaseDeliveryEnds = PHASE_WINDOWS.map(w => w[1]); // [13, 39, 78]
+
+  const phaseColors   = ['#2563eb', '#7e22ce', '#047857'] as const;
+  const breakEvenMarkers: Array<{
+    week: number; benefitAtCross: number; phaseIdx: number; label: string; roiMultiple?: string;
+  }> = [];
+
+  for (let pi = 0; pi < Math.min(phases.length, 3); pi++) {
+    const threshold = cumCostThresholds[pi] ?? 0;
+    if (!threshold) continue;
+    for (let i = 1; i < roiCurve.length; i++) {
+      if (roiCurve[i].benefit >= threshold && roiCurve[i - 1].benefit < threshold) {
+        const mo = Math.round(roiCurve[i].week / 4.33);
+        breakEvenMarkers.push({
+          week: roiCurve[i].week,
+          benefitAtCross: threshold,
+          phaseIdx: pi,
+          label: `Ph${pi + 1} break-even ~${mo}mo`,
+          roiMultiple: phases[pi]?.roiMultiple,
+        });
+        break;
+      }
     }
   }
 
-  // Right-side Y ticks for monetary scale
+  // ROI% at each phase delivery end
+  const roiAtDelivery: Array<{ week: number; pct: string; x: number; y: number }> = [];
+  phaseDeliveryEnds.slice(0, phases.length).forEach((w, pi) => {
+    const pt = roiCurve.find(p => p.week >= w);
+    if (!pt || pt.cost === 0) return;
+    const pct = Math.round((pt.benefit / pt.cost) * 100);
+    roiAtDelivery.push({ week: w, pct: `${pct}% ROI`, x: xPx(w), y: yPx(pt.benefit) });
+  });
+
+  // Right-side Y ticks
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map(pct => ({
     val: yMax * pct,
-    y: yPx(yMax * pct),
+    y:   yPx(yMax * pct),
   }));
 
   return (
@@ -223,85 +265,108 @@ function GanttOverlay({
     >
       <defs>
         <linearGradient id="roi-benefit-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#10b981" stopOpacity="0.18" />
+          <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
           <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
         </linearGradient>
       </defs>
 
-      {/* Benefit fill area */}
+      {/* Benefit fill */}
       <path d={benefitAreaPath} fill="url(#roi-benefit-grad)" />
 
-      {/* Cumulative cost (dashed red) */}
-      <path d={costPath} fill="none" stroke="#dc2626" strokeWidth="3"
-            strokeDasharray="8,4" opacity="1" strokeLinecap="round" />
+      {/* Cost line — dashed red, plateaus after delivery complete */}
+      <path d={costPath} fill="none" stroke="#dc2626" strokeWidth="2.5"
+            strokeDasharray="8,4" opacity="0.9" strokeLinecap="round" />
 
-      {/* Cumulative benefit (solid green) */}
-      <path d={benefitPath} fill="none" stroke="#059669" strokeWidth="3.5"
+      {/* Benefit line — solid green, phase-triggered with ramp */}
+      <path d={benefitPath} fill="none" stroke="#059669" strokeWidth="3"
             opacity="1" strokeLinecap="round" />
 
-      {/* Payback marker */}
-      {payback && (
-        <g>
-          <line
-            x1={xPx(payback.week)} y1={top}
-            x2={xPx(payback.week)} y2={top + cH}
-            stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7"
+      {/* ── Phase delivery end markers (vertical tick) ── */}
+      {phaseDeliveryEnds.slice(0, phases.length).map((w, pi) => {
+        const x = xPx(w);
+        const col = phaseColors[pi] ?? '#6366f1';
+        return (
+          <line key={`del-${pi}`}
+            x1={x} y1={top} x2={x} y2={top + cH}
+            stroke={col} strokeWidth="1" strokeDasharray="3,4" opacity="0.35"
           />
-          <circle
-            cx={xPx(payback.week)} cy={yPx(payback.val)}
-            r="5" fill="#f59e0b" stroke="#fff" strokeWidth="1.5"
-          />
-          <rect
-            x={xPx(payback.week) + 8} y={yPx(payback.val) - 20}
-            width="68" height="16" rx="3" fill="#fef3c7" stroke="#f59e0b"
-            strokeWidth="0.75" fillOpacity="0.95"
-          />
-          <text
-            x={xPx(payback.week) + 12} y={yPx(payback.val) - 8}
-            fontSize="8" fontWeight="700" fill="#b45309"
-          >
-            Payback ~{Math.round(payback.week / 4.33)}mo
-          </text>
-        </g>
-      )}
+        );
+      })}
+
+      {/* ── ROI% badges at phase delivery ends ── */}
+      {roiAtDelivery.map(({ week, pct, x, y }, i) => {
+        const col = phaseColors[i] ?? '#6366f1';
+        const badgeY = Math.min(y - 8, top + cH - 24);
+        return (
+          <g key={`roi-${i}`}>
+            <rect x={x - 22} y={badgeY} width="44" height="14" rx="3"
+                  fill={col} fillOpacity="0.12" stroke={col} strokeWidth="0.75" />
+            <text x={x} y={badgeY + 9.5} textAnchor="middle"
+                  fontSize="7.5" fontWeight="700" fill={col}
+                  style={{ fontFamily: 'system-ui, sans-serif' }}>
+              {pct}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* ── 3 per-phase break-even markers ── */}
+      {breakEvenMarkers.map((m, i) => {
+        const col   = phaseColors[m.phaseIdx] ?? '#f59e0b';
+        const px    = xPx(m.week);
+        const py    = yPx(m.benefitAtCross);
+        // Stagger label boxes vertically to avoid overlap
+        const labelY = top + 14 + i * 22;
+        const labelW = m.label.length * 5.2 + 10;
+        // Flip label to left side if near right edge
+        const flip  = px + labelW + 10 > left + cW;
+        const lx    = flip ? px - labelW - 6 : px + 6;
+        return (
+          <g key={`be-${i}`}>
+            <line x1={px} y1={top} x2={px} y2={top + cH}
+                  stroke={col} strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7" />
+            <circle cx={px} cy={py} r="5" fill={col} stroke="#fff" strokeWidth="1.5" />
+            <rect x={lx} y={labelY - 8} width={labelW} height="15" rx="3"
+                  fill={col} fillOpacity="0.95" />
+            <text x={lx + 5} y={labelY + 3} fontSize="7.5" fontWeight="700" fill="white"
+                  style={{ fontFamily: 'system-ui, sans-serif' }}>
+              {m.label}
+            </text>
+            {m.roiMultiple && (
+              <text x={px + 6} y={py + 4} fontSize="7" fill={col}
+                    style={{ fontFamily: 'system-ui, sans-serif' }}>
+                {m.roiMultiple} ROI
+              </text>
+            )}
+          </g>
+        );
+      })}
 
       {/* Right-side monetary Y axis */}
-      <line
-        x1={containerW - right} y1={top}
-        x2={containerW - right} y2={top + cH}
-        stroke="#e2e8f0" strokeWidth="0.75"
-      />
+      <line x1={containerW - right} y1={top} x2={containerW - right} y2={top + cH}
+            stroke="#e2e8f0" strokeWidth="0.75" />
       {yTicks.map(({ val, y }, i) => (
         <g key={i}>
           <line x1={containerW - right - 3} y1={y} x2={containerW - right} y2={y}
                 stroke="#cbd5e1" strokeWidth="0.75" />
-          <text
-            x={containerW - right + 4} y={y}
-            fontSize="7.5" fill="#94a3b8" dominantBaseline="middle"
-            style={{ fontFamily: 'system-ui, sans-serif' }}
-          >
+          <text x={containerW - right + 4} y={y} fontSize="7.5" fill="#94a3b8"
+                dominantBaseline="middle" style={{ fontFamily: 'system-ui, sans-serif' }}>
             {fmtGBP(val)}
           </text>
         </g>
       ))}
 
-      {/* Mini legend */}
-      <rect x={left + 8} y={top + 6} width="104" height="36"
+      {/* Legend */}
+      <rect x={left + 8} y={top + 6} width="108" height="36"
             rx="4" fill="white" fillOpacity="0.92" stroke="#e2e8f0" strokeWidth="0.75" />
-      {/* Cost line */}
       <line x1={left + 14} y1={top + 17} x2={left + 26} y2={top + 17}
-            stroke="#ef4444" strokeWidth="2" strokeDasharray="5,3" />
+            stroke="#dc2626" strokeWidth="2" strokeDasharray="5,3" />
       <text x={left + 30} y={top + 21} fontSize="7.5" fill="#64748b"
-            style={{ fontFamily: 'system-ui, sans-serif' }}>
-        Cumul. cost
-      </text>
-      {/* Benefit line */}
+            style={{ fontFamily: 'system-ui, sans-serif' }}>Cumul. cost</text>
       <line x1={left + 14} y1={top + 30} x2={left + 26} y2={top + 30}
             stroke="#10b981" strokeWidth="2.5" />
       <text x={left + 30} y={top + 34} fontSize="7.5" fill="#64748b"
-            style={{ fontFamily: 'system-ui, sans-serif' }}>
-        Cumul. benefit
-      </text>
+            style={{ fontFamily: 'system-ui, sans-serif' }}>Cumul. benefit</text>
     </svg>
   );
 }
@@ -333,9 +398,22 @@ function RoadmapGantt({
     [editableRoi],
   );
 
+  // Dynamic chart end: stop at Phase 3 break-even + 15% buffer (no wasted space)
+  const chartMaxWeek = useMemo(() => {
+    if (!roiCurve.length || !editableRoi?.phases?.length) return 156;
+    const phaseCosts = editableRoi.phases.map(p => parseMidKGBP(p.estimatedCost));
+    const totalCost  = phaseCosts.reduce((a, b) => a + b, 0);
+    for (const pt of roiCurve) {
+      if (pt.benefit >= totalCost) {
+        return Math.ceil(pt.week * 1.15 / 4) * 4; // 15% buffer, rounded to 4-week boundary
+      }
+    }
+    return 156;
+  }, [roiCurve, editableRoi]);
+
   if (!phases?.length) return null;
 
-  // Build Gantt rows
+  // Build Gantt rows — full initiative titles (truncate only at 36 chars)
   const rows: Array<{ name: string; color: string; offset: number; duration: number }> = [];
   phases.forEach((phase, phaseIdx) => {
     const window = GANTT_PHASE_WEEKS[phaseIdx] ?? GANTT_PHASE_WEEKS[0];
@@ -344,11 +422,11 @@ function RoadmapGantt({
     const count  = Math.max(inits.length, 1);
     const span   = window.end - window.start;
     inits.forEach((init, initIdx) => {
-      const segSize  = Math.floor(span / count);
+      const segSize   = Math.floor(span / count);
       const startWeek = window.start + initIdx * segSize;
       const endWeek   = initIdx === count - 1 ? window.end : startWeek + segSize;
       rows.push({
-        name: init.title.length > 30 ? init.title.slice(0, 28) + '…' : init.title,
+        name: init.title.length > 36 ? init.title.slice(0, 34) + '…' : init.title,
         color,
         offset: startWeek - 1,
         duration: endWeek - startWeek + 1,
@@ -396,17 +474,14 @@ function RoadmapGantt({
             })}
 
             <XAxis
-              type="number" domain={[0, 156]}
-              ticks={[0, 13, 39, 78, 104, 130, 156]}
+              type="number" domain={[0, chartMaxWeek]}
+              ticks={[0, 13, 39, 78, chartMaxWeek].filter((v, i, a) => a.indexOf(v) === i && v <= chartMaxWeek)}
               tickFormatter={v => {
                 if (v === 0) return 'Now';
-                if (v === 13) return '3 mo';
-                if (v === 39) return '9 mo';
-                if (v === 78) return '18 mo';
-                if (v === 104) return '2 yr';
-                if (v === 130) return '2.5 yr';
-                if (v === 156) return '3 yr';
-                return `W${v}`;
+                const mo = Math.round(v / 4.33);
+                if (mo < 12) return `${mo}mo`;
+                const yr = mo / 12;
+                return yr % 1 === 0 ? `${yr}yr` : `${yr.toFixed(1)}yr`;
               }}
               tick={{ fontSize: 10 }}
               label={{ value: 'Timeline from kickoff', position: 'insideBottom', offset: -12, fontSize: 11 }}
@@ -431,6 +506,8 @@ function RoadmapGantt({
             roiCurve={roiCurve}
             containerW={containerW}
             containerH={ganttHeight}
+            editableRoi={editableRoi}
+            chartMaxWeek={chartMaxWeek}
           />
         )}
       </div>
