@@ -20,6 +20,7 @@ import {
   buildWayForward,
   buildExecSummary,
   formatLabel,
+  type WayForwardPhase,
 } from '@/lib/output-intelligence/engines/priority-engine';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
@@ -955,12 +956,47 @@ export function renderTransformationPriorities(tlm: TransformationLogicMap | und
         <p class="tp-summary-headline">${esc(execSum.headline)}</p>
         ${execSum.pressure ? `<p class="tp-summary-sub">${esc(execSum.pressure)}</p>` : ''}
       </div>
-      ${renderTLMGraph(tlm)}
       <div class="tp-cards">${cards}</div>
     </section>`;
 }
 
 // ── Way Forward ───────────────────────────────────────────────────────────────
+
+function renderWayForwardGantt(phases: WayForwardPhase[]): string {
+  if (!phases.length) return '';
+  const W = 700; const H = 72; const BAR_H = 34; const Y = 22;
+  const segW = Math.round(W / phases.length);
+
+  const bars = phases.map((p, i) => {
+    const x = i * segW;
+    const w = i === phases.length - 1 ? W - x : segW;
+    return `
+      <rect x="${x}" y="${Y}" width="${w}" height="${BAR_H}" rx="0" fill="${p.color}22" />
+      <rect x="${x}" y="${Y}" width="${w}" height="3" fill="${p.color}" />
+      <text x="${x + w / 2}" y="${Y + BAR_H / 2 - 3}" text-anchor="middle" font-size="9" font-family="Inter,Helvetica,sans-serif" font-weight="700" fill="${p.color}">${esc(p.name.toUpperCase())}</text>
+      <text x="${x + w / 2}" y="${Y + BAR_H / 2 + 10}" text-anchor="middle" font-size="7.5" font-family="Inter,Helvetica,sans-serif" fill="${p.color}bb">${esc(p.timeline)}</text>`;
+  }).join('');
+
+  const dividers = phases.slice(0, -1).map((_, i) => {
+    const x = (i + 1) * segW;
+    return `<line x1="${x}" y1="${Y}" x2="${x}" y2="${Y + BAR_H}" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="3 2" />`;
+  }).join('');
+
+  const ticks = phases.map((p, i) => {
+    const x = i * segW;
+    const label = i === 0 ? 'Now' : p.timeline.split('–')[0].trim().split('-')[0].trim();
+    return `
+      <text x="${x + 4}" y="${Y - 5}" font-size="6.5" font-family="Inter,Helvetica,sans-serif" fill="#94a3b8">${esc(label)}</text>`;
+  }).join('');
+
+  return `
+    <div class="wf-gantt-wrap">
+      <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+        <rect width="${W}" height="${H}" fill="#f8fafc" />
+        ${ticks}${bars}${dividers}
+      </svg>
+    </div>`;
+}
 
 export function renderWayForward(tlm: TransformationLogicMap | undefined): string {
   if (!tlm) return '';
@@ -980,19 +1016,25 @@ export function renderWayForward(tlm: TransformationLogicMap | undefined): strin
 
     return `
       <div class="wf-phase" style="border-top:3px solid ${phase.color}">
-        <div class="wf-phase-header">
-          <div class="wf-phase-num" style="background:${phase.color}">${phase.phase}</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;align-items:start">
           <div>
-            <div class="wf-phase-name" style="color:${phase.textColor}">${esc(phase.name)}</div>
-            <div class="wf-phase-timeline">${esc(phase.timeline)}</div>
+            <div class="wf-phase-header">
+              <div class="wf-phase-num" style="background:${phase.color}">${phase.phase}</div>
+              <div>
+                <div class="wf-phase-name" style="color:${phase.textColor}">${esc(phase.name)}</div>
+                <div class="wf-phase-timeline">${esc(phase.timeline)}</div>
+              </div>
+            </div>
+            <div class="wf-items">${items}</div>
+          </div>
+          <div>
+            <div class="wf-outcome-box" style="border-color:${phase.borderColor}">
+              <div class="wf-outcome-label" style="color:${phase.color}">Expected outcome</div>
+              <p class="wf-outcome-text">${esc(phase.expectedOutcome)}</p>
+            </div>
+            <p class="wf-dependencies"><strong>Requires:</strong> ${esc(phase.dependencies)}</p>
           </div>
         </div>
-        <div class="wf-items">${items}</div>
-        <div class="wf-outcome-box" style="border-color:${phase.borderColor}">
-          <div class="wf-outcome-label" style="color:${phase.color}">Expected outcome</div>
-          <p class="wf-outcome-text">${esc(phase.expectedOutcome)}</p>
-        </div>
-        <p class="wf-dependencies"><strong>Requires:</strong> ${esc(phase.dependencies)}</p>
       </div>`;
   }).join('');
 
@@ -1000,6 +1042,7 @@ export function renderWayForward(tlm: TransformationLogicMap | undefined): strin
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Way Forward</div></div>
       <p class="wf-intro">A sequenced, three-phase plan derived from the transformation logic map — ordered by structural dependency, not urgency.</p>
+      ${renderWayForwardGantt(phases)}
       <div class="wf-grid">${phaseHtml}</div>
     </section>`;
 }
@@ -1162,7 +1205,7 @@ export const PDF_STYLES = `
   .journey-section { page: landscape-page; page-break-before: always; page-break-after: always; page-break-inside: avoid; }
   .report-section { margin-bottom: 28px; }
   .section-title-bar { page-break-after: avoid; }
-  .cause-card, .evidence-row, .finding-item, .lens-row, .phase-card, .step-item, .next-step-item, .tension-item, .diag-card, .sig-row, .toc-row { page-break-inside: avoid; }
+  .cause-card, .evidence-row, .finding-item, .lens-row, .phase-card, .step-item, .next-step-item, .tension-item, .diag-card, .sig-row, .toc-row { page-break-inside: avoid; break-inside: avoid; }
   .section-title-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb; }
   .section-accent { width: 4px; height: 22px; border-radius: 2px; background: #6366f1; flex-shrink: 0; }
   .section-title { font-size: 13pt; font-weight: 700; color: #111827; letter-spacing: -0.01em; }
@@ -1242,7 +1285,7 @@ export const PDF_STYLES = `
   .step-item { display: flex; gap: 12px; align-items: flex-start; background: #f8fafc; border-radius: 8px; padding: 10px 14px; }
   .step-num { flex-shrink: 0; width: 22px; height: 22px; background: #0f172a; color: white; border-radius: 50%; font-size: 8pt; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
   .step-change { font-size: 9.5pt; color: #6b7280; line-height: 1.5; }
-  .phases-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; page-break-inside: avoid; }
+  .phases-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; page-break-inside: avoid; break-inside: avoid; }
   .phase-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }
   .phase-name { font-size: 9.5pt; font-weight: 700; color: #111827; margin-bottom: 3px; }
   .phase-horizon { font-size: 8pt; color: #9ca3af; margin-bottom: 8px; font-weight: 500; }
@@ -1259,8 +1302,8 @@ export const PDF_STYLES = `
   .wmc-item { border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; background: #ffffff; }
   .wmc-area-label { font-size: 9pt; font-weight: 700; color: #0f172a; margin-bottom: 10px; }
   .wmc-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .wmc-today { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 12px; }
-  .wmc-required { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; }
+  .wmc-today { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 12px; break-inside: avoid; page-break-inside: avoid; }
+  .wmc-required { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; break-inside: avoid; page-break-inside: avoid; }
   .wmc-split-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 4px; }
   .wmc-today-label { color: #dc2626; }
   .wmc-required-label { color: #16a34a; }
@@ -1312,7 +1355,7 @@ export const PDF_STYLES = `
   /* ── Strategic Impact ─── */
   .si-summary { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 8px; }
   .si-confidence { font-size: 9pt; color: #6b7280; margin-bottom: 16px; }
-  .si-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; page-break-inside: avoid; }
+  .si-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; page-break-inside: avoid; break-inside: avoid; }
   .si-stat { border-radius: 10px; padding: 14px; text-align: center; border: 1px solid transparent; }
   .si-stat-pct { font-size: 20pt; font-weight: 800; }
   .si-stat-label { font-size: 8.5pt; font-weight: 600; margin-top: 4px; }
@@ -1324,7 +1367,7 @@ export const PDF_STYLES = `
 
   /* ── Discovery Diagnostic ─── */
   .diag-summary { font-size: 10.5pt; color: #374151; line-height: 1.7; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
-  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; page-break-inside: avoid; }
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; page-break-inside: avoid; break-inside: avoid; }
   .diag-card { border: 1px solid; border-radius: 10px; padding: 14px 16px; }
   .diag-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 8px; }
   .diag-insight { font-size: 9.5pt; color: #374151; line-height: 1.6; margin-bottom: 6px; }
@@ -1370,7 +1413,7 @@ export const PDF_STYLES = `
   .struct-td-muted { padding: 9px 14px; color: #6b7280; border-top: 1px solid #f1f5f9; }
   .struct-td-score { padding: 9px 14px; text-align: right; font-weight: 700; border-top: 1px solid #f1f5f9; }
   .struct-sev { padding: 2px 6px; border-radius: 4px; font-size: 8pt; font-weight: 600; }
-  .narr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; page-break-inside: avoid; }
+  .narr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; page-break-inside: avoid; break-inside: avoid; }
   .narr-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
   .narr-layer { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #374151; margin-bottom: 4px; }
   .narr-sentiment { font-size: 9.5pt; font-weight: 600; margin-bottom: 10px; text-transform: capitalize; }
@@ -1456,7 +1499,7 @@ export const PDF_STYLES = `
   .tp-summary-headline { font-size: 10.5pt; font-weight: 600; color: #1e293b; line-height: 1.6; margin-bottom: 6px; }
   .tp-summary-sub { font-size: 9.5pt; color: #64748b; line-height: 1.6; margin: 0; }
   .tp-cards { display: flex; flex-direction: column; gap: 14px; }
-  .tp-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px; background: #ffffff; }
+  .tp-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px; background: #ffffff; break-inside: avoid; page-break-inside: avoid; }
   .tp-card-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 10px; }
   .tp-rank { flex-shrink: 0; width: 28px; height: 28px; background: #0f172a; color: white; border-radius: 8px; font-size: 9pt; font-weight: 800; display: flex; align-items: center; justify-content: center; }
   .tp-card-meta { flex: 1; }
@@ -1476,8 +1519,9 @@ export const PDF_STYLES = `
 
   /* ── Way Forward ─── */
   .wf-intro { font-size: 9.5pt; color: #64748b; line-height: 1.7; margin-bottom: 20px; }
-  .wf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .wf-phase { border-radius: 10px; border: 1px solid #e2e8f0; padding: 16px; background: #ffffff; }
+  .wf-gantt-wrap { margin-bottom: 24px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
+  .wf-grid { display: flex; flex-direction: column; gap: 20px; }
+  .wf-phase { border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px 24px; background: #ffffff; break-inside: avoid; page-break-inside: avoid; }
   .wf-phase-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
   .wf-phase-num { width: 30px; height: 30px; border-radius: 8px; color: white; font-size: 12pt; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .wf-phase-name { font-size: 11pt; font-weight: 700; line-height: 1.2; }
