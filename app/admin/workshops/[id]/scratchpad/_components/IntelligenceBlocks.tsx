@@ -697,3 +697,111 @@ export function StrategicImpactBlock({
     </div>
   );
 }
+
+// ── Way Forward block ─────────────────────────────────────────────────────────
+
+const WF_COLORS = [
+  { border: 'border-primary/30',   header: 'bg-primary/10',   label: 'text-primary',     dot: 'bg-primary',     badge: 'bg-primary/10 text-primary' },
+  { border: 'border-violet-200',   header: 'bg-violet-50',    label: 'text-violet-700',  dot: 'bg-violet-500',  badge: 'bg-violet-50 text-violet-700' },
+  { border: 'border-emerald-200',  header: 'bg-emerald-50',   label: 'text-emerald-700', dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700' },
+];
+
+export function WayForwardBlock({ intelligence }: { intelligence: WorkshopOutputIntelligence }) {
+  const phases = intelligence.roadmap?.phases ?? [];
+  const roi    = intelligence.roadmap?.roiSummary;
+
+  if (!phases.length) {
+    return (
+      <p className="text-sm text-muted-foreground py-2 px-1">
+        No roadmap phases found. Run the output intelligence pipeline to generate Way Forward content.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Gantt timeline bar */}
+      <div className="flex gap-0 rounded-lg overflow-hidden border border-border text-[10px] font-semibold">
+        {phases.map((p, i) => {
+          const c = WF_COLORS[i] ?? WF_COLORS[0];
+          return (
+            <div key={i} className={`flex-1 ${c.header} ${c.label} px-3 py-2 text-center`}>
+              <div>{p.phase.split(' — ')[0]}</div>
+              {p.timeframe && <div className="font-normal opacity-70">{p.timeframe}</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Phase cards */}
+      <div className="grid grid-cols-1 gap-3">
+        {phases.map((p, i) => {
+          const c = WF_COLORS[i] ?? WF_COLORS[0];
+          return (
+            <div key={i} className={`rounded-xl border-2 ${c.border} overflow-hidden`}>
+              <div className={`${c.header} px-4 py-2.5 flex items-center justify-between`}>
+                <span className={`text-xs font-bold uppercase tracking-wide ${c.label}`}>
+                  {p.phase}
+                </span>
+                {p.timeframe && (
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${c.badge}`}>
+                    {p.timeframe}
+                  </span>
+                )}
+              </div>
+              <div className="px-4 py-3">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                  {(p.initiatives ?? []).slice(0, 6).map((init, j) => (
+                    <div key={j} className="flex items-start gap-1.5 text-xs text-foreground py-0.5">
+                      <span className={`mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                      <span className="leading-snug">{init.title}</span>
+                    </div>
+                  ))}
+                  {(p.initiatives ?? []).length > 6 && (
+                    <div className="text-[10px] text-muted-foreground col-span-2 mt-1">
+                      +{(p.initiatives ?? []).length - 6} more initiatives in PDF
+                    </div>
+                  )}
+                </div>
+                {p.dependencies?.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Dependencies</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{p.dependencies.join(' · ')}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ROI summary footer */}
+      {roi && (
+        <div className="grid grid-cols-3 gap-3 pt-1">
+          {roi.totalProgrammeCost && (
+            <div className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Programme Cost</p>
+              <p className="text-sm font-bold text-foreground">{roi.totalProgrammeCost}</p>
+            </div>
+          )}
+          {roi.totalThreeYearBenefit && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide mb-1">3-Year Benefit</p>
+              <p className="text-sm font-bold text-emerald-800">{roi.totalThreeYearBenefit}</p>
+            </div>
+          )}
+          {roi.paybackPeriod && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+              <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">Programme Payback</p>
+              <p className="text-sm font-bold text-foreground">{roi.paybackPeriod}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <p className="text-[10px] text-muted-foreground italic px-1">
+        Full Gantt chart with cost/benefit curves rendered in the exported PDF.
+      </p>
+    </div>
+  );
+}

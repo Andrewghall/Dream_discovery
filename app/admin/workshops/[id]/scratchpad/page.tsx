@@ -58,6 +58,7 @@ import {
   RootCausesBlock,
   SolutionDirectionBlock,
   StrategicImpactBlock,
+  WayForwardBlock,
 } from './_components/IntelligenceBlocks';
 import {
   DiscoveryDiagnosticBlock,
@@ -991,6 +992,13 @@ export default function DownloadReportPage({ params }: PageProps) {
                               excludedItems={cfg.excludedItems}
                               onToggleItem={(id) => toggleItem(cfg.id, id)}
                             />
+                          </div>
+                        )}
+
+                        {/* ── Way Forward ── */}
+                        {cfg.id === 'way_forward' && (
+                          <div className="p-4">
+                            <WayForwardBlock intelligence={intelligence} />
                           </div>
                         )}
 
