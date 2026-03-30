@@ -109,6 +109,13 @@ Generate:
    - A punchy title (3–7 words, action-oriented)
    - A one-sentence description that is specific and actionable, referencing the actual data
 
+ANTI-BOILERPLATE RULES (violations will fail the review):
+- NEVER use: "stands at a pivotal juncture", "crossroads", "unique opportunity", "unlock potential", "world-class", "game-changing"
+- NEVER write generic consulting platitudes — every sentence must reference a specific metric, initiative, system name, team, or root cause from the data
+- The summary must name the client, the specific root causes found, and the specific first action
+- Next step titles must name what (not vague verbs like "Assess" alone) — e.g. "Assign Owner to Legacy System Migration", not "Assess Technology"
+- Write as a practitioner who has read the actual data, not a template
+
 Respond ONLY with valid JSON in this exact shape:
 {
   "summary": "paragraph 1\\n\\nparagraph 2\\n\\nparagraph 3",

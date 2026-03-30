@@ -100,10 +100,18 @@ export const SEVERITY_COLORS: Record<string, { bg: string; text: string }> = {
 
 // ── Section renderers ─────────────────────────────────────────────────────────
 
-export function renderExecutiveSummary(summary: ReportSummary, intelligence: WorkshopOutputIntelligence, cfg: ReportSectionConfig): string {
+export function renderExecutiveSummary(summary: ReportSummary, intelligence: WorkshopOutputIntelligence, cfg: ReportSectionConfig, orgName?: string, workshopName?: string): string {
   const es = summary.executiveSummary;
   const ss = summary.solutionSummary;
   if (!es) return '';
+
+  // ── Block 0: Context intro ────────────────────────────────────────────────
+  const clientLabel = orgName || 'the organisation';
+  const workshopLabel = workshopName || 'Contact Centre Transformation';
+  const contextIntro = `
+    <div class="es-context-intro">
+      This report summarises the findings from the <strong>${esc(workshopLabel)}</strong> discovery workshop conducted for <strong>${esc(clientLabel)}</strong>. The analysis draws on structured workshop signals, participant evidence, and five intelligence engines to surface root causes, alignment gaps, and a recommended transformation path.
+    </div>`;
 
   // ── Block 1: What We Were Asked ──────────────────────────────────────────
   const askText = es.theAsk || summary.workshopAsk || '';
@@ -236,6 +244,7 @@ export function renderExecutiveSummary(summary: ReportSummary, intelligence: Wor
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Executive Summary</div></div>
+      ${contextIntro}
       ${askBand}
       ${answerBand}
       ${findings ? `<div class="es-section-label">What We Found</div><div class="findings-list">${findings}</div>` : ''}
@@ -280,7 +289,7 @@ export function renderSupportingEvidence(intelligence: WorkshopOutputIntelligenc
       <div class="evidence-card">
         <div class="evidence-header">
           Confirmed Issues
-          <span class="badge-muted">Hypothesis accuracy: ${discoveryValidation.hypothesisAccuracy}%</span>
+          <span class="badge-muted">Hypothesis accuracy: ${discoveryValidation.hypothesisAccuracy != null ? `${discoveryValidation.hypothesisAccuracy}%` : '—'}</span>
         </div>
         ${confirmed || '<p class="empty-msg">No confirmed issues recorded.</p>'}
       </div>
@@ -485,48 +494,96 @@ export function renderSolutionDirection(
 }
 
 export function renderJourneyMap(journey: LiveJourneyData, intro: string | undefined, cfg: ReportSectionConfig): string {
-  void cfg; // used for future per-item exclusion
-  const stageHeaders = journey.stages.map(s => `<th class="stage-th">${esc(s)}</th>`).join('');
+  void cfg;
 
-  const rows = journey.actors.map(actor => {
-    const cells = journey.stages.map(stage => {
-      const interactions = journey.interactions.filter(
-        i => i.actor.toLowerCase() === actor.name.toLowerCase() &&
-             i.stage.toLowerCase() === stage.toLowerCase()
-      );
-      const chips = interactions.map(int => {
-        const bg = SENTIMENT_COLORS[int.sentiment] ?? '#f1f5f9';
-        return `<div class="journey-chip" style="background:${bg}">
-          ${int.isPainPoint ? '<span class="pain-dot">●</span>' : ''}
-          ${esc(int.action.slice(0, 45))}${int.action.length > 45 ? '…' : ''}
-        </div>`;
-      }).join('');
-      return `<td class="journey-td">${chips}</td>`;
-    }).join('');
+  const totalInteractions = journey.interactions.length;
+  const painPoints = journey.interactions.filter(i => i.isPainPoint);
+  const totalPainPoints = painPoints.length;
+  const totalActors = journey.actors.length;
+  const totalStages = journey.stages.length;
 
-    return `<tr>
-      <td class="actor-td">
-        <div class="actor-name">${esc(actor.name)}</div>
-        <div class="actor-role">${esc(actor.role)}</div>
-      </td>
-      ${cells}
+  // ── Stage flow bar ─────────────────────────────────────────────────────────
+  const stageFlow = journey.stages.map((s, i) => `
+    <div class="jsum-stage">
+      <div class="jsum-stage-num">${i + 1}</div>
+      <div class="jsum-stage-name">${esc(s)}</div>
+    </div>
+    ${i < journey.stages.length - 1 ? '<div class="jsum-stage-arrow">›</div>' : ''}`
+  ).join('');
+
+  // ── Pain points grouped by stage ──────────────────────────────────────────
+  const stagesWithPain = journey.stages
+    .map(stage => {
+      const stagePains = painPoints.filter(p => p.stage.toLowerCase() === stage.toLowerCase());
+      return { stage, pains: stagePains };
+    })
+    .filter(s => s.pains.length > 0);
+
+  const painByStage = stagesWithPain.map(({ stage, pains }) => `
+    <div class="jsum-pain-group" style="break-inside:avoid;page-break-inside:avoid">
+      <div class="jsum-pain-stage">${esc(stage)}</div>
+      ${pains.map(p => `
+        <div class="jsum-pain-item">
+          <span class="jsum-pain-dot">●</span>
+          <span class="jsum-pain-actor">${esc(p.actor)}</span>
+          <span class="jsum-pain-action">${esc(p.action)}</span>
+        </div>`).join('')}
+    </div>`).join('');
+
+  // ── Actor involvement summary ──────────────────────────────────────────────
+  const actorRows = journey.actors.map(actor => {
+    const actorInts = journey.interactions.filter(i => i.actor.toLowerCase() === actor.name.toLowerCase());
+    const actorPains = actorInts.filter(i => i.isPainPoint).length;
+    const negCount = actorInts.filter(i => ['negative', 'critical', 'frustrated'].includes(i.sentiment)).length;
+    const posCount = actorInts.filter(i => ['positive', 'satisfied'].includes(i.sentiment)).length;
+    const sentiment = negCount > posCount ? '⚠ friction dominant' : posCount > negCount ? '✓ generally positive' : '~ mixed signals';
+    const sentColor = negCount > posCount ? '#b91c1c' : posCount > negCount ? '#065f46' : '#92400e';
+    return `<tr style="break-inside:avoid;page-break-inside:avoid">
+      <td class="jsum-actor-name">${esc(actor.name)}</td>
+      <td class="jsum-actor-role">${esc(actor.role)}</td>
+      <td class="jsum-actor-count">${actorInts.length}</td>
+      <td class="jsum-actor-pain" style="color:#b91c1c;font-weight:700">${actorPains > 0 ? actorPains : '—'}</td>
+      <td class="jsum-actor-sent" style="color:${sentColor};font-size:8pt">${sentiment}</td>
     </tr>`;
   }).join('');
 
   return `
-    <section class="report-section journey-section">
+    <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Customer Journey</div></div>
-      ${sectionIntro('The customer experience today — mapped across all touchpoints and actor groups to identify where friction compounds and where AI and process change can unlock the most value.')}
-      ${intro ? `<p class="journey-intro">${esc(intro)}</p>` : ''}
-      <div class="journey-table-wrap">
-        <table class="journey-table">
+      ${sectionIntro('The customer experience mapped across all touchpoints — where friction concentrates, which actors carry the most pain, and where intervention will deliver the greatest improvement.')}
+      ${intro ? `<div class="narrative-lead">${esc(intro)}</div>` : ''}
+
+      <!-- Stats bar -->
+      <div class="jsum-stats">
+        <div class="jsum-stat"><div class="jsum-stat-val">${totalActors}</div><div class="jsum-stat-lbl">Actors</div></div>
+        <div class="jsum-stat"><div class="jsum-stat-val">${totalStages}</div><div class="jsum-stat-lbl">Stages</div></div>
+        <div class="jsum-stat"><div class="jsum-stat-val">${totalInteractions}</div><div class="jsum-stat-lbl">Interactions</div></div>
+        <div class="jsum-stat jsum-stat-pain"><div class="jsum-stat-val">${totalPainPoints}</div><div class="jsum-stat-lbl">Pain Points</div></div>
+      </div>
+
+      <!-- Stage flow -->
+      <div class="jsum-section-label">Journey Stages</div>
+      <div class="jsum-stage-flow">${stageFlow}</div>
+
+      <!-- Pain points by stage -->
+      ${painByStage ? `
+      <div class="jsum-section-label" style="margin-top:18px">Where Pain Concentrates — by Stage</div>
+      <div class="jsum-pain-grid">${painByStage}</div>` : ''}
+
+      <!-- Actor table -->
+      <div class="jsum-section-label" style="margin-top:18px">Actor Involvement Summary</div>
+      <div class="jsum-table-wrap">
+        <table class="jsum-table">
           <thead>
             <tr>
-              <th class="actor-th">Actor</th>
-              ${stageHeaders}
+              <th class="jsum-th">Actor</th>
+              <th class="jsum-th">Role</th>
+              <th class="jsum-th" style="text-align:center">Interactions</th>
+              <th class="jsum-th" style="text-align:center">Pain Points</th>
+              <th class="jsum-th">Signal</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody>${actorRows}</tbody>
         </table>
       </div>
     </section>`;
@@ -655,7 +712,7 @@ export function renderInsightSummary(intelligence: WorkshopOutputIntelligence): 
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Insight Map Summary</div></div>
       <p class="insight-summary-text">${esc(dv.summary)}</p>
       <div class="insight-stats">
-        <div class="insight-stat"><div class="insight-stat-val indigo">${dv.hypothesisAccuracy}%</div><div class="insight-stat-label">Hypothesis Accuracy</div></div>
+        <div class="insight-stat"><div class="insight-stat-val indigo">${dv.hypothesisAccuracy != null ? `${dv.hypothesisAccuracy}%` : '—'}</div><div class="insight-stat-label">Hypothesis Accuracy</div></div>
         <div class="insight-stat"><div class="insight-stat-val">${dv.confirmedIssues.length}</div><div class="insight-stat-label">Confirmed Issues</div></div>
         <div class="insight-stat"><div class="insight-stat-val blue">${dv.newIssues.length}</div><div class="insight-stat-label">New Issues Surfaced</div></div>
       </div>
@@ -667,6 +724,11 @@ export function renderStructuralAlignment(discoverAnalysis: DiscoverAnalysis | u
   const divergent = [...discoverAnalysis.alignment.cells]
     .sort((a, b) => a.alignmentScore - b.alignmentScore)
     .slice(0, 12);
+  const allScores = divergent.map(c => c.alignmentScore);
+  const allIdentical = allScores.length > 1 && allScores.every(s => s === allScores[0]);
+  const uniformNote = allIdentical
+    ? `<div class="struct-uniform-note">⚠ All measured actor–theme combinations returned the same score (${allScores[0].toFixed(2)}), indicating systemic misalignment across every dimension — not isolated pockets of tension. This is the most severe misalignment pattern: the organisation disagrees uniformly with itself.</div>`
+    : '';
   const rows = divergent.map(cell => {
     const score = cell.alignmentScore;
     const color = score < -0.5 ? '#b91c1c' : score < 0 ? '#b45309' : '#065f46';
@@ -681,6 +743,7 @@ export function renderStructuralAlignment(discoverAnalysis: DiscoverAnalysis | u
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Domain Misalignment</div></div>
       ${sectionIntro('Where leadership narratives diverge from frontline experience — the alignment gap that undermines execution and creates invisible drag on organisational performance.')}
       <div class="narrative-lead">The alignment analysis reveals where different organisational layers hold fundamentally different views on the same themes. Negative alignment scores indicate that what leadership believes is happening differs materially from what frontline participants experience. These divergence points are the invisible failure modes in any transformation — strategies fail not because the logic is wrong, but because the organisation isn't aligned on the problem in the first place.</div>
+      ${uniformNote}
       <p class="struct-subtitle">Top divergent actor × theme pairs — negative scores indicate misalignment</p>
       <div class="struct-table-wrap">
         <table class="struct-table">
@@ -1908,6 +1971,7 @@ export const PDF_STYLES = `
 
   /* ── Structural Analysis ─── */
   .struct-subtitle { font-size: 9.5pt; color: #6b7280; margin-bottom: 14px; line-height: 1.5; }
+  .struct-uniform-note { font-size: 9pt; color: #92400e; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; line-height: 1.6; break-inside: avoid; page-break-inside: avoid; }
   .struct-table-wrap { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
   .struct-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; break-inside: avoid; page-break-inside: avoid; }
   .struct-thead tr { background: #f9fafb; }
@@ -2107,6 +2171,39 @@ export const PDF_STYLES = `
   .toc-subitems span { font-size: 7.5pt; color: #9ca3af; }
   .toc-subitems span::before { content: '–  '; }
 
+  /* ── Executive Summary context intro ─── */
+  .es-context-intro { font-size: 9.5pt; color: #475569; line-height: 1.7; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
+  .es-context-intro strong { color: #0f172a; font-weight: 600; }
+
+  /* ── Journey Summary ─── */
+  .jsum-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 18px; break-inside: avoid; page-break-inside: avoid; }
+  .jsum-stat { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; text-align: center; background: #ffffff; }
+  .jsum-stat-pain { border-color: #fca5a5; background: #fff7f7; }
+  .jsum-stat-val { font-size: 18pt; font-weight: 800; color: #0f172a; line-height: 1; }
+  .jsum-stat-pain .jsum-stat-val { color: #b91c1c; }
+  .jsum-stat-lbl { font-size: 7.5pt; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 3px; }
+  .jsum-section-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: #9ca3af; margin-bottom: 10px; break-after: avoid; page-break-after: avoid; }
+  .jsum-stage-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 6px; break-inside: avoid; page-break-inside: avoid; }
+  .jsum-stage { display: flex; align-items: center; gap: 5px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 5px 9px; }
+  .jsum-stage-num { width: 16px; height: 16px; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 7.5pt; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .jsum-stage-name { font-size: 8pt; font-weight: 600; color: #1e3a8a; line-height: 1.2; }
+  .jsum-stage-arrow { font-size: 12pt; color: #94a3b8; padding: 0 1px; }
+  .jsum-pain-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .jsum-pain-group { background: #fff7f7; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 12px; }
+  .jsum-pain-stage { font-size: 8pt; font-weight: 700; color: #991b1b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .jsum-pain-item { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 4px; }
+  .jsum-pain-dot { color: #ef4444; font-size: 7pt; flex-shrink: 0; margin-top: 2px; }
+  .jsum-pain-actor { font-size: 7.5pt; font-weight: 600; color: #374151; flex-shrink: 0; }
+  .jsum-pain-action { font-size: 7.5pt; color: #6b7280; line-height: 1.4; }
+  .jsum-table-wrap { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
+  .jsum-table { width: 100%; border-collapse: collapse; font-size: 9pt; break-inside: avoid; page-break-inside: avoid; }
+  .jsum-th { padding: 7px 12px; background: #f9fafb; text-align: left; font-size: 8pt; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; }
+  .jsum-actor-name { padding: 8px 12px; font-weight: 600; color: #0f172a; border-top: 1px solid #f1f5f9; }
+  .jsum-actor-role { padding: 8px 12px; color: #6b7280; font-size: 8.5pt; border-top: 1px solid #f1f5f9; }
+  .jsum-actor-count { padding: 8px 12px; text-align: center; color: #374151; border-top: 1px solid #f1f5f9; }
+  .jsum-actor-pain { padding: 8px 12px; text-align: center; border-top: 1px solid #f1f5f9; }
+  .jsum-actor-sent { padding: 8px 12px; border-top: 1px solid #f1f5f9; }
+
   /* ── Three Houses ─── */
   .house-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 12px 0 22px; break-inside: avoid; page-break-inside: avoid; }
   .house-card { border-radius: 10px; border: 1px solid #e2e8f0; padding: 12px 14px; background: #ffffff; break-inside: avoid; page-break-inside: avoid; }
@@ -2159,7 +2256,7 @@ export function buildReportHtml(
     if (cfg.type === 'chapter') return renderChapter(cfg);
     if (cfg.type === 'custom')  return renderCustomSection(cfg);
     switch (cfg.id) {
-      case 'executive_summary':    return renderExecutiveSummary(reportSummary, intelligence, cfg);
+      case 'executive_summary':    return renderExecutiveSummary(reportSummary, intelligence, cfg, orgName, workshopName);
       case 'supporting_evidence':  return renderSupportingEvidence(intelligence, cfg);
       case 'root_causes':          return renderRootCauses(intelligence, cfg);
       case 'solution_direction':   return renderSolutionDirection(reportSummary, intelligence, cfg, houseImages);

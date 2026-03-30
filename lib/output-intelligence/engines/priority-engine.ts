@@ -446,7 +446,7 @@ export function buildWayForward(
         description = (n.isCoalescent ?? false)
           ? `Systemic pressure point — ${n.connectionDegree ?? 0} dependencies converge here. Assign cross-functional owner; commission 30-day diagnostic.`
           : (n.isOrphan ?? false)
-          ? `${sigLabel} unaddressed constraint. Assign an owner and produce a written response plan within 30 days.`
+          ? `${sigLabel} constraint — "${formatLabel(n.displayLabel)}" — has no linked enabler or outcome. Assign an owner to assess root cause and define a response plan within 30 days.`
           : `Active constraint requiring direct intervention and a named owner.`;
       } else if (n.layer === 'ENABLER') {
         description = (n.isCompensating ?? false)
