@@ -125,9 +125,16 @@ export async function POST(
 
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
   try {
-    const executablePath = await chromium.executablePath();
+    // @sparticuz/chromium bundles a Linux-only binary — on macOS fall back to system Chrome
+    const isMac = process.platform === 'darwin';
+    const LOCAL_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    const executablePath = isMac ? LOCAL_CHROME : await chromium.executablePath();
+    const launchArgs = isMac
+      ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      : chromium.args;
+
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args: launchArgs,
       defaultViewport: chromium.defaultViewport,
       executablePath,
       headless: true,
