@@ -1631,12 +1631,56 @@ export function renderWayForward(
   // Use the full initiative-level Gantt (with cost/benefit curves) when roadmap data is available
   const fullGantt = intelligence?.roadmap ? renderPdfRoadmapGantt(intelligence.roadmap) : renderWayForwardGantt(phases);
 
+  // ROI table
+  const roiHtml = (() => {
+    const roi = intelligence?.roadmap?.roiSummary;
+    if (!roi?.phases?.length) return '';
+    const confColor: Record<string, string> = { High: '#059669', Medium: '#d97706', Low: '#dc2626' };
+    const confBg:    Record<string, string> = { High: '#ecfdf5', Medium: '#fffbeb', Low: '#fef2f2' };
+    const rows = roi.phases.map(p => `
+      <tr class="roi-row">
+        <td class="roi-phase-cell">${esc(p.phase)}</td>
+        <td class="roi-num-cell">${esc(p.estimatedCost)}</td>
+        <td class="roi-num-cell">${esc(p.estimatedAnnualBenefit)}</td>
+        <td class="roi-drivers-cell">${(p.benefitDrivers ?? []).map(d => `<div class="roi-driver">✦ ${esc(d)}</div>`).join('')}</td>
+        <td class="roi-num-cell">${esc(p.breakEvenTimeline)}</td>
+        <td class="roi-num-cell roi-multiple">${esc(p.roiMultiple)}</td>
+        <td class="roi-conf-cell"><span class="roi-conf-badge" style="color:${confColor[p.confidenceLevel] ?? '#64748b'};background:${confBg[p.confidenceLevel] ?? '#f8fafc'}">${esc(p.confidenceLevel)}</span></td>
+      </tr>`).join('');
+    return `
+      <div class="roi-wrap">
+        <div class="roi-heading">ROI &amp; Benefits Realisation <span class="roi-subhead">— estimates grounded in workshop signals, not guarantees</span></div>
+        <table class="roi-table">
+          <thead><tr>
+            <th>Phase</th><th>Investment cost</th><th>Annual benefit</th>
+            <th>Key benefit drivers</th><th>Break-even</th><th>ROI multiple</th><th>Confidence</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="roi-totals">
+          <div class="roi-total-box">
+            <div class="roi-total-label">TOTAL PROGRAMME COST</div>
+            <div class="roi-total-value">${esc(roi.totalProgrammeCost)}</div>
+          </div>
+          <div class="roi-total-box roi-total-benefit">
+            <div class="roi-total-label">3-YEAR CUMULATIVE BENEFIT</div>
+            <div class="roi-total-value">${esc(roi.totalThreeYearBenefit)}</div>
+          </div>
+          <div class="roi-total-box roi-total-payback">
+            <div class="roi-total-label">PROGRAMME PAYBACK</div>
+            <div class="roi-total-value">${esc(roi.paybackPeriod)}</div>
+          </div>
+        </div>
+      </div>`;
+  })();
+
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Way Forward</div></div>
       ${sectionIntro('A sequenced, three-phase plan derived from the transformation logic map — ordered by structural dependency, not urgency, to ensure each phase builds on solid foundations.')}
       <p class="wf-intro">Delivery timeline — initiative bars by phase with cumulative cost and benefit curves.</p>
       ${fullGantt}
+      ${roiHtml}
       <div class="wf-grid">${phaseHtml}</div>
     </section>`;
 }
@@ -2176,6 +2220,29 @@ export const PDF_STYLES = `
   .wf-outcome-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 5px; }
   .wf-outcome-text { font-size: 8.5pt; color: #475569; line-height: 1.6; margin: 0; }
   .wf-dependencies { font-size: 8pt; color: #94a3b8; line-height: 1.55; margin: 0; }
+
+  /* ── ROI Table ─── */
+  .roi-wrap { margin: 24px 0; break-inside: avoid; page-break-inside: avoid; }
+  .roi-heading { font-size: 10.5pt; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+  .roi-subhead { font-size: 8pt; font-weight: 400; color: #94a3b8; }
+  .roi-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 16px; }
+  .roi-table thead tr { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+  .roi-table thead th { padding: 8px 10px; text-align: left; font-size: 7.5pt; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+  .roi-row { border-bottom: 1px solid #f1f5f9; }
+  .roi-row:last-child { border-bottom: none; }
+  .roi-phase-cell { padding: 10px 10px; font-weight: 700; color: #6366f1; white-space: nowrap; }
+  .roi-num-cell { padding: 10px 10px; color: #334155; white-space: nowrap; }
+  .roi-multiple { font-weight: 700; color: #1e293b; }
+  .roi-drivers-cell { padding: 10px 10px; color: #475569; }
+  .roi-driver { font-size: 8pt; line-height: 1.5; }
+  .roi-conf-cell { padding: 10px 10px; }
+  .roi-conf-badge { font-size: 7.5pt; font-weight: 700; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+  .roi-totals { display: flex; gap: 12px; }
+  .roi-total-box { flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; background: #f8fafc; }
+  .roi-total-benefit { background: #ecfdf5; border-color: #6ee7b7; }
+  .roi-total-payback { background: #eff6ff; border-color: #bfdbfe; }
+  .roi-total-label { font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; margin-bottom: 6px; }
+  .roi-total-value { font-size: 13pt; font-weight: 800; color: #1e293b; }
 
   /* ── Connected Model ─── */
   .cm-intro { font-size: 9.5pt; color: #64748b; line-height: 1.7; margin-bottom: 20px; }
