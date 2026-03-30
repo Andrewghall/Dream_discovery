@@ -396,26 +396,24 @@ export default function DownloadReportPage({ params }: PageProps) {
     updateSection(id, { title });
   }, [updateSection]);
 
-  const handleClientLogoUpload = useCallback(async (file: File) => {
-    setUploadingClientLogo(true);
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-      const res = await fetch(`/api/admin/workshops/${workshopId}/upload-section-image`, {
-        method: 'POST',
-        body: formData,
-      });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json() as { url: string };
-      setClientLogoUrl(data.url);
-      // Persist in layout
-      updateLayout({ ...layout, clientLogoUrl: data.url });
-    } catch {
-      toast.error('Client logo upload failed');
-    } finally {
-      setUploadingClientLogo(false);
+  const handleClientLogoUpload = useCallback((file: File) => {
+    // Validate size (2 MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Logo must be under 2 MB');
+      return;
     }
-  }, [workshopId, layout, updateLayout]);
+    setUploadingClientLogo(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string | undefined;
+      if (!dataUrl) { toast.error('Could not read image'); setUploadingClientLogo(false); return; }
+      setClientLogoUrl(dataUrl);
+      updateLayout({ ...layout, clientLogoUrl: dataUrl });
+      setUploadingClientLogo(false);
+    };
+    reader.onerror = () => { toast.error('Client logo upload failed'); setUploadingClientLogo(false); };
+    reader.readAsDataURL(file);
+  }, [layout, updateLayout]);
 
   const removeSection = useCallback((id: string) => {
     setLayout(prev => {

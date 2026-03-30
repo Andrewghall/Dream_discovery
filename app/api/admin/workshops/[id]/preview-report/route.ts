@@ -101,7 +101,7 @@ export async function POST(
   // Wrap the report HTML in a browser-friendly shell with A4 page styling
   const reportHtml = buildReportHtml(enrichedBody, dreamLogoBase64, tenantLogoBase64, clientLogoBase64);
 
-  // Add a thin preview banner so users know this is a preview
+  // Add a thin preview banner + A4-width container so the preview matches PDF scale
   const previewBanner = `
     <div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e293b;color:#fff;
       font-family:Helvetica,Arial,sans-serif;font-size:13px;padding:10px 20px;
@@ -111,8 +111,17 @@ export async function POST(
     </div>
     <div style="height:44px"></div>`;
 
-  // Inject banner after <body> opening tag
-  const finalHtml = reportHtml.replace('<body>', `<body>${previewBanner}`);
+  // Constrain body to A4 width so preview matches PDF scale
+  const previewStyle = `<style>
+    body { background: #e5e7eb !important; padding: 24px 0 !important; }
+    body > *:not([style*="position:fixed"]) { max-width: 794px !important; margin-left: auto !important; margin-right: auto !important; }
+    .report-page, section, .cover-page, .toc-page { box-shadow: 0 2px 8px rgba(0,0,0,0.12); margin-bottom: 12px !important; }
+  </style>`;
+
+  // Inject banner + style override after <head> closing tag
+  const finalHtml = reportHtml
+    .replace('</head>', `${previewStyle}</head>`)
+    .replace('<body>', `<body>${previewBanner}`);
 
   return new NextResponse(finalHtml, {
     status: 200,

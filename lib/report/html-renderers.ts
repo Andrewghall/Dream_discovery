@@ -58,30 +58,73 @@ function sectionIntro(text: string): string {
   return `<div class="section-intro"><span class="section-intro-label">Section Overview</span><p>${esc(text)}</p></div>`;
 }
 
-// ── TOC sub-items map ─────────────────────────────────────────────────────────
+// ── TOC section descriptions ──────────────────────────────────────────────────
 
-const TOC_SUBITEMS: Record<string, string[]> = {
-  executive_summary:         ['What We Were Asked', 'What We Found', 'Approach & Timeline', 'Indicative ROI'],
-  supporting_evidence:       ['Confirmed Issues', 'New Issues Surfaced'],
-  root_causes:               ['Primary Root Causes', 'Lens Breakdown'],
-  solution_direction:        ['Transformation Direction', 'Three Houses Framework', 'What Must Change', 'Roadmap Phases'],
-  journey_map:               ['Customer Journey Stages', 'Pain Point Analysis'],
-  strategic_impact:          ['Automation Potential', 'Efficiency Gains', 'Business Case'],
-  discovery_diagnostic:      ['Operational Reality', 'Leadership Alignment', 'Systemic Friction', 'Transformation Readiness'],
-  discovery_signals:         ['Sentiment by Domain', 'Agreement Levels', 'Tension Areas'],
-  discovery_signal_map:      ['Signal Distribution', 'Coverage Map'],
-  structural_alignment:      ['Alignment Gap Analysis', 'Most Divergent Areas'],
-  structural_narrative:      ['Competing Narratives', 'Perspective Divergence'],
-  structural_tensions:       ['Active Tensions', 'Severity Ranking'],
-  structural_barriers:       ['Structural Inhibitors', 'Barrier Classification'],
-  structural_confidence:     ['Readiness Assessment', 'Confidence by Capability'],
-  transformation_priorities: ['Priority Nodes', 'Why They Matter'],
-  way_forward:               ['Stabilise (0–90 days)', 'Enable (90–180 days)', 'Transform (180+ days)'],
-  connected_model:           ['Causal Chain', 'Enabler Pathways'],
-  report_conclusion:         ['Summary', 'Agreed Next Steps'],
-  insight_summary:           ['Hypothesis Accuracy', 'Confirmed & New Issues'],
-  facilitator_contact:       ['Contact Details'],
+const TOC_DESCRIPTIONS: Record<string, string> = {
+  executive_summary:         'The ask, the answer, what we found, and the recommended direction',
+  discovery_diagnostic:      'Operational reality, leadership alignment, and systemic friction signals',
+  discovery_signals:         'Sentiment by domain, agreement levels, and tension areas',
+  discovery_signal_map:      'Visual distribution of workshop signals across themes and lenses',
+  structural_alignment:      'Where leadership narratives diverge from frontline experience',
+  structural_narrative:      'Competing stories and perspective divergence across actor groups',
+  structural_tensions:       'Active tensions and severity ranking across the organisation',
+  structural_barriers:       'Systemic blockers that surface repeatedly across lenses and roles',
+  structural_confidence:     'Readiness assessment and confidence levels by capability domain',
+  journey_map:               'Customer touchpoints, pain concentration, and actor involvement',
+  supporting_evidence:       'Confirmed issues and new problems surfaced during the workshop',
+  root_causes:               'Primary root causes ranked by severity and their lens breakdown',
+  solution_direction:        'Transformation direction, Three Houses framework, and roadmap phases',
+  strategic_impact:          'Automation potential, efficiency gains, and business case summary',
+  way_forward:               'Stabilise → Enable → Transform — phased delivery plan and Gantt',
+  report_conclusion:         'Agreed next steps, responsibilities, and 90-day priorities',
+  facilitator_contact:       'Contact details for the facilitating team',
+  transformation_priorities: 'Priority nodes ranked by significance and systemic impact',
+  connected_model:           'Causal chain and enabler pathways from evidence to outcome',
+  insight_summary:           'Hypothesis accuracy, confirmed issues, and insight distribution',
 };
+
+// ── TOC phase groups — defines the 6 workshop-aligned chapter headers ─────────
+// Sections are assigned to phases in this order; layout ordering is preserved
+// within each phase. Any enabled section not matched falls into "Other".
+
+interface TocPhaseGroup {
+  name: string;
+  desc: string;
+  sectionIds: string[];
+}
+
+const TOC_PHASE_GROUPS: TocPhaseGroup[] = [
+  {
+    name: 'Executive Summary',
+    desc: 'The ask, the answer, and what the workshop revealed',
+    sectionIds: ['executive_summary'],
+  },
+  {
+    name: 'Discovery Diagnostic',
+    desc: 'Structural signals, alignment gaps, and diagnostic findings from the live workshop',
+    sectionIds: ['discovery_diagnostic', 'discovery_signals', 'discovery_signal_map', 'structural_alignment', 'structural_narrative', 'journey_map', 'insight_summary'],
+  },
+  {
+    name: 'Reimagine',
+    desc: 'Future state design, transformation direction, and strategic opportunity',
+    sectionIds: ['solution_direction', 'strategic_impact'],
+  },
+  {
+    name: 'Constraints',
+    desc: 'Where the organisation is blocked — root causes, barriers, tensions, and evidence',
+    sectionIds: ['structural_tensions', 'structural_barriers', 'structural_confidence', 'supporting_evidence', 'root_causes'],
+  },
+  {
+    name: 'Way Forward',
+    desc: 'Phased delivery plan, Gantt timeline, ROI, and agreed next steps',
+    sectionIds: ['way_forward', 'report_conclusion', 'facilitator_contact'],
+  },
+  {
+    name: 'Connected Model',
+    desc: 'Causal chain, enabler pathways, and the full transformation logic map',
+    sectionIds: ['transformation_priorities', 'connected_model'],
+  },
+];
 
 // ── Colour constants ──────────────────────────────────────────────────────────
 
@@ -1716,43 +1759,51 @@ export const PDF_STYLES = `
   @page landscape-page { size: A4 landscape; margin: 16mm 18mm 14mm; }
 
   /* ── Cover ─── */
-  .cover { page-break-after: always; min-height: 256mm; background: #ffffff; border-radius: 8px; display: flex; flex-direction: column; padding: 0 44px 40px; position: relative; overflow: hidden; }
-  .cover::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 5px; background: linear-gradient(90deg, #6366f1 0%, #818cf8 55%, #10b981 100%); border-radius: 8px 8px 0 0; }
+  .cover { page-break-after: always; min-height: 256mm; background: #ffffff; border-radius: 8px; display: flex; flex-direction: column; padding: 0 0 40px; position: relative; overflow: hidden; }
   .cover::after { content: ''; position: absolute; bottom: -40px; right: -40px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 70%); pointer-events: none; }
-  .cover-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: auto; padding-top: 44px; }
-  .cover-client-name { font-size: 11pt; font-weight: 500; letter-spacing: 0.03em; color: #374151; }
-  .cover-client-logo { max-height: 48px; max-width: 160px; object-fit: contain; }
-  .cover-dream-logo  { max-height: 36px; max-width: 140px; object-fit: contain; opacity: 0.8; }
-  .cover-dream-wordmark { font-size: 11pt; font-weight: 800; letter-spacing: 0.2em; color: #374151; }
-  .cover-body { padding-top: 68px; }
+  .cover-banner { width: 100%; border-radius: 8px; overflow: hidden; margin-top: 28px; }
+  .cover-banner img { width: 100%; height: auto; display: block; }
+  .cover-top { display: flex; align-items: center; justify-content: space-between; padding: 20px 44px; border-bottom: 1px solid #f1f5f9; margin-bottom: auto; }
+  .cover-top-dream { font-size: 9pt; font-weight: 800; letter-spacing: 0.28em; color: #6366f1; text-transform: uppercase; flex: 1; }
+  .cover-top-title { font-size: 9pt; font-weight: 600; color: #374151; text-align: center; flex: 2; padding: 0 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cover-top-client { flex: 1; display: flex; justify-content: flex-end; align-items: center; }
+  .cover-client-name { font-size: 9pt; font-weight: 500; color: #374151; text-align: right; }
+  .cover-client-logo { max-height: 36px; max-width: 120px; object-fit: contain; }
+  .cover-body { padding: 48px 44px 0; }
   .cover-eyebrow { font-size: 8.5pt; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: #6366f1; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
   .cover-eyebrow::after { content: ''; flex: 0 0 40px; height: 1px; background: #6366f1; }
   .cover-title { font-size: 30pt; font-weight: 800; line-height: 1.1; color: #0f172a; margin-bottom: 14px; letter-spacing: -0.02em; }
   .cover-subtitle { font-size: 12pt; font-weight: 400; color: #6b7280; margin-bottom: 40px; line-height: 1.5; }
   .cover-divider { width: 48px; height: 3px; background: #6366f1; border-radius: 2px; margin-bottom: 28px; }
-  .cover-footer { margin-top: auto; padding-top: 28px; border-top: 1px solid #f1f5f9; display: flex; align-items: flex-end; justify-content: space-between; }
+  .cover-footer { margin-top: auto; padding: 28px 44px 0; border-top: 1px solid #f1f5f9; display: flex; align-items: flex-end; justify-content: space-between; }
   .cover-meta-label { font-size: 7.5pt; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #9ca3af; margin-bottom: 4px; }
   .cover-meta-value { font-size: 10pt; font-weight: 600; color: #374151; }
   .cover-prepared-by { text-align: right; }
 
   /* ── TOC ─── */
   .toc-page { page-break-after: always; }
-  .toc-hero { background: #0f172a; border-radius: 12px; padding: 28px 32px; margin-bottom: 28px; display: flex; align-items: flex-end; justify-content: space-between; }
-  .toc-hero-sub { font-size: 8.5pt; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 8px; }
-  .toc-hero-title { font-size: 20pt; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; line-height: 1.15; max-width: 320px; }
-  .toc-hero-meta { text-align: right; flex-shrink: 0; }
-  .toc-hero-meta-label { font-size: 7.5pt; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.3); margin-bottom: 3px; }
-  .toc-hero-meta-value { font-size: 10pt; font-weight: 600; color: rgba(255,255,255,0.65); }
-  .toc-list { margin-bottom: 24px; }
-  .toc-row { display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid #f1f5f9; }
-  .toc-num { flex-shrink: 0; width: 28px; height: 28px; background: #0f172a; color: white; border-radius: 50%; font-size: 9pt; font-weight: 700; text-align: center; line-height: 28px; }
-  .toc-title { font-size: 11.5pt; font-weight: 600; color: #111827; flex: 1; }
-  .toc-dots { flex: 1; border-bottom: 1px dotted #d1d5db; margin: 0 12px 4px; }
-  .toc-chapter { padding: 10px 0; border-bottom: 1px solid #e2e8f0; }
-  .toc-chapter-marker { flex-shrink: 0; width: 28px; height: 28px; background: #1e293b; color: rgba(255,255,255,0.7); border-radius: 6px; font-size: 10pt; font-weight: 700; text-align: center; line-height: 28px; }
-  .toc-chapter-title { font-size: 10.5pt; font-weight: 700; color: #374151; }
-  .toc-footer { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-top: 4px; }
-  .toc-footer p { font-size: 9.5pt; color: #6b7280; line-height: 1.65; }
+  .toc-masthead { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 13px; border-bottom: 1.5px solid #0f172a; margin-bottom: 22px; }
+  .toc-masthead-eyebrow { font-size: 5.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.32em; color: #94a3b8; margin-bottom: 6px; }
+  .toc-masthead-title { font-size: 16pt; font-weight: 800; color: #0f172a; letter-spacing: -0.03em; line-height: 1.15; }
+  .toc-masthead-right { text-align: right; padding-bottom: 2px; }
+  .toc-masthead-date { font-size: 8pt; font-weight: 600; color: #1e293b; letter-spacing: 0.04em; }
+  .toc-masthead-meta { font-size: 6pt; color: #94a3b8; margin-top: 4px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .toc-columns { display: flex; gap: 0; align-items: flex-start; }
+  .toc-col { flex: 1; min-width: 0; }
+  .toc-col:first-child { padding-right: 20px; border-right: 1px solid #e2e8f0; }
+  .toc-col:last-child { padding-left: 20px; }
+  .toc-chapter-block { margin-top: 16px; }
+  .toc-chapter-block:first-child { margin-top: 0; }
+  .toc-chapter-hd { border-left: 3px solid #6366f1; padding: 5px 0 5px 10px; margin-bottom: 7px; }
+  .toc-chapter-hd-name { font-size: 7pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.22em; color: #4338ca; line-height: 1.2; }
+  .toc-chapter-hd-desc { font-size: 5.5pt; color: #94a3b8; line-height: 1.5; margin-top: 3px; font-style: italic; }
+  .toc-item { display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px dashed #e8edf3; align-items: flex-start; }
+  .toc-item:last-child { border-bottom: none; }
+  .toc-item-solo { margin-bottom: 6px; }
+  .toc-n { font-size: 6pt; font-weight: 700; color: #c7d2e0; min-width: 18px; flex-shrink: 0; padding-top: 2px; font-variant-numeric: tabular-nums; letter-spacing: 0.03em; }
+  .toc-item-body { flex: 1; min-width: 0; }
+  .toc-t { font-size: 8.5pt; font-weight: 700; color: #1e293b; display: block; line-height: 1.25; }
+  .toc-d { font-size: 6pt; color: #94a3b8; line-height: 1.4; margin-top: 2px; display: block; }
 
   /* ── Section chrome ─── */
   .journey-section { page: landscape-page; page-break-before: always; page-break-after: always; page-break-inside: avoid; }
@@ -2165,11 +2216,7 @@ export const PDF_STYLES = `
   .es-roi-lbl { font-size: 7.5pt; font-weight: 500; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em; }
   .es-roi-narrative { font-size: 9.5pt; color: #334155; line-height: 1.7; margin: 0; }
 
-  /* ── TOC hierarchy ─── */
-  .toc-title-group { flex: 1; min-width: 0; }
-  .toc-subitems { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 4px; }
-  .toc-subitems span { font-size: 7.5pt; color: #9ca3af; }
-  .toc-subitems span::before { content: '–  '; }
+  /* toc-subitems removed — 2-col compact layout replaces hierarchy */
 
   /* ── Executive Summary context intro ─── */
   .es-context-intro { font-size: 9.5pt; color: #475569; line-height: 1.7; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
@@ -2229,30 +2276,57 @@ export function buildReportHtml(
 
   const enabledSections = layout.sections.filter(s => s.enabled);
 
+  // ── 2-column TOC: grouped by workshop phase ──────────────────────────────────
+  // Assign enabled sections to phase groups; preserve layout ordering within phases.
+  // Left col: Executive Summary + Discovery Diagnostic
+  // Right col: Constraints + Reimagine + Way Forward + Connected Model
+  const sectionItems = enabledSections.filter(s => s.type !== 'chapter');
+  const sectionIdIndex = new Map(sectionItems.map((s, i) => [s.id, i]));
+
+  const tocLeft: string[] = [];
+  const tocRight: string[] = [];
   let tocNum = 0;
-  const tocEntries = enabledSections.map((cfg) => {
-    if (cfg.type === 'chapter') {
-      return `<div class="toc-row toc-chapter">
-        <span class="toc-chapter-marker">§</span>
-        <span class="toc-chapter-title">${esc(cfg.title)}</span>
+  const LEFT_PHASES = new Set(['Executive Summary', 'Discovery Diagnostic', 'Reimagine']);
+
+  for (const phase of TOC_PHASE_GROUPS) {
+    // Find enabled sections that belong to this phase, in layout order
+    const phaseItems = phase.sectionIds
+      .map(id => sectionItems.find(s => s.id === id))
+      .filter((s): s is ReportSectionConfig => s !== undefined && sectionIdIndex.has(s.id))
+      .sort((a, b) => (sectionIdIndex.get(a.id) ?? 0) - (sectionIdIndex.get(b.id) ?? 0));
+
+    if (phaseItems.length === 0) continue; // skip empty phases
+
+    const col = LEFT_PHASES.has(phase.name) ? tocLeft : tocRight;
+
+    // Phase header
+    let html = `<div class="toc-chapter-block"><div class="toc-chapter-hd">
+      <div class="toc-chapter-hd-name">${esc(phase.name)}</div>
+      <div class="toc-chapter-hd-desc">${esc(phase.desc)}</div>
+    </div>`;
+
+    for (const item of phaseItems) {
+      tocNum++;
+      const desc = TOC_DESCRIPTIONS[item.id] ?? '';
+      html += `<div class="toc-item">
+        <span class="toc-n">${String(tocNum).padStart(2, '0')}</span>
+        <div class="toc-item-body">
+          <span class="toc-t">${esc(item.title)}</span>
+          ${desc ? `<span class="toc-d">${esc(desc)}</span>` : ''}
+        </div>
       </div>`;
     }
-    tocNum++;
-    const subItems = TOC_SUBITEMS[cfg.id] ?? [];
-    const subItemsHtml = subItems.length > 0
-      ? `<div class="toc-subitems">${subItems.map(s => `<span>${esc(s)}</span>`).join('')}</div>`
-      : '';
-    return `<div class="toc-row">
-      <span class="toc-num">${String(tocNum).padStart(2, '0')}</span>
-      <div class="toc-title-group">
-        <span class="toc-title">${esc(cfg.title)}</span>
-        ${subItemsHtml}
-      </div>
-      <span class="toc-dots"></span>
-    </div>`;
-  }).join('');
 
-  const sectionsHtml = enabledSections.map(cfg => {
+    html += '</div>'; // close toc-chapter-block
+    col.push(html);
+  }
+
+  // ── Body section rendering — ordered by TOC phase groups ───────────────────
+  // The body must match the TOC order regardless of how layout.sections is stored in the DB.
+  // Strategy: for each content section ID in TOC_PHASE_GROUPS order, render it if enabled.
+  // Chapters are inserted before whichever content section immediately follows them
+  // in the original layout (so they stay semantically attached to what they introduce).
+  const renderOneCfg = (cfg: ReportSectionConfig): string => {
     if (cfg.type === 'chapter') return renderChapter(cfg);
     if (cfg.type === 'custom')  return renderCustomSection(cfg);
     switch (cfg.id) {
@@ -2278,7 +2352,52 @@ export function buildReportHtml(
       case 'connected_model':            return renderConnectedModel(intelligence.causalIntelligence, cfg);
       default: return '';
     }
-  }).join('\n');
+  };
+
+  // Map: sectionId → config (for fast lookup)
+  const sectionById = new Map(enabledSections.map(s => [s.id, s]));
+
+  // For each chapter: record which content section immediately follows it in original layout
+  const chapterNextContentId = new Map<string, string>();
+  for (let i = 0; i < enabledSections.length; i++) {
+    const cfg = enabledSections[i];
+    if (cfg.type !== 'chapter') continue;
+    const nextContent = enabledSections.slice(i + 1).find(s => s.type !== 'chapter');
+    if (nextContent) chapterNextContentId.set(cfg.id, nextContent.id);
+  }
+
+  // Build body order: walk TOC_PHASE_GROUPS, inserting chapters before their attached section
+  const bodyOrder: ReportSectionConfig[] = [];
+  const insertedIds = new Set<string>();
+
+  const phaseContentIds = TOC_PHASE_GROUPS.flatMap(p => p.sectionIds);
+  for (const id of phaseContentIds) {
+    const cfg = sectionById.get(id);
+    if (!cfg) continue; // section not enabled
+    // Insert any chapters whose next-content is this section
+    for (const [chapId, nextId] of chapterNextContentId) {
+      if (nextId === id && !insertedIds.has(chapId)) {
+        const chapCfg = sectionById.get(chapId);
+        if (chapCfg) { bodyOrder.push(chapCfg); insertedIds.add(chapId); }
+      }
+    }
+    bodyOrder.push(cfg);
+    insertedIds.add(id);
+  }
+  // Append any chapters that weren't placed (orphaned — no following content section)
+  for (const cfg of enabledSections) {
+    if (cfg.type === 'chapter' && !insertedIds.has(cfg.id)) {
+      bodyOrder.push(cfg); insertedIds.add(cfg.id);
+    }
+  }
+  // Append custom sections in original order
+  for (const cfg of enabledSections) {
+    if (cfg.type === 'custom' && !insertedIds.has(cfg.id)) {
+      bodyOrder.push(cfg); insertedIds.add(cfg.id);
+    }
+  }
+
+  const sectionsHtml = bodyOrder.map(renderOneCfg).join('\n');
 
   const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -2295,16 +2414,14 @@ export function buildReportHtml(
 <div style="position:fixed;top:0;left:0;width:100%;height:100%;border:0.75pt solid #dde1e7;box-sizing:border-box;pointer-events:none;border-radius:0;z-index:9999;"></div>
 
 <div class="cover">
+  <div style="height:5px;background:linear-gradient(90deg,#6366f1,#818cf8 55%,#10b981);border-radius:8px 8px 0 0;"></div>
   <div class="cover-top">
-    <div>
+    <div class="cover-top-dream">DREAM</div>
+    <div class="cover-top-title">${esc(workshopName ?? '')}</div>
+    <div class="cover-top-client">
       ${clientLogoBase64
         ? `<img src="${clientLogoBase64}" class="cover-client-logo" alt="${esc(orgName ?? 'Client')} logo" />`
         : `<div class="cover-client-name">${esc(orgName ?? '')}</div>`}
-    </div>
-    <div>
-      ${dreamLogoBase64
-        ? `<img src="${dreamLogoBase64}" class="cover-dream-logo" alt="DREAM" />`
-        : `<div class="cover-dream-wordmark">DREAM</div>`}
     </div>
   </div>
   <div class="cover-body">
@@ -2312,6 +2429,7 @@ export function buildReportHtml(
     <div class="cover-title">${esc(workshopName ?? 'Workshop')}</div>
     <div class="cover-subtitle">${esc(orgName ?? '')}</div>
     <div class="cover-divider"></div>
+    ${dreamLogoBase64 ? `<div class="cover-banner"><img src="${dreamLogoBase64}" alt="DREAM Discovery Platform" /></div>` : ''}
   </div>
   <div class="cover-footer">
     <div>
@@ -2326,20 +2444,19 @@ export function buildReportHtml(
 </div>
 
 <div class="toc-page">
-  <div class="toc-hero">
+  <div class="toc-masthead">
     <div>
-      <div class="toc-hero-sub">Table of Contents</div>
-      <div class="toc-hero-title">${esc(workshopName ?? 'Workshop')}</div>
+      <div class="toc-masthead-eyebrow">Discovery Report — Contents</div>
+      <div class="toc-masthead-title">${esc(workshopName ?? 'Workshop')}</div>
     </div>
-    <div class="toc-hero-meta">
-      <div class="toc-hero-meta-label">Prepared</div>
-      <div class="toc-hero-meta-value">${dateStr}</div>
-      <div class="toc-hero-meta-label" style="margin-top:10px;">${enabledSections.filter(s => s.type !== 'chapter').length} sections</div>
+    <div class="toc-masthead-right">
+      <div class="toc-masthead-date">${dateStr}</div>
+      <div class="toc-masthead-meta">${sectionItems.length}&nbsp;sections &nbsp;·&nbsp; ${esc(orgName ?? 'DREAM Discovery')}</div>
     </div>
   </div>
-  <div class="toc-list">${tocEntries}</div>
-  <div class="toc-footer">
-    <p>This report has been prepared by the DREAM Discovery Platform and summarises the key findings, root causes, and recommended actions from the Discovery &amp; Transformation workshop with ${esc(orgName ?? 'your organisation')}.</p>
+  <div class="toc-columns">
+    <div class="toc-col">${tocLeft.join('')}</div>
+    <div class="toc-col">${tocRight.join('')}</div>
   </div>
 </div>
 
