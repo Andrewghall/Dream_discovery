@@ -176,7 +176,7 @@ export default function DownloadReportPage({ params }: PageProps) {
             // v2 introduced the correct chapter order (Discovery → Journey → Brain Scan).
             // Any stored layout older than v2 gets rebuilt from the new default order,
             // preserving only per-item exclusions and explicit user-disabled state.
-            const needsRebuild = !stored.version || stored.version < 2;
+            const needsRebuild = !stored.version || stored.version < 3;
             const hasCustom   = stored.sections.some(s => s.type === 'custom');
 
             let mergedSections;
@@ -209,7 +209,7 @@ export default function DownloadReportPage({ params }: PageProps) {
               mergedSections = newSections.length > 0 ? [...upgraded, ...newSections] : upgraded;
             }
 
-            setLayout({ ...stored, version: 2, sections: mergedSections });
+            setLayout({ ...stored, version: 3, sections: mergedSections });
             if (stored.clientLogoUrl) setClientLogoUrl(stored.clientLogoUrl);
           }
         }

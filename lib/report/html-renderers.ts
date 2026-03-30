@@ -159,18 +159,41 @@ export function renderExecutiveSummary(summary: ReportSummary, intelligence: Wor
       </div>
     </div>` : '';
 
-  // ── Block 5: Timeline ─────────────────────────────────────────────────────
+  // ── Block 5: Timeline + Gantt ─────────────────────────────────────────────
   const roadmapPhases = intelligence.roadmap?.phases ?? [];
-  const timelineCards = roadmapPhases.slice(0, 3).map((p, i) => {
-    const colors = ['#6366f1', '#10b981', '#8b5cf6'];
-    const c = colors[i] ?? colors[0];
-    return `
-      <div class="es-timeline-card" style="border-top:3px solid ${c}">
-        <div class="es-timeline-num" style="color:${c}">${i + 1}</div>
-        <div class="es-timeline-phase">${esc(p.phase ?? `Phase ${i + 1}`)}</div>
-        ${p.timeframe ? `<div class="es-timeline-tf">${esc(p.timeframe)}</div>` : ''}
-      </div>`;
-  }).join('');
+  const phaseColorsEs = [
+    { color: '#6366f1', borderColor: '#a5b4fc', textColor: '#4338ca', bgColor: '#eff6ff' },
+    { color: '#10b981', borderColor: '#6ee7b7', textColor: '#065f46', bgColor: '#ecfdf5' },
+    { color: '#8b5cf6', borderColor: '#c4b5fd', textColor: '#6d28d9', bgColor: '#f5f3ff' },
+  ];
+  const esGanttPhases: WayForwardPhase[] = roadmapPhases.slice(0, 3).map((p, i) => {
+    const c = phaseColorsEs[i] ?? phaseColorsEs[0];
+    return {
+      phase: ((i + 1) as 1 | 2 | 3),
+      name: p.phase ?? `Phase ${i + 1}`,
+      timeline: p.timeframe ?? '',
+      color: c.color,
+      borderColor: c.borderColor,
+      textColor: c.textColor,
+      bgColor: c.bgColor,
+      items: (p.initiatives ?? []).slice(0, 3).map(init => ({
+        nodeId: `es:${i}:${init.title ?? ''}`,
+        label: init.title ?? '',
+        description: init.outcome ?? init.description ?? '',
+        isManual: false,
+      })),
+      dependencies: (p.dependencies ?? []).join(', '),
+      expectedOutcome: p.initiatives?.[0]?.outcome ?? '',
+    };
+  });
+  const timelineCards = esGanttPhases.map((phase, i) => `
+      <div class="es-timeline-card" style="border-top:3px solid ${phase.color}">
+        <div class="es-timeline-num" style="color:${phase.color}">${i + 1}</div>
+        <div class="es-timeline-phase">${esc(phase.name)}</div>
+        ${phase.timeline ? `<div class="es-timeline-tf">${esc(phase.timeline)}</div>` : ''}
+      </div>`).join('');
+
+  const esGanttHtml = esGanttPhases.length > 0 ? renderWayForwardGantt(esGanttPhases) : '';
 
   const urgencyBand = es.urgency ? `
     <div class="es-urgency-band" style="margin-top:12px">
@@ -183,6 +206,7 @@ export function renderExecutiveSummary(summary: ReportSummary, intelligence: Wor
 
   const timelineBlock = (timelineCards || urgencyBand) ? `
     <div class="es-section-label">Timeline</div>
+    ${esGanttHtml}
     ${timelineCards ? `<div class="es-timeline-grid">${timelineCards}</div>` : ''}
     ${urgencyBand}` : '';
 
@@ -1115,11 +1139,47 @@ function renderWayForwardGantt(phases: WayForwardPhase[]): string {
     </div>`;
 }
 
-export function renderWayForward(tlm: TransformationLogicMap | undefined): string {
-  if (!tlm) return '';
-  const phases = buildWayForward(tlm, new Set());
+export function renderWayForward(
+  tlm: TransformationLogicMap | undefined,
+  intelligence?: WorkshopOutputIntelligence,
+): string {
+  // Try TLM-derived phases first
+  let phases: WayForwardPhase[] = [];
+  if (tlm) {
+    phases = buildWayForward(tlm, new Set());
+  }
+
+  // Fallback: derive phases from intelligence.roadmap.phases when TLM absent or yields nothing
+  if (phases.length === 0 && intelligence?.roadmap?.phases?.length) {
+    const phaseColors = [
+      { color: '#6366f1', borderColor: '#a5b4fc', textColor: '#4338ca', bgColor: '#eff6ff' },
+      { color: '#10b981', borderColor: '#6ee7b7', textColor: '#065f46', bgColor: '#ecfdf5' },
+      { color: '#8b5cf6', borderColor: '#c4b5fd', textColor: '#6d28d9', bgColor: '#f5f3ff' },
+    ];
+    phases = intelligence.roadmap.phases.slice(0, 3).map((p, i) => {
+      const c = phaseColors[i] ?? phaseColors[0];
+      return {
+        phase: ((i + 1) as 1 | 2 | 3),
+        name: p.phase ?? `Phase ${i + 1}`,
+        timeline: p.timeframe ?? '',
+        color: c.color,
+        borderColor: c.borderColor,
+        textColor: c.textColor,
+        bgColor: c.bgColor,
+        items: (p.initiatives ?? []).slice(0, 5).map(init => ({
+          nodeId: `roadmap:${i}:${init.title ?? ''}`,
+          label: init.title ?? '',
+          description: init.outcome ?? init.description ?? '',
+          isManual: false,
+        })),
+        dependencies: (p.dependencies ?? []).join(', '),
+        expectedOutcome: p.initiatives?.[0]?.outcome ?? p.initiatives?.[0]?.description ?? '',
+      };
+    });
+  }
+
   const totalItems = phases.reduce((s, p) => s + p.items.length, 0);
-  if (totalItems === 0) return '';
+  if (phases.length === 0 && totalItems === 0) return '';
 
   const phaseHtml = phases.map(phase => {
     const items = phase.items.map(item => `
@@ -1781,7 +1841,7 @@ export function buildReportHtml(
       case 'facilitator_contact':        return renderFacilitatorBackPage(reportSummary, dreamLogoBase64);
       case 'report_conclusion':          return renderConclusion(reportSummary);
       case 'transformation_priorities':  return renderTransformationPriorities(intelligence.transformationLogicMap);
-      case 'way_forward':                return renderWayForward(intelligence.transformationLogicMap);
+      case 'way_forward':                return renderWayForward(intelligence.transformationLogicMap, intelligence);
       case 'connected_model':            return renderConnectedModel(intelligence.causalIntelligence, cfg);
       default: return '';
     }
