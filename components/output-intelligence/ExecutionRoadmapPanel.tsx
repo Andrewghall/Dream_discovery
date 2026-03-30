@@ -38,32 +38,36 @@ function parseBreakEvenWeek(timeline: string, phaseEndWeek: number): number {
   return phaseEndWeek + 26;
 }
 
-const PHASE_WINDOWS: [number, number][] = [[0, 4], [4, 12], [12, 52]];
+// Real delivery windows in weeks (Phase 1 = 0–3 months, Phase 2 = 3–9 months, Phase 3 = 9–18 months)
+// Previously used compressed chart units [0,4],[4,12],[12,52] which caused break-even calc to place
+// benefit accrual start mostly beyond the visible range — benefit line never crossed cost.
+const PHASE_WINDOWS: [number, number][] = [[0, 13], [13, 39], [39, 78]];
 
-/** Build cumulative cost + benefit curve at 2-week intervals, 0–52 */
+/** Build cumulative cost + benefit curve at 2-week intervals, 0–156 (3 years) */
 function buildRoiCurve(
   phases: RoiPhaseEstimate[],
 ): Array<{ week: number; cost: number; benefit: number }> {
   const costs    = phases.map(p => parseMidKGBP(p.estimatedCost));
   const benefits = phases.map(p => parseMidKGBP(p.estimatedAnnualBenefit) / 52); // per week
   const breakEvens = phases.map((p, i) =>
-    parseBreakEvenWeek(p.breakEvenTimeline, PHASE_WINDOWS[i]?.[1] ?? 52)
+    parseBreakEvenWeek(p.breakEvenTimeline, PHASE_WINDOWS[i]?.[1] ?? 78)
   );
 
   const STEP = 2;
   let cCost = 0, cBenefit = 0;
   const points: Array<{ week: number; cost: number; benefit: number }> = [];
 
-  for (let w = 0; w <= 52; w += STEP) {
+  // Extend to W156 (3 years) so the benefit line has room to cross the cost line
+  for (let w = 0; w <= 156; w += STEP) {
     for (let ph = 0; ph < phases.length; ph++) {
-      const [start, end] = PHASE_WINDOWS[ph] ?? [0, 4];
+      const [start, end] = PHASE_WINDOWS[ph] ?? [0, 13];
       if (w > start && w <= end) {
         cCost += (costs[ph] / (end - start)) * STEP;
       }
     }
     for (let ph = 0; ph < phases.length; ph++) {
       const be = breakEvens[ph] ?? 999;
-      if (w >= be && be <= 52) cBenefit += benefits[ph] * STEP;
+      if (w >= be) cBenefit += benefits[ph] * STEP;
     }
     points.push({ week: w, cost: Math.round(cCost), benefit: Math.round(cBenefit) });
   }
@@ -127,18 +131,19 @@ function EditableCell({
 
 // ── Gantt chart ───────────────────────────────────────────────────────────────
 
+// Real week windows: Phase 1 = 3 months (W0–W13), Phase 2 = 3–9 months (W13–W39), Phase 3 = 9–18 months (W39–W78)
 const GANTT_PHASE_WEEKS = [
-  { start: 1,  end: 4  },
-  { start: 5,  end: 12 },
-  { start: 13, end: 52 },
+  { start: 0,  end: 13 },
+  { start: 13, end: 39 },
+  { start: 39, end: 78 },
 ] as const;
 
 const GANTT_PHASE_COLORS = ['#2563eb', '#7e22ce', '#047857'] as const;
 
 const PHASE_BANDS = [
-  { x1: 0,  x2: 4,  mid: 2,  fill: '#2563eb' },
-  { x1: 4,  x2: 12, mid: 8,  fill: '#7e22ce' },
-  { x1: 12, x2: 52, mid: 32, fill: '#047857' },
+  { x1: 0,  x2: 13, mid: 6,  fill: '#2563eb' },
+  { x1: 13, x2: 39, mid: 26, fill: '#7e22ce' },
+  { x1: 39, x2: 78, mid: 58, fill: '#047857' },
 ] as const;
 
 // Recharts margins — must match exactly for SVG overlay alignment
@@ -391,11 +396,20 @@ function RoadmapGantt({
             })}
 
             <XAxis
-              type="number" domain={[0, 52]}
-              ticks={[0, 4, 12, 26, 52]}
-              tickFormatter={v => v === 0 ? 'Now' : `W${v}`}
+              type="number" domain={[0, 156]}
+              ticks={[0, 13, 39, 78, 104, 130, 156]}
+              tickFormatter={v => {
+                if (v === 0) return 'Now';
+                if (v === 13) return '3 mo';
+                if (v === 39) return '9 mo';
+                if (v === 78) return '18 mo';
+                if (v === 104) return '2 yr';
+                if (v === 130) return '2.5 yr';
+                if (v === 156) return '3 yr';
+                return `W${v}`;
+              }}
               tick={{ fontSize: 10 }}
-              label={{ value: 'Weeks from kickoff', position: 'insideBottom', offset: -12, fontSize: 11 }}
+              label={{ value: 'Timeline from kickoff', position: 'insideBottom', offset: -12, fontSize: 11 }}
             />
             <YAxis dataKey="name" type="category" width={Y_AXIS_W} tick={{ fontSize: 10 }} />
             <Tooltip

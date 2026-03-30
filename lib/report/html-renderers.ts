@@ -14,6 +14,7 @@ import type {
   TransformationLogicMap,
   CausalIntelligence,
   CausalFinding,
+  ExecutionRoadmap,
 } from '@/lib/output-intelligence/types';
 import {
   computePriorityNodes,
@@ -1103,6 +1104,7 @@ export function renderTransformationPriorities(tlm: TransformationLogicMap | und
 
 // ── Way Forward ───────────────────────────────────────────────────────────────
 
+// ── Simple 3-phase bar (used in Executive Summary timeline block) ─────────────
 function renderWayForwardGantt(phases: WayForwardPhase[]): string {
   if (!phases.length) return '';
   const W = 700; const H = 72; const BAR_H = 34; const Y = 22;
@@ -1126,8 +1128,7 @@ function renderWayForwardGantt(phases: WayForwardPhase[]): string {
   const ticks = phases.map((p, i) => {
     const x = i * segW;
     const label = i === 0 ? 'Now' : p.timeline.split('–')[0].trim().split('-')[0].trim();
-    return `
-      <text x="${x + 4}" y="${Y - 5}" font-size="6.5" font-family="Inter,Helvetica,sans-serif" fill="#94a3b8">${esc(label)}</text>`;
+    return `<text x="${x + 4}" y="${Y - 5}" font-size="6.5" font-family="Inter,Helvetica,sans-serif" fill="#94a3b8">${esc(label)}</text>`;
   }).join('');
 
   return `
@@ -1136,6 +1137,219 @@ function renderWayForwardGantt(phases: WayForwardPhase[]): string {
         <rect width="${W}" height="${H}" fill="#f8fafc" />
         ${ticks}${bars}${dividers}
       </svg>
+    </div>`;
+}
+
+// ── Parse £k/£m mid-point (for PDF ROI curves) ───────────────────────────────
+function parseMidKForPdf(s: string): number {
+  if (!s) return 0;
+  const matches = [...(s.matchAll(/£?\s*(\d+(?:\.\d+)?)\s*(k|m)?/gi))];
+  if (!matches.length) return 0;
+  const vals = matches.slice(0, 2).map(m => {
+    const n = parseFloat(m[1]);
+    const unit = (m[2] ?? '').toLowerCase();
+    return unit === 'm' ? n * 1000 : unit === 'k' ? n : n;
+  });
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+// ── Full initiative-level Gantt (used in Way Forward section) ────────────────
+// Mirrors the Brain Scan Gantt: initiative bars by phase + cumulative cost/benefit curves
+function renderPdfRoadmapGantt(roadmap: ExecutionRoadmap): string {
+  const phases = roadmap?.phases ?? [];
+  if (!phases.length) return '';
+
+  // Phase windows in real weeks (matching the fixed ExecutionRoadmapPanel)
+  const PHASE_WINS = [[0, 13], [13, 39], [39, 78]];
+  const TOTAL_W_CHART = 156; // 3 years
+  const PHASE_COLORS = ['#2563eb', '#7e22ce', '#047857'];
+  const PHASE_COLORS_LIGHT = ['#dbeafe', '#ede9fe', '#d1fae5'];
+
+  // SVG layout constants
+  const SVG_W = 700;
+  const LABEL_W = 155;
+  const RIGHT_M = 44; // space for right-side £ axis
+  const CHART_W = SVG_W - LABEL_W - RIGHT_M;
+  const TOP_H = 34;   // phase header band
+  const BOT_H = 22;   // week label row
+  const BAR_H = 15;
+  const BAR_GAP = 4;
+
+  const toX = (w: number) => LABEL_W + (w / TOTAL_W_CHART) * CHART_W;
+
+  // Build initiative rows
+  const rows: Array<{ label: string; pi: number; x1w: number; x2w: number }> = [];
+  phases.slice(0, 3).forEach((phase, pi) => {
+    const win = PHASE_WINS[pi] ?? PHASE_WINS[2];
+    const inits = phase.initiatives ?? [];
+    const count = Math.max(inits.length, 1);
+    const span  = win[1] - win[0];
+    inits.forEach((init, ii) => {
+      const seg   = Math.floor(span / count);
+      const x1w   = win[0] + ii * seg;
+      const x2w   = ii === count - 1 ? win[1] : x1w + seg;
+      rows.push({ label: init.title ?? '', pi, x1w, x2w });
+    });
+  });
+  if (!rows.length) return '';
+
+  const CHART_H = TOP_H + rows.length * (BAR_H + BAR_GAP) + BAR_GAP + BOT_H;
+
+  // Phase band backgrounds + headers
+  const phaseBands = PHASE_WINS.slice(0, phases.length).map((win, pi) => {
+    const x = toX(win[0]);
+    const bw = toX(win[1]) - x;
+    const mid = toX((win[0] + win[1]) / 2);
+    const costLbl = roadmap.roiSummary?.phases?.[pi]?.estimatedCost ?? '';
+    const phLabel = `Phase ${pi + 1}`;
+    return `
+      <rect x="${x.toFixed(1)}" y="${TOP_H}" width="${bw.toFixed(1)}" height="${CHART_H - TOP_H - BOT_H}" fill="${PHASE_COLORS_LIGHT[pi]}" opacity="0.45"/>
+      <rect x="${x.toFixed(1)}" y="0" width="${bw.toFixed(1)}" height="${TOP_H}" fill="${PHASE_COLORS[pi]}" opacity="0.1"/>
+      <text x="${mid.toFixed(1)}" y="12" text-anchor="middle" font-size="8" font-weight="700" font-family="Inter,Helvetica,sans-serif" fill="${PHASE_COLORS[pi]}">${phLabel}</text>
+      ${costLbl ? `<text x="${mid.toFixed(1)}" y="26" text-anchor="middle" font-size="7" font-family="Inter,Helvetica,sans-serif" fill="${PHASE_COLORS[pi]}">£ ${esc(costLbl)}</text>` : ''}`;
+  }).join('');
+
+  // Initiative bars
+  const barRows = rows.map((r, i) => {
+    const y   = TOP_H + BAR_GAP + i * (BAR_H + BAR_GAP);
+    const x   = toX(r.x1w);
+    const bw  = Math.max(toX(r.x2w) - x - 1, 12);
+    const col = PHASE_COLORS[r.pi] ?? '#6366f1';
+    const lbl = r.label.length > 24 ? r.label.slice(0, 22) + '…' : r.label;
+    return `
+      <text x="${(LABEL_W - 5).toFixed(1)}" y="${(y + BAR_H / 2 + 3.5).toFixed(1)}" text-anchor="end" font-size="7" font-family="Inter,Helvetica,sans-serif" fill="#475569">${esc(lbl)}</text>
+      <rect x="${x.toFixed(1)}" y="${y}" width="${bw.toFixed(1)}" height="${BAR_H}" rx="3" fill="${col}" opacity="0.82"/>`;
+  }).join('');
+
+  // Grid lines at phase boundaries
+  const gridLines = [13, 39, 78].map(w => {
+    const x = toX(w);
+    return `<line x1="${x.toFixed(1)}" y1="${TOP_H}" x2="${x.toFixed(1)}" y2="${CHART_H - BOT_H}" stroke="#94a3b8" stroke-width="0.75" stroke-dasharray="3,3"/>`;
+  }).join('');
+
+  // Axis tick marks + labels at bottom
+  const axisTicks = [
+    { w: 0,   lbl: 'Now'  },
+    { w: 13,  lbl: '3 mo' },
+    { w: 39,  lbl: '9 mo' },
+    { w: 78,  lbl: '18 mo' },
+    { w: 104, lbl: '2 yr'  },
+    { w: 130, lbl: '2.5 yr' },
+    { w: 156, lbl: '3 yr'  },
+  ].map(({ w, lbl }) => {
+    const x = toX(w);
+    const anchor = w === 0 ? 'start' : w === TOTAL_W_CHART ? 'end' : 'middle';
+    return `
+      <line x1="${x.toFixed(1)}" y1="${TOP_H}" x2="${x.toFixed(1)}" y2="${CHART_H - BOT_H + 4}" stroke="#cbd5e1" stroke-width="0.5"/>
+      <text x="${x.toFixed(1)}" y="${CHART_H - 5}" text-anchor="${anchor}" font-size="6.5" font-family="Inter,Helvetica,sans-serif" fill="#94a3b8">${lbl}</text>`;
+  }).join('');
+
+  // Build cumulative cost / benefit curves from roiSummary
+  let roiOverlay = '';
+  const roi = roadmap.roiSummary;
+  if (roi?.phases?.length) {
+    const costs    = roi.phases.map(p => parseMidKForPdf(p.estimatedCost));
+    const benefits = roi.phases.map(p => parseMidKForPdf(p.estimatedAnnualBenefit) / 52);
+    // Break-even weeks: phase end (real weeks) + post-delivery months
+    const breakEvens = roi.phases.map((p, pi) => {
+      const phaseEnd = PHASE_WINS[pi]?.[1] ?? 78;
+      const m = p.breakEvenTimeline?.match(/(\d+)\s*[-–]\s*(\d+)\s*months?/i);
+      if (m) return phaseEnd + ((parseInt(m[1]) + parseInt(m[2])) / 2) * 4.33;
+      const s = p.breakEvenTimeline?.match(/(\d+)\s*months?/i);
+      return s ? phaseEnd + parseInt(s[1]) * 4.33 : phaseEnd + 26;
+    });
+
+    // Build curve points 0–156 in steps of 4
+    const pts: Array<{ w: number; cost: number; ben: number }> = [];
+    let cCost = 0, cBen = 0;
+    for (let w = 0; w <= TOTAL_W_CHART; w += 4) {
+      for (let ph = 0; ph < roi.phases.length; ph++) {
+        const [ws, we] = PHASE_WINS[ph] ?? [0, 13];
+        if (w > ws && w <= we) cCost += (costs[ph] / (we - ws)) * 4;
+      }
+      for (let ph = 0; ph < roi.phases.length; ph++) {
+        if (w >= (breakEvens[ph] ?? 999)) cBen += benefits[ph] * 4;
+      }
+      pts.push({ w, cost: Math.round(cCost), ben: Math.round(cBen) });
+    }
+
+    const maxVal = Math.max(...pts.map(p => Math.max(p.cost, p.ben)), 100);
+    const yMax   = maxVal * 1.15;
+    const chartH = CHART_H - TOP_H - BOT_H;
+    const toY    = (v: number) => TOP_H + chartH * (1 - v / yMax);
+
+    const costPath    = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${toX(p.w).toFixed(1)},${toY(p.cost).toFixed(1)}`).join(' ');
+    const benPath     = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${toX(p.w).toFixed(1)},${toY(p.ben).toFixed(1)}`).join(' ');
+
+    // Right-axis £ labels
+    const yTicks = [0, 0.25, 0.5, 0.75, 1].map(pct => {
+      const val = yMax * pct;
+      const y   = toY(val);
+      const lbl = val >= 1000 ? `£${(val / 1000).toFixed(1)}m` : val === 0 ? '£0' : `£${Math.round(val)}k`;
+      return `<text x="${(LABEL_W + CHART_W + 6).toFixed(1)}" y="${y.toFixed(1)}" font-size="6.5" font-family="Inter,Helvetica,sans-serif" fill="#94a3b8" dominant-baseline="middle">${lbl}</text>`;
+    }).join('');
+
+    // Payback crossover marker
+    let paybackMarker = '';
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i].ben >= pts[i].cost && pts[i - 1].ben < pts[i - 1].cost) {
+        const px = toX(pts[i].w);
+        const py = toY(pts[i].cost);
+        paybackMarker = `
+          <line x1="${px.toFixed(1)}" y1="${TOP_H}" x2="${px.toFixed(1)}" y2="${(CHART_H - BOT_H).toFixed(1)}" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7"/>
+          <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="4" fill="#f59e0b" stroke="#fff" stroke-width="1.5"/>
+          <rect x="${(px + 5).toFixed(1)}" y="${(py - 16).toFixed(1)}" width="58" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.75" fill-opacity="0.95"/>
+          <text x="${(px + 8).toFixed(1)}" y="${(py - 5).toFixed(1)}" font-size="6.5" font-weight="700" font-family="Inter,Helvetica,sans-serif" fill="#b45309">Payback ~${pts[i].w}w</text>`;
+        break;
+      }
+    }
+
+    // Benefit area fill
+    const benAreaPath = [
+      `M${toX(0).toFixed(1)},${toY(0).toFixed(1)}`,
+      ...pts.map(p => `L${toX(p.w).toFixed(1)},${toY(p.ben).toFixed(1)}`),
+      `L${toX(TOTAL_W_CHART).toFixed(1)},${toY(0).toFixed(1)} Z`,
+    ].join(' ');
+
+    roiOverlay = `
+      <defs><linearGradient id="pdf-ben-grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#10b981" stop-opacity="0.15"/>
+        <stop offset="100%" stop-color="#10b981" stop-opacity="0.02"/>
+      </linearGradient></defs>
+      <path d="${benAreaPath}" fill="url(#pdf-ben-grad)"/>
+      <path d="${costPath}" fill="none" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="7,4" opacity="0.85"/>
+      <path d="${benPath}" fill="none" stroke="#059669" stroke-width="2" opacity="0.85"/>
+      ${paybackMarker}
+      ${yTicks}`;
+  }
+
+  // Legend row
+  const legend = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px 20px;margin-top:6px;padding:0 2px;font-size:7.5pt;font-family:Inter,Helvetica,sans-serif;color:#64748b">
+      ${phases.slice(0, 3).map((ph, pi) => `
+        <span style="display:inline-flex;align-items:center;gap:5px">
+          <span style="display:inline-block;width:12px;height:10px;border-radius:2px;background:${PHASE_COLORS[pi]}"></span>
+          Phase ${pi + 1}${ph.timeframe ? ` · ${esc(ph.timeframe)}` : ''}${roadmap.roiSummary?.phases?.[pi]?.estimatedCost ? ` · ${esc(roadmap.roiSummary.phases[pi].estimatedCost)}` : ''}
+        </span>`).join('')}
+      <span style="display:inline-flex;align-items:center;gap:5px;border-left:1px solid #e2e8f0;margin-left:4px;padding-left:12px">
+        <svg width="18" height="8"><line x1="0" y1="4" x2="18" y2="4" stroke="#dc2626" stroke-width="2" stroke-dasharray="5,3"/></svg> Cumul. cost
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:5px">
+        <svg width="18" height="8"><line x1="0" y1="4" x2="18" y2="4" stroke="#059669" stroke-width="2.5"/></svg> Cumul. benefit
+      </span>
+    </div>`;
+
+  return `
+    <div class="wf-gantt-wrap" style="padding:0">
+      <svg viewBox="0 0 ${SVG_W} ${CHART_H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+        <rect width="${SVG_W}" height="${CHART_H}" fill="#f8fafc" rx="8"/>
+        ${phaseBands}
+        ${gridLines}
+        ${axisTicks}
+        ${barRows}
+        ${roiOverlay}
+      </svg>
+      ${legend}
     </div>`;
 }
 
@@ -1215,12 +1429,15 @@ export function renderWayForward(
       </div>`;
   }).join('');
 
+  // Use the full initiative-level Gantt (with cost/benefit curves) when roadmap data is available
+  const fullGantt = intelligence?.roadmap ? renderPdfRoadmapGantt(intelligence.roadmap) : renderWayForwardGantt(phases);
+
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Way Forward</div></div>
       ${sectionIntro('A sequenced, three-phase plan derived from the transformation logic map — ordered by structural dependency, not urgency, to ensure each phase builds on solid foundations.')}
-      <p class="wf-intro">A sequenced, three-phase plan derived from the transformation logic map — ordered by structural dependency, not urgency.</p>
-      ${renderWayForwardGantt(phases)}
+      <p class="wf-intro">Delivery timeline — initiative bars by phase with cumulative cost and benefit curves.</p>
+      ${fullGantt}
       <div class="wf-grid">${phaseHtml}</div>
     </section>`;
 }
