@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { AlertTriangle, TrendingUp, DollarSign, CheckCircle2, Info, Edit3 } from 'lucide-react';
+import { AlertTriangle, TrendingUp, PoundSterling, CheckCircle2, Info, Edit3 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, ReferenceArea,
@@ -666,7 +666,7 @@ function RoiTable({
       {/* Programme totals strip — editable */}
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 flex items-center gap-3">
-          <DollarSign className="h-5 w-5 text-slate-400 shrink-0" />
+          <PoundSterling className="h-5 w-5 text-slate-400 shrink-0" />
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Total programme cost</p>
             <EditableCell

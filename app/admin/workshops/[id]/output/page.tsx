@@ -39,7 +39,7 @@ import {
   Calendar,
   Shield,
   Cpu,
-  DollarSign,
+  PoundSterling,
   Building2,
   RefreshCw,
 } from 'lucide-react';
@@ -113,7 +113,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 const CONSTRAINT_ICONS: Record<string, React.ElementType> = {
   regulatory:     Shield,
   technical:      Cpu,
-  commercial:     DollarSign,
+  commercial:     PoundSterling,
   organizational: Building2,
 };
 

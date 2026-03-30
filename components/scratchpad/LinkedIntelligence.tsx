@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Lightbulb, TrendingUp, DollarSign } from 'lucide-react';
+import { Lightbulb, TrendingUp, PoundSterling } from 'lucide-react';
 
 interface IntelligenceItem {
   title: string;
@@ -61,7 +61,7 @@ export function LinkedIntelligence({ clinical, strategic, commercial }: LinkedIn
         <Card className="bg-green-50 border-green-200">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold text-green-900 flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
+              <PoundSterling className="h-4 w-4" />
               Commercial
             </CardTitle>
           </CardHeader>
