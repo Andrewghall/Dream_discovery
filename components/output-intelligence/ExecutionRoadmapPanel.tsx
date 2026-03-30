@@ -158,7 +158,7 @@ const PHASE_BANDS = [
 
 // Recharts margins — must match exactly for SVG overlay alignment
 const CHART_MARGIN = { top: 8, right: 24, bottom: 28, left: 8 } as const;
-const Y_AXIS_W = 210; // wider so full initiative names are readable
+const Y_AXIS_W = 300; // wide enough to show full initiative names without truncation
 // Effective chart area offsets:
 //   left  = CHART_MARGIN.left + Y_AXIS_W
 //   right = CHART_MARGIN.right
@@ -398,14 +398,14 @@ function RoadmapGantt({
     [editableRoi],
   );
 
-  // Dynamic chart end: stop at Phase 3 break-even + 15% buffer (no wasted space)
+  // Dynamic chart end: stop exactly at Phase 3 break-even (+ 4 weeks so marker isn't clipped)
   const chartMaxWeek = useMemo(() => {
     if (!roiCurve.length || !editableRoi?.phases?.length) return 156;
     const phaseCosts = editableRoi.phases.map(p => parseMidKGBP(p.estimatedCost));
     const totalCost  = phaseCosts.reduce((a, b) => a + b, 0);
     for (const pt of roiCurve) {
       if (pt.benefit >= totalCost) {
-        return Math.ceil(pt.week * 1.15 / 4) * 4; // 15% buffer, rounded to 4-week boundary
+        return pt.week + 4; // stop 4 weeks past break-even — just enough for the marker
       }
     }
     return 156;
@@ -426,7 +426,7 @@ function RoadmapGantt({
       const startWeek = window.start + initIdx * segSize;
       const endWeek   = initIdx === count - 1 ? window.end : startWeek + segSize;
       rows.push({
-        name: init.title.length > 36 ? init.title.slice(0, 34) + '…' : init.title,
+        name: init.title,
         color,
         offset: startWeek - 1,
         duration: endWeek - startWeek + 1,
