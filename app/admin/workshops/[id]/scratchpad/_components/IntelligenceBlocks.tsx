@@ -98,84 +98,94 @@ export function ExecutiveSummaryBlock({
         </div>
       )}
 
-      {/* Delivery Timeline — Gantt + ROI */}
-      {(ganttSvg || roi) && (
-        <div className="px-6 py-5 border-b border-border bg-slate-50 space-y-4">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-            Delivery Timeline &amp; ROI
-          </p>
-          {ganttSvg && (
-            <div
-              className="overflow-x-auto rounded-xl border border-border bg-white p-3"
-              dangerouslySetInnerHTML={{ __html: ganttSvg }}
-            />
-          )}
-          {roi && (
-            <div className="grid grid-cols-3 gap-3">
-              {roi.totalProgrammeCost && (
-                <div className="rounded-xl border border-border bg-white px-4 py-3">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Investment</p>
-                  <p className="text-sm font-bold text-foreground">{roi.totalProgrammeCost}</p>
-                </div>
-              )}
-              {roi.totalThreeYearBenefit && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                  <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide mb-1">3-Year Benefit</p>
-                  <p className="text-sm font-bold text-emerald-800">{roi.totalThreeYearBenefit}</p>
-                </div>
-              )}
-              {roi.paybackPeriod && (
-                <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-                  <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">Payback Period</p>
-                  <p className="text-sm font-bold text-foreground">{roi.paybackPeriod}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Body */}
       <div className="px-6 py-6 space-y-7">
 
-        {/* What We Found — numbered findings */}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
-            What We Found
-          </p>
-          <ul className="space-y-3">
-            {whatWeFound.map((finding, i) => (
-              <ItemToggle key={i} id={`finding:${i}`} excluded={excludedItems.includes(`finding:${i}`)} onToggle={onToggleItem}>
-                <div className="flex items-start gap-3 group/finding">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary mt-0.5">
-                    {i + 1}
-                  </span>
-                  <EditableText
-                    value={finding}
-                    onSave={(v) => {
-                      const updated = whatWeFound.map((f, j) => j === i ? v : f);
-                      onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
-                    }}
-                    className="flex-1 text-sm text-foreground leading-relaxed"
-                  />
-                  <button
-                    onClick={() => {
-                      const updated = whatWeFound.filter((_, j) => j !== i);
-                      onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
-                    }}
-                    className="opacity-0 group-hover/finding:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
-                    title="Remove finding"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </ItemToggle>
-            ))}
-          </ul>
-          <AddItemInput
-            onAdd={(text) => onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: [...whatWeFound, text] } })}
-            placeholder="Add a finding — name a system, metric, or process"
-          />
+        {/* What We Found — positives first, then challenges */}
+        <div className="space-y-5">
+
+          {/* Strengths & Enablers */}
+          {(es.whatWeFoundPositive ?? []).length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700 mb-3">
+                What&rsquo;s Working
+              </p>
+              <ul className="space-y-2">
+                {(es.whatWeFoundPositive ?? []).map((item, i) => (
+                  <ItemToggle key={i} id={`positive:${i}`} excluded={excludedItems.includes(`positive:${i}`)} onToggle={onToggleItem}>
+                    <div className="flex items-start gap-3 group/positive rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-200 text-[10px] font-bold text-emerald-800 mt-0.5">
+                        ✓
+                      </span>
+                      <EditableText
+                        value={item}
+                        onSave={(v) => {
+                          const updated = (es.whatWeFoundPositive ?? []).map((f, j) => j === i ? v : f);
+                          onUpdate({ ...summary, executiveSummary: { ...es, whatWeFoundPositive: updated } });
+                        }}
+                        className="flex-1 text-sm text-emerald-900 leading-relaxed"
+                      />
+                      <button
+                        onClick={() => {
+                          const updated = (es.whatWeFoundPositive ?? []).filter((_, j) => j !== i);
+                          onUpdate({ ...summary, executiveSummary: { ...es, whatWeFoundPositive: updated } });
+                        }}
+                        className="opacity-0 group-hover/positive:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
+                        title="Remove"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </ItemToggle>
+                ))}
+              </ul>
+              <AddItemInput
+                onAdd={(text) => onUpdate({ ...summary, executiveSummary: { ...es, whatWeFoundPositive: [...(es.whatWeFoundPositive ?? []), text] } })}
+                placeholder="Add a strength or enabler"
+              />
+            </div>
+          )}
+
+          {/* Challenges */}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+              {(es.whatWeFoundPositive ?? []).length > 0 ? 'Challenges' : 'What We Found'}
+            </p>
+            <ul className="space-y-3">
+              {whatWeFound.map((finding, i) => (
+                <ItemToggle key={i} id={`finding:${i}`} excluded={excludedItems.includes(`finding:${i}`)} onToggle={onToggleItem}>
+                  <div className="flex items-start gap-3 group/finding">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary mt-0.5">
+                      {i + 1}
+                    </span>
+                    <EditableText
+                      value={finding}
+                      onSave={(v) => {
+                        const updated = whatWeFound.map((f, j) => j === i ? v : f);
+                        onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
+                      }}
+                      className="flex-1 text-sm text-foreground leading-relaxed"
+                    />
+                    <button
+                      onClick={() => {
+                        const updated = whatWeFound.filter((_, j) => j !== i);
+                        onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
+                      }}
+                      className="opacity-0 group-hover/finding:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
+                      title="Remove finding"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </ItemToggle>
+              ))}
+            </ul>
+            <AddItemInput
+              onAdd={(text) => onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: [...whatWeFound, text] } })}
+              placeholder="Add a challenge — name a system, metric, or process"
+            />
+          </div>
+
         </div>
 
         {/* Per-Lens Findings */}
@@ -261,7 +271,45 @@ export function ExecutiveSummaryBlock({
             />
           </div>
         )}
+
       </div>
+
+      {/* Delivery Timeline — Gantt + ROI — last item in exec summary */}
+      {(ganttSvg || roi) && (
+        <div className="px-6 py-5 border-t border-border bg-slate-50 space-y-4">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Delivery Timeline &amp; ROI
+          </p>
+          {ganttSvg && (
+            <div
+              className="overflow-x-auto rounded-xl border border-border bg-white p-3"
+              dangerouslySetInnerHTML={{ __html: ganttSvg }}
+            />
+          )}
+          {roi && (
+            <div className="grid grid-cols-3 gap-3">
+              {roi.totalProgrammeCost && (
+                <div className="rounded-xl border border-border bg-white px-4 py-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Investment</p>
+                  <p className="text-sm font-bold text-foreground">{roi.totalProgrammeCost}</p>
+                </div>
+              )}
+              {roi.totalThreeYearBenefit && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide mb-1">3-Year Benefit</p>
+                  <p className="text-sm font-bold text-emerald-800">{roi.totalThreeYearBenefit}</p>
+                </div>
+              )}
+              {roi.paybackPeriod && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">Payback Period</p>
+                  <p className="text-sm font-bold text-foreground">{roi.paybackPeriod}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

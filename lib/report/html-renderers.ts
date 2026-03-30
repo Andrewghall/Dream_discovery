@@ -140,25 +140,21 @@ export function renderExecutiveSummary(summary: ReportSummary, intelligence: Wor
   // ── Block 4: Approach to Resolve ─────────────────────────────────────────
   const approachBlock = (ss?.direction || es.whyItMatters || es.opportunityOrRisk) ? `
     <div class="es-section-label">Approach to Resolve</div>
-    <div class="es-approach-grid">
-      <div>
-        ${ss?.direction ? `<div class="es-solution-preview">
-          <div class="es-band-label" style="color:#10b981">Transformation Direction</div>
-          <div class="sol-title">${esc(ss.direction)}</div>
-          ${ss?.rationale ? `<div class="sol-rationale">${esc(ss.rationale)}</div>` : ''}
-        </div>` : ''}
-      </div>
-      <div>
-        ${es.whyItMatters ? `<div class="es-muted-card">
-          <div class="es-band-label">Why It Matters</div>
-          <p class="es-body-text">${esc(es.whyItMatters)}</p>
-        </div>` : ''}
-        ${es.opportunityOrRisk ? `<div class="es-amber-card" style="margin-top:10px">
-          <div class="es-band-label es-band-label-amber">Opportunity / Risk</div>
-          <p class="es-amber-text">${esc(es.opportunityOrRisk)}</p>
-        </div>` : ''}
-      </div>
-    </div>` : '';
+    ${ss?.direction ? `<div class="es-solution-preview" style="margin-bottom:12px">
+      <div class="es-band-label" style="color:#10b981">Transformation Direction</div>
+      <div class="sol-title">${esc(ss.direction)}</div>
+      ${ss?.rationale ? `<div class="sol-rationale">${esc(ss.rationale)}</div>` : ''}
+    </div>` : ''}
+    ${(es.whyItMatters || es.opportunityOrRisk) ? `<div class="es-two-col">
+      ${es.whyItMatters ? `<div class="es-muted-card">
+        <div class="es-band-label">Why It Matters</div>
+        <p class="es-body-text">${esc(es.whyItMatters)}</p>
+      </div>` : '<div></div>'}
+      ${es.opportunityOrRisk ? `<div class="es-amber-card">
+        <div class="es-band-label es-band-label-amber">Opportunity / Risk</div>
+        <p class="es-amber-text">${esc(es.opportunityOrRisk)}</p>
+      </div>` : '<div></div>'}
+    </div>` : ''}` : '';
 
   // ── Block 5: Timeline + Gantt ─────────────────────────────────────────────
   const roadmapPhases = intelligence.roadmap?.phases ?? [];
@@ -1698,9 +1694,12 @@ export const PDF_STYLES = `
   /* ── Section chrome ─── */
   .journey-section { page: landscape-page; page-break-before: always; page-break-after: always; page-break-inside: avoid; }
   .report-section { margin-bottom: 28px; }
-  .section-title-bar { page-break-after: avoid; }
   .cause-card, .evidence-row, .finding-item, .lens-row, .phase-card, .step-item, .next-step-item, .tension-item, .diag-card, .sig-row, .toc-row { page-break-inside: avoid; break-inside: avoid; }
-  .section-title-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb; }
+  .section-title-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb; page-break-after: avoid; break-after: avoid; }
+  .sd-sub-label { break-after: avoid; page-break-after: avoid; }
+  .section-intro { break-after: avoid; page-break-after: avoid; }
+  table { break-inside: avoid; page-break-inside: avoid; }
+  thead { break-inside: avoid; page-break-inside: avoid; display: table-header-group; }
   .section-accent { width: 4px; height: 22px; border-radius: 2px; background: #6366f1; flex-shrink: 0; }
   .section-title { font-size: 13pt; font-weight: 700; color: #111827; letter-spacing: -0.01em; }
 
@@ -1718,12 +1717,12 @@ export const PDF_STYLES = `
   .es-band-label-primary { color: rgba(255,255,255,0.6); }
   .es-band-label-amber { color: #b45309; }
   .es-answer-text { font-size: 13pt; font-weight: 700; color: #ffffff; line-height: 1.35; margin: 0; }
-  .es-section-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: #9ca3af; margin-bottom: 10px; margin-top: 18px; }
+  .es-section-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: #9ca3af; margin-bottom: 10px; margin-top: 18px; break-after: avoid; page-break-after: avoid; }
   .findings-list { margin-bottom: 6px; }
   .finding-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
   .finding-num { flex-shrink: 0; width: 22px; height: 22px; background: #0f172a; color: white; border-radius: 50%; font-size: 8pt; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
   .finding-item p { font-size: 10pt; color: #374151; line-height: 1.6; }
-  .lens-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+  .lens-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; break-inside: avoid; page-break-inside: avoid; }
   .lens-card { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #6366f1; border-radius: 0 8px 8px 0; padding: 10px 14px; }
   .lens-row { display: grid; grid-template-columns: 150px 1fr; gap: 14px; background: #f8fafc; border-left: 3px solid #6366f1; border-radius: 0 8px 8px 0; padding: 9px 14px; }
   .lens-name { font-size: 8.5pt; font-weight: 700; color: #374151; margin-bottom: 3px; }
@@ -1909,8 +1908,8 @@ export const PDF_STYLES = `
 
   /* ── Structural Analysis ─── */
   .struct-subtitle { font-size: 9.5pt; color: #6b7280; margin-bottom: 14px; line-height: 1.5; }
-  .struct-table-wrap { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
-  .struct-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  .struct-table-wrap { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
+  .struct-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; break-inside: avoid; page-break-inside: avoid; }
   .struct-thead tr { background: #f9fafb; }
   .struct-th { padding: 8px 14px; text-align: left; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; font-size: 8.5pt; }
   .struct-th-right { padding: 8px 14px; text-align: right; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; font-size: 8.5pt; }
@@ -2089,7 +2088,7 @@ export const PDF_STYLES = `
   .section-intro p { font-size: 9.5pt; color: #475569; line-height: 1.65; margin: 0; }
 
   /* ── Executive Summary — new blocks ─── */
-  .es-approach-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .es-approach-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; break-inside: avoid; page-break-inside: avoid; }
   .es-timeline-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; break-inside: avoid; page-break-inside: avoid; }
   .es-timeline-card { border-radius: 8px; border: 1px solid #e2e8f0; padding: 12px 14px; background: #ffffff; break-inside: avoid; page-break-inside: avoid; }
   .es-timeline-num { font-size: 18pt; font-weight: 800; line-height: 1; margin-bottom: 4px; }

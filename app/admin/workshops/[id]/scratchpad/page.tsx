@@ -99,8 +99,6 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [intelligence, setIntelligence] = useState<WorkshopOutputIntelligence | null>(null);
   const [reportSummary, setReportSummary] = useState<ReportSummary | null>(null);
   const [liveJourneyData, setLiveJourneyData] = useState<LiveJourneyData | null>(null);
-  const [journeyVersions, setJourneyVersions] = useState<Array<{ id: string; version: number; dialoguePhase: string; createdAt: string }>>([]);
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [journeyRegenerating, setJourneyRegenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -238,19 +236,15 @@ export default function DownloadReportPage({ params }: PageProps) {
         }
       } catch { /* non-fatal */ }
 
-      // Fetch journey versions (non-fatal)
+      // Fetch journey output (3-source fallback: scratchpad → session version → snapshot)
       try {
-        const versionsRes = await fetch(
-          `/api/admin/workshops/${workshopId}/live/session-versions?limit=20`
+        const journeyRes = await fetch(
+          `/api/admin/workshops/${workshopId}/journey/output`
         );
-        if (versionsRes.ok) {
-          const vd = await versionsRes.json();
-          const versions = vd.versions ?? [];
-          setJourneyVersions(versions);
-          const latestId = versions[0]?.id;
-          if (latestId) {
-            setSelectedVersionId(latestId);
-            await loadJourneyVersion(latestId, workshopId);
+        if (journeyRes.ok) {
+          const jd = await journeyRes.json();
+          if (jd.journey?.data?.stages?.length && jd.journey?.data?.interactions?.length) {
+            setLiveJourneyData(jd.journey.data as LiveJourneyData);
           }
         }
       } catch {
@@ -261,21 +255,6 @@ export default function DownloadReportPage({ params }: PageProps) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const loadJourneyVersion = async (versionId: string, wsId = workshopId) => {
-    try {
-      const versionRes = await fetch(
-        `/api/admin/workshops/${wsId}/live/session-versions/${versionId}`
-      );
-      if (versionRes.ok) {
-        const versionData = await versionRes.json();
-        const lj = versionData.version?.payload?.liveJourney;
-        if (lj?.stages?.length && lj?.interactions?.length) {
-          setLiveJourneyData(lj as LiveJourneyData);
-        }
-      }
-    } catch { /* non-fatal */ }
   };
 
   const handleRegenerateJourney = async () => {
@@ -291,8 +270,17 @@ export default function DownloadReportPage({ params }: PageProps) {
       }
       const data = await res.json();
       if (data.liveJourney) {
-        setLiveJourneyData(data.liveJourney as LiveJourneyData);
+        const lj = data.liveJourney as LiveJourneyData;
+        setLiveJourneyData(lj);
         toast.success('Journey map regenerated from full workshop data');
+        // Persist so it survives page refresh
+        try {
+          await fetch(`/api/admin/workshops/${workshopId}/journey/output`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: lj, lastSynthesisedAt: new Date().toISOString() }),
+          });
+        } catch { /* non-fatal, already shown in UI */ }
       }
     } catch {
       toast.error('Journey regeneration failed');
@@ -1008,26 +996,6 @@ export default function DownloadReportPage({ params }: PageProps) {
                               <>
                                 {/* Journey controls row */}
                                 <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-                                  {journeyVersions.length > 1 && (
-                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                      <span className="text-[10px] uppercase tracking-wide font-medium">Session:</span>
-                                      <select
-                                        value={selectedVersionId ?? ''}
-                                        onChange={async (e) => {
-                                          const id = e.target.value;
-                                          setSelectedVersionId(id);
-                                          await loadJourneyVersion(id);
-                                        }}
-                                        className="text-xs border border-border rounded px-1.5 py-0.5 bg-background text-foreground"
-                                      >
-                                        {journeyVersions.map((v, i) => (
-                                          <option key={v.id} value={v.id}>
-                                            v{v.version} — {v.dialoguePhase}{i === 0 ? ' (latest)' : ''}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  )}
                                   <button
                                     onClick={handleRegenerateJourney}
                                     disabled={journeyRegenerating}

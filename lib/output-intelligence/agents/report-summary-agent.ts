@@ -25,13 +25,19 @@ const SCHEMA = `{
     "theAsk": "string — one sentence: what was commissioned and why this mattered to the organisation",
     "theAnswer": "string — one sentence: the direct, decisive answer to the ask — a bold claim grounded entirely in the evidence below",
 
+    "whatWeFoundPositive": [
+      "string — strength/enabler 1: something working well, an organisational asset, a positive signal, or an enabling condition — must be grounded in evidence from the intelligence (e.g. drivingForces, transformation readiness, strong agreement signals, expressed ambitions from pads)",
+      "string — strength/enabler 2",
+      "string — strength/enabler 3 — include 2-4 items if genuine evidence exists; omit extras if not"
+    ],
+
     "whatWeFound": [
-      "string — finding 1: specific issue, name the system/team/metric affected",
-      "string — finding 2: specific issue with evidence (e.g. 'X% attrition', '8 legacy systems', 'no unified view')",
-      "string — finding 3: specific issue",
-      "string — finding 4: specific issue",
-      "string — finding 5: specific issue",
-      "string — finding 6: specific issue — if evidence exists for a 6th, include it; otherwise omit"
+      "string — challenge 1: specific problem or friction point, name the system/team/metric affected",
+      "string — challenge 2: specific issue with evidence (e.g. 'X% attrition', '8 legacy systems', 'no unified view')",
+      "string — challenge 3: specific issue",
+      "string — challenge 4: specific issue",
+      "string — challenge 5: specific issue",
+      "string — challenge 6: specific issue — if evidence exists for a 6th, include it; otherwise omit"
     ],
 
     "lensFindings": [
@@ -415,8 +421,9 @@ export async function runReportSummaryAgent(
 
 EXECUTIVE SUMMARY RULES:
 • Must directly answer the workshop ask — not describe the workshop process
+• POSITIVE-FIRST RULE: whatWeFoundPositive MUST come before whatWeFound. It surfaces genuine strengths, enabling conditions, and organisational assets. Sources: drivingForces from root cause analysis, transformation readiness positive indicators, expressed ambitions from workshop pads, strong participant agreement signals, any quick wins or areas of existing capability. Include 2-4 items grounded in evidence. If the intelligence contains genuinely no positive signals, write a single item: "Limited enabling signals were captured in this workshop — the organisation's openness to participating in this diagnostic is itself a starting point." Never invent positives.
+• whatWeFound: these are the CHALLENGES — MINIMUM 6 items — each must name a specific system, team, metric, or process observed — no generic phrases like "lack of alignment" without naming what is misaligned
 • GRAPH-BACKED FINDINGS RULE — CRITICAL: If the intelligence contains a "GRAPH-BACKED ORGANISATIONAL ISSUES" or "GRAPH-BACKED REINFORCED FINDINGS" section, these are evidence-gated, deterministic findings from the relationship graph. They MUST appear in whatWeFound with their specific titles, participant quotes, and causal chains. Do not paraphrase or generalise graph-backed findings — use their exact titles and supporting quotes.
-• whatWeFound: MINIMUM 6 items — each must name a specific system, team, metric, or process observed — no generic phrases like "lack of alignment" without naming what is misaligned
 • METRIC CITATION RULE — CRITICAL: Before writing whatWeFound and urgency, scan the entire intelligence for ANY specific percentage, named system, named role, customer tier, or quantified outcome (e.g. "30-40% AHT reduction", "Gold and Platinum tier members", "8 legacy systems", "34% attrition"). Every specific metric or named entity found MUST appear verbatim in at least one finding or the urgency field. Do not paraphrase or generalise a specific number — quote it exactly.
 • lensFindings: produce ONE entry for EVERY lens listed under "Lenses:" in WORKSHOP CONTEXT — no exceptions, no omissions. Consult the "SIGNALS BY LENS" section for evidence. If signals for a lens were thin or absent, write the finding as: "Workshop signals for this lens were limited — [describe what little was captured, or state 'no pads were recorded for this lens']". NEVER omit a lens that the workshop ran.
 • urgency: MUST name at least one specific item from the intelligence — a named regulation, a measured attrition rate, a specific metric, a named operational crisis, or a competitive event. "Inefficiencies will compound" without a named trigger is not acceptable.
