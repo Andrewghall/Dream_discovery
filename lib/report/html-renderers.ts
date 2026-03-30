@@ -194,7 +194,10 @@ export function renderExecutiveSummary(summary: ReportSummary, intelligence: Wor
         ${phase.timeline ? `<div class="es-timeline-tf">${esc(phase.timeline)}</div>` : ''}
       </div>`).join('');
 
-  const esGanttHtml = esGanttPhases.length > 0 ? renderWayForwardGantt(esGanttPhases) : '';
+  // Full initiative-level Gantt (with cost/benefit curves) — same as Brain Scan
+  const esGanttHtml = intelligence.roadmap
+    ? renderPdfRoadmapGantt(intelligence.roadmap)
+    : (esGanttPhases.length > 0 ? renderWayForwardGantt(esGanttPhases) : '');
 
   const urgencyBand = es.urgency ? `
     <div class="es-urgency-band" style="margin-top:12px">
@@ -205,8 +208,8 @@ export function renderExecutiveSummary(summary: ReportSummary, intelligence: Wor
       </div>
     </div>` : '';
 
-  const timelineBlock = (timelineCards || urgencyBand) ? `
-    <div class="es-section-label">Timeline</div>
+  const timelineBlock = (esGanttHtml || timelineCards || urgencyBand) ? `
+    <div class="es-section-label">Delivery Timeline &amp; ROI</div>
     ${esGanttHtml}
     ${timelineCards ? `<div class="es-timeline-grid">${timelineCards}</div>` : ''}
     ${urgencyBand}` : '';
