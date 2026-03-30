@@ -199,13 +199,16 @@ export default function DownloadReportPage({ params }: PageProps) {
                 mergedSections = [...mergedSections, ...customSections];
               }
             } else {
-              // v2+ stored layout — preserve user's order, just add any brand-new sections
+              // v2+ stored layout — preserve user's order, just add any brand-new sections.
+              // Always sync title for built-in chapters so renamed chapters (e.g. "Brain Scan"
+              // → "Analysis & Recommendations") update automatically.
               const defaultMap = new Map(defaults.sections.map(s => [s.id, s]));
               const upgraded = stored.sections.map(s => {
                 const def = defaultMap.get(s.id);
                 if (!def) return s;
-                if (def.enabled && !s.enabled) return { ...s, enabled: true };
-                return s;
+                const syncTitle = s.type === 'chapter' && def.title !== s.title ? def.title : s.title;
+                if (def.enabled && !s.enabled) return { ...s, title: syncTitle, enabled: true };
+                return { ...s, title: syncTitle };
               });
               const newSections = defaults.sections.filter(s => !storedIds.has(s.id));
               mergedSections = newSections.length > 0 ? [...upgraded, ...newSections] : upgraded;
