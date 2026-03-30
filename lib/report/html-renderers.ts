@@ -280,6 +280,7 @@ export function renderSupportingEvidence(intelligence: WorkshopOutputIntelligenc
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Supporting Evidence</div></div>
       ${sectionIntro('What the data confirms — validated issues with confidence levels and evidence drawn directly from the discovery process.')}
+      ${discoveryValidation.summary ? `<div class="narrative-lead">${esc(discoveryValidation.summary)}</div>` : ''}
       <div class="evidence-card">
         <div class="evidence-header">
           Confirmed Issues
@@ -321,8 +322,9 @@ export function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: 
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Root Causes</div></div>
+      ${rootCause.forceFieldHeadline ? `<div class="force-field-headline">${esc(rootCause.forceFieldHeadline)}</div>` : ''}
       ${sectionIntro('The underlying drivers behind the symptoms. These are the structural causes that, if unaddressed, will regenerate the same problems regardless of the solution applied.')}
-      <div class="systemic-pattern">${esc(rootCause.systemicPattern ?? '')}</div>
+      ${rootCause.systemicPattern ? `<div class="narrative-lead">${esc(rootCause.systemicPattern)}</div>` : ''}
       <div class="cause-list">${causes}</div>
     </section>`;
 }
@@ -642,13 +644,8 @@ export function renderDiscoverySignals(discoveryOutput: any): string {
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Signals</div></div>
+      ${discoveryOutput._aiSummary ? `<div class="narrative-lead">${esc(discoveryOutput._aiSummary)}</div>` : ''}
       ${sectionIntro('The emotional tone and agreement levels across each organisational lens — surfacing where concern concentrates and where genuine opportunity exists.')}
-      ${discoveryOutput._aiSummary ? `
-        <div class="sig-perception-box">
-          <div class="sig-perception-label">Organisational Perception</div>
-          <p class="sig-summary">${esc(discoveryOutput._aiSummary)}</p>
-          <p class="sig-perception-note">How the organisation describes itself — and where that diverges from what participants actually reported.</p>
-        </div>` : ''}
       <p class="sig-bar-intro">How participants feel about each area — and how aligned they are in that view</p>
       <div class="sig-list">${sectionRows}</div>
       <p class="sig-key-note">High friction + high agreement = a confirmed, shared problem. High friction + low agreement = a contested tension worth exploring.</p>
@@ -687,6 +684,7 @@ export function renderStructuralAlignment(discoverAnalysis: DiscoverAnalysis | u
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Domain Misalignment</div></div>
       ${sectionIntro('Where leadership narratives diverge from frontline experience — the alignment gap that undermines execution and creates invisible drag on organisational performance.')}
+      <div class="narrative-lead">The alignment analysis reveals where different organisational layers hold fundamentally different views on the same themes. Negative alignment scores indicate that what leadership believes is happening differs materially from what frontline participants experience. These divergence points are the invisible failure modes in any transformation — strategies fail not because the logic is wrong, but because the organisation isn't aligned on the problem in the first place.</div>
       <p class="struct-subtitle">Top divergent actor × theme pairs — negative scores indicate misalignment</p>
       <div class="struct-table-wrap">
         <table class="struct-table">
@@ -921,23 +919,67 @@ export function renderStructuralConfidence(discoverAnalysis: DiscoverAnalysis | 
 export function renderSignalMap(reportSummary: ReportSummary, discoverAnalysis: DiscoverAnalysis | undefined): string {
   const imageUrl = reportSummary.signalMapImageUrl;
   const conf = discoverAnalysis?.confidence;
+
+  // Build data-driven signal distribution chart from discoverAnalysis
+  let signalChart = '';
+  if (conf) {
+    const total = conf.overall.certain + conf.overall.hedging + conf.overall.uncertain;
+    const certainPct  = total > 0 ? Math.round((conf.overall.certain  / total) * 100) : 0;
+    const hedgingPct  = total > 0 ? Math.round((conf.overall.hedging  / total) * 100) : 0;
+    const uncertainPct = 100 - certainPct - hedgingPct;
+
+    const domainRows = (conf.byDomain ?? []).slice(0, 10).map(d => {
+      const dt = d.distribution.certain + d.distribution.hedging + d.distribution.uncertain;
+      const cp = dt > 0 ? Math.round((d.distribution.certain  / dt) * 100) : 0;
+      const hp = dt > 0 ? Math.round((d.distribution.hedging  / dt) * 100) : 0;
+      const up = 100 - cp - hp;
+      return `
+        <div class="smap-row">
+          <div class="smap-domain">${esc(d.domain)}</div>
+          <div class="conf-bar-wrap" style="flex:1">
+            <div class="conf-seg conf-certain"    style="width:${cp}%"></div>
+            <div class="conf-seg conf-hedging"    style="width:${hp}%"></div>
+            <div class="conf-seg conf-uncertain"  style="width:${up}%"></div>
+          </div>
+          <div class="smap-pct">${cp}%</div>
+        </div>`;
+    }).join('');
+
+    signalChart = `
+      <div class="smap-chart-wrap">
+        <div class="smap-overall-label">Overall Signal Certainty</div>
+        <div class="conf-bar-wrap conf-overall-bar" style="margin-bottom:6px">
+          <div class="conf-seg conf-certain"    style="width:${certainPct}%"></div>
+          <div class="conf-seg conf-hedging"    style="width:${hedgingPct}%"></div>
+          <div class="conf-seg conf-uncertain"  style="width:${uncertainPct}%"></div>
+        </div>
+        <div class="conf-legend" style="margin-bottom:16px">
+          <span class="conf-leg-item conf-leg-certain">● ${certainPct}% certain</span>
+          <span class="conf-leg-item conf-leg-hedging">● ${hedgingPct}% hedging</span>
+          <span class="conf-leg-item conf-leg-uncertain">● ${uncertainPct}% uncertain</span>
+        </div>
+        ${domainRows ? `<div class="smap-domain-label">BY DOMAIN</div><div class="smap-rows">${domainRows}</div>` : ''}
+      </div>`;
+  }
+
+  const narrative = conf
+    ? `Signal certainty across the organisation shows ${conf.overall.hedging > conf.overall.certain ? 'hedging language dominates' : 'certainty is present in key areas'}. ${conf.byDomain?.[0] ? `The "${conf.byDomain[0].domain}" domain shows the ${conf.byDomain[0].distribution.certain > conf.byDomain[0].distribution.hedging ? 'highest confidence' : 'most hedging'}, indicating ${conf.byDomain[0].distribution.certain > conf.byDomain[0].distribution.hedging ? 'alignment' : 'uncertainty'} in this area.` : ''}`
+    : '';
+
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Signal Map</div></div>
-      <p class="struct-subtitle">Distribution of signals across Aspiration, Enablers and Operational Friction — extracted from participant interviews</p>
-      ${imageUrl ? `<div class="signal-map-img-wrap"><img src="${esc(imageUrl)}" class="signal-map-img" alt="Discovery Signal Map" /></div>` : `
+      ${sectionIntro("Distribution of participant signals across the discovery — showing where certainty, hedging, and uncertainty concentrate across organisational domains.")}
+      ${imageUrl ? `<div class="signal-map-img-wrap"><img src="${esc(imageUrl)}" class="signal-map-img" alt="Discovery Signal Map" /></div>` : signalChart || `
       <div class="signal-map-placeholder">
-        <p class="signal-map-note">Signal map image not yet captured. Visit the Organisational State tab to capture it.</p>
+        <p class="signal-map-note">No signal distribution data available for this workshop.</p>
       </div>`}
       <div class="signal-map-legend">
-        <div class="signal-map-legend-item"><span style="background:#a78bfa" class="legend-dot"></span>Aspiration — Vision &amp; Beliefs</div>
-        <div class="signal-map-legend-item"><span style="background:#34d399" class="legend-dot"></span>Enablers — Actions &amp; Change</div>
-        <div class="signal-map-legend-item"><span style="background:#f97316" class="legend-dot"></span>Friction — Constraints &amp; Barriers</div>
-        <div class="signal-map-legend-item"><span style="background:#ef4444" class="legend-dot"></span>Constraint</div>
-        <div class="signal-map-legend-item"><span style="background:#60a5fa" class="legend-dot"></span>Aligned signal</div>
-        <div class="signal-map-legend-item"><span style="background:#94a3b8" class="legend-dot"></span>Participant view</div>
+        <div class="signal-map-legend-item"><span style="background:#10b981" class="legend-dot"></span>Certain — clear, confident language</div>
+        <div class="signal-map-legend-item"><span style="background:#f59e0b" class="legend-dot"></span>Hedging — qualified, uncertain language</div>
+        <div class="signal-map-legend-item"><span style="background:#f87171" class="legend-dot"></span>Uncertain — contradictory or unclear signals</div>
       </div>
-      ${conf ? `<p class="signal-map-narrative">The signal distribution across the organisation shows confidence patterns where ${conf.overall.hedging > conf.overall.certain ? 'hedging language dominates' : 'certainty is present in key areas'}, with ${conf.byLayer?.[0]?.layer ?? 'executive'} layer showing distinct sentiment from frontline perspectives.</p>` : ''}
+      ${narrative ? `<p class="signal-map-narrative">${esc(narrative)}</p>` : ''}
     </section>`;
 }
 
@@ -1719,6 +1761,8 @@ export const PDF_STYLES = `
 
   /* ── Root causes ─── */
   .systemic-pattern { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; font-size: 10.5pt; color: #374151; line-height: 1.7; margin-bottom: 20px; }
+  .narrative-lead { font-size: 11pt; color: #1e293b; line-height: 1.75; margin-bottom: 20px; padding: 16px 20px; background: #f8fafc; border-left: 4px solid #6366f1; border-radius: 0 8px 8px 0; }
+  .force-field-headline { font-size: 16pt; font-weight: 800; color: #0f172a; line-height: 1.3; margin-bottom: 20px; padding: 20px 24px; background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%); border-radius: 12px; text-align: center; letter-spacing: -0.02em; }
   .cause-list { display: grid; gap: 12px; }
   .cause-card { display: flex; gap: 14px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
   .cause-meta { display: flex; flex-direction: column; align-items: center; gap: 5px; flex-shrink: 0; padding-top: 2px; }
@@ -1875,23 +1919,23 @@ export const PDF_STYLES = `
   .struct-td-score { padding: 9px 14px; text-align: right; font-weight: 700; border-top: 1px solid #f1f5f9; }
   .struct-sev { padding: 2px 6px; border-radius: 4px; font-size: 8pt; font-weight: 600; }
   .narr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .narr-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; break-inside: avoid; page-break-inside: avoid; }
+  .narr-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; break-inside: avoid; page-break-inside: avoid; }
   .narr-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
-  .narr-layer { font-size: 8.5pt; font-weight: 700; text-transform: capitalize; }
-  .narr-count { font-size: 7.5pt; color: #9ca3af; }
-  .narr-sentiment { font-size: 8.5pt; font-weight: 500; margin-bottom: 10px; text-transform: capitalize; }
-  .narr-terms { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-  .narr-term-row { display: flex; align-items: center; gap: 6px; }
-  .narr-term-name { font-size: 8pt; color: #374151; width: 72px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .narr-bar-wrap { flex: 1; height: 7px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
-  .narr-bar { height: 100%; border-radius: 4px; transition: none; }
-  .narr-term-count { font-size: 7.5pt; color: #6b7280; width: 18px; text-align: right; flex-shrink: 0; }
-  .narr-temporal-wrap { margin-top: 10px; }
-  .narr-temporal-label { font-size: 7pt; color: #94a3b8; text-transform: capitalize; margin-bottom: 4px; }
-  .narr-temporal-bar { display: flex; height: 6px; border-radius: 4px; overflow: hidden; width: 100%; }
+  .narr-layer { font-size: 7.5pt; font-weight: 700; text-transform: capitalize; }
+  .narr-count { font-size: 6.5pt; color: #9ca3af; }
+  .narr-sentiment { font-size: 7.5pt; font-weight: 500; margin-bottom: 7px; text-transform: capitalize; }
+  .narr-terms { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+  .narr-term-row { display: flex; align-items: center; gap: 5px; }
+  .narr-term-name { font-size: 7pt; color: #374151; width: 60px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .narr-bar-wrap { flex: 1; height: 5px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+  .narr-bar { height: 100%; border-radius: 3px; transition: none; }
+  .narr-term-count { font-size: 6.5pt; color: #6b7280; width: 14px; text-align: right; flex-shrink: 0; }
+  .narr-temporal-wrap { margin-top: 7px; }
+  .narr-temporal-label { font-size: 6pt; color: #94a3b8; text-transform: capitalize; margin-bottom: 3px; }
+  .narr-temporal-bar { display: flex; height: 4px; border-radius: 3px; overflow: hidden; width: 100%; }
   .narr-temporal-bar > div { height: 100%; }
-  .narr-temporal-ticks { display: flex; justify-content: space-between; font-size: 6.5pt; color: #cbd5e1; margin-top: 2px; }
-  .narr-phrase { font-size: 7.5pt; color: #64748b; font-style: italic; line-height: 1.5; margin-top: 8px; border-top: 1px solid #f1f5f9; padding-top: 7px; }
+  .narr-temporal-ticks { display: flex; justify-content: space-between; font-size: 6pt; color: #cbd5e1; margin-top: 2px; }
+  .narr-phrase { font-size: 6.5pt; color: #64748b; font-style: italic; line-height: 1.45; margin-top: 6px; border-top: 1px solid #f1f5f9; padding-top: 5px; }
   .tension-list { display: flex; flex-direction: column; gap: 10px; }
   .tension-item { display: flex; gap: 12px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; }
   .tension-rank { flex-shrink: 0; font-size: 8.5pt; font-weight: 700; color: #9ca3af; font-family: monospace; width: 22px; padding-top: 2px; }
@@ -1919,6 +1963,15 @@ export const PDF_STYLES = `
   .conf-row { display: flex; align-items: center; gap: 10px; }
   .conf-domain { font-size: 9pt; font-weight: 500; color: #374151; width: 160px; flex-shrink: 0; }
   .conf-pct { font-size: 8pt; color: #9ca3af; flex-shrink: 0; width: 80px; text-align: right; }
+
+  /* ── Signal Map data chart ─── */
+  .smap-chart-wrap { margin-bottom: 16px; }
+  .smap-overall-label { font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 6px; }
+  .smap-domain-label { font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 8px; margin-top: 4px; }
+  .smap-rows { display: flex; flex-direction: column; gap: 6px; }
+  .smap-row { display: flex; align-items: center; gap: 8px; }
+  .smap-domain { font-size: 8pt; color: #475569; width: 140px; flex-shrink: 0; }
+  .smap-pct { font-size: 7.5pt; color: #64748b; width: 30px; text-align: right; flex-shrink: 0; }
 
   /* ── Signal Map ─── */
   .signal-map-img-wrap { margin-bottom: 14px; border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb; }
