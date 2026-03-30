@@ -114,14 +114,22 @@ export function DiscoverySignalsBlock({
     <div className="space-y-3">
       {discoveryOutput._aiSummary && (
         <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Perception Summary</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Organisational Perception</p>
           <p className="text-sm text-foreground leading-relaxed">{discoveryOutput._aiSummary}</p>
+          <p className="text-[10px] text-muted-foreground mt-2 italic">How the organisation describes itself — and where that diverges from what participants actually reported.</p>
         </div>
       )}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="px-5 py-2.5 bg-muted/30 border-b border-border flex items-center justify-between">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">How participants feel about each area</p>
+          <p className="text-[10px] text-muted-foreground">Agreement % = how much participants agree with each other</p>
+        </div>
         <div className="divide-y divide-border">
           {sections.map((s, i) => {
             const itemId = `signal:${String(s.domain ?? i).toLowerCase().replace(/\s+/g, '_')}`;
+            const concerned = s.sentiment?.concerned ?? 0;
+            const optimistic = s.sentiment?.optimistic ?? 0;
+            const dominantTone = concerned > optimistic + 15 ? 'tension' : optimistic > concerned + 15 ? 'opportunity' : 'mixed';
             return (
               <ItemToggle key={i} id={itemId} excluded={excludedItems.includes(itemId)} onToggle={onToggleItem} className="px-5 py-3.5">
                 <div>
@@ -129,8 +137,13 @@ export function DiscoverySignalsBlock({
                     <div className="flex items-center gap-2">
                       <span className="text-base">{s.icon}</span>
                       <span className="text-sm font-medium text-foreground">{s.domain}</span>
+                      {dominantTone === 'tension' && <span className="text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">Tension area</span>}
+                      {dominantTone === 'opportunity' && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">Opportunity area</span>}
                     </div>
-                    <span className="text-xs text-muted-foreground">Consensus: <span className="font-medium text-foreground">{s.consensusLevel}%</span></span>
+                    <span className="text-xs text-muted-foreground">
+                      Agreement: <span className="font-semibold text-foreground">{s.consensusLevel}%</span>
+                      <span className="ml-1 text-[10px] text-muted-foreground/70">{(s.consensusLevel ?? 0) >= 70 ? '(aligned)' : (s.consensusLevel ?? 0) >= 50 ? '(mixed)' : '(contested)'}</span>
+                    </span>
                   </div>
                   {/* Sentiment bar */}
                   <div className="h-2 rounded-full overflow-hidden flex gap-0.5">
@@ -139,14 +152,17 @@ export function DiscoverySignalsBlock({
                     <div className="bg-emerald-400 h-full rounded-r-full transition-all" style={{ width: `${s.sentiment?.optimistic ?? 0}%` }} />
                   </div>
                   <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-[10px] text-red-600">Concerned {s.sentiment?.concerned ?? 0}%</span>
+                    <span className="text-[10px] text-red-600">⚠ Friction {s.sentiment?.concerned ?? 0}%</span>
                     <span className="text-[10px] text-muted-foreground">Neutral {s.sentiment?.neutral ?? 0}%</span>
-                    <span className="text-[10px] text-emerald-600">Optimistic {s.sentiment?.optimistic ?? 0}%</span>
+                    <span className="text-[10px] text-emerald-600">✓ Opportunity {s.sentiment?.optimistic ?? 0}%</span>
                   </div>
                 </div>
               </ItemToggle>
             );
           })}
+        </div>
+        <div className="px-5 py-2.5 bg-muted/20 border-t border-border">
+          <p className="text-[10px] text-muted-foreground">High friction + high agreement = a confirmed, shared problem. High friction + low agreement = a contested tension worth exploring in the room.</p>
         </div>
       </div>
     </div>

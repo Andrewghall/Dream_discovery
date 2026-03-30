@@ -173,33 +173,31 @@ export default function DownloadReportPage({ params }: PageProps) {
             const defaults = defaultReportLayout();
             const storedIds = new Set(stored.sections.map(s => s.id));
 
-            const hasChapters = stored.sections.some(s => s.type === 'chapter');
+            // v2 introduced the correct chapter order (Discovery → Journey → Brain Scan).
+            // Any stored layout older than v2 gets rebuilt from the new default order,
+            // preserving only per-item exclusions and explicit user-disabled state.
+            const needsRebuild = !stored.version || stored.version < 2;
             const hasCustom   = stored.sections.some(s => s.type === 'custom');
 
             let mergedSections;
-            if (!hasChapters) {
-              // No chapters in stored layout — use new default order, but preserve
-              // user customisations (enabled state, excludedItems) for existing sections
+            if (needsRebuild) {
+              // Rebuild from default order, carry forward user exclusions and explicit disables
               const storedMap = new Map(stored.sections.map(s => [s.id, s]));
               mergedSections = defaults.sections.map(def => {
                 const prev = storedMap.get(def.id);
                 if (!prev) return def;
-                // Carry forward excludedItems and explicit disabled choice, but
-                // apply new default enabled=true if they had it turned off by old default
                 return {
                   ...def,
                   excludedItems: prev.excludedItems ?? [],
-                  // Only keep enabled=false if user explicitly disabled (prev was enabled in old default too)
                   enabled: def.enabled ? true : prev.enabled,
                 };
               });
-              // Append any custom sections from old layout
               if (hasCustom) {
-                const customSections = stored.sections.filter(s => s.type === 'custom' && !storedIds.has(s.id));
+                const customSections = stored.sections.filter(s => s.type === 'custom');
                 mergedSections = [...mergedSections, ...customSections];
               }
             } else {
-              // Has chapters — preserve order, just upgrade enabled state and add new sections
+              // v2+ stored layout — preserve user's order, just add any brand-new sections
               const defaultMap = new Map(defaults.sections.map(s => [s.id, s]));
               const upgraded = stored.sections.map(s => {
                 const def = defaultMap.get(s.id);
@@ -211,7 +209,7 @@ export default function DownloadReportPage({ params }: PageProps) {
               mergedSections = newSections.length > 0 ? [...upgraded, ...newSections] : upgraded;
             }
 
-            setLayout({ ...stored, sections: mergedSections });
+            setLayout({ ...stored, version: 2, sections: mergedSections });
             if (stored.clientLogoUrl) setClientLogoUrl(stored.clientLogoUrl);
           }
         }
@@ -774,6 +772,55 @@ export default function DownloadReportPage({ params }: PageProps) {
                 Go to Insight Map →
               </Button>
             </Link>
+          </div>
+        )}
+
+        {/* ── REPORT CONTENTS INDEX ────────────────────────────────────── */}
+        {intelligence && (
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/20">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Report Contents</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {layout.sections.filter(s => s.enabled && s.type !== 'chapter').length} sections enabled · toggle to include/exclude from PDF
+                </p>
+              </div>
+            </div>
+            <div className="divide-y divide-border">
+              {(() => {
+                let sectionNum = 0;
+                return layout.sections.map((s) => {
+                  const isChapter = s.type === 'chapter';
+                  if (!isChapter) sectionNum++;
+                  const num = sectionNum;
+                  return (
+                    <div
+                      key={s.id}
+                      className={`flex items-center gap-3 px-5 py-2.5 ${isChapter ? 'bg-slate-900' : s.enabled ? '' : 'opacity-40'}`}
+                    >
+                      {isChapter ? (
+                        <>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-white/60 w-5 shrink-0">—</span>
+                          <span className="text-xs font-bold text-white flex-1">{s.title}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-[10px] font-mono text-muted-foreground w-5 shrink-0 text-right">{String(num).padStart(2, '0')}</span>
+                          <span className={`text-xs flex-1 ${s.enabled ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>{s.title}</span>
+                          <button
+                            onClick={() => updateSection(s.id, { enabled: !s.enabled })}
+                            className={`shrink-0 w-8 h-4 rounded-full transition-colors relative ${s.enabled ? 'bg-indigo-500' : 'bg-border'}`}
+                            title={s.enabled ? 'Remove from report' : 'Add to report'}
+                          >
+                            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${s.enabled ? 'left-4' : 'left-0.5'}`} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
           </div>
         )}
 

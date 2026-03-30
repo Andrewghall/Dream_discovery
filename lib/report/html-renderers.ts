@@ -488,12 +488,16 @@ export function renderDiscoverySignals(discoveryOutput: any): string {
     const concerned  = s.sentiment?.concerned  ?? 0;
     const neutral    = s.sentiment?.neutral    ?? 0;
     const optimistic = s.sentiment?.optimistic ?? 0;
+    const level      = s.consensusLevel ?? 0;
+    const agreementLabel = level >= 70 ? 'aligned' : level >= 50 ? 'mixed views' : 'contested';
+    const dominantTone = concerned > optimistic + 15 ? 'Tension area' : optimistic > concerned + 15 ? 'Opportunity area' : '';
     return `
       <div class="sig-row">
         <div class="sig-meta">
           <span class="sig-icon">${esc(s.icon ?? '')}</span>
           <span class="sig-domain">${esc(s.domain)}</span>
-          <span class="sig-consensus">${s.consensusLevel}% consensus</span>
+          ${dominantTone ? `<span class="sig-tone-badge ${concerned > optimistic + 15 ? 'sig-tone-tension' : 'sig-tone-opportunity'}">${dominantTone}</span>` : ''}
+          <span class="sig-consensus">${level}% agreement <span class="sig-agreement-label">${agreementLabel}</span></span>
         </div>
         <div class="sig-bar-wrap">
           <div class="sig-bar-seg sig-concerned"  style="width:${concerned}%"></div>
@@ -501,9 +505,9 @@ export function renderDiscoverySignals(discoveryOutput: any): string {
           <div class="sig-bar-seg sig-optimistic"  style="width:${optimistic}%"></div>
         </div>
         <div class="sig-legend">
-          <span class="sig-c">Concerned ${concerned}%</span>
+          <span class="sig-c">⚠ Friction ${concerned}%</span>
           <span class="sig-n">Neutral ${neutral}%</span>
-          <span class="sig-o">Optimistic ${optimistic}%</span>
+          <span class="sig-o">✓ Opportunity ${optimistic}%</span>
         </div>
       </div>`;
   }).join('');
@@ -511,8 +515,15 @@ export function renderDiscoverySignals(discoveryOutput: any): string {
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Signals</div></div>
-      ${discoveryOutput._aiSummary ? `<p class="sig-summary">${esc(discoveryOutput._aiSummary)}</p>` : ''}
+      ${discoveryOutput._aiSummary ? `
+        <div class="sig-perception-box">
+          <div class="sig-perception-label">Organisational Perception</div>
+          <p class="sig-summary">${esc(discoveryOutput._aiSummary)}</p>
+          <p class="sig-perception-note">How the organisation describes itself — and where that diverges from what participants actually reported.</p>
+        </div>` : ''}
+      <p class="sig-bar-intro">How participants feel about each area — and how aligned they are in that view</p>
       <div class="sig-list">${sectionRows}</div>
+      <p class="sig-key-note">High friction + high agreement = a confirmed, shared problem. High friction + low agreement = a contested tension worth exploring.</p>
     </section>`;
 }
 
@@ -1375,14 +1386,23 @@ export const PDF_STYLES = `
   .diag-ev { font-size: 8.5pt; color: #6b7280; padding: 1px 0; line-height: 1.5; }
 
   /* ── Discovery Signals ─── */
-  .sig-summary { font-size: 10.5pt; color: #374151; line-height: 1.7; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
+  .sig-perception-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+  .sig-perception-label { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: #94a3b8; margin-bottom: 6px; }
+  .sig-summary { font-size: 10pt; color: #374151; line-height: 1.7; margin: 0 0 6px; }
+  .sig-perception-note { font-size: 8pt; color: #9ca3af; font-style: italic; margin: 0; }
+  .sig-bar-intro { font-size: 8.5pt; color: #64748b; margin-bottom: 8px; }
+  .sig-key-note { font-size: 8pt; color: #94a3b8; font-style: italic; margin-top: 10px; line-height: 1.5; }
   .sig-list { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
   .sig-row { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; }
   .sig-row:last-child { border-bottom: none; }
-  .sig-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .sig-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
   .sig-icon { font-size: 12pt; }
-  .sig-domain { font-size: 10pt; font-weight: 600; color: #111827; flex: 1; }
-  .sig-consensus { font-size: 8.5pt; color: #6b7280; }
+  .sig-domain { font-size: 10pt; font-weight: 600; color: #111827; }
+  .sig-tone-badge { font-size: 7.5pt; font-weight: 600; padding: 2px 7px; border-radius: 4px; }
+  .sig-tone-tension { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .sig-tone-opportunity { background: #f0fdf4; color: #059669; border: 1px solid #bbf7d0; }
+  .sig-consensus { font-size: 8pt; color: #6b7280; margin-left: auto; }
+  .sig-agreement-label { color: #9ca3af; font-style: italic; }
   .sig-bar-wrap { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 1px; margin-bottom: 5px; }
   .sig-bar-seg { height: 100%; }
   .sig-concerned { background: #f87171; border-radius: 4px 0 0 4px; }

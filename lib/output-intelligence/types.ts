@@ -544,16 +544,16 @@ export interface ReportSectionConfig {
 
 export interface ReportLayout {
   sections: ReportSectionConfig[];
-  version: 1;
+  version: 1 | 2;
   clientLogoUrl?: string;   // Client logo embedded on PDF cover page
 }
 
 export function defaultReportLayout(): ReportLayout {
   return {
-    version: 1,
+    version: 2,
     sections: [
       // ── Chapter 1: Discovery ──────────────────────────────────────────────
-      { id: 'ch_discovery',            type: 'chapter',  title: 'Discovery Analysis',          enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'ch_discovery',            type: 'chapter',  title: 'Discovery',                   enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'discovery_diagnostic',    type: 'builtin',  title: 'Discovery Diagnostic',        enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'discovery_signals',       type: 'builtin',  title: 'Discovery Signals',           enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'discovery_signal_map',    type: 'builtin',  title: 'Discovery Signal Map',        enabled: true,  collapsed: false, excludedItems: [] },
@@ -565,22 +565,20 @@ export function defaultReportLayout(): ReportLayout {
       // ── Chapter 2: Customer Journey ───────────────────────────────────────
       { id: 'ch_journey',              type: 'chapter',  title: 'Customer Journey',            enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'journey_map',             type: 'builtin',  title: 'Customer Journey Map',        enabled: true,  collapsed: false, excludedItems: [] },
-      // ── Chapter 3: Workshop Intelligence ─────────────────────────────────
-      { id: 'ch_intelligence',         type: 'chapter',  title: 'Workshop Intelligence',       enabled: true,  collapsed: false, excludedItems: [] },
+      // ── Chapter 3: Brain Scan ─────────────────────────────────────────────
+      { id: 'ch_brainscan',            type: 'chapter',  title: 'Brain Scan',                  enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'executive_summary',       type: 'builtin',  title: 'Executive Summary',           enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'supporting_evidence',     type: 'builtin',  title: 'Supporting Evidence',         enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'root_causes',             type: 'builtin',  title: 'Root Causes',                 enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'transformation_priorities', type: 'builtin', title: 'Transformation Priorities',  enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'way_forward',             type: 'builtin',  title: 'Way Forward',                 enabled: true,  collapsed: false, excludedItems: [] },
-      { id: 'connected_model',         type: 'builtin',  title: 'Connected Model',             enabled: true,  collapsed: false, excludedItems: [] },
-      // ── Chapter 4: Solution ───────────────────────────────────────────────
-      { id: 'ch_solution',             type: 'chapter',  title: 'Solution',                    enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'solution_direction',      type: 'builtin',  title: 'Solution Direction',          enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'strategic_impact',        type: 'builtin',  title: 'Strategic Impact',            enabled: true,  collapsed: false, excludedItems: [] },
       // ── Account Summary ───────────────────────────────────────────────────
       { id: 'report_conclusion',       type: 'builtin',  title: 'Summary & Next Steps',        enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'facilitator_contact',     type: 'builtin',  title: 'Facilitator Contact',         enabled: false, collapsed: false, excludedItems: [] },
-      // ── Kept available but off by default ────────────────────────────────
+      // ── Available but off by default ─────────────────────────────────────
+      { id: 'transformation_priorities', type: 'builtin', title: 'Transformation Priorities',  enabled: false, collapsed: false, excludedItems: [] },
+      { id: 'way_forward',             type: 'builtin',  title: 'Way Forward',                 enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'connected_model',         type: 'builtin',  title: 'Connected Model',             enabled: false, collapsed: false, excludedItems: [] },
       { id: 'insight_summary',         type: 'builtin',  title: 'Insight Map Summary',         enabled: false, collapsed: false, excludedItems: [] },
     ],
   };
