@@ -106,6 +106,7 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [exporting, setExporting] = useState(false);
   const [exportingPptx, setExportingPptx] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // ── Report builder layout ─────────────────────────────────────────
@@ -528,11 +529,8 @@ export default function DownloadReportPage({ params }: PageProps) {
       });
       if (!res.ok) throw new Error('Preview failed');
       const html = await res.text();
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      // Revoke after a short delay so the new tab has time to load
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      // Show full-screen inline preview (no popup needed)
+      setPreviewHtml(html);
     } catch (err) {
       toast.error(`Preview failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
@@ -626,6 +624,27 @@ export default function DownloadReportPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
+
+      {/* ── Full-screen report preview overlay ────────────────────────────── */}
+      {previewHtml && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex flex-col">
+          <div className="flex items-center justify-between bg-slate-900 text-white px-5 py-2.5 shrink-0">
+            <span className="text-sm font-semibold">Report Preview — {workshop?.name}</span>
+            <button
+              onClick={() => setPreviewHtml(null)}
+              className="text-slate-300 hover:text-white text-sm px-3 py-1 rounded hover:bg-slate-700 transition-colors"
+            >
+              ✕ Close preview
+            </button>
+          </div>
+          <iframe
+            srcDoc={previewHtml}
+            className="flex-1 w-full bg-white"
+            title="Report Preview"
+            sandbox="allow-same-origin"
+          />
+        </div>
+      )}
 
       {/* ── Sticky header ──────────────────────────────────────────────────── */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">

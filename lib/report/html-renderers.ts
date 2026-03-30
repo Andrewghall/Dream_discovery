@@ -723,8 +723,12 @@ export function renderStructuralNarrative(discoverAnalysis: DiscoverAnalysis | u
     const layerLabel = LAYER_LABEL[layer.layer] ?? layer.layer;
 
     // Term rows with horizontal bars + counts (matching app chart)
+    // Fall back to count-relative width if normalised is missing/zero
+    const maxCount = Math.max(...layer.topTerms.map(t => t.count ?? 0), 1);
     const terms = layer.topTerms.slice(0, 8).map(tt => {
-      const pct = Math.round((tt.normalised ?? 0) * 100);
+      const pct = tt.normalised
+        ? Math.round(tt.normalised * 100)
+        : Math.round(((tt.count ?? 0) / maxCount) * 100);
       return `
         <div class="narr-term-row">
           <span class="narr-term-name">${esc(tt.term)}</span>
