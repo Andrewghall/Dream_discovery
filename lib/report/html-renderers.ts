@@ -1170,7 +1170,7 @@ function renderPdfRoadmapGantt(roadmap: ExecutionRoadmap): string {
 
   // SVG layout constants
   const SVG_W = 700;
-  const LABEL_W = 155;
+  const LABEL_W = 210;
   const RIGHT_M = 44; // space for right-side £ axis
   const CHART_W = SVG_W - LABEL_W - RIGHT_M;
   const TOP_H = 34;   // phase header band
@@ -1218,9 +1218,9 @@ function renderPdfRoadmapGantt(roadmap: ExecutionRoadmap): string {
     const x   = toX(r.x1w);
     const bw  = Math.max(toX(r.x2w) - x - 1, 12);
     const col = PHASE_COLORS[r.pi] ?? '#6366f1';
-    const lbl = r.label.length > 24 ? r.label.slice(0, 22) + '…' : r.label;
+    const lbl = r.label;
     return `
-      <text x="${(LABEL_W - 5).toFixed(1)}" y="${(y + BAR_H / 2 + 3.5).toFixed(1)}" text-anchor="end" font-size="7" font-family="Inter,Helvetica,sans-serif" fill="#475569">${esc(lbl)}</text>
+      <text x="${(LABEL_W - 5).toFixed(1)}" y="${(y + BAR_H / 2 + 3.5).toFixed(1)}" text-anchor="end" font-size="7.5" font-family="Inter,Helvetica,sans-serif" fill="#475569">${esc(lbl)}</text>
       <rect x="${x.toFixed(1)}" y="${y}" width="${bw.toFixed(1)}" height="${BAR_H}" rx="3" fill="${col}" opacity="0.82"/>`;
   }).join('');
 
