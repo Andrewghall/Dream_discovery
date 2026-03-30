@@ -171,29 +171,47 @@ export default function DownloadReportPage({ params }: PageProps) {
           if (rs.layout?.sections?.length) {
             const stored   = rs.layout;
             const defaults = defaultReportLayout();
-            const defaultMap = new Map(defaults.sections.map(s => [s.id, s]));
             const storedIds = new Set(stored.sections.map(s => s.id));
 
-            // 1. Upgrade existing sections: apply new default `enabled` if they changed
-            const upgradedSections = stored.sections.map(s => {
-              const def = defaultMap.get(s.id);
-              if (!def) return s;
-              // If default now says enabled=true but stored says false, turn it on
-              if (def.enabled && !s.enabled) return { ...s, enabled: true };
-              return s;
-            });
+            const hasChapters = stored.sections.some(s => s.type === 'chapter');
+            const hasCustom   = stored.sections.some(s => s.type === 'custom');
 
-            // 2. Add brand-new builtin sections not yet in the stored layout
-            const newBuiltins = defaults.sections.filter(
-              s => !storedIds.has(s.id),
-            );
-            // 3. Add new chapter dividers (type='chapter') not yet in stored layout
-            const mergedSections = newBuiltins.length > 0
-              ? [...upgradedSections, ...newBuiltins]
-              : upgradedSections;
+            let mergedSections;
+            if (!hasChapters) {
+              // No chapters in stored layout — use new default order, but preserve
+              // user customisations (enabled state, excludedItems) for existing sections
+              const storedMap = new Map(stored.sections.map(s => [s.id, s]));
+              mergedSections = defaults.sections.map(def => {
+                const prev = storedMap.get(def.id);
+                if (!prev) return def;
+                // Carry forward excludedItems and explicit disabled choice, but
+                // apply new default enabled=true if they had it turned off by old default
+                return {
+                  ...def,
+                  excludedItems: prev.excludedItems ?? [],
+                  // Only keep enabled=false if user explicitly disabled (prev was enabled in old default too)
+                  enabled: def.enabled ? true : prev.enabled,
+                };
+              });
+              // Append any custom sections from old layout
+              if (hasCustom) {
+                const customSections = stored.sections.filter(s => s.type === 'custom' && !storedIds.has(s.id));
+                mergedSections = [...mergedSections, ...customSections];
+              }
+            } else {
+              // Has chapters — preserve order, just upgrade enabled state and add new sections
+              const defaultMap = new Map(defaults.sections.map(s => [s.id, s]));
+              const upgraded = stored.sections.map(s => {
+                const def = defaultMap.get(s.id);
+                if (!def) return s;
+                if (def.enabled && !s.enabled) return { ...s, enabled: true };
+                return s;
+              });
+              const newSections = defaults.sections.filter(s => !storedIds.has(s.id));
+              mergedSections = newSections.length > 0 ? [...upgraded, ...newSections] : upgraded;
+            }
 
-            const merged = { ...stored, sections: mergedSections };
-            setLayout(merged);
+            setLayout({ ...stored, sections: mergedSections });
             if (stored.clientLogoUrl) setClientLogoUrl(stored.clientLogoUrl);
           }
         }

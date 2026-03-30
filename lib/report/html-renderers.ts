@@ -152,7 +152,6 @@ export function renderExecutiveSummary(summary: ReportSummary, cfg: ReportSectio
       ${lensRows ? `<div class="es-section-label">Findings by Lens</div><div class="lens-grid">${lensRows}</div>` : ''}
       ${matttersBlock}
       ${urgencyBlock}
-      ${transformDir}
       ${solutionBlock}
     </section>`;
 }
