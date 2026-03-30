@@ -41,7 +41,17 @@ const SCHEMA = `{
     "whyItMatters": "string — 3-4 sentences: name the direct business cost of these issues (operational, financial, customer, competitive) — no generic consulting language — be specific to this organisation",
     "opportunityOrRisk": "string — 3-4 sentences: name the specific opportunity if addressed, and the specific risk if not — reference the root cause and the evidence",
     "urgency": "string — 1-2 sentences: must name at least one specific item from the intelligence — a regulatory obligation, measured metric (e.g. '34% attrition'), competitive trigger, or named operational crisis — do not write generic urgency without a named trigger",
-    "nextStepsPreview": "string — one sentence: the direction the solution takes, bridging to the solution section below"
+    "nextStepsPreview": "string — one sentence: the direction the solution takes, bridging to the solution section below",
+    "decisionAsk": {
+      "statement": "string — the specific decision we are asking the executive team to make, e.g. 'We are asking the ExCo to approve a phased transformation programme to address [root cause], beginning with [Phase 1 initiative]'",
+      "options": [
+        { "label": "string — option label, e.g. 'Full programme (recommended)'", "description": "string — 1-2 sentences on what this entails and its expected outcome" },
+        { "label": "string — alternative option, e.g. 'Phased start'", "description": "string — 1-2 sentences on what this entails" },
+        { "label": "string — e.g. 'Do nothing'", "description": "string — 1 sentence on the consequence of inaction" }
+      ],
+      "recommendation": "string — one sentence: what we recommend and the single most compelling reason why",
+      "ifNoAction": "string — 1-2 sentences: the specific, named consequence of inaction — reference a metric, regulatory risk, or competitive threat from the intelligence"
+    }
   },
 
   "solutionSummary": {
@@ -410,6 +420,7 @@ EXECUTIVE SUMMARY RULES:
 • METRIC CITATION RULE — CRITICAL: Before writing whatWeFound and urgency, scan the entire intelligence for ANY specific percentage, named system, named role, customer tier, or quantified outcome (e.g. "30-40% AHT reduction", "Gold and Platinum tier members", "8 legacy systems", "34% attrition"). Every specific metric or named entity found MUST appear verbatim in at least one finding or the urgency field. Do not paraphrase or generalise a specific number — quote it exactly.
 • lensFindings: produce ONE entry for EVERY lens listed under "Lenses:" in WORKSHOP CONTEXT — no exceptions, no omissions. Consult the "SIGNALS BY LENS" section for evidence. If signals for a lens were thin or absent, write the finding as: "Workshop signals for this lens were limited — [describe what little was captured, or state 'no pads were recorded for this lens']". NEVER omit a lens that the workshop ran.
 • urgency: MUST name at least one specific item from the intelligence — a named regulation, a measured attrition rate, a specific metric, a named operational crisis, or a competitive event. "Inefficiencies will compound" without a named trigger is not acceptable.
+• decisionAsk: frame the single most important decision the executive must make. Options should present real alternatives (full programme, phased, do nothing) with honest trade-offs. The recommendation must name the specific root cause it addresses. ifNoAction must cite a named metric or risk from the intelligence — not a generic statement.
 • whyItMatters: must name specific business consequences — operational cost, customer impact, staff impact, competitive exposure — be concrete
 • If evidence for a finding does not exist in the provided intelligence, DO NOT include that finding — omit rather than invent
 

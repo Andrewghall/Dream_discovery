@@ -934,6 +934,7 @@ export default function DownloadReportPage({ params }: PageProps) {
                                 onUpdate={handleSummaryUpdate}
                                 excludedItems={cfg.excludedItems}
                                 onToggleItem={(id) => toggleItem(cfg.id, id)}
+                                intelligence={intelligence}
                               />
                             ) : (
                               <div className="p-3">

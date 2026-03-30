@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, X } from 'lucide-r
 import type { WorkshopOutputIntelligence, ReportSummary } from '@/lib/output-intelligence/types';
 import { ItemToggle } from '@/components/report-builder/DraggableSection';
 import { EditableText, AddItemInput } from './ScratchpadEditors';
+import { renderPdfRoadmapGantt } from '@/lib/report/html-renderers';
 
 // ── Phase colours for roadmap ─────────────────────────────────────────────────
 
@@ -21,16 +22,20 @@ export function ExecutiveSummaryBlock({
   onUpdate,
   excludedItems = [],
   onToggleItem = () => {},
+  intelligence,
 }: {
   summary: ReportSummary;
   onUpdate: (updated: ReportSummary) => void;
   excludedItems?: string[];
   onToggleItem?: (id: string) => void;
+  intelligence?: WorkshopOutputIntelligence | null;
 }) {
   const es = summary.executiveSummary;
   if (!es) return null;
   const whatWeFound = es.whatWeFound ?? [];
   const lensFindings = es.lensFindings ?? [];
+  const ganttSvg = intelligence?.roadmap ? renderPdfRoadmapGantt(intelligence.roadmap) : '';
+  const roi = intelligence?.roadmap?.roiSummary;
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -62,6 +67,73 @@ export function ExecutiveSummaryBlock({
           className="text-xl font-bold text-foreground leading-snug"
         />
       </div>
+
+      {/* Decision Ask — what we're asking the exec to decide */}
+      {es.decisionAsk && (
+        <div className="px-6 py-5 bg-amber-50 border-b border-amber-200">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-700 mb-2">
+            Decision Required
+          </p>
+          <p className="text-sm font-semibold text-amber-900 leading-snug mb-3">{es.decisionAsk.statement}</p>
+          {es.decisionAsk.options && es.decisionAsk.options.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {es.decisionAsk.options.map((opt, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm text-amber-900">
+                  <span className="mt-0.5 shrink-0 w-5 h-5 rounded-full bg-amber-200 text-amber-800 text-[10px] font-bold flex items-center justify-center">{i + 1}</span>
+                  <div><span className="font-semibold">{opt.label}:</span> {opt.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 mb-1">Our Recommendation</p>
+              <p className="text-xs text-emerald-900">{es.decisionAsk.recommendation}</p>
+            </div>
+            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-red-700 mb-1">If No Action</p>
+              <p className="text-xs text-red-900">{es.decisionAsk.ifNoAction}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivery Timeline — Gantt + ROI */}
+      {(ganttSvg || roi) && (
+        <div className="px-6 py-5 border-b border-border bg-slate-50 space-y-4">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Delivery Timeline &amp; ROI
+          </p>
+          {ganttSvg && (
+            <div
+              className="overflow-x-auto rounded-xl border border-border bg-white p-3"
+              dangerouslySetInnerHTML={{ __html: ganttSvg }}
+            />
+          )}
+          {roi && (
+            <div className="grid grid-cols-3 gap-3">
+              {roi.totalProgrammeCost && (
+                <div className="rounded-xl border border-border bg-white px-4 py-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Investment</p>
+                  <p className="text-sm font-bold text-foreground">{roi.totalProgrammeCost}</p>
+                </div>
+              )}
+              {roi.totalThreeYearBenefit && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide mb-1">3-Year Benefit</p>
+                  <p className="text-sm font-bold text-emerald-800">{roi.totalThreeYearBenefit}</p>
+                </div>
+              )}
+              {roi.paybackPeriod && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">Payback Period</p>
+                  <p className="text-sm font-bold text-foreground">{roi.paybackPeriod}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Body */}
       <div className="px-6 py-6 space-y-7">
@@ -708,7 +780,6 @@ const WF_COLORS = [
 
 export function WayForwardBlock({ intelligence }: { intelligence: WorkshopOutputIntelligence }) {
   const phases = intelligence.roadmap?.phases ?? [];
-  const roi    = intelligence.roadmap?.roiSummary;
 
   if (!phases.length) {
     return (
@@ -720,19 +791,6 @@ export function WayForwardBlock({ intelligence }: { intelligence: WorkshopOutput
 
   return (
     <div className="space-y-4">
-      {/* Gantt timeline bar */}
-      <div className="flex gap-0 rounded-lg overflow-hidden border border-border text-[10px] font-semibold">
-        {phases.map((p, i) => {
-          const c = WF_COLORS[i] ?? WF_COLORS[0];
-          return (
-            <div key={i} className={`flex-1 ${c.header} ${c.label} px-3 py-2 text-center`}>
-              <div>{p.phase.split(' — ')[0]}</div>
-              {p.timeframe && <div className="font-normal opacity-70">{p.timeframe}</div>}
-            </div>
-          );
-        })}
-      </div>
-
       {/* Phase cards */}
       <div className="grid grid-cols-1 gap-3">
         {phases.map((p, i) => {
@@ -775,33 +833,6 @@ export function WayForwardBlock({ intelligence }: { intelligence: WorkshopOutput
         })}
       </div>
 
-      {/* ROI summary footer */}
-      {roi && (
-        <div className="grid grid-cols-3 gap-3 pt-1">
-          {roi.totalProgrammeCost && (
-            <div className="rounded-xl border border-border bg-card px-4 py-3">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Programme Cost</p>
-              <p className="text-sm font-bold text-foreground">{roi.totalProgrammeCost}</p>
-            </div>
-          )}
-          {roi.totalThreeYearBenefit && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide mb-1">3-Year Benefit</p>
-              <p className="text-sm font-bold text-emerald-800">{roi.totalThreeYearBenefit}</p>
-            </div>
-          )}
-          {roi.paybackPeriod && (
-            <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-              <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">Programme Payback</p>
-              <p className="text-sm font-bold text-foreground">{roi.paybackPeriod}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <p className="text-[10px] text-muted-foreground italic px-1">
-        Full Gantt chart with cost/benefit curves rendered in the exported PDF.
-      </p>
     </div>
   );
 }

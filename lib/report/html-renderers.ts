@@ -1252,7 +1252,7 @@ function parseMidKForPdf(s: string): number {
 
 // ── Full initiative-level Gantt (used in Way Forward section) ────────────────
 // Mirrors the Brain Scan Gantt: initiative bars by phase + cumulative cost/benefit curves
-function renderPdfRoadmapGantt(roadmap: ExecutionRoadmap): string {
+export function renderPdfRoadmapGantt(roadmap: ExecutionRoadmap): string {
   const phases = roadmap?.phases ?? [];
   if (!phases.length) return '';
 

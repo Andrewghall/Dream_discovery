@@ -500,6 +500,18 @@ export interface LensFinding {
   finding: string;              // specific finding for this lens
 }
 
+export interface DecisionOption {
+  label: string;        // e.g. "Option A: Full programme"
+  description: string;  // 1-2 sentences on what this option entails
+}
+
+export interface DecisionAsk {
+  statement: string;          // "We are asking the ExCo to approve..."
+  options?: DecisionOption[]; // 2-3 decision options (optional)
+  recommendation: string;     // What we recommend they choose and why (1 sentence)
+  ifNoAction: string;         // Specific consequence of inaction (1-2 sentences)
+}
+
 export interface ExecSummary {
   theAsk: string;               // one sentence: what was commissioned and why
   theAnswer: string;            // one sentence: direct answer to the ask
@@ -509,6 +521,7 @@ export interface ExecSummary {
   opportunityOrRisk: string;    // 2-3 sentences: specific opportunity or risk revealed
   urgency: string;              // one sentence: why act now
   nextStepsPreview: string;     // one sentence bridging to the solution direction
+  decisionAsk?: DecisionAsk;   // what we are asking the executive to decide
 }
 
 export interface WhatMustChange {
