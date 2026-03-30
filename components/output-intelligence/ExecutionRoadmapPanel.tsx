@@ -177,7 +177,7 @@ function GanttOverlay({
   const maxVal = Math.max(...roiCurve.map(p => Math.max(p.cost, p.benefit)), 100);
   const yMax   = maxVal * 1.3;
 
-  const xPx = (week: number) => left + (week / 52) * cW;
+  const xPx = (week: number) => left + (week / 156) * cW; // 156 = 3yr chart domain
   const yPx = (val: number)  => top  + cH * (1 - val / yMax);
 
   // SVG path helpers
@@ -190,7 +190,7 @@ function GanttOverlay({
   const benefitAreaPath = [
     `M${xPx(0).toFixed(1)},${yPx(0).toFixed(1)}`,
     ...roiCurve.map(p => `L${xPx(p.week).toFixed(1)},${yPx(p.benefit).toFixed(1)}`),
-    `L${xPx(52).toFixed(1)},${yPx(0).toFixed(1)}`,
+    `L${xPx(156).toFixed(1)},${yPx(0).toFixed(1)}`,
     'Z',
   ].join(' ');
 
@@ -260,7 +260,7 @@ function GanttOverlay({
             x={xPx(payback.week) + 12} y={yPx(payback.val) - 8}
             fontSize="8" fontWeight="700" fill="#b45309"
           >
-            Payback ~W{payback.week}
+            Payback ~{Math.round(payback.week / 4.33)}mo
           </text>
         </g>
       )}
