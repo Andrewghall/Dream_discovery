@@ -167,17 +167,32 @@ export default function DownloadReportPage({ params }: PageProps) {
           const rs = d.reportSummary as ReportSummary;
           setReportSummary(rs);
           // Restore saved layout if it exists, merging in any new built-in sections
-          // from defaultReportLayout() that aren't yet in the stored layout
+          // and applying updated default `enabled` values from defaultReportLayout()
           if (rs.layout?.sections?.length) {
             const stored   = rs.layout;
             const defaults = defaultReportLayout();
+            const defaultMap = new Map(defaults.sections.map(s => [s.id, s]));
             const storedIds = new Set(stored.sections.map(s => s.id));
+
+            // 1. Upgrade existing sections: apply new default `enabled` if they changed
+            const upgradedSections = stored.sections.map(s => {
+              const def = defaultMap.get(s.id);
+              if (!def) return s;
+              // If default now says enabled=true but stored says false, turn it on
+              if (def.enabled && !s.enabled) return { ...s, enabled: true };
+              return s;
+            });
+
+            // 2. Add brand-new builtin sections not yet in the stored layout
             const newBuiltins = defaults.sections.filter(
-              s => s.type === 'builtin' && !storedIds.has(s.id),
+              s => !storedIds.has(s.id),
             );
-            const merged = newBuiltins.length > 0
-              ? { ...stored, sections: [...stored.sections, ...newBuiltins] }
-              : stored;
+            // 3. Add new chapter dividers (type='chapter') not yet in stored layout
+            const mergedSections = newBuiltins.length > 0
+              ? [...upgradedSections, ...newBuiltins]
+              : upgradedSections;
+
+            const merged = { ...stored, sections: mergedSections };
             setLayout(merged);
             if (stored.clientLogoUrl) setClientLogoUrl(stored.clientLogoUrl);
           }
