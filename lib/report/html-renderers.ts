@@ -706,26 +706,74 @@ export function renderStructuralAlignment(discoverAnalysis: DiscoverAnalysis | u
 export function renderStructuralNarrative(discoverAnalysis: DiscoverAnalysis | undefined): string {
   if (!discoverAnalysis?.narrative?.layers?.length) return '';
   const { layers } = discoverAnalysis.narrative;
-  const LAYER_BG: Record<string, string>     = { executive: '#f5f3ff', operational: '#eff6ff', frontline: '#f0fdf4' };
-  const LAYER_BORDER: Record<string, string> = { executive: '#ddd6fe', operational: '#bfdbfe', frontline: '#bbf7d0' };
-  const SENT_COLOR: Record<string, string>   = { positive: '#065f46', negative: '#b91c1c', neutral: '#6b7280', mixed: '#b45309' };
+
+  const LAYER_BG:     Record<string, string> = { executive: '#f5f3ff', operational: '#eff6ff', frontline: '#fffbeb' };
+  const LAYER_BORDER: Record<string, string> = { executive: '#ddd6fe', operational: '#bfdbfe', frontline: '#fde68a' };
+  const LAYER_BAR:    Record<string, string> = { executive: '#6366f1', operational: '#10b981', frontline: '#f59e0b' };
+  const LAYER_LABEL:  Record<string, string> = { executive: 'Executive', operational: 'Operational', frontline: 'Frontline' };
+  const SENT_COLOR:   Record<string, string> = { positive: '#065f46', negative: '#b91c1c', neutral: '#6b7280', mixed: '#b45309' };
+  const SENT_LABEL:   Record<string, string> = { positive: 'Positive sentiment', negative: 'Negative sentiment', neutral: 'Neutral sentiment', mixed: 'Mixed sentiment' };
+
   const cards = layers.map(layer => {
-    const bg        = LAYER_BG[layer.layer]        ?? '#f9fafb';
-    const border    = LAYER_BORDER[layer.layer]    ?? '#e5e7eb';
+    const bg        = LAYER_BG[layer.layer]     ?? '#f9fafb';
+    const border    = LAYER_BORDER[layer.layer] ?? '#e5e7eb';
+    const barColor  = LAYER_BAR[layer.layer]    ?? '#6366f1';
     const sentColor = SENT_COLOR[layer.dominantSentiment] ?? '#374151';
-    const terms     = layer.topTerms.slice(0, 5).map(tt => `<div class="narr-term">${esc(tt.term)}</div>`).join('');
+    const sentLabel = SENT_LABEL[layer.dominantSentiment] ?? layer.dominantSentiment;
+    const layerLabel = LAYER_LABEL[layer.layer] ?? layer.layer;
+
+    // Term rows with horizontal bars + counts (matching app chart)
+    const terms = layer.topTerms.slice(0, 8).map(tt => {
+      const pct = Math.round((tt.normalised ?? 0) * 100);
+      return `
+        <div class="narr-term-row">
+          <span class="narr-term-name">${esc(tt.term)}</span>
+          <div class="narr-bar-wrap">
+            <div class="narr-bar" style="width:${pct}%;background:${barColor}"></div>
+          </div>
+          <span class="narr-term-count">${tt.count}</span>
+        </div>`;
+    }).join('');
+
+    // Temporal focus bar
+    const tf = layer.temporalFocus ?? { past: 33, present: 34, future: 33 };
+    const total = (tf.past ?? 0) + (tf.present ?? 0) + (tf.future ?? 0) || 100;
+    const pastPct    = Math.round(((tf.past    ?? 0) / total) * 100);
+    const presentPct = Math.round(((tf.present ?? 0) / total) * 100);
+    const futurePct  = Math.round(((tf.future  ?? 0) / total) * 100);
+
+    // Sample phrase (first one, truncated)
+    const phrase = (layer.samplePhrases ?? [])[0] ?? '';
+    const phraseHtml = phrase
+      ? `<p class="narr-phrase">&ldquo;${esc(phrase.slice(0, 120))}${phrase.length > 120 ? '…' : ''}&rdquo;</p>`
+      : '';
+
     return `
       <div class="narr-card" style="background:${bg};border-color:${border}">
-        <div class="narr-layer">${esc(layer.layer)}</div>
-        <div class="narr-sentiment" style="color:${sentColor}">${esc(layer.dominantSentiment)}</div>
+        <div class="narr-header">
+          <div class="narr-layer" style="color:${barColor}">${esc(layerLabel)}</div>
+          <div class="narr-count">${layer.participantCount ?? ''} people</div>
+        </div>
+        <div class="narr-sentiment" style="color:${sentColor}">${esc(sentLabel)}</div>
         <div class="narr-terms">${terms}</div>
+        <div class="narr-temporal-wrap">
+          <div class="narr-temporal-label">Temporal focus</div>
+          <div class="narr-temporal-bar">
+            <div style="width:${pastPct}%;background:#cbd5e1"></div>
+            <div style="width:${presentPct}%;background:#94a3b8"></div>
+            <div style="width:${futurePct}%;background:#334155"></div>
+          </div>
+          <div class="narr-temporal-ticks"><span>Past</span><span>Present</span><span>Future</span></div>
+        </div>
+        ${phraseHtml}
       </div>`;
   }).join('');
+
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Narrative Divergence</div></div>
       ${sectionIntro('Competing stories in the organisation — identified through divergent participant perspectives on the same challenges, revealing where leadership and frontline narratives pull apart.')}
-      <p class="struct-subtitle">Language and sentiment differences across organisational layers</p>
+      <p class="struct-subtitle">Language and sentiment differences across organisational layers — executive vs operational vs frontline</p>
       <div class="narr-grid">${cards}</div>
     </section>`;
 }
@@ -1822,12 +1870,24 @@ export const PDF_STYLES = `
   .struct-td-muted { padding: 9px 14px; color: #6b7280; border-top: 1px solid #f1f5f9; }
   .struct-td-score { padding: 9px 14px; text-align: right; font-weight: 700; border-top: 1px solid #f1f5f9; }
   .struct-sev { padding: 2px 6px; border-radius: 4px; font-size: 8pt; font-weight: 600; }
-  .narr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; page-break-inside: avoid; break-inside: avoid; }
-  .narr-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
-  .narr-layer { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #374151; margin-bottom: 4px; }
-  .narr-sentiment { font-size: 9.5pt; font-weight: 600; margin-bottom: 10px; text-transform: capitalize; }
-  .narr-terms { display: flex; flex-direction: column; gap: 4px; }
-  .narr-term { font-size: 9pt; color: #374151; padding: 2px 0; }
+  .narr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .narr-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; break-inside: avoid; page-break-inside: avoid; }
+  .narr-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+  .narr-layer { font-size: 8.5pt; font-weight: 700; text-transform: capitalize; }
+  .narr-count { font-size: 7.5pt; color: #9ca3af; }
+  .narr-sentiment { font-size: 8.5pt; font-weight: 500; margin-bottom: 10px; text-transform: capitalize; }
+  .narr-terms { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .narr-term-row { display: flex; align-items: center; gap: 6px; }
+  .narr-term-name { font-size: 8pt; color: #374151; width: 72px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .narr-bar-wrap { flex: 1; height: 7px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+  .narr-bar { height: 100%; border-radius: 4px; transition: none; }
+  .narr-term-count { font-size: 7.5pt; color: #6b7280; width: 18px; text-align: right; flex-shrink: 0; }
+  .narr-temporal-wrap { margin-top: 10px; }
+  .narr-temporal-label { font-size: 7pt; color: #94a3b8; text-transform: capitalize; margin-bottom: 4px; }
+  .narr-temporal-bar { display: flex; height: 6px; border-radius: 4px; overflow: hidden; width: 100%; }
+  .narr-temporal-bar > div { height: 100%; }
+  .narr-temporal-ticks { display: flex; justify-content: space-between; font-size: 6.5pt; color: #cbd5e1; margin-top: 2px; }
+  .narr-phrase { font-size: 7.5pt; color: #64748b; font-style: italic; line-height: 1.5; margin-top: 8px; border-top: 1px solid #f1f5f9; padding-top: 7px; }
   .tension-list { display: flex; flex-direction: column; gap: 10px; }
   .tension-item { display: flex; gap: 12px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; }
   .tension-rank { flex-shrink: 0; font-size: 8.5pt; font-weight: 700; color: #9ca3af; font-family: monospace; width: 22px; padding-top: 2px; }

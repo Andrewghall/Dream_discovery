@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import {
   FileDown,
   Download,
+  Eye,
   Loader2,
   ArrowLeft,
   Sparkles,
@@ -104,6 +105,7 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportingPptx, setExportingPptx] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // ── Report builder layout ─────────────────────────────────────────
@@ -500,6 +502,44 @@ export default function DownloadReportPage({ params }: PageProps) {
     }
   };
 
+  // ── Preview report (open full HTML in new tab) ────────────────────────────────
+
+  const handlePreviewReport = async () => {
+    if (!intelligence || !reportSummary) {
+      toast.error('Generate the report summary first before previewing');
+      return;
+    }
+    try {
+      setPreviewing(true);
+      const res = await fetch(`/api/admin/workshops/${workshopId}/preview-report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reportSummary,
+          intelligence,
+          layout,
+          liveJourneyData,
+          workshopName: workshop?.name,
+          orgName: workshop?.organization?.name,
+          clientLogoUrl: clientLogoUrl || undefined,
+          discoveryOutput: discoveryOutput || undefined,
+          discoverAnalysis: discoverAnalysis || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('Preview failed');
+      const html = await res.text();
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      // Revoke after a short delay so the new tab has time to load
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (err) {
+      toast.error(`Preview failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   // Called whenever user edits any field — updates local state and debounce-saves to DB
   const handleSummaryUpdate = useCallback((updated: ReportSummary) => {
     setReportSummary(updated);
@@ -694,6 +734,21 @@ export default function DownloadReportPage({ params }: PageProps) {
                 Refresh
               </Button>
             )}
+            <Button
+              onClick={handlePreviewReport}
+              disabled={previewing || !intelligence || !reportSummary}
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              title="Preview the full report before generating PDF"
+            >
+              {previewing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+              {previewing ? 'Loading…' : 'Preview Report'}
+            </Button>
             <Button
               onClick={handleExportPdf}
               disabled={exporting || !intelligence || !reportSummary}
