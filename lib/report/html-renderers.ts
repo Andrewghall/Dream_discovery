@@ -25,6 +25,7 @@ import {
 } from '@/lib/output-intelligence/engines/priority-engine';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
+import { dedupeBy, dedupeStrings } from './dedup-utils';
 
 // ── Shared body type ──────────────────────────────────────────────────────────
 
@@ -301,7 +302,7 @@ export function renderExecutiveSummary(summary: ReportSummary, intelligence: Wor
 export function renderSupportingEvidence(intelligence: WorkshopOutputIntelligence, cfg: ReportSectionConfig): string {
   const { discoveryValidation } = intelligence;
 
-  const confirmed = (discoveryValidation.confirmedIssues ?? [])
+  const confirmed = dedupeBy(discoveryValidation.confirmedIssues ?? [], ci => ci.issue)
     .filter((_, i) => !isExcluded(cfg, `confirmed:${i}`))
     .map(ci => `
       <div class="evidence-row">
@@ -312,7 +313,7 @@ export function renderSupportingEvidence(intelligence: WorkshopOutputIntelligenc
         </div>
       </div>`).join('');
 
-  const newIssues = (discoveryValidation.newIssues ?? [])
+  const newIssues = dedupeBy(discoveryValidation.newIssues ?? [], ni => ni.issue)
     .filter((_, i) => !isExcluded(cfg, `new:${i}`))
     .map(ni => `
       <div class="evidence-row">
@@ -361,7 +362,7 @@ export function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: 
           <div class="cause-body">
             <div class="cause-title">${esc(rc.cause)}</div>
             <div class="cause-cat">${esc(rc.category)}</div>
-            ${(rc.evidence ?? []).slice(0, 2).map(e => `<div class="cause-ev">· ${esc(e)}</div>`).join('')}
+            ${dedupeStrings(rc.evidence ?? []).slice(0, 2).map(e => `<div class="cause-ev">· ${esc(e)}</div>`).join('')}
             ${lenses ? `<div class="cause-lenses">${lenses}</div>` : ''}
           </div>
         </div>`;
@@ -555,9 +556,12 @@ export function renderJourneyMap(journey: LiveJourneyData, intro: string | undef
   ).join('');
 
   // ── Pain points grouped by stage ──────────────────────────────────────────
+  // Stats bar counts use the raw undeduped painPoints list (reflects true volume).
+  // The rendered sentence list is deduplicated by action text to remove repeated phrases.
   const stagesWithPain = journey.stages
     .map(stage => {
-      const stagePains = painPoints.filter(p => p.stage.toLowerCase() === stage.toLowerCase());
+      const rawStagePains = painPoints.filter(p => p.stage.toLowerCase() === stage.toLowerCase());
+      const stagePains = dedupeBy(rawStagePains, p => p.action);
       return { stage, pains: stagePains };
     })
     .filter(s => s.pains.length > 0);
@@ -884,13 +888,19 @@ export function renderStructuralNarrative(discoverAnalysis: DiscoverAnalysis | u
 
 export function renderStructuralTensions(discoverAnalysis: DiscoverAnalysis | undefined): string {
   if (!discoverAnalysis?.tensions?.tensions?.length) return '';
-  const tensions = discoverAnalysis.tensions.tensions.slice(0, 8);
+  // Deduplicate tensions by topic (keeps highest-ranked per similar topic cluster),
+  // then take up to 8. Within each tension, deduplicate viewpoints by position text.
+  const tensions = dedupeBy(
+    [...discoverAnalysis.tensions.tensions].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)),
+    t => t.topic,
+  ).slice(0, 8);
   const SEV_BG:   Record<string, string> = { critical: '#fee2e2', significant: '#fef3c7', moderate: '#f1f5f9' };
   const SEV_TEXT: Record<string, string> = { critical: '#b91c1c', significant: '#b45309', moderate: '#475569' };
   const items = tensions.map((ten, i) => {
     const bg   = SEV_BG[ten.severity]   ?? SEV_BG.moderate;
     const text = SEV_TEXT[ten.severity] ?? SEV_TEXT.moderate;
-    const viewpoints = ten.viewpoints.slice(0, 2).map(vp =>
+    const dedupedVps = dedupeBy(ten.viewpoints, vp => vp.position);
+    const viewpoints = dedupedVps.slice(0, 2).map(vp =>
       `<div class="tension-vp"><span class="tension-actor">${esc(vp.actor)}</span> — ${esc(vp.position.slice(0, 80))}${vp.position.length > 80 ? '…' : ''}</div>`
     ).join('');
     return `
@@ -916,8 +926,14 @@ export function renderStructuralTensions(discoverAnalysis: DiscoverAnalysis | un
 
 export function renderStructuralBarriers(discoverAnalysis: DiscoverAnalysis | undefined): string {
   if (!discoverAnalysis?.constraints?.constraints?.length) return '';
-  const sorted = [...discoverAnalysis.constraints.constraints]
-    .sort((a, b) => b.weight - a.weight)
+  // Deduplicate by description text, then sort severity-first (critical > significant > moderate).
+  // Weight used only as tiebreaker within the same severity tier.
+  const SEVERITY_RANK: Record<string, number> = { critical: 3, significant: 2, moderate: 1 };
+  const sorted = dedupeBy([...discoverAnalysis.constraints.constraints], c => c.description)
+    .sort((a, b) => {
+      const diff = (SEVERITY_RANK[b.severity] ?? 0) - (SEVERITY_RANK[a.severity] ?? 0);
+      return diff !== 0 ? diff : b.weight - a.weight;
+    })
     .slice(0, 10);
   const SEV_BG:   Record<string, string> = { critical: '#fee2e2', significant: '#fef3c7', moderate: '#f1f5f9' };
   const SEV_TEXT: Record<string, string> = { critical: '#b91c1c', significant: '#b45309', moderate: '#475569' };
