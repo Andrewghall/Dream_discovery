@@ -1156,32 +1156,61 @@ export default function DownloadReportPage({ params }: PageProps) {
 
                         {/* ── Connected Model ── */}
                         {cfg.id === 'connected_model' && intelligence?.causalIntelligence && (() => {
-                          const findings = [
-                            ...(intelligence.causalIntelligence.organisationalIssues ?? []),
-                            ...(intelligence.causalIntelligence.reinforcedFindings   ?? []),
-                            ...(intelligence.causalIntelligence.emergingPatterns     ?? []),
-                          ];
-                          if (!findings.length) return null;
+                          const CATEGORY_LABELS: Record<string, { label: string; color: string; meaning: string }> = {
+                            ORGANISATIONAL_ISSUE: { label: 'Org Issue',        color: 'bg-red-100 text-red-700',    meaning: 'Confirmed bottleneck or high-risk behaviour' },
+                            REINFORCED_FINDING:   { label: 'Reinforced',       color: 'bg-amber-100 text-amber-700', meaning: 'Pattern confirmed across multiple participants and lenses' },
+                            EMERGING_PATTERN:     { label: 'Emerging',         color: 'bg-blue-100 text-blue-700',  meaning: 'Credible signal not yet systemic — worth monitoring' },
+                          };
+                          const grouped = [
+                            { category: 'ORGANISATIONAL_ISSUE', findings: intelligence.causalIntelligence.organisationalIssues ?? [] },
+                            { category: 'REINFORCED_FINDING',   findings: intelligence.causalIntelligence.reinforcedFindings   ?? [] },
+                            { category: 'EMERGING_PATTERN',     findings: intelligence.causalIntelligence.emergingPatterns     ?? [] },
+                          ].filter(g => g.findings.length > 0);
+                          if (!grouped.length) return null;
                           return (
-                            <div className="p-3 space-y-1">
-                              <p className="text-[10px] text-slate-400 px-1 mb-2">Toggle findings to include or exclude from the report</p>
-                              {findings.map(f => {
-                                const excluded = cfg.excludedItems.includes(f.findingId);
+                            <div className="p-4 space-y-4">
+                              {/* Callout */}
+                              <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs">
+                                <div className="flex-1 space-y-1">
+                                  <p className="text-amber-800"><span className="font-semibold">What this shows: </span>The causal chains connecting your organisation&apos;s problems — what is causing what, which issues are confirmed across multiple sources, and which are early signals.</p>
+                                  <p className="text-amber-900"><span className="font-semibold inline-flex items-center gap-1"><ArrowLeft className="h-3 w-3 rotate-180" />What to do:</span> Org Issues must be in your programme scope — they are confirmed bottlenecks. Reinforced findings belong in Phase 1. Emerging patterns should be monitored — don&apos;t ignore them, but don&apos;t over-invest before they are confirmed.</p>
+                                </div>
+                              </div>
+                              {/* Legend */}
+                              <div className="flex flex-wrap gap-2">
+                                {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                                  <div key={k} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium ${v.color}`}>
+                                    <span className="font-bold">{v.label}</span>
+                                    <span className="opacity-70">— {v.meaning}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {/* Grouped findings */}
+                              {grouped.map(({ category, findings }) => {
+                                const meta = CATEGORY_LABELS[category]!;
                                 return (
-                                  <button
-                                    key={f.findingId}
-                                    onClick={() => toggleItem(cfg.id, f.findingId)}
-                                    className={`w-full text-left flex items-start gap-2.5 px-3 py-2 rounded-lg border text-xs transition-all ${
-                                      excluded
-                                        ? 'border-slate-100 bg-slate-50 text-slate-300 line-through'
-                                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                                    }`}
-                                  >
-                                    <span className={`mt-0.5 shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center ${excluded ? 'border-slate-200 bg-white' : 'border-indigo-400 bg-indigo-50'}`}>
-                                      {!excluded && <span className="w-1.5 h-1.5 rounded-sm bg-indigo-500" />}
-                                    </span>
-                                    <span className="leading-snug">{f.issueTitle}</span>
-                                  </button>
+                                  <div key={category} className="space-y-1">
+                                    <p className={`text-[10px] font-bold uppercase tracking-wider px-1 ${meta.color.split(' ')[1]}`}>{meta.label}</p>
+                                    {findings.map(f => {
+                                      const excluded = cfg.excludedItems.includes(f.findingId);
+                                      return (
+                                        <button
+                                          key={f.findingId}
+                                          onClick={() => toggleItem(cfg.id, f.findingId)}
+                                          className={`w-full text-left flex items-start gap-2.5 px-3 py-2 rounded-lg border text-xs transition-all ${
+                                            excluded
+                                              ? 'border-slate-100 bg-slate-50 text-slate-300 line-through'
+                                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                          }`}
+                                        >
+                                          <span className={`mt-0.5 shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center ${excluded ? 'border-slate-200 bg-white' : 'border-indigo-400 bg-indigo-50'}`}>
+                                            {!excluded && <span className="w-1.5 h-1.5 rounded-sm bg-indigo-500" />}
+                                          </span>
+                                          <span className="leading-snug">{f.issueTitle}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 );
                               })}
                             </div>
