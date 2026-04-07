@@ -225,36 +225,68 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
     }
   }
 
-  // ---- CSV import handler ----
-  async function handleCsvImport() {
+  const isCsvLike = (file: File) => {
+    const name = file.name.toLowerCase();
+    const mime = (file.type ?? '').toLowerCase();
+    const csvMimeTypes = new Set(['text/csv', 'text/tab-separated-values', 'application/csv', 'text/plain']);
+    return /\.(csv|tsv)$/.test(name) || csvMimeTypes.has(mime);
+  };
+
+  async function performCsvImport(file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    if (csvContext.trim()) form.append('context', csvContext.trim());
+
+    const res = await fetch(`/api/admin/workshops/${workshopId}/findings/import-csv`, {
+      method: 'POST',
+      body: form,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(err.error ?? 'Import failed');
+    }
+
+    const data = await res.json();
+    setCsvResult({
+      findingsCreated: data.findingsCreated,
+      fileName: data.fileName,
+      findings: data.findings ?? [],
+    });
+    setCsvFile(null);
+    setCsvContext('');
+  }
+
+  async function uploadEvidenceFile(file: File) {
+    const form = new FormData();
+    form.append('files', file);
+
+    const res = await fetch(`/api/admin/workshops/${workshopId}/evidence`, {
+      method: 'POST',
+      body: form,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(err.error ?? 'Evidence upload failed');
+    }
+
+    setCsvFile(null);
+    setCsvContext('');
+  }
+
+  async function handleFileAction() {
     if (!csvFile) return;
     setCsvImporting(true);
     setCsvError(null);
     setCsvResult(null);
 
     try {
-      const form = new FormData();
-      form.append('file', csvFile);
-      if (csvContext.trim()) form.append('context', csvContext.trim());
-
-      const res = await fetch(`/api/admin/workshops/${workshopId}/findings/import-csv`, {
-        method: 'POST',
-        body: form,
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(err.error ?? 'Import failed');
+      if (isCsvLike(csvFile)) {
+        await performCsvImport(csvFile);
+      } else {
+        await uploadEvidenceFile(csvFile);
       }
-
-      const data = await res.json();
-      setCsvResult({
-        findingsCreated: data.findingsCreated,
-        fileName: data.fileName,
-        findings: data.findings ?? [],
-      });
-      setCsvFile(null);
-      setCsvContext('');
     } catch (err) {
       setCsvError(err instanceof Error ? err.message : 'Import failed');
     } finally {
@@ -415,7 +447,7 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
           {/* Import button */}
           <Button
             size="sm"
-            onClick={handleCsvImport}
+            onClick={handleFileAction}
             disabled={!csvFile || csvImporting}
           >
             {csvImporting ? (
