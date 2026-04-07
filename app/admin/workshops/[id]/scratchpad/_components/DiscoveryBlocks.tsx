@@ -185,6 +185,10 @@ export function InsightSummaryBlock({ intelligence }: { intelligence: WorkshopOu
   const { discoveryValidation } = intelligence;
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="How much of the pre-workshop hypothesis was confirmed by participant evidence, and how many new issues were surfaced that weren't anticipated."
+        action="Hypothesis accuracy below 60% means your brief going in was materially wrong — revisit programme scope before proceeding. New issues surfaced here should be investigated before Phase 1 begins."
+      />
       <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Insight Map Summary</p>
         <p className="text-sm text-foreground leading-relaxed">{discoveryValidation.summary}</p>
@@ -1087,6 +1091,10 @@ export function StructuralConfidenceBlock({ data }: { data: DiscoverAnalysis }) 
   const uncertainPct = 100 - certainPct - hedgingPct;
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="The confidence profile of every statement made in discovery — Certain = stated as fact. Hedging = 'we think / we believe / it might be'. Uncertain = admitted not knowing. High hedging across all domains means the organisation is describing problems it hasn't yet diagnosed."
+        action="If hedging exceeds 70% overall, do not start the programme yet — run a structured diagnostic first to convert assumptions into confirmed evidence. Domains with the highest hedging are where your biggest hidden risks live."
+      />
       <div>
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">Overall Confidence</p>
         <div className="flex h-3 rounded-full overflow-hidden">
