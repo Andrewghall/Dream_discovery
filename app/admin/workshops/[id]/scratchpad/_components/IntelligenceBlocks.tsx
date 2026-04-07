@@ -6,6 +6,7 @@ import type { WorkshopOutputIntelligence, ReportSummary } from '@/lib/output-int
 import { ItemToggle } from '@/components/report-builder/DraggableSection';
 import { EditableText, AddItemInput } from './ScratchpadEditors';
 import { renderPdfRoadmapGantt } from '@/lib/report/html-renderers';
+import { SectionAction } from '@/components/scratchpad/SectionAction';
 
 // ── Phase colours for roadmap ─────────────────────────────────────────────────
 
@@ -333,6 +334,10 @@ export function SupportingEvidenceBlock({
 
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="Issues validated by participant evidence — confirmed issues were already suspected, new issues were surfaced for the first time in this workshop."
+        action="High-confidence confirmed issues are non-negotiable scope items. New issues should be added to pre-programme discovery or investigated before sign-off — they are risks you didn't know you had."
+      />
       {/* Confirmed Issues */}
       {confirmedIssues.length > 0 && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -428,6 +433,10 @@ export function RootCausesBlock({
 
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="The underlying systemic pattern driving the organisation's problems, with root causes ranked by severity and the lenses they affect."
+        action="Critical root causes ranked #1–2 must be addressed in Phase 1 — fixing symptoms without resolving these will cause regression. Present this section to the executive sponsor to justify programme scope and investment."
+      />
       {/* Systemic pattern banner */}
       <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
@@ -504,6 +513,10 @@ export function SolutionDirectionBlock({
 
   return (
     <div className="space-y-6">
+      <SectionAction
+        what="The agreed transformation direction — where the organisation is heading, why, and what must structurally change to get there."
+        action="Use 'What Must Change' as the formal contract between the programme sponsor and the delivery team. Any item here not assigned an owner and a date is a risk to programme success."
+      />
 
       {/* Direction headline card */}
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5">
@@ -763,6 +776,10 @@ export function StrategicImpactBlock({
 
   return (
     <div className="space-y-5">
+      <SectionAction
+        what="The quantified business case — automation potential, AI-assisted work, and the efficiency gains the transformation is expected to unlock."
+        action="Present this section to the executive sponsor to secure programme mandate and budget. Confidence score below 70% means the business case needs more evidence before financial sign-off."
+      />
       {/* Business case */}
       <div className="rounded-xl border border-border bg-card px-5 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Business Case Summary</p>
@@ -839,6 +856,10 @@ export function WayForwardBlock({ intelligence }: { intelligence: WorkshopOutput
 
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="Phased delivery roadmap — what gets done, in what order, and what must be true before each phase can start."
+        action="Commit owners and start dates to every phase before leaving the room. Any phase without a sponsor and a date is aspirational, not a plan."
+      />
       {/* Phase cards */}
       <div className="grid grid-cols-1 gap-3">
         {phases.map((p, i) => {

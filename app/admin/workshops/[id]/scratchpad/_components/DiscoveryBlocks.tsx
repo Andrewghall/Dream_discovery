@@ -30,6 +30,7 @@ import type { PromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 import { ItemToggle } from '@/components/report-builder/DraggableSection';
 import { EditableText } from './ScratchpadEditors';
 import type { BehaviouralInterventionsOutput } from '@/lib/behavioural-interventions/types';
+import { SectionAction } from '@/components/scratchpad/SectionAction';
 
 // ── Discovery Diagnostic block ─────────────────────────────────────────────────
 
@@ -57,6 +58,10 @@ export function DiscoveryDiagnosticBlock({
 
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="Four diagnostic lenses — operational reality, leadership alignment, systemic friction, and transformation readiness — scored against workshop evidence."
+        action="The lowest-scored card is your highest-risk programme assumption. Address it explicitly in your programme charter before kick-off."
+      />
       {discoveryOutput.finalDiscoverySummary && (
         <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Diagnostic Summary</p>
@@ -113,6 +118,10 @@ export function DiscoverySignalsBlock({
 
   return (
     <div className="space-y-3">
+      <SectionAction
+        what="How participants feel about each domain, with sentiment split (friction vs. opportunity) and agreement level between participants."
+        action="Domains with >60% friction AND low agreement are contested problems — put them on the workshop agenda. High friction AND high agreement are confirmed pain points — they go straight into the programme scope."
+      />
       {discoveryOutput._aiSummary && (
         <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Organisational Perception</p>
@@ -208,6 +217,10 @@ export function AlignmentBlock({ discoverAnalysis }: { discoverAnalysis: Discove
   const divergent = [...cells].sort((a, b) => a.alignmentScore - b.alignmentScore).slice(0, 10);
   return (
     <div className="space-y-3">
+      <SectionAction
+        what="Where specific actors are misaligned on key themes — negative scores signal a communication or expectation gap between stakeholders."
+        action="Pairs with scores below -0.5 need a named owner and a resolution checkpoint in the first 30 days. Don't start delivery until the top 3 are addressed."
+      />
       <p className="text-xs text-muted-foreground">Top divergent actor × theme pairs (negative = misalignment)</p>
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <table className="w-full text-xs">
@@ -254,6 +267,11 @@ export function NarrativeDivergenceBlock({ discoverAnalysis }: { discoverAnalysi
     mixed:    'text-amber-700',
   };
   return (
+    <div className="space-y-3">
+      <SectionAction
+        what="The language gap between executive, operational and frontline levels — different terms dominate at each layer, revealing where the transformation story has not been shared."
+        action="Where frontline language contradicts executive language, there is no shared narrative. Run a joint alignment session before programme kick-off to establish common vocabulary and a single transformation story."
+      />
     <div className="grid grid-cols-3 gap-3">
       {layers.map((layer) => (
         <div key={layer.layer} className={`rounded-xl border px-4 py-3.5 ${LAYER_COLORS[layer.layer] ?? 'border-border bg-muted/20'}`}>
@@ -274,6 +292,7 @@ export function NarrativeDivergenceBlock({ discoverAnalysis }: { discoverAnalysi
         </div>
       ))}
     </div>
+    </div>
   );
 }
 
@@ -289,6 +308,10 @@ export function TensionsBlock({ discoverAnalysis }: { discoverAnalysis: Discover
   };
   return (
     <div className="space-y-2">
+      <SectionAction
+        what="Competing viewpoints between actors on critical topics — where the organisation is pulling in different directions at the same time."
+        action="Critical tensions need a named decision-maker and a resolution checkpoint before Phase 1 begins. Unresolved critical tensions will stall delivery."
+      />
       {tensions.slice(0, 8).map((t, i) => (
         <div key={t.id} className="rounded-xl border border-border bg-card px-4 py-3">
           <div className="flex items-start gap-3">
@@ -325,6 +348,11 @@ export function StructuralBarriersBlock({ discoverAnalysis }: { discoverAnalysis
     moderate:    'bg-slate-100 text-slate-600',
   };
   return (
+    <div className="space-y-3">
+      <SectionAction
+        what="Structural constraints ranked by weight — the hard limits on what the transformation can realistically achieve, and how fast."
+        action="The top 3 rows are your Phase 1 gates. Any item rated critical with a high weight must be resolved or formally accepted as a risk before the programme starts. A critical barrier with low weight is a blind spot — investigate why it scores low before moving on."
+      />
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <table className="w-full text-xs">
         <thead>
@@ -348,6 +376,7 @@ export function StructuralBarriersBlock({ discoverAnalysis }: { discoverAnalysis
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }
