@@ -181,7 +181,24 @@ export async function runCrossValidation(
 }
 
 /**
- * Build a DiscoverySnapshot from OI engine outputs.
+ * Fallback workshop-level discovery data.
+ * Used when OI synthesis (v2Output) has not been run yet but the
+ * prep/discover phase (discoverAnalysis + themes) has been completed.
+ */
+export interface WorkshopDiscoveryFallback {
+  /** workshop.discoverAnalysis JSON */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  discoverAnalysis?: Record<string, any> | null;
+  /** workshop.themes rows */
+  themes?: Array<{ themeLabel: string; themeDescription?: string | null }>;
+}
+
+/**
+ * Build a DiscoverySnapshot from OI engine outputs (v2Output).
+ * When v2Output is absent or empty, falls back to workshop-level
+ * discoverAnalysis and themes so cross-validation can run after
+ * prep/discover synthesis without requiring full OI synthesis first.
+ *
  * Used by the evidence API to prepare inputs for cross-validation.
  */
 export function buildDiscoverySnapshot(
@@ -189,24 +206,52 @@ export function buildDiscoverySnapshot(
   clientName: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   v2Output: Record<string, any> | null,
+  fallback?: WorkshopDiscoveryFallback,
 ): DiscoverySnapshot {
   const discover = v2Output?.discover ?? {};
   const constraints = v2Output?.constraints ?? {};
 
+  // V2 truths — primary signal for OI-synthesised workshops
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const truths = (discover?.truths ?? []).map((t: any) => ({
+    id: t.id,
+    statement: t.statement,
+    confidence: t.confidence,
+    themes: t.themes,
+  }));
+
+  // Themes from v2Output (V1 shape) or from workshop.themes fallback
+  const themesFromV2: string[] = [
+    ...(discover?.discoverAnalysis?.alignment?.themes ?? []),
+    ...(discover?.discoverAnalysis?.themes ?? []),
+  ];
+  const themesFromFallback: string[] = (fallback?.themes ?? []).map(t =>
+    t.themeDescription ? `${t.themeLabel}: ${t.themeDescription}` : t.themeLabel,
+  );
+  const themes = themesFromV2.length > 0 ? themesFromV2 : themesFromFallback;
+
+  // Constraints — from OI output or fallback discoverAnalysis
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const constraintsFromV2: DiscoverySnapshot['constraints'] = constraints?.workshopConstraints ?? [];
+  const constraintsFromFallback: DiscoverySnapshot['constraints'] = Array.isArray(
+    fallback?.discoverAnalysis?.constraints,
+  )
+    ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (fallback!.discoverAnalysis!.constraints as any[]).map((c: any) => ({
+        title: c.title ?? '',
+        description: c.description,
+        severity: c.severity,
+      }))
+    : [];
+  const resolvedConstraints =
+    constraintsFromV2.length > 0 ? constraintsFromV2 : constraintsFromFallback;
+
   return {
     workshopName,
     clientName,
-    // V2 truths are the primary discovery signal in newer workshops
-    truths: (discover?.truths ?? []).map(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (t: any) => ({ id: t.id, statement: t.statement, confidence: t.confidence, themes: t.themes }),
-    ),
-    // V1: themes may be at discoverAnalysis.alignment.themes or discoverAnalysis.themes
-    themes: [
-      ...(discover?.discoverAnalysis?.alignment?.themes ?? []),
-      ...(discover?.discoverAnalysis?.themes ?? []),
-    ],
-    constraints: constraints?.workshopConstraints ?? [],
+    truths,
+    themes,
+    constraints: resolvedConstraints,
     confirmedIssues: discover?.discoveryValidation?.confirmedIssues ?? [],
     newIssues: discover?.discoveryValidation?.newIssues ?? [],
     rootCauses: (discover?.rootCauseIntelligence?.rootCauses ?? []).map(

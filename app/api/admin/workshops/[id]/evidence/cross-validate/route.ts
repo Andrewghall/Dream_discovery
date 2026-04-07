@@ -18,6 +18,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runCrossValidation, buildDiscoverySnapshot } from '@/lib/evidence/cross-validation-agent';
+import type { WorkshopDiscoveryFallback } from '@/lib/evidence/cross-validation-agent';
 import type { NormalisedEvidenceDocument } from '@/lib/evidence/types';
 
 export async function POST(
@@ -35,11 +36,16 @@ export async function POST(
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
 
-    // Fetch workshop + scratchpad for discovery signals
+    // Fetch workshop + scratchpad for discovery signals.
+    // We also fetch discoverAnalysis and themes as a fallback so cross-validation
+    // can run after prep/discover synthesis even if OI synthesis hasn't run yet.
     const workshop = await prisma.workshop.findUnique({
       where: { id: workshopId },
       select: {
         name: true,
+        clientName: true,
+        discoverAnalysis: true,
+        themes: { select: { themeLabel: true, themeDescription: true } },
         scratchpad: { select: { v2Output: true } },
       },
     });
@@ -85,33 +91,53 @@ export async function POST(
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const v2Output = workshop.scratchpad?.v2Output as Record<string, any> | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const discoverAnalysis = workshop.discoverAnalysis as Record<string, any> | null;
+    const workshopThemes = workshop.themes ?? [];
 
     // Fail-fast: cross-validation against an empty snapshot produces meaningless results.
-    // Accept any non-empty discovery signal: V2 truths, V1 themes, confirmed issues, or root causes.
+    // Accept any non-empty signal from EITHER OI synthesis (v2Output) OR prep/discover synthesis
+    // (discoverAnalysis + themes on the workshop record). Users should not need to run full OI
+    // synthesis before cross-validating — prep synthesis is sufficient.
     const discover = v2Output?.discover ?? {};
     const constraints = v2Output?.constraints ?? {};
-    const hasDiscovery =
+    const hasDiscoveryFromV2 =
       v2Output && (
         (Array.isArray(discover.truths) && discover.truths.length > 0) ||
-        // V1: themes live under discoverAnalysis.alignment.themes
         (Array.isArray(discover.discoverAnalysis?.alignment?.themes) && discover.discoverAnalysis.alignment.themes.length > 0) ||
         (Array.isArray(discover.discoverAnalysis?.themes) && discover.discoverAnalysis.themes.length > 0) ||
         (Array.isArray(discover.discoveryValidation?.confirmedIssues) && discover.discoveryValidation.confirmedIssues.length > 0) ||
         (Array.isArray(constraints.workshopConstraints) && constraints.workshopConstraints.length > 0) ||
         (Array.isArray(discover.rootCauseIntelligence?.rootCauses) && discover.rootCauseIntelligence.rootCauses.length > 0)
       );
+    // Fallback: prep/discover synthesis written to workshop.discoverAnalysis or workshop.themes
+    const hasDiscoveryFromFallback =
+      (Array.isArray(discoverAnalysis?.alignment?.themes) && discoverAnalysis!.alignment.themes.length > 0) ||
+      (Array.isArray(discoverAnalysis?.themes) && discoverAnalysis!.themes.length > 0) ||
+      (Array.isArray(discoverAnalysis?.tensions) && discoverAnalysis!.tensions.length > 0) ||
+      (Array.isArray(discoverAnalysis?.constraints) && discoverAnalysis!.constraints.length > 0) ||
+      workshopThemes.length > 0;
+
+    const hasDiscovery = hasDiscoveryFromV2 || hasDiscoveryFromFallback;
 
     if (!hasDiscovery) {
       return NextResponse.json(
-        { error: 'Discovery synthesis is required before cross-validation. Run synthesis first.' },
+        { error: 'No discovery findings available for cross-validation. Run discovery synthesis first.' },
         { status: 422 }
       );
     }
 
     const clientName =
-      v2Output?.discover?.discoverAnalysis?.executiveSummary?.clientName ?? workshop.name;
+      v2Output?.discover?.discoverAnalysis?.executiveSummary?.clientName ??
+      workshop.clientName ??
+      workshop.name;
 
-    const discovery = buildDiscoverySnapshot(workshop.name, clientName, v2Output);
+    const fallback: WorkshopDiscoveryFallback = {
+      discoverAnalysis,
+      themes: workshopThemes,
+    };
+
+    const discovery = buildDiscoverySnapshot(workshop.name, clientName, v2Output, fallback);
 
     // Run cross-validation
     const result = await runCrossValidation(discovery, docs);

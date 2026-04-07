@@ -214,7 +214,7 @@ describe('POST /evidence/cross-validate', () => {
 
     expect(res.status).toBe(422);
     const body = await res.json();
-    expect(body.error).toMatch(/discovery synthesis is required/i);
+    expect(body.error).toMatch(/no discovery findings|discovery synthesis/i);
   });
 
   it('returns 422 when v2Output.discover.truths is an empty array', async () => {
