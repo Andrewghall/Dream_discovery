@@ -191,7 +191,8 @@ export default function DownloadReportPage({ params }: PageProps) {
                 return {
                   ...def,
                   excludedItems: prev.excludedItems ?? [],
-                  enabled: def.enabled ? true : prev.enabled,
+                  enabled: prev.enabled ?? def.enabled,
+                  collapsed: prev.collapsed ?? def.collapsed,
                 };
               });
               if (hasCustom) {
@@ -207,7 +208,6 @@ export default function DownloadReportPage({ params }: PageProps) {
                 const def = defaultMap.get(s.id);
                 if (!def) return s;
                 const syncTitle = s.type === 'chapter' && def.title !== s.title ? def.title : s.title;
-                if (def.enabled && !s.enabled) return { ...s, title: syncTitle, enabled: true };
                 return { ...s, title: syncTitle };
               });
               const newSections = defaults.sections.filter(s => !storedIds.has(s.id));

@@ -239,9 +239,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let agenticSynthesis: any = null;
     try {
       const synthesisUrl = new URL(`/api/admin/workshops/${workshopId}/synthesize`, request.url);
+      const forwardedCookie = request.headers.get('cookie');
+      const forwardedAuthorization = request.headers.get('authorization');
       const synthesisResponse = await fetch(synthesisUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(forwardedCookie ? { cookie: forwardedCookie } : {}),
+          ...(forwardedAuthorization ? { authorization: forwardedAuthorization } : {}),
+        },
+        body: JSON.stringify({ phase: phaseParam }),
       });
 
       if (synthesisResponse.ok) {

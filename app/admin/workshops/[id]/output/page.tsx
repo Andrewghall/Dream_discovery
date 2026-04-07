@@ -47,6 +47,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { DashboardHemisphereNode, DashboardHemisphereEdge } from '@/components/hemisphere/dashboard-hemisphere-canvas';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
+import { EvidenceTab } from '@/components/scratchpad/EvidenceTab';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -73,7 +74,7 @@ type ScratchpadData = {
   v2Output?: V2Output | null;
 };
 
-type TabKey = 'exec-summary' | 'hemisphere' | 'insights' | 'reimagine' | 'transformation' | 'define-approach';
+type TabKey = 'exec-summary' | 'hemisphere' | 'insights' | 'reimagine' | 'transformation' | 'define-approach' | 'evidence';
 
 // ── Tab config ────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType; color: string
   { key: 'reimagine',       label: 'Reimagine',     icon: Sparkles,    color: 'text-pink-600'    },
   { key: 'transformation',  label: 'Constraints',   icon: Shield,      color: 'text-amber-600'   },
   { key: 'define-approach', label: 'Way Forward',   icon: ArrowRight,  color: 'text-emerald-600' },
+  { key: 'evidence',        label: 'Evidence',      icon: BarChart3,   color: 'text-violet-600'  },
 ];
 
 // Dialogue phase → display config
@@ -1225,6 +1227,10 @@ export default function OutputDashboardPage({ params }: PageProps) {
             outcomes={blueprintOutcomes}
             workshopName={workshopName}
           />
+        )}
+
+        {activeTab === 'evidence' && (
+          <EvidenceTab workshopId={workshopId} />
         )}
 
       </main>

@@ -19,6 +19,7 @@ import {
   LogOut,
   Brain,
   BarChart2,
+  BarChart3,
   Route,
 } from 'lucide-react';
 
@@ -48,6 +49,7 @@ function buildNavSections(_domainPack?: string | null) {
         { label: 'Actor Journey', path: '/actor-journey', icon: Route },
         { label: 'Brain Scan', path: '/intelligence', icon: Brain },
         { label: 'Download Report', path: '/scratchpad', icon: BookOpen },
+        { label: 'Evidence', path: '/evidence', icon: BarChart3 },
       ],
     },
   ];

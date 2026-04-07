@@ -103,3 +103,38 @@ export function dedupeBy<T>(items: T[], getText: (item: T) => string, threshold 
   }
   return kept;
 }
+
+/**
+ * Deduplicate an object array by a text field, returning each kept item with
+ * its merge count (how many similar items collapsed into it) and distinct actor list.
+ *
+ * @param items     Input objects
+ * @param getText   Extracts the comparison text
+ * @param getActor  Optional: extracts an actor/role string for actor-count tracking
+ * @param threshold Jaccard threshold — default 0.72
+ */
+export function dedupeByWithMeta<T>(
+  items: T[],
+  getText: (item: T) => string,
+  getActor?: (item: T) => string,
+  threshold = 0.72,
+): Array<{ item: T; mergeCount: number; actors: string[] }> {
+  const kept: Array<{ item: T; text: string; mergeCount: number; actors: string[] }> = [];
+  for (const item of items) {
+    const text = getText(item);
+    const actor = getActor ? getActor(item) : '';
+    let merged = false;
+    for (const k of kept) {
+      if (similarity(k.text, text) >= threshold) {
+        k.mergeCount++;
+        if (actor && !k.actors.includes(actor)) k.actors.push(actor);
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) {
+      kept.push({ item, text, mergeCount: 1, actors: actor ? [actor] : [] });
+    }
+  }
+  return kept.map(({ item, mergeCount, actors }) => ({ item, mergeCount, actors }));
+}

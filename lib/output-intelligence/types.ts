@@ -68,6 +68,18 @@ export interface WorkshopSignals {
     queryUsed: string;
   };
   /**
+   * Normalised findings from ready evidence documents uploaded to this workshop.
+   * Optional — absent when no documents have been processed (status=ready).
+   * When absent, all OI agents behave exactly as without evidence.
+   */
+  evidenceDocuments?: Array<{
+    fileName: string;
+    summary: string;
+    keyFindings: string[];
+    signalDirection: string;   // 'red' | 'amber' | 'green' | 'mixed'
+    confidence: number;        // 0-1
+  }>;
+  /**
    * Deterministic relationship graph intelligence built from live session nodes
    * and discovery insights. Populated by signal-aggregator when snapshot data
    * contains theme-labelled nodes. Undefined when insufficient data.

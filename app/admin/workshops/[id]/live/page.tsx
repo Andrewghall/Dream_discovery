@@ -851,6 +851,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
       interpreted,
       synthesisByDomain,
       pressurePoints,
+      liveJourney: journeyMutations.journey,
+      journeyCompletionState,
     };
 
     try {
@@ -917,6 +919,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
       interpreted,
       synthesisByDomain,
       pressurePoints,
+      liveJourney: journeyMutations.journey,
+      journeyCompletionState,
     };
 
     try {
@@ -1001,6 +1005,17 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const ids = processed.filter((x: unknown) => typeof x === 'string') as string[];
       dependencyProcessedRef.current = new Set(ids);
       setDependencyProcessedCount(typeof (p as any).dependencyProcessedCount === 'number' ? (p as any).dependencyProcessedCount : ids.length);
+
+      // Only overwrite journey state when the snapshot actually contains it.
+      // Older snapshots (before liveJourney was added) should leave current journey intact.
+      const nextLiveJourney = (p as any).liveJourney;
+      if (nextLiveJourney && typeof nextLiveJourney === 'object') {
+        journeyMutations.setJourney(nextLiveJourney as import('@/lib/cognitive-guidance/pipeline').LiveJourneyData);
+      }
+
+      if ('journeyCompletionState' in (p as any)) {
+        setJourneyCompletionState(((p as any).journeyCompletionState ?? null) as JourneyCompletionState | null);
+      }
     } catch (e) {
       setSnapshotsError(e instanceof Error ? e.message : 'Failed to load snapshot');
     }

@@ -224,7 +224,7 @@ export async function runReportSummaryPipeline(
   // 1. Load existing output intelligence from DB
   const workshop = await prisma.workshop.findUnique({
     where: { id: workshopId },
-    select: { outputIntelligence: true },
+    select: { outputIntelligence: true, reportSummary: true },
   });
 
   if (!workshop) throw new Error(`Workshop ${workshopId} not found`);
@@ -240,7 +240,17 @@ export async function runReportSummaryPipeline(
   const signals = await aggregateWorkshopSignals(workshopId);
 
   // 3. Run single GPT-4o report summary agent
-  const reportSummary = await runReportSummaryAgent(signals, intelligence, onProgress);
+  const generatedReportSummary = await runReportSummaryAgent(signals, intelligence, onProgress);
+  const existingReportSummary = (workshop.reportSummary ?? {}) as Partial<ReportSummary>;
+  // Use `in` rather than `??` so that an explicit null stored by the PATCH route
+  // (meaning "user cleared this field") is preserved rather than overwritten by AI output.
+  const reportSummary: ReportSummary = {
+    ...generatedReportSummary,
+    layout: 'layout' in existingReportSummary ? existingReportSummary.layout : generatedReportSummary.layout,
+    reportConclusion: 'reportConclusion' in existingReportSummary ? existingReportSummary.reportConclusion : generatedReportSummary.reportConclusion,
+    facilitatorContact: 'facilitatorContact' in existingReportSummary ? existingReportSummary.facilitatorContact : generatedReportSummary.facilitatorContact,
+    signalMapImageUrl: 'signalMapImageUrl' in existingReportSummary ? existingReportSummary.signalMapImageUrl : generatedReportSummary.signalMapImageUrl,
+  };
 
   // 4. Store in DB (non-fatal — column may not exist until prisma db push is run)
   try {

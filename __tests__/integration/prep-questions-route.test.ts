@@ -61,7 +61,7 @@ vi.mock('@/lib/cognition/agents/question-set-agent', () => ({
 
 // ── Import route handlers after mocks ─────────────────────────
 
-import { PUT } from '@/app/api/workshops/[id]/prep/questions/route';
+import { PUT, POST as QUESTIONS_POST } from '@/app/api/workshops/[id]/prep/questions/route';
 import { PATCH } from '@/app/api/admin/workshops/[id]/route';
 import { POST as FORK_POST } from '@/app/api/admin/workshops/[id]/fork/route';
 
@@ -85,6 +85,13 @@ function makePatchRequest(body: unknown): NextRequest {
 
 function makeForkRequest(): NextRequest {
   return new NextRequest('http://localhost/api/admin/workshops/ws-test/fork', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function makeQuestionsPostRequest(): NextRequest {
+  return new NextRequest('http://localhost/api/workshops/ws-test/prep/questions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -212,6 +219,91 @@ describe('PATCH admin/workshops/[id] — customQuestions validation', () => {
       const callArg = updateSpy.mock.calls[0][0] as { data: Record<string, unknown> };
       expect(callArg.data).not.toHaveProperty('customQuestions');
     }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// POST /api/workshops/[id]/prep/questions (SSE) — validation gates DB write
+// Proves that prisma.workshop.update is NOT called when runQuestionSetAgent
+// returns runtime-invalid data (empty phases that pass TypeScript types).
+// ══════════════════════════════════════════════════════════════
+
+describe('POST prep/questions SSE — validation gates DB write', () => {
+  it('does not write to DB when runQuestionSetAgent returns invalid question set', async () => {
+    const { prisma } = await import('@/lib/prisma');
+    const { runQuestionSetAgent } = await import('@/lib/cognition/agents/question-set-agent');
+
+    // Return runtime-invalid data: required phases exist but questions arrays are empty
+    vi.mocked(runQuestionSetAgent).mockResolvedValueOnce({
+      phases: {
+        REIMAGINE: { questions: [], lensOrder: [], label: 'Reimagine', description: '' },
+        CONSTRAINTS: { questions: [], lensOrder: [], label: 'Constraints', description: '' },
+        DEFINE_APPROACH: { questions: [], lensOrder: [], label: 'Define Approach', description: '' },
+      },
+      designRationale: 'Invalid — empty phases',
+      generatedAtMs: Date.now(),
+      dataConfidence: 'low',
+      dataSufficiencyNotes: [],
+    } as never);
+
+    const updateSpy = vi.spyOn(prisma.workshop, 'update');
+
+    const res = await QUESTIONS_POST(makeQuestionsPostRequest(), { params: resolvedParams });
+
+    // Drain the SSE stream to let the async start() handler complete
+    const reader = (res as unknown as Response).body!.getReader();
+    const chunks: string[] = [];
+    let done = false;
+    while (!done) {
+      const result = await reader.read();
+      done = result.done;
+      if (result.value) chunks.push(new TextDecoder().decode(result.value));
+    }
+    const streamText = chunks.join('');
+
+    // DB must not have been written with customQuestions
+    const customQsWrites = updateSpy.mock.calls.filter(([arg]) => {
+      const data = (arg as { data: Record<string, unknown> }).data;
+      return 'customQuestions' in data;
+    });
+    expect(customQsWrites).toHaveLength(0);
+
+    // An error event must have been sent
+    expect(streamText).toContain('event: error');
+  });
+
+  it('does not write to DB when runQuestionSetAgent throws', async () => {
+    const { prisma } = await import('@/lib/prisma');
+    const { runQuestionSetAgent } = await import('@/lib/cognition/agents/question-set-agent');
+
+    vi.mocked(runQuestionSetAgent).mockRejectedValueOnce(
+      new Error('[Question Set Agent] Loop ended without explicit commit — question set is incomplete.'),
+    );
+
+    const updateSpy = vi.spyOn(prisma.workshop, 'update');
+
+    const res = await QUESTIONS_POST(makeQuestionsPostRequest(), { params: resolvedParams });
+
+    // Drain the SSE stream to let the async start() handler complete
+    const reader = (res as unknown as Response).body!.getReader();
+    const chunks: string[] = [];
+    let done = false;
+    while (!done) {
+      const result = await reader.read();
+      done = result.done;
+      if (result.value) chunks.push(new TextDecoder().decode(result.value));
+    }
+    const streamText = chunks.join('');
+
+    // DB must not have been written with customQuestions
+    const customQsWrites = updateSpy.mock.calls.filter(([arg]) => {
+      const data = (arg as { data: Record<string, unknown> }).data;
+      return 'customQuestions' in data;
+    });
+    expect(customQsWrites).toHaveLength(0);
+
+    // An error event must have been sent
+    expect(streamText).toContain('event: error');
   });
 });
 

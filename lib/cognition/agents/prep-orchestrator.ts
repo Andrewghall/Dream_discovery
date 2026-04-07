@@ -103,34 +103,10 @@ export async function runPrepOrchestrator(
 
   // ── Phase 2: Question Set ───────────────────────────
 
+  // Step 2a: Run the agent. Agent runtime errors are swallowed so a single-agent
+  // failure does not crash the whole orchestration run.
   try {
     questionSet = await runQuestionSetAgent(context, research, onConversation);
-
-    // Validate before persisting — defence-in-depth over TypeScript type guarantees
-    const qsValidationError = validateQuestionSet(questionSet);
-    if (qsValidationError) {
-      throw new Error(`Question set failed validation before save: ${qsValidationError}`);
-    }
-
-    // Store question set
-    await prisma.workshop.update({
-      where: { id: context.workshopId },
-      data: { customQuestions: JSON.parse(JSON.stringify(questionSet)) },
-    });
-
-    const totalCount = Object.values(questionSet.phases).reduce(
-      (sum, phase) => sum + phase.questions.length,
-      0,
-    );
-    const phaseCount = Object.keys(questionSet.phases).length;
-
-    onConversation?.({
-      timestampMs: Date.now(),
-      agent: 'prep-orchestrator',
-      to: '',
-      message: `Excellent work, team. The workshop facilitation questions are now available for the facilitator to review and edit. ${totalCount} questions across ${phaseCount} phases (Reimagine, Constraints, Define Approach). ${questionSet.designRationale}`,
-      type: 'acknowledgement',
-    });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('[Prep Orchestrator] Question set failed:', msg);
@@ -142,6 +118,64 @@ export async function runPrepOrchestrator(
       message: `Question generation failed: ${msg}. The facilitator must run question generation again before starting the live session.`,
       type: 'info',
     });
+  }
+
+  // Step 2b: Validate and persist — OUTSIDE the catch block so that validation
+  // failures cannot be accidentally swallowed. If validation fails, reset
+  // questionSet to null so the caller never receives invalid data.
+  if (questionSet !== null) {
+    const qsValidationError = validateQuestionSet(questionSet);
+    if (qsValidationError) {
+      console.error('[Prep Orchestrator] Question set failed validation:', qsValidationError);
+      questionSet = null; // Reset — do not propagate invalid data to caller
+
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'prep-orchestrator',
+        to: '',
+        message: `Question generation failed validation: ${qsValidationError}. The facilitator must run question generation again before starting the live session.`,
+        type: 'info',
+      });
+    } else {
+      // Store question set — wrap in try/catch so a transient DB failure
+      // does not crash the whole orchestration run (best-effort persistence).
+      try {
+        await prisma.workshop.update({
+          where: { id: context.workshopId },
+          data: { customQuestions: JSON.parse(JSON.stringify(questionSet)) },
+        });
+      } catch (dbErr) {
+        const msg = dbErr instanceof Error ? dbErr.message : 'Unknown DB error';
+        console.error('[Prep Orchestrator] Failed to persist question set:', msg);
+        // Null out questionSet so the caller/SSE route does NOT emit success events
+        // for questions that were never actually saved to the DB.
+        questionSet = null;
+        onConversation?.({
+          timestampMs: Date.now(),
+          agent: 'prep-orchestrator',
+          to: '',
+          message: `Question set generated but could not be saved (${msg}). Please retry.`,
+          type: 'info',
+        });
+      }
+    }
+
+    // Only emit success acknowledgement when the question set was persisted.
+    if (questionSet !== null) {
+      const totalCount = Object.values(questionSet.phases).reduce(
+        (sum, phase) => sum + phase.questions.length,
+        0,
+      );
+      const phaseCount = Object.keys(questionSet.phases).length;
+
+      onConversation?.({
+        timestampMs: Date.now(),
+        agent: 'prep-orchestrator',
+        to: '',
+        message: `Excellent work, team. The workshop facilitation questions are now available for the facilitator to review and edit. ${totalCount} questions across ${phaseCount} phases (Reimagine, Constraints, Define Approach). ${questionSet.designRationale}`,
+        type: 'acknowledgement',
+      });
+    }
   }
 
   return {

@@ -60,7 +60,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   // Split into two parallel queries:
   // 1. Core metadata + insights + themes (small fields, fast)
   // 2. Latest snapshot payload (potentially large blob, run in parallel)
-  const [workshop, latestSnapshotRows] = await Promise.all([
+  const [workshop, latestSnapshotRows, evidenceRows] = await Promise.all([
     prisma.workshop.findUnique({
       where: { id: workshopId },
       select: {
@@ -98,6 +98,16 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       where: { workshopId },
       orderBy: { createdAt: 'desc' },
       select: { payload: true },
+    }),
+    prisma.evidenceDocument.findMany({
+      where: { workshopId, status: 'ready' },
+      select: {
+        originalFileName: true,
+        summary: true,
+        findings: true,
+        signalDirection: true,
+        confidence: true,
+      },
     }),
   ]);
 
@@ -351,6 +361,28 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   const potentialSolution = extractText(workshop.scratchpad?.potentialSolution);
   const summaryContent = extractText(workshop.scratchpad?.summaryContent);
 
+  // ── Evidence Documents ───────────────────────────────────────────────────
+  // Attach normalised findings from ready evidence documents so OI agents can
+  // corroborate or challenge discovery signals with uploaded documentary evidence.
+  // Safe: undefined when no evidence documents exist — agents behave as today.
+
+  const evidenceDocuments: WorkshopSignals['evidenceDocuments'] = (() => {
+    const ready = evidenceRows.filter(d => d.summary);
+    if (ready.length === 0) return undefined;
+    return ready.map(d => {
+      const findings = Array.isArray(d.findings)
+        ? (d.findings as Array<{ text?: string }>)
+        : [];
+      return {
+        fileName: d.originalFileName,
+        summary: d.summary!,
+        keyFindings: findings.slice(0, 5).map(f => f.text ?? '').filter(Boolean),
+        signalDirection: d.signalDirection ?? 'mixed',
+        confidence: d.confidence ?? 0.5,
+      };
+    });
+  })();
+
   // ── Assemble WorkshopSignals ──────────────────────────────────────────────
 
   const signals: WorkshopSignals = {
@@ -385,6 +417,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       potentialSolution,
       summaryContent,
     },
+    evidenceDocuments,
   };
 
   // ── Relationship Graph Intelligence ──────────────────────────────────────

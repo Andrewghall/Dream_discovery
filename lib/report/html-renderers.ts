@@ -25,7 +25,7 @@ import {
 } from '@/lib/output-intelligence/engines/priority-engine';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
-import { dedupeBy, dedupeStrings } from './dedup-utils';
+import { dedupeBy, dedupeStrings, dedupeByWithMeta } from './dedup-utils';
 
 // ── Shared body type ──────────────────────────────────────────────────────────
 
@@ -172,14 +172,35 @@ export function renderExecutiveSummary(summary: ReportSummary, intelligence: Wor
       <p class="es-answer-text">${esc(es.theAnswer)}</p>
     </div>` : '';
 
-  // ── Block 3: What We Found ────────────────────────────────────────────────
-  const findings = (es.whatWeFound ?? [])
-    .filter((_, i) => !isExcluded(cfg, `finding:${i}`))
-    .map((f, i) => `
-      <div class="finding-item">
-        <span class="finding-num">${i + 1}</span>
-        <p>${esc(f)}</p>
-      </div>`).join('');
+  // ── Block 3: What We Found — tiered by signal strength ──────────────────
+  // Tier assignment: position 0-1 = T1 (dominant), 2-3 = T2 (significant), 4+ = T3 (localised)
+  // Signal tag derives actor breadth from lensFindings count.
+  const totalLenses = (es.lensFindings ?? []).length;
+  const allFindings = (es.whatWeFound ?? []).filter((_, i) => !isExcluded(cfg, `finding:${i}`));
+  const tierDefs = [
+    { tier: 1, label: 'Tier 1 — Dominant Signals',    cls: 'tier-1', items: allFindings.slice(0, 2) },
+    { tier: 2, label: 'Tier 2 — Significant Signals', cls: 'tier-2', items: allFindings.slice(2, 4) },
+    { tier: 3, label: 'Tier 3 — Localised Signals',   cls: 'tier-3', items: allFindings.slice(4) },
+  ].filter(t => t.items.length > 0);
+
+  let findingIdx = 0;
+  const findings = tierDefs.map((t, ti) => {
+    const isFirst = ti === 0;
+    const rows = t.items.map(f => {
+      const num = ++findingIdx;
+      const sigTag = t.tier === 1
+        ? `<span class="sig-tag">(cross-domain)</span>`
+        : t.tier === 2
+        ? `<span class="sig-tag">(multi-domain)</span>`
+        : `<span class="sig-tag">(localised signal)</span>`;
+      return `
+        <div class="finding-item">
+          <span class="finding-num">${num}</span>
+          <p>${esc(f)}${sigTag}</p>
+        </div>`;
+    }).join('');
+    return `<div class="tier-label ${t.cls}${isFirst ? ' tier-label-first' : ''}">${t.label}</div>${rows}`;
+  }).join('');
 
   const lensRows = (es.lensFindings ?? [])
     .filter(lf => !isExcluded(cfg, `lens:${lf.lens}`))
@@ -348,16 +369,34 @@ export function renderSupportingEvidence(intelligence: WorkshopOutputIntelligenc
 export function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: ReportSectionConfig): string {
   const { rootCause } = intelligence;
 
-  const causes = (rootCause.rootCauses ?? [])
-    .filter(rc => !isExcluded(cfg, `cause:${rc.rank}`))
-    .map(rc => {
+  const allCauses = (rootCause.rootCauses ?? [])
+    .filter(rc => !isExcluded(cfg, `cause:${rc.rank}`));
+
+  // Group into tiers: critical=T1, significant=T2, moderate=T3
+  const rcTierGroups: Record<string, typeof allCauses> = { critical: [], significant: [], moderate: [] };
+  for (const rc of allCauses) {
+    (rcTierGroups[rc.severity] ?? rcTierGroups.moderate).push(rc);
+  }
+  const rcTierConfig = [
+    { key: 'critical',    label: 'Tier 1 — Dominant Signals',    cls: 'tier-1' },
+    { key: 'significant', label: 'Tier 2 — Significant Signals',  cls: 'tier-2' },
+    { key: 'moderate',    label: 'Tier 3 — Localised Signals',    cls: 'tier-3' },
+  ].filter(t => rcTierGroups[t.key].length > 0);
+
+  const causes = rcTierConfig.map((t, ti) => {
+    const isFirst = ti === 0;
+    const hdr = `<div class="tier-label ${t.cls}${isFirst ? ' tier-label-first' : ''}">${t.label}</div>`;
+    const cards = rcTierGroups[t.key].map(rc => {
       const col = SEVERITY_COLORS[rc.severity] ?? SEVERITY_COLORS.moderate;
       const lenses = (rc.affectedLenses ?? []).map(l => `<span class="cause-lens">${esc(l)}</span>`).join('');
+      const evidenceCount = dedupeStrings(rc.evidence ?? []).length;
+      const sig = evidenceCount > 0 ? `(${evidenceCount} evidence item${evidenceCount !== 1 ? 's' : ''})` : '';
       return `
         <div class="cause-card">
           <div class="cause-meta">
             <span class="cause-rank">#${rc.rank}</span>
             <span class="cause-sev" style="background:${col.bg};color:${col.text}">${esc(rc.severity)}</span>
+            <span class="sig-tag">${esc(sig)}</span>
           </div>
           <div class="cause-body">
             <div class="cause-title">${esc(rc.cause)}</div>
@@ -367,6 +406,8 @@ export function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: 
           </div>
         </div>`;
     }).join('');
+    return hdr + cards;
+  }).join('');
 
   return `
     <section class="report-section">
@@ -555,27 +596,72 @@ export function renderJourneyMap(journey: LiveJourneyData, intro: string | undef
     ${i < journey.stages.length - 1 ? '<div class="jsum-stage-arrow">›</div>' : ''}`
   ).join('');
 
-  // ── Pain points grouped by stage ──────────────────────────────────────────
-  // Stats bar counts use the raw undeduped painPoints list (reflects true volume).
-  // The rendered sentence list is deduplicated by action text to remove repeated phrases.
+  // ── Pain points grouped by stage — tiered by signal strength ─────────────
+  // Stats bar counts use raw undeduped list. Rendered list is deduped + tiered.
+  // Tier: T1 = critical sentiment OR businessIntensity ≥ 0.7
+  //       T2 = concerned sentiment OR businessIntensity ≥ 0.4
+  //       T3 = everything else
+  // Signal tag derives seniority from actor name keywords.
+  function actorSeniority(name: string): string {
+    const n = name.toLowerCase();
+    if (/\b(vp|director|chief|board|executive|head of|ceo)\b/.test(n)) return 'leadership';
+    if (/\b(manager|lead|supervisor|team leader)\b/.test(n)) return 'management';
+    if (/\b(agent|analyst|specialist|crew|advisor|representative|staff)\b/.test(n)) return 'frontline';
+    if (/\b(customer|passenger|traveller|member|guest|client)\b/.test(n)) return 'external';
+    return 'ops';
+  }
+  function painTier(p: { sentiment: string; businessIntensity?: number }): 1 | 2 | 3 {
+    if (p.sentiment === 'critical' || (p.businessIntensity ?? 0) >= 0.7) return 1;
+    if (p.sentiment === 'concerned' || (p.businessIntensity ?? 0) >= 0.4) return 2;
+    return 3;
+  }
+  const tierNames: Record<number, string> = {
+    1: 'Tier 1 — Dominant Signals',
+    2: 'Tier 2 — Significant Signals',
+    3: 'Tier 3 — Localised Signals',
+  };
+  const tierCls: Record<number, string> = { 1: 'tier-1', 2: 'tier-2', 3: 'tier-3' };
+
   const stagesWithPain = journey.stages
     .map(stage => {
       const rawStagePains = painPoints.filter(p => p.stage.toLowerCase() === stage.toLowerCase());
-      const stagePains = dedupeBy(rawStagePains, p => p.action);
-      return { stage, pains: stagePains };
+      const withMeta = dedupeByWithMeta(rawStagePains, p => p.action, p => p.actor);
+      // Sort by tier then by businessIntensity descending
+      withMeta.sort((a, b) => {
+        const tDiff = painTier(a.item) - painTier(b.item);
+        return tDiff !== 0 ? tDiff : ((b.item.businessIntensity ?? 0) - (a.item.businessIntensity ?? 0));
+      });
+      return { stage, withMeta };
     })
-    .filter(s => s.pains.length > 0);
+    .filter(s => s.withMeta.length > 0);
 
-  const painByStage = stagesWithPain.map(({ stage, pains }) => `
-    <div class="jsum-pain-group" style="break-inside:avoid;page-break-inside:avoid">
-      <div class="jsum-pain-stage">${esc(stage)}</div>
-      ${pains.map(p => `
+  const painByStage = stagesWithPain.map(({ stage, withMeta }) => {
+    let lastTier = 0;
+    const items = withMeta.map(({ item: p, mergeCount, actors }) => {
+      const t = painTier(p);
+      const seniority = actorSeniority(p.actor);
+      const distinctActors = actors.length > 0 ? actors.length : 1;
+      const sig = `(weight: ${seniority}, mentions: ${mergeCount}, actors: ${distinctActors})`;
+      let tierHdr = '';
+      if (t !== lastTier) {
+        const isFirst = lastTier === 0;
+        tierHdr = `<div class="tier-label ${tierCls[t]}${isFirst ? ' tier-label-first' : ''}">${tierNames[t]}</div>`;
+        lastTier = t;
+      }
+      return `${tierHdr}
         <div class="jsum-pain-item">
           <span class="jsum-pain-dot">●</span>
           <span class="jsum-pain-actor">${esc(p.actor)}</span>
           <span class="jsum-pain-action">${esc(p.action)}</span>
-        </div>`).join('')}
-    </div>`).join('');
+          <span class="sig-tag">${esc(sig)}</span>
+        </div>`;
+    }).join('');
+    return `
+    <div class="jsum-pain-group" style="break-inside:avoid;page-break-inside:avoid">
+      <div class="jsum-pain-stage">${esc(stage)}</div>
+      ${items}
+    </div>`;
+  }).join('');
 
   // ── Actor involvement summary ──────────────────────────────────────────────
   const actorRows = journey.actors.map(actor => {
@@ -935,19 +1021,40 @@ export function renderStructuralBarriers(discoverAnalysis: DiscoverAnalysis | un
       return diff !== 0 ? diff : b.weight - a.weight;
     })
     .slice(0, 10);
+
   const SEV_BG:   Record<string, string> = { critical: '#fee2e2', significant: '#fef3c7', moderate: '#f1f5f9' };
   const SEV_TEXT: Record<string, string> = { critical: '#b91c1c', significant: '#b45309', moderate: '#475569' };
-  const rows = sorted.map(c => {
-    const bg   = SEV_BG[c.severity]   ?? SEV_BG.moderate;
-    const text = SEV_TEXT[c.severity] ?? SEV_TEXT.moderate;
-    const desc = c.description.split(' ').slice(0, 10).join(' ') + (c.description.split(' ').length > 10 ? '…' : '');
-    return `<tr>
-      <td class="struct-td">${esc(desc)}</td>
-      <td class="struct-td-muted">${esc(c.domain)}</td>
-      <td class="struct-td"><span class="struct-sev" style="background:${bg};color:${text}">${esc(c.severity)}</span></td>
-      <td class="struct-td-score">${c.weight}</td>
-    </tr>`;
-  }).join('');
+
+  // Group into tiers: critical=T1, significant=T2, moderate=T3
+  const tierGroups: Record<string, typeof sorted> = { critical: [], significant: [], moderate: [] };
+  for (const c of sorted) {
+    (tierGroups[c.severity] ?? tierGroups.moderate).push(c);
+  }
+  const tierConfig = [
+    { key: 'critical',    label: 'Tier 1 — Dominant Signals',    cls: 'tier-1' },
+    { key: 'significant', label: 'Tier 2 — Significant Signals',  cls: 'tier-2' },
+    { key: 'moderate',    label: 'Tier 3 — Localised Signals',    cls: 'tier-3' },
+  ].filter(t => tierGroups[t.key].length > 0);
+
+  let rows = '';
+  tierConfig.forEach((t, ti) => {
+    const isFirst = ti === 0;
+    rows += `<tr><td colspan="4" style="padding:0;border:none">
+      <div class="tier-label ${t.cls}${isFirst ? ' tier-label-first' : ''}">${t.label}</div>
+    </td></tr>`;
+    for (const c of tierGroups[t.key]) {
+      const bg   = SEV_BG[c.severity]   ?? SEV_BG.moderate;
+      const text = SEV_TEXT[c.severity] ?? SEV_TEXT.moderate;
+      const desc = c.description.split(' ').slice(0, 10).join(' ') + (c.description.split(' ').length > 10 ? '…' : '');
+      rows += `<tr>
+        <td class="struct-td">${esc(desc)}</td>
+        <td class="struct-td-muted">${esc(c.domain)}</td>
+        <td class="struct-td"><span class="struct-sev" style="background:${bg};color:${text}">${esc(c.severity)}</span></td>
+        <td class="struct-td-score">${c.weight}</td>
+      </tr>`;
+    }
+  });
+
   return `
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Structural Barriers</div></div>
@@ -1817,6 +1924,14 @@ export const PDF_STYLES = `
   body { font-family: 'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; background: white; line-height: 1.7; padding: 0 12px; }
   @page { size: A4; }
   @page landscape-page { size: A4 landscape; margin: 16mm 18mm 14mm; }
+
+  /* ── Signal tier labels ─── */
+  .tier-label { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin: 10px 0 4px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+  .tier-label.tier-1 { color: #dc2626; border-top-color: #fecaca; }
+  .tier-label.tier-2 { color: #d97706; border-top-color: #fde68a; }
+  .tier-label.tier-3 { color: #64748b; border-top-color: #e2e8f0; }
+  .tier-label-first { border-top: none; padding-top: 0; margin-top: 0; }
+  .sig-tag { font-size: 7.5pt; color: #94a3b8; margin-left: 5px; white-space: nowrap; font-weight: 400; }
 
   /* ── Cover ─── */
   .cover { page-break-after: always; min-height: 256mm; background: #ffffff; border-radius: 8px; display: flex; flex-direction: column; padding: 0 0 40px; position: relative; overflow: hidden; }

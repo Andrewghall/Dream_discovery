@@ -4,7 +4,7 @@ import { use, useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Mic, RefreshCcw, Loader2, AlertCircle, Smartphone, Link2, Copy, Check, UploadCloud, Sparkles, CheckCircle2, XCircle, Download } from 'lucide-react';
+import { Mic, RefreshCcw, Loader2, AlertCircle, Smartphone, Link2, Copy, Check, Sparkles, CheckCircle2, XCircle, Download } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { CaptureSessionForm } from '@/components/field-discovery/capture-session-form';
 import type { DomainPack, SessionFormData } from '@/components/field-discovery/capture-session-form';
@@ -12,6 +12,7 @@ import { DesktopCaptureControls } from '@/components/field-discovery/desktop-cap
 import { CaptureInbox } from '@/components/field-discovery/capture-inbox';
 import type { CaptureSessionItem } from '@/components/field-discovery/capture-inbox';
 import { FieldInsightsView } from '@/components/field-discovery/field-insights-view';
+import { HistoricalEvidenceUploader, HISTORICAL_UPLOAD_ACCEPT } from '@/components/evidence/HistoricalEvidenceUploader';
 import QRCode from 'react-qr-code';
 
 // ---------------------------------------------------------------------------
@@ -379,47 +380,23 @@ export default function FieldDiscoveryPage({ params }: PageProps) {
             understands the context, and extracts diagnostic findings automatically.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* File picker */}
-          <div className="space-y-2">
-            <label
-              htmlFor="csv-upload"
-              className={`flex flex-col items-center justify-center w-full h-28 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-                csvFile
-                  ? 'border-primary/50 bg-primary/5'
-                  : 'border-muted-foreground/25 bg-muted/30 hover:bg-muted/50'
-              }`}
-            >
-              <div className="flex flex-col items-center gap-1.5 text-center">
-                <UploadCloud className={`h-6 w-6 ${csvFile ? 'text-primary' : 'text-muted-foreground'}`} />
-                {csvFile ? (
-                  <>
-                    <p className="text-sm font-medium text-primary">{csvFile.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(csvFile.size / 1024).toFixed(0)} KB — click to change
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium">Click to select a CSV file</p>
-                    <p className="text-xs text-muted-foreground">Up to 5 MB</p>
-                  </>
-                )}
+          <CardContent className="space-y-4">
+            <HistoricalEvidenceUploader
+              accept={HISTORICAL_UPLOAD_ACCEPT}
+              helperText="CSV is preferred, but you can also drop PDF, DOCX, Excel, or text-based files."
+              label={csvFile ? csvFile.name : 'Drop a CSV or document file here or click to browse'}
+              onFilesSelected={(files) => {
+                const file = files[0] ?? null;
+                setCsvFile(file);
+                setCsvResult(null);
+                setCsvError(null);
+              }}
+            />
+            {csvFile && (
+              <div className="text-xs text-muted-foreground">
+                {(csvFile.size / 1024).toFixed(0)} KB selected — click Upload to import
               </div>
-              <input
-                id="csv-upload"
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  setCsvFile(f);
-                  setCsvResult(null);
-                  setCsvError(null);
-                }}
-              />
-            </label>
-          </div>
+            )}
 
           {/* Optional context */}
           <div className="space-y-1.5">

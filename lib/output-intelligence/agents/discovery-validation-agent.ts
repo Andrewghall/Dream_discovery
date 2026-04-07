@@ -95,6 +95,19 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('(Supporting context only — not from this workshop)');
   }
 
+  if (signals.evidenceDocuments?.length) {
+    lines.push('\n=== UPLOADED EVIDENCE DOCUMENTS ===');
+    lines.push('Documentary evidence uploaded and validated for this workshop:');
+    for (const doc of signals.evidenceDocuments) {
+      lines.push(`\nDocument: ${doc.fileName} (signal direction: ${doc.signalDirection}, confidence: ${Math.round(doc.confidence * 100)}%)`);
+      lines.push(`Summary: ${doc.summary}`);
+      if (doc.keyFindings.length > 0) {
+        lines.push(`Key findings:\n${doc.keyFindings.map(f => `  • ${f}`).join('\n')}`);
+      }
+    }
+    lines.push('\nUse these documents to corroborate or challenge the discovery hypothesis. Where documentary evidence confirms workshop signals, increase confidence. Where it contradicts, flag in reducedIssues with the discrepancy noted.');
+  }
+
   return lines.join('\n');
 }
 

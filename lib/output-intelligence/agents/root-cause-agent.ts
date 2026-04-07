@@ -160,6 +160,19 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('(Supporting context only)');
   }
 
+  if (signals.evidenceDocuments?.length) {
+    lines.push('\n=== UPLOADED EVIDENCE DOCUMENTS ===');
+    lines.push('Documentary evidence uploaded and validated for this workshop:');
+    for (const doc of signals.evidenceDocuments) {
+      lines.push(`\nDocument: ${doc.fileName} (signal direction: ${doc.signalDirection}, confidence: ${Math.round(doc.confidence * 100)}%)`);
+      lines.push(`Summary: ${doc.summary}`);
+      if (doc.keyFindings.length > 0) {
+        lines.push(`Key findings:\n${doc.keyFindings.map(f => `  • ${f}`).join('\n')}`);
+      }
+    }
+    lines.push('\nUse these documents to validate root causes. Where documentary evidence confirms a systemic pattern, increase severity and cite in the evidence field. Where it contradicts a cause, note the discrepancy. Where evidence reveals causes not mentioned in workshop signals, include them as distinct root causes grounded in the document findings.');
+  }
+
   if (signals.graphIntelligence) {
     const gi = signals.graphIntelligence;
 
