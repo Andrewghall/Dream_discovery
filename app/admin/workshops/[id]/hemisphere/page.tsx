@@ -685,20 +685,11 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   }, [runType]);
 
   // Fetch diagnostic data when diagnostic tab is selected
-  const isRetailDemo = workshopId === 'retail-cx-workshop';
   useEffect(() => {
     if (rightTab !== 'diagnostic') return;
     if (diagnosticLoading) return;
-    // Already loaded (including demo data)
+    // Already loaded
     if (diagnosticBefore || diagnosticAfter) return;
-
-    // Use instant demo data for the retail workshop
-    if (isRetailDemo) {
-      setDiagnosticBefore(DEMO_DIAGNOSTIC_BEFORE);
-      setDiagnosticAfter(DEMO_DIAGNOSTIC_AFTER);
-      setDiagnosticDelta(DEMO_DIAGNOSTIC_DELTA);
-      return;
-    }
 
     const fetchDiagnostic = async () => {
       try {
@@ -722,7 +713,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     };
     void fetchDiagnostic();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rightTab, workshopId, selectedSnapshotId, isRetailDemo]);
+  }, [rightTab, workshopId, selectedSnapshotId]);
 
 
   // Generate report handler — streams agent conversation via SSE
