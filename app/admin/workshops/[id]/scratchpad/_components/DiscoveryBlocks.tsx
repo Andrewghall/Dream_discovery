@@ -118,10 +118,6 @@ export function DiscoverySignalsBlock({
 
   return (
     <div className="space-y-3">
-      <SectionAction
-        what="How participants feel about each domain, with sentiment split (friction vs. opportunity) and agreement level between participants."
-        action="Domains with >60% friction AND low agreement are contested problems — put them on the workshop agenda. High friction AND high agreement are confirmed pain points — they go straight into the programme scope."
-      />
       {discoveryOutput._aiSummary && (
         <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Organisational Perception</p>
@@ -129,6 +125,10 @@ export function DiscoverySignalsBlock({
           <p className="text-[10px] text-muted-foreground mt-2 italic">How the organisation describes itself — and where that diverges from what participants actually reported.</p>
         </div>
       )}
+      <SectionAction
+        what="The red bar = friction (concern / resistance). Green = opportunity (energy, optimism). Agreement % = how much participants agreed with each other — low agreement means people see the same domain very differently."
+        action="High friction + high agreement = confirmed pain point, goes into programme scope. High friction + low agreement = contested problem, needs structured resolution first. Low friction = potential enabler — lean on it."
+      />
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-5 py-2.5 bg-muted/30 border-b border-border flex items-center justify-between">
           <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">How participants feel about each area</p>
