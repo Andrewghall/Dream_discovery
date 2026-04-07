@@ -77,6 +77,26 @@ WHAT MAKES A STRONG MATCH:
 WHAT MAKES A CONTRADICTION:
 - Participants said "customers are satisfied" AND CSAT data shows sustained decline → CONTRADICTED
 
+EVIDENCE THRESHOLD RULES — apply before outputting any contradiction:
+
+1. NOISE (suppress entirely — do not output):
+   Single document mentions something that contradicts a finding, but no other signal (participant voice, other documents, live pads) corroborates the contradiction. Discard. Do not put it in contradicted[].
+
+2. PERCEPTION GAP (output in perceptionGaps[]):
+   A finding is strongly held by participants (appears in multiple participant insights or live pads) BUT documentary evidence directly contradicts it. This is a blind spot in organisational self-perception. High value — always surface.
+   Format: "Participants believed [X] but data shows [Y] — [specific document + metric]"
+
+3. CONFIRMED CONTRADICTION (output in contradicted[]):
+   2 or more independent documents contradict the same discovery finding. This is a confirmed contradiction, not noise.
+
+4. BLIND SPOT (output in blindSpots[]):
+   A significant finding appears in the documentary evidence but was NOT mentioned by any participant in discovery or live sessions. The organisation may be unaware of it. Surface as: "Data reveals [X] — not raised by any participant"
+
+5. INCIDENTAL / IRRELEVANT (discard entirely):
+   Visual observations, physical descriptions, domain-irrelevant content. Never output these.
+
+Apply these rules strictly. A weak contradiction from a single document goes to suppressedNoise (just the count — not the content), not to contradicted[].
+
 Output valid JSON only. No commentary outside the JSON.`;
 
 // MIME types that are image formats — these contribute summary + metrics only,
@@ -195,7 +215,7 @@ function buildPrompt(discovery: DiscoverySnapshot, docs: NormalisedEvidenceDocum
       "confidence": <0.0–1.0>
     }
   ],
-  "contradicted": [ ... same structure, alignment: "contradicted" ],
+  "contradicted": [ ... same structure, alignment: "contradicted" — only include if 2+ independent documents contradict the same finding ],
   "partiallySupported": [ ... same structure, alignment: "partially_supported" ],
   "unsupported": ["<specific participant finding or theme that has NO documentary coverage>", ...],
   "evidenceOnly": [
@@ -213,7 +233,10 @@ function buildPrompt(discovery: DiscoverySnapshot, docs: NormalisedEvidenceDocum
       "documentName": "<filename>"
     }
   ],
-  "conclusionImpact": "<3-5 sentences: what does this cross-validation tell us about the soundness of the transformation direction? Which participant assumptions are backed by data? Which are challenged? What empirical gaps remain that need addressing before the programme proceeds?>"
+  "conclusionImpact": "<3-5 sentences: what does this cross-validation tell us about the soundness of the transformation direction? Which participant assumptions are backed by data? Which are challenged? What empirical gaps remain that need addressing before the programme proceeds?>",
+  "perceptionGaps": ["string — participants believed X but data shows Y — cite specific document and metric"],
+  "blindSpots": ["string — Data reveals [X] — not raised by any participant"],
+  "suppressedNoise": <integer — count of single-source contradictions that were suppressed as noise>
 }`);
 
   return lines.join('\n');
@@ -239,6 +262,9 @@ export async function runCrossValidation(
       unsupported: [],
       evidenceOnly: [],
       conclusionImpact: 'No evidence documents are ready for cross-validation.',
+      perceptionGaps: [],
+      blindSpots: [],
+      suppressedNoise: 0,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -272,6 +298,9 @@ export async function runCrossValidation(
     unsupported: parsed.unsupported ?? [],
     evidenceOnly: parsed.evidenceOnly ?? [],
     conclusionImpact: parsed.conclusionImpact ?? '',
+    perceptionGaps: parsed.perceptionGaps ?? [],
+    blindSpots: parsed.blindSpots ?? [],
+    suppressedNoise: parsed.suppressedNoise ?? 0,
     generatedAt: new Date().toISOString(),
   };
 }

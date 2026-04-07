@@ -164,6 +164,23 @@ export interface CrossValidationResult {
    * 2–4 sentences.
    */
   conclusionImpact: string
+  /**
+   * Findings strongly held by participants but directly contradicted by documentary data.
+   * These are organisational blind spots in self-perception.
+   * Format: "Participants believed [X] but data shows [Y] — [specific document + metric]"
+   */
+  perceptionGaps: string[]
+  /**
+   * Significant data findings not raised by any participant in discovery or live sessions.
+   * The organisation may be unaware of these.
+   * Format: "Data reveals [X] — not raised by any participant"
+   */
+  blindSpots: string[]
+  /**
+   * Count of contradictions suppressed as single-source noise (not surfaced in contradicted[]).
+   * Informational only — content is discarded.
+   */
+  suppressedNoise: number
   /** When cross-validation was last run */
   generatedAt: string
 }

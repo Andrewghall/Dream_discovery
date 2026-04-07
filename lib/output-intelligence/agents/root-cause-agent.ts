@@ -173,6 +173,42 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('\nUse these documents to validate root causes. Where documentary evidence confirms a systemic pattern, increase severity and cite in the evidence field. Where it contradicts a cause, note the discrepancy. Where evidence reveals causes not mentioned in workshop signals, include them as distinct root causes grounded in the document findings.');
   }
 
+  if (signals.evidenceValidation) {
+    const ev = signals.evidenceValidation;
+    lines.push('\n=== EVIDENCE VALIDATION VERDICT ===');
+    lines.push('Cross-validation of uploaded documentary evidence against workshop discovery:');
+
+    if (ev.corroborated.length > 0) {
+      lines.push(`\nCORROBORATED BY DATA (${ev.corroborated.length} findings confirmed):`);
+      ev.corroborated.slice(0, 8).forEach(f => lines.push(`  ✓ ${f}`));
+    }
+
+    if (ev.contradicted.length > 0) {
+      lines.push(`\nCONFIRMED CONTRADICTIONS (2+ independent sources — treat with high weight):`);
+      ev.contradicted.slice(0, 5).forEach(f => lines.push(`  ✗ ${f}`));
+    }
+
+    if (ev.perceptionGaps.length > 0) {
+      lines.push(`\nPERCEPTION GAPS (participants believed X but data shows Y — organisational blind spots):`);
+      ev.perceptionGaps.slice(0, 5).forEach(f => lines.push(`  ⚠ ${f}`));
+    }
+
+    if (ev.blindSpots.length > 0) {
+      lines.push(`\nDATA BLIND SPOTS (significant findings in data not raised by any participant):`);
+      ev.blindSpots.slice(0, 5).forEach(f => lines.push(`  ● ${f}`));
+    }
+
+    const uncoveredLenses = ev.lensGaps.filter(l => !l.covered).map(l => l.lens);
+    if (uncoveredLenses.length > 0) {
+      lines.push(`\nLENS COVERAGE GAPS (no empirical evidence for these lenses): ${uncoveredLenses.join(', ')}`);
+      lines.push('Findings in these lenses rest on participant testimony alone — flag where relevant.');
+    }
+
+    if (ev.conclusionImpact) {
+      lines.push(`\nOVERALL VERDICT: ${ev.conclusionImpact}`);
+    }
+  }
+
   if (signals.graphIntelligence) {
     const gi = signals.graphIntelligence;
 
@@ -233,6 +269,8 @@ systemicPattern: Write a diagnosis, not a list. Name the underlying pattern driv
 rootCauses: 8-12 ranked causes. Go deeper than symptoms. WHY does the constraint exist? Each cause should be distinct — don't merge separate issues.
 
 frictionMap: If journey stages exist, use them. If not, create stages based on the lenses (e.g. "Customer Contact", "Agent Resolution", "Back Office Processing", "Compliance Review").
+
+evidenceValidation: Where provided, confirmed contradictions and perceptionGaps are high-quality signals — use them to validate or challenge root cause severity. BlindSpots may represent root causes participants were unaware of. Lens coverage gaps mean those lenses lack empirical grounding — note this honestly.
 
 Use ONLY signals provided. Output MUST be valid JSON. No commentary outside JSON.`;
 

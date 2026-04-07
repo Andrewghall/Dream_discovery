@@ -108,6 +108,42 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('\nUse these documents to corroborate or challenge the discovery hypothesis. Where documentary evidence confirms workshop signals, increase confidence. Where it contradicts, flag in reducedIssues with the discrepancy noted.');
   }
 
+  if (signals.evidenceValidation) {
+    const ev = signals.evidenceValidation;
+    lines.push('\n=== EVIDENCE VALIDATION VERDICT ===');
+    lines.push('Cross-validation of uploaded documentary evidence against workshop discovery:');
+
+    if (ev.corroborated.length > 0) {
+      lines.push(`\nCORROBORATED BY DATA (${ev.corroborated.length} findings confirmed):`);
+      ev.corroborated.slice(0, 8).forEach(f => lines.push(`  ✓ ${f}`));
+    }
+
+    if (ev.contradicted.length > 0) {
+      lines.push(`\nCONFIRMED CONTRADICTIONS (2+ independent sources — treat with high weight):`);
+      ev.contradicted.slice(0, 5).forEach(f => lines.push(`  ✗ ${f}`));
+    }
+
+    if (ev.perceptionGaps.length > 0) {
+      lines.push(`\nPERCEPTION GAPS (participants believed X but data shows Y — organisational blind spots):`);
+      ev.perceptionGaps.slice(0, 5).forEach(f => lines.push(`  ⚠ ${f}`));
+    }
+
+    if (ev.blindSpots.length > 0) {
+      lines.push(`\nDATA BLIND SPOTS (significant findings in data not raised by any participant):`);
+      ev.blindSpots.slice(0, 5).forEach(f => lines.push(`  ● ${f}`));
+    }
+
+    const uncoveredLenses = ev.lensGaps.filter(l => !l.covered).map(l => l.lens);
+    if (uncoveredLenses.length > 0) {
+      lines.push(`\nLENS COVERAGE GAPS (no empirical evidence for these lenses): ${uncoveredLenses.join(', ')}`);
+      lines.push('Findings in these lenses rest on participant testimony alone — flag where relevant.');
+    }
+
+    if (ev.conclusionImpact) {
+      lines.push(`\nOVERALL VERDICT: ${ev.conclusionImpact}`);
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -131,6 +167,7 @@ Rules:
 • hypothesisAccuracy (0-100) reflects how well workshop findings matched discovery hypothesis
 • If no discovery signals exist, return a low hypothesisAccuracy with explanation
 • If you cannot determine hypothesis accuracy from available signals, set hypothesisAccuracy to null
+• Where evidenceValidation is provided: corroborated findings should have higher confidence; contradicted findings and perceptionGaps should be reflected in reducedIssues or noted in summary; blindSpots should appear as newIssues if operationally significant
 • Output MUST be valid JSON matching the schema exactly — no commentary outside the JSON`;
 
   const userMessage = `${buildSignalDump(signals)}

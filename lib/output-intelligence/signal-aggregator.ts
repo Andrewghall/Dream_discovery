@@ -107,6 +107,8 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
         findings: true,
         signalDirection: true,
         confidence: true,
+        crossValidation: true,
+        relevantLenses: true,
       },
     }),
   ]);
@@ -383,6 +385,43 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
     });
   })();
 
+  // ── Evidence Validation — CV verdict ────────────────────────────────────
+  // Pull cross-validation result from the first ready document that has it populated.
+  // Compute lens gap coverage deterministically from relevantLenses fields.
+
+  const cvSource = evidenceRows.find(d => d.crossValidation != null);
+
+  const evidenceValidation: WorkshopSignals['evidenceValidation'] = (() => {
+    if (!cvSource?.crossValidation) return undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cv = cvSource.crossValidation as any;
+
+    // Lens gap computation — deterministic, no AI needed
+    const coveredLenses = new Set<string>();
+    for (const row of evidenceRows) {
+      const rowLenses = Array.isArray(row.relevantLenses) ? row.relevantLenses as string[] : [];
+      rowLenses.forEach(l => coveredLenses.add(l));
+    }
+    const lensGaps = lenses.map(lens => ({
+      lens,
+      covered: coveredLenses.has(lens),
+      documentCount: evidenceRows.filter(r =>
+        (Array.isArray(r.relevantLenses) ? r.relevantLenses as string[] : []).includes(lens)
+      ).length,
+    }));
+
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      corroborated: cv.corroborated?.map((c: any) => c.discoveryFinding ?? c).filter(Boolean) ?? [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      contradicted: cv.contradicted?.map((c: any) => c.discoveryFinding ?? c).filter(Boolean) ?? [],
+      perceptionGaps: cv.perceptionGaps ?? [],
+      blindSpots: cv.blindSpots ?? [],
+      conclusionImpact: cv.conclusionImpact ?? '',
+      lensGaps,
+    };
+  })();
+
   // ── Assemble WorkshopSignals ──────────────────────────────────────────────
 
   const signals: WorkshopSignals = {
@@ -418,6 +457,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       summaryContent,
     },
     evidenceDocuments,
+    evidenceValidation,
   };
 
   // ── Relationship Graph Intelligence ──────────────────────────────────────

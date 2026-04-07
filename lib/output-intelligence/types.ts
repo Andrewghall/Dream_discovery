@@ -80,6 +80,29 @@ export interface WorkshopSignals {
     confidence: number;        // 0-1
   }>;
   /**
+   * Workshop-level cross-validation verdict.
+   * Populated when evidence documents have been cross-validated against discovery.
+   * Contains only signal-threshold-passing findings — noise is suppressed.
+   */
+  evidenceValidation?: {
+    /** Discovery findings confirmed by 1+ documents */
+    corroborated: string[];
+    /** Discovery findings contradicted by 2+ independent documents */
+    contradicted: string[];
+    /** Findings strongly held by participants but directly contradicted by data — perception gaps */
+    perceptionGaps: string[];
+    /** Significant data findings not raised by any participant — blind spots */
+    blindSpots: string[];
+    /** 3-5 sentence verdict: what does the data confirm, what does it challenge, what gaps remain */
+    conclusionImpact: string;
+    /** Which lenses have empirical document coverage and which do not */
+    lensGaps: Array<{
+      lens: string;
+      covered: boolean;
+      documentCount: number;
+    }>;
+  };
+  /**
    * Deterministic relationship graph intelligence built from live session nodes
    * and discovery insights. Populated by signal-aggregator when snapshot data
    * contains theme-labelled nodes. Undefined when insufficient data.
