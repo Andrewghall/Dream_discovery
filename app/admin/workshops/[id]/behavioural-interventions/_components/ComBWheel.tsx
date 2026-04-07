@@ -153,6 +153,9 @@ export function ComBWheel({ interventions, activeFilter, onFilter }: ComBWheelPr
   const maxCount = Math.max(...Object.values(counts), 1);
   const total = interventions.length;
 
+  // Sub-types were added in a later schema version — detect old data
+  const hasSubTypes = total === 0 || Object.values(counts).some((c) => c > 0);
+
   return (
     <div className="flex gap-8 items-start">
       {/* ── SVG wheel ── */}
@@ -195,8 +198,8 @@ export function ComBWheel({ interventions, activeFilter, onFilter }: ComBWheelPr
           <OuterSegment
             key={seg.id}
             seg={seg}
-            count={counts[seg.id] ?? 0}
-            maxCount={maxCount}
+            count={hasSubTypes ? (counts[seg.id] ?? 0) : 1}
+            maxCount={hasSubTypes ? maxCount : 1}
             activeFilter={activeFilter}
             onFilter={onFilter}
           />
@@ -254,51 +257,61 @@ export function ComBWheel({ interventions, activeFilter, onFilter }: ComBWheelPr
 
       {/* ── Legend panel ── */}
       <div className="flex-1 space-y-1.5">
-        {OUTER_SEGMENTS.map((seg) => {
-          const count = counts[seg.id] ?? 0;
-          const isActive = activeFilter === seg.id;
-          const barPct = total > 0 ? (count / total) * 100 : 0;
-          return (
-            <button
-              key={seg.id}
-              onClick={() => onFilter(isActive ? null : seg.id)}
-              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors text-sm ${
-                isActive
-                  ? 'bg-accent ring-1 ring-inset ring-border'
-                  : 'hover:bg-accent/50'
-              }`}
-            >
-              {/* Colour dot */}
-              <span
-                className="shrink-0 w-3 h-3 rounded-full"
-                style={{ backgroundColor: seg.color }}
-              />
-              {/* Label */}
-              <span className={`flex-1 ${isActive ? 'font-semibold' : 'text-muted-foreground'}`}>
-                {seg.label}
-              </span>
-              {/* Count */}
-              <span className="shrink-0 font-semibold tabular-nums w-5 text-right">
-                {count}
-              </span>
-              {/* Mini bar */}
-              <div className="shrink-0 w-20 h-1.5 rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${barPct}%`, backgroundColor: seg.color }}
-                />
-              </div>
-            </button>
-          );
-        })}
-
-        {activeFilter && (
-          <button
-            onClick={() => onFilter(null)}
-            className="mt-2 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-          >
-            Clear filter
-          </button>
+        {!hasSubTypes ? (
+          <div className="flex flex-col justify-center h-full space-y-3 py-4">
+            <p className="text-sm font-medium text-foreground">Sub-component breakdown not available</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              This analysis was generated before sub-type classification was added.
+              Click <span className="font-semibold">Regenerate</span> to update — the wheel will show which specific types of Capability, Motivation, and Opportunity are blocking each behaviour.
+            </p>
+            <div className="flex flex-col gap-1.5 pt-1">
+              {OUTER_SEGMENTS.map((seg) => (
+                <div key={seg.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
+                  {seg.label}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            {OUTER_SEGMENTS.map((seg) => {
+              const count = counts[seg.id] ?? 0;
+              const isActive = activeFilter === seg.id;
+              const barPct = total > 0 ? (count / total) * 100 : 0;
+              return (
+                <button
+                  key={seg.id}
+                  onClick={() => onFilter(isActive ? null : seg.id)}
+                  className={`w-full flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors text-sm ${
+                    isActive
+                      ? 'bg-accent ring-1 ring-inset ring-border'
+                      : 'hover:bg-accent/50'
+                  }`}
+                >
+                  <span className="shrink-0 w-3 h-3 rounded-full" style={{ backgroundColor: seg.color }} />
+                  <span className={`flex-1 ${isActive ? 'font-semibold' : 'text-muted-foreground'}`}>
+                    {seg.label}
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums w-5 text-right">{count}</span>
+                  <div className="shrink-0 w-20 h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${barPct}%`, backgroundColor: seg.color }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+            {activeFilter && (
+              <button
+                onClick={() => onFilter(null)}
+                className="mt-2 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              >
+                Clear filter
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
