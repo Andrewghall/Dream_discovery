@@ -59,6 +59,13 @@ function sectionIntro(text: string): string {
   return `<div class="section-intro"><span class="section-intro-label">Section Overview</span><p>${esc(text)}</p></div>`;
 }
 
+// ── Section action callout ────────────────────────────────────────────────────
+// Amber "what this shows / what to do" strip — mirroring SectionAction component
+
+function sectionAction(what: string, action: string): string {
+  return `<div class="section-action"><div class="section-action-row"><span class="section-action-label">What this shows:</span> ${esc(what)}</div><div class="section-action-row"><span class="section-action-label section-action-label-action">&#8594; What to do:</span> ${esc(action)}</div></div>`;
+}
+
 // ── TOC section descriptions ──────────────────────────────────────────────────
 
 const TOC_DESCRIPTIONS: Record<string, string> = {
@@ -350,6 +357,7 @@ export function renderSupportingEvidence(intelligence: WorkshopOutputIntelligenc
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Supporting Evidence</div></div>
       ${sectionIntro('What the data confirms — validated issues with confidence levels and evidence drawn directly from the discovery process.')}
+      ${sectionAction('Issues split into two categories: things you suspected (Confirmed) and things the workshop surfaced for the first time (New Issues). Confidence level shows how strongly the evidence supports each issue.', 'High-confidence confirmed issues are non-negotiable programme scope — they have evidence behind them. New issues are risks you did not know you had. Each must be investigated before programme sign-off or formally logged as a risk.')}
       ${discoveryValidation.summary ? `<div class="narrative-lead">${esc(discoveryValidation.summary)}</div>` : ''}
       <div class="evidence-card">
         <div class="evidence-header">
@@ -414,6 +422,7 @@ export function renderRootCauses(intelligence: WorkshopOutputIntelligence, cfg: 
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Root Causes</div></div>
       ${rootCause.forceFieldHeadline ? `<div class="force-field-headline">${esc(rootCause.forceFieldHeadline)}</div>` : ''}
       ${sectionIntro('The underlying drivers behind the symptoms. These are the structural causes that, if unaddressed, will regenerate the same problems regardless of the solution applied.')}
+      ${sectionAction('Root causes ranked by severity — not symptoms, but the structural reasons the problems exist. The systemic pattern at the top describes how they connect.', 'Critical root causes ranked #1 and #2 must be in Phase 1 of your programme. Fixing symptoms without resolving these causes regression. Present this section to the executive sponsor to justify programme scope and investment.')}
       ${rootCause.systemicPattern ? `<div class="narrative-lead">${esc(rootCause.systemicPattern)}</div>` : ''}
       <div class="cause-list">${causes}</div>
     </section>`;
@@ -565,6 +574,7 @@ export function renderSolutionDirection(
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Solution Direction</div></div>
       ${sectionIntro('The recommended transformation path — what must change, how to approach it, and the reimagined future state the organisation is working towards.')}
+      ${sectionAction('The agreed transformation direction with rationale, what must structurally change, and the phased roadmap to get there.', 'Use the "What Must Change" section as the formal contract between the programme sponsor and the delivery team. Every item needs a named owner and a committed date before leaving the room.')}
       ${directionHero}
       ${rationaleBlock}
       ${threeHousesBlock}
@@ -684,6 +694,7 @@ export function renderJourneyMap(journey: LiveJourneyData, intro: string | undef
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Customer Journey</div></div>
       ${sectionIntro('The customer experience mapped across all touchpoints — where friction concentrates, which actors carry the most pain, and where intervention will deliver the greatest improvement.')}
+      ${sectionAction('Each row is an actor (customer, staff, partner) moving through the journey. Sentiment dots show emotional state at each stage; red circles are pain points, stars are moments of truth.', 'Focus programme investment on the touchpoints with the most pain points across multiple actors. A moment of truth with negative sentiment is your highest-priority design intervention.')}
       ${intro ? `<div class="narrative-lead">${esc(intro)}</div>` : ''}
 
       <!-- Stats bar -->
@@ -742,6 +753,7 @@ export function renderStrategicImpact(intelligence: WorkshopOutputIntelligence, 
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Strategic Impact</div></div>
       ${sectionIntro('The measurable business case for change — automation potential, efficiency gains, and customer experience improvements derived from workshop signals.')}
+      ${sectionAction('The quantified business case — automation potential, AI-assisted work split, and the efficiency gains the transformation is expected to unlock.', 'Present this to the executive sponsor to secure programme mandate and budget. A confidence score below 70% means the business case needs more evidence before financial sign-off.')}
       <div class="si-summary">${esc(si.businessCaseSummary)}</div>
       <p class="si-confidence">Confidence score: <strong>${si.confidenceScore !== null ? `${si.confidenceScore}%` : '—'}</strong></p>
       ${statBoxes.length ? `<div class="si-stats">${statBoxes.map(s => `
@@ -789,6 +801,7 @@ export function renderDiscoveryDiagnostic(discoveryOutput: any): string {
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Diagnostic</div></div>
       ${sectionIntro('How the organisation is performing across four critical diagnostic dimensions — Operational Reality, Leadership Alignment, Systemic Friction, and Transformation Readiness — derived from participant signals.')}
+      ${sectionAction('Four lenses on organisational health — each grounded in what participants reported, not what leadership believes to be true.', 'The lowest-scoring lens is your highest programme risk. Address it explicitly in your programme charter. Any lens rated red needs a mitigation plan before Phase 1 begins.')}
       ${discoveryOutput.finalDiscoverySummary ? `<p class="diag-summary">${esc(discoveryOutput.finalDiscoverySummary)}</p>` : ''}
       <div class="diag-grid">${cards}</div>
     </section>`;
@@ -832,6 +845,7 @@ export function renderDiscoverySignals(discoveryOutput: any): string {
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Signals</div></div>
       ${discoveryOutput._aiSummary ? `<div class="narrative-lead">${esc(discoveryOutput._aiSummary)}</div>` : ''}
       ${sectionIntro('The emotional tone and agreement levels across each organisational lens — surfacing where concern concentrates and where genuine opportunity exists.')}
+      ${sectionAction('How participants rated each domain — showing the split between friction (concern), neutral sentiment, and genuine opportunity, plus how much participants agreed with each other.', 'Domains with high friction AND high agreement are confirmed pain points — put them in your programme scope. High friction AND low agreement means a contested problem that needs structured resolution before programme start. Domains with low friction are potential enablers.')}
       <p class="sig-bar-intro">How participants feel about each area — and how aligned they are in that view</p>
       <div class="sig-list">${sectionRows}</div>
       <p class="sig-key-note">High friction + high agreement = a confirmed, shared problem. High friction + low agreement = a contested tension worth exploring.</p>
@@ -875,6 +889,7 @@ export function renderStructuralAlignment(discoverAnalysis: DiscoverAnalysis | u
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Domain Misalignment</div></div>
       ${sectionIntro('Where leadership narratives diverge from frontline experience — the alignment gap that undermines execution and creates invisible drag on organisational performance.')}
+      ${sectionAction('Shows exactly which topics specific actors are misaligned on — negative scores mean one actor sees the situation very differently from others.', 'Pairs with scores below -0.5 need a named owner and a resolution checkpoint within the first 30 days. Do not start programme delivery until the top 3 misalignments are addressed.')}
       <div class="narrative-lead">The alignment analysis reveals where different organisational layers hold fundamentally different views on the same themes. Negative alignment scores indicate that what leadership believes is happening differs materially from what frontline participants experience. These divergence points are the invisible failure modes in any transformation — strategies fail not because the logic is wrong, but because the organisation isn't aligned on the problem in the first place.</div>
       ${uniformNote}
       <p class="struct-subtitle">Top divergent actor × theme pairs — negative scores indicate misalignment</p>
@@ -967,6 +982,7 @@ export function renderStructuralNarrative(discoverAnalysis: DiscoverAnalysis | u
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Narrative Divergence</div></div>
       ${sectionIntro('Competing stories in the organisation — identified through divergent participant perspectives on the same challenges, revealing where leadership and frontline narratives pull apart.')}
+      ${sectionAction('The language gap between executive, operational and frontline levels. Different terms dominating at each level means there is no shared story about what the transformation is or why it matters.', 'Where frontline language contradicts executive language, run a joint alignment session before programme kick-off to establish a common vocabulary and a single transformation narrative.')}
       <p class="struct-subtitle">Language and sentiment differences across organisational layers — executive vs operational vs frontline</p>
       <div class="narr-grid">${cards}</div>
     </section>`;
@@ -1005,6 +1021,7 @@ export function renderStructuralTensions(discoverAnalysis: DiscoverAnalysis | un
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Transformation Tensions</div></div>
       ${sectionIntro('The unresolved tensions that create drag on progress — areas where the organisation is simultaneously pulling in different directions, making consistent execution difficult.')}
+      ${sectionAction('Competing viewpoints between actors on the same topics — where the organisation is pulling in different directions at the same time.', 'Critical tensions need a named decision-maker and a resolution checkpoint before Phase 1. An unresolved critical tension will stall programme delivery.')}
       <p class="struct-subtitle">Ranked unresolved tensions — competing perspectives slowing transformation</p>
       <div class="tension-list">${items}</div>
     </section>`;
@@ -1059,6 +1076,7 @@ export function renderStructuralBarriers(discoverAnalysis: DiscoverAnalysis | un
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Structural Barriers</div></div>
       ${sectionIntro('The structural inhibitors to transformation — systemic blockers that surface repeatedly across multiple lenses and roles, indicating deep-rooted organisational constraints.')}
+      ${sectionAction('Constraints ranked by weight — the hard limits on what the transformation can realistically achieve and how fast. High weight = blocking multiple workstreams.', 'The top 3 rows are your Phase 1 gates — resolve or formally accept them as risks before starting. A critical barrier with low weight is a blind spot: investigate before moving on.')}
       <p class="struct-subtitle">Weighted constraints ranked by severity and frequency</p>
       <div class="struct-table-wrap">
         <table class="struct-table">
@@ -1123,6 +1141,7 @@ export function renderStructuralConfidence(discoverAnalysis: DiscoverAnalysis | 
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Transformation Readiness</div></div>
       ${sectionIntro("The organisation's own assessment of its readiness to transform — confidence levels across change capabilities, leadership alignment, and execution capacity.")}
+      ${sectionAction('Confidence profile of every statement made in discovery. Certain = stated as fact. Hedging = "we think / we believe / it might be". Uncertain = admitted not knowing.', 'If overall hedging exceeds 70%, run a structured diagnostic before starting the programme — you cannot build a transformation on unconfirmed assumptions. The domains with most hedging carry your largest hidden risks.')}
       <p class="struct-subtitle">Certainty, hedging and uncertainty across domains — signals of organisational confidence to execute change</p>
       <div class="conf-overall">
         <div class="conf-bar-wrap conf-overall-bar">
@@ -1195,6 +1214,7 @@ export function renderSignalMap(reportSummary: ReportSummary, discoverAnalysis: 
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Discovery Signal Map</div></div>
       ${sectionIntro("Distribution of participant signals across the discovery — showing where certainty, hedging, and uncertainty concentrate across organisational domains.")}
+      ${sectionAction('How much of the pre-workshop hypothesis was confirmed by participant evidence, and how many new issues were surfaced that were not anticipated going in.', 'Hypothesis accuracy below 60% means your pre-workshop brief was materially wrong — revisit programme scope. New issues surfaced here must be investigated before Phase 1 begins.')}
       ${imageUrl ? `<div class="signal-map-img-wrap"><img src="${esc(imageUrl)}" class="signal-map-img" alt="Discovery Signal Map" /></div>` : signalChart || `
       <div class="signal-map-placeholder">
         <p class="signal-map-note">No signal distribution data available for this workshop.</p>
@@ -1416,6 +1436,7 @@ export function renderTransformationPriorities(tlm: TransformationLogicMap | und
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Transformation Priorities</div></div>
       ${sectionIntro('The highest-leverage nodes in the system — ranked by structural significance and cross-role impact, not just frequency of mention. These are the issues to act on first.')}
+      ${sectionAction('Causal chains connecting the organisation\'s problems — Org Issues are confirmed bottlenecks, Reinforced findings are patterns confirmed across multiple sources, Emerging patterns are early signals.', 'Org Issues must be in your programme scope. Reinforced findings belong in Phase 1. Emerging patterns should be monitored — do not ignore them but do not over-invest before they are confirmed.')}
       <div class="tp-summary-bar">
         <p class="tp-summary-headline">${esc(execSum.headline)}</p>
         ${execSum.pressure ? `<p class="tp-summary-sub">${esc(execSum.pressure)}</p>` : ''}
@@ -1801,6 +1822,7 @@ export function renderWayForward(
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Way Forward</div></div>
       ${sectionIntro('A sequenced, three-phase plan derived from the transformation logic map — ordered by structural dependency, not urgency, to ensure each phase builds on solid foundations.')}
+      ${sectionAction('Phased delivery roadmap showing what gets done, in what order, and what must be true before each phase can begin.', 'Commit owners and start dates to every phase before leaving the room. Any phase without a named sponsor and a date is aspirational, not a plan.')}
       <p class="wf-intro">Delivery timeline — initiative bars by phase with cumulative cost and benefit curves.</p>
       ${fullGantt}
       ${roiHtml}
@@ -1911,6 +1933,7 @@ export function renderConclusion(reportSummary: ReportSummary): string {
     <section class="report-section">
       <div class="section-title-bar"><div class="section-accent"></div><div class="section-title">Summary &amp; Next Steps</div></div>
       ${sectionIntro('Agreed actions and the critical next decisions coming out of this discovery engagement — what happens now, who owns it, and what success looks like in the next 90 days.')}
+      ${sectionAction('The committed next steps agreed in the room — owners, dates, and 90-day priorities.', 'Every item here without a named owner and a date is a risk. Before signing off this report, ensure every action has an owner and a deadline assigned.')}
       <div class="conclusion-summary">${esc(conclusion.summary)}</div>
       <div class="next-steps-heading">Recommended Next Steps</div>
       <div class="next-step-list">${steps}</div>
@@ -2399,6 +2422,13 @@ export const PDF_STYLES = `
   .section-intro { background: #f8fafc; border-left: 3px solid #6366f1; border-radius: 0 8px 8px 0; padding: 10px 14px; margin-bottom: 18px; break-inside: avoid; page-break-inside: avoid; }
   .section-intro-label { font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #94a3b8; display: block; margin-bottom: 4px; }
   .section-intro p { font-size: 9.5pt; color: #475569; line-height: 1.65; margin: 0; }
+
+  /* ── Section action callout ─── */
+  .section-action { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; break-inside: avoid; page-break-inside: avoid; }
+  .section-action-row { font-size: 9pt; color: #78350f; line-height: 1.6; margin: 0; }
+  .section-action-row + .section-action-row { margin-top: 4px; }
+  .section-action-label { font-weight: 700; color: #92400e; }
+  .section-action-label-action { color: #7c2d12; }
 
   /* ── Executive Summary — new blocks ─── */
   .es-approach-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; break-inside: avoid; page-break-inside: avoid; }
