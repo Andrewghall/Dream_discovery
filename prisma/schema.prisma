@@ -152,6 +152,9 @@ model Workshop {
   historicalMetrics   Json?                 @map("historical_metrics")   // Normalized metric time series from CSV upload
   evidenceSynthesis   Json?                 @map("evidence_synthesis")   // Cross-document synthesis (themes, outliers, contradictions)
 
+  // COM-B Behavioural Interventions (generated layer)
+  behaviouralInterventions Json?         @map("behavioural_interventions")
+
   // Example/demo flag — example workshops are visible to all authenticated users (cross-org)
   // and are read-only. Users must fork to run synthesis on their own copy.
   isExample        Boolean               @default(false) @map("is_example")

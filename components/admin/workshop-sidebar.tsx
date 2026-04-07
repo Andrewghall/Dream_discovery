@@ -22,6 +22,7 @@ import {
   BarChart3,
   Route,
   Sparkles,
+  Users,
 } from 'lucide-react';
 
 interface WorkshopSidebarProps {
@@ -46,6 +47,7 @@ function buildNavSections(_domainPack?: string | null) {
       label: 'Output Analysis',
       items: [
         { label: 'Generate Analysis', path: '/generate-analysis', icon: Sparkles, highlight: true },
+        { label: 'Behavioural Interventions', path: '/behavioural-interventions', icon: Users },
         { label: 'Discovery Output', path: '/discovery-output', icon: BarChart2 },
         { label: 'Insight Map', path: '/hemisphere', icon: Globe },
         { label: 'Actor Journey', path: '/actor-journey', icon: Route },

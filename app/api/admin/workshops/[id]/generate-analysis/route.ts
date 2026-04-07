@@ -9,6 +9,7 @@
  *   2. Output Intelligence pipeline
  *   3. Evidence Cross-Validation (skipped gracefully if no ready docs)
  *   4. Evidence Cross-Document Synthesis (skipped gracefully if < 2 ready docs)
+ *   5. Behavioural Interventions (skipped gracefully if no OI output yet)
  *
  * Each pipeline is called as an internal HTTP fetch so that existing route
  * logic, rate limiting, and DB writes remain untouched.  Auth cookie is
@@ -28,7 +29,7 @@ import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-acces
 import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300; // 5 min — all four pipelines can be slow
+export const maxDuration = 300; // 5 min — all five pipelines can be slow
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ export async function POST(
   const cookieHeader = forwardCookieHeader(request);
   const fetchHeaders = { Cookie: cookieHeader, 'Content-Type': 'application/json' };
 
-  const TOTAL_STEPS = 4;
+  const TOTAL_STEPS = 5;
   let stepsCompleted = 0;
   let stepsFailed = 0;
   let stepsSkipped = 0;
@@ -269,6 +270,25 @@ export async function POST(
             const body = await resp.json().catch(() => ({}));
             if (resp.status === 400) {
               return { ok: true, skipped: body.error ?? 'Evidence synthesis not available' };
+            }
+            return { ok: false, error: body.error ?? `HTTP ${resp.status}` };
+          }
+
+          await resp.json().catch(() => null);
+          return { ok: true };
+        });
+        // ── Step 5: Behavioural Interventions ───────────────────────────────
+        await runStep(5, 'Behavioural Interventions', async () => {
+          const resp = await fetch(
+            `${baseUrl}/api/admin/workshops/${workshopId}/behavioural-interventions`,
+            { method: 'POST', headers: fetchHeaders, body: JSON.stringify({}) },
+          );
+
+          if (!resp.ok) {
+            const body = await resp.json().catch(() => ({}));
+            // 422 = no OI output yet — skip gracefully
+            if (resp.status === 422) {
+              return { ok: true, skipped: body.error ?? 'Output Intelligence not yet available' };
             }
             return { ok: false, error: body.error ?? `HTTP ${resp.status}` };
           }
