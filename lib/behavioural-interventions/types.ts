@@ -15,6 +15,7 @@ export interface BehaviouralIntervention {
   motivation_gap: string;
   intervention_type: InterventionType;
   action: string;
+  evidence_basis?: string;
   supporting_lenses: string[];
   empirically_grounded: boolean;
   priority: Priority;

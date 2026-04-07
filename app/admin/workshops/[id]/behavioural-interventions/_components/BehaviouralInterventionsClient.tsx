@@ -82,6 +82,14 @@ function InterventionCard({ item }: { item: BehaviouralIntervention }) {
         </div>
       )}
 
+      {/* Evidence basis */}
+      {item.evidence_basis && (
+        <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400 border-l-2 border-emerald-400">
+          <span className="font-semibold mr-1">Grounded in:</span>
+          {item.evidence_basis}
+        </div>
+      )}
+
       {/* Footer badges */}
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <span
