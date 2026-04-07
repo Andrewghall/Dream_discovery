@@ -7,6 +7,7 @@ import type {
   BehaviouralIntervention,
   LensInterventions,
 } from '@/lib/behavioural-interventions/types';
+import { ComBWheel } from './ComBWheel';
 
 interface Props {
   workshopId: string;
@@ -200,9 +201,16 @@ function InterventionCard({ item }: { item: BehaviouralIntervention }) {
   );
 }
 
-function LensSection({ lensData }: { lensData: LensInterventions }) {
+function LensSection({
+  lensData,
+  itemOverride,
+}: {
+  lensData: LensInterventions;
+  itemOverride?: BehaviouralIntervention[];
+}) {
   const [open, setOpen] = useState(true);
-  const highCount = lensData.items.filter((i) => i.priority === 'High').length;
+  const items = itemOverride ?? lensData.items;
+  const highCount = items.filter((i) => i.priority === 'High').length;
 
   return (
     <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
@@ -217,7 +225,7 @@ function LensSection({ lensData }: { lensData: LensInterventions }) {
           }
           <span className="font-semibold text-base">{lensData.lens}</span>
           <span className="text-xs text-muted-foreground">
-            {lensData.items.length} intervention{lensData.items.length !== 1 ? 's' : ''}
+            {items.length} intervention{items.length !== 1 ? 's' : ''}
           </span>
           {highCount > 0 && (
             <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2 py-0.5 text-xs font-medium border border-red-200 dark:border-red-800">
@@ -228,7 +236,7 @@ function LensSection({ lensData }: { lensData: LensInterventions }) {
       </button>
       {open && (
         <div className="px-5 pb-5 space-y-3 border-t pt-4">
-          {lensData.items.map((item, idx) => (
+          {items.map((item, idx) => (
             <InterventionCard key={idx} item={item} />
           ))}
         </div>
@@ -237,10 +245,30 @@ function LensSection({ lensData }: { lensData: LensInterventions }) {
   );
 }
 
+function itemMatchesFilter(item: BehaviouralIntervention, filter: string): boolean {
+  switch (filter) {
+    case 'physical_capability':
+      return item.capability_type === 'Physical' || item.capability_type === 'Both';
+    case 'psychological_capability':
+      return item.capability_type === 'Psychological' || item.capability_type === 'Both';
+    case 'reflective_motivation':
+      return item.motivation_type === 'Reflective' || item.motivation_type === 'Both';
+    case 'automatic_motivation':
+      return item.motivation_type === 'Automatic' || item.motivation_type === 'Both';
+    case 'social_opportunity':
+      return item.opportunity_type === 'Social' || item.opportunity_type === 'Both';
+    case 'physical_opportunity':
+      return item.opportunity_type === 'Physical' || item.opportunity_type === 'Both';
+    default:
+      return true;
+  }
+}
+
 export function BehaviouralInterventionsClient({ workshopId, workshopName, initialData }: Props) {
   const [data, setData] = useState<BehaviouralInterventionsOutput | null>(initialData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
   async function generate() {
     setLoading(true);
@@ -262,13 +290,11 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
     }
   }
 
-  const totalInterventions = data?.behavioural_interventions.reduce(
-    (sum, l) => sum + l.items.length, 0
-  ) ?? 0;
+  const allInterventions = data?.behavioural_interventions.flatMap((l) => l.items) ?? [];
 
-  const highPriorityCount = data?.behavioural_interventions.reduce(
-    (sum, l) => sum + l.items.filter((i) => i.priority === 'High').length, 0
-  ) ?? 0;
+  const totalInterventions = allInterventions.length;
+
+  const highPriorityCount = allInterventions.filter((i) => i.priority === 'High').length;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -374,12 +400,36 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
         </div>
       )}
 
+      {/* COM-B wheel */}
+      {data && !loading && (
+        <div className="rounded-xl border bg-card shadow-sm p-5">
+          <h2 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wide">
+            COM-B Profile — click a segment to filter interventions
+          </h2>
+          <ComBWheel
+            interventions={allInterventions}
+            activeFilter={activeFilter}
+            onFilter={setActiveFilter}
+          />
+        </div>
+      )}
+
       {/* Lens sections */}
       {data && !loading && (
         <div className="space-y-4">
-          {data.behavioural_interventions.map((lensData, idx) => (
-            <LensSection key={`${lensData.lens}-${idx}`} lensData={lensData} />
-          ))}
+          {data.behavioural_interventions.map((lensData, idx) => {
+            const filteredItems = activeFilter
+              ? lensData.items.filter((item) => itemMatchesFilter(item, activeFilter))
+              : lensData.items;
+            if (filteredItems.length === 0) return null;
+            return (
+              <LensSection
+                key={`${lensData.lens}-${idx}`}
+                lensData={lensData}
+                itemOverride={activeFilter ? filteredItems : undefined}
+              />
+            );
+          })}
         </div>
       )}
     </div>
