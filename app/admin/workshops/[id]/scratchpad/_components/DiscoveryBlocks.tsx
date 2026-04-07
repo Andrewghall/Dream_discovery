@@ -29,6 +29,7 @@ import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { PromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 import { ItemToggle } from '@/components/report-builder/DraggableSection';
 import { EditableText } from './ScratchpadEditors';
+import type { BehaviouralInterventionsOutput } from '@/lib/behavioural-interventions/types';
 
 // ── Discovery Diagnostic block ─────────────────────────────────────────────────
 
@@ -1111,6 +1112,122 @@ export function SignalMapBlock({ imageUrl }: { imageUrl: string | null; workshop
       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
         <span>● Aspiration</span><span>● Enablers</span><span>● Friction</span><span>● Constraint</span>
       </div>
+    </div>
+  );
+}
+
+// ── Behavioural Interventions Block ──────────────────────────────────────────
+
+const LENS_COLOURS: Record<string, { bg: string; border: string; dot: string }> = {
+  People:       { bg: 'bg-blue-50',    border: 'border-blue-200',   dot: 'bg-blue-500'    },
+  Customer:     { bg: 'bg-purple-50',  border: 'border-purple-200', dot: 'bg-purple-500'  },
+  Organisation: { bg: 'bg-emerald-50', border: 'border-emerald-200',dot: 'bg-emerald-500' },
+  Technology:   { bg: 'bg-orange-50',  border: 'border-orange-200', dot: 'bg-orange-500'  },
+  Regulation:   { bg: 'bg-red-50',     border: 'border-red-200',    dot: 'bg-red-500'     },
+};
+
+const PRIORITY_COLOURS: Record<string, string> = {
+  High:   'bg-red-100 text-red-700',
+  Medium: 'bg-amber-100 text-amber-700',
+  Low:    'bg-slate-100 text-slate-600',
+};
+
+export function BehaviouralInterventionsBlock({
+  data,
+  workshopId,
+}: {
+  data: BehaviouralInterventionsOutput | null;
+  workshopId: string;
+}) {
+  if (!data) {
+    return (
+      <p className="text-xs text-muted-foreground py-2">
+        Behavioural Interventions not available. Go to the Behavioural Interventions page and run the analysis.
+      </p>
+    );
+  }
+
+  const allItems = data.behavioural_interventions.flatMap(l =>
+    l.items.map(i => ({ ...i, lens: l.lens })),
+  );
+  const highPriority = allItems.filter(i => i.priority === 'High').slice(0, 5);
+  const totalCount = allItems.length;
+  const lensesCovered = data.behavioural_interventions.filter(l => l.items.length > 0).map(l => l.lens);
+
+  return (
+    <div className="space-y-5">
+      {/* Summary row */}
+      <div className="flex flex-wrap gap-4">
+        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-center min-w-[90px]">
+          <p className="text-2xl font-bold text-foreground">{totalCount}</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">Interventions</p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-center min-w-[90px]">
+          <p className="text-2xl font-bold text-red-600">{allItems.filter(i => i.priority === 'High').length}</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">High Priority</p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 flex-1 min-w-[160px]">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Lenses Covered</p>
+          <div className="flex flex-wrap gap-1">
+            {lensesCovered.map(lens => {
+              const c = LENS_COLOURS[lens] ?? { bg: 'bg-slate-50', border: 'border-slate-200', dot: 'bg-slate-400' };
+              return (
+                <span key={lens} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${c.bg} ${c.border}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                  {lens}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* High priority interventions */}
+      {highPriority.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            High Priority Interventions
+          </h4>
+          {highPriority.map((item, idx) => {
+            const c = LENS_COLOURS[item.lens] ?? { bg: 'bg-slate-50', border: 'border-slate-200', dot: 'bg-slate-400' };
+            return (
+              <div key={idx} className={`rounded-lg border p-4 ${c.bg} ${c.border}`}>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <p className="text-sm font-semibold text-foreground leading-snug">{item.target_behaviour}</p>
+                  <div className="flex gap-1 shrink-0">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLOURS[item.priority]}`}>
+                      {item.priority}
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${c.bg} ${c.border}`}>
+                      {item.lens}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-foreground/80 leading-relaxed mb-2">{item.action}</p>
+                {item.evidence_basis && (
+                  <p className="text-[10px] text-muted-foreground italic border-t border-current/10 pt-2 mt-2">
+                    Evidence: {item.evidence_basis}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Link to full analysis */}
+      <p className="text-xs text-muted-foreground">
+        Full analysis across all {totalCount} interventions available in the{' '}
+        <a
+          href={`/admin/workshops/${workshopId}/behavioural-interventions`}
+          className="underline text-foreground hover:text-foreground/70"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Behavioural Interventions
+        </a>{' '}
+        page.
+      </p>
     </div>
   );
 }

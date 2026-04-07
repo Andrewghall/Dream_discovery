@@ -78,7 +78,9 @@ import {
   StructuralConfidenceBlock,
   SignalMapBlock,
   FacilitatorContactBlock,
+  BehaviouralInterventionsBlock,
 } from './_components/DiscoveryBlocks';
+import type { BehaviouralInterventionsOutput } from '@/lib/behavioural-interventions/types';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -118,6 +120,7 @@ export default function DownloadReportPage({ params }: PageProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [discoveryOutput, setDiscoveryOutput] = useState<any | null>(null);
   const [discoverAnalysis, setDiscoverAnalysis] = useState<DiscoverAnalysis | null>(null);
+  const [behaviouralInterventions, setBehaviouralInterventions] = useState<BehaviouralInterventionsOutput | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -236,6 +239,15 @@ export default function DownloadReportPage({ params }: PageProps) {
         if (analysisRes.ok) {
           const ad = await analysisRes.json();
           if (ad.analysis) setDiscoverAnalysis(ad.analysis as DiscoverAnalysis);
+        }
+      } catch { /* non-fatal */ }
+
+      // Fetch behavioural interventions (non-fatal)
+      try {
+        const biRes = await fetch(`/api/admin/workshops/${workshopId}/behavioural-interventions`);
+        if (biRes.ok) {
+          const bd = await biRes.json();
+          if (bd.behaviouralInterventions) setBehaviouralInterventions(bd.behaviouralInterventions as BehaviouralInterventionsOutput);
         }
       } catch { /* non-fatal */ }
 
@@ -1043,6 +1055,16 @@ export default function DownloadReportPage({ params }: PageProps) {
                         {cfg.id === 'way_forward' && (
                           <div className="p-4">
                             <WayForwardBlock intelligence={intelligence} />
+                          </div>
+                        )}
+
+                        {/* ── Behavioural Interventions ── */}
+                        {cfg.id === 'behavioural_interventions' && (
+                          <div className="p-4">
+                            <BehaviouralInterventionsBlock
+                              data={behaviouralInterventions}
+                              workshopId={workshopId}
+                            />
                           </div>
                         )}
 

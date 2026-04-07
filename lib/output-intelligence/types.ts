@@ -593,13 +593,13 @@ export interface ReportSectionConfig {
 
 export interface ReportLayout {
   sections: ReportSectionConfig[];
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   clientLogoUrl?: string;   // Client logo embedded on PDF cover page
 }
 
 export function defaultReportLayout(): ReportLayout {
   return {
-    version: 4,
+    version: 5,
     sections: [
       // ── Executive Summary — ALWAYS FIRST ─────────────────────────────────
       { id: 'executive_summary',       type: 'builtin',  title: 'Executive Summary',           enabled: true,  collapsed: false, excludedItems: [] },
@@ -625,6 +625,7 @@ export function defaultReportLayout(): ReportLayout {
       // ── Chapter 4: Way Forward ───────────────────────────────────────────
       { id: 'ch_wayforward',           type: 'chapter',  title: 'Way Forward',                 enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'way_forward',             type: 'builtin',  title: 'Way Forward',                 enabled: true,  collapsed: false, excludedItems: [] },
+      { id: 'behavioural_interventions', type: 'builtin', title: 'Behavioural Interventions',  enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'report_conclusion',       type: 'builtin',  title: 'Summary & Next Steps',        enabled: true,  collapsed: false, excludedItems: [] },
       { id: 'facilitator_contact',     type: 'builtin',  title: 'Facilitator Contact',         enabled: false, collapsed: false, excludedItems: [] },
       // ── Available but off by default ─────────────────────────────────────
