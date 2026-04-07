@@ -61,12 +61,13 @@ import {
   StrategicImpactBlock,
   WayForwardBlock,
 } from './_components/IntelligenceBlocks';
+import { NarrativeDivergence } from '@/components/discover-analysis/narrative-divergence';
+import { SectionAction } from '@/components/scratchpad/SectionAction';
 import {
   DiscoveryDiagnosticBlock,
   DiscoverySignalsBlock,
   InsightSummaryBlock,
   AlignmentBlock,
-  NarrativeDivergenceBlock,
   TensionsBlock,
   StructuralBarriersBlock,
   ReportConclusionBlock,
@@ -1100,7 +1101,15 @@ export default function DownloadReportPage({ params }: PageProps) {
                         {/* ── Structural: Narrative Divergence ── */}
                         {cfg.id === 'structural_narrative' && (
                           <div className="p-4">
-                            <NarrativeDivergenceBlock discoverAnalysis={discoverAnalysis} />
+                            <SectionAction
+                              what="The language gap between executive, operational and frontline levels — different terms dominating at each level means there is no shared transformation story."
+                              action="Where frontline language contradicts executive language, run a joint alignment session before programme kick-off to establish a common vocabulary and a single transformation narrative."
+                            />
+                            {discoverAnalysis?.narrative && discoverAnalysis.narrative.layers?.length ? (
+                              <NarrativeDivergence data={discoverAnalysis.narrative} />
+                            ) : (
+                              <p className="text-xs text-muted-foreground py-2">No narrative data available. Generate Structural Analysis from Discovery Output.</p>
+                            )}
                           </div>
                         )}
 
