@@ -75,6 +75,9 @@ vi.mock('@/lib/prisma', () => ({
       findUnique: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({}),
     },
+    liveWorkshopSnapshot: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
   },
 }));
 

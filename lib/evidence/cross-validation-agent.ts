@@ -34,82 +34,176 @@ export interface DiscoverySnapshot {
   rootCauses: Array<{ cause: string; severity: string }>;
   /** V2 synthesised truths (discover.truths) — primary source for V2 workshops */
   truths: Array<{ id?: string; statement: string; confidence?: number; themes?: string[] }>;
+  /**
+   * Raw participant insights from discovery interviews.
+   * This is the most authoritative signal — what individuals actually said.
+   * Cross-validation should primarily validate against this.
+   */
+  participantInsights?: Array<{ text: string; type: string }>;
+  /**
+   * Live session pad signals — what participants wrote during the workshop.
+   * Grouped by phase: discovery (current pain), constraints (barriers), reimagine (vision).
+   */
+  liveSignals?: Array<{ text: string; phase: string; lens?: string; actor?: string }>;
   /** Workshop name / client for context */
   workshopName: string;
   clientName: string;
 }
 
-const SYSTEM_PROMPT = `You are a senior management consultant conducting an evidence-based cross-validation.
+const SYSTEM_PROMPT = `You are a senior management consultant conducting an evidence-based cross-validation for a business transformation programme.
 
-Your task: compare what participants SAID in a discovery workshop against what documents and data SHOW.
+YOUR TASK: Determine which workshop findings are corroborated, contradicted, or unsupported by the uploaded operational documents and data.
 
-Three possible relationships:
-- CORROBORATED: the document evidence confirms or strongly supports the discovery finding
-- CONTRADICTED: the document evidence directly contradicts the discovery finding
-- PARTIALLY_SUPPORTED: the evidence provides some support but with important caveats or nuances
+STRICT RELEVANCE RULES — apply these before making any match:
+1. A match is only valid if the document evidence and the workshop finding address the SAME OPERATIONAL OR STRATEGIC ISSUE in the same organisational context.
+2. Incidental visual observations (physical appearance of premises, vegetation, room condition, building aesthetics) are NEVER valid evidence — discard them entirely regardless of any superficial similarity to workshop themes.
+3. The match must be SUBSTANTIVE: the same performance problem, the same process failure, the same cultural pattern — not surface-level keyword overlap.
+4. Metrics and data (FCR rates, CSAT scores, attrition numbers, headcount, costs) are high-quality evidence. Anecdotal visual descriptions from images are not.
+5. When in doubt, classify as "unsupported" or "evidence only" — do not force weak matches.
 
-Be analytical and precise. Do not force matches where none exist.
-A discovery finding is "unsupported" if no uploaded evidence speaks to it.
-An evidence finding is "evidence only" if nothing in the workshop discovery addresses it.
+PRIORITY ORDER for workshop evidence (most to least authoritative):
+1. Raw participant voice — verbatim or near-verbatim quotes from interviews and live session pads
+2. Synthesised discovery truths and themes
+3. Structural constraints and root causes
 
-Output valid JSON only.`;
+Ground your cross-validation in participant testimony first. The core question is: does the empirical data confirm or challenge what the people in this organisation said about their own situation?
+
+WHAT MAKES A STRONG MATCH:
+- A participant said "FCR is too low" AND an ops report shows FCR at 61% vs 75% target → CORROBORATED
+- Participants said "BPO performance is inconsistent" AND data shows 15% variance across sites → CORROBORATED
+- Discovery surfaced "high attrition" AND HR data shows 34% annual attrition → CORROBORATED
+- A house image shows a garden → this is NOT evidence of anything operational → DO NOT include
+
+WHAT MAKES A CONTRADICTION:
+- Participants said "customers are satisfied" AND CSAT data shows sustained decline → CONTRADICTED
+
+Output valid JSON only. No commentary outside the JSON.`;
+
+// MIME types that are image formats — these contribute summary + metrics only,
+// NOT raw visual findings which are incidental and operationally irrelevant.
+const IMAGE_MIME_TYPES = new Set([
+  'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
+]);
+
+function isImageDoc(doc: NormalisedEvidenceDocument): boolean {
+  return IMAGE_MIME_TYPES.has(doc.mimeType?.toLowerCase() ?? '');
+}
 
 function buildPrompt(discovery: DiscoverySnapshot, docs: NormalisedEvidenceDocument[]): string {
-  const allDiscoveryFindings: string[] = [
-    ...discovery.truths.map(t => t.statement),
-    ...discovery.themes,
-    ...discovery.constraints.map(c => `${c.title}${c.description ? ': ' + c.description : ''}`),
-    ...discovery.confirmedIssues.map(i => i.issue),
-    ...discovery.newIssues.map(i => i.issue),
-    ...discovery.rootCauses.map(r => `[Root Cause] ${r.cause} (${r.severity})`),
+  const lines: string[] = [];
+
+  lines.push(`Workshop: ${discovery.workshopName} — ${discovery.clientName}`);
+  lines.push('');
+
+  // ── Section 1: Participant Voice — the primary ground truth ─────────────────
+  // What individuals actually said in interviews and on live pads.
+  // This is what we are trying to corroborate or challenge with documentary data.
+
+  if (discovery.participantInsights && discovery.participantInsights.length > 0) {
+    lines.push('=== WHAT PARTICIPANTS SAID (discovery interviews — primary ground truth) ===');
+    const challenges = discovery.participantInsights
+      .filter(i => ['CHALLENGE', 'CONSTRAINT', 'FRICTION', 'BARRIER'].includes(i.type.toUpperCase()))
+      .slice(0, 25);
+    const aspirations = discovery.participantInsights
+      .filter(i => ['VISION', 'OPPORTUNITY', 'ENABLER'].includes(i.type.toUpperCase()))
+      .slice(0, 10);
+    if (challenges.length > 0) {
+      lines.push('Problems and constraints named by participants:');
+      challenges.forEach(i => lines.push(`  • [${i.type}] ${i.text}`));
+    }
+    if (aspirations.length > 0) {
+      lines.push('Aspirations and enablers named by participants:');
+      aspirations.forEach(i => lines.push(`  • [${i.type}] ${i.text}`));
+    }
+    lines.push('');
+  }
+
+  if (discovery.liveSignals && discovery.liveSignals.length > 0) {
+    lines.push('=== WHAT PARTICIPANTS WROTE ON WORKSHOP PADS (live session) ===');
+    const byPhase: Record<string, typeof discovery.liveSignals> = {};
+    for (const s of discovery.liveSignals) {
+      (byPhase[s.phase] ??= []).push(s);
+    }
+    for (const [phase, signals] of Object.entries(byPhase)) {
+      lines.push(`${phase.replace(/_/g, ' ')} phase (${signals.length} pads):`);
+      signals.slice(0, 20).forEach(s => {
+        const ctx = [s.lens, s.actor].filter(Boolean).join(' — ');
+        lines.push(`  • ${s.text}${ctx ? ` [${ctx}]` : ''}`);
+      });
+    }
+    lines.push('');
+  }
+
+  // ── Section 2: Synthesised discovery findings ───────────────────────────────
+
+  const synthesisedFindings: string[] = [
+    ...discovery.truths.map(t => `[Synthesised truth] ${t.statement}`),
+    ...discovery.themes.map(t => `[Theme] ${t}`),
+    ...discovery.constraints.map(c => `[Constraint] ${c.title}${c.description ? ': ' + c.description : ''}`),
+    ...discovery.confirmedIssues.map(i => `[Confirmed issue] ${i.issue}`),
+    ...discovery.newIssues.map(i => `[New issue] ${i.issue}`),
+    ...discovery.rootCauses.map(r => `[Root cause] ${r.cause} (${r.severity})`),
   ].filter(Boolean);
 
-  const evidenceSummary = docs.map(doc => ({
-    id: doc.id,
-    name: doc.originalFileName,
-    summary: doc.summary,
-    findings: doc.findings.map(f => ({
-      id: f.id,
-      text: f.text,
-      type: f.type,
-      signal: f.signalDirection,
-    })),
-    metrics: doc.metrics.map(m => `${m.name}: ${m.value}${m.unit ?? ''}`),
-  }));
+  if (synthesisedFindings.length > 0) {
+    lines.push('=== SYNTHESISED DISCOVERY FINDINGS (from analysis of workshop signals) ===');
+    synthesisedFindings.forEach((f, i) => lines.push(`${i + 1}. ${f}`));
+    lines.push('');
+  }
 
-  return `Workshop: ${discovery.workshopName} — ${discovery.clientName}
+  // ── Section 3: Documentary evidence ─────────────────────────────────────────
+  // Images contribute SUMMARY and METRICS only — not raw visual findings.
+  // Text/data documents contribute full findings + metrics.
 
-DISCOVERY FINDINGS (what participants said):
-${allDiscoveryFindings.map((f, i) => `${i + 1}. ${f}`).join('\n')}
+  lines.push('=== UPLOADED DOCUMENTARY EVIDENCE ===');
+  lines.push('(Validate only operationally relevant findings against participant testimony above)');
+  lines.push('');
 
-UPLOADED EVIDENCE (what documents show):
-${JSON.stringify(evidenceSummary, null, 2)}
+  for (const doc of docs) {
+    const docIsImage = isImageDoc(doc);
+    lines.push(`Document: ${doc.originalFileName} (${doc.sourceCategory ?? 'unknown category'}, signal: ${doc.signalDirection}, confidence: ${Math.round(doc.confidence * 100)}%)`);
+    if (docIsImage) {
+      lines.push(`  [Image document — only summary-level insight is used; visual descriptions are excluded]`);
+    }
+    lines.push(`  Summary: ${doc.summary}`);
+    if (doc.metrics && doc.metrics.length > 0) {
+      lines.push(`  Metrics: ${doc.metrics.map(m => `${m.name}: ${m.value}${m.unit ?? ''}`).join(' | ')}`);
+    }
+    // For non-image documents, include the structured findings
+    if (!docIsImage && doc.findings && doc.findings.length > 0) {
+      lines.push(`  Key findings (${doc.findings.length} total, sample):`);
+      doc.findings.slice(0, 8).forEach(f => {
+        lines.push(`    • [${f.type ?? 'finding'}, ${f.signalDirection ?? 'mixed'}] ${f.text}`);
+      });
+    }
+    lines.push('');
+  }
 
----
-
-Produce a JSON object with this exact structure:
+  lines.push('---');
+  lines.push('');
+  lines.push(`Produce a JSON object with this exact structure:
 
 {
   "corroborated": [
     {
-      "discoveryFinding": "<short label>",
-      "evidenceFinding": "<short label>",
+      "discoveryFinding": "<exact participant quote or synthesised finding — be specific>",
+      "evidenceFinding": "<specific metric, data point, or finding from the document — be specific>",
       "documentId": "<doc id>",
       "documentName": "<filename>",
       "alignment": "corroborated",
-      "note": "<1-2 sentence explanation>",
+      "note": "<1-2 sentences: HOW the data confirms what participants said — cite specific numbers or patterns>",
       "confidence": <0.0–1.0>
     }
   ],
   "contradicted": [ ... same structure, alignment: "contradicted" ],
   "partiallySupported": [ ... same structure, alignment: "partially_supported" ],
-  "unsupported": ["<discovery finding that has no evidence coverage>", ...],
+  "unsupported": ["<specific participant finding or theme that has NO documentary coverage>", ...],
   "evidenceOnly": [
     {
       "finding": {
-        "id": "<finding id>",
-        "text": "<finding text>",
-        "type": "<type>",
+        "id": "<finding id or empty string>",
+        "text": "<the data or finding not addressed in workshop discovery>",
+        "type": "data",
         "signalDirection": "<direction>",
         "confidence": <0.0–1.0>,
         "relevantLenses": [],
@@ -119,8 +213,10 @@ Produce a JSON object with this exact structure:
       "documentName": "<filename>"
     }
   ],
-  "conclusionImpact": "<2-4 sentences: what does this cross-validation mean for the overall conclusion? What is strengthened? What is challenged? What gaps remain?>"
-}`;
+  "conclusionImpact": "<3-5 sentences: what does this cross-validation tell us about the soundness of the transformation direction? Which participant assumptions are backed by data? Which are challenged? What empirical gaps remain that need addressing before the programme proceeds?>"
+}`);
+
+  return lines.join('\n');
 }
 
 /**
@@ -184,6 +280,8 @@ export async function runCrossValidation(
  * Fallback workshop-level discovery data.
  * Used when OI synthesis (v2Output) has not been run yet but the
  * prep/discover phase (discoverAnalysis + themes) has been completed.
+ * Also carries raw participant signals that are always included regardless
+ * of whether OI synthesis has run.
  */
 export interface WorkshopDiscoveryFallback {
   /** workshop.discoverAnalysis JSON */
@@ -191,6 +289,10 @@ export interface WorkshopDiscoveryFallback {
   discoverAnalysis?: Record<string, any> | null;
   /** workshop.themes rows */
   themes?: Array<{ themeLabel: string; themeDescription?: string | null }>;
+  /** Raw participant insights from discovery interviews — the primary ground truth */
+  participantInsights?: Array<{ text: string; type: string }>;
+  /** Live session pad signals — discovery, constraints, reimagine phases */
+  liveSignals?: Array<{ text: string; phase: string; lens?: string; actor?: string }>;
 }
 
 /**
@@ -258,5 +360,8 @@ export function buildDiscoverySnapshot(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (rc: any) => ({ cause: rc.cause, severity: rc.severity ?? 'unknown' }),
     ),
+    // Raw participant voice — always included when present, regardless of OI synthesis state
+    participantInsights: fallback?.participantInsights,
+    liveSignals: fallback?.liveSignals,
   };
 }

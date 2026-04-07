@@ -36,28 +36,38 @@ export async function POST(
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
 
-    // Fetch workshop + scratchpad for discovery signals.
-    // We also fetch discoverAnalysis and themes as a fallback so cross-validation
-    // can run after prep/discover synthesis even if OI synthesis hasn't run yet.
-    const workshop = await prisma.workshop.findUnique({
-      where: { id: workshopId },
-      select: {
-        name: true,
-        clientName: true,
-        discoverAnalysis: true,
-        themes: { select: { themeLabel: true, themeDescription: true } },
-        scratchpad: { select: { v2Output: true } },
-      },
-    });
+    // Fetch workshop + scratchpad + participant signals in parallel.
+    // Participant insights and live session pads are the primary ground truth for
+    // cross-validation — the documentary evidence validates what people actually said.
+    const [workshop, rawDocs, latestSnapshot] = await Promise.all([
+      prisma.workshop.findUnique({
+        where: { id: workshopId },
+        select: {
+          name: true,
+          clientName: true,
+          discoverAnalysis: true,
+          themes: { select: { themeLabel: true, themeDescription: true } },
+          scratchpad: { select: { v2Output: true } },
+          insights: {
+            take: 150,
+            select: { text: true, insightType: true },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      }),
+      prisma.evidenceDocument.findMany({
+        where: { workshopId, status: 'ready' },
+      }),
+      prisma.liveWorkshopSnapshot.findFirst({
+        where: { workshopId },
+        orderBy: { createdAt: 'desc' },
+        select: { payload: true },
+      }),
+    ]);
 
     if (!workshop) {
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
     }
-
-    // Fetch all ready evidence documents
-    const rawDocs = await prisma.evidenceDocument.findMany({
-      where: { workshopId, status: 'ready' },
-    });
 
     if (rawDocs.length === 0) {
       return NextResponse.json({ error: 'No ready evidence documents to validate' }, { status: 400 });
@@ -132,9 +142,43 @@ export async function POST(
       workshop.clientName ??
       workshop.name;
 
+    // ── Participant insights — raw voice from discovery interviews ──────────────
+    const participantInsights = (workshop.insights ?? []).map(i => ({
+      text: i.text,
+      type: i.insightType,
+    }));
+
+    // ── Live session pad signals — discovery, constraints, reimagine phases ────
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const liveSignals: WorkshopDiscoveryFallback['liveSignals'] = [];
+    if (latestSnapshot?.payload) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload = latestSnapshot.payload as Record<string, any>;
+      const rawNodes: Record<string, {
+        rawText?: string;
+        dialoguePhase?: string;
+        lens?: string;
+        speakerId?: string;
+      }> = payload?.nodesById ?? payload?.nodes ?? {};
+      for (const node of Object.values(rawNodes)) {
+        if (!node.rawText) continue;
+        const phase = node.dialoguePhase?.toUpperCase();
+        if (phase === 'DISCOVERY' || phase === 'CONSTRAINTS' || phase === 'REIMAGINE') {
+          liveSignals.push({
+            text: node.rawText.slice(0, 300),
+            phase: phase.toLowerCase(),
+            lens: node.lens ?? undefined,
+            actor: node.speakerId ?? undefined,
+          });
+        }
+      }
+    }
+
     const fallback: WorkshopDiscoveryFallback = {
       discoverAnalysis,
       themes: workshopThemes,
+      participantInsights: participantInsights.length > 0 ? participantInsights : undefined,
+      liveSignals: liveSignals.length > 0 ? liveSignals : undefined,
     };
 
     const discovery = buildDiscoverySnapshot(workshop.name, clientName, v2Output, fallback);
