@@ -217,6 +217,27 @@ export default function DownloadReportPage({ params }: PageProps) {
               mergedSections = newSections.length > 0 ? [...upgraded, ...newSections] : upgraded;
             }
 
+            // Ensure specific sections are always present regardless of version/rebuild path
+            const requiredIds = ['behavioural_interventions'];
+            const mergedIds = new Set(mergedSections.map((s: ReportSectionConfig) => s.id));
+            for (const reqId of requiredIds) {
+              if (!mergedIds.has(reqId)) {
+                const def = defaults.sections.find(s => s.id === reqId);
+                if (def) {
+                  // Insert after way_forward if present, otherwise at end
+                  const wayForwardIdx = mergedSections.findIndex((s: ReportSectionConfig) => s.id === 'way_forward');
+                  if (wayForwardIdx >= 0) {
+                    mergedSections = [
+                      ...mergedSections.slice(0, wayForwardIdx + 1),
+                      def,
+                      ...mergedSections.slice(wayForwardIdx + 1),
+                    ];
+                  } else {
+                    mergedSections = [...mergedSections, def];
+                  }
+                }
+              }
+            }
             setLayout({ ...stored, version: 5, sections: mergedSections });
             if (stored.clientLogoUrl) setClientLogoUrl(stored.clientLogoUrl);
           }
