@@ -49,7 +49,6 @@ import { defaultReportLayout } from '@/lib/output-intelligence/types';
 import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
-import { ReportPromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 import type { PromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 import { DraggableSection, DropIndicator } from '@/components/report-builder/DraggableSection';
 import { SectionHeading } from './_components/ScratchpadEditors';
@@ -108,7 +107,7 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [exportingPptx, setExportingPptx] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
-  const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
+  // promptOutputs removed — agentic output is now inserted directly into the report layout
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // ── Report builder layout ─────────────────────────────────────────
   const [layout, setLayout] = useState<ReportLayout>(defaultReportLayout());
@@ -138,7 +137,7 @@ export default function DownloadReportPage({ params }: PageProps) {
         // We delay slightly so layout is initialised before we append
         setTimeout(() => {
           for (const block of pending) {
-            addGptSection(block.title, block.content);
+            addGptSection({ type: 'text', title: block.title, content: block.content });
           }
         }, 800);
       }
@@ -370,25 +369,33 @@ export default function DownloadReportPage({ params }: PageProps) {
     });
   }, [updateLayout]);
 
-  // Add a GPT-generated block directly to the report layout with editable commentary
-  const addGptSection = useCallback((title: string, content: string) => {
+  // Add a GPT-generated block directly to the report layout at the top, ready to drag into place
+  const addGptSection = useCallback((output: PromptOutput) => {
+    const text = (() => {
+      if (output.type === 'text')    return output.content;
+      if (output.type === 'bullets') return output.items.map((item, i) => `${i + 1}. ${item}`).join('\n');
+      if (output.type === 'table')   return [output.headers.join(' | '), ...output.rows.map(r => r.join(' | '))].join('\n');
+      if (output.type === 'bar_chart') return output.labels.map((l, i) => `${l}: ${output.values[i]}`).join('\n');
+      return '';
+    })();
     const newSection: ReportSectionConfig = {
       id: `gpt_${nanoid(8)}`,
       type: 'custom',
-      title,
+      title: output.title,
       enabled: true,
       collapsed: false,
       excludedItems: [],
-      customContent: { text: content, imageUrl: '', imageAlt: '', commentary: '' },
+      customContent: { text, imageUrl: '', imageAlt: '', commentary: '' },
     };
     setLayout(prev => {
-      const next = { ...prev, sections: [...prev.sections, newSection] };
+      // Insert at position 0 so the user sees it immediately at the top of the report
+      const next = { ...prev, sections: [newSection, ...prev.sections] };
       updateLayout(next);
       return next;
     });
-    // Scroll to bottom so user sees the new block appear
+    // Scroll to top so user sees the new card
     requestAnimationFrame(() => {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   }, [updateLayout]);
 
@@ -804,26 +811,13 @@ export default function DownloadReportPage({ params }: PageProps) {
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-10">
 
-        {/* ── AGENTIC PROMPT BAR — always at the top ────────────────────── */}
+        {/* ── AGENTIC PROMPT BAR — generated content drops straight into the report ── */}
         {intelligence && (
-          <>
-            {promptOutputs.length > 0 && (
-              <div className="space-y-4">
-                <SectionHeading
-                  label="Additional Analysis"
-                  sublabel="Generated on demand — not saved to report"
-                />
-                {promptOutputs.map((output, i) => (
-                  <ReportPromptOutput key={i} output={output} onAddToReport={addGptSection} />
-                ))}
-              </div>
-            )}
-            <AgenticPromptBar
-              workshopId={workshopId}
-              layout={layout}
-              onOutput={(o) => setPromptOutputs((prev) => [...prev, o])}
-            />
-          </>
+          <AgenticPromptBar
+            workshopId={workshopId}
+            layout={layout}
+            onOutput={(o) => addGptSection(o)}
+          />
         )}
 
         {/* No intelligence yet */}
