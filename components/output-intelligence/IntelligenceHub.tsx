@@ -21,6 +21,7 @@ import { TransformationLogicMapPanel } from './TransformationLogicMapPanel';
 import { V2OutputView } from '@/components/v2/V2OutputView';
 import type { V2Output } from '@/lib/output/v2-synthesis-agent';
 import type { V2ReportBlock } from '@/components/v2/V2InquiryBar';
+import { SectionAction } from '@/components/scratchpad/SectionAction';
 
 // ── Signal config — DREAM cognitive function mapping ──────────────────────────
 
@@ -609,6 +610,10 @@ export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopD
                         </div>
                       </div>
                       <div className={`rounded-b-xl border ${colors.border} overflow-hidden p-4`}>
+                        <SectionAction
+                          what="Shows where your proposed solutions are compensating for unfixed root problems (workarounds), and which enablers have no clear transformation destination."
+                          action="Every 'workaround masking constraint' line is a sequencing error — fix the root constraint first, then deploy the solution on top. Any 'enabler without vision pathway' item needs a defined outcome before it appears in the roadmap."
+                        />
                         <ConnectedModelPanel
                           causalIntelligence={intelligence.causalIntelligence}
                           lensesUsed={stored?.lensesUsed ?? []}

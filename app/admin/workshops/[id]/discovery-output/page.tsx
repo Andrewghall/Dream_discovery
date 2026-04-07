@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DiscoveryOutputTab } from '@/components/scratchpad/DiscoveryOutputTab';
+import { SectionAction } from '@/components/scratchpad/SectionAction';
 import { AlignmentHeatmap } from '@/components/discover-analysis/alignment-heatmap';
 import { TensionSurface } from '@/components/discover-analysis/tension-surface';
 import { ConstraintMap } from '@/components/discover-analysis/constraint-map';
@@ -1365,9 +1366,10 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
                             title="Transformation Tensions"
                           />
                         </div>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Ranked unresolved tensions and competing perspectives — what is slowing or preventing transformation
-                        </p>
+                        <SectionAction
+                          what="Unresolved tensions ranked by how frequently they were raised. These are the competing priorities and contradictions the organisation cannot agree on."
+                          action="Each tension without a resolution owner is a programme risk. Assign an owner to the top three and set a decision checkpoint in the programme plan within 30 days."
+                        />
                         <TensionSurface data={discoverAnalysis.tensions} />
                       </Card>
                     )}
@@ -1382,9 +1384,10 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
                             title="Structural Barriers"
                           />
                         </div>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Weighted constraints and dependencies — system fragmentation, capability gaps, operational instability
-                        </p>
+                        <SectionAction
+                          what="Barriers ranked by weight (how many people raised it) × severity. High weight + Critical = the most agreed-upon blockers in the organisation."
+                          action="The top two rows are your Phase 1 gates — nothing else should start until they have an assigned owner and resolution plan. Critical items with low weight are leadership blind spots: one person flagged something serious that others missed."
+                        />
                         <ConstraintMap data={discoverAnalysis.constraints} />
                       </Card>
                     )}
@@ -1399,9 +1402,10 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
                             title="Domain Misalignment"
                           />
                         </div>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Actor × theme alignment and divergence — where leadership and operational thinking diverge
-                        </p>
+                        <SectionAction
+                          what="Where different roles (executive, management, frontline) agree or disagree on the same topics. Dark cells = strong agreement. Light cells = divergence."
+                          action="High divergence between leadership and frontline on the same theme means your change programme has a communication gap before it starts. These are the conversations that must happen in the first 30 days."
+                        />
                         <AlignmentHeatmap data={discoverAnalysis.alignment} showSampleSize />
                       </Card>
                     )}
@@ -1416,9 +1420,10 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
                             title="Narrative Divergence"
                           />
                         </div>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Language and sentiment differences across organisational layers — executive vs operational vs frontline
-                        </p>
+                        <SectionAction
+                          what="How differently each organisational layer (executive, management, frontline) describes the same situation — measured by language and sentiment."
+                          action="Large divergence means the organisation does not have a shared story. Before communicating the change programme, establish a single consistent narrative that resonates across all three layers — otherwise each group will hear a different message."
+                        />
                         <NarrativeDivergence data={discoverAnalysis.narrative} />
                       </Card>
                     )}
@@ -1429,9 +1434,10 @@ export default function DiscoveryOutputPage({ params }: PageProps) {
                           <h3 className="font-bold text-lg">Transformation Readiness</h3>
                           <ReportSectionToggle workshopId={workshopId} sectionId="structural_confidence" title="Transformation Readiness" />
                         </div>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Certainty, hedging and uncertainty across domains — signals of organisational confidence to execute change
-                        </p>
+                        <SectionAction
+                          what="The confidence profile of every statement made in discovery — how certain participants were when describing problems. Certain = stated as fact. Hedging = 'we think / we believe / it might be'. Uncertain = admitted not knowing."
+                          action="If hedging exceeds 70% in any domain, that domain needs a leadership alignment session before the programme starts. You cannot build a transformation on hypothesis. Run a structured session to convert hedged statements into confirmed facts or explicit data gaps."
+                        />
                         <ConfidenceIndex data={discoverAnalysis.confidence} />
                       </Card>
                     )}
