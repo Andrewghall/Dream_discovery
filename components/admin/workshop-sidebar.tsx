@@ -23,6 +23,8 @@ import {
   Route,
   Sparkles,
   Users,
+  FlaskConical,
+  Download,
 } from 'lucide-react';
 
 interface WorkshopSidebarProps {
@@ -34,26 +36,36 @@ interface WorkshopSidebarProps {
 function buildNavSections(_domainPack?: string | null) {
   return [
     {
-      label: 'Workflow',
+      label: 'Workshop',
       items: [
         { label: 'Setup', path: '', icon: Settings },
         { label: 'Prep', path: '/prep', icon: FileText },
         { label: 'Invite', path: '/invite', icon: Send },
-        { label: 'Live Session', path: '/cognitive-guidance', icon: Radio },
-        { label: 'Field Discovery', path: '/discovery/field', icon: Compass },
       ],
     },
     {
-      label: 'Output Analysis',
+      label: 'Delivery',
+      items: [
+        { label: 'Live Session', path: '/cognitive-guidance', icon: Radio },
+        { label: 'Field Discovery', path: '/discovery/field', icon: Compass },
+        { label: 'Evidence', path: '/evidence', icon: FlaskConical },
+      ],
+    },
+    {
+      label: 'Analysis',
       items: [
         { label: 'Generate Analysis', path: '/generate-analysis', icon: Sparkles, highlight: true },
-        { label: 'Behavioural Interventions', path: '/behavioural-interventions', icon: Users },
         { label: 'Discovery Output', path: '/discovery-output', icon: BarChart2 },
         { label: 'Insight Map', path: '/hemisphere', icon: Globe },
         { label: 'Actor Journey', path: '/actor-journey', icon: Route },
         { label: 'Brain Scan', path: '/intelligence', icon: Brain },
-        { label: 'Download Report', path: '/scratchpad', icon: BookOpen },
-        { label: 'Evidence', path: '/evidence', icon: BarChart3 },
+        { label: 'Behavioural Interventions', path: '/behavioural-interventions', icon: Users },
+      ],
+    },
+    {
+      label: 'Report',
+      items: [
+        { label: 'Output Generator', path: '/scratchpad', icon: Download },
       ],
     },
   ];
