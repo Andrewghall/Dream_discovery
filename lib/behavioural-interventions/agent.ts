@@ -55,8 +55,11 @@ const OUTPUT_SCHEMA = `{
         {
           "target_behaviour": "<specific observable behaviour to change — written as the behaviour that must shift, one clear sentence naming who does what differently>",
           "capability_gap": "<2-3 sentences: what specific skill/knowledge is missing, why it is missing in this organisation, what evidence supports this>",
+          "capability_type": "<Physical | Psychological | Both>  — Physical = manual skills, physical tasks; Psychological = knowledge, decision-making, memory, self-regulation",
           "opportunity_gap": "<2-3 sentences: name the specific system, process, or structural barrier — reference the actual constraint or root cause from the workshop>",
+          "opportunity_type": "<Physical | Social | Both>  — Physical = environment, tools, systems, resources; Social = culture, norms, peer influence, leadership signals",
           "motivation_gap": "<2-3 sentences: name the specific belief, mental model, or incentive misalignment — reference participant voice or perception gaps where available>",
+          "motivation_type": "<Reflective | Automatic | Both>  — Reflective = conscious goals, intentions, beliefs; Automatic = habits, emotions, instinctive responses",
           "intervention_type": "<Training | Environmental Restructuring | Incentivisation | Enablement | Persuasion | Modelling>",
           "action": "<2-3 sentence specific intervention: what exactly should be done, how it should be structured, what behaviour change outcome it targets>",
           "evidence_basis": "<the specific participant quote, root cause, corroborated finding, or perception gap that grounds this intervention>",

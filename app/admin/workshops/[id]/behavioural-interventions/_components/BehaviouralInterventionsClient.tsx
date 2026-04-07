@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, CheckCircle2, Circle, RefreshCw, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, Zap } from 'lucide-react';
 import type {
   BehaviouralInterventionsOutput,
   BehaviouralIntervention,
@@ -15,103 +15,187 @@ interface Props {
 }
 
 const PRIORITY_COLOURS: Record<string, string> = {
-  High: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  Medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  Low: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  High: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400',
+  Medium: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400',
+  Low: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400',
 };
 
 const INTERVENTION_COLOURS: Record<string, string> = {
-  Training: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  'Environmental Restructuring': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-  Incentivisation: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  Enablement: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
-  Persuasion: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
-  Modelling: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+  Training: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400',
+  'Environmental Restructuring': 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400',
+  Incentivisation: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400',
+  Enablement: 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400',
+  Persuasion: 'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-900/20 dark:text-pink-400',
+  Modelling: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-400',
 };
 
-function InterventionCard({ item }: { item: BehaviouralIntervention }) {
+/** Dot indicator for COM-B component strength */
+function ComBDot({ label, active }: { label: string; active?: boolean }) {
+  const colours: Record<string, string> = {
+    C: active ? 'bg-red-500' : 'bg-red-200 dark:bg-red-900/40',
+    M: active ? 'bg-amber-500' : 'bg-amber-200 dark:bg-amber-900/40',
+    O: active ? 'bg-green-500' : 'bg-green-200 dark:bg-green-900/40',
+  };
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-3">
-        <p className="font-medium text-sm text-foreground leading-snug flex-1">
-          {item.target_behaviour}
-        </p>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {item.empirically_grounded ? (
-            <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400" title="Grounded in evidence cross-validation">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Evidence
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="Derived from workshop signals">
-              <Circle className="h-3.5 w-3.5" />
-              Signal
-            </span>
-          )}
-        </div>
-      </div>
+    <span
+      className={`inline-flex items-center justify-center rounded-full text-[9px] font-bold text-white w-5 h-5 ${colours[label] ?? 'bg-gray-300'}`}
+      title={label === 'C' ? 'Capability' : label === 'M' ? 'Motivation' : 'Opportunity'}
+    >
+      {label}
+    </span>
+  );
+}
 
-      {/* COM-B gaps */}
-      <div className="space-y-2">
-        {item.capability_gap && (
-          <div className="flex gap-2 text-xs">
-            <span className="font-semibold text-blue-600 dark:text-blue-400 shrink-0 w-24">Capability</span>
-            <span className="text-muted-foreground">{item.capability_gap}</span>
-          </div>
-        )}
-        {item.opportunity_gap && (
-          <div className="flex gap-2 text-xs">
-            <span className="font-semibold text-purple-600 dark:text-purple-400 shrink-0 w-24">Opportunity</span>
-            <span className="text-muted-foreground">{item.opportunity_gap}</span>
-          </div>
-        )}
-        {item.motivation_gap && (
-          <div className="flex gap-2 text-xs">
-            <span className="font-semibold text-amber-600 dark:text-amber-400 shrink-0 w-24">Motivation</span>
-            <span className="text-muted-foreground">{item.motivation_gap}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Action */}
-      {item.action && (
-        <div className="rounded-md bg-muted/50 px-3 py-2 text-xs font-medium text-foreground border-l-2 border-purple-400">
-          <span className="text-muted-foreground font-normal mr-1">Action:</span>
-          {item.action}
-        </div>
-      )}
-
-      {/* Evidence basis */}
-      {item.evidence_basis && (
-        <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400 border-l-2 border-emerald-400">
-          <span className="font-semibold mr-1">Grounded in:</span>
-          {item.evidence_basis}
-        </div>
-      )}
-
-      {/* Footer badges */}
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-            PRIORITY_COLOURS[item.priority] ?? 'bg-muted text-muted-foreground'
-          }`}
-        >
-          {item.priority}
-        </span>
-        <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-            INTERVENTION_COLOURS[item.intervention_type] ?? 'bg-muted text-muted-foreground'
-          }`}
-        >
-          {item.intervention_type}
-        </span>
-        {item.supporting_lenses.length > 0 && (
-          <span className="text-xs text-muted-foreground">
-            Also affects: {item.supporting_lenses.join(', ')}
+/** Single COM-B component block */
+function ComBBlock({
+  label,
+  fullLabel,
+  subType,
+  description,
+  colourClass,
+  subColourClass,
+  dotLabel,
+}: {
+  label: string;
+  fullLabel: string;
+  subType?: string;
+  description: string;
+  colourClass: string;
+  subColourClass: string;
+  dotLabel: string;
+}) {
+  return (
+    <div className={`rounded-lg border p-3 space-y-1.5 ${colourClass}`}>
+      <div className="flex items-center gap-2">
+        <ComBDot label={dotLabel} active />
+        <span className="text-xs font-bold tracking-wide uppercase">{fullLabel}</span>
+        {subType && subType !== 'Both' && (
+          <span className={`text-[10px] font-medium rounded-full px-2 py-0.5 border ${subColourClass}`}>
+            {subType}
           </span>
         )}
+        {subType === 'Both' && (
+          <>
+            <span className={`text-[10px] font-medium rounded-full px-2 py-0.5 border ${subColourClass}`}>
+              {label === 'C' ? 'Physical' : label === 'M' ? 'Reflective' : 'Physical'}
+            </span>
+            <span className={`text-[10px] font-medium rounded-full px-2 py-0.5 border ${subColourClass}`}>
+              {label === 'C' ? 'Psychological' : label === 'M' ? 'Automatic' : 'Social'}
+            </span>
+          </>
+        )}
       </div>
+      <p className="text-xs leading-relaxed opacity-90">{description}</p>
+    </div>
+  );
+}
+
+function InterventionCard({ item }: { item: BehaviouralIntervention }) {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+      {/* Header */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-accent/30 transition-colors"
+      >
+        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+          <ComBDot label="C" active={!!item.capability_gap} />
+          <ComBDot label="M" active={!!item.motivation_gap} />
+          <ComBDot label="O" active={!!item.opportunity_gap} />
+        </div>
+        <p className="flex-1 text-sm font-semibold leading-snug">{item.target_behaviour}</p>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {item.empirically_grounded && (
+            <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-full px-2 py-0.5">
+              Evidence
+            </span>
+          )}
+          <span
+            className={`text-[10px] font-medium rounded-full px-2 py-0.5 border ${
+              PRIORITY_COLOURS[item.priority] ?? 'bg-muted text-muted-foreground border-border'
+            }`}
+          >
+            {item.priority}
+          </span>
+          {expanded
+            ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          }
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3 border-t pt-3">
+          {/* COM-B triad */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <ComBBlock
+              label="C"
+              fullLabel="Capability"
+              subType={item.capability_type}
+              description={item.capability_gap}
+              dotLabel="C"
+              colourClass="bg-red-50 border-red-200 text-red-900 dark:bg-red-900/15 dark:border-red-800/50 dark:text-red-100"
+              subColourClass="bg-red-100 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800"
+            />
+            <ComBBlock
+              label="M"
+              fullLabel="Motivation"
+              subType={item.motivation_type}
+              description={item.motivation_gap}
+              dotLabel="M"
+              colourClass="bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-900/15 dark:border-amber-800/50 dark:text-amber-100"
+              subColourClass="bg-amber-100 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800"
+            />
+            <ComBBlock
+              label="O"
+              fullLabel="Opportunity"
+              subType={item.opportunity_type}
+              description={item.opportunity_gap}
+              dotLabel="O"
+              colourClass="bg-green-50 border-green-200 text-green-900 dark:bg-green-900/15 dark:border-green-800/50 dark:text-green-100"
+              subColourClass="bg-green-100 text-green-600 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800"
+            />
+          </div>
+
+          {/* Action */}
+          {item.action && (
+            <div className="rounded-lg bg-slate-900 dark:bg-slate-800 px-4 py-3">
+              <p className="text-[10px] font-bold tracking-widest uppercase text-slate-400 mb-1">
+                Recommended Action
+              </p>
+              <p className="text-sm text-white leading-relaxed">{item.action}</p>
+              <div className="mt-2 flex items-center gap-2">
+                <span
+                  className={`text-[10px] font-medium rounded-full px-2 py-0.5 border ${
+                    INTERVENTION_COLOURS[item.intervention_type] ?? 'bg-muted text-muted-foreground border-border'
+                  }`}
+                >
+                  {item.intervention_type}
+                </span>
+                {item.supporting_lenses.length > 0 && (
+                  <span className="text-[10px] text-slate-400">
+                    Also affects: {item.supporting_lenses.join(', ')}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Evidence basis */}
+          {item.evidence_basis && (
+            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 px-3 py-2">
+              <p className="text-[10px] font-bold tracking-widest uppercase text-emerald-600 dark:text-emerald-400 mb-0.5">
+                Grounded in
+              </p>
+              <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed italic">
+                &ldquo;{item.evidence_basis}&rdquo;
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -127,18 +211,17 @@ function LensSection({ lensData }: { lensData: LensInterventions }) {
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-accent/40 transition-colors"
       >
         <div className="flex items-center gap-3">
-          {open ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          )}
+          {open
+            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          }
           <span className="font-semibold text-base">{lensData.lens}</span>
           <span className="text-xs text-muted-foreground">
             {lensData.items.length} intervention{lensData.items.length !== 1 ? 's' : ''}
           </span>
           {highCount > 0 && (
-            <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2 py-0.5 text-xs font-medium">
-              {highCount} High priority
+            <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2 py-0.5 text-xs font-medium border border-red-200 dark:border-red-800">
+              {highCount} High
             </span>
           )}
         </div>
@@ -180,13 +263,11 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
   }
 
   const totalInterventions = data?.behavioural_interventions.reduce(
-    (sum, l) => sum + l.items.length,
-    0
+    (sum, l) => sum + l.items.length, 0
   ) ?? 0;
 
   const highPriorityCount = data?.behavioural_interventions.reduce(
-    (sum, l) => sum + l.items.filter((i) => i.priority === 'High').length,
-    0
+    (sum, l) => sum + l.items.filter((i) => i.priority === 'High').length, 0
   ) ?? 0;
 
   return (
@@ -195,11 +276,9 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Behavioural Interventions</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            COM-B framework — {workshopName}
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">COM-B framework — {workshopName}</p>
         </div>
-        {data ? (
+        {data && (
           <button
             onClick={generate}
             disabled={loading}
@@ -208,7 +287,24 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             {loading ? 'Regenerating…' : 'Regenerate'}
           </button>
-        ) : null}
+        )}
+      </div>
+
+      {/* COM-B legend */}
+      <div className="flex items-center gap-4 rounded-lg border bg-muted/30 px-4 py-3 text-xs">
+        <span className="text-muted-foreground font-medium">COM-B</span>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex items-center justify-center rounded-full text-[9px] font-bold text-white w-5 h-5 bg-red-500">C</span>
+          <span className="text-muted-foreground">Capability <span className="opacity-60">(Physical · Psychological)</span></span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex items-center justify-center rounded-full text-[9px] font-bold text-white w-5 h-5 bg-amber-500">M</span>
+          <span className="text-muted-foreground">Motivation <span className="opacity-60">(Reflective · Automatic)</span></span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex items-center justify-center rounded-full text-[9px] font-bold text-white w-5 h-5 bg-green-500">O</span>
+          <span className="text-muted-foreground">Opportunity <span className="opacity-60">(Physical · Social)</span></span>
+        </div>
       </div>
 
       {/* Error */}
@@ -221,8 +317,10 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
       {/* Empty state */}
       {!data && !loading && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-center space-y-4">
-          <div className="rounded-full bg-purple-100 dark:bg-purple-900/30 p-4">
-            <Zap className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+          <div className="flex items-center gap-1">
+            <span className="inline-flex items-center justify-center rounded-full font-bold text-white w-10 h-10 bg-red-500 text-sm">C</span>
+            <span className="inline-flex items-center justify-center rounded-full font-bold text-white w-10 h-10 bg-amber-500 text-sm">M</span>
+            <span className="inline-flex items-center justify-center rounded-full font-bold text-white w-10 h-10 bg-green-500 text-sm">O</span>
           </div>
           <div>
             <h3 className="font-semibold text-lg">No interventions generated yet</h3>
@@ -242,7 +340,7 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
         </div>
       )}
 
-      {/* Loading spinner */}
+      {/* Loading */}
       {loading && !data && (
         <div className="flex flex-col items-center justify-center py-16 space-y-3">
           <RefreshCw className="h-8 w-8 animate-spin text-purple-500" />
@@ -250,7 +348,7 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
         </div>
       )}
 
-      {/* Data summary bar */}
+      {/* Summary bar */}
       {data && !loading && (
         <div className="flex items-center gap-6 rounded-lg bg-muted/50 px-5 py-3 text-sm">
           <div>
@@ -259,16 +357,15 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
           </div>
           <div>
             <span className="font-semibold">{totalInterventions}</span>
-            <span className="text-muted-foreground ml-1">total interventions</span>
+            <span className="text-muted-foreground ml-1">interventions</span>
           </div>
           <div>
             <span className="font-semibold text-red-600 dark:text-red-400">{highPriorityCount}</span>
             <span className="text-muted-foreground ml-1">high priority</span>
           </div>
           {data.evidenceGrounded && (
-            <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              <span>Evidence-grounded</span>
+            <div className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+              Evidence-grounded
             </div>
           )}
           <div className="ml-auto text-xs text-muted-foreground">
