@@ -16,6 +16,7 @@ import { requireAuth } from '@/lib/auth/require-auth';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runEvidencePipeline } from '@/lib/evidence/pipeline';
 import { ACCEPTED_EVIDENCE_MIME_TYPES, maxFileSizeForType } from '@/lib/evidence/extractor';
+import { logAuditEvent } from '@/lib/audit/audit-logger';
 
 // ── Supabase Storage ─────────────────────────────────────────────────────────
 
@@ -198,6 +199,13 @@ export async function POST(
       await invalidateEvidenceDerivatives(workshopId);
     }
 
+    if (auth.organizationId) {
+      const uploaded = results.filter(r => r.status === 'ready');
+      if (uploaded.length > 0) {
+        logAuditEvent({ organizationId: auth.organizationId, userId: auth.userId ?? undefined, action: 'UPLOAD_EVIDENCE', resourceType: 'workshop', resourceId: workshopId, metadata: { fileCount: uploaded.length, fileNames: uploaded.map(r => r.fileName) }, success: true }).catch(err => console.error('[audit] upload_evidence:', err));
+      }
+    }
+
     return NextResponse.json({ documents: results });
   } catch (err) {
     console.error('[evidence] Upload error:', err);
@@ -295,6 +303,10 @@ export async function DELETE(
 
     // Invalidate stale cross-validation and synthesis — document set has changed
     await invalidateEvidenceDerivatives(workshopId);
+
+    if (auth.organizationId) {
+      logAuditEvent({ organizationId: auth.organizationId, userId: auth.userId ?? undefined, action: 'DELETE_EVIDENCE', resourceType: 'workshop', resourceId: workshopId, metadata: { docId, fileName: doc.originalFileName }, success: true }).catch(err => console.error('[audit] delete_evidence:', err));
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

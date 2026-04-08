@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/audit/audit-logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,6 +19,10 @@ export async function POST(request: NextRequest) {
         await prisma.session.delete({
           where: { token: sessionToken },
         });
+        // Log after deletion so we still have session data for the record
+        if (session.userId) {
+          logAuditEvent({ organizationId: 'session', userId: session.userId, action: 'LOGOUT', resourceType: 'session', resourceId: session.id, success: true }).catch(err => console.error('[audit] logout:', err));
+        }
       }
     }
 

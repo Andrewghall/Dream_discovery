@@ -587,6 +587,10 @@ export async function PATCH(
       data: updateData,
     });
 
+    if (user.organizationId) {
+      logAuditEvent({ organizationId: user.organizationId, userId: user.userId ?? undefined, userEmail: user.email ?? undefined, action: 'UPDATE_WORKSHOP', resourceType: 'workshop', resourceId: id, metadata: { fieldsUpdated: Object.keys(updateData) }, success: true }).catch(err => console.error('[audit] update_workshop:', err));
+    }
+
     return NextResponse.json({ workshop: updated });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

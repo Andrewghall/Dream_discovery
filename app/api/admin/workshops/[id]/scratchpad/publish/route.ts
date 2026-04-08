@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { logAuditEvent } from '@/lib/audit/audit-logger';
 
 export async function POST(
   _request: NextRequest,
@@ -26,6 +27,10 @@ export async function POST(
         updatedAt: new Date(),
       },
     });
+
+    if (user.organizationId) {
+      logAuditEvent({ organizationId: user.organizationId, userId: user.userId ?? undefined, action: 'PUBLISH_OUTPUT', resourceType: 'workshop', resourceId: workshopId, success: true }).catch(err => console.error('[audit] publish_output:', err));
+    }
 
     return NextResponse.json({ scratchpad });
   } catch (error) {

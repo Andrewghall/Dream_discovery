@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/audit/audit-logger';
 
 export async function POST(
   request: NextRequest,
@@ -31,6 +32,10 @@ export async function POST(
         department: department || null,
       },
     });
+
+    if (auth.organizationId) {
+      logAuditEvent({ organizationId: auth.organizationId, userId: auth.userId ?? undefined, action: 'CREATE_PARTICIPANT', resourceType: 'participant', resourceId: participant.id, metadata: { workshopId, participantEmail: email, participantName: name }, success: true }).catch(err => console.error('[audit] create_participant:', err));
+    }
 
     return NextResponse.json({ participant });
   } catch (error) {
@@ -76,6 +81,10 @@ export async function DELETE(
     await prisma.workshopParticipant.delete({
       where: { id: participantId },
     });
+
+    if (auth.organizationId) {
+      logAuditEvent({ organizationId: auth.organizationId, userId: auth.userId ?? undefined, action: 'DELETE_PARTICIPANT', resourceType: 'participant', resourceId: participantId, metadata: { workshopId }, success: true }).catch(err => console.error('[audit] delete_participant:', err));
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -130,6 +139,10 @@ export async function PATCH(
       where: { id: participantId },
       data: { doNotSendAgain } as unknown as Record<string, unknown>,
     });
+
+    if (auth.organizationId) {
+      logAuditEvent({ organizationId: auth.organizationId, userId: auth.userId ?? undefined, action: 'UPDATE_PARTICIPANT', resourceType: 'participant', resourceId: participantId, metadata: { workshopId, doNotSendAgain }, success: true }).catch(err => console.error('[audit] update_participant:', err));
+    }
 
     return NextResponse.json({ participant: updated });
   } catch (error) {

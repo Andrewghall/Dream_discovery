@@ -5,6 +5,7 @@ import * as bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { authLimiter } from '@/lib/rate-limit';
 import { createSessionToken, type SessionPayload } from '@/lib/auth/session';
+import { logAuditEvent } from '@/lib/audit/audit-logger';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 15;
@@ -113,6 +114,8 @@ export async function POST(request: NextRequest) {
         // Cookie store may not be available in test contexts
       }
 
+      logAuditEvent({ organizationId: 'platform', action: 'LOGIN_SUCCESS', resourceType: 'session', metadata: { role: 'PLATFORM_ADMIN', email: adminUsername }, ipAddress, userAgent, success: true }).catch(err => console.error('[audit] login:', err));
+
       return NextResponse.json({ success: true, redirectTo: '/admin', user: { id: 'admin', email: adminUsername, name: 'Admin', role: 'PLATFORM_ADMIN' } });
     }
 
@@ -205,12 +208,14 @@ export async function POST(request: NextRequest) {
       });
 
       if (shouldLock) {
+        logAuditEvent({ organizationId: user.organizationId ?? 'unknown', userId: user.id, userEmail: user.email, action: 'LOGIN_FAILED', resourceType: 'session', metadata: { reason: 'account_locked', failedAttempts: failedCount }, ipAddress, userAgent, success: false }).catch(err => console.error('[audit] login_failed:', err));
         return NextResponse.json(
           { error: `Too many failed attempts. Account locked for ${LOCKOUT_DURATION_MINUTES} minutes.` },
           { status: 401 }
         );
       }
 
+      logAuditEvent({ organizationId: user.organizationId ?? 'unknown', userId: user.id, userEmail: user.email, action: 'LOGIN_FAILED', resourceType: 'session', metadata: { reason: 'invalid_password', failedAttempts: failedCount }, ipAddress, userAgent, success: false }).catch(err => console.error('[audit] login_failed:', err));
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
@@ -282,6 +287,8 @@ export async function POST(request: NextRequest) {
     } catch {
       // Cookie store may not be available in test contexts
     }
+
+    logAuditEvent({ organizationId: user.organizationId ?? 'unknown', userId: user.id, userEmail: user.email, action: 'LOGIN_SUCCESS', resourceType: 'session', metadata: { role: user.role }, ipAddress, userAgent, success: true }).catch(err => console.error('[audit] login:', err));
 
     return NextResponse.json({
       success: true,
