@@ -857,3 +857,23 @@ model EvidenceDocument {
   @@index([workshopId, status])
   @@map("evidence_documents")
 }
+
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  type        String
+  visitorId   String   @map("visitor_id")
+  sessionId   String   @map("session_id")
+  pagePath    String   @map("page_path")
+  pageTitle   String?  @map("page_title")
+  referrer    String?
+  deviceType  String?  @map("device_type")
+  durationMs  Int?     @map("duration_ms")
+  country     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([visitorId])
+  @@index([sessionId])
+  @@index([pagePath])
+  @@map("analytics_events")
+}
