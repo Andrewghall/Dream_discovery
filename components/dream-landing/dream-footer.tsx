@@ -14,7 +14,7 @@ export function DreamFooter() {
             width={120}
             height={35}
             className="mb-4"
-            style={{ mixBlendMode: 'screen' }}
+            style={{ filter: 'brightness(0) invert(1)' }}
           />
           <p className="text-sm leading-relaxed max-w-xs">
             Decision intelligence that transforms workshops into measurable organisational insight.
