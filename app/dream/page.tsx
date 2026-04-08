@@ -5,6 +5,7 @@ import { HeroSection } from '@/components/dream-landing/hero-section';
 import { ScrollReveal } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
 import { DifferentiatorsSection } from '@/components/dream-landing/differentiators-section';
+import { ComparisonTable } from '@/components/dream-landing/comparison-table';
 import { JourneyShowcase } from '@/components/dream-landing/journey-showcase';
 import dynamic from 'next/dynamic';
 
@@ -107,7 +108,10 @@ export default function DreamLandingPage() {
       {/* ═══ 4. WHAT MAKES DREAM DIFFERENT  -  collapsible cards ═══ */}
       <DifferentiatorsSection />
 
-      {/* ═══ 5. THE DREAM STORY BANNER ═══ */}
+      {/* ═══ 5. COMPETITIVE COMPARISON TABLE ═══ */}
+      <ComparisonTable />
+
+      {/* ═══ 6. THE DREAM STORY BANNER ═══ */}
       <section className="bg-[#0a0a0a] py-20 relative overflow-hidden">
         {/* Subtle green glow */}
         <div
