@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
     const history: ChatMessage[] = Array.isArray(body.history)
       ? body.history.slice(-MAX_HISTORY)
       : [];
+    const isVoice = Boolean(body.voice);
 
     if (!question) {
       return NextResponse.json({ error: 'Question is required' }, { status: 400 });
@@ -85,7 +86,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Build messages
-    const systemPrompt = buildDreamChatSystemPrompt();
+    const basePrompt = buildDreamChatSystemPrompt();
+    const systemPrompt = isVoice
+      ? basePrompt + `\n\n## VOICE MODE — CRITICAL\nThis response will be spoken aloud immediately. You MUST write in plain conversational prose only. Absolutely no markdown of any kind: no headers (#), no bold (**), no italic (*), no bullet points (-), no numbered lists (1. 2. 3.), no backticks, no horizontal rules. Write flowing sentences and paragraphs as if speaking naturally in conversation.`
+      : basePrompt;
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },
     ];
