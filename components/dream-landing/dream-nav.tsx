@@ -86,8 +86,17 @@ export function DreamNav() {
       }`}
     >
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        {/* Mobile hamburger — left side */}
+        <button
+          className="lg:hidden p-2 -ml-2 text-slate-600 hover:text-slate-900"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+        >
+          {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </button>
+
         {/* Logo */}
-        <Link href="/dream" className="flex-shrink-0">
+        <Link href="/dream" className="flex-shrink-0 lg:mr-6">
           <Image
             src="/ethenta-logo.png"
             alt="Ethenta"
@@ -197,14 +206,6 @@ export function DreamNav() {
           </Link>
         </div>
 
-        {/* Mobile hamburger */}
-        <button
-          className="lg:hidden p-2 text-slate-600 hover:text-slate-900"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-        >
-          {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
       </div>
 
       {/* Mobile menu */}
