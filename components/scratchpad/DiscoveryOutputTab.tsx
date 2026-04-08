@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Brain, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import { AiInsightCard } from './AiInsightCard';
+import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
 
 interface DiscoveryOutputTabProps {
   data: any;
@@ -103,9 +104,17 @@ export function DiscoveryOutputTab({ data, workshopId, onGenerated, onChange: _o
 
       {/* ── Header ─────────────────────────────────────────────── */}
       <div>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">Perception Signal</span>
-          <span className="text-[10px] text-slate-400">— Discovery Phase</span>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">Perception Signal</span>
+            <span className="text-[10px] text-slate-400">— Discovery Phase</span>
+          </div>
+          {workshopId && (
+            <div className="flex items-center gap-2">
+              <ReportSectionToggle workshopId={workshopId} sectionId="discovery_diagnostic" title="Discovery Diagnostic" />
+              <ReportSectionToggle workshopId={workshopId} sectionId="discovery_signals" title="Discovery Signals" />
+            </div>
+          )}
         </div>
         <h2 className="text-xl font-bold text-slate-900 mb-2">How the Organisation Sees Itself</h2>
 

@@ -7,10 +7,9 @@
  */
 
 import OpenAI from 'openai';
-import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopSignals, DiscoveryValidation } from '../types';
-
-const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+// OpenAI client constructed lazily inside runDiscoveryValidationAgent() — never at module load.
 
 const SCHEMA = `{
   "confirmedIssues": [
@@ -70,9 +69,9 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push(`\nDefine approach pads:\n${signals.liveSession.defineApproachPads.slice(0, 20).map((p) => `• ${p.text}`).join('\n')}`);
   }
 
-  if (signals.scratchpad.execSummary) {
-    lines.push(`\n=== SYNTHESISED EXECUTIVE SUMMARY ===\n${signals.scratchpad.execSummary}`);
-  }
+  // NOTE: scratchpad exec summary intentionally excluded — it is a prior LLM
+  // output, not raw evidence. Including it creates a summary-of-summary path
+  // where GPT output reinforces GPT output rather than raw participant signals.
 
   if (signals.discovery.cohortBreakdown?.length) {
     lines.push('\n=== SIGNALS BY PARTICIPANT COHORT ===');
@@ -94,6 +93,55 @@ function buildSignalDump(signals: WorkshopSignals): string {
       lines.push(`• [${c.source}, ${c.similarity.toFixed(2)}] ${c.text}`);
     }
     lines.push('(Supporting context only — not from this workshop)');
+  }
+
+  if (signals.evidenceDocuments?.length) {
+    lines.push('\n=== UPLOADED EVIDENCE DOCUMENTS ===');
+    lines.push('Documentary evidence uploaded and validated for this workshop:');
+    for (const doc of signals.evidenceDocuments) {
+      lines.push(`\nDocument: ${doc.fileName} (signal direction: ${doc.signalDirection}, confidence: ${Math.round(doc.confidence * 100)}%)`);
+      lines.push(`Summary: ${doc.summary}`);
+      if (doc.keyFindings.length > 0) {
+        lines.push(`Key findings:\n${doc.keyFindings.map(f => `  • ${f}`).join('\n')}`);
+      }
+    }
+    lines.push('\nUse these documents to corroborate or challenge the discovery hypothesis. Where documentary evidence confirms workshop signals, increase confidence. Where it contradicts, flag in reducedIssues with the discrepancy noted.');
+  }
+
+  if (signals.evidenceValidation) {
+    const ev = signals.evidenceValidation;
+    lines.push('\n=== EVIDENCE VALIDATION VERDICT ===');
+    lines.push('Cross-validation of uploaded documentary evidence against workshop discovery:');
+
+    if (ev.corroborated.length > 0) {
+      lines.push(`\nCORROBORATED BY DATA (${ev.corroborated.length} findings confirmed):`);
+      ev.corroborated.slice(0, 8).forEach(f => lines.push(`  ✓ ${f}`));
+    }
+
+    if (ev.contradicted.length > 0) {
+      lines.push(`\nCONFIRMED CONTRADICTIONS (2+ independent sources — treat with high weight):`);
+      ev.contradicted.slice(0, 5).forEach(f => lines.push(`  ✗ ${f}`));
+    }
+
+    if (ev.perceptionGaps.length > 0) {
+      lines.push(`\nPERCEPTION GAPS (participants believed X but data shows Y — organisational blind spots):`);
+      ev.perceptionGaps.slice(0, 5).forEach(f => lines.push(`  ⚠ ${f}`));
+    }
+
+    if (ev.blindSpots.length > 0) {
+      lines.push(`\nDATA BLIND SPOTS (significant findings in data not raised by any participant):`);
+      ev.blindSpots.slice(0, 5).forEach(f => lines.push(`  ● ${f}`));
+    }
+
+    const uncoveredLenses = ev.lensGaps.filter(l => !l.covered).map(l => l.lens);
+    if (uncoveredLenses.length > 0) {
+      lines.push(`\nLENS COVERAGE GAPS (no empirical evidence for these lenses): ${uncoveredLenses.join(', ')}`);
+      lines.push('Findings in these lenses rest on participant testimony alone — flag where relevant.');
+    }
+
+    if (ev.conclusionImpact) {
+      lines.push(`\nOVERALL VERDICT: ${ev.conclusionImpact}`);
+    }
   }
 
   return lines.join('\n');
@@ -119,6 +167,7 @@ Rules:
 • hypothesisAccuracy (0-100) reflects how well workshop findings matched discovery hypothesis
 • If no discovery signals exist, return a low hypothesisAccuracy with explanation
 • If you cannot determine hypothesis accuracy from available signals, set hypothesisAccuracy to null
+• Where evidenceValidation is provided: corroborated findings should have higher confidence; contradicted findings and perceptionGaps should be reflected in reducedIssues or noted in summary; blindSpots should appear as newIssues if operationally significant
 • Output MUST be valid JSON matching the schema exactly — no commentary outside the JSON`;
 
   const userMessage = `${buildSignalDump(signals)}
@@ -126,6 +175,8 @@ Rules:
 Return JSON matching this schema exactly:
 ${SCHEMA}`;
 
+  const apiKey = process.env.OPENAI_API_KEY;
+  const openai = apiKey ? new OpenAI({ apiKey }) : null;
   if (!openai) throw new Error('OPENAI_API_KEY is not configured');
 
   let lastError: Error | null = null;
@@ -133,7 +184,7 @@ ${SCHEMA}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 100_000);
     try {
-      const response = await openai.chat.completions.create(
+      const response = await openAiBreaker.execute(() => openai.chat.completions.create(
         {
           model: 'gpt-4o',
           response_format: { type: 'json_object' },
@@ -145,7 +196,7 @@ ${SCHEMA}`;
           max_tokens: 3000,
         },
         { signal: controller.signal }
-      );
+      ));
 
       clearTimeout(timeoutId);
       const raw = response.choices[0]?.message?.content ?? '{}';

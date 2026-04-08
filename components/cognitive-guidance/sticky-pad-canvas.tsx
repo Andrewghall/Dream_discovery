@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { MessageSquarePlus } from 'lucide-react';
 import { StickyPad } from '@/components/cognitive-guidance/sticky-pad';
 import type { StickyPad as StickyPadType } from '@/lib/cognitive-guidance/pipeline';
@@ -34,15 +35,22 @@ export function StickyPadCanvas({
   // so the parent can auto-move them to the covered strip.
   const visiblePads = maxVisible ? allActivePads.slice(0, maxVisible) : allActivePads;
 
-  // Report overflow pads to parent (sorted by highest coverage first — most "done")
-  if (maxVisible && allActivePads.length > maxVisible && onOverflow) {
-    const overflowPads = allActivePads
-      .slice(maxVisible)
-      .sort((a, b) => b.coveragePercent - a.coveragePercent)
-      .map((p) => p.id);
-    // Use setTimeout to avoid calling setState during render
-    setTimeout(() => onOverflow(overflowPads), 0);
-  }
+  // Report overflow pads to parent (sorted by highest coverage first — most "done").
+  // Must run in useEffect — calling setState during render causes React hydration error #418.
+  const overflowPadIds =
+    maxVisible && allActivePads.length > maxVisible
+      ? allActivePads
+          .slice(maxVisible)
+          .sort((a, b) => b.coveragePercent - a.coveragePercent)
+          .map((p) => p.id)
+      : null;
+
+  useEffect(() => {
+    if (overflowPadIds && overflowPadIds.length > 0 && onOverflow) {
+      onOverflow(overflowPadIds);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overflowPadIds?.join(',')]); // stable string dep avoids infinite loop
 
   if (visiblePads.length === 0) {
     return (

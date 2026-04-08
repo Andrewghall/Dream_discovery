@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { nanoid } from 'nanoid';
-
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
@@ -14,6 +13,10 @@ import { applyCognitiveUpdate } from '@/lib/cognition/reasoning-engine';
 import { getGPT4oMiniEngine } from '@/lib/cognition/engines/gpt4o-mini-engine';
 import { runFacilitationOrchestrator } from '@/lib/cognition/agents/facilitation-orchestrator';
 import { pushUtterance } from '@/lib/cognition/cognitive-state';
+
+// Journey agent + cognitive analysis run inside after() — up to 40s per cycle.
+// Without this, Vercel kills the background work before the journey agent completes.
+export const maxDuration = 60;
 
 type IngestTranscriptChunkBody = {
   speakerId: string | null;
@@ -495,7 +498,9 @@ async function processCompleteUtterance(
       // ── Facilitation Orchestrator (agentic agents) ──────
       // Runs Theme Agent, Facilitation Agent, Constraint Agent
       // with Guardian verification. Emits theme.suggested,
-      // pad.generated, constraint.mapped, and agent.conversation.
+      // pad.generated, constraint.mapped, agent.conversation.
+      // Also runs mandatory journey assessment on every utterance (no belief gate).
+      console.log(`[JourneyPipeline] transcript-received workshopId=${workshopId} text="${text.substring(0, 80)}" beliefs=${cognitiveState.beliefs.size} utterances=${cognitiveState.recentUtterances.length}`);
       try {
         await runFacilitationOrchestrator(
           workshopId,

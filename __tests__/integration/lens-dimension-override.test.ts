@@ -7,6 +7,7 @@
  *
  * Covers:
  *  - getPhaseLensOrder returns research dimensions with correct source
+ *  - getPhaseLensOrder THROWS when no lens set is available (rule: no generic fallback)
  *  - buildWorkshopQuestionSet stores dynamic lens order in output
  *  - System prompt uses research dimension names, not generic defaults
  *  - LensSource tracking is accurate
@@ -23,7 +24,16 @@ import type {
   WorkshopPhase,
   PrepContext,
   LensSource,
+  FacilitationQuestion,
 } from '@/lib/cognition/agents/agent-types';
+
+function makePhases(lens: string): Map<WorkshopPhase, FacilitationQuestion[]> {
+  const m = new Map<WorkshopPhase, FacilitationQuestion[]>();
+  for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as WorkshopPhase[]) {
+    m.set(phase, [{ id: 'q1', phase, lens, text: 'Test', purpose: 'Test', order: 1, subQuestions: [] }]);
+  }
+  return m;
+}
 
 // ── Test fixtures ───────────────────────────────────────────
 
@@ -96,33 +106,31 @@ describe('getPhaseLensOrder', () => {
     }
   });
 
-  it('returns generic fallback with source "generic_fallback" when no research', () => {
-    const result = getPhaseLensOrder('REIMAGINE', null);
-    expect(result.source).toBe('generic_fallback');
-    expect(result.lenses).toEqual(['People', 'Customer', 'Organisation']);
+  // Rule: no generic fallback — throw if no lens set
+  it('throws when no research is provided (no generic fallback allowed)', () => {
+    expect(() => getPhaseLensOrder('REIMAGINE', null)).toThrow(
+      /Workshop lens set is required/,
+    );
   });
 
-  it('returns generic fallback when research has no dimensions', () => {
-    const result = getPhaseLensOrder('REIMAGINE', RESEARCH_WITHOUT_DIMENSIONS);
-    expect(result.source).toBe('generic_fallback');
-    expect(result.lenses).toEqual(['People', 'Customer', 'Organisation']);
+  it('throws when research has no dimensions (no generic fallback allowed)', () => {
+    expect(() => getPhaseLensOrder('REIMAGINE', RESEARCH_WITHOUT_DIMENSIONS)).toThrow(
+      /Workshop lens set is required/,
+    );
   });
 
-  it('returns generic fallback when research has empty dimensions array', () => {
+  it('throws when research has empty dimensions array', () => {
     const researchEmpty = { ...RESEARCH_WITHOUT_DIMENSIONS, industryDimensions: [] };
-    const result = getPhaseLensOrder('CONSTRAINTS', researchEmpty);
-    expect(result.source).toBe('generic_fallback');
-    expect(result.lenses).toEqual(expect.arrayContaining(['Regulation']));
+    expect(() => getPhaseLensOrder('CONSTRAINTS', researchEmpty)).toThrow(
+      /Workshop lens set is required/,
+    );
   });
 
-  it('phase-specific lens order applies only for generic fallback', () => {
-    const reimagine = getPhaseLensOrder('REIMAGINE', null);
-    const constraints = getPhaseLensOrder('CONSTRAINTS', null);
-    // REIMAGINE excludes Technology and Regulation in generic mode
-    expect(reimagine.lenses).not.toContain('Technology');
-    expect(reimagine.lenses).not.toContain('Regulation');
-    // CONSTRAINTS includes all 5
-    expect(constraints.lenses).toHaveLength(5);
+  it('throws for every phase when no lens set is available', () => {
+    const phases: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
+    for (const phase of phases) {
+      expect(() => getPhaseLensOrder(phase, null)).toThrow(/Workshop lens set is required/);
+    }
   });
 
   it('research dimensions override generic regardless of phase', () => {
@@ -139,7 +147,7 @@ describe('getPhaseLensOrder', () => {
 
 describe('buildWorkshopQuestionSet', () => {
   it('stores research dimension names in lensOrder when research has dimensions', () => {
-    const qs = buildWorkshopQuestionSet(new Map(), 'test rationale', RESEARCH_WITH_DIMENSIONS);
+    const qs = buildWorkshopQuestionSet(makePhases('Student Experience'), 'test rationale', RESEARCH_WITH_DIMENSIONS);
     for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as WorkshopPhase[]) {
       expect(qs.phases[phase].lensOrder).toEqual([
         'Student Experience',
@@ -150,17 +158,21 @@ describe('buildWorkshopQuestionSet', () => {
     }
   });
 
-  it('stores generic lens names when no research dimensions', () => {
-    const qs = buildWorkshopQuestionSet(new Map(), 'test rationale', null);
-    // REIMAGINE should have 3 generic lenses
-    expect(qs.phases.REIMAGINE.lensOrder).toEqual(['People', 'Customer', 'Organisation']);
-    // CONSTRAINTS should have 5
-    expect(qs.phases.CONSTRAINTS.lensOrder).toHaveLength(5);
-    expect(qs.phases.CONSTRAINTS.lensOrder).toContain('Regulation');
+  // Rule: no lens fallback — buildWorkshopQuestionSet must throw when no lens set is available
+  it('throws when called with no research dimensions (no lens fallback allowed)', () => {
+    expect(() => buildWorkshopQuestionSet(new Map(), 'test rationale', null)).toThrow(
+      /Workshop lens set is required/,
+    );
+  });
+
+  it('throws when research has no industry dimensions (no lens fallback allowed)', () => {
+    expect(() => buildWorkshopQuestionSet(new Map(), 'test rationale', RESEARCH_WITHOUT_DIMENSIONS)).toThrow(
+      /Workshop lens set is required/,
+    );
   });
 
   it('does not include generic lens names when research dimensions exist', () => {
-    const qs = buildWorkshopQuestionSet(new Map(), 'test rationale', RESEARCH_WITH_DIMENSIONS);
+    const qs = buildWorkshopQuestionSet(makePhases('Student Experience'), 'test rationale', RESEARCH_WITH_DIMENSIONS);
     for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as WorkshopPhase[]) {
       for (const genericLens of GENERIC_LENSES) {
         expect(qs.phases[phase].lensOrder).not.toContain(genericLens);
@@ -188,17 +200,6 @@ describe('buildQuestionSetSystemPrompt', () => {
     expect(prompt).toContain('generic');
   });
 
-  it('uses generic lens names when no research dimensions', () => {
-    const prompt = buildQuestionSetSystemPrompt(BASE_CONTEXT, null);
-    expect(prompt).toContain('People, Customer, Organisation ONLY');
-    expect(prompt).toContain('Regulation');
-  });
-
-  it('uses generic lens names when research has no dimensions', () => {
-    const prompt = buildQuestionSetSystemPrompt(BASE_CONTEXT, RESEARCH_WITHOUT_DIMENSIONS);
-    expect(prompt).toContain('People, Customer, Organisation ONLY');
-  });
-
   it('does not contain generic phase-lens hardcoding when research dimensions exist', () => {
     const prompt = buildQuestionSetSystemPrompt(BASE_CONTEXT, RESEARCH_WITH_DIMENSIONS);
     // Should NOT have the generic "Lenses: People -> Customer -> Organisation ONLY"
@@ -212,14 +213,18 @@ describe('buildQuestionSetSystemPrompt', () => {
 // ================================================================
 
 describe('LensSource type values', () => {
-  it('getPhaseLensOrder returns valid LensSource values', () => {
-    const validSources: LensSource[] = ['research_dimensions', 'domain_pack', 'generic_fallback'];
+  it('getPhaseLensOrder returns valid LensSource values when dimensions exist', () => {
+    const validSources: LensSource[] = ['research_dimensions', 'domain_pack', 'blueprint'];
 
     const withDims = getPhaseLensOrder('REIMAGINE', RESEARCH_WITH_DIMENSIONS);
     expect(validSources).toContain(withDims.source);
+  });
 
-    const withoutDims = getPhaseLensOrder('REIMAGINE', null);
-    expect(validSources).toContain(withoutDims.source);
+  it('generic_fallback is not a valid LensSource', () => {
+    // TypeScript enforces this at compile time — verify at runtime that the
+    // valid set does not include 'generic_fallback'
+    const validSources: LensSource[] = ['research_dimensions', 'domain_pack', 'blueprint'];
+    expect(validSources).not.toContain('generic_fallback');
   });
 });
 
@@ -239,7 +244,7 @@ describe('dimension priority guard', () => {
   });
 
   it('buildWorkshopQuestionSet lensOrder never contains generic lenses when research dimensions exist', () => {
-    const qs = buildWorkshopQuestionSet(new Map(), 'rationale', RESEARCH_WITH_DIMENSIONS);
+    const qs = buildWorkshopQuestionSet(makePhases('Student Experience'), 'rationale', RESEARCH_WITH_DIMENSIONS);
     const phases: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
     for (const phase of phases) {
       for (const genericLens of GENERIC_LENSES) {

@@ -24,6 +24,7 @@ import type {
   RemoveStagePayload,
   MergeStagePayload,
   AddInteractionPayload,
+  UpdateInteractionPayload,
 } from '@/lib/cognition/agents/journey-mutation-types';
 import {
   MAX_STAGES,
@@ -207,6 +208,35 @@ function applyAddInteraction(
   };
 }
 
+function applyUpdateInteraction(
+  journey: LiveJourneyData,
+  payload: UpdateInteractionPayload,
+): LiveJourneyData {
+  const target = journey.interactions.find((ix) => ix.id === payload.interactionId);
+
+  // Manual edit protection: never overwrite facilitator-added interactions
+  if (target?.addedBy === 'facilitator') {
+    return journey;
+  }
+
+  if (!target) return journey;
+
+  const interactions = journey.interactions.map((ix) => {
+    if (ix.id !== payload.interactionId) return ix;
+    return {
+      ...ix,
+      ...(payload.updates.aiAgencyNow !== undefined && { aiAgencyNow: payload.updates.aiAgencyNow }),
+      ...(payload.updates.aiAgencyFuture !== undefined && { aiAgencyFuture: payload.updates.aiAgencyFuture }),
+      ...(payload.updates.businessIntensity !== undefined && { businessIntensity: payload.updates.businessIntensity }),
+      ...(payload.updates.customerIntensity !== undefined && { customerIntensity: payload.updates.customerIntensity }),
+      ...(payload.updates.isPainPoint !== undefined && { isPainPoint: payload.updates.isPainPoint }),
+      ...(payload.updates.isMomentOfTruth !== undefined && { isMomentOfTruth: payload.updates.isMomentOfTruth }),
+      ...(payload.updates.sentiment !== undefined && { sentiment: payload.updates.sentiment }),
+    };
+  });
+  return { ...journey, interactions };
+}
+
 // -----------------------------------------------------------------------
 // Dispatcher with intent dedup (mirrors hook lines 330-358)
 // -----------------------------------------------------------------------
@@ -233,6 +263,8 @@ function createMutationDispatcher() {
           return applyAddActor(journey, intent.payload as unknown as AddActorPayload);
         case 'add_interaction':
           return applyAddInteraction(journey, intent.payload as unknown as AddInteractionPayload);
+        case 'update_interaction':
+          return applyUpdateInteraction(journey, intent.payload as unknown as UpdateInteractionPayload);
         default:
           return journey;
       }
@@ -654,5 +686,106 @@ describe('Journey Mutations', () => {
       expect(MAX_ACTORS).toBe(20);
       expect(REMOVE_STAGE_INTERACTION_LIMIT).toBe(5);
     });
+  });
+});
+
+// -----------------------------------------------------------------------
+// Confidence gating and manual edit protection
+// -----------------------------------------------------------------------
+
+import { partitionMutationsByConfidence, type SuggestedMutation } from '@/lib/cognition/journey-completion-state';
+
+describe('partitionMutationsByConfidence', () => {
+  it('partitions into three tiers correctly', () => {
+    const mutations: SuggestedMutation[] = [
+      { type: 'add_stage', payload: { stageName: 'Post-Sale' }, confidence: 0.9, rationale: 'r', sourceNodeIds: [] },
+      { type: 'update_interaction', payload: { interactionId: 'ix-1', updates: {} }, confidence: 0.6, rationale: 'r', sourceNodeIds: [] },
+      { type: 'add_actor', payload: { name: 'Manager', role: 'Internal' }, confidence: 0.3, rationale: 'r', sourceNodeIds: [] },
+    ];
+    const { highConfidence, mediumConfidence, lowConfidence } = partitionMutationsByConfidence(mutations);
+    expect(highConfidence).toHaveLength(1);
+    expect(highConfidence[0].type).toBe('add_stage');
+    expect(mediumConfidence).toHaveLength(1);
+    expect(mediumConfidence[0].type).toBe('update_interaction');
+    expect(lowConfidence).toHaveLength(1);
+    expect(lowConfidence[0].type).toBe('add_actor');
+  });
+
+  it('treats confidence=0.5 and 0.75 as medium, 0.76 as high, 0.49 as low', () => {
+    const mutations: SuggestedMutation[] = [
+      { type: 'add_stage', payload: { stageName: 'A' }, confidence: 0.5, rationale: 'r', sourceNodeIds: [] },
+      { type: 'add_stage', payload: { stageName: 'B' }, confidence: 0.75, rationale: 'r', sourceNodeIds: [] },
+      { type: 'add_stage', payload: { stageName: 'C' }, confidence: 0.76, rationale: 'r', sourceNodeIds: [] },
+      { type: 'add_stage', payload: { stageName: 'D' }, confidence: 0.49, rationale: 'r', sourceNodeIds: [] },
+    ];
+    const { highConfidence, mediumConfidence, lowConfidence } = partitionMutationsByConfidence(mutations);
+    expect(highConfidence.map(m => m.payload.stageName)).toEqual(['C']);
+    expect(mediumConfidence.map(m => m.payload.stageName)).toEqual(['A', 'B']);
+    expect(lowConfidence.map(m => m.payload.stageName)).toEqual(['D']);
+  });
+
+  it('returns empty arrays when input is empty', () => {
+    const { highConfidence, mediumConfidence, lowConfidence } = partitionMutationsByConfidence([]);
+    expect(highConfidence).toHaveLength(0);
+    expect(mediumConfidence).toHaveLength(0);
+    expect(lowConfidence).toHaveLength(0);
+  });
+});
+
+describe('Manual edit protection in update_interaction', () => {
+  // Use the hook's applyMutationIntent via createMutationDispatcher which uses the same functions
+  // We test the guard by checking: a facilitator-added interaction must not be modified by AI
+
+  it('rejects update_interaction for facilitator-added interactions', () => {
+    const facilitatorIx = makeInteraction({ id: 'ix-facilitator', addedBy: 'facilitator', sentiment: 'neutral', isPainPoint: false });
+    const testJourney: LiveJourneyData = {
+      stages: ['Discovery', 'Engagement', 'Commitment'],
+      actors: [
+        { name: 'Customer', role: 'Primary', mentionCount: 3 },
+        { name: 'Sales Rep', role: 'Internal', mentionCount: 2 },
+      ],
+      interactions: [
+        makeInteraction({ id: 'ix-1', actor: 'Customer', stage: 'Discovery', action: 'Browses catalog' }),
+        makeInteraction({ id: 'ix-2', actor: 'Sales Rep', stage: 'Engagement', action: 'Sends proposal' }),
+        facilitatorIx,
+      ],
+    };
+
+    const intent = makeIntent('update_interaction', {
+      interactionId: 'ix-facilitator',
+      updates: { sentiment: 'positive', isPainPoint: true },
+    });
+    const dispatcher = createMutationDispatcher();
+    const result = dispatcher.apply(testJourney, intent);
+
+    // Facilitator interaction must remain unchanged
+    const ix = result.interactions.find(i => i.id === 'ix-facilitator')!;
+    expect(ix.sentiment).toBe('neutral');
+    expect(ix.isPainPoint).toBe(false);
+  });
+
+  it('applies update_interaction for ai-added interactions', () => {
+    const testJourney: LiveJourneyData = {
+      stages: ['Discovery', 'Engagement', 'Commitment'],
+      actors: [
+        { name: 'Customer', role: 'Primary', mentionCount: 3 },
+        { name: 'Sales Rep', role: 'Internal', mentionCount: 2 },
+      ],
+      interactions: [
+        makeInteraction({ id: 'ix-1', actor: 'Customer', stage: 'Discovery', action: 'Browses catalog', addedBy: 'ai' }),
+        makeInteraction({ id: 'ix-2', actor: 'Sales Rep', stage: 'Engagement', action: 'Sends proposal' }),
+      ],
+    };
+
+    const intent = makeIntent('update_interaction', {
+      interactionId: 'ix-1',
+      updates: { sentiment: 'positive', isPainPoint: true },
+    });
+    const dispatcher = createMutationDispatcher();
+    const result = dispatcher.apply(testJourney, intent);
+
+    const ix = result.interactions.find(i => i.id === 'ix-1')!;
+    expect(ix.sentiment).toBe('positive');
+    expect(ix.isPainPoint).toBe(true);
   });
 });

@@ -7,6 +7,7 @@
  * - Queued pad promotion (queued -> active when current covers)
  * - Auto-advance to next main question when all subs are covered
  * - Phase change resets
+ * - Initial load bootstrap (live page init)
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -365,5 +366,225 @@ describe('Pad State Machine - Coverage Logic', () => {
       const result = computeCompletionPercent(pads, 0, null);
       expect(result).toBe(0);
     });
+  });
+});
+
+// -----------------------------------------------------------------------
+// Helpers: mirror the bootstrap logic from the usePadStateMachine
+// useEffect that fires on first prepQuestions load (live page init fix).
+// -----------------------------------------------------------------------
+
+type PrepQuestion = {
+  id: string;
+  phase: string;
+  lens: string | null;
+  text: string;
+  purpose: string;
+  grounding: string;
+  order: number;
+  subQuestions?: Array<{ id: string; lens: string; text: string; purpose: string }>;
+};
+
+type PrepPhaseData = {
+  label: string;
+  description: string;
+  lensOrder: string[];
+  questions: PrepQuestion[];
+};
+
+type PrepQuestionSet = {
+  phases: Record<string, PrepPhaseData>;
+  designRationale: string;
+  generatedAtMs: number;
+};
+
+type InitialMainQuestion = {
+  text: string;
+  lens: string | null;
+  purpose: string;
+  grounding: string;
+  phase: string;
+} | null | undefined;
+
+/**
+ * Mirrors the bootstrap useEffect in usePadStateMachine:
+ * - Selects phase questions for the given dialoguePhase
+ * - Resolves startIndex from initialMainQuestion if present
+ * - Returns { startIndex, firstQuestion }
+ */
+function resolveBootstrapQuestion(
+  prepQuestions: PrepQuestionSet,
+  dialoguePhase: string,
+  initialMainQuestion: InitialMainQuestion,
+): { startIndex: number; firstQuestion: PrepQuestion | null } {
+  // Map DialoguePhase -> WorkshopPhase key (only the three valid ones)
+  const phaseMap: Record<string, string> = {
+    REIMAGINE: 'REIMAGINE',
+    CONSTRAINTS: 'CONSTRAINTS',
+    DEFINE_APPROACH: 'DEFINE_APPROACH',
+  };
+  const wp = phaseMap[dialoguePhase] ?? null;
+  const phaseQuestions =
+    wp && prepQuestions.phases?.[wp]?.questions
+      ? [...prepQuestions.phases[wp].questions].sort((a, b) => a.order - b.order)
+      : [];
+
+  if (phaseQuestions.length === 0) return { startIndex: 0, firstQuestion: null };
+
+  let startIndex = 0;
+  if (initialMainQuestion?.text) {
+    const restoredIdx = phaseQuestions.findIndex(
+      (q) => q.text === initialMainQuestion.text && q.phase === initialMainQuestion.phase,
+    );
+    if (restoredIdx >= 0) startIndex = restoredIdx;
+  }
+
+  return { startIndex, firstQuestion: phaseQuestions[startIndex] };
+}
+
+/**
+ * Mirrors loadPrepSubPads for the sub-question path only (simplified for tests).
+ * Returns one pad per sub-question when they exist.
+ */
+function buildSubPadsFromQuestion(question: PrepQuestion, qIndex: number): StickyPad[] {
+  const now = 0; // deterministic for tests
+  if (!question.subQuestions?.length) return [];
+  return question.subQuestions.map((sq, i) => ({
+    id: `sub:${sq.id}`,
+    type: 'CLARIFICATION' as StickyPadType,
+    prompt: sq.text,
+    signalStrength: 0.9 - i * 0.05,
+    provenance: { triggerType: 'repeated_theme' as const, sourceNodeIds: [], description: sq.purpose },
+    createdAtMs: now,
+    status: 'active' as const,
+    snoozedUntilMs: null,
+    source: 'prep' as StickyPadSource,
+    questionId: question.id,
+    grounding: sq.purpose,
+    coveragePercent: 0,
+    coverageState: 'active' as CoverageState,
+    lens: sq.lens || null,
+    mainQuestionIndex: qIndex,
+    journeyGapId: null,
+    padLabel: null,
+  }));
+}
+
+// -----------------------------------------------------------------------
+// Tests: Live Page Init Bootstrap
+// -----------------------------------------------------------------------
+
+describe('Pad State Machine - Live Page Init Bootstrap', () => {
+  const makePhaseData = (overrides: Partial<PrepQuestion>[] = []): PrepPhaseData => ({
+    label: 'Reimagine',
+    description: 'Reimagine phase',
+    lensOrder: ['People', 'Organisation', 'Customer'],
+    questions: overrides.map((o, i) => ({
+      id: `q${i + 1}`,
+      phase: 'REIMAGINE',
+      lens: 'People',
+      text: `Question ${i + 1}`,
+      purpose: `Purpose ${i + 1}`,
+      grounding: `Grounding ${i + 1}`,
+      order: i,
+      subQuestions: [
+        { id: `sq${i + 1}a`, lens: 'People', text: `Sub A for Q${i + 1}`, purpose: 'probe' },
+        { id: `sq${i + 1}b`, lens: 'Organisation', text: `Sub B for Q${i + 1}`, purpose: 'probe' },
+      ],
+      ...o,
+    })),
+  });
+
+  const makePrep = (questionOverrides: Partial<PrepQuestion>[] = []): PrepQuestionSet => ({
+    phases: { REIMAGINE: makePhaseData(questionOverrides) },
+    designRationale: '',
+    generatedAtMs: 0,
+  });
+
+  it('resolves index 0 and populates first main question when no initialMainQuestion', () => {
+    const prep = makePrep([{}, {}, {}]);
+    const { startIndex, firstQuestion } = resolveBootstrapQuestion(prep, 'REIMAGINE', null);
+
+    expect(startIndex).toBe(0);
+    expect(firstQuestion).not.toBeNull();
+    expect(firstQuestion!.text).toBe('Question 1');
+  });
+
+  it('seeds sub-pads for the first main question on init', () => {
+    const prep = makePrep([{}, {}, {}]);
+    const { startIndex, firstQuestion } = resolveBootstrapQuestion(prep, 'REIMAGINE', null);
+
+    expect(firstQuestion).not.toBeNull();
+    const subPads = buildSubPadsFromQuestion(firstQuestion!, startIndex);
+
+    expect(subPads.length).toBe(2);
+    expect(subPads.every((p) => p.mainQuestionIndex === 0)).toBe(true);
+    expect(subPads.every((p) => p.source === 'prep')).toBe(true);
+    expect(subPads.every((p) => p.coverageState === 'active')).toBe(true);
+  });
+
+  it('restores matching index when guidanceState.currentMainQuestion exists', () => {
+    const prep = makePrep([{}, {}, {}]);
+    const initialMainQuestion = {
+      text: 'Question 3',
+      lens: 'People' as const,
+      purpose: 'Purpose 3',
+      grounding: 'Grounding 3',
+      phase: 'REIMAGINE',
+    };
+
+    const { startIndex, firstQuestion } = resolveBootstrapQuestion(
+      prep,
+      'REIMAGINE',
+      initialMainQuestion,
+    );
+
+    expect(startIndex).toBe(2);
+    expect(firstQuestion!.text).toBe('Question 3');
+  });
+
+  it('falls back to index 0 when initialMainQuestion text does not match any question', () => {
+    const prep = makePrep([{}, {}]);
+    const initialMainQuestion = {
+      text: 'Some unknown question that does not exist',
+      lens: null,
+      purpose: '',
+      grounding: '',
+      phase: 'REIMAGINE',
+    };
+
+    const { startIndex } = resolveBootstrapQuestion(prep, 'REIMAGINE', initialMainQuestion);
+    expect(startIndex).toBe(0);
+  });
+
+  it('returns null firstQuestion when phase has no questions', () => {
+    const prep: PrepQuestionSet = {
+      phases: { REIMAGINE: { label: '', description: '', lensOrder: [], questions: [] } },
+      designRationale: '',
+      generatedAtMs: 0,
+    };
+
+    const { firstQuestion } = resolveBootstrapQuestion(prep, 'REIMAGINE', null);
+    expect(firstQuestion).toBeNull();
+  });
+
+  it('seeds sub-pads with correct mainQuestionIndex when restoring question 2', () => {
+    const prep = makePrep([{}, {}, {}]);
+    const initialMainQuestion = {
+      text: 'Question 3',
+      lens: null,
+      purpose: '',
+      grounding: '',
+      phase: 'REIMAGINE',
+    };
+
+    const { startIndex, firstQuestion } = resolveBootstrapQuestion(
+      prep,
+      'REIMAGINE',
+      initialMainQuestion,
+    );
+    const subPads = buildSubPadsFromQuestion(firstQuestion!, startIndex);
+
+    expect(subPads.every((p) => p.mainQuestionIndex === 2)).toBe(true);
   });
 });

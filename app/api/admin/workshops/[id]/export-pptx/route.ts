@@ -290,7 +290,7 @@ function resolveSectionHtml(
   if (cfg.type === 'chapter') return renderChapter(cfg);
   if (cfg.type === 'custom')  return renderCustomSection(cfg);
   switch (cfg.id) {
-    case 'executive_summary':    return renderExecutiveSummary(reportSummary, cfg);
+    case 'executive_summary':    return renderExecutiveSummary(reportSummary, intelligence, cfg);
     case 'supporting_evidence':  return renderSupportingEvidence(intelligence, cfg);
     case 'root_causes':          return renderRootCauses(intelligence, cfg);
     case 'solution_direction':   return renderSolutionDirection(reportSummary, intelligence, cfg);

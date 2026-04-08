@@ -2104,11 +2104,65 @@ const ENTERPRISE: DomainPack = {
 };
 
 // ---------------------------------------------------------------------------
+// Contact Centre — Airline (explicit opt-in; not auto-detected from company name)
+// ---------------------------------------------------------------------------
+
+const CONTACT_CENTRE_AIRLINE: DomainPack = {
+  key: 'contact_centre_airline',
+  label: 'Contact Centre — Airline',
+  description: 'Aviation-specific contact centre pack: passenger journey, disruption handling, EU261 compliance',
+  category: 'operational',
+  lenses: [
+    'Customer Experience',
+    'People & Workforce',
+    'Operations',
+    'Technology',
+    'Training & Capability',
+    'Regulation & Compliance',
+    'Organisation & Leadership',
+    'Culture',
+  ],
+  actorTaxonomy: [
+    { key: 'passenger', label: 'Passenger / Traveller', description: 'Primary customer interacting with the airline' },
+    { key: 'corporate_booker', label: 'Corporate Travel Booker', description: 'Travel manager or company admin booking on behalf of travellers' },
+    { key: 'travel_agent', label: 'Travel Agent / OTA', description: 'Third-party booking intermediaries' },
+    { key: 'ff_member', label: 'Frequent Flyer Member', description: 'Loyalty programme participant with tiered service' },
+    { key: 'cs_agent', label: 'Customer Service Agent', description: 'Handles calls, chats, emails, social queries' },
+    { key: 'specialist_agent', label: 'Specialist Agent', description: 'Baggage, refunds, loyalty, disruptions' },
+    { key: 'team_leader', label: 'Team Leader / Supervisor', description: 'Operational oversight, escalations, agent support' },
+    { key: 'wfm', label: 'Workforce Management (WFM)', description: 'Forecasting, scheduling, staffing' },
+    { key: 'qa', label: 'Quality Assurance (QA)', description: 'Performance evaluation and coaching' },
+    { key: 'training', label: 'Training & Enablement', description: 'Agent capability development' },
+    { key: 'ops_manager', label: 'Operations Manager', description: 'Contact centre operational leadership' },
+    { key: 'airport_ops', label: 'Airport Operations', description: 'Gate teams, ground services' },
+    { key: 'cabin_crew', label: 'Cabin Crew', description: 'In-flight service and incident reporting' },
+    { key: 'revenue_mgmt', label: 'Revenue Management', description: 'Pricing, availability, upgrades' },
+    { key: 'cx_leadership', label: 'CX Leadership', description: 'Strategic ownership of customer journey' },
+    { key: 'it_digital', label: 'IT & Digital Platforms', description: 'Booking systems, CRM, customer data platforms' },
+    { key: 'regulators', label: 'Regulators', description: 'CAA, EU261 compliance' },
+  ],
+  metricReferences: [
+    { key: 'aht', label: 'Average Handle Time', unit: 'seconds', description: 'Mean duration of customer interactions' },
+    { key: 'fcr', label: 'First Contact Resolution', unit: '%', description: 'Percentage of issues resolved on first contact' },
+    { key: 'csat', label: 'Customer Satisfaction Score', unit: 'score', description: 'Post-interaction satisfaction rating' },
+    { key: 'nps', label: 'Net Promoter Score', unit: 'score', description: 'Likelihood to recommend the airline' },
+    { key: 'attrition', label: 'Agent Attrition', unit: '%', description: 'Annual agent turnover rate' },
+    { key: 'eu261', label: 'EU261 Compliance Rate', unit: '%', description: 'Timely compensation delivery under EU261 regulation' },
+    { key: 'disruption_handling', label: 'Disruption Resolution Time', unit: 'minutes', description: 'Average time to re-accommodate disrupted passengers' },
+  ],
+  questionTemplates: [],
+  diagnosticOutputFields: [],
+  discoveryLenses: [],
+  discoveryQuestionTemplates: [],
+};
+
+// ---------------------------------------------------------------------------
 // Registry map + lookup
 // ---------------------------------------------------------------------------
 
 export const DOMAIN_PACKS: Record<string, DomainPack> = {
   contact_centre: CONTACT_CENTRE,
+  contact_centre_airline: CONTACT_CENTRE_AIRLINE,
   customer_engagement: CUSTOMER_ENGAGEMENT,
   hr_people: HR_PEOPLE,
   sales: SALES,

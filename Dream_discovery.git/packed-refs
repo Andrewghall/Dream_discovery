@@ -1,0 +1,16 @@
+# pack-refs with: peeled fully-peeled sorted 
+e6ba1329d19bc08dfd795f4a6551b26b7c7b243d refs/heads/claude/explain-codebase-mmf6x4obtty1mbil-zMad6
+7d58c9c8be4945e6b8b085717d53dddbd0442a53 refs/heads/main
+9266f6eff9f1c475b8d2370f2f72869bbedf5aae refs/heads/pre-live
+c54b3f44dc825fe3b495b180e64f7ff862e01ae3 refs/heads/prelive
+e93702dc867f6fa6c4e025e3f0de4b6795c1d85d refs/heads/prelive-hemisphere-graph
+65d6ac6fd3386dadfdfe5222eebce971ac4da6da refs/heads/review-test
+d914b3b6725030e9b621e3ff290fe1091bfdeece refs/pull/1/head
+65d6ac6fd3386dadfdfe5222eebce971ac4da6da refs/pull/2/head
+e3cfbcf98d7824f4a2a41a1813540bfda8d0205e refs/pull/2/merge
+d965c6a4d4943234e89fce526798f392c79c2c6c refs/tags/backup-fdfca43-discovery-report-v2
+^fdfca43e1250d205551dcbf3ea08c367296b775b
+f4bd0ff3825787a0ce48486afcc44085d3a5dccd refs/tags/backup/spider-prelive-2026-01-19-1223
+^f3855478bb69223c0a1d42a01a682d7972653d0b
+3dd3d98bc159af77a2c6d637aa69e4c174133005 refs/tags/release-x-transcription-working
+^c5b6000783086e422f4b94f434316c1826694bae

@@ -331,7 +331,7 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
 
   // Phase lens policy
   // REIMAGINE is aspirational — restricted to 3 human-centric lenses (no Technology/Regulation)
-  // Uses lens names ('Organisation') not dimension names ('Operations') — see pipeline.ts DEFAULT_LENSES
+  // REIMAGINE is aspirational — restricted to human-centric lenses only
   // CONSTRAINTS and DEFINE_APPROACH use all dimension names
   phaseLensPolicy: {
     REIMAGINE: ['People', 'Customer', 'Organisation'],
@@ -500,20 +500,20 @@ export function composeBlueprint(input: ComposeInput): WorkshopBlueprint {
       );
 
       bp.lenses = pack.lenses.map((lensName) => {
-        // Domain packs use LensName which may be 'Organisation' while
-        // DEFAULT_DIMENSIONS uses 'Operations'. Check both.
-        const match =
-          defaultLookup.get(lensName) ||
-          defaultLookup.get(lensName === 'Organisation' ? 'Operations' : lensName);
+        // Look up DEFAULT_DIMENSIONS for colour/keywords/description fallbacks.
+        // IMPORTANT: always use lensName (from the domain pack) as the lens name —
+        // never return match.name (which came from DEFAULT_DIMENSIONS and would
+        // silently rename 'Organisation' → 'Operations').
+        const match = defaultLookup.get(lensName);
         if (match) {
           return {
-            name: match.name,
+            name: lensName,          // preserve the pack's name, not the dimensions key
             description: match.description,
             color: match.color,
             keywords: [...match.keywords],
           };
         }
-        // Unknown lens from pack -- create a minimal entry
+        // Unknown lens from pack — create a minimal entry
         return {
           name: lensName,
           description: '',

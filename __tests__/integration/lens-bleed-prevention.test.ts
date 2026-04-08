@@ -306,8 +306,9 @@ describe('detectSignals produces correct signal types', () => {
       ...makeNodesWithLens('People' as Lens, 6),
       ...makeNodesWithLens('Customer' as Lens, 6),
     ];
-
-    const signals = detectSignals(nodes, [], now);
+    // Must pass explicit effectiveLenses — no fallback to legacy defaults
+    const effectiveLenses = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+    const signals = detectSignals(nodes, [], now, effectiveLenses);
     const missingDim = signals.filter((s) => s.type === 'missing_dimension');
     expect(missingDim.length).toBeGreaterThan(0);
 
@@ -351,7 +352,8 @@ describe('detectSignals produces correct signal types', () => {
 
   it('detects high_freq_constraint with 4+ constraints in one lens', () => {
     const nodes = makeNodesWithLens('Technology' as Lens, 5, 'CONSTRAINT');
-    const signals = detectSignals(nodes, [], now);
+    // Must pass explicit effectiveLenses — no fallback to legacy defaults
+    const signals = detectSignals(nodes, [], now, ['Technology']);
     const hfc = signals.filter((s) => s.type === 'high_freq_constraint');
     expect(hfc.length).toBeGreaterThan(0);
     expect(hfc[0].lenses).toContain('Technology');
@@ -363,7 +365,8 @@ describe('detectSignals produces correct signal types', () => {
     enabler[0].id = 'enabler-0'; // avoid id collision
     const nodes = [...constraints, ...enabler];
 
-    const signals = detectSignals(nodes, [], now);
+    // Must pass explicit effectiveLenses — no fallback to legacy defaults
+    const signals = detectSignals(nodes, [], now, ['People']);
     const we = signals.filter((s) => s.type === 'weak_enabler' && s.lenses.includes('People' as Lens));
     expect(we.length).toBeGreaterThan(0);
   });

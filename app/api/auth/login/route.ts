@@ -61,7 +61,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
       }
 
-      // Valid admin - create JWT session without DB
+      // Valid admin - create JWT session backed by DB
+      const adminExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
       const sessionPayload: SessionPayload = {
         sessionId: nanoid(),
         userId: 'admin',
@@ -72,6 +73,31 @@ export async function POST(request: NextRequest) {
       };
 
       const jwt = await createSessionToken(sessionPayload);
+
+      // DB session MUST be persisted before issuing the JWT.
+      // Without a revocable session row, the PLATFORM_ADMIN cannot be logged out
+      // via session revocation — defeating the entire revocability guarantee.
+      // Fail closed: if the write fails, do NOT set the cookie or return success.
+      try {
+        await prisma.session.create({
+          data: {
+            id: sessionPayload.sessionId,
+            userId: null,
+            token: jwt,
+            userAgent,
+            ipAddress,
+            expiresAt: adminExpiresAt,
+          },
+        });
+      } catch (dbErr) {
+        console.error('[login] PLATFORM_ADMIN session persistence failed — login refused:', dbErr);
+        return NextResponse.json(
+          { error: 'Authentication service error. Please try again.' },
+          { status: 500 },
+        );
+      }
+
+      // Cookie is set only after DB row is confirmed
       try {
         const cookieStore = await cookies();
         if (cookieStore && typeof cookieStore.set === 'function') {

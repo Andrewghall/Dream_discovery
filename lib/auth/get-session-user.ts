@@ -3,7 +3,7 @@
  */
 
 import { cookies } from 'next/headers';
-import { verifySessionToken, type SessionPayload } from './session';
+import { verifySessionWithDB, type SessionPayload } from './session';
 
 export interface SessionUser {
   userId: string;
@@ -22,7 +22,8 @@ async function getUserFromSession(): Promise<SessionUser | null> {
       return null;
     }
 
-    const payload = await verifySessionToken(sessionCookie.value);
+    // DB-backed: revoked or expired sessions return null
+    const payload = await verifySessionWithDB(sessionCookie.value);
 
     if (!payload) {
       return null;

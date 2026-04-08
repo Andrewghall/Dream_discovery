@@ -157,46 +157,14 @@ const CONTACT_CENTRE_AIRLINE_ACTORS: ActorEntry[] = [
   { key: 'regulators', label: 'Regulators', description: 'CAA, EU261 compliance' },
 ];
 
-function normalizeContextText(input: GeneratorInput): string {
-  return [
-    input.industry ?? '',
-    input.clientName ?? '',
-    input.domainPack ?? '',
-    input.purpose ?? '',
-    input.outcomes ?? '',
-  ]
-    .join(' ')
-    .toLowerCase();
-}
-
+/**
+ * Returns true when the user explicitly selected the airline contact centre pack.
+ * Detection is based solely on the domain pack key — never on company name or context text.
+ * Users who want the airline-specific blueprint must select "Contact Centre — Airline"
+ * from the domain pack dropdown.
+ */
 function isAirlineContactCentreContext(input: GeneratorInput): boolean {
-  if ((input.domainPack ?? '').toLowerCase() !== 'contact_centre') return false;
-  const text = normalizeContextText(input);
-  const airlineSignals = [
-    'airline',
-    'aviation',
-    'airport',
-    'flight',
-    'passenger',
-    'boarding',
-    'baggage',
-    'check-in',
-    'check in',
-    'cancellation',
-    'delay',
-    'rebooking',
-    're-accommodation',
-    // Client name patterns that strongly signal airline context
-    'aer ', 'air ', 'airways', 'jet ', 'ryanair', 'easyjet',
-    'vueling', 'wizz', 'flybe', 'loganair', 'lufthansa', 'klm',
-    'british airways', 'virgin atlantic', 'delta', 'emirates',
-    'qatar', 'etihad', 'singapore airlines', 'cathay',
-  ];
-  if (airlineSignals.some((signal) => text.includes(signal))) return true;
-
-  // Check common airline abbreviations as whole words (avoid false positives)
-  const abbrevPatterns = [/\bba\b/, /\biag\b/, /\bqf\b/, /\bek\b/, /\bsq\b/];
-  return abbrevPatterns.some((re) => re.test(text));
+  return (input.domainPack ?? '').toLowerCase() === 'contact_centre_airline';
 }
 
 /**
@@ -527,9 +495,8 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   }
 
   // Layer 4: Question constraints from domain + engagement type
-  // Fall back to 'enterprise' key when dreamTrack is ENTERPRISE and no domainPack is set
-  const domainKey = input.domainPack?.toLowerCase() ??
-    ((input.dreamTrack ?? '').toUpperCase() === 'ENTERPRISE' ? 'enterprise' : '');
+  // Only use domainPack when explicitly provided — no implicit fallback for ENTERPRISE track
+  const domainKey = input.domainPack?.toLowerCase() ?? '';
   const etKey = input.engagementType?.toLowerCase() ?? '';
 
   const domainConstraints = DOMAIN_QUESTION_CONSTRAINTS[domainKey];

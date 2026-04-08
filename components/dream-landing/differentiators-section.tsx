@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Brain, Sparkles, BarChart3, ArrowRight, Layers, Eye, Clock } from 'lucide-react';
+import { Brain, ArrowRight, Layers, Eye, Clock, Target } from 'lucide-react';
 import { ScrollReveal } from './scroll-reveal';
 
 /* ────────────────────────────────────────────────────────────
@@ -61,6 +61,19 @@ const DIFFERENTIATORS = [
     ],
     href: '/dream/how-it-works',
     linkLabel: 'See the full journey',
+  },
+  {
+    icon: Target,
+    title: 'COM-B Behavioural Intelligence',
+    tagline: 'Not just what\'s broken — why people behave that way, and what will actually change it.',
+    colour: 'from-rose-500 to-pink-600',
+    details: [
+      'Every finding is automatically mapped through the COM-B framework — Capability, Opportunity, Motivation, Behaviour — translating raw data into behavioural root causes',
+      'High-priority interventions are ranked by lens and COM-B sub-type, giving facilitators a prioritised change agenda grounded in behavioural science',
+      'Bridges the gap between diagnosis and action: most tools tell you what\'s wrong; DREAM tells you why people behave that way and what specific intervention will shift it',
+    ],
+    href: '/dream/insights',
+    linkLabel: 'See the analytical views',
   },
 ];
 

@@ -311,6 +311,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
   const [agentConversation, setAgentConversation] = useState<AgentConversationEntry[]>([]);
   const guidanceLoadedRef = useRef(false);
+  // Captured from guidanceState on init load — passed to padStateMachine so
+  // the current main question is restored if the page is refreshed mid-session.
+  const initialMainQuestionRef = useRef<GuidanceStateOverrides['currentMainQuestion']>(undefined);
 
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -366,6 +369,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     journeyCompletionState,
     cogNodes: null, // rely on agent-assessed coverage initially
     onSyncGuidanceState: syncGuidanceState,
+    initialMainQuestion: initialMainQuestionRef.current,
   });
 
   // ── Agentic facilitation: event pipeline hook ───────────────
@@ -563,6 +567,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
           }
           if (data.guidanceState.dialoguePhase) {
             setDialoguePhase(data.guidanceState.dialoguePhase);
+          }
+          // Capture existing currentMainQuestion so the hook can restore it
+          if (data.guidanceState.currentMainQuestion) {
+            initialMainQuestionRef.current = data.guidanceState.currentMainQuestion;
           }
         }
         if (data?.blueprint) {
@@ -843,6 +851,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
       interpreted,
       synthesisByDomain,
       pressurePoints,
+      liveJourney: journeyMutations.journey,
+      journeyCompletionState,
     };
 
     try {
@@ -909,6 +919,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
       interpreted,
       synthesisByDomain,
       pressurePoints,
+      liveJourney: journeyMutations.journey,
+      journeyCompletionState,
     };
 
     try {
@@ -993,6 +1005,17 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const ids = processed.filter((x: unknown) => typeof x === 'string') as string[];
       dependencyProcessedRef.current = new Set(ids);
       setDependencyProcessedCount(typeof (p as any).dependencyProcessedCount === 'number' ? (p as any).dependencyProcessedCount : ids.length);
+
+      // Only overwrite journey state when the snapshot actually contains it.
+      // Older snapshots (before liveJourney was added) should leave current journey intact.
+      const nextLiveJourney = (p as any).liveJourney;
+      if (nextLiveJourney && typeof nextLiveJourney === 'object') {
+        journeyMutations.setJourney(nextLiveJourney as import('@/lib/cognitive-guidance/pipeline').LiveJourneyData);
+      }
+
+      if ('journeyCompletionState' in (p as any)) {
+        setJourneyCompletionState(((p as any).journeyCompletionState ?? null) as JourneyCompletionState | null);
+      }
     } catch (e) {
       setSnapshotsError(e instanceof Error ? e.message : 'Failed to load snapshot');
     }

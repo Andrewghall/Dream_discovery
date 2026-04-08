@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySessionToken } from '@/lib/auth/session';
+import { verifySessionToken, verifySessionWithDB } from '@/lib/auth/session';
 import { auditLog, getClientIp } from '@/lib/audit/log-action';
 
 export const dynamic = 'force-dynamic';
@@ -28,16 +28,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, noop: true });
     }
 
-    // Verify the backup is a valid PLATFORM_ADMIN JWT before restoring
-    const backupPayload = await verifySessionToken(backupJwt);
+    // Verify the backup is a valid, unrevoked PLATFORM_ADMIN session before restoring.
+    // Must use verifySessionWithDB (not verifySessionToken) so a revoked admin backup
+    // cookie cannot be reinstalled as the active session.
+    const backupPayload = await verifySessionWithDB(backupJwt);
     if (!backupPayload || backupPayload.role !== 'PLATFORM_ADMIN') {
-      // Backup is invalid — clear it and return
+      // Backup is invalid or revoked — clear it and return
       const response = NextResponse.json({ ok: true, noop: true });
       response.cookies.delete('dream-admin-session');
       return response;
     }
 
-    // Audit log the exit
+    // Audit log the exit — use sig-only for the current (scoped) session here because
+    // we only need the orgId for the log entry and the scoped session may already be
+    // in a degraded state at exit time.
     const currentJwt = cookieStore.get('session')?.value;
     const currentPayload = currentJwt ? await verifySessionToken(currentJwt) : null;
     auditLog({

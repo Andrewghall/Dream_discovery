@@ -1,28 +1,35 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Brain, Sparkles, RefreshCw, Loader2, CheckCircle2, AlertCircle, Clock,
-  Bot, Zap, TrendingUp, AlertTriangle, Lightbulb, Target, Map, ChevronRight,
+  Zap, TrendingUp, AlertTriangle, Lightbulb, Map, ChevronRight, Network,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EngineShell, type EngineStatus } from './EngineShell';
-import { DiscoveryValidationPanel } from './DiscoveryValidationPanel';
 import { RootCausePanel } from './RootCausePanel';
 import { FutureStatePanel } from './FutureStatePanel';
 import { ExecutionRoadmapPanel } from './ExecutionRoadmapPanel';
-import { StrategicImpactPanel } from './StrategicImpactPanel';
 import type {
   StoredOutputIntelligence,
   WorkshopOutputIntelligence,
   EngineKey,
 } from '@/lib/output-intelligence/types';
 import { ReportSectionToggle } from '@/components/report-builder/ReportSectionToggle';
+import { ConnectedModelPanel } from '@/components/connected-model/ConnectedModelPanel';
+import { TransformationLogicMapPanel } from './TransformationLogicMapPanel';
+import { V2OutputView } from '@/components/v2/V2OutputView';
+import type { V2Output } from '@/lib/output/v2-synthesis-agent';
+import type { V2ReportBlock } from '@/components/v2/V2InquiryBar';
+import { SectionAction } from '@/components/scratchpad/SectionAction';
 
 // ── Signal config — DREAM cognitive function mapping ──────────────────────────
 
+/** Union of EngineKey + display-only tabs (not engine-backed) */
+type ActiveView = EngineKey | 'connectedModel' | 'transformationLogicMap';
+
 interface Signal {
-  key: EngineKey;
+  key: ActiveView;
   name: string;
   phase: string;
   color: 'indigo' | 'rose' | 'violet' | 'emerald' | 'amber';
@@ -31,15 +38,20 @@ interface Signal {
   Icon: React.ComponentType<{ className?: string }>;
 }
 
+// NOTE: 'discoveryValidation' engine still runs during Brain Scan generation (its
+// hypothesisAccuracy feeds the Transformation Thesis hero card), but Discovery is
+// NOT a tab in Brain Scan — it lives exclusively in the Discovery Output page.
 const SIGNALS: Signal[] = [
   {
-    key: 'discoveryValidation',
-    name: 'Discovery',
-    phase: 'Discovery',
-    color: 'indigo',
-    description: 'How the organisation sees itself',
-    getMetric: (i) => `${i.discoveryValidation.hypothesisAccuracy ?? 0}% hypothesis confirmed`,
-    Icon: Target,
+    key: 'futureState',
+    name: 'Reimagine',
+    phase: 'Reimagine',
+    color: 'violet',
+    description: 'Vision, design principles & impact',
+    getMetric: (i) => i.strategicImpact?.automationPotential != null
+      ? `${i.strategicImpact.automationPotential.percentage}% automation potential`
+      : `${(i.futureState?.redesignPrinciples ?? []).length} design principles`,
+    Icon: Lightbulb,
   },
   {
     key: 'rootCause',
@@ -47,19 +59,19 @@ const SIGNALS: Signal[] = [
     phase: 'Constraints',
     color: 'rose',
     description: 'Forces preventing transformation',
-    getMetric: (i) => `${i.rootCause.rootCauses.length} systemic barriers`,
+    getMetric: (i) => `${(i.rootCause?.rootCauses ?? []).length} systemic barriers`,
     Icon: AlertTriangle,
   },
   {
-    key: 'futureState',
-    name: 'Reimagine',
-    phase: 'Reimagine',
-    color: 'violet',
-    description: 'Vision, design principles & impact',
-    getMetric: (i) => i.strategicImpact.automationPotential !== null
-      ? `${i.strategicImpact.automationPotential.percentage}% automation potential`
-      : `${i.futureState.redesignPrinciples.length} design principles`,
-    Icon: Lightbulb,
+    key: 'transformationLogicMap',
+    name: 'Logic Map',
+    phase: 'Transformation Logic Map',
+    color: 'indigo',
+    description: 'Coalescence, orphans & valid transformation chains — derived from the relationship graph',
+    getMetric: (i) => i.transformationLogicMap
+      ? `${i.transformationLogicMap.coverageScore ?? 0}% constraint coverage · ${(i.transformationLogicMap.strongestChains ?? []).length} chains`
+      : 'Logic map',
+    Icon: Network,
   },
   {
     key: 'roadmap',
@@ -70,6 +82,17 @@ const SIGNALS: Signal[] = [
     getMetric: () => '3-phase transformation roadmap',
     Icon: Map,
   },
+  {
+    key: 'connectedModel',
+    name: 'Connected Model',
+    phase: 'Connected Model',
+    color: 'emerald',
+    description: 'Causal chains, bottlenecks & unlock paths',
+    getMetric: (i) => i.causalIntelligence
+      ? `${(i.causalIntelligence.organisationalIssues ?? []).length + (i.causalIntelligence.reinforcedFindings ?? []).length} causal findings`
+      : 'Causal intelligence',
+    Icon: Network,
+  },
 ];
 
 const ENGINE_LABELS: Record<EngineKey, string> = {
@@ -79,6 +102,8 @@ const ENGINE_LABELS: Record<EngineKey, string> = {
   roadmap: 'Way Forward',
   strategicImpact: 'Reimagine',
 };
+
+// Connected Model is display-only — not engine-backed — so excluded from ENGINE_LABELS.
 
 const SIGNAL_COLORS = {
   indigo: {
@@ -110,8 +135,9 @@ const SIGNAL_COLORS = {
 
 // ── Report section IDs for each engine panel ──────────────────────────────────
 
-const ENGINE_SECTION_MAP: Record<EngineKey, { sectionId: string; title: string }> = {
-  discoveryValidation: { sectionId: 'supporting_evidence', title: 'Supporting Evidence' },
+// Note: discoveryValidation tab removed from Brain Scan — its report toggle lives on the
+// Discovery Output page. ENGINE_SECTION_MAP only covers tabs that ARE in Brain Scan.
+const ENGINE_SECTION_MAP: Partial<Record<EngineKey, { sectionId: string; title: string }>> = {
   rootCause:           { sectionId: 'root_causes',         title: 'Root Causes'         },
   futureState:         { sectionId: 'solution_direction',  title: 'Solution Direction'  },
   roadmap:             { sectionId: 'solution_direction',  title: 'Solution Direction'  },
@@ -123,12 +149,18 @@ const ENGINE_SECTION_MAP: Record<EngineKey, { sectionId: string; title: string }
 interface IntelligenceHubProps {
   workshopId: string;
   initialStored: StoredOutputIntelligence | null;
+  v2Output?: V2Output | null;
+  workshopDescription?: string | null;
+  /** Domain pack key (e.g. "contact_centre", "contact_centre_airline") — gates domain-specific panels */
+  domainPack?: string | null;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubProps) {
-  const [activeSignal, setActiveSignal] = useState<EngineKey>('discoveryValidation');
+export function IntelligenceHub({ workshopId, initialStored, v2Output, workshopDescription, domainPack }: IntelligenceHubProps) {
+  const [outputMode, setOutputMode] = useState<'v1' | 'v2'>('v1');
+  const pendingBlocksRef = useRef<V2ReportBlock[]>([]);
+  const [activeSignal, setActiveSignal] = useState<ActiveView>('futureState');
   const [stored, setStored] = useState<StoredOutputIntelligence | null>(initialStored);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -144,6 +176,14 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
   );
 
   const intelligence: WorkshopOutputIntelligence | null = stored?.intelligence ?? null;
+
+  const handleAddToReport = useCallback((block: V2ReportBlock) => {
+    pendingBlocksRef.current.push(block);
+    try {
+      const existing = JSON.parse(sessionStorage.getItem('v2_pending_report_blocks') || '[]');
+      sessionStorage.setItem('v2_pending_report_blocks', JSON.stringify([...existing, block]));
+    } catch { /* ignore */ }
+  }, []);
 
   const handleGenerate = useCallback(async () => {
     setIsGenerating(true);
@@ -278,45 +318,76 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
         </div>
 
         <div className="flex items-center gap-3">
-          {generatedAt && (
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {generatedAt}
-            </span>
+          {/* V1 / V2 toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-semibold">
+            <button
+              onClick={() => setOutputMode('v1')}
+              className={`px-3 py-1.5 transition-colors ${outputMode === 'v1' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              V1
+            </button>
+            <button
+              onClick={() => setOutputMode('v2')}
+              className={`px-3 py-1.5 transition-colors ${outputMode === 'v2' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              V2
+            </button>
+          </div>
+          {outputMode === 'v1' && (
+            <>
+              {generatedAt && (
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {generatedAt}
+                </span>
+              )}
+              {statusMessage && !isGenerating && (
+                <span className="text-xs text-slate-500">{statusMessage}</span>
+              )}
+              {isGenerating && statusMessage && (
+                <span className="text-xs text-blue-600 flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {statusMessage}
+                </span>
+              )}
+              <Button
+                onClick={() => void handleGenerate()}
+                disabled={isGenerating}
+                size="sm"
+                className="gap-2"
+              >
+                {isGenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : hasIntelligence ? (
+                  <RefreshCw className="h-4 w-4" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {isGenerating ? 'Scanning…' : hasIntelligence ? 'Regenerate' : 'Generate Brain Scan'}
+              </Button>
+            </>
           )}
-          {statusMessage && !isGenerating && (
-            <span className="text-xs text-slate-500">{statusMessage}</span>
-          )}
-          {isGenerating && statusMessage && (
-            <span className="text-xs text-blue-600 flex items-center gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {statusMessage}
-            </span>
-          )}
-          <Button
-            onClick={() => void handleGenerate()}
-            disabled={isGenerating}
-            size="sm"
-            className="gap-2"
-          >
-            {isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : hasIntelligence ? (
-              <RefreshCw className="h-4 w-4" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            {isGenerating ? 'Scanning…' : hasIntelligence ? 'Regenerate' : 'Generate Brain Scan'}
-          </Button>
         </div>
       </div>
 
+      {/* ── V2 Output View ───────────────────────────────────────────────────── */}
+      {outputMode === 'v2' && (
+        <div className="flex-1 overflow-y-auto">
+          <V2OutputView
+            v2Output={v2Output ?? null}
+            workshopId={workshopId}
+            onAddToReport={handleAddToReport}
+          />
+        </div>
+      )}
+
       {/* ── Engine progress strip ─────────────────────────────────────────── */}
-      {isGenerating && (
+      {outputMode === 'v1' && isGenerating && (
         <div className="shrink-0 px-6 py-3 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-5 flex-wrap">
-            {SIGNALS.map((signal) => {
+            {SIGNALS.filter((s) => s.key !== 'connectedModel').map((signal) => {
               // Reimagine combines futureState + strategicImpact — show running if either is active
+              const engineKey = signal.key as EngineKey;
               const status = signal.key === 'futureState'
                 ? engineStatuses.futureState === 'running' || engineStatuses.strategicImpact === 'running'
                   ? 'running'
@@ -325,7 +396,7 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                   : engineStatuses.futureState === 'error' || engineStatuses.strategicImpact === 'error'
                   ? 'error'
                   : 'idle'
-                : engineStatuses[signal.key];
+                : engineStatuses[engineKey];
               return (
                 <div key={signal.key} className="flex items-center gap-1.5 text-xs">
                   {status === 'idle' && <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
@@ -346,8 +417,8 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
         </div>
       )}
 
-      {/* ── Main scrollable content ──────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
+      {/* ── Main scrollable content (V1) ─────────────────────────────────────── */}
+      {outputMode === 'v1' && <div className="flex-1 overflow-y-auto">
         <div className="p-6 space-y-6">
 
           {/* ── Empty state ─────────────────────────────────────────────────── */}
@@ -415,17 +486,20 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
             </div>
           )}
 
-          {/* ── Five Cognitive Signal Cards ─────────────────────────────────── */}
+          {/* ── Four Cognitive Signal Cards + Connected Model ────────────────── */}
           {(hasIntelligence || isGenerating) && (
             <div>
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
                 Workshop Stages
               </p>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-5 gap-3">
                 {SIGNALS.map((signal) => {
                   const colors = SIGNAL_COLORS[signal.color];
                   const isActive = activeSignal === signal.key;
-                  const status = engineStatuses[signal.key];
+                  // Connected Model is display-only — not engine-backed — so no engine status
+                  const status = signal.key === 'connectedModel'
+                    ? (intelligence?.causalIntelligence ? 'complete' : 'idle')
+                    : engineStatuses[signal.key as EngineKey];
                   const { Icon } = signal;
 
                   return (
@@ -475,9 +549,86 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
               {SIGNALS.map((signal) => {
                 if (signal.key !== activeSignal) return null;
                 const colors = SIGNAL_COLORS[signal.color];
+
+                // Transformation Logic Map tab — deterministic, not engine-backed
+                if (signal.key === 'transformationLogicMap') {
+                  if (!intelligence?.transformationLogicMap) {
+                    return (
+                      <div key="transformationLogicMap" className={`rounded-xl border ${colors.border} p-8 text-center`}>
+                        <Network className="h-8 w-8 text-slate-300 mx-auto mb-3" />
+                        <p className="text-sm text-slate-500 font-medium">Transformation Logic Map not yet available</p>
+                        <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
+                          Run a full Brain Scan after a live workshop session with classified signals — the Logic Map builds automatically from the relationship graph.
+                        </p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key="transformationLogicMap">
+                      <div className={`rounded-t-xl ${colors.headerBg} border ${colors.border} border-b-0 px-5 py-3 flex items-center gap-2`}>
+                        <span className={`text-xs font-bold ${colors.accent}`}>Transformation Logic Map</span>
+                        <ChevronRight className={`h-3 w-3 ${colors.accent}`} />
+                        <span className="text-xs text-slate-500 italic hidden sm:block">
+                          Coalescence, orphans &amp; valid chains — derived from the hemisphere relationship graph
+                        </span>
+                      </div>
+                      <div className={`rounded-b-xl border ${colors.border} overflow-hidden`}>
+                        <TransformationLogicMapPanel data={intelligence.transformationLogicMap} workshopId={workshopId} />
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Connected Model tab: render directly without EngineShell (not engine-backed)
+                if (signal.key === 'connectedModel') {
+                  if (!intelligence?.causalIntelligence) {
+                    return (
+                      <div key="connectedModel" className={`rounded-xl border ${colors.border} p-8 text-center`}>
+                        <Network className="h-8 w-8 text-slate-300 mx-auto mb-3" />
+                        <p className="text-sm text-slate-500 font-medium">Connected Model not yet generated</p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Run a full Brain Scan — the Connected Model builds automatically from graph intelligence.
+                        </p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key="connectedModel">
+                      {/* Section identity strip */}
+                      <div className={`rounded-t-xl ${colors.headerBg} border ${colors.border} border-b-0 px-5 py-3 flex items-center gap-2`}>
+                        <span className={`text-xs font-bold ${colors.accent}`}>Connected Model</span>
+                        <ChevronRight className={`h-3 w-3 ${colors.accent}`} />
+                        <span className="text-xs text-slate-500 italic hidden sm:block">
+                          Causal chains, bottlenecks &amp; unlock paths — derived from hemisphere graph intelligence
+                        </span>
+                        <div className="ml-auto">
+                          <ReportSectionToggle
+                            workshopId={workshopId}
+                            sectionId="connected_model"
+                            title="Connected Model"
+                          />
+                        </div>
+                      </div>
+                      <div className={`rounded-b-xl border ${colors.border} overflow-hidden p-4`}>
+                        <SectionAction
+                          what="Shows where your proposed solutions are compensating for unfixed root problems (workarounds), and which enablers have no clear transformation destination."
+                          action="Every 'workaround masking constraint' line is a sequencing error — fix the root constraint first, then deploy the solution on top. Any 'enabler without vision pathway' item needs a defined outcome before it appears in the roadmap."
+                        />
+                        <ConnectedModelPanel
+                          causalIntelligence={intelligence.causalIntelligence}
+                          lensesUsed={stored?.lensesUsed ?? []}
+                          workshopGoal={workshopDescription}
+                        />
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Engine-backed tabs (Discovery, Reimagine, Constraints, Way Forward)
+                const engineKey = signal.key as EngineKey;
                 const status: EngineStatus = !hasIntelligence
-                  ? isGenerating && engineStatuses[signal.key] !== 'idle'
-                    ? engineStatuses[signal.key]
+                  ? isGenerating && engineStatuses[engineKey] !== 'idle'
+                    ? engineStatuses[engineKey]
                     : 'idle'
                   : 'complete';
 
@@ -491,11 +642,13 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                       <ChevronRight className={`h-3 w-3 ${colors.accent}`} />
                       <span className="text-xs text-slate-500 italic hidden sm:block">{signal.description}</span>
                       <div className="ml-auto">
-                        <ReportSectionToggle
-                          workshopId={workshopId}
-                          sectionId={ENGINE_SECTION_MAP[signal.key].sectionId}
-                          title={ENGINE_SECTION_MAP[signal.key].title}
-                        />
+                        {ENGINE_SECTION_MAP[engineKey] && (
+                          <ReportSectionToggle
+                            workshopId={workshopId}
+                            sectionId={ENGINE_SECTION_MAP[engineKey]!.sectionId}
+                            title={ENGINE_SECTION_MAP[engineKey]!.title}
+                          />
+                        )}
                       </div>
                     </div>
                     <div className={`rounded-b-xl border ${colors.border} overflow-hidden`}>
@@ -504,29 +657,22 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
                         description={signal.description}
                         status={status}
                       >
-                        {intelligence && signal.key === 'discoveryValidation' && (
-                          <DiscoveryValidationPanel data={intelligence.discoveryValidation} />
-                        )}
                         {intelligence && signal.key === 'rootCause' && (
                           <RootCausePanel data={intelligence.rootCause} />
                         )}
                         {intelligence && signal.key === 'futureState' && (
-                          <>
-                            <FutureStatePanel data={intelligence.futureState} />
-                            <div className="border-t border-slate-100 mx-4" />
-                            <StrategicImpactPanel data={intelligence.strategicImpact} />
-                          </>
+                          <FutureStatePanel data={intelligence.futureState} />
                         )}
                         {intelligence && signal.key === 'roadmap' && (
                           <ExecutionRoadmapPanel data={intelligence.roadmap} />
                         )}
-                        {engineErrors[signal.key] && (
+                        {engineErrors[engineKey] && (
                           <div className="m-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
                             <p className="text-xs font-semibold text-amber-700 mb-1">
                               Engine failed — showing fallback data
                             </p>
                             <p className="text-xs text-amber-600 font-mono break-all">
-                              {engineErrors[signal.key]}
+                              {engineErrors[engineKey]}
                             </p>
                           </div>
                         )}
@@ -538,157 +684,11 @@ export function IntelligenceHub({ workshopId, initialStored }: IntelligenceHubPr
             </div>
           )}
 
-          {/* ── Contact Centre Domain Module ────────────────────────────────── */}
-          {intelligence && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Contact Centre Domain Module
-                </p>
-                <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2 py-0.5 text-[10px] font-medium text-sky-600">
-                  <Zap className="h-2.5 w-2.5" />
-                  Active
-                </span>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-
-                {/* Contact Driver Analysis */}
-                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <p className="text-xs font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
-                    Contact Driver Analysis
-                  </p>
-                  <div className="space-y-3">
-                    {intelligence.rootCause.rootCauses.slice(0, 5).map((rc, i) => (
-                      <div key={i} className="flex items-start gap-2.5">
-                        <span className="shrink-0 w-5 h-5 rounded-full bg-rose-100 text-rose-600 text-[10px] font-bold flex items-center justify-center">
-                          {i + 1}
-                        </span>
-                        <div>
-                          <p className="text-xs font-medium text-slate-700 leading-snug">{rc.cause}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">{rc.category}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Operational Pressure Map */}
-                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <p className="text-xs font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
-                    <TrendingUp className="h-3.5 w-3.5 text-amber-500" />
-                    Operational Pressure Map
-                  </p>
-                  <div className="space-y-2.5">
-                    {intelligence.rootCause.frictionMap.slice(0, 6).map((fm, i) => (
-                      <div key={i}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] text-slate-600 truncate pr-2">{fm.stage}</span>
-                          <span className="text-[10px] font-bold text-slate-700 shrink-0">{fm.frictionLevel}/10</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              fm.frictionLevel >= 8 ? 'bg-rose-400' :
-                              fm.frictionLevel >= 5 ? 'bg-amber-400' :
-                              'bg-emerald-400'
-                            }`}
-                            style={{ width: `${fm.frictionLevel * 10}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Workforce Model */}
-                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <p className="text-xs font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
-                    <Bot className="h-3.5 w-3.5 text-violet-500" />
-                    Workforce Model
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 mb-4">
-                    <div className="rounded-lg bg-rose-50 border border-rose-100 p-3 text-center">
-                      {intelligence.strategicImpact.automationPotential !== null ? (
-                        <p className="text-xl font-bold text-rose-600">
-                          {intelligence.strategicImpact.automationPotential.percentage}%
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400 italic">—</p>
-                      )}
-                      <p className="text-[10px] text-rose-500 font-medium mt-0.5">AI Only</p>
-                    </div>
-                    <div className="rounded-lg bg-violet-50 border border-violet-100 p-3 text-center">
-                      {intelligence.strategicImpact.aiAssistedWork !== null ? (
-                        <p className="text-xl font-bold text-violet-600">
-                          {intelligence.strategicImpact.aiAssistedWork.percentage}%
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400 italic">—</p>
-                      )}
-                      <p className="text-[10px] text-violet-500 font-medium mt-0.5">AI Assisted</p>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-center">
-                      {intelligence.strategicImpact.humanOnlyWork !== null ? (
-                        <p className="text-xl font-bold text-slate-600">
-                          {intelligence.strategicImpact.humanOnlyWork.percentage}%
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400 italic">—</p>
-                      )}
-                      <p className="text-[10px] text-slate-500 font-medium mt-0.5">Human Only</p>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    {intelligence.futureState.aiHumanModel.slice(0, 5).map((task, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                          task.recommendation === 'AI Only'
-                            ? 'bg-rose-100 text-rose-600'
-                            : task.recommendation === 'AI Assisted'
-                            ? 'bg-violet-100 text-violet-600'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}>
-                          {task.recommendation}
-                        </span>
-                        <span className="text-[10px] text-slate-600 truncate">{task.task}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Future Contact Centre Model */}
-                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <p className="text-xs font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
-                    <Lightbulb className="h-3.5 w-3.5 text-emerald-500" />
-                    Future Contact Centre Model
-                  </p>
-                  <div className="space-y-3">
-                    {intelligence.futureState.operatingModelChanges.slice(0, 4).map((change, i) => (
-                      <div key={i} className="rounded-lg bg-slate-50 border border-slate-100 p-3">
-                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                          {change.area}
-                        </p>
-                        <div className="flex items-start gap-1.5 mb-1">
-                          <span className="text-[10px] text-slate-400 shrink-0 mt-0.5">Now</span>
-                          <span className="text-[10px] text-slate-500 line-through leading-snug">{change.currentState}</span>
-                        </div>
-                        <div className="flex items-start gap-1.5">
-                          <span className="text-[10px] text-emerald-500 font-bold shrink-0 mt-0.5">→</span>
-                          <span className="text-[10px] text-slate-700 font-medium leading-snug">{change.futureState}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
+          {/* Connected Model is now scoped to its own tab — see activeSignal === 'connectedModel' above */}
 
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Users,
   Building2,
@@ -10,14 +10,15 @@ import {
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
-  Mail,
-  Download,
-  ClipboardCheck,
-  Check,
+
 } from 'lucide-react';
-import { ScrollReveal, AnimatedCounter } from './scroll-reveal';
+
+import { ScrollReveal } from './scroll-reveal';
 import { RadarChart } from './radar-chart';
 import { CalendlyButton } from './calendly-button';
+import { PATTERNS, detectPattern } from './assessment/patterns';
+import { useVoice } from './assessment/use-voice';
+import { AnalysingScreen } from './assessment/screens/analysing';
 
 /* ────────────────────────────────────────────────────────────
    POCTR Capability Maturity Model  -  Data & Types
@@ -251,7 +252,7 @@ const DOMAINS: Domain[] = [
       {
         id: 't3',
         dimension: 'Automation & AI Readiness',
-        question: 'How mature is your organisation\'s use of automation and artificial intelligence?',
+        question: "How mature is your organisation's use of automation and artificial intelligence?",
         descriptors: [
           'Automation is minimal and manual processes dominate; AI is not on the agenda.',
           'Some process automation has been implemented in isolated areas; AI is being explored but lacks strategy.',
@@ -304,7 +305,7 @@ const DOMAINS: Domain[] = [
       {
         id: 'r3',
         dimension: 'Risk Appetite & Governance',
-        question: 'How clearly is your organisation\'s risk appetite defined and applied to decisions?',
+        question: "How clearly is your organisation's risk appetite defined and applied to decisions?",
         descriptors: [
           'Risk appetite is undefined; decisions either avoid all risk or take risk without understanding consequences.',
           'Risk appetite is discussed at board level but is not translated into practical guidance for teams.',
@@ -317,348 +318,202 @@ const DOMAINS: Domain[] = [
   },
 ];
 
-/* ────────────────────────────────────────────────────────────
-   Scores & Results Types
-   ──────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────
+   All questions flattened
+   ───────────────────────────────────────────────────────────── */
 
-interface Scores {
-  [questionId: string]: number | null;
-}
+const ALL_QUESTIONS = DOMAINS.flatMap(d => d.questions.map(q => ({ ...q, domain: d })));
 
-const DEFAULT_SCORES: Scores = Object.fromEntries(
-  DOMAINS.flatMap((d) => d.questions.map((q) => [q.id, null])),
-);
+interface Scores { [qId: string]: number | null }
+const EMPTY_SCORES: Scores = Object.fromEntries(ALL_QUESTIONS.map(q => [q.id, null]));
 
-interface DomainResult {
-  name: string;
-  colourHex: string;
-  score: number;
-  levelName: string;
-  levelDescriptor: string;
-  nextLevelName: string;
-  nextLevelDescriptor: string;
-}
+/* ─────────────────────────────────────────────────────────────
+   Multiple Choice Input Component
+   ───────────────────────────────────────────────────────────── */
 
-/* ────────────────────────────────────────────────────────────
-   Recommendation Logic
-   ──────────────────────────────────────────────────────────── */
-
-interface Recommendation {
-  headline: string;
-  body: string;
-  focus: 'Foundation' | 'Acceleration' | 'Optimisation';
-}
-
-const DOMAIN_ADVICE: Record<string, string> = {
-  People: 'building leadership alignment and developing the skills capability your organisation needs',
-  'Organisation & Partners': 'strengthening governance agility, cross-functional collaboration, and partner ecosystem alignment to enable faster transformation',
-  Customer: 'deepening customer understanding and creating seamless, coherent experiences across touchpoints',
-  Technology: 'modernising your technology landscape and building a data-driven decision-making culture',
-  Regulation: 'reframing compliance as an enabler of innovation rather than a barrier to progress',
-};
-
-function getRecommendation(
-  priorityDomain: string,
-  overallScore: number,
-  overallLevelName: string,
-): Recommendation {
-  let focus: Recommendation['focus'];
-  if (overallScore <= 2.0) focus = 'Foundation';
-  else if (overallScore <= 3.5) focus = 'Acceleration';
-  else focus = 'Optimisation';
-
-  const advice = DOMAIN_ADVICE[priorityDomain] || 'addressing your organisational gaps';
-
-  const headlines: Record<string, string> = {
-    Foundation: 'Build Your Foundation',
-    Acceleration: 'Accelerate Your Transformation',
-    Optimisation: 'Optimise What You\'ve Built',
-  };
-
-  const bodies: Record<string, string> = {
-    Foundation: `Your organisation assessed at maturity level ${overallLevelName}. The biggest opportunity lies in ${advice}. A DREAM Foundation workshop would help you build the shared understanding and strategic clarity needed to move forward with confidence.`,
-    Acceleration: `Your organisation assessed at maturity level ${overallLevelName}  -  a solid base, but significant gaps remain, particularly in ${advice}. A DREAM Acceleration workshop would cut through the noise, align your teams around the gaps that matter most, and build a constraint-aware roadmap for transformation.`,
-    Optimisation: `Your organisation assessed at maturity level ${overallLevelName}. There are still meaningful opportunities  -  especially in ${advice}. A DREAM Optimisation workshop would help you fine-tune your strategy, identify the constraints holding you back from the next level, and design a focused path forward.`,
-  };
-
-  return { headline: headlines[focus], body: bodies[focus], focus };
-}
-
-/* ────────────────────────────────────────────────────────────
-   Maturity Level Selector Component
-   ──────────────────────────────────────────────────────────── */
-
-function MaturityLevelSelector({
-  question,
-  selectedLevel,
+function MultipleChoiceInput({
+  descriptors,
+  maturityLevels,
+  domainColourHex,
   onSelect,
-  accentHex,
 }: {
-  question: MaturityQuestion;
-  selectedLevel: number | null;
-  onSelect: (level: number) => void;
-  accentHex: string;
+  descriptors: [string, string, string, string, string]
+  maturityLevels: readonly { level: number; name: string; description: string }[]
+  domainColourHex: string
+  onSelect: (level: number) => void
 }) {
+  const [hovered, setHovered] = useState<number | null>(null)
+
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-          {question.dimension}
-        </p>
-        <p className="text-sm font-medium text-slate-700 leading-relaxed">
-          {question.question}
-        </p>
-      </div>
-      <div className="space-y-2">
-        {MATURITY_LEVELS.map((level, i) => {
-          const isSelected = selectedLevel === level.level;
-          return (
-            <button
-              key={level.level}
-              type="button"
-              onClick={() => onSelect(level.level)}
-              className={`w-full text-left rounded-xl border-2 p-3 transition-all ${
-                isSelected
-                  ? 'shadow-sm'
-                  : 'border-slate-200 hover:border-slate-300 bg-white'
-              }`}
-              style={
-                isSelected
-                  ? {
-                      borderColor: accentHex,
-                      backgroundColor: `${accentHex}08`,
-                    }
-                  : undefined
-              }
+    <div className="space-y-2.5 w-full max-w-lg" style={{ animation: 'qFadeUp 0.3s ease both' }}>
+      {maturityLevels.map((lvl, i) => (
+        <button
+          key={lvl.level}
+          type="button"
+          onClick={() => onSelect(lvl.level)}
+          onMouseEnter={() => setHovered(lvl.level)}
+          onMouseLeave={() => setHovered(null)}
+          className="w-full text-left p-4 rounded-xl border-2 transition-all"
+          style={{
+            borderColor: hovered === lvl.level ? `${domainColourHex}60` : 'rgba(255,255,255,0.08)',
+            background: hovered === lvl.level ? `${domainColourHex}10` : 'rgba(255,255,255,0.02)',
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <span
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 transition-all"
+              style={{
+                background: hovered === lvl.level ? `${domainColourHex}25` : 'rgba(255,255,255,0.07)',
+                color: hovered === lvl.level ? domainColourHex : 'rgba(255,255,255,0.35)',
+              }}
             >
-              <div className="flex items-start gap-3">
-                <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5"
-                  style={{
-                    backgroundColor: isSelected ? accentHex : '#e2e8f0',
-                    color: isSelected ? '#fff' : '#64748b',
-                  }}
-                >
-                  {level.level}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className={`text-xs font-bold ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>
-                      {level.name}
-                    </span>
-                    {isSelected && (
-                      <Check className="h-3.5 w-3.5 shrink-0" style={{ color: accentHex }} />
-                    )}
-                  </div>
-                  <p className={`text-xs leading-relaxed ${isSelected ? 'text-slate-600' : 'text-slate-400'}`}>
-                    {question.descriptors[i]}
-                  </p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+              {lvl.level}
+            </span>
+            <div>
+              <span
+                className="text-xs font-bold block mb-0.5 transition-colors"
+                style={{ color: hovered === lvl.level ? domainColourHex : 'rgba(255,255,255,0.55)' }}
+              >
+                {lvl.name}
+              </span>
+              <span className="text-xs text-white/60 leading-relaxed">{descriptors[i]}</span>
+            </div>
+          </div>
+        </button>
+      ))}
     </div>
-  );
+  )
 }
 
-/* ────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────
    Main Component
-   ──────────────────────────────────────────────────────────── */
+   ───────────────────────────────────────────────────────────── */
 
 export function AssessmentSection() {
-  // step: 0 = intro, 1-5 = domain, 6 = results
+  // step: 0=intro, 1-15=question, 16=analysing, 17=results
   const [step, setStep] = useState(0);
-  const [scores, setScores] = useState<Scores>({ ...DEFAULT_SCORES });
+  const [scores, setScores] = useState<Scores>({ ...EMPTY_SCORES });
+  const [voiceMode, setVoiceMode] = useState(false); // opt-in — silent by default for fast answering
 
-  // Email form
+  // Email / submit state
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [organisation, setOrganisation] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  // ── Score helpers ───────────────────────────────────────────
+  const voice = useVoice();
+  const sectionRef = useRef<HTMLElement>(null);
 
-  const updateScore = useCallback(
-    (qId: string, level: number) => {
-      setScores((prev) => ({ ...prev, [qId]: level }));
-    },
-    [],
-  );
+  const currentQ = step >= 1 && step <= 15 ? ALL_QUESTIONS[step - 1] : null;
 
-  // ── Computed: current domain completeness ────────────────────
+  // Live domain scores (partial — uses answered questions only)
+  const liveDomainScores = useMemo(() => DOMAINS.map(d => {
+    const answered = d.questions.map(q => scores[q.id]).filter((v): v is number => v !== null);
+    const score = answered.length > 0 ? answered.reduce((s, v) => s + v, 0) / answered.length : 0;
+    return score;
+  }), [scores]);
 
-  const currentDomainComplete = useMemo(() => {
-    if (step < 1 || step > 5) return true;
-    const domain = DOMAINS[step - 1];
-    return domain.questions.every((q) => scores[q.id] !== null);
-  }, [step, scores]);
-
-  // ── Computed results ────────────────────────────────────────
-
-  const domainResults: DomainResult[] = useMemo(
-    () =>
-      DOMAINS.map((d) => {
-        const vals = d.questions.map((q) => scores[q.id] || 0);
-        const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
-        const score = Math.round(avg * 10) / 10;
-        const levelIndex = Math.min(Math.max(Math.round(avg) - 1, 0), 4);
-        const nextLevelIndex = Math.min(levelIndex + 1, 4);
-        return {
-          name: d.name,
-          colourHex: d.colourHex,
-          score,
-          levelName: MATURITY_LEVELS[levelIndex].name,
-          levelDescriptor: d.levelDescriptors[levelIndex],
-          nextLevelName: MATURITY_LEVELS[nextLevelIndex].name,
-          nextLevelDescriptor: d.levelDescriptors[nextLevelIndex],
-        };
-      }),
-    [scores],
-  );
+  // Final domain results for results screen
+  const domainResults = useMemo(() => DOMAINS.map(d => {
+    const vals = d.questions.map(q => scores[q.id] || 0);
+    const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+    const score = Math.round(avg * 10) / 10;
+    const li = Math.min(Math.max(Math.round(avg) - 1, 0), 4);
+    return {
+      name: d.name,
+      colourHex: d.colourHex,
+      score,
+      levelName: MATURITY_LEVELS[li].name,
+      levelDescriptor: d.levelDescriptors[li],
+    };
+  }), [scores]);
 
   const overallScore = useMemo(
-    () => Math.round((domainResults.reduce((s, r) => s + r.score, 0) / domainResults.length) * 10) / 10,
-    [domainResults],
+    () => Math.round(domainResults.reduce((s, r) => s + r.score, 0) / domainResults.length * 10) / 10,
+    [domainResults]
   );
+  const pattern = useMemo(() => detectPattern(domainResults), [domainResults]);
 
-  const overallLevelIndex = Math.min(Math.max(Math.round(overallScore) - 1, 0), 4);
-  const overallLevelName = MATURITY_LEVELS[overallLevelIndex].name;
-
-  const priorityDomains = useMemo(
-    () => [...domainResults].sort((a, b) => a.score - b.score),
-    [domainResults],
-  );
-
-  const recommendation = useMemo(
-    () => getRecommendation(priorityDomains[0]?.name || 'People', overallScore, overallLevelName),
-    [priorityDomains, overallScore, overallLevelName],
-  );
-
-  // ── Email submit ────────────────────────────────────────────
-
-  const handleSubmit = async () => {
-    if (!name.trim() || !email.trim()) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setSubmitError('Please enter a valid email address.');
-      return;
+  // Scroll question into view on each step change
+  useEffect(() => {
+    if (step >= 1 && step <= 15 && sectionRef.current) {
+      sectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  }, [step]);
 
-    setSubmitting(true);
-    setSubmitError('');
+  // Speak question when it appears (only if read-aloud mode is on)
+  useEffect(() => {
+    if (!voiceMode || !currentQ || step < 1 || step > 15) return;
+    voice.stopSpeaking();
+    voice.speak(currentQ.question);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, voiceMode]);
 
-    try {
-      const payload = {
-        name: name.trim(),
-        email: email.trim(),
-        organisation: organisation.trim() || undefined,
-        scores: domainResults.map((r) => ({
-          domain: r.name,
-          score: r.score,
-          levelName: r.levelName,
-          levelDescriptor: r.levelDescriptor,
-          nextLevelName: r.nextLevelName,
-          nextLevelDescriptor: r.nextLevelDescriptor,
-        })),
-        overallScore,
-        overallLevelName,
-        recommendation: recommendation.focus,
-      };
-
-      const res = await fetch('/api/public/assessment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to send report');
-      }
-
-      setSubmitted(true);
-    } catch (err: any) {
-      setSubmitError(err.message || 'Something went wrong. Please try again.');
-    } finally {
-      setSubmitting(false);
+  const handleSelect = useCallback((level: number) => {
+    if (!currentQ) return;
+    voice.stopSpeaking();
+    setScores(prev => ({ ...prev, [currentQ.id]: level }));
+    if (step < 15) {
+      setTimeout(() => setStep(s => s + 1), 200);
+    } else {
+      setTimeout(() => setStep(16), 200);
     }
+  }, [currentQ, step, voice]);
+
+  const reset = () => {
+    voice.stopSpeaking();
+    setStep(0); setScores({ ...EMPTY_SCORES });
+    setSubmitError(''); setName(''); setEmail(''); setOrganisation('');
   };
 
-  // ── Render intro ────────────────────────────────────────────
-
+  /* ── INTRO ── */
   if (step === 0) {
     return (
-      <section id="assessment" className="bg-gradient-to-b from-slate-50 to-white py-20">
-        <div className="max-w-5xl mx-auto px-6">
+      <section id="assessment" className="bg-gradient-to-b from-slate-50 to-white py-20 px-6">
+        <div className="max-w-3xl mx-auto">
           <ScrollReveal>
-            <div className="bg-[#0d0d0d] rounded-3xl p-8 sm:p-12 overflow-hidden relative">
-              <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  background:
-                    'radial-gradient(ellipse 60% 60% at 20% 50%, rgba(92, 242, 142, 0.08), transparent)',
-                }}
-              />
-              <div className="relative z-10 max-w-2xl">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-xl bg-[#5cf28e]/20 flex items-center justify-center">
-                    <ClipboardCheck className="h-5 w-5 text-[#5cf28e]" />
-                  </div>
-                  <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-[#5cf28e]/20 text-[#5cf28e]">
-                    5 Minute Assessment
-                  </span>
+            <div className="bg-[#0a0a0a] rounded-3xl overflow-hidden relative">
+              <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 70% 60% at 20% 50%, rgba(92,242,142,0.07), transparent)' }} />
+              <div className="relative z-10 px-8 sm:px-14 py-14 sm:py-16">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.04] mb-8">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]" />
+                  <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-white/50">5-Minute Diagnostic</span>
                 </div>
-                <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4">
-                  How Ready Is Your Organisation to{' '}
-                  <span className="bg-gradient-to-r from-[#5cf28e] to-[#50c878] bg-clip-text text-transparent">
-                    Transform?
-                  </span>
+                <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-[1.05] tracking-tight mb-5">
+                  Every organisation has<br className="hidden sm:block" /> untapped potential.
                 </h2>
-                <p className="text-white/60 leading-relaxed mb-4">
-                  Whether you&apos;re deploying agentic AI, rethinking your operating model,
-                  aligning partner ecosystems, or driving a new strategy  -  transformation
-                  success depends on the same five dimensions. Rate your organisation across
-                  People, Organisation, Customer, Technology, and Regulation to see where
-                  you&apos;re strong and where the gaps will stall your programmes.
+                <p className="text-white/50 text-lg sm:text-xl font-light leading-relaxed mb-3">
+                  The question is where it lives — and what&apos;s ready to be unlocked.
                 </p>
-                <p className="text-white/40 text-xs leading-relaxed mb-6">
-                  The POCTR model measures your readiness to execute strategic change  -  from
-                  enterprise AI adoption and partner alignment to operating model redesign. Used
-                  by DREAM workshops to ground transformation in what your people actually think.
+                <p className="text-white/60 text-sm leading-relaxed mb-10 max-w-lg">
+                  15 multiple-choice questions across five capability areas. Select the option that best describes your organisation today — no right or wrong answers.
                 </p>
-                <div className="flex flex-wrap gap-4 mb-8">
-                  {DOMAINS.map((d) => (
-                    <div key={d.key} className="flex items-center gap-1.5 text-white/50">
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: d.colourHex }}
-                      />
-                      <span className="text-xs">{d.name}</span>
-                    </div>
-                  ))}
-                </div>
 
-                {/* Maturity level preview */}
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {MATURITY_LEVELS.map((l) => (
-                    <div
-                      key={l.level}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/[0.08]"
-                    >
-                      <span className="text-[10px] font-bold text-[#5cf28e]">L{l.level}</span>
-                      <span className="text-[10px] text-white/50">{l.name}</span>
-                    </div>
-                  ))}
+                {/* Read aloud toggle */}
+                <div className="flex items-center gap-3 mb-8">
+                  <button
+                    onClick={() => setVoiceMode(true)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${voiceMode ? 'bg-[#5cf28e] text-[#0a0a0a]' : 'border border-white/15 text-white/50 hover:border-white/30'}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/></svg>
+                    Read aloud
+                  </button>
+                  <button
+                    onClick={() => setVoiceMode(false)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${!voiceMode ? 'bg-[#5cf28e] text-[#0a0a0a]' : 'border border-white/15 text-white/50 hover:border-white/30'}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                    Silent
+                  </button>
                 </div>
 
                 <button
                   onClick={() => setStep(1)}
-                  className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all shadow-lg shadow-[#5cf28e]/20"
+                  className="inline-flex items-center gap-2.5 px-7 py-3.5 text-base font-bold rounded-xl bg-[#5cf28e] text-[#0a0a0a] hover:bg-[#50d47e] transition-all shadow-lg shadow-[#5cf28e]/20 hover:shadow-xl hover:shadow-[#5cf28e]/30"
                 >
-                  Start Assessment <ArrowRight className="h-4 w-4" />
+                  Discover Your Profile
+                  <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -668,330 +523,307 @@ export function AssessmentSection() {
     );
   }
 
-  // ── Render domain questions (steps 1-5) ─────────────────────
+  /* ── ANALYSING ── */
+  if (step === 16) return <AnalysingScreen onDone={() => setStep(17)} />;
 
-  if (step >= 1 && step <= 5) {
-    const domain = DOMAINS[step - 1];
-    const Icon = domain.icon;
-    const answeredCount = domain.questions.filter((q) => scores[q.id] !== null).length;
+  /* ── EMAIL GATE (step 17) ── */
+  if (step === 17) {
+    const isCompanyEmail = (addr: string) => {
+      const domain = addr.split('@')[1]?.toLowerCase() ?? '';
+      const FREE_DOMAINS = [
+        'gmail.com','googlemail.com','yahoo.com','yahoo.co.uk','yahoo.fr','yahoo.de','yahoo.es','yahoo.it',
+        'yahoo.ca','yahoo.com.au','yahoo.co.in','hotmail.com','hotmail.co.uk','hotmail.fr','hotmail.de',
+        'hotmail.es','hotmail.it','outlook.com','outlook.co.uk','outlook.fr','live.com','live.co.uk',
+        'icloud.com','me.com','mac.com','aol.com','protonmail.com','proton.me','mail.com','ymail.com',
+        'msn.com','gmx.com','gmx.de','web.de','inbox.com','fastmail.com','zohomail.com','tutanota.com',
+      ];
+      return domain.length > 0 && !FREE_DOMAINS.includes(domain);
+    };
+
+    const handleGateSubmit = async () => {
+      if (!name.trim()) { setSubmitError('Please enter your name.'); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setSubmitError('Please enter a valid email address.'); return; }
+      if (!isCompanyEmail(email)) { setSubmitError('Please use your work email address — personal email providers are not accepted.'); return; }
+      setSubmitError('');
+      setSubmitting(true);
+      try {
+        await fetch('/api/public/assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim(), email: email.trim(), organisation: organisation.trim() || undefined,
+            scores: domainResults.map(r => ({
+              domain: r.name, score: r.score, levelName: r.levelName,
+              levelDescriptor: r.levelDescriptor, nextLevelName: '', nextLevelDescriptor: '',
+            })),
+            overallScore,
+            overallLevelName: MATURITY_LEVELS[Math.min(Math.max(Math.round(overallScore) - 1, 0), 4)].name,
+            recommendation: overallScore <= 2 ? 'Foundation' : overallScore <= 3.5 ? 'Acceleration' : 'Optimisation',
+          }),
+        });
+      } catch { /* non-blocking — advance regardless */ }
+      finally { setSubmitting(false); }
+      setStep(18);
+    };
 
     return (
-      <section id="assessment" className="bg-gradient-to-b from-slate-50 to-white py-20">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="max-w-2xl mx-auto">
-            {/* Progress bar */}
-            <div className="flex items-center gap-2 mb-8">
-              {DOMAINS.map((d, i) => (
-                <div key={d.key} className="flex-1 flex flex-col items-center gap-1">
-                  <div
-                    className="h-1.5 w-full rounded-full transition-all duration-300"
-                    style={{
-                      backgroundColor:
-                        i < step - 1
-                          ? '#5cf28e'
-                          : i === step - 1
-                          ? d.colourHex
-                          : '#e2e8f0',
-                    }}
-                  />
-                  <span
-                    className="text-[9px] font-medium hidden sm:block"
-                    style={{
-                      color: i <= step - 1 ? d.colourHex : '#94a3b8',
-                    }}
-                  >
-                    {d.name}
-                  </span>
-                </div>
-              ))}
-            </div>
+      <section id="assessment" className="bg-[#0a0a0a] min-h-screen flex items-center justify-center px-6 py-16">
+        <style>{`@keyframes gFadeUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}`}</style>
+        <div className="w-full max-w-lg" style={{ animation: 'gFadeUp 0.5s cubic-bezier(0.22,1,0.36,1) both' }}>
 
-            {/* Domain card */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
-              <div className="flex items-center gap-3 mb-1">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: `${domain.colourHex}20` }}
-                >
-                  <Icon className="h-5 w-5" style={{ color: domain.colourHex }} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">{domain.name}</h3>
-                  <p className="text-xs text-slate-400">
-                    Step {step} of 5 &middot; {answeredCount} of 3 answered
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-slate-500 mb-4 ml-[52px]">{domain.description}</p>
-
-              {/* Question completion indicators */}
-              <div className="flex items-center gap-2 mb-6">
-                {domain.questions.map((q, qi) => (
-                  <div
-                    key={q.id}
-                    className="flex items-center gap-1"
-                  >
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-                      style={{
-                        backgroundColor: scores[q.id] !== null ? domain.colourHex : '#e2e8f0',
-                        color: scores[q.id] !== null ? '#fff' : '#94a3b8',
-                      }}
-                    >
-                      {scores[q.id] !== null ? <Check className="h-3 w-3" /> : qi + 1}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-8">
-                {domain.questions.map((q) => (
-                  <MaturityLevelSelector
-                    key={q.id}
-                    question={q}
-                    selectedLevel={scores[q.id]}
-                    onSelect={(level) => updateScore(q.id, level)}
-                    accentHex={domain.colourHex}
-                  />
-                ))}
-              </div>
-
-              {/* Navigation */}
-              <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-100">
-                <button
-                  onClick={() => setStep(step - 1)}
-                  className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  {step === 1 ? 'Back' : 'Previous'}
-                </button>
-                <button
-                  onClick={() => setStep(step + 1)}
-                  disabled={!currentDomainComplete}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {step === 5 ? 'See Results' : 'Next'}
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
+          {/* Pattern teaser */}
+          <div className="mb-8 text-center">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#5cf28e]/60 mb-3">Your Pattern</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-3">{pattern.name}</h2>
+            <p className="text-white/40 text-base font-light leading-relaxed max-w-sm mx-auto">{pattern.headline}</p>
           </div>
+
+          {/* Gate card */}
+          <div className="bg-[#111111] border border-white/[0.08] rounded-2xl p-7">
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]" />
+              <h3 className="text-sm font-bold text-white">Unlock your full profile</h3>
+            </div>
+            <p className="text-white/60 text-xs leading-relaxed mb-6 pl-4">
+              Enter your details to see your complete capability breakdown, domain scores, and what a DREAM session would surface for your specific constraints. Your PDF report will be emailed to you.
+            </p>
+
+            <div className="space-y-3">
+              <input
+                type="text" placeholder="Your name *" value={name} onChange={e => setName(e.target.value)}
+                className="w-full px-4 py-3 text-sm bg-white/[0.04] border border-white/10 rounded-xl text-white placeholder-white/25 focus:outline-none focus:border-[#5cf28e]/40 transition-colors"
+              />
+              <div>
+                <input
+                  type="email" placeholder="Work email address *" value={email}
+                  onChange={e => { setEmail(e.target.value); setSubmitError(''); }}
+                  className={`w-full px-4 py-3 text-sm bg-white/[0.04] border rounded-xl text-white placeholder-white/25 focus:outline-none transition-colors ${submitError && submitError.includes('email') ? 'border-red-500/50 focus:border-red-500/70' : 'border-white/10 focus:border-[#5cf28e]/40'}`}
+                />
+                <p className="text-[10px] text-white/45 mt-1.5 pl-1">Work email required — personal addresses not accepted</p>
+              </div>
+              <input
+                type="text" placeholder="Organisation" value={organisation} onChange={e => setOrganisation(e.target.value)}
+                className="w-full px-4 py-3 text-sm bg-white/[0.04] border border-white/10 rounded-xl text-white placeholder-white/25 focus:outline-none focus:border-[#5cf28e]/40 transition-colors"
+              />
+            </div>
+
+            {submitError && <p className="text-red-400 text-xs mt-3">{submitError}</p>}
+
+            <button
+              onClick={handleGateSubmit}
+              disabled={submitting || !name.trim() || !email.trim()}
+              className="w-full mt-5 flex items-center justify-center gap-2 px-5 py-3 text-sm font-bold rounded-xl bg-[#5cf28e] text-[#0a0a0a] hover:bg-[#50d47e] transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-[#5cf28e]/15"
+            >
+              {submitting
+                ? <><span className="w-4 h-4 border-2 border-[#0a0a0a]/20 border-t-[#0a0a0a] rounded-full animate-spin" />Sending…</>
+                : <>Unlock My Results <ArrowRight className="h-4 w-4" /></>
+              }
+            </button>
+          </div>
+
+          <button onClick={reset} className="mt-5 w-full text-xs text-white/40 hover:text-white/65 transition-colors text-center">
+            ← Start over
+          </button>
         </div>
       </section>
     );
   }
 
-  // ── Render results (step 6) ─────────────────────────────────
+  /* ── QUESTIONS (steps 1-15) ── */
+  if (step >= 1 && step <= 15 && currentQ) {
+    const domain = currentQ.domain;
+    const progressPct = ((step - 1) / 15) * 100;
+    const DomainIcon = domain.icon;
+
+    return (
+      <section ref={sectionRef} id="assessment" className="bg-[#0a0a0a] min-h-screen flex flex-col">
+        <style>{`
+          @keyframes qFadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes micPulse { 0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(92,242,142,0.4)} 50%{transform:scale(1.05);box-shadow:0 0 0 16px rgba(92,242,142,0)} }
+          @keyframes processingDot { 0%,80%,100%{transform:scale(0.6);opacity:0.4} 40%{transform:scale(1);opacity:1} }
+          @keyframes fadeInAnim { from{opacity:0} to{opacity:1} }
+        `}</style>
+
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-2">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${domain.colourHex}25` }}>
+              <DomainIcon className="w-3.5 h-3.5" style={{ color: domain.colourHex }} />
+            </div>
+            <span className="text-xs font-semibold text-white/40 tracking-wide">{domain.name}</span>
+          </div>
+          <span className="text-xs text-white/55 tabular-nums">{step} / 15</span>
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-0.5 mx-6 rounded-full bg-white/[0.06] mb-8">
+          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progressPct}%`, backgroundColor: domain.colourHex }} />
+        </div>
+
+        <div className="flex-1 flex flex-col lg:flex-row gap-8 px-6 pb-8 max-w-5xl mx-auto w-full">
+
+          {/* Question + voice area */}
+          <div className="flex-1 flex flex-col justify-center" key={step} style={{ animation: 'qFadeUp 0.5s cubic-bezier(0.22,1,0.36,1) both' }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.25em] mb-4" style={{ color: `${domain.colourHex}99` }}>
+              {currentQ.dimension}
+            </p>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white leading-snug mb-8">
+              {currentQ.question}
+            </h2>
+
+            {/* Multiple choice options */}
+            <MultipleChoiceInput
+              key={step}
+              descriptors={currentQ.descriptors}
+              maturityLevels={MATURITY_LEVELS}
+              domainColourHex={domain.colourHex}
+              onSelect={handleSelect}
+            />
+
+          </div>
+
+          {/* Live radar — desktop only */}
+          <div className="hidden lg:flex flex-col items-center justify-center w-72 shrink-0">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-white/45 mb-3">Your Profile</p>
+            <RadarChart
+              domains={DOMAINS.map(d => d.name)}
+              current={liveDomainScores}
+              maxValue={5}
+              size={240}
+              animated={false}
+            />
+            <p className="text-[10px] text-white/45 mt-2 text-center max-w-[180px] leading-relaxed">
+              Updates as you answer each question
+            </p>
+          </div>
+        </div>
+
+        {/* Back */}
+        <div className="px-6 pb-6">
+          <button onClick={() => setStep(s => Math.max(0, s - 1))} className="text-xs text-white/45 hover:text-white/70 transition-colors flex items-center gap-1">
+            <ArrowLeft className="w-3 h-3" /> Back
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  /* ── RESULTS (step 18) ── */
+  const overallLevelIndex = Math.min(Math.max(Math.round(overallScore) - 1, 0), 4);
+  const BENCHMARK = [3.5, 3.5, 3.5, 3.5, 3.5];
 
   return (
-    <section id="assessment" className="bg-gradient-to-b from-slate-50 to-white py-20">
-      <div className="max-w-5xl mx-auto px-6">
-        <div className="text-center mb-10">
-          <p className="text-[#50c878] text-sm font-semibold tracking-[0.15em] uppercase mb-3">
-            Your Results
-          </p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-2">
-            Transformation Readiness Profile
+    <section id="assessment" className="bg-[#0a0a0a] py-16 px-6 min-h-screen">
+      <style>{`
+        @keyframes rFadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes signalIn { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
+      `}</style>
+
+      <div className="max-w-5xl mx-auto space-y-10">
+
+        {/* Pattern reveal */}
+        <div style={{ animation: 'rFadeUp 0.6s ease both' }}>
+          <p className="text-[10px] uppercase tracking-[0.3em] text-[#5cf28e]/60 mb-3">Your Pattern</p>
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-tight tracking-tight mb-4">
+            {pattern.name}
           </h2>
-          <p className="text-slate-500 text-sm">
-            POCTR Capability Maturity Model  -  measuring readiness to execute strategic change
+          <p className="text-white/50 text-xl font-light leading-relaxed mb-3 max-w-2xl">
+            {pattern.headline}
+          </p>
+          <p className="text-white/65 text-sm leading-relaxed max-w-xl">
+            {pattern.insight}
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-10 items-start">
-          {/* ── Left: Radar + overall ── */}
-          <div className="flex flex-col items-center">
+        {/* Profile + domain breakdown */}
+        <div className="grid lg:grid-cols-2 gap-8" style={{ animation: 'rFadeUp 0.6s ease 0.15s both', opacity: 0 }}>
+          {/* Radar */}
+          <div className="bg-white/[0.03] rounded-2xl border border-white/[0.07] p-6 flex flex-col items-center">
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/55 mb-4">Transformation Profile</p>
             <RadarChart
-              domains={DOMAINS.map((d) => d.name)}
-              current={domainResults.map((r) => r.score)}
+              domains={DOMAINS.map(d => d.name)}
+              current={domainResults.map(r => r.score)}
+              target={BENCHMARK}
               maxValue={5}
+              size={260}
               animated
             />
-
-            {/* Overall maturity level */}
-            <div className="mt-6 text-center">
-              <div className="text-4xl font-black text-slate-900 mb-1">
-                Level {overallLevelIndex + 1}
+            <div className="flex items-center gap-6 mt-4">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-0.5 rounded-full bg-[#5cf28e]/70" />
+                <span className="text-[10px] text-white/55">Your profile</span>
               </div>
-              <div className="text-lg font-bold text-[#5cf28e] mb-1">
-                {overallLevelName}
-              </div>
-              <div className="text-sm text-slate-400 tabular-nums">
-                {overallScore.toFixed(1)} / 5
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-0.5 rounded-full border-t border-dashed border-white/30" />
+                <span className="text-[10px] text-white/55">Transformation-ready threshold</span>
               </div>
             </div>
+          </div>
 
-            {/* Maturity scale reference */}
-            <div className="flex items-center gap-1 mt-6">
-              {MATURITY_LEVELS.map((l) => (
-                <div
-                  key={l.level}
-                  className={`px-2 py-1 rounded text-[9px] font-bold transition-all ${
-                    l.level === overallLevelIndex + 1
-                      ? 'bg-[#5cf28e] text-[#0d0d0d]'
-                      : 'bg-slate-100 text-slate-400'
-                  }`}
-                >
-                  {l.name}
+          {/* Domain scores */}
+          <div className="space-y-3">
+            {[...domainResults].sort((a, b) => a.score - b.score).map((r, i) => {
+              const gap = Math.max(0, 3.5 - r.score);
+              return (
+                <div key={r.name} className="bg-white/[0.03] rounded-xl border border-white/[0.07] p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-white/80">{r.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold" style={{ color: r.colourHex }}>{r.score.toFixed(1)}</span>
+                      {gap > 0.3 && <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.06] text-white/30">↑ {gap.toFixed(1)} to threshold</span>}
+                    </div>
+                  </div>
+                  <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(r.score / 5) * 100}%`, backgroundColor: r.colourHex, opacity: 0.8 }} />
+                  </div>
+                  {i === 0 && <p className="text-[10px] text-white/55 mt-2 leading-relaxed">{r.levelDescriptor}</p>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* What DREAM would find */}
+        <div style={{ animation: 'rFadeUp 0.6s ease 0.3s both', opacity: 0 }}>
+          <div className="border-t border-white/[0.06] pt-10">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-white/55 mb-2">What A DREAM Session Would Surface</p>
+            <p className="text-white/50 text-sm mb-6 max-w-xl">{pattern.dreamFocus}</p>
+            <div className="grid sm:grid-cols-3 gap-4 mb-8">
+              {pattern.signals.map((signal, i) => (
+                <div key={i} className="p-4 rounded-xl border border-white/[0.07] bg-white/[0.02]"
+                  style={{ animation: `signalIn 0.5s ease ${0.4 + i * 0.1}s both`, opacity: 0 }}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]/60 mb-3" />
+                  <p className="text-white/55 text-xs leading-relaxed">{signal}</p>
                 </div>
               ))}
             </div>
+            <p className="text-white/45 text-xs italic max-w-lg">
+              These patterns don&apos;t come from surveys. They surface when the right people are in the room, asked the right questions, in the right order.
+            </p>
           </div>
+        </div>
 
-          {/* ── Right: Domain breakdown + recommendation + email ── */}
-          <div className="space-y-6">
-            {/* Domain breakdown  -  sorted by priority (lowest first) */}
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-3">
-                Priority Development Areas
-              </h3>
-              <div className="space-y-3">
-                {priorityDomains.map((result, i) => (
-                  <div
-                    key={result.name}
-                    className="bg-white rounded-xl border border-slate-200 p-4"
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
-                        style={{ backgroundColor: result.colourHex }}
-                      >
-                        {i + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-sm font-semibold text-slate-900">{result.name}</span>
-                          <span className="text-xs font-bold" style={{ color: result.colourHex }}>
-                            L{Math.round(result.score)} &middot; {result.levelName}
-                          </span>
-                        </div>
-                        {/* Continuous progress bar */}
-                        <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-700"
-                            style={{
-                              width: `${(result.score / 5) * 100}%`,
-                              backgroundColor: result.colourHex,
-                              opacity: 0.7,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    {/* Next level recommendation */}
-                    {Math.round(result.score) < 5 && (
-                      <div className="ml-11 mt-2 pl-3 border-l-2 border-slate-100">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-                          Next: {result.nextLevelName}
-                        </p>
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                          {result.nextLevelDescriptor}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+        {/* CTA */}
+        <div className="bg-gradient-to-r from-[#0d1a10] to-[#0a0a0a] rounded-2xl border border-[#5cf28e]/15 p-8" style={{ animation: 'rFadeUp 0.6s ease 0.45s both', opacity: 0 }}>
+          <p className="text-[#5cf28e] text-[10px] font-bold uppercase tracking-[0.25em] mb-3">Ready to go deeper?</p>
+          <h3 className="text-xl font-bold text-white mb-2">Book a DREAM Discovery Session</h3>
+          <p className="text-white/45 text-sm leading-relaxed mb-6 max-w-lg">
+            In 90 minutes, DREAM would surface the constraints behind this profile — the ones that don&apos;t show up in data, but shape every decision your organisation makes.
+          </p>
+          <CalendlyButton className="inline-flex items-center gap-2 px-6 py-3 text-sm font-bold rounded-xl bg-[#5cf28e] text-[#0a0a0a] hover:bg-[#50d47e] transition-all shadow-lg shadow-[#5cf28e]/20 cursor-pointer">
+            Book a DREAM Session <ArrowRight className="h-4 w-4" />
+          </CalendlyButton>
+        </div>
 
-            {/* Recommendation */}
-            <div className="bg-[#0d0d0d] rounded-2xl p-6">
-              <p className="text-[#5cf28e] text-[10px] font-bold uppercase tracking-wider mb-2">
-                Recommendation
-              </p>
-              <h4 className="text-lg font-bold text-white mb-2">{recommendation.headline}</h4>
-              <p className="text-white/60 text-sm leading-relaxed">{recommendation.body}</p>
-            </div>
-
-            {/* Email capture / submitted confirmation */}
-            {!submitted ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Download className="h-4 w-4 text-[#5cf28e]" />
-                  <h4 className="text-sm font-bold text-slate-900">
-                    Get your full report as a PDF
-                  </h4>
-                </div>
-                <p className="text-xs text-slate-500 mb-4">
-                  We&apos;ll send you a detailed PDF with your transformation readiness profile,
-                  domain breakdown, next-level recommendations, and personalised guidance
-                  on where to focus  -  from AI adoption and partner ecosystem alignment
-                  to operating model change.
-                </p>
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Your name *"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#5cf28e]/40 focus:border-[#5cf28e] transition-all"
-                  />
-                  <input
-                    type="email"
-                    placeholder="Email address *"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#5cf28e]/40 focus:border-[#5cf28e] transition-all"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Organisation (optional)"
-                    value={organisation}
-                    onChange={(e) => setOrganisation(e.target.value)}
-                    className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#5cf28e]/40 focus:border-[#5cf28e] transition-all"
-                  />
-                  {submitError && (
-                    <p className="text-xs text-red-500">{submitError}</p>
-                  )}
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting || !name.trim() || !email.trim()}
-                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {submitting ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-[#0d0d0d]/20 border-t-[#0d0d0d] rounded-full animate-spin" />
-                        Generating report&hellip;
-                      </>
-                    ) : (
-                      <>
-                        <Mail className="h-4 w-4" /> Send My Report
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl border border-[#5cf28e]/30 p-6 text-center">
-                <CheckCircle2 className="h-10 w-10 text-[#5cf28e] mx-auto mb-3" />
-                <h4 className="text-lg font-bold text-slate-900 mb-1">Report Sent!</h4>
-                <p className="text-sm text-slate-500 mb-4">
-                  Check your inbox  -  your Transformation Readiness Report is on its way.
-                </p>
-                <CalendlyButton
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all cursor-pointer"
-                >
-                  Book a Demo <ArrowRight className="h-4 w-4" />
-                </CalendlyButton>
-              </div>
-            )}
-
-            {/* Retake */}
-            <button
-              onClick={() => {
-                setStep(0);
-                setScores({ ...DEFAULT_SCORES });
-                setSubmitted(false);
-                setSubmitError('');
-                setName('');
-                setEmail('');
-                setOrganisation('');
-              }}
-              className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              &larr; Retake assessment
-            </button>
+        {/* PDF sent confirmation + start over */}
+        <div className="flex items-center justify-between" style={{ animation: 'rFadeUp 0.6s ease 0.55s both', opacity: 0 }}>
+          <div className="flex items-center gap-2 text-white/55 text-xs">
+            <CheckCircle2 className="h-3.5 w-3.5 text-[#5cf28e]/60" />
+            PDF report sent to {email}
           </div>
+          {overallLevelIndex != null && (
+            <button onClick={reset} className="text-xs text-white/40 hover:text-white/65 transition-colors">← Start over</button>
+          )}
         </div>
       </div>
     </section>

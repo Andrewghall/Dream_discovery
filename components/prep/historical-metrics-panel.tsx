@@ -22,6 +22,7 @@ import { parseFile, parsePastedText, detectFormat, type SupportedFormat } from '
 import { analyzeMetricTrends, type MetricTrend } from '@/lib/historical-metrics/summarize';
 import type { HistoricalMetricsData, PeriodGranularity } from '@/lib/historical-metrics/types';
 import { PERIOD_GRANULARITIES } from '@/lib/historical-metrics/types';
+import { HistoricalEvidenceUploader, HISTORICAL_UPLOAD_ACCEPT } from '@/components/evidence/HistoricalEvidenceUploader';
 
 // ══════════════════════════════════════════════════════════
 // TYPES
@@ -140,8 +141,7 @@ export default function HistoricalMetricsPanel({
   }, [metricRefs]);
 
   // ── File handler (CSV, Excel, JSON) ─────────────────
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileSelect = useCallback(async (file: File | null) => {
     if (!file) return;
 
     setUploadError('');
@@ -150,15 +150,11 @@ export default function HistoricalMetricsPanel({
     if (!format) {
       setUploadError(`Unsupported file type. Use CSV, Excel (.xlsx/.xls), or JSON.`);
       setUploadStep('error');
-      e.target.value = '';
       return;
     }
 
     const parsed = await parseFile(file);
     applyParsedData(parsed, file.name);
-
-    // Reset file input
-    e.target.value = '';
   }, [applyParsedData]);
 
   // ── Clipboard paste handler ─────────────────────────
@@ -444,24 +440,14 @@ export default function HistoricalMetricsPanel({
 
             {uploadStep === 'idle' && (
               <div className="space-y-3">
-                <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/10 p-6 cursor-pointer hover:border-muted-foreground/50 transition-colors">
-                  <Upload className="h-6 w-6 text-muted-foreground mb-2" />
-                  <span className="text-sm text-muted-foreground">
-                    Drop a file here or click to browse
-                  </span>
-                  <span className="text-[10px] text-muted-foreground mt-1">
-                    CSV, Excel (.xlsx / .xls), or JSON
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    Columns should include a period/date column and one or more metric columns
-                  </span>
-                  <input
-                    type="file"
-                    accept=".csv,.tsv,.xlsx,.xls,.json"
-                    className="hidden"
-                    onChange={handleFileSelect}
-                  />
-                </label>
+                <HistoricalEvidenceUploader
+                  accept={`${HISTORICAL_UPLOAD_ACCEPT}`}
+                  helperText="CSV, Excel (.xlsx/.xls), or JSON. Columns should include a period/date column and at least one metric."
+                  label="Drop a metrics file or click to browse"
+                  onFilesSelected={(files) => {
+                    handleFileSelect(files[0] ?? null);
+                  }}
+                />
                 <button
                   onClick={handlePaste}
                   className="w-full flex items-center justify-center gap-2 rounded-lg border border-muted-foreground/25 bg-muted/10 px-4 py-2.5 text-sm text-muted-foreground hover:border-muted-foreground/50 hover:bg-muted/20 transition-colors"

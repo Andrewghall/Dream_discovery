@@ -19,7 +19,12 @@ import {
   LogOut,
   Brain,
   BarChart2,
+  BarChart3,
   Route,
+  Sparkles,
+  Users,
+  FlaskConical,
+  Download,
 } from 'lucide-react';
 
 interface WorkshopSidebarProps {
@@ -31,23 +36,36 @@ interface WorkshopSidebarProps {
 function buildNavSections(_domainPack?: string | null) {
   return [
     {
-      label: 'Workflow',
+      label: 'Workshop',
       items: [
         { label: 'Setup', path: '', icon: Settings },
         { label: 'Prep', path: '/prep', icon: FileText },
         { label: 'Invite', path: '/invite', icon: Send },
-        { label: 'Live Session', path: '/cognitive-guidance', icon: Radio },
-        { label: 'Field Discovery', path: '/discovery/field', icon: Compass },
       ],
     },
     {
-      label: 'Output Analysis',
+      label: 'Delivery',
       items: [
+        { label: 'Live Session', path: '/cognitive-guidance', icon: Radio },
+        { label: 'Field Discovery', path: '/discovery/field', icon: Compass },
+        { label: 'Evidence', path: '/evidence', icon: FlaskConical },
+      ],
+    },
+    {
+      label: 'Analysis',
+      items: [
+        { label: 'Generate Analysis', path: '/generate-analysis', icon: Sparkles, highlight: true },
         { label: 'Discovery Output', path: '/discovery-output', icon: BarChart2 },
         { label: 'Insight Map', path: '/hemisphere', icon: Globe },
         { label: 'Actor Journey', path: '/actor-journey', icon: Route },
         { label: 'Brain Scan', path: '/intelligence', icon: Brain },
-        { label: 'Download Report', path: '/scratchpad', icon: BookOpen },
+        { label: 'Behavioural Interventions', path: '/behavioural-interventions', icon: Users },
+      ],
+    },
+    {
+      label: 'Report',
+      items: [
+        { label: 'Output Generator', path: '/scratchpad', icon: Download },
       ],
     },
   ];
@@ -102,6 +120,7 @@ export function WorkshopSidebar({ workshopId, workshopName, domainPack }: Worksh
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.path);
+                const highlight = 'highlight' in item && item.highlight;
                 return (
                   <Link
                     key={item.path}
@@ -109,7 +128,9 @@ export function WorkshopSidebar({ workshopId, workshopName, domainPack }: Worksh
                     onClick={() => setMobileOpen(false)}
                     className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
                       active
-                        ? 'bg-primary/10 text-primary font-medium'
+                        ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 font-medium'
+                        : highlight
+                        ? 'text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 font-medium'
                         : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                     }`}
                   >
@@ -169,13 +190,16 @@ export function WorkshopSidebar({ workshopId, workshopName, domainPack }: Worksh
           section.items.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
+            const highlight = 'highlight' in item && item.highlight;
             return (
               <Link
                 key={item.path}
                 href={`${basePath}${item.path}`}
                 className={`flex items-center justify-center p-2 rounded-md transition-colors ${
                   active
-                    ? 'bg-primary/10 text-primary'
+                    ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                    : highlight
+                    ? 'text-purple-600 dark:text-purple-400 hover:bg-purple-500/10'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                 }`}
                 title={item.label}

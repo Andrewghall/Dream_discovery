@@ -193,6 +193,88 @@ export default function InsightsPage() {
         </div>
       </section>
 
+      {/* ═══ COM-B BEHAVIOURAL INTELLIGENCE ═══ */}
+      <section className="bg-white py-20">
+        <div className="max-w-5xl mx-auto px-6">
+          <ScrollReveal>
+            <p className="text-rose-500 text-sm font-semibold tracking-[0.15em] uppercase mb-3 text-center">
+              Beyond Diagnosis
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-4 text-center">
+              COM-B Behavioural{' '}
+              <span className="bg-gradient-to-r from-rose-500 to-pink-600 bg-clip-text text-transparent">
+                Intelligence
+              </span>
+            </h2>
+            <p className="text-lg text-slate-500 max-w-2xl mx-auto text-center mb-12">
+              Most tools tell you what&apos;s broken. DREAM tells you <em>why people behave the way they do</em> — and what specific intervention will change it.
+            </p>
+          </ScrollReveal>
+
+          <div className="grid md:grid-cols-3 gap-6 mb-12">
+            {[
+              {
+                letter: 'C',
+                label: 'Capability',
+                colour: 'bg-rose-50 border-rose-200 text-rose-700',
+                dot: 'bg-rose-500',
+                description: 'Does the organisation have the knowledge, skills, and physical ability to change? DREAM maps which findings reflect capability gaps versus motivation or structural blocks.',
+              },
+              {
+                letter: 'O',
+                label: 'Opportunity',
+                colour: 'bg-pink-50 border-pink-200 text-pink-700',
+                dot: 'bg-pink-500',
+                description: 'Does the environment enable or block change? Social norms, resource access, and structural conditions are surfaced and classified from discovery data.',
+              },
+              {
+                letter: 'M',
+                label: 'Motivation',
+                colour: 'bg-fuchsia-50 border-fuchsia-200 text-fuchsia-700',
+                dot: 'bg-fuchsia-500',
+                description: 'Do people want to change? Automatic habits and reflective decision-making patterns are identified from participant language — so change programmes target the right driver.',
+              },
+            ].map((item) => (
+              <ScrollReveal key={item.letter} delay={100}>
+                <div className={`rounded-2xl border p-6 h-full ${item.colour}`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg text-white mb-4 ${item.dot}`}>
+                    {item.letter}
+                  </div>
+                  <h3 className="font-bold text-lg mb-2">{item.label}</h3>
+                  <p className="text-sm leading-relaxed opacity-80">{item.description}</p>
+                </div>
+              </ScrollReveal>
+            ))}
+          </div>
+
+          <ScrollReveal delay={200}>
+            <div className="rounded-2xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-200 p-8">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">From finding to intervention in one step</h3>
+              <div className="grid sm:grid-cols-2 gap-6">
+                {[
+                  {
+                    finding: '"Staff don\'t follow the new process"',
+                    comB: 'Capability gap — physical opportunity barrier',
+                    intervention: 'Redesign the process with frontline input; add embedded job aids at point of decision',
+                  },
+                  {
+                    finding: '"Leadership says transformation is exciting; frontline says exhausting"',
+                    comB: 'Motivation divergence — reflective vs automatic',
+                    intervention: 'Run a joint alignment session; address workload concerns before launching the programme',
+                  },
+                ].map((ex) => (
+                  <div key={ex.finding} className="bg-white rounded-xl p-5 border border-rose-100">
+                    <p className="text-sm font-semibold text-slate-800 mb-2">&ldquo;{ex.finding}&rdquo;</p>
+                    <p className="text-xs text-rose-600 font-medium mb-2">COM-B: {ex.comB}</p>
+                    <p className="text-xs text-slate-500 leading-relaxed">→ {ex.intervention}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </ScrollReveal>
+        </div>
+      </section>
+
       {/* ═══ EXAMPLE INSIGHTS ═══ */}
       <section className="bg-gradient-to-b from-[#0d0d0d] to-slate-950 text-white py-20">
         <div className="max-w-5xl mx-auto px-6">

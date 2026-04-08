@@ -20,6 +20,7 @@
 import OpenAI from 'openai';
 import { nanoid } from 'nanoid';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import { prisma } from '@/lib/prisma';
 import type {
   WorkshopPrepResearch,
@@ -584,13 +585,19 @@ export async function runDiscoveryQuestionAgent(
   // Track designed lenses as they come in
   const designedLenses = new Map<string, DiscoveryLensQuestions>();
 
-  // Determine lenses: blueprint (curated) > domain pack > generic fallback
+  // Determine lenses: blueprint (curated) > domain pack — no generic fallback
   const blueprintLensNames = blueprint?.lenses?.length
     ? blueprint.lenses.map(l => l.name) : null;
-  const lensNames: string[] = blueprintLensNames
-    ?? (domainPack?.lenses || ['People', 'Organisation', 'Customer', 'Technology', 'Regulation']);
+  const domainPackLensNames = domainPack?.lenses ?? null;
+  const lensNames: string[] | null = blueprintLensNames ?? domainPackLensNames;
+  if (!lensNames?.length) {
+    throw new Error(
+      'Workshop lens set is required for discovery questions — no fallback to generic defaults. ' +
+      'Ensure blueprint.lenses or a domain pack is configured in prep.',
+    );
+  }
   const lensSource: LensSource = blueprintLensNames
-    ? 'blueprint' : domainPack?.lenses ? 'domain_pack' : 'generic_fallback';
+    ? 'blueprint' : 'domain_pack';
   const lensListStr = lensNames.join(', ');
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -618,14 +625,14 @@ export async function runDiscoveryQuestionAgent(
 
       console.log(`[Discovery Question Agent] Iteration ${iteration}${isLastIteration ? ' (forced commit)' : ''}`);
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.4,
         messages,
         tools: DISCOVERY_QUESTION_TOOLS,
         tool_choice: toolChoice,
         parallel_tool_calls: true,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

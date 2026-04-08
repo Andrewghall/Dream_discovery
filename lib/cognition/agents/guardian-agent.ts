@@ -16,6 +16,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { CognitiveState } from '../cognitive-state';
 import type { DialoguePhase } from '@/lib/cognitive-guidance/pipeline';
 import type { AgentConversationCallback } from './agent-types';
@@ -200,13 +201,13 @@ Call render_verdict when ready.`;
         ? { type: 'function', function: { name: 'render_verdict' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.1, // Low temperature for verification
         messages,
         tools: GUARDIAN_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

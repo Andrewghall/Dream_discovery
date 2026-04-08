@@ -432,6 +432,9 @@ export default function OrganizationsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={`/admin/organizations/${org.id}`}>Manage</a>
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => startEdit(org)}>Edit Branding</Button>
                     <Button
                       variant="outline"

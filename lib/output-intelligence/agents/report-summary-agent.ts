@@ -11,10 +11,9 @@
  */
 
 import OpenAI from 'openai';
-import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopOutputIntelligence, WorkshopSignals, ReportSummary } from '../types';
-
-const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+// OpenAI client constructed lazily inside runReportSummaryAgent() — never at module load.
 
 // ── Schema sent to the model ──────────────────────────────────────────────────
 
@@ -26,13 +25,19 @@ const SCHEMA = `{
     "theAsk": "string — one sentence: what was commissioned and why this mattered to the organisation",
     "theAnswer": "string — one sentence: the direct, decisive answer to the ask — a bold claim grounded entirely in the evidence below",
 
+    "whatWeFoundPositive": [
+      "string — strength/enabler 1: something working well, an organisational asset, a positive signal, or an enabling condition — must be grounded in evidence from the intelligence (e.g. drivingForces, transformation readiness, strong agreement signals, expressed ambitions from pads)",
+      "string — strength/enabler 2",
+      "string — strength/enabler 3 — include 2-4 items if genuine evidence exists; omit extras if not"
+    ],
+
     "whatWeFound": [
-      "string — finding 1: specific issue, name the system/team/metric affected",
-      "string — finding 2: specific issue with evidence (e.g. 'X% attrition', '8 legacy systems', 'no unified view')",
-      "string — finding 3: specific issue",
-      "string — finding 4: specific issue",
-      "string — finding 5: specific issue",
-      "string — finding 6: specific issue — if evidence exists for a 6th, include it; otherwise omit"
+      "string — challenge 1: specific problem or friction point, name the system/team/metric affected",
+      "string — challenge 2: specific issue with evidence (e.g. 'X% attrition', '8 legacy systems', 'no unified view')",
+      "string — challenge 3: specific issue",
+      "string — challenge 4: specific issue",
+      "string — challenge 5: specific issue",
+      "string — challenge 6: specific issue — if evidence exists for a 6th, include it; otherwise omit"
     ],
 
     "lensFindings": [
@@ -42,7 +47,17 @@ const SCHEMA = `{
     "whyItMatters": "string — 3-4 sentences: name the direct business cost of these issues (operational, financial, customer, competitive) — no generic consulting language — be specific to this organisation",
     "opportunityOrRisk": "string — 3-4 sentences: name the specific opportunity if addressed, and the specific risk if not — reference the root cause and the evidence",
     "urgency": "string — 1-2 sentences: must name at least one specific item from the intelligence — a regulatory obligation, measured metric (e.g. '34% attrition'), competitive trigger, or named operational crisis — do not write generic urgency without a named trigger",
-    "nextStepsPreview": "string — one sentence: the direction the solution takes, bridging to the solution section below"
+    "nextStepsPreview": "string — one sentence: the direction the solution takes, bridging to the solution section below",
+    "decisionAsk": {
+      "statement": "string — the specific decision we are asking the executive team to make, e.g. 'We are asking the ExCo to approve a phased transformation programme to address [root cause], beginning with [Phase 1 initiative]'",
+      "options": [
+        { "label": "string — option label, e.g. 'Full programme (recommended)'", "description": "string — 1-2 sentences on what this entails and its expected outcome" },
+        { "label": "string — alternative option, e.g. 'Phased start'", "description": "string — 1-2 sentences on what this entails" },
+        { "label": "string — e.g. 'Do nothing'", "description": "string — 1 sentence on the consequence of inaction" }
+      ],
+      "recommendation": "string — one sentence: what we recommend and the single most compelling reason why",
+      "ifNoAction": "string — 1-2 sentences: the specific, named consequence of inaction — reference a metric, regulatory risk, or competitive threat from the intelligence"
+    }
   },
 
   "solutionSummary": {
@@ -240,6 +255,127 @@ function buildContextDump(
     }
   }
 
+  // ── Evidence Validation Verdict ───────────────────────────────────────────
+  // Surface the CV conclusion impact and perception gaps so the exec summary
+  // can reflect whether the transformation direction is empirically grounded.
+  if (signals.evidenceValidation) {
+    const ev = signals.evidenceValidation;
+    lines.push('\n=== EVIDENCE VALIDATION VERDICT ===');
+    lines.push('Documentary evidence cross-validated against workshop discovery:');
+
+    if (ev.corroborated.length > 0) {
+      lines.push(`\nCORROBORATED BY DATA (${ev.corroborated.length} findings confirmed by documents):`);
+      ev.corroborated.slice(0, 8).forEach(f => lines.push(`  ✓ ${f}`));
+    }
+
+    if (ev.contradicted.length > 0) {
+      lines.push(`\nCONFIRMED CONTRADICTIONS (2+ independent sources):`);
+      ev.contradicted.slice(0, 5).forEach(f => lines.push(`  ✗ ${f}`));
+    }
+
+    if (ev.perceptionGaps.length > 0) {
+      lines.push(`\nPERCEPTION GAPS (participants believed X but data shows Y):`);
+      ev.perceptionGaps.slice(0, 5).forEach(f => lines.push(`  ⚠ ${f}`));
+    }
+
+    if (ev.blindSpots.length > 0) {
+      lines.push(`\nDATA BLIND SPOTS (in evidence but not raised by any participant):`);
+      ev.blindSpots.slice(0, 5).forEach(f => lines.push(`  ● ${f}`));
+    }
+
+    const uncoveredLenses = ev.lensGaps.filter(l => !l.covered).map(l => l.lens);
+    if (uncoveredLenses.length > 0) {
+      lines.push(`\nLENS COVERAGE GAPS (no empirical document evidence for): ${uncoveredLenses.join(', ')}`);
+    }
+
+    if (ev.conclusionImpact) {
+      lines.push(`\nOVERALL VERDICT: ${ev.conclusionImpact}`);
+    }
+  }
+
+  // ── Graph-backed Causal Intelligence ─────────────────────────────────────
+  // These findings are evidence-gated (≥ REINFORCED tier) and deterministically
+  // derived from the relationship graph. Prioritise them as primary sources for
+  // whatWeFound and whatMustChange — they are more specific than LLM inference.
+  if (intelligence.causalIntelligence) {
+    const ci = intelligence.causalIntelligence;
+
+    if (ci.organisationalIssues.length > 0) {
+      lines.push('\n=== GRAPH-BACKED ORGANISATIONAL ISSUES (evidence-gated ≥ REINFORCED — use as primary source for whatWeFound) ===');
+      for (const f of ci.organisationalIssues) {
+        lines.push(`\n[${f.findingId}] ${f.issueTitle}`);
+        lines.push(`  Why it matters: ${f.whyItMatters}`);
+        lines.push(`  Who it affects: ${f.whoItAffects}`);
+        lines.push(`  Evidence: ${f.evidenceBasis}`);
+        if (f.evidenceQuotes && f.evidenceQuotes.length > 0) {
+          lines.push(`  Participant quotes:`);
+          for (const q of f.evidenceQuotes.slice(0, 3)) {
+            const roleTag = q.participantRole ? ` [${q.participantRole}]` : '';
+            lines.push(`    • "${q.text}"${roleTag}`);
+          }
+        }
+        if (f.causalChain) {
+          lines.push(`  Causal chain: "${f.causalChain.constraintLabel}" → "${f.causalChain.enablerLabel}" → "${f.causalChain.reimaginationLabel}" (chain strength: ${f.causalChain.chainStrength}/100, weakest link: ${f.causalChain.weakestLinkTier})`);
+        }
+        lines.push(`  Operational implication: ${f.operationalImplication}`);
+        lines.push(`  Recommended action: ${f.recommendedAction}`);
+        if (f.evidenceNodeId) lines.push(`  [provenance: node=${f.evidenceNodeId}, edges=${f.evidenceEdgeIds.join(', ') || 'none'}]`);
+      }
+    }
+
+    if (ci.reinforcedFindings.length > 0) {
+      lines.push('\n=== GRAPH-BACKED REINFORCED FINDINGS (multi-participant, multi-lens) ===');
+      for (const f of ci.reinforcedFindings.slice(0, 5)) {
+        lines.push(`\n[${f.findingId}] ${f.issueTitle}`);
+        lines.push(`  Evidence: ${f.evidenceBasis}`);
+        if (f.evidenceQuotes && f.evidenceQuotes.length > 0) {
+          for (const q of f.evidenceQuotes.slice(0, 2)) {
+            const roleTag = q.participantRole ? ` [${q.participantRole}]` : '';
+            lines.push(`    • "${q.text}"${roleTag}`);
+          }
+        }
+        if (f.causalChain) {
+          lines.push(`  Chain: "${f.causalChain.constraintLabel}" → "${f.causalChain.enablerLabel}" → "${f.causalChain.reimaginationLabel}"`);
+        }
+        lines.push(`  Implication: ${f.operationalImplication}`);
+        lines.push(`  Action: ${f.recommendedAction}`);
+      }
+    }
+
+    if (ci.emergingPatterns.length > 0) {
+      lines.push('\n=== EMERGING PATTERNS (credible but not yet systemic — label clearly in output) ===');
+      for (const f of ci.emergingPatterns.slice(0, 4)) {
+        lines.push(`  • [EMERGING] ${f.issueTitle} — ${f.operationalImplication}`);
+      }
+    }
+
+    if (ci.contradictions.length > 0) {
+      lines.push('\n=== CONTRADICTIONS (opposing participant views) ===');
+      for (const f of ci.contradictions.slice(0, 3)) {
+        lines.push(`  • ${f.issueTitle}`);
+        if (f.evidenceQuotes && f.evidenceQuotes.length >= 2) {
+          lines.push(`    View A: "${f.evidenceQuotes[0].text}"`);
+          lines.push(`    View B: "${f.evidenceQuotes[1].text}"`);
+        }
+      }
+    }
+
+    if (ci.evidenceGaps.length > 0) {
+      lines.push('\n=== EVIDENCE GAPS (constraints with no identified organisational response) ===');
+      for (const f of ci.evidenceGaps.slice(0, 3)) {
+        lines.push(`  • ${f.issueTitle} — ${f.evidenceBasis}`);
+      }
+    }
+
+    if (ci.dominantCausalChains.length > 0) {
+      lines.push('\n=== DOMINANT CAUSAL CHAINS (structural logic of this workshop) ===');
+      for (const chain of ci.dominantCausalChains.slice(0, 3)) {
+        lines.push(`  • "${chain.constraintLabel}" → "${chain.enablerLabel}" → "${chain.reimaginationLabel}" — strength ${chain.chainStrength}/100`);
+        if (chain.narrative) lines.push(`    ${chain.narrative}`);
+      }
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -323,10 +459,13 @@ export async function runReportSummaryAgent(
 
 EXECUTIVE SUMMARY RULES:
 • Must directly answer the workshop ask — not describe the workshop process
-• whatWeFound: MINIMUM 6 items — each must name a specific system, team, metric, or process observed — no generic phrases like "lack of alignment" without naming what is misaligned
+• POSITIVE-FIRST RULE: whatWeFoundPositive MUST come before whatWeFound. It surfaces genuine strengths, enabling conditions, and organisational assets. Sources: drivingForces from root cause analysis, transformation readiness positive indicators, expressed ambitions from workshop pads, strong participant agreement signals, any quick wins or areas of existing capability. Include 2-4 items grounded in evidence. If the intelligence contains genuinely no positive signals, write a single item: "Limited enabling signals were captured in this workshop — the organisation's openness to participating in this diagnostic is itself a starting point." Never invent positives.
+• whatWeFound: these are the CHALLENGES — MINIMUM 6 items — each must name a specific system, team, metric, or process observed — no generic phrases like "lack of alignment" without naming what is misaligned
+• GRAPH-BACKED FINDINGS RULE — CRITICAL: If the intelligence contains a "GRAPH-BACKED ORGANISATIONAL ISSUES" or "GRAPH-BACKED REINFORCED FINDINGS" section, these are evidence-gated, deterministic findings from the relationship graph. They MUST appear in whatWeFound with their specific titles, participant quotes, and causal chains. Do not paraphrase or generalise graph-backed findings — use their exact titles and supporting quotes.
 • METRIC CITATION RULE — CRITICAL: Before writing whatWeFound and urgency, scan the entire intelligence for ANY specific percentage, named system, named role, customer tier, or quantified outcome (e.g. "30-40% AHT reduction", "Gold and Platinum tier members", "8 legacy systems", "34% attrition"). Every specific metric or named entity found MUST appear verbatim in at least one finding or the urgency field. Do not paraphrase or generalise a specific number — quote it exactly.
 • lensFindings: produce ONE entry for EVERY lens listed under "Lenses:" in WORKSHOP CONTEXT — no exceptions, no omissions. Consult the "SIGNALS BY LENS" section for evidence. If signals for a lens were thin or absent, write the finding as: "Workshop signals for this lens were limited — [describe what little was captured, or state 'no pads were recorded for this lens']". NEVER omit a lens that the workshop ran.
 • urgency: MUST name at least one specific item from the intelligence — a named regulation, a measured attrition rate, a specific metric, a named operational crisis, or a competitive event. "Inefficiencies will compound" without a named trigger is not acceptable.
+• decisionAsk: frame the single most important decision the executive must make. Options should present real alternatives (full programme, phased, do nothing) with honest trade-offs. The recommendation must name the specific root cause it addresses. ifNoAction must cite a named metric or risk from the intelligence — not a generic statement.
 • whyItMatters: must name specific business consequences — operational cost, customer impact, staff impact, competitive exposure — be concrete
 • If evidence for a finding does not exist in the provided intelligence, DO NOT include that finding — omit rather than invent
 
@@ -334,6 +473,7 @@ SOLUTION SUMMARY RULES:
 • whatMustChange: MINIMUM 4 areas — each currentState must describe the observable reality today using the workshop evidence — not aspirational language about what SHOULD happen
 • successIndicators: MINIMUM 4 — each must be an observable outcome a manager could verify — not "improve efficiency" but "case resolved in single interaction without system switching"
 • rationale must trace directly to the root causes provided — if a root cause is not relevant to the direction, do not reference it
+• If graph-backed causal chains are present, whatMustChange MUST map to those specific chains — each change area should address a named bottleneck, compensating behaviour, or evidence gap from the graph
 
 ABSOLUTE RULES — NO EXCEPTIONS:
 • NEVER invent data, metrics, or findings not present in the provided intelligence
@@ -354,6 +494,8 @@ Based on ALL the above pre-generated intelligence, write the report summary.
 Return JSON matching this schema exactly:
 ${SCHEMA}`;
 
+  const apiKey = process.env.OPENAI_API_KEY;
+  const openai = apiKey ? new OpenAI({ apiKey }) : null;
   if (!openai) throw new Error('OPENAI_API_KEY is not configured');
 
   let lastError: Error | null = null;
@@ -361,7 +503,7 @@ ${SCHEMA}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 100_000);
     try {
-      const response = await openai.chat.completions.create(
+      const response = await openAiBreaker.execute(() => openai.chat.completions.create(
         {
           model: 'gpt-4o',
           response_format: { type: 'json_object' },
@@ -373,7 +515,7 @@ ${SCHEMA}`;
           max_tokens: 6000,
         },
         { signal: controller.signal },
-      );
+      ));
       clearTimeout(timeoutId);
 
       const raw = response.choices[0]?.message?.content ?? '{}';

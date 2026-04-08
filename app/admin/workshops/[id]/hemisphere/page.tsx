@@ -70,6 +70,7 @@ type HemisphereResponse = {
   hemisphereGraph: HemisphereGraph;
   snapshotId?: string;
   snapshotName?: string;
+  totalSignalCount?: number; // full corpus size before visualisation cap
   error?: string;
   industryDimensions?: IndustryDimension[] | null;
 };
@@ -541,6 +542,9 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   // Snapshot management
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
+  // True once the snapshots list fetch has settled (success or failure).
+  // fetchData must not fire until this is true — prevents silent fallback to session-insights path.
+  const [snapshotsLoaded, setSnapshotsLoaded] = useState(false);
   const [showSnapshotDropdown, setShowSnapshotDropdown] = useState(false);
 
   // Report generation
@@ -581,8 +585,9 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   const [minWeight, setMinWeight] = useState(0);
   const [nodeSizeScale, setNodeSizeScale] = useState(50); // 0-100 slider, 50 = default
 
-  // Fetch snapshots
+  // Fetch snapshots — marks snapshotsLoaded=true when settled so fetchData can proceed
   useEffect(() => {
+    setSnapshotsLoaded(false);
     const fetchSnapshots = async () => {
       try {
         const r = await fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}/live/snapshots`);
@@ -590,7 +595,9 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
         if (json?.ok && Array.isArray(json.snapshots)) {
           setSnapshots(json.snapshots);
         }
-      } catch { /* ignore */ }
+      } catch { /* ignore */ } finally {
+        setSnapshotsLoaded(true);
+      }
     };
     void fetchSnapshots();
   }, [workshopId]);
@@ -612,18 +619,26 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     setSelectedSnapshotId(snapshots[0].id);
   }, [snapshots, searchParams, selectedSnapshotId]);
 
-  // Fetch hemisphere data
+  // Fetch hemisphere data — only fires after snapshots have loaded.
+  // Snapshot path only — reads from liveWorkshopSnapshot.payload.nodesById (full raw corpus).
+  // If no snapshot exists, shows an explicit error. Never falls back to session-based data.
   useEffect(() => {
+    // Wait for the snapshots list fetch to settle before deciding which path to use.
+    if (!snapshotsLoaded) return;
+
     const fetchData = async () => {
+      // No snapshot saved yet — show explicit error, do not fall back to session data.
+      if (!selectedSnapshotId) {
+        setData(null);
+        setError('No snapshot data available. Save a snapshot from the live session to view hemisphere data.');
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
-        let url: string;
-        if (selectedSnapshotId) {
-          url = `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?source=snapshot&snapshotId=${encodeURIComponent(selectedSnapshotId)}&bust=${Date.now()}`;
-        } else {
-          url = `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?runType=${encodeURIComponent(runType)}&bust=${Date.now()}`;
-        }
+        const url = `/api/admin/workshops/${encodeURIComponent(workshopId)}/hemisphere?source=snapshot&snapshotId=${encodeURIComponent(selectedSnapshotId)}&bust=${Date.now()}`;
         const r = await fetch(url, { cache: 'no-store' });
         const json = (await r.json().catch(() => null)) as (HemisphereResponse & { workshopOrgName?: string }) | null;
         if (!r.ok || !json || !json.ok) {
@@ -654,7 +669,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
       }
     };
     void fetchData();
-  }, [workshopId, runType, selectedSnapshotId]);
+  }, [workshopId, runType, selectedSnapshotId, snapshotsLoaded]);
 
   useEffect(() => {
     setHoveredNodeId(null);
@@ -670,20 +685,11 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
   }, [runType]);
 
   // Fetch diagnostic data when diagnostic tab is selected
-  const isRetailDemo = workshopId === 'retail-cx-workshop';
   useEffect(() => {
     if (rightTab !== 'diagnostic') return;
     if (diagnosticLoading) return;
-    // Already loaded (including demo data)
+    // Already loaded
     if (diagnosticBefore || diagnosticAfter) return;
-
-    // Use instant demo data for the retail workshop
-    if (isRetailDemo) {
-      setDiagnosticBefore(DEMO_DIAGNOSTIC_BEFORE);
-      setDiagnosticAfter(DEMO_DIAGNOSTIC_AFTER);
-      setDiagnosticDelta(DEMO_DIAGNOSTIC_DELTA);
-      return;
-    }
 
     const fetchDiagnostic = async () => {
       try {
@@ -707,7 +713,7 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
     };
     void fetchDiagnostic();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rightTab, workshopId, selectedSnapshotId, isRetailDemo]);
+  }, [rightTab, workshopId, selectedSnapshotId]);
 
 
   // Generate report handler — streams agent conversation via SSE
@@ -1564,7 +1570,10 @@ export default function WorkshopHemispherePage({ params }: PageProps) {
             {!loading && !error && selectedSnapshotId && data?.snapshotName && (
               <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2">
                 <div className="rounded-md px-3 py-1.5 text-xs bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
-                  Viewing: {data.snapshotName} · {nodes.length} node{nodes.length !== 1 ? 's' : ''}
+                  Viewing: {data.snapshotName}
+                  {data.totalSignalCount && data.totalSignalCount > nodes.length
+                    ? ` · top ${nodes.length} of ${data.totalSignalCount} signals`
+                    : ` · ${nodes.length} node${nodes.length !== 1 ? 's' : ''}`}
                 </div>
               </div>
             )}

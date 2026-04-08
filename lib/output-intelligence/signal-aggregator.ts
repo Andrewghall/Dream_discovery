@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma';
 import type { WorkshopSignals } from './types';
 import { retrieveRelevant } from '@/lib/embeddings/retrieve';
 import { groupRole } from '@/lib/discover-analysis/compute-alignment';
+import { buildWorkshopGraphIntelligence } from '@/lib/output/build-workshop-graph';
 
 // ── Types from DB shapes ─────────────────────────────────────────────────────
 
@@ -23,8 +24,21 @@ type DiscoverAnalysis = {
 };
 
 type SnapshotPayload = {
-  nodesById?: Record<string, { rawText: string; dialoguePhase?: string; classification?: { primaryType?: string }; lens?: string }>;
-  nodes?: Record<string, { rawText: string; dialoguePhase?: string; classification?: { primaryType?: string }; lens?: string }>;
+  nodesById?: Record<string, {
+    rawText: string;
+    dialoguePhase?: string;
+    classification?: { primaryType?: string };
+    lens?: string;
+    /** Actor label — set to participant role or speakerId from corpus generation */
+    speakerId?: string;
+  }>;
+  nodes?: Record<string, {
+    rawText: string;
+    dialoguePhase?: string;
+    classification?: { primaryType?: string };
+    lens?: string;
+    speakerId?: string;
+  }>;
   journey?: Array<{ stage: string; description?: string; aiAgencyScore?: number; painPoints?: string[] }>;
   hemisphereShift?: number;
 };
@@ -46,7 +60,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   // Split into two parallel queries:
   // 1. Core metadata + insights + themes (small fields, fast)
   // 2. Latest snapshot payload (potentially large blob, run in parallel)
-  const [workshop, latestSnapshotRows] = await Promise.all([
+  const [workshop, latestSnapshotRows, evidenceRows] = await Promise.all([
     prisma.workshop.findUnique({
       where: { id: workshopId },
       select: {
@@ -62,7 +76,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
         discoverAnalysis: true,
         insights: {
           take: 200,
-          select: { text: true, insightType: true, category: true, participantId: true },
+          select: { id: true, text: true, insightType: true, category: true, participantId: true },
         },
         themes: {
           take: 50,
@@ -85,6 +99,18 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       orderBy: { createdAt: 'desc' },
       select: { payload: true },
     }),
+    prisma.evidenceDocument.findMany({
+      where: { workshopId, status: 'ready' },
+      select: {
+        originalFileName: true,
+        summary: true,
+        findings: true,
+        signalDirection: true,
+        confidence: true,
+        crossValidation: true,
+        relevantLenses: true,
+      },
+    }),
   ]);
 
   if (!workshop) {
@@ -92,27 +118,24 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   }
 
   // ── Context: Lenses ─────────────────────────────────────────────────────
+  // Blueprint is the single source of truth for lens configuration.
+  // discoveryQuestions is NOT a lens source — it holds interview question structures.
 
   let lenses: string[] = [];
 
-  // Try blueprint first — blueprint stores lenses as { name, description, color, keywords }
-  // (Some older blueprints may use `label` instead of `name` — handle both)
+  // Blueprint stores lenses as { name, description, color, keywords }.
+  // Older blueprints may use `label` instead of `name` — both come from the same blueprint object.
   const blueprint = safeJson<{ lenses?: Array<{ name?: string; label?: string }> }>(workshop.blueprint);
   if (blueprint?.lenses && Array.isArray(blueprint.lenses)) {
     lenses = blueprint.lenses.map((l) => l.name ?? l.label ?? '').filter(Boolean);
   }
 
-  // Fall back to discoveryQuestions
+  // No fallback — fail explicitly if blueprint has no lens configuration.
   if (lenses.length === 0) {
-    const dq = safeJson<Array<{ lens?: string; label?: string }>>(workshop.discoveryQuestions);
-    if (Array.isArray(dq)) {
-      lenses = [...new Set(dq.map((q) => q.lens ?? q.label ?? '').filter(Boolean))];
-    }
-  }
-
-  // Final fallback — only if blueprint and discoveryQuestions both have no lenses
-  if (lenses.length === 0) {
-    lenses = ['People', 'Organisation', 'Customer', 'Technology'];
+    throw new Error(
+      `Workshop ${workshopId} has no lens configuration. ` +
+      'Complete workshop prep (blueprint.lenses) before running output intelligence.',
+    );
   }
 
   // ── Context: Objectives — full Plan phase context ────────────────────────
@@ -252,6 +275,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   const reimaginePads: WorkshopSignals['liveSession']['reimaginePads'] = [];
   const constraintPads: WorkshopSignals['liveSession']['constraintPads'] = [];
   const defineApproachPads: WorkshopSignals['liveSession']['defineApproachPads'] = [];
+  const discoveryPads: WorkshopSignals['liveSession']['discoveryPads'] = [];
   let journey: WorkshopSignals['liveSession']['journey'] = [];
   let hemisphereShift: number | null = null;
 
@@ -266,11 +290,13 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
         text: truncate(node.rawText, 400),
         type: node.classification?.primaryType ?? undefined,
         lens: node.lens ?? undefined,
+        actor: node.speakerId ?? undefined,
       };
       const phase = node.dialoguePhase?.toUpperCase();
       if (phase === 'REIMAGINE') reimaginePads.push(pad);
       else if (phase === 'CONSTRAINTS') constraintPads.push(pad);
       else if (phase === 'DEFINE_APPROACH') defineApproachPads.push(pad);
+      else if (phase === 'DISCOVERY') discoveryPads.push(pad);
     }
 
     if (Array.isArray(payload?.journey)) {
@@ -337,6 +363,65 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   const potentialSolution = extractText(workshop.scratchpad?.potentialSolution);
   const summaryContent = extractText(workshop.scratchpad?.summaryContent);
 
+  // ── Evidence Documents ───────────────────────────────────────────────────
+  // Attach normalised findings from ready evidence documents so OI agents can
+  // corroborate or challenge discovery signals with uploaded documentary evidence.
+  // Safe: undefined when no evidence documents exist — agents behave as today.
+
+  const evidenceDocuments: WorkshopSignals['evidenceDocuments'] = (() => {
+    const ready = evidenceRows.filter(d => d.summary);
+    if (ready.length === 0) return undefined;
+    return ready.map(d => {
+      const findings = Array.isArray(d.findings)
+        ? (d.findings as Array<{ text?: string }>)
+        : [];
+      return {
+        fileName: d.originalFileName,
+        summary: d.summary!,
+        keyFindings: findings.slice(0, 5).map(f => f.text ?? '').filter(Boolean),
+        signalDirection: d.signalDirection ?? 'mixed',
+        confidence: d.confidence ?? 0.5,
+      };
+    });
+  })();
+
+  // ── Evidence Validation — CV verdict ────────────────────────────────────
+  // Pull cross-validation result from the first ready document that has it populated.
+  // Compute lens gap coverage deterministically from relevantLenses fields.
+
+  const cvSource = evidenceRows.find(d => d.crossValidation != null);
+
+  const evidenceValidation: WorkshopSignals['evidenceValidation'] = (() => {
+    if (!cvSource?.crossValidation) return undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cv = cvSource.crossValidation as any;
+
+    // Lens gap computation — deterministic, no AI needed
+    const coveredLenses = new Set<string>();
+    for (const row of evidenceRows) {
+      const rowLenses = Array.isArray(row.relevantLenses) ? row.relevantLenses as string[] : [];
+      rowLenses.forEach(l => coveredLenses.add(l));
+    }
+    const lensGaps = lenses.map(lens => ({
+      lens,
+      covered: coveredLenses.has(lens),
+      documentCount: evidenceRows.filter(r =>
+        (Array.isArray(r.relevantLenses) ? r.relevantLenses as string[] : []).includes(lens)
+      ).length,
+    }));
+
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      corroborated: cv.corroborated?.map((c: any) => c.discoveryFinding ?? c).filter(Boolean) ?? [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      contradicted: cv.contradicted?.map((c: any) => c.discoveryFinding ?? c).filter(Boolean) ?? [],
+      perceptionGaps: cv.perceptionGaps ?? [],
+      blindSpots: cv.blindSpots ?? [],
+      conclusionImpact: cv.conclusionImpact ?? '',
+      lensGaps,
+    };
+  })();
+
   // ── Assemble WorkshopSignals ──────────────────────────────────────────────
 
   const signals: WorkshopSignals = {
@@ -362,6 +447,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       reimaginePads,
       constraintPads,
       defineApproachPads,
+      discoveryPads,
       journey,
       hemisphereShift,
     },
@@ -370,7 +456,39 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       potentialSolution,
       summaryContent,
     },
+    evidenceDocuments,
+    evidenceValidation,
   };
+
+  // ── Relationship Graph Intelligence ──────────────────────────────────────
+  // Builds a deterministic causal graph from live snapshot nodes + discovery
+  // insights. Gracefully skips when nodes have no theme labels (graph will be
+  // empty) or when no snapshot exists yet.
+  try {
+    const rawNodeMap = latestSnapshot
+      ? ((safeJson<SnapshotPayload>(latestSnapshot.payload)?.nodesById
+          ?? safeJson<SnapshotPayload>(latestSnapshot.payload)?.nodes) ?? {})
+      : {};
+
+    const graphIntelligence = await buildWorkshopGraphIntelligence({
+      workshopId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      nodesById: rawNodeMap as any,
+      insights: workshop.insights,
+      participants: workshop.participants,
+      clientContext: {
+        clientName: workshop.clientName ?? undefined,
+        industry: workshop.industry ?? undefined,
+      },
+    });
+
+    // Only attach when the graph has meaningful coverage
+    if (graphIntelligence.summary.graphCoverageScore > 0 || graphIntelligence.summary.totalChains > 0) {
+      signals.graphIntelligence = graphIntelligence;
+    }
+  } catch (err) {
+    console.error('[signal-aggregator] graph intelligence build failed:', err);
+  }
 
   // ── Historical Memory — cross-workshop semantic retrieval ─────────────────
   // Finds semantically relevant findings from other past workshops in this org.

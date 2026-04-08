@@ -14,12 +14,6 @@ import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 import { buildAnalysisFromFindings } from '@/lib/field-discovery/findings-to-analysis-adapter';
 
 // ══════════════════════════════════════════════════════════
-// CONSTANTS
-// ══════════════════════════════════════════════════════════
-
-const RETAIL_WORKSHOP_ID = 'retail-cx-workshop';
-
-// ══════════════════════════════════════════════════════════
 // TYPES
 // ══════════════════════════════════════════════════════════
 
@@ -78,18 +72,6 @@ type ParticipantReport = {
   createdAt: string;
 };
 
-// ══════════════════════════════════════════════════════════
-// DEMO DATA — retail reference workshop
-// ══════════════════════════════════════════════════════════
-
-const DEMO_SPIDER_DATA: SpiderAxisStat[] = [
-  { axisId: 'people',       label: 'People',       today: { median: 5.3 }, target: { median: 8.2 }, projected: { median: 4.5 } },
-  { axisId: 'organisation', label: 'Organisation',  today: { median: 4.1 }, target: { median: 8.0 }, projected: { median: 3.8 } },
-  { axisId: 'customer',     label: 'Customer',      today: { median: 4.8 }, target: { median: 9.0 }, projected: { median: 4.0 } },
-  { axisId: 'technology',   label: 'Technology',    today: { median: 3.5 }, target: { median: 8.5 }, projected: { median: 3.0 } },
-  { axisId: 'regulation',   label: 'Regulation',    today: { median: 6.2 }, target: { median: 8.0 }, projected: { median: 5.8 } },
-];
-
 // Rotating palette for dynamic lens cards — works for any number of lenses
 const LENS_PALETTE: { badge: string; border: string; header: string }[] = [
   { badge: 'bg-violet-100 text-violet-700', border: 'border-l-violet-400', header: 'bg-violet-50 dark:bg-violet-950/20' },
@@ -102,351 +84,12 @@ const LENS_PALETTE: { badge: string; border: string; header: string }[] = [
   { badge: 'bg-orange-100 text-orange-700', border: 'border-l-orange-400', header: 'bg-orange-50 dark:bg-orange-950/20' },
 ];
 
-const DEMO_WORD_CLOUD: WordCloudItem[] = [
-  { text: 'customer',       value: 47 },
-  { text: 'experience',     value: 42 },
-  { text: 'personalisation',value: 38 },
-  { text: 'journey',        value: 35 },
-  { text: 'omnichannel',    value: 31 },
-  { text: 'automation',     value: 29 },
-  { text: 'loyalty',        value: 27 },
-  { text: 'digital',        value: 26 },
-  { text: 'insight',        value: 25 },
-  { text: 'engagement',     value: 24 },
-  { text: 'friction',       value: 23 },
-  { text: 'seamless',       value: 22 },
-  { text: 'recommendation', value: 21 },
-  { text: 'fulfilment',     value: 20 },
-  { text: 'inventory',      value: 19 },
-  { text: 'conversion',     value: 18 },
-  { text: 'analytics',      value: 18 },
-  { text: 'touchpoint',     value: 17 },
-  { text: 'retention',      value: 17 },
-  { text: 'satisfaction',   value: 16 },
-  { text: 'demand',         value: 15 },
-  { text: 'prediction',     value: 15 },
-  { text: 'segment',        value: 14 },
-  { text: 'feedback',       value: 14 },
-  { text: 'real-time',      value: 13 },
-  { text: 'integration',    value: 13 },
-  { text: 'workforce',      value: 12 },
-  { text: 'training',       value: 12 },
-  { text: 'basket',         value: 11 },
-  { text: 'pricing',        value: 11 },
-  { text: 'supply-chain',   value: 10 },
-  { text: 'sustainability', value: 10 },
-  { text: 'compliance',     value: 9 },
-  { text: 'agility',        value: 9 },
-  { text: 'convenience',    value: 8 },
-  { text: 'data-driven',    value: 8 },
-  { text: 'ai-agent',       value: 8 },
-  { text: 'innovation',     value: 7 },
-  { text: 'click-collect',  value: 7 },
-  { text: 'promotion',      value: 7 },
-  { text: 'self-service',   value: 6 },
-  { text: 'markdown',       value: 6 },
-  { text: 'returns',        value: 6 },
-  { text: 'seasonal',       value: 5 },
-  { text: 'churn',          value: 5 },
-  { text: 'acquisition',    value: 5 },
-  { text: 'mobile',         value: 5 },
-  { text: 'checkout',       value: 4 },
-  { text: 'subscription',   value: 4 },
-  { text: 'community',      value: 4 },
-];
-
-const DEMO_SUMMARY: WorkshopSummary = {
-  workshopId: RETAIL_WORKSHOP_ID,
-  workshopName: 'Retail CX Transformation',
-  generatedAt: new Date().toISOString(),
-  visionStatement:
-    'Transform the end-to-end retail customer experience into a seamlessly personalised, AI-augmented journey — where every touchpoint anticipates customer needs, removes friction, and builds lasting loyalty while empowering colleagues to focus on high-value human interactions.',
-  executiveSummary:
-    'Across 12 participant interviews spanning operations, marketing, technology, and store leadership, a clear consensus emerged: the current retail experience is fragmented across channels, over-reliant on manual processes, and lacking the data infrastructure to deliver meaningful personalisation. Participants consistently identified the gap between customer expectations — shaped by digital-native competitors — and the organisation\'s ability to deliver joined-up experiences. Key themes included the urgent need for omnichannel inventory visibility, AI-driven demand forecasting, and a unified customer data platform. Store colleagues expressed enthusiasm for AI-assisted tools that remove administrative burden, while leadership emphasised the importance of phased adoption to maintain regulatory compliance and workforce confidence. The strongest consensus was that personalisation must move from reactive segmentation to predictive, real-time engagement — but only with transparent data practices that earn customer trust.',
-  lenses: {
-    People:
-      'Workforce readiness is the pivotal enabler. Colleagues are open to AI-assisted tooling but need structured upskilling programmes and clear role evolution pathways. Middle management requires the most support — bridging operational execution with new digital capabilities. Retention risk is highest among experienced store staff who feel technology is being imposed rather than co-designed with them.',
-    Customer:
-      'Customers expect seamless transitions between online browsing, in-store discovery, and post-purchase support. The biggest pain points are inconsistent pricing across channels, lack of real-time stock visibility, and impersonal communications. Loyalty programme members want recognition that transcends transactions — personalised recommendations, early access, and genuine relationship building rather than points-based incentives.',
-    Technology:
-      'The current technology landscape is characterised by siloed systems: a legacy POS, a separate e-commerce platform, and disconnected CRM and inventory management. Participants unanimously prioritised a composable architecture with a unified customer data platform as the foundation. AI adoption should focus first on demand forecasting and inventory optimisation (high impact, lower risk), then progress to customer-facing personalisation engines.',
-    Regulation:
-      'Data privacy and consumer protection regulations are evolving rapidly. Participants flagged GDPR compliance gaps in current marketing automation and a lack of transparent opt-in mechanisms for AI-driven personalisation. Sustainability reporting requirements are also creating urgency around supply chain traceability. A privacy-by-design approach was recommended, embedding compliance into the technology architecture from day one rather than retrofitting.',
-    Organisation:
-      'Organisational structure currently mirrors channel silos — separate teams for online, stores, and wholesale create competing priorities. Participants strongly advocated for cross-functional squads aligned to customer journey stages rather than channels. Decision-making speed was cited as a major constraint — too many approval layers delay responsiveness to market signals. A centre-of-excellence model for AI and data was recommended to accelerate capability building.',
-  },
-  sources: {
-    reportCount: 12,
-    dataPointCount: 847,
-  },
-};
-
-const DEMO_PARTICIPANT_COUNT = 12;
-
-// ══════════════════════════════════════════════════════════
-// DEMO DATA — Discover Analysis (organisational truth engine)
-// ══════════════════════════════════════════════════════════
-
-const DEMO_DISCOVER_ANALYSIS: DiscoverAnalysis = {
-  workshopId: RETAIL_WORKSHOP_ID,
-  generatedAt: new Date().toISOString(),
-  participantCount: 12,
-  alignment: {
-    themes: ['Customer Experience', 'Personalisation', 'Omnichannel', 'Workforce Readiness', 'Data Strategy', 'Legacy Systems', 'Compliance', 'AI Adoption'],
-    actors: ['Customer', 'Store Staff', 'Leadership', 'Technology', 'Operations', 'Marketing', 'Regulation'],
-    cells: [
-      { theme: 'Customer Experience', actor: 'Customer', alignmentScore: 0.82, sentimentBalance: { positive: 8, negative: 1, neutral: 2 }, utteranceCount: 11, sampleQuotes: ['Customers expect seamless transitions', 'Biggest pain is inconsistent pricing'] },
-      { theme: 'Customer Experience', actor: 'Store Staff', alignmentScore: 0.45, sentimentBalance: { positive: 4, negative: 3, neutral: 2 }, utteranceCount: 9, sampleQuotes: ['We want to help but systems slow us down'] },
-      { theme: 'Customer Experience', actor: 'Leadership', alignmentScore: 0.71, sentimentBalance: { positive: 6, negative: 1, neutral: 3 }, utteranceCount: 10, sampleQuotes: ['CX is our number one priority'] },
-      { theme: 'Personalisation', actor: 'Customer', alignmentScore: 0.65, sentimentBalance: { positive: 5, negative: 2, neutral: 1 }, utteranceCount: 8, sampleQuotes: ['Want recognition that transcends transactions'] },
-      { theme: 'Personalisation', actor: 'Marketing', alignmentScore: 0.78, sentimentBalance: { positive: 7, negative: 1, neutral: 2 }, utteranceCount: 10, sampleQuotes: ['Predictive engagement is the future'] },
-      { theme: 'Personalisation', actor: 'Technology', alignmentScore: 0.35, sentimentBalance: { positive: 3, negative: 3, neutral: 2 }, utteranceCount: 8, sampleQuotes: ['Current data infrastructure cannot support it'] },
-      { theme: 'Omnichannel', actor: 'Operations', alignmentScore: -0.22, sentimentBalance: { positive: 2, negative: 5, neutral: 3 }, utteranceCount: 10, sampleQuotes: ['Channel silos create competing priorities'] },
-      { theme: 'Omnichannel', actor: 'Store Staff', alignmentScore: -0.35, sentimentBalance: { positive: 1, negative: 4, neutral: 1 }, utteranceCount: 6, sampleQuotes: ['No visibility on online stock'] },
-      { theme: 'Omnichannel', actor: 'Leadership', alignmentScore: 0.55, sentimentBalance: { positive: 5, negative: 2, neutral: 2 }, utteranceCount: 9, sampleQuotes: ['We need cross-functional squads'] },
-      { theme: 'Workforce Readiness', actor: 'Store Staff', alignmentScore: -0.48, sentimentBalance: { positive: 1, negative: 5, neutral: 1 }, utteranceCount: 7, sampleQuotes: ['Technology imposed rather than co-designed'] },
-      { theme: 'Workforce Readiness', actor: 'Leadership', alignmentScore: 0.62, sentimentBalance: { positive: 5, negative: 1, neutral: 2 }, utteranceCount: 8, sampleQuotes: ['Phased adoption is key'] },
-      { theme: 'Workforce Readiness', actor: 'Operations', alignmentScore: 0.15, sentimentBalance: { positive: 3, negative: 2, neutral: 3 }, utteranceCount: 8, sampleQuotes: ['Middle management needs most support'] },
-      { theme: 'Data Strategy', actor: 'Technology', alignmentScore: 0.72, sentimentBalance: { positive: 6, negative: 1, neutral: 1 }, utteranceCount: 8, sampleQuotes: ['Unified customer data platform is the foundation'] },
-      { theme: 'Data Strategy', actor: 'Marketing', alignmentScore: 0.55, sentimentBalance: { positive: 4, negative: 1, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['We need real-time customer insight'] },
-      { theme: 'Data Strategy', actor: 'Regulation', alignmentScore: -0.40, sentimentBalance: { positive: 1, negative: 4, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['GDPR compliance gaps in marketing automation'] },
-      { theme: 'Legacy Systems', actor: 'Technology', alignmentScore: -0.65, sentimentBalance: { positive: 0, negative: 6, neutral: 1 }, utteranceCount: 7, sampleQuotes: ['Legacy POS, separate e-commerce, disconnected CRM'] },
-      { theme: 'Legacy Systems', actor: 'Store Staff', alignmentScore: -0.55, sentimentBalance: { positive: 0, negative: 4, neutral: 1 }, utteranceCount: 5, sampleQuotes: ['Systems slow everything down'] },
-      { theme: 'Legacy Systems', actor: 'Operations', alignmentScore: -0.30, sentimentBalance: { positive: 1, negative: 3, neutral: 2 }, utteranceCount: 6, sampleQuotes: ['Integration is the biggest barrier'] },
-      { theme: 'Compliance', actor: 'Regulation', alignmentScore: 0.80, sentimentBalance: { positive: 5, negative: 0, neutral: 1 }, utteranceCount: 6, sampleQuotes: ['Privacy-by-design from day one'] },
-      { theme: 'Compliance', actor: 'Leadership', alignmentScore: 0.30, sentimentBalance: { positive: 3, negative: 2, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['Must not slow us down'] },
-      { theme: 'AI Adoption', actor: 'Technology', alignmentScore: 0.68, sentimentBalance: { positive: 5, negative: 1, neutral: 1 }, utteranceCount: 7, sampleQuotes: ['Start with demand forecasting, lower risk'] },
-      { theme: 'AI Adoption', actor: 'Store Staff', alignmentScore: 0.25, sentimentBalance: { positive: 3, negative: 2, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['Open to AI tools that remove admin burden'] },
-      { theme: 'AI Adoption', actor: 'Leadership', alignmentScore: 0.58, sentimentBalance: { positive: 4, negative: 1, neutral: 2 }, utteranceCount: 7, sampleQuotes: ['Phased approach maintains workforce confidence'] },
-    ],
-  },
-  tensions: {
-    tensions: [
-      {
-        id: 'tension-1',
-        topic: 'Speed of AI adoption vs workforce readiness',
-        rank: 1,
-        tensionIndex: 12,
-        severity: 'critical',
-        viewpoints: [
-          { actor: 'Leadership', position: 'Need to accelerate AI to stay competitive', sentiment: 'positive', evidenceQuote: 'We cannot afford to wait while competitors automate' },
-          { actor: 'Store Staff', position: 'Feel technology is imposed without co-design', sentiment: 'negative', evidenceQuote: 'Nobody asked us what tools we actually need' },
-          { actor: 'Operations', position: 'Middle management lacks skills to bridge the gap', sentiment: 'neutral', evidenceQuote: 'Training programmes are not keeping pace with rollouts' },
-        ],
-        affectedActors: ['Store Staff', 'Leadership', 'Operations', 'Customer'],
-        relatedConstraints: ['constraint-1', 'constraint-3'],
-        domain: 'People',
-      },
-      {
-        id: 'tension-2',
-        topic: 'Data-driven personalisation vs privacy compliance',
-        rank: 2,
-        tensionIndex: 9,
-        severity: 'critical',
-        viewpoints: [
-          { actor: 'Marketing', position: 'Predictive engagement requires deep customer data', sentiment: 'positive', evidenceQuote: 'We need to move from segments to individual profiles' },
-          { actor: 'Regulation', position: 'Current data practices have GDPR compliance gaps', sentiment: 'negative', evidenceQuote: 'Opt-in mechanisms are not transparent enough' },
-          { actor: 'Customer', position: 'Want personalisation but expect transparent data use', sentiment: 'mixed', evidenceQuote: 'I want relevant offers but not to feel surveilled' },
-        ],
-        affectedActors: ['Customer', 'Marketing', 'Regulation', 'Technology'],
-        relatedConstraints: ['constraint-2', 'constraint-5'],
-        domain: 'Customer',
-      },
-      {
-        id: 'tension-3',
-        topic: 'Channel-centric structure vs omnichannel aspiration',
-        rank: 3,
-        tensionIndex: 6,
-        severity: 'significant',
-        viewpoints: [
-          { actor: 'Leadership', position: 'Advocate cross-functional journey squads', sentiment: 'positive', evidenceQuote: 'We need to organise around customer journeys not channels' },
-          { actor: 'Operations', position: 'Channel silos create competing priorities and metrics', sentiment: 'negative', evidenceQuote: 'Online and stores still fight over the same customers' },
-          { actor: 'Store Staff', position: 'No visibility on online stock or customer history', sentiment: 'negative', evidenceQuote: 'Customer walks in expecting us to know their online basket' },
-        ],
-        affectedActors: ['Operations', 'Store Staff', 'Customer', 'Leadership'],
-        relatedConstraints: ['constraint-4', 'constraint-6'],
-        domain: 'Organisation',
-      },
-      {
-        id: 'tension-4',
-        topic: 'Decision-making speed vs governance layers',
-        rank: 4,
-        tensionIndex: 4,
-        severity: 'significant',
-        viewpoints: [
-          { actor: 'Operations', position: 'Too many approval layers delay market responsiveness', sentiment: 'negative', evidenceQuote: 'By the time we get sign-off, the opportunity has passed' },
-          { actor: 'Leadership', position: 'Governance protects from costly mistakes', sentiment: 'neutral', evidenceQuote: 'We have accountability structures for a reason' },
-        ],
-        affectedActors: ['Operations', 'Leadership', 'Marketing'],
-        relatedConstraints: ['constraint-6'],
-        domain: 'Organisation',
-      },
-      {
-        id: 'tension-5',
-        topic: 'Investment in technology modernisation vs budget constraints',
-        rank: 5,
-        tensionIndex: 2,
-        severity: 'moderate',
-        viewpoints: [
-          { actor: 'Technology', position: 'Composable architecture is the only viable path', sentiment: 'positive', evidenceQuote: 'We must replace legacy POS and build a unified platform' },
-          { actor: 'Leadership', position: 'Significant capital required with uncertain ROI timeline', sentiment: 'mixed', evidenceQuote: 'The board needs to see returns within 18 months' },
-        ],
-        affectedActors: ['Technology', 'Leadership', 'Operations'],
-        relatedConstraints: ['constraint-1', 'constraint-4'],
-        domain: 'Technology',
-      },
-    ],
-  },
-  narrative: {
-    layerAssignments: [
-      { participantId: 'p1', name: 'Sarah Chen', role: 'Chief Customer Officer', department: 'Executive', layer: 'executive', confidence: 0.95, aiReason: 'C-suite role with strategic authority', isOverridden: false },
-      { participantId: 'p2', name: 'James Wright', role: 'VP Technology', department: 'IT', layer: 'executive', confidence: 0.92, aiReason: 'VP-level technology leadership', isOverridden: false },
-      { participantId: 'p3', name: 'Maria Lopez', role: 'Head of Stores', department: 'Retail Operations', layer: 'executive', confidence: 0.88, aiReason: 'Head of department with strategic scope', isOverridden: false },
-      { participantId: 'p4', name: 'David Kim', role: 'Operations Manager', department: 'Supply Chain', layer: 'operational', confidence: 0.90, aiReason: 'Manager-level operational role', isOverridden: false },
-      { participantId: 'p5', name: 'Emma Taylor', role: 'Marketing Lead', department: 'Marketing', layer: 'operational', confidence: 0.85, aiReason: 'Team lead in marketing function', isOverridden: false },
-      { participantId: 'p6', name: 'Tom Richards', role: 'Digital Analyst', department: 'E-commerce', layer: 'operational', confidence: 0.82, aiReason: 'Analyst role in digital function', isOverridden: false },
-      { participantId: 'p7', name: 'Lisa Patel', role: 'Compliance Coordinator', department: 'Legal', layer: 'operational', confidence: 0.80, aiReason: 'Coordinator role in compliance', isOverridden: false },
-      { participantId: 'p8', name: 'Ryan O\'Brien', role: 'Store Team Leader', department: 'Retail', layer: 'frontline', confidence: 0.88, aiReason: 'Team leader in store operations', isOverridden: false },
-      { participantId: 'p9', name: 'Amy Zhang', role: 'Customer Service Rep', department: 'Contact Centre', layer: 'frontline', confidence: 0.95, aiReason: 'Frontline customer-facing role', isOverridden: false },
-      { participantId: 'p10', name: 'Chris Murphy', role: 'Stock Associate', department: 'Warehouse', layer: 'frontline', confidence: 0.92, aiReason: 'Operational execution role', isOverridden: false },
-      { participantId: 'p11', name: 'Priya Sharma', role: 'Visual Merchandiser', department: 'Retail', layer: 'frontline', confidence: 0.85, aiReason: 'Execution-focused retail role', isOverridden: false },
-      { participantId: 'p12', name: 'Alex Turner', role: 'Delivery Driver', department: 'Logistics', layer: 'frontline', confidence: 0.95, aiReason: 'Frontline delivery role', isOverridden: false },
-    ],
-    layers: [
-      {
-        layer: 'executive',
-        participantCount: 3,
-        topTerms: [
-          { term: 'transformation', count: 18, normalised: 1.0 },
-          { term: 'personalisation', count: 15, normalised: 0.83 },
-          { term: 'competitive', count: 12, normalised: 0.67 },
-          { term: 'strategy', count: 11, normalised: 0.61 },
-          { term: 'investment', count: 10, normalised: 0.56 },
-          { term: 'platform', count: 9, normalised: 0.50 },
-          { term: 'governance', count: 8, normalised: 0.44 },
-          { term: 'capability', count: 7, normalised: 0.39 },
-        ],
-        dominantSentiment: 'positive',
-        temporalFocus: { past: 0.10, present: 0.30, future: 0.60 },
-        samplePhrases: ['We need to transform the entire customer journey', 'Competitive pressure demands acceleration'],
-      },
-      {
-        layer: 'operational',
-        participantCount: 4,
-        topTerms: [
-          { term: 'process', count: 16, normalised: 1.0 },
-          { term: 'integration', count: 14, normalised: 0.88 },
-          { term: 'compliance', count: 12, normalised: 0.75 },
-          { term: 'workflow', count: 10, normalised: 0.63 },
-          { term: 'data', count: 9, normalised: 0.56 },
-          { term: 'coordination', count: 8, normalised: 0.50 },
-          { term: 'bottleneck', count: 7, normalised: 0.44 },
-          { term: 'approval', count: 6, normalised: 0.38 },
-        ],
-        dominantSentiment: 'neutral',
-        temporalFocus: { past: 0.25, present: 0.50, future: 0.25 },
-        samplePhrases: ['Integration between systems is the biggest barrier', 'Approval layers delay everything'],
-      },
-      {
-        layer: 'frontline',
-        participantCount: 5,
-        topTerms: [
-          { term: 'customer', count: 22, normalised: 1.0 },
-          { term: 'frustration', count: 14, normalised: 0.64 },
-          { term: 'workload', count: 12, normalised: 0.55 },
-          { term: 'systems', count: 11, normalised: 0.50 },
-          { term: 'training', count: 9, normalised: 0.41 },
-          { term: 'pressure', count: 8, normalised: 0.36 },
-          { term: 'support', count: 7, normalised: 0.32 },
-          { term: 'recognition', count: 6, normalised: 0.27 },
-        ],
-        dominantSentiment: 'negative',
-        temporalFocus: { past: 0.35, present: 0.50, future: 0.15 },
-        samplePhrases: ['Systems slow us down every day', 'Nobody asked us what tools we need'],
-      },
-    ],
-    divergencePoints: [
-      {
-        topic: 'AI Adoption',
-        layerPositions: [
-          { layer: 'executive', language: 'Competitive necessity', sentiment: 'positive' },
-          { layer: 'operational', language: 'Skills gap concern', sentiment: 'neutral' },
-          { layer: 'frontline', language: 'Workload threat', sentiment: 'negative' },
-        ],
-      },
-      {
-        topic: 'Omnichannel Strategy',
-        layerPositions: [
-          { layer: 'executive', language: 'Journey-centric transformation', sentiment: 'positive' },
-          { layer: 'frontline', language: 'No stock visibility, frustrated customers', sentiment: 'negative' },
-        ],
-      },
-      {
-        topic: 'Decision Speed',
-        layerPositions: [
-          { layer: 'executive', language: 'Governance protects quality', sentiment: 'neutral' },
-          { layer: 'operational', language: 'Approval delays cost opportunities', sentiment: 'negative' },
-        ],
-      },
-      {
-        topic: 'Technology Change',
-        layerPositions: [
-          { layer: 'executive', language: 'Strategic investment priority', sentiment: 'positive' },
-          { layer: 'operational', language: 'Integration complexity', sentiment: 'neutral' },
-          { layer: 'frontline', language: 'Tools imposed without input', sentiment: 'negative' },
-        ],
-      },
-    ],
-  },
-  constraints: {
-    constraints: [
-      { id: 'constraint-1', description: 'Skill gaps in AI/digital across middle management', domain: 'People', frequency: 8, severity: 'critical', weight: 24, dependsOn: [], blocks: ['constraint-3'] },
-      { id: 'constraint-2', description: 'GDPR compliance gaps in marketing automation', domain: 'Regulation', frequency: 6, severity: 'critical', weight: 18, dependsOn: [], blocks: ['constraint-5'] },
-      { id: 'constraint-3', description: 'Workforce resistance to technology change', domain: 'People', frequency: 7, severity: 'significant', weight: 14, dependsOn: ['constraint-1'], blocks: [] },
-      { id: 'constraint-4', description: 'Legacy POS and siloed e-commerce platform', domain: 'Technology', frequency: 9, severity: 'critical', weight: 27, dependsOn: [], blocks: ['constraint-5', 'constraint-6'] },
-      { id: 'constraint-5', description: 'No unified customer data platform', domain: 'Technology', frequency: 7, severity: 'significant', weight: 14, dependsOn: ['constraint-4'], blocks: [] },
-      { id: 'constraint-6', description: 'Channel-siloed organisational structure', domain: 'Organisation', frequency: 6, severity: 'significant', weight: 12, dependsOn: ['constraint-4'], blocks: [] },
-      { id: 'constraint-7', description: 'Budget uncertainty for technology modernisation', domain: 'Organisation', frequency: 4, severity: 'moderate', weight: 4, dependsOn: [], blocks: ['constraint-4'] },
-      { id: 'constraint-8', description: 'Cultural resistance to data-driven decisions', domain: 'People', frequency: 3, severity: 'moderate', weight: 3, dependsOn: ['constraint-1'], blocks: [] },
-    ],
-    relationships: [
-      { source: 'constraint-1', target: 'constraint-3', type: 'blocks' },
-      { source: 'constraint-4', target: 'constraint-5', type: 'blocks' },
-      { source: 'constraint-4', target: 'constraint-6', type: 'blocks' },
-      { source: 'constraint-7', target: 'constraint-4', type: 'blocks' },
-      { source: 'constraint-2', target: 'constraint-5', type: 'blocks' },
-      { source: 'constraint-1', target: 'constraint-8', type: 'amplifies' },
-      { source: 'constraint-3', target: 'constraint-1', type: 'depends_on' },
-      { source: 'constraint-5', target: 'constraint-4', type: 'depends_on' },
-      { source: 'constraint-6', target: 'constraint-4', type: 'depends_on' },
-      { source: 'constraint-8', target: 'constraint-1', type: 'depends_on' },
-    ],
-  },
-  confidence: {
-    overall: { certain: 45, hedging: 28, uncertain: 12 },
-    byDomain: [
-      { domain: 'Customer', distribution: { certain: 12, hedging: 5, uncertain: 2 }, hedgingPhrases: ['It seems like customers want...', 'We think the trend is...'] },
-      { domain: 'Technology', distribution: { certain: 10, hedging: 8, uncertain: 4 }, hedgingPhrases: ['The platform might support...', 'Integration could be challenging'] },
-      { domain: 'People', distribution: { certain: 8, hedging: 7, uncertain: 3 }, hedgingPhrases: ['Staff seem open to change...', 'Training may not be sufficient'] },
-      { domain: 'Organisation', distribution: { certain: 9, hedging: 5, uncertain: 2 }, hedgingPhrases: ['Structure probably needs to change'] },
-      { domain: 'Regulation', distribution: { certain: 6, hedging: 3, uncertain: 1 }, hedgingPhrases: ['Regulations are likely to tighten'] },
-    ],
-    byLayer: [
-      { layer: 'executive', distribution: { certain: 18, hedging: 8, uncertain: 2 } },
-      { layer: 'operational', distribution: { certain: 15, hedging: 12, uncertain: 5 } },
-      { layer: 'frontline', distribution: { certain: 12, hedging: 8, uncertain: 5 } },
-    ],
-  },
-};
-
 // ══════════════════════════════════════════════════════════
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════
 
 export default function DiscoveryPage({ params }: PageProps) {
   const { id: workshopId } = use(params);
-  const isRetailDemo = workshopId === RETAIL_WORKSHOP_ID;
-
   const [spiderData, setSpiderData] = useState<SpiderAxisStat[] | null>(null);
   const [wordCloudData, setWordCloudData] = useState<WordCloudItem[] | null>(null);
   const [summary, setSummary] = useState<WorkshopSummary | null>(null);
@@ -555,10 +198,6 @@ export default function DiscoveryPage({ params }: PageProps) {
         }
       } catch { /* continue to fallback */ }
 
-      // 3. If no findings AND retail demo, use hardcoded demo data
-      if (isRetailDemo) {
-        setAnalysis(DEMO_DISCOVER_ANALYSIS);
-      }
       setAnalysisCheckDone(true);
     }
 
@@ -574,11 +213,11 @@ export default function DiscoveryPage({ params }: PageProps) {
 
     fetchAnalysis();
     fetchWorkshopInfo();
-  }, [workshopId, isRetailDemo]);
+  }, [workshopId]);
 
   // ── Auto-generate analysis on first load if no cached data ───────────
   useEffect(() => {
-    if (analysisCheckDone && !analysis && !isRetailDemo && !analysisLoading) {
+    if (analysisCheckDone && !analysis && !analysisLoading) {
       generateAnalysis();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -623,22 +262,11 @@ export default function DiscoveryPage({ params }: PageProps) {
         // fail silently
       }
 
-      // Retail demo fallback for spider + word cloud
-      if (isRetailDemo) {
-        if (!gotSpider) {
-          setSpiderData(DEMO_SPIDER_DATA);
-          setParticipantCount(DEMO_PARTICIPANT_COUNT);
-        }
-        if (!gotKeywords) {
-          setWordCloudData(DEMO_WORD_CLOUD);
-        }
-      }
-
       setLoading(false);
     }
 
     fetchDiscoveryData();
-  }, [workshopId, isRetailDemo]);
+  }, [workshopId]);
 
   // ── Fetch cached summary on load, auto-generate once if no cache ────
   useEffect(() => {
@@ -658,12 +286,6 @@ export default function DiscoveryPage({ params }: PageProps) {
           }
         }
       } catch { /* fall through */ }
-      // Retail demo fallback
-      if (isRetailDemo) {
-        setSummary(DEMO_SUMMARY);
-        setSummaryLoading(false);
-        return;
-      }
       // No cached summary — auto-generate once and cache it
       setSummaryLoading(false);
       setSummaryGenerating(true);
@@ -680,7 +302,7 @@ export default function DiscoveryPage({ params }: PageProps) {
       setSummaryGenerating(false);
     }
     fetchCachedSummary();
-  }, [workshopId, isRetailDemo]);
+  }, [workshopId]);
 
   // ── Generate summary via GPT (POST = generate + cache) ───────────────
   const generateSummary = async () => {

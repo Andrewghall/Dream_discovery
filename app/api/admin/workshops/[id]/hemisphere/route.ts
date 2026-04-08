@@ -7,6 +7,7 @@ import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-acces
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60; // Vercel: allow up to 60s for large snapshot corpora
 
 type RunType = 'BASELINE' | 'FOLLOWUP';
 
@@ -422,7 +423,13 @@ export async function GET(
         });
       }
 
-      const allNodes: HemisphereNode[] = [...nodesById.values()].sort((a, b) => b.weight - a.weight);
+      // Cap to top 300 nodes by weight for visualization — this keeps the graph readable
+      // and prevents timeouts when corpora are large (1000+ signals).
+      // Nodes are already richness-ranked; the top 300 carry the dominant patterns.
+      const MAX_NODES_FOR_GRAPH = 300;
+      const allNodesSorted = [...nodesById.values()].sort((a, b) => b.weight - a.weight);
+      const allNodes: HemisphereNode[] = allNodesSorted.slice(0, MAX_NODES_FOR_GRAPH);
+      const totalSignalCount = nodesById.size; // report full corpus size for UI display
 
       // If blueprint lenses are absent, infer industryDimensions from node phaseTags + datum.lens fields
       if (!industryDimensions) {
@@ -444,8 +451,8 @@ export async function GET(
         }
       }
 
-      // Compute edges using Jaccard similarity (same logic as session-based flow)
-      const nodesForSimilarity = allNodes.slice(0, 140);
+      // Compute edges using Jaccard similarity — with the 300-node cap, process all nodes.
+      const nodesForSimilarity = allNodes; // was slice(0, 140); now all 300 are processed
       const tokenById = new Map(nodesForSimilarity.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
 
       const edgesById = new Map<string, HemisphereEdge>();
@@ -532,7 +539,11 @@ export async function GET(
         centralNodes.some((n) => n.type === 'CONSTRAINT') ? 'CONSTRAINT' : 'CHALLENGE';
 
       let coreSummary = '';
+      // Skip OpenAI synthesis for large corpora (totalSignalCount > 500) to prevent timeout.
+      // Core Truth for large corpora is pre-synthesised via the output intelligence pipeline.
+      const skipOpenAI = totalSignalCount > 500;
       try {
+        if (skipOpenAI) throw new Error('Large corpus — skipping real-time Core Truth synthesis');
         if (!env.OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY');
 
         const evidenceQuotes = driverNodes
@@ -616,20 +627,21 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
         edges.push({ id, source: src, target: tgt, strength, kind: 'DERIVATIVE' });
       }
 
-      // Orphan recovery for snapshot nodes
+      // Orphan recovery: connect unlinked nodes to their best neighbour or CORE_TRUTH.
+      // Cap at 200 orphans to bound worst-case time at ~200×300 Jaccard pairs.
       const tokenAll = new Map(allNodes.map((n) => [n.id, tokenSet(`${n.label} ${n.summary || ''}`)]));
       let degree2 = degreeByNode(edges);
       const orphanIds = allNodes
         .map((n) => n.id)
-        .filter((id) => id !== coreTruthNodeId && (degree2.get(id) || 0) <= 0);
+        .filter((id) => id !== coreTruthNodeId && (degree2.get(id) || 0) <= 0)
+        .slice(0, 200); // cap: beyond 200 orphans, fall back to CORE_TRUTH links below
 
       if (orphanIds.length) {
         for (const orphanId of orphanIds) {
-          const orphanNode = allNodes.find((n) => n.id === orphanId);
-          if (!orphanNode) continue;
           const ta = tokenAll.get(orphanId) || new Set<string>();
 
           let best: { other: HemisphereNode; sim: number } | null = null;
+          // Search through all 300 nodes for best Jaccard match
           for (const other of allNodes) {
             if (other.id === orphanId) continue;
             const tb = tokenAll.get(other.id) || new Set<string>();
@@ -650,6 +662,18 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
         degree2 = degreeByNode(edges);
       }
 
+      // Any nodes still orphaned after cap: link directly to CORE_TRUTH
+      const coreNode = allNodes.find((n) => n.id === coreTruthNodeId);
+      if (coreNode) {
+        const stillOrphanIds = allNodes
+          .map((n) => n.id)
+          .filter((id) => id !== coreTruthNodeId && (degree2.get(id) || 0) <= 0);
+        for (const orphanId of stillOrphanIds) {
+          const id = `REINFORCING:${orphanId < coreTruthNodeId ? `${orphanId}|${coreTruthNodeId}` : `${coreTruthNodeId}|${orphanId}`}`;
+          edges.push({ id, source: orphanId, target: coreTruthNodeId, strength: 0.12, kind: 'REINFORCING' });
+        }
+      }
+
       const allNodesById = new Set(allNodes.map((n) => n.id));
       const filteredEdges = edges.filter((e) => allNodesById.has(e.source) && allNodesById.has(e.target));
 
@@ -668,6 +692,7 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
         generatedAt: new Date().toISOString(),
         sessionCount: 0,
         participantCount: 0,
+        totalSignalCount,  // full corpus size before the 300-node cap
         hemisphereGraph,
         industryDimensions,
       });

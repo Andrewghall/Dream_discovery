@@ -12,6 +12,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import { prisma } from '@/lib/prisma';
 import type {
   WorkshopIntelligence,
@@ -403,13 +404,13 @@ export async function runDiscoveryIntelligenceAgent(
         ? { type: 'function', function: { name: 'commit_briefing' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);
@@ -756,13 +757,13 @@ Submit your review with submit_review when you've assessed the proposals.`;
         ? { type: 'function', function: { name: 'submit_review' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools: DISCOVERY_REVIEW_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

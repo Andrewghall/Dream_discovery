@@ -2,7 +2,7 @@
  * Question Set Agent -- Blueprint Integration Tests
  *
  * Covers:
- *  - getPhaseLensOrder() priority: blueprint > research > defaults
+ *  - getPhaseLensOrder() priority: blueprint > research (throws if neither present)
  *  - buildQuestionSetSystemPrompt() with/without blueprint constraints
  *  - buildWorkshopQuestionSet() includes dataConfidence and dataSufficiencyNotes
  *  - get_blueprint_constraints tool handler behavior
@@ -102,10 +102,10 @@ describe('getPhaseLensOrder -- blueprint priority', () => {
     expect(result.source).toBe('research_dimensions');
   });
 
-  it('falls back to default lenses when both blueprint and research are null', () => {
-    const result = getPhaseLensOrder('REIMAGINE', null, null);
-    expect(result.lenses).toEqual(['People', 'Customer', 'Organisation']);
-    expect(result.source).toBe('generic_fallback');
+  it('throws when both blueprint and research are null (no generic fallback allowed)', () => {
+    expect(() => getPhaseLensOrder('REIMAGINE', null, null)).toThrow(
+      /Workshop lens set is required/,
+    );
   });
 
   it('blueprint takes priority over research even when both are provided', () => {
@@ -237,12 +237,26 @@ describe('buildQuestionSetSystemPrompt -- blueprint constraints', () => {
 // buildWorkshopQuestionSet() -- data sufficiency
 // ================================================================
 
-describe('buildWorkshopQuestionSet -- data sufficiency', () => {
-  const emptyPhases = new Map<WorkshopPhase, FacilitationQuestion[]>();
+function makePhases(): Map<WorkshopPhase, FacilitationQuestion[]> {
+  const phases = new Map<WorkshopPhase, FacilitationQuestion[]>();
+  for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as WorkshopPhase[]) {
+    phases.set(phase, [{
+      id: 'test-q',
+      phase,
+      lens: 'Agent Experience',
+      text: 'Test question',
+      purpose: 'Test',
+      order: 1,
+      subQuestions: [],
+    }]);
+  }
+  return phases;
+}
 
+describe('buildWorkshopQuestionSet -- data sufficiency', () => {
   it('includes dataConfidence in output', () => {
     const result = buildWorkshopQuestionSet(
-      emptyPhases, 'Test rationale', mockResearch, null, 'high', ['All data available'],
+      makePhases(), 'Test rationale', mockResearch, null, 'high', ['All data available'],
     );
     expect(result.dataConfidence).toBe('high');
   });
@@ -250,14 +264,14 @@ describe('buildWorkshopQuestionSet -- data sufficiency', () => {
   it('includes dataSufficiencyNotes in output', () => {
     const notes = ['No Discovery data', 'Research was limited'];
     const result = buildWorkshopQuestionSet(
-      emptyPhases, 'Test rationale', mockResearch, null, 'moderate', notes,
+      makePhases(), 'Test rationale', mockResearch, null, 'moderate', notes,
     );
     expect(result.dataSufficiencyNotes).toEqual(notes);
   });
 
   it('defaults to low confidence when not provided', () => {
     const result = buildWorkshopQuestionSet(
-      emptyPhases, 'Test rationale', null,
+      makePhases(), 'Test rationale', mockResearch,
     );
     expect(result.dataConfidence).toBe('low');
     expect(result.dataSufficiencyNotes).toEqual(['No data confidence assessment available']);
@@ -266,26 +280,23 @@ describe('buildWorkshopQuestionSet -- data sufficiency', () => {
   it('uses blueprint lenses in phase lens order', () => {
     const bp = ccBlueprintWithResearch();
     const result = buildWorkshopQuestionSet(
-      emptyPhases, 'Test rationale', mockResearch, bp, 'high', [],
+      makePhases(), 'Test rationale', mockResearch, bp, 'high', [],
     );
     // CONSTRAINTS phase should use blueprint lenses, not generic defaults
     const constraintLenses = result.phases.CONSTRAINTS.lensOrder;
     expect(constraintLenses).not.toEqual(['Regulation', 'Customer', 'Technology', 'Organisation', 'People']);
   });
 
-  it('always has all 3 phases even with empty designed phases', () => {
-    const result = buildWorkshopQuestionSet(
-      emptyPhases, 'Test rationale', null,
-    );
-    expect(result.phases.REIMAGINE).toBeDefined();
-    expect(result.phases.CONSTRAINTS).toBeDefined();
-    expect(result.phases.DEFINE_APPROACH).toBeDefined();
+  it('throws when a phase has no questions (incomplete question set not allowed)', () => {
+    expect(() => buildWorkshopQuestionSet(
+      new Map(), 'Test rationale', mockResearch,
+    )).toThrow(/has no questions/);
   });
 
   it('has generatedAtMs timestamp', () => {
     const before = Date.now();
     const result = buildWorkshopQuestionSet(
-      emptyPhases, 'Test rationale', null,
+      makePhases(), 'Test rationale', mockResearch,
     );
     expect(result.generatedAtMs).toBeGreaterThanOrEqual(before);
   });

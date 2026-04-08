@@ -5,6 +5,7 @@ import { HeroSection } from '@/components/dream-landing/hero-section';
 import { ScrollReveal } from '@/components/dream-landing/scroll-reveal';
 import { CTASection } from '@/components/dream-landing/cta-section';
 import { DifferentiatorsSection } from '@/components/dream-landing/differentiators-section';
+import { ComparisonTable } from '@/components/dream-landing/comparison-table';
 import { JourneyShowcase } from '@/components/dream-landing/journey-showcase';
 import dynamic from 'next/dynamic';
 
@@ -77,10 +78,13 @@ export default function DreamLandingPage() {
       {/* ═══ 1. HERO ═══ */}
       <HeroSection />
 
-      {/* ═══ 2. CAPABILITY MATURITY ASSESSMENT ═══ */}
+      {/* ═══ 2. COMPETITIVE COMPARISON TABLE ═══ */}
+      <ComparisonTable />
+
+      {/* ═══ 3. CAPABILITY MATURITY ASSESSMENT ═══ */}
       <AssessmentSection />
 
-      {/* ═══ 3. VALUE GRID ═══ */}
+      {/* ═══ 4. VALUE GRID ═══ */}
       <section className="bg-white py-16">
         <div className="max-w-5xl mx-auto px-6">
           <ScrollReveal>
@@ -104,10 +108,75 @@ export default function DreamLandingPage() {
         </div>
       </section>
 
-      {/* ═══ 4. WHAT MAKES DREAM DIFFERENT  -  collapsible cards ═══ */}
+      {/* ═══ 5. WHAT MAKES DREAM DIFFERENT  -  collapsible cards ═══ */}
       <DifferentiatorsSection />
 
-      {/* ═══ 5. ACTOR JOURNEY SHOWCASE ═══ */}
+      {/* ═══ 6. THE DREAM STORY BANNER ═══ */}
+      <section className="bg-[#0a0a0a] py-20 relative overflow-hidden">
+        {/* Subtle green glow */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(92,242,142,0.06), transparent)' }}
+        />
+        <div className="max-w-5xl mx-auto px-6 relative z-10">
+          <ScrollReveal>
+            <div className="text-center mb-10">
+              <p className="text-[#5cf28e]/70 text-xs font-semibold tracking-[0.25em] uppercase mb-4">
+                Interactive Presentation
+              </p>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                The DREAM Story
+              </h2>
+              <p className="text-white/50 max-w-xl mx-auto text-base leading-relaxed">
+                Ten slides. The problem every leadership team faces, why traditional methods fail, and how DREAM solves it — step by step, with live platform demos built in.
+              </p>
+            </div>
+          </ScrollReveal>
+
+          {/* Preview strip — stage labels */}
+          <ScrollReveal delay={150}>
+            <div className="flex items-center justify-center gap-0 mb-10 overflow-x-auto pb-2">
+              {[
+                { num: '01', label: 'The Noise' },
+                { num: '02', label: 'The Pause' },
+                { num: '03', label: 'Become' },
+                { num: '04', label: 'How We Listen' },
+                { num: '05', label: 'The Method' },
+                { num: '06', label: 'EthentaFlow™' },
+                { num: '07', label: 'In Action' },
+                { num: '08', label: 'What You Get' },
+              ].map((s, i, arr) => (
+                <div key={s.num} className="flex items-center shrink-0">
+                  <div className="text-center px-3">
+                    <p className="text-[10px] text-[#5cf28e]/40 font-mono mb-1">{s.num}</p>
+                    <p className="text-xs text-white/50 whitespace-nowrap">{s.label}</p>
+                  </div>
+                  {i < arr.length - 1 && (
+                    <div className="w-6 h-px bg-white/10 shrink-0" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal delay={250}>
+            <div className="flex justify-center">
+              <a
+                href="/experience"
+                className="group inline-flex items-center gap-3 px-8 py-4 rounded-xl bg-[#5cf28e] text-[#0d0d0d] font-semibold text-base hover:bg-[#50c878] transition-all shadow-lg shadow-[#5cf28e]/20 hover:shadow-xl hover:shadow-[#5cf28e]/30"
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                  <path d="M3 2.5a.5.5 0 0 1 .8-.4l9 5.5a.5.5 0 0 1 0 .8l-9 5.5A.5.5 0 0 1 3 13.5v-11Z"/>
+                </svg>
+                Watch The DREAM Story
+                <span className="text-[#0d0d0d]/50 text-sm font-normal">10 slides · ~5 min</span>
+              </a>
+            </div>
+          </ScrollReveal>
+        </div>
+      </section>
+
+      {/* ═══ 6. ACTOR JOURNEY SHOWCASE ═══ */}
       <JourneyShowcase />
 
       {/* ═══ 6. ENTERPRISE AI ADOPTION SPOTLIGHT ═══ */}
@@ -154,7 +223,7 @@ export default function DreamLandingPage() {
 
                 {/* Breadth signal */}
                 <div className="mt-8 pt-6 border-t border-white/10">
-                  <p className="text-white/30 text-xs font-semibold uppercase tracking-wider mb-3">DREAM also powers</p>
+                  <p className="text-white/55 text-xs font-semibold uppercase tracking-wider mb-3">DREAM also powers</p>
                   <div className="flex flex-wrap gap-2 mb-4">
                     {['Operating model redesign', 'Compliance & regulation', 'Human-AI workflow design', 'Partner ecosystem alignment'].map((uc) => (
                       <span key={uc} className="px-3 py-1.5 text-xs text-white/50 border border-white/10 rounded-full">

@@ -63,24 +63,27 @@ export async function PATCH(
     if (!access.valid) return NextResponse.json({ error: access.error }, { status: 403 });
 
     const body = await request.json() as { reportSummary: ReportSummary };
-    if (!body.reportSummary) {
-      return NextResponse.json({ error: 'reportSummary is required' }, { status: 400 });
+    if (!body.reportSummary || typeof body.reportSummary !== 'object' || Array.isArray(body.reportSummary)) {
+      return NextResponse.json({ error: 'reportSummary must be an object' }, { status: 400 });
     }
 
-    // Load existing to preserve user-managed fields (layout, reportConclusion, facilitatorContact, signalMapImageUrl)
+    // Load existing so omitted fields can be preserved without blocking explicit edits
     const existing = await prisma.workshop.findUnique({
       where: { id: workshopId },
       select: { reportSummary: true },
     });
     const current = (existing?.reportSummary ?? {}) as Partial<ReportSummary>;
 
+    // Use `in` to detect explicit fields in the incoming body — allows sending null to clear a value.
+    // `??` would silently ignore explicit null and fall back to the stored value, preventing clearing.
+    const bs = body.reportSummary;
     const merged: ReportSummary = {
-      ...body.reportSummary,
-      // Always preserve user-managed fields from DB — never overwrite with incoming data
-      layout: current.layout ?? body.reportSummary.layout,
-      reportConclusion: current.reportConclusion ?? body.reportSummary.reportConclusion,
-      ...(current.facilitatorContact !== undefined && { facilitatorContact: current.facilitatorContact }),
-      ...(current.signalMapImageUrl !== undefined && { signalMapImageUrl: current.signalMapImageUrl }),
+      ...current,
+      ...bs,
+      layout: 'layout' in bs ? bs.layout : current.layout,
+      reportConclusion: 'reportConclusion' in bs ? bs.reportConclusion : current.reportConclusion,
+      facilitatorContact: 'facilitatorContact' in bs ? bs.facilitatorContact : current.facilitatorContact,
+      signalMapImageUrl: 'signalMapImageUrl' in bs ? bs.signalMapImageUrl : current.signalMapImageUrl,
     };
 
     await prisma.workshop.update({

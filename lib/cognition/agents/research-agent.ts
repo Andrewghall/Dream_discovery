@@ -14,6 +14,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopPrepResearch, PrepContext, AgentConversationCallback, AgentReview } from './agent-types';
 import type { GuidanceState } from '../guidance-state';
 import { buildJourneyContextString } from '../journey-completion-state';
@@ -561,7 +562,7 @@ async function executeResearchTool(
       }
 
       // ── PARAMETRIC FALLBACK ──
-      const res = await openai.chat.completions.create({
+      const res = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         max_tokens: 2000,
@@ -575,7 +576,7 @@ async function executeResearchTool(
             content: `Research query about ${context.clientName || 'the company'} (${context.industry || 'unknown industry'}${context.companyWebsite ? `, website: ${context.companyWebsite}` : ''}):\n\nQuery: ${query}\nFocus: ${focus}\n\nProvide a detailed, thorough response with specific facts, numbers, and evidence. If this is a well-known company, provide comprehensive details. If not well-known, provide detailed industry context and note what would need further investigation.`,
           },
         ],
-      });
+      }));
 
       const content = res.choices[0]?.message?.content || 'No information found.';
       return {
@@ -612,7 +613,7 @@ async function executeResearchTool(
       }
 
       // ── PARAMETRIC FALLBACK ──
-      const res = await openai.chat.completions.create({
+      const res = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         max_tokens: 1500,
@@ -626,7 +627,7 @@ async function executeResearchTool(
             content: `Industry analysis for: ${industry}\nFocus area: ${focus}\n\nProvide a detailed, multi-paragraph analysis of current trends, challenges, disruption forces, and outlook. Include specific examples and evidence.`,
           },
         ],
-      });
+      }));
 
       const content = res.choices[0]?.message?.content || 'No trends data available.';
       return {
@@ -664,7 +665,7 @@ async function executeResearchTool(
       }
 
       // ── PARAMETRIC FALLBACK ──
-      const res = await openai.chat.completions.create({
+      const res = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         max_tokens: 1500,
@@ -678,7 +679,7 @@ async function executeResearchTool(
             content: `Domain: ${domain}\nIndustry: ${industry}\nQuestion: ${question}\n\nProvide a detailed, multi-paragraph analysis covering: specific challenges, common pain points, best practices from leading organisations, emerging trends, and strategic considerations for this domain within this industry.`,
           },
         ],
-      });
+      }));
 
       const content = res.choices[0]?.message?.content || 'No domain insights available.';
       return {
@@ -715,7 +716,7 @@ async function executeResearchTool(
       }
 
       // ── PARAMETRIC FALLBACK ──
-      const res = await openai.chat.completions.create({
+      const res = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         max_tokens: 2000,
@@ -729,7 +730,7 @@ async function executeResearchTool(
             content: `Map the typical ${clientType} journey in ${industry}.\nFocus: ${focus}\n\nProvide 6-12 key lifecycle stages in chronological order. For each stage provide a detailed description and 3-5 specific touchpoints. Be industry-specific, not generic.`,
           },
         ],
-      });
+      }));
 
       const content = res.choices[0]?.message?.content || 'No journey data available.';
       return {
@@ -765,7 +766,7 @@ async function executeResearchTool(
       }
 
       // ── PARAMETRIC FALLBACK ──
-      const res = await openai.chat.completions.create({
+      const res = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         max_tokens: 2000,
@@ -779,7 +780,7 @@ async function executeResearchTool(
             content: `Identify the 4-6 most important strategic dimensions for the ${industry} industry.\nFocus: ${focus}\n\nFor each dimension, provide:\n- A clear name\n- A detailed description of what it covers and why it matters\n- 10-20 keywords that would indicate someone is talking about this dimension\n\nBe specific to this industry — generic dimensions like "People" or "Technology" are too broad.`,
           },
         ],
-      });
+      }));
 
       const content = res.choices[0]?.message?.content || 'No dimension data available.';
       return {
@@ -819,7 +820,7 @@ async function executeResearchTool(
       }
 
       // ── PARAMETRIC FALLBACK ──
-      const res = await openai.chat.completions.create({
+      const res = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         max_tokens: 2000,
@@ -851,7 +852,7 @@ For each role provide:
 - Department or functional area`,
           },
         ],
-      });
+      }));
 
       const content = res.choices[0]?.message?.content || 'No actor data available.';
       return {
@@ -1056,13 +1057,13 @@ Remember: every fact must be cited. Every challenge and development must end wit
 
       console.log(`[Research Agent] Iteration ${iteration}${isLastIteration ? ' (forced commit)' : ''}`);
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools: RESEARCH_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const choice = completion.choices[0];
       const assistantMessage = choice.message;
@@ -1285,13 +1286,13 @@ async function forceResearchCommit(
   context: PrepContext,
 ): Promise<WorkshopPrepResearch> {
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
       model: MODEL,
       temperature: 0.3,
       messages,
       tools: RESEARCH_TOOLS,
       tool_choice: { type: 'function', function: { name: 'commit_research' } },
-    });
+    }));
 
     const toolCalls = completion.choices[0]?.message?.tool_calls;
     const fnCall = toolCalls?.find((tc) => tc.type === 'function');
@@ -1484,13 +1485,13 @@ Submit your review with submit_review when you've assessed the proposals.`;
         ? { type: 'function', function: { name: 'submit_review' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: LIVE_REVIEW_MODEL,
         temperature: 0.3,
         messages,
         tools: RESEARCH_REVIEW_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

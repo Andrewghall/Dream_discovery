@@ -19,7 +19,7 @@ export function CTASection({
   useCalendly = true,
   primaryCta = {
     label: 'Book a Demo',
-    href: 'mailto:hello@ethenta.com?subject=DREAM%20Demo%20Request',
+    href: 'mailto:Andrew.Hall@ethenta.com?subject=DREAM%20Demo%20Request',
   },
   secondaryCta = { label: 'Explore Use Cases', href: '/dream/use-cases' },
   variant = 'gradient',

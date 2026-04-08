@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import {
   FileDown,
   Download,
+  Eye,
   Loader2,
   ArrowLeft,
   Sparkles,
@@ -48,7 +49,6 @@ import { defaultReportLayout } from '@/lib/output-intelligence/types';
 import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
-import { ReportPromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 import type { PromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 import { DraggableSection, DropIndicator } from '@/components/report-builder/DraggableSection';
 import { SectionHeading } from './_components/ScratchpadEditors';
@@ -58,13 +58,15 @@ import {
   RootCausesBlock,
   SolutionDirectionBlock,
   StrategicImpactBlock,
+  WayForwardBlock,
 } from './_components/IntelligenceBlocks';
+import { NarrativeDivergence } from '@/components/discover-analysis/narrative-divergence';
+import { SectionAction } from '@/components/scratchpad/SectionAction';
 import {
   DiscoveryDiagnosticBlock,
   DiscoverySignalsBlock,
   InsightSummaryBlock,
   AlignmentBlock,
-  NarrativeDivergenceBlock,
   TensionsBlock,
   StructuralBarriersBlock,
   ReportConclusionBlock,
@@ -76,7 +78,9 @@ import {
   StructuralConfidenceBlock,
   SignalMapBlock,
   FacilitatorContactBlock,
+  BehaviouralInterventionsBlock,
 } from './_components/DiscoveryBlocks';
+import type { BehaviouralInterventionsOutput } from '@/lib/behavioural-interventions/types';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -97,13 +101,13 @@ export default function DownloadReportPage({ params }: PageProps) {
   const [intelligence, setIntelligence] = useState<WorkshopOutputIntelligence | null>(null);
   const [reportSummary, setReportSummary] = useState<ReportSummary | null>(null);
   const [liveJourneyData, setLiveJourneyData] = useState<LiveJourneyData | null>(null);
-  const [journeyVersions, setJourneyVersions] = useState<Array<{ id: string; version: number; dialoguePhase: string; createdAt: string }>>([]);
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [journeyRegenerating, setJourneyRegenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportingPptx, setExportingPptx] = useState(false);
-  const [promptOutputs, setPromptOutputs] = useState<PromptOutput[]>([]);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  // promptOutputs removed — agentic output is now inserted directly into the report layout
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // ── Report builder layout ─────────────────────────────────────────
   const [layout, setLayout] = useState<ReportLayout>(defaultReportLayout());
@@ -116,10 +120,28 @@ export default function DownloadReportPage({ params }: PageProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [discoveryOutput, setDiscoveryOutput] = useState<any | null>(null);
   const [discoverAnalysis, setDiscoverAnalysis] = useState<DiscoverAnalysis | null>(null);
+  const [behaviouralInterventions, setBehaviouralInterventions] = useState<BehaviouralInterventionsOutput | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     void fetchData();
+    // Pick up any V2 GPT blocks queued from the output page's "Add to report" buttons
+    try {
+      const pending = JSON.parse(sessionStorage.getItem('v2_pending_report_blocks') || '[]') as Array<{
+        title: string;
+        content: string;
+        id: string;
+      }>;
+      if (pending.length > 0) {
+        sessionStorage.removeItem('v2_pending_report_blocks');
+        // We delay slightly so layout is initialised before we append
+        setTimeout(() => {
+          for (const block of pending) {
+            addGptSection({ type: 'text', title: block.title, content: block.content });
+          }
+        }, 800);
+      }
+    } catch { /* non-fatal */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workshopId]);
 
@@ -149,10 +171,75 @@ export default function DownloadReportPage({ params }: PageProps) {
         if (d.reportSummary) {
           const rs = d.reportSummary as ReportSummary;
           setReportSummary(rs);
-          // Restore saved layout if it exists
+          // Restore saved layout if it exists, merging in any new built-in sections
+          // and applying updated default `enabled` values from defaultReportLayout()
           if (rs.layout?.sections?.length) {
-            setLayout(rs.layout);
-            if (rs.layout.clientLogoUrl) setClientLogoUrl(rs.layout.clientLogoUrl);
+            const stored   = rs.layout;
+            const defaults = defaultReportLayout();
+            const storedIds = new Set(stored.sections.map(s => s.id));
+
+            // v4 introduced the correct chapter order (Discovery → Reimagine → Constraints → Way Forward).
+            // Any stored layout older than v5 gets rebuilt from the new default order,
+            // preserving only per-item exclusions and explicit user-disabled state.
+            const needsRebuild = !stored.version || stored.version < 5;
+            const hasCustom   = stored.sections.some(s => s.type === 'custom');
+
+            let mergedSections;
+            if (needsRebuild) {
+              // Rebuild from default order, carry forward user exclusions and explicit disables
+              const storedMap = new Map(stored.sections.map(s => [s.id, s]));
+              mergedSections = defaults.sections.map(def => {
+                const prev = storedMap.get(def.id);
+                if (!prev) return def;
+                return {
+                  ...def,
+                  excludedItems: prev.excludedItems ?? [],
+                  enabled: prev.enabled ?? def.enabled,
+                  collapsed: prev.collapsed ?? def.collapsed,
+                };
+              });
+              if (hasCustom) {
+                const customSections = stored.sections.filter(s => s.type === 'custom');
+                mergedSections = [...mergedSections, ...customSections];
+              }
+            } else {
+              // v2+ stored layout — preserve user's order, just add any brand-new sections.
+              // Always sync title for built-in chapters so renamed chapters (e.g. "Brain Scan"
+              // → "Analysis & Recommendations") update automatically.
+              const defaultMap = new Map(defaults.sections.map(s => [s.id, s]));
+              const upgraded = stored.sections.map(s => {
+                const def = defaultMap.get(s.id);
+                if (!def) return s;
+                const syncTitle = s.type === 'chapter' && def.title !== s.title ? def.title : s.title;
+                return { ...s, title: syncTitle };
+              });
+              const newSections = defaults.sections.filter(s => !storedIds.has(s.id));
+              mergedSections = newSections.length > 0 ? [...upgraded, ...newSections] : upgraded;
+            }
+
+            // Ensure specific sections are always present regardless of version/rebuild path
+            const requiredIds = ['behavioural_interventions'];
+            const mergedIds = new Set(mergedSections.map((s: ReportSectionConfig) => s.id));
+            for (const reqId of requiredIds) {
+              if (!mergedIds.has(reqId)) {
+                const def = defaults.sections.find(s => s.id === reqId);
+                if (def) {
+                  // Insert after way_forward if present, otherwise at end
+                  const wayForwardIdx = mergedSections.findIndex((s: ReportSectionConfig) => s.id === 'way_forward');
+                  if (wayForwardIdx >= 0) {
+                    mergedSections = [
+                      ...mergedSections.slice(0, wayForwardIdx + 1),
+                      def,
+                      ...mergedSections.slice(wayForwardIdx + 1),
+                    ];
+                  } else {
+                    mergedSections = [...mergedSections, def];
+                  }
+                }
+              }
+            }
+            setLayout({ ...stored, version: 5, sections: mergedSections });
+            if (stored.clientLogoUrl) setClientLogoUrl(stored.clientLogoUrl);
           }
         }
       }
@@ -176,19 +263,24 @@ export default function DownloadReportPage({ params }: PageProps) {
         }
       } catch { /* non-fatal */ }
 
-      // Fetch journey versions (non-fatal)
+      // Fetch behavioural interventions (non-fatal)
       try {
-        const versionsRes = await fetch(
-          `/api/admin/workshops/${workshopId}/live/session-versions?limit=20`
+        const biRes = await fetch(`/api/admin/workshops/${workshopId}/behavioural-interventions`);
+        if (biRes.ok) {
+          const bd = await biRes.json();
+          if (bd.behaviouralInterventions) setBehaviouralInterventions(bd.behaviouralInterventions as BehaviouralInterventionsOutput);
+        }
+      } catch { /* non-fatal */ }
+
+      // Fetch journey output (3-source fallback: scratchpad → session version → snapshot)
+      try {
+        const journeyRes = await fetch(
+          `/api/admin/workshops/${workshopId}/journey/output`
         );
-        if (versionsRes.ok) {
-          const vd = await versionsRes.json();
-          const versions = vd.versions ?? [];
-          setJourneyVersions(versions);
-          const latestId = versions[0]?.id;
-          if (latestId) {
-            setSelectedVersionId(latestId);
-            await loadJourneyVersion(latestId, workshopId);
+        if (journeyRes.ok) {
+          const jd = await journeyRes.json();
+          if (jd.journey?.data?.stages?.length && jd.journey?.data?.interactions?.length) {
+            setLiveJourneyData(jd.journey.data as LiveJourneyData);
           }
         }
       } catch {
@@ -199,21 +291,6 @@ export default function DownloadReportPage({ params }: PageProps) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const loadJourneyVersion = async (versionId: string, wsId = workshopId) => {
-    try {
-      const versionRes = await fetch(
-        `/api/admin/workshops/${wsId}/live/session-versions/${versionId}`
-      );
-      if (versionRes.ok) {
-        const versionData = await versionRes.json();
-        const lj = versionData.version?.payload?.liveJourney;
-        if (lj?.stages?.length && lj?.interactions?.length) {
-          setLiveJourneyData(lj as LiveJourneyData);
-        }
-      }
-    } catch { /* non-fatal */ }
   };
 
   const handleRegenerateJourney = async () => {
@@ -229,8 +306,17 @@ export default function DownloadReportPage({ params }: PageProps) {
       }
       const data = await res.json();
       if (data.liveJourney) {
-        setLiveJourneyData(data.liveJourney as LiveJourneyData);
+        const lj = data.liveJourney as LiveJourneyData;
+        setLiveJourneyData(lj);
         toast.success('Journey map regenerated from full workshop data');
+        // Persist so it survives page refresh
+        try {
+          await fetch(`/api/admin/workshops/${workshopId}/journey/output`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: lj, lastSynthesisedAt: new Date().toISOString() }),
+          });
+        } catch { /* non-fatal, already shown in UI */ }
       }
     } catch {
       toast.error('Journey regeneration failed');
@@ -304,6 +390,36 @@ export default function DownloadReportPage({ params }: PageProps) {
     });
   }, [updateLayout]);
 
+  // Add a GPT-generated block directly to the report layout at the top, ready to drag into place
+  const addGptSection = useCallback((output: PromptOutput) => {
+    const text = (() => {
+      if (output.type === 'text')    return output.content;
+      if (output.type === 'bullets') return output.items.map((item, i) => `${i + 1}. ${item}`).join('\n');
+      if (output.type === 'table')   return [output.headers.join(' | '), ...output.rows.map(r => r.join(' | '))].join('\n');
+      if (output.type === 'bar_chart') return output.labels.map((l, i) => `${l}: ${output.values[i]}`).join('\n');
+      return '';
+    })();
+    const newSection: ReportSectionConfig = {
+      id: `gpt_${nanoid(8)}`,
+      type: 'custom',
+      title: output.title,
+      enabled: true,
+      collapsed: false,
+      excludedItems: [],
+      customContent: { text, imageUrl: '', imageAlt: '', commentary: '' },
+    };
+    setLayout(prev => {
+      // Insert at position 0 so the user sees it immediately at the top of the report
+      const next = { ...prev, sections: [newSection, ...prev.sections] };
+      updateLayout(next);
+      return next;
+    });
+    // Scroll to top so user sees the new card
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }, [updateLayout]);
+
   const addChapterSection = useCallback(() => {
     const newSection: ReportSectionConfig = {
       id: `chapter_${nanoid(8)}`,
@@ -324,26 +440,24 @@ export default function DownloadReportPage({ params }: PageProps) {
     updateSection(id, { title });
   }, [updateSection]);
 
-  const handleClientLogoUpload = useCallback(async (file: File) => {
-    setUploadingClientLogo(true);
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-      const res = await fetch(`/api/admin/workshops/${workshopId}/upload-section-image`, {
-        method: 'POST',
-        body: formData,
-      });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json() as { url: string };
-      setClientLogoUrl(data.url);
-      // Persist in layout
-      updateLayout({ ...layout, clientLogoUrl: data.url });
-    } catch {
-      toast.error('Client logo upload failed');
-    } finally {
-      setUploadingClientLogo(false);
+  const handleClientLogoUpload = useCallback((file: File) => {
+    // Validate size (2 MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Logo must be under 2 MB');
+      return;
     }
-  }, [workshopId, layout, updateLayout]);
+    setUploadingClientLogo(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string | undefined;
+      if (!dataUrl) { toast.error('Could not read image'); setUploadingClientLogo(false); return; }
+      setClientLogoUrl(dataUrl);
+      updateLayout({ ...layout, clientLogoUrl: dataUrl });
+      setUploadingClientLogo(false);
+    };
+    reader.onerror = () => { toast.error('Client logo upload failed'); setUploadingClientLogo(false); };
+    reader.readAsDataURL(file);
+  }, [layout, updateLayout]);
 
   const removeSection = useCallback((id: string) => {
     setLayout(prev => {
@@ -416,6 +530,41 @@ export default function DownloadReportPage({ params }: PageProps) {
       toast.error(`PDF export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setExporting(false);
+    }
+  };
+
+  // ── Preview report (open full HTML in new tab) ────────────────────────────────
+
+  const handlePreviewReport = async () => {
+    if (!intelligence || !reportSummary) {
+      toast.error('Generate the report summary first before previewing');
+      return;
+    }
+    try {
+      setPreviewing(true);
+      const res = await fetch(`/api/admin/workshops/${workshopId}/preview-report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reportSummary,
+          intelligence,
+          layout,
+          liveJourneyData,
+          workshopName: workshop?.name,
+          orgName: workshop?.organization?.name,
+          clientLogoUrl: clientLogoUrl || undefined,
+          discoveryOutput: discoveryOutput || undefined,
+          discoverAnalysis: discoverAnalysis || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('Preview failed');
+      const html = await res.text();
+      // Show full-screen inline preview (no popup needed)
+      setPreviewHtml(html);
+    } catch (err) {
+      toast.error(`Preview failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setPreviewing(false);
     }
   };
 
@@ -506,6 +655,27 @@ export default function DownloadReportPage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-background">
 
+      {/* ── Full-screen report preview overlay ────────────────────────────── */}
+      {previewHtml && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex flex-col">
+          <div className="flex items-center justify-between bg-slate-900 text-white px-5 py-2.5 shrink-0">
+            <span className="text-sm font-semibold">Report Preview — {workshop?.name}</span>
+            <button
+              onClick={() => setPreviewHtml(null)}
+              className="text-slate-300 hover:text-white text-sm px-3 py-1 rounded hover:bg-slate-700 transition-colors"
+            >
+              ✕ Close preview
+            </button>
+          </div>
+          <iframe
+            srcDoc={previewHtml}
+            className="flex-1 w-full bg-white"
+            title="Report Preview"
+            sandbox="allow-same-origin"
+          />
+        </div>
+      )}
+
       {/* ── Sticky header ──────────────────────────────────────────────────── */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
         <div className="flex items-center justify-between px-6 py-3">
@@ -592,14 +762,14 @@ export default function DownloadReportPage({ params }: PageProps) {
               </span>
             )}
             {/* Quality indicator — admin only, never exported */}
-            {reportSummary && !reportSummary.validationPassed && reportSummary.validationGaps.length > 0 && (
+            {reportSummary && !reportSummary.validationPassed && (reportSummary.validationGaps ?? []).length > 0 && (
               <button
                 onClick={() => setReportSummary(null)}
                 className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
-                title={`Click to regenerate\n\n${reportSummary.validationGaps.join('\n')}`}
+                title={`Click to regenerate\n\n${(reportSummary.validationGaps ?? []).join('\n')}`}
               >
                 <AlertTriangle className="h-3 w-3" />
-                {reportSummary.validationGaps.length} quality gap{reportSummary.validationGaps.length > 1 ? 's' : ''} — click to regenerate
+                {(reportSummary.validationGaps ?? []).length} quality gap{(reportSummary.validationGaps ?? []).length > 1 ? 's' : ''} — click to regenerate
               </button>
             )}
             {reportSummary && (
@@ -613,6 +783,21 @@ export default function DownloadReportPage({ params }: PageProps) {
                 Refresh
               </Button>
             )}
+            <Button
+              onClick={handlePreviewReport}
+              disabled={previewing || !intelligence || !reportSummary}
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              title="Preview the full report before generating PDF"
+            >
+              {previewing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+              {previewing ? 'Loading…' : 'Preview Report'}
+            </Button>
             <Button
               onClick={handleExportPdf}
               disabled={exporting || !intelligence || !reportSummary}
@@ -647,26 +832,13 @@ export default function DownloadReportPage({ params }: PageProps) {
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-10">
 
-        {/* ── AGENTIC PROMPT BAR — always at the top ────────────────────── */}
+        {/* ── AGENTIC PROMPT BAR — generated content drops straight into the report ── */}
         {intelligence && (
-          <>
-            {promptOutputs.length > 0 && (
-              <div className="space-y-4">
-                <SectionHeading
-                  label="Additional Analysis"
-                  sublabel="Generated on demand — not saved to report"
-                />
-                {promptOutputs.map((output, i) => (
-                  <ReportPromptOutput key={i} output={output} />
-                ))}
-              </div>
-            )}
-            <AgenticPromptBar
-              workshopId={workshopId}
-              layout={layout}
-              onOutput={(o) => setPromptOutputs((prev) => [...prev, o])}
-            />
-          </>
+          <AgenticPromptBar
+            workshopId={workshopId}
+            layout={layout}
+            onOutput={(o) => addGptSection(o)}
+          />
         )}
 
         {/* No intelligence yet */}
@@ -692,6 +864,55 @@ export default function DownloadReportPage({ params }: PageProps) {
                 Go to Insight Map →
               </Button>
             </Link>
+          </div>
+        )}
+
+        {/* ── REPORT CONTENTS INDEX ────────────────────────────────────── */}
+        {intelligence && (
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/20">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Report Contents</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {layout.sections.filter(s => s.enabled && s.type !== 'chapter').length} sections enabled · toggle to include/exclude from PDF
+                </p>
+              </div>
+            </div>
+            <div className="divide-y divide-border">
+              {(() => {
+                let sectionNum = 0;
+                return layout.sections.map((s) => {
+                  const isChapter = s.type === 'chapter';
+                  if (!isChapter) sectionNum++;
+                  const num = sectionNum;
+                  return (
+                    <div
+                      key={s.id}
+                      className={`flex items-center gap-3 px-5 py-2.5 ${isChapter ? 'bg-slate-900' : s.enabled ? '' : 'opacity-40'}`}
+                    >
+                      {isChapter ? (
+                        <>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-white/60 w-5 shrink-0">—</span>
+                          <span className="text-xs font-bold text-white flex-1">{s.title}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-[10px] font-mono text-muted-foreground w-5 shrink-0 text-right">{String(num).padStart(2, '0')}</span>
+                          <span className={`text-xs flex-1 ${s.enabled ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>{s.title}</span>
+                          <button
+                            onClick={() => updateSection(s.id, { enabled: !s.enabled })}
+                            className={`shrink-0 w-8 h-4 rounded-full transition-colors relative ${s.enabled ? 'bg-indigo-500' : 'bg-border'}`}
+                            title={s.enabled ? 'Remove from report' : 'Add to report'}
+                          >
+                            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${s.enabled ? 'left-4' : 'left-0.5'}`} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
           </div>
         )}
 
@@ -730,6 +951,7 @@ export default function DownloadReportPage({ params }: PageProps) {
                                 onUpdate={handleSummaryUpdate}
                                 excludedItems={cfg.excludedItems}
                                 onToggleItem={(id) => toggleItem(cfg.id, id)}
+                                intelligence={intelligence}
                               />
                             ) : (
                               <div className="p-3">
@@ -803,26 +1025,6 @@ export default function DownloadReportPage({ params }: PageProps) {
                               <>
                                 {/* Journey controls row */}
                                 <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-                                  {journeyVersions.length > 1 && (
-                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                      <span className="text-[10px] uppercase tracking-wide font-medium">Session:</span>
-                                      <select
-                                        value={selectedVersionId ?? ''}
-                                        onChange={async (e) => {
-                                          const id = e.target.value;
-                                          setSelectedVersionId(id);
-                                          await loadJourneyVersion(id);
-                                        }}
-                                        className="text-xs border border-border rounded px-1.5 py-0.5 bg-background text-foreground"
-                                      >
-                                        {journeyVersions.map((v, i) => (
-                                          <option key={v.id} value={v.id}>
-                                            v{v.version} — {v.dialoguePhase}{i === 0 ? ' (latest)' : ''}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  )}
                                   <button
                                     onClick={handleRegenerateJourney}
                                     disabled={journeyRegenerating}
@@ -865,6 +1067,23 @@ export default function DownloadReportPage({ params }: PageProps) {
                           </div>
                         )}
 
+                        {/* ── Way Forward ── */}
+                        {cfg.id === 'way_forward' && (
+                          <div className="p-4">
+                            <WayForwardBlock intelligence={intelligence} />
+                          </div>
+                        )}
+
+                        {/* ── Behavioural Interventions ── */}
+                        {cfg.id === 'behavioural_interventions' && (
+                          <div className="p-4">
+                            <BehaviouralInterventionsBlock
+                              data={behaviouralInterventions}
+                              workshopId={workshopId}
+                            />
+                          </div>
+                        )}
+
                         {/* ── Discovery Diagnostic ── */}
                         {cfg.id === 'discovery_diagnostic' && (
                           <div className="p-4">
@@ -897,7 +1116,15 @@ export default function DownloadReportPage({ params }: PageProps) {
                         {/* ── Structural: Narrative Divergence ── */}
                         {cfg.id === 'structural_narrative' && (
                           <div className="p-4">
-                            <NarrativeDivergenceBlock discoverAnalysis={discoverAnalysis} />
+                            <SectionAction
+                              what="The language gap between executive, operational and frontline levels — different terms dominating at each level means there is no shared transformation story."
+                              action="Where frontline language contradicts executive language, run a joint alignment session before programme kick-off to establish a common vocabulary and a single transformation narrative."
+                            />
+                            {discoverAnalysis?.narrative && discoverAnalysis.narrative.layers?.length ? (
+                              <NarrativeDivergence data={discoverAnalysis.narrative} />
+                            ) : (
+                              <p className="text-xs text-muted-foreground py-2">No narrative data available. Generate Structural Analysis from Discovery Output.</p>
+                            )}
                           </div>
                         )}
 
@@ -950,6 +1177,69 @@ export default function DownloadReportPage({ params }: PageProps) {
                             />
                           </div>
                         )}
+
+                        {/* ── Connected Model ── */}
+                        {cfg.id === 'connected_model' && intelligence?.causalIntelligence && (() => {
+                          const CATEGORY_LABELS: Record<string, { label: string; color: string; meaning: string }> = {
+                            ORGANISATIONAL_ISSUE: { label: 'Org Issue',        color: 'bg-red-100 text-red-700',    meaning: 'Confirmed bottleneck or high-risk behaviour' },
+                            REINFORCED_FINDING:   { label: 'Reinforced',       color: 'bg-amber-100 text-amber-700', meaning: 'Pattern confirmed across multiple participants and lenses' },
+                            EMERGING_PATTERN:     { label: 'Emerging',         color: 'bg-blue-100 text-blue-700',  meaning: 'Credible signal not yet systemic — worth monitoring' },
+                          };
+                          const grouped = [
+                            { category: 'ORGANISATIONAL_ISSUE', findings: intelligence.causalIntelligence.organisationalIssues ?? [] },
+                            { category: 'REINFORCED_FINDING',   findings: intelligence.causalIntelligence.reinforcedFindings   ?? [] },
+                            { category: 'EMERGING_PATTERN',     findings: intelligence.causalIntelligence.emergingPatterns     ?? [] },
+                          ].filter(g => g.findings.length > 0);
+                          if (!grouped.length) return null;
+                          return (
+                            <div className="p-4 space-y-4">
+                              {/* Callout */}
+                              <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs">
+                                <div className="flex-1 space-y-1">
+                                  <p className="text-amber-800"><span className="font-semibold">What this shows: </span>The causal chains connecting your organisation&apos;s problems — what is causing what, which issues are confirmed across multiple sources, and which are early signals.</p>
+                                  <p className="text-amber-900"><span className="font-semibold inline-flex items-center gap-1"><ArrowLeft className="h-3 w-3 rotate-180" />What to do:</span> Org Issues must be in your programme scope — they are confirmed bottlenecks. Reinforced findings belong in Phase 1. Emerging patterns should be monitored — don&apos;t ignore them, but don&apos;t over-invest before they are confirmed.</p>
+                                </div>
+                              </div>
+                              {/* Legend */}
+                              <div className="flex flex-wrap gap-2">
+                                {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                                  <div key={k} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium ${v.color}`}>
+                                    <span className="font-bold">{v.label}</span>
+                                    <span className="opacity-70">— {v.meaning}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {/* Grouped findings */}
+                              {grouped.map(({ category, findings }) => {
+                                const meta = CATEGORY_LABELS[category]!;
+                                return (
+                                  <div key={category} className="space-y-1">
+                                    <p className={`text-[10px] font-bold uppercase tracking-wider px-1 ${meta.color.split(' ')[1]}`}>{meta.label}</p>
+                                    {findings.map(f => {
+                                      const excluded = cfg.excludedItems.includes(f.findingId);
+                                      return (
+                                        <button
+                                          key={f.findingId}
+                                          onClick={() => toggleItem(cfg.id, f.findingId)}
+                                          className={`w-full text-left flex items-start gap-2.5 px-3 py-2 rounded-lg border text-xs transition-all ${
+                                            excluded
+                                              ? 'border-slate-100 bg-slate-50 text-slate-300 line-through'
+                                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                          }`}
+                                        >
+                                          <span className={`mt-0.5 shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center ${excluded ? 'border-slate-200 bg-white' : 'border-indigo-400 bg-indigo-50'}`}>
+                                            {!excluded && <span className="w-1.5 h-1.5 rounded-sm bg-indigo-500" />}
+                                          </span>
+                                          <span className="leading-snug">{f.issueTitle}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
 
                         {/* ── Insight Map Summary ── */}
                         {cfg.id === 'insight_summary' && (

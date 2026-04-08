@@ -91,6 +91,12 @@ export interface PadStateMachineOptions {
   } | null;
   cogNodes: CogNode[] | null; // null = rely on agent-assessed coverage only
   onSyncGuidanceState: (overrides: GuidanceStateOverrides) => Promise<void>;
+  /**
+   * If provided, the hook will restore the matching question index on first load
+   * instead of always defaulting to index 0. Pass guidanceState.currentMainQuestion
+   * from the server so a page reload re-shows the last active question.
+   */
+  initialMainQuestion?: GuidanceStateOverrides['currentMainQuestion'];
 }
 
 export interface PadStateMachineReturn {
@@ -190,6 +196,7 @@ export function usePadStateMachine(
     journeyCompletionState,
     cogNodes,
     onSyncGuidanceState,
+    initialMainQuestion,
   } = options;
 
   // ---- State ----
@@ -214,6 +221,57 @@ export function usePadStateMachine(
   }, [dialoguePhase, prepQuestions]);
 
   const currentMainQuestion = mainQuestions[mainQuestionIndex] ?? null;
+
+  // ---- Bootstrap on first prepQuestions load ----
+  // Fires once when prepQuestions transitions from null to a value.
+  // Mirrors the behaviour in cognitive-guidance/page.tsx handlePhaseChange:
+  //   - If guidanceState already has a currentMainQuestion, restore the matching index.
+  //   - Otherwise seed sub-pads for the first question in the current phase.
+  // This is the only place initial sub-pads + currentMainQuestion sync happen for the
+  // live page, because handlePhaseChange is never called on initial load.
+  const bootstrappedRef = useRef(false);
+
+  useEffect(() => {
+    // Only run once, when prepQuestions first becomes non-null
+    if (bootstrappedRef.current) return;
+    if (!prepQuestions) return;
+    bootstrappedRef.current = true;
+
+    const wp = dialoguePhaseToWorkshopPhase(dialoguePhase);
+    const phaseQuestions =
+      wp && prepQuestions.phases?.[wp]?.questions
+        ? [...prepQuestions.phases[wp].questions].sort((a, b) => a.order - b.order)
+        : [];
+
+    if (phaseQuestions.length === 0) return;
+
+    // If guidance state already has a currentMainQuestion, find its index so we
+    // restore the correct question rather than always showing index 0.
+    let startIndex = 0;
+    if (initialMainQuestion?.text) {
+      const restoredIdx = phaseQuestions.findIndex(
+        (q) => q.text === initialMainQuestion.text && q.phase === initialMainQuestion.phase,
+      );
+      if (restoredIdx >= 0) startIndex = restoredIdx;
+    }
+
+    const firstQ = phaseQuestions[startIndex];
+    const subPads = loadPrepSubPads(firstQ, startIndex);
+
+    setMainQuestionIndex(startIndex);
+    setStickyPads(subPads);
+
+    void onSyncGuidanceState({
+      currentMainQuestion: {
+        text: firstQ.text,
+        lens: firstQ.lens || null,
+        purpose: firstQ.purpose,
+        grounding: firstQ.grounding,
+        phase: firstQ.phase,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepQuestions]);
 
   // ---- Load prep sub-pads for a question ----
 

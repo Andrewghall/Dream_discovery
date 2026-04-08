@@ -122,8 +122,8 @@ export type TailoredQuestionSet = WorkshopQuestionSet;
 
 export type LensName = string;
 
-/** Tracks where the workshop lens/dimension set originated. */
-export type LensSource = 'research_dimensions' | 'domain_pack' | 'generic_fallback' | 'blueprint';
+/** Tracks where the workshop lens/dimension set originated. generic_fallback is no longer valid. */
+export type LensSource = 'research_dimensions' | 'domain_pack' | 'blueprint';
 
 export type MaturitySnapshot = {
   domain: LensName;

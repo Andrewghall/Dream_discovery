@@ -17,19 +17,22 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { GuidanceState, JourneyGap, JourneyGapType } from '../guidance-state';
 import type { AgentConversationCallback, AgentReview } from './agent-types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import {
   type JourneyAssessment,
+  type SuggestedMutation,
   calculateDeterministicCompletion,
   buildJourneyContextString,
+  getInteractionMissingFields,
 } from '../journey-completion-state';
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 3;
-const LOOP_TIMEOUT_MS = 8_000;
+const MAX_ITERATIONS = 4;
+const LOOP_TIMEOUT_MS = 10_000;
 const MODEL = 'gpt-4o-mini';
 
 // ══════════════════════════════════════════════════════════════
@@ -124,6 +127,37 @@ const JOURNEY_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'suggest_mutations',
+      description: 'Propose structural mutations to the live journey map. Call AFTER assess_completion when you have enough evidence to suggest specific changes. Each mutation MUST include a confidence score (0-1). NEVER propose update_interaction for interactions where addedBy="facilitator".',
+      parameters: {
+        type: 'object',
+        properties: {
+          mutations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['add_stage', 'rename_stage', 'merge_stage', 'remove_stage', 'add_actor', 'rename_actor', 'add_interaction', 'update_interaction'],
+                },
+                payload: { type: 'object', description: 'Mutation-specific payload (e.g. { stageName } for add_stage, { interactionId, updates } for update_interaction).' },
+                confidence: { type: 'number', description: '0-1. >0.75=high (auto-emitted), 0.5–0.75=medium (proposed to orchestrator), <0.5=low (ask a question instead).' },
+                rationale: { type: 'string', description: 'Why you are proposing this mutation — cite specific participant speech or evidence.' },
+                sourceNodeIds: { type: 'array', items: { type: 'string' }, description: 'Belief or utterance node IDs that justify this mutation.' },
+                gapId: { type: 'string', description: 'Which gap ID this mutation resolves (optional).' },
+              },
+              required: ['type', 'payload', 'confidence', 'rationale'],
+            },
+          },
+        },
+        required: ['mutations'],
+      },
+    },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -142,7 +176,9 @@ function executeJourneyTool(
 
       // Build interaction summaries per stage
       const stageDetails: Record<string, Array<{
+        id: string;
         actor: string;
+        addedBy: string;
         action: string;
         hasChannel: boolean;
         hasSentiment: boolean;
@@ -151,12 +187,15 @@ function executeJourneyTool(
         hasPainPoint: boolean;
         hasMomentOfTruth: boolean;
         hasUrgency: boolean;
+        missingFields: string[];
       }>> = {};
 
       for (const interaction of liveJourney.interactions) {
         if (!stageDetails[interaction.stage]) stageDetails[interaction.stage] = [];
         stageDetails[interaction.stage].push({
+          id: interaction.id,
           actor: interaction.actor,
+          addedBy: interaction.addedBy,
           action: interaction.action,
           hasChannel: !!(interaction.context && interaction.context.length > 0),
           hasSentiment: interaction.sentiment !== 'neutral',
@@ -165,6 +204,7 @@ function executeJourneyTool(
           hasPainPoint: interaction.isPainPoint,
           hasMomentOfTruth: interaction.isMomentOfTruth,
           hasUrgency: interaction.businessIntensity > 0,
+          missingFields: getInteractionMissingFields(interaction),
         });
       }
 
@@ -208,9 +248,15 @@ function executeJourneyTool(
 // SYSTEM PROMPT
 // ══════════════════════════════════════════════════════════════
 
+export type JourneyConversationContext = {
+  recentBeliefs: string[];  // Recent belief summaries from participant speech
+  recentSpeech: string[];   // Raw recent utterances for context
+};
+
 function buildJourneySystemPrompt(
   guidanceState: GuidanceState,
   liveJourney: LiveJourneyData,
+  conversationContext?: JourneyConversationContext,
 ): string {
   const prep = guidanceState.prepContext;
   const bp = guidanceState.blueprint;
@@ -260,7 +306,36 @@ RULES:
 - Prioritize gaps by impact: stages with zero interactions first, then sparse stages, then missing data fields
 - Generate suggestedPadPrompts that are specific and actionable, not vague
 - Use domain-specific actor names in all questions
-- Each gap's suggestedQuestion should be something a facilitator can naturally ask the room`;
+- Each gap's suggestedQuestion should be something a facilitator can naturally ask the room
+
+BOOTSTRAPPING THE MAP (CRITICAL — read carefully):
+If get_journey_state shows 0 interactions AND recent conversation context exists:
+- You MUST propose mutations to populate the map. This is your PRIMARY job on first run.
+- Extract every stage, actor, and interaction you can identify from the recent speech.
+- For each utterance that describes what someone does in the journey, propose add_interaction.
+- If a stage is mentioned that isn't in the map, propose add_stage first.
+- If an actor is mentioned that isn't in the map, propose add_actor first.
+- Set confidence 0.8 for anything clearly stated in speech (e.g. "the driver collects waste" → add_interaction with actor=driver, action="collects waste", confidence=0.85).
+- Populate as much as possible from the first batch of speech — don't wait for perfect data.
+
+MUTATION PROPOSALS (call suggest_mutations AFTER assess_completion):
+- Confidence >0.75: unambiguous from evidence. Auto-emitted immediately to the live map.
+- Confidence 0.5–0.75: reasonable evidence but some uncertainty. Proposed for review.
+- Confidence <0.5: do NOT suggest a mutation — generate a pad prompt gap instead
+- NEVER propose update_interaction for interactions where addedBy="facilitator"
+- For structural gaps (stage mentioned in conversation but not in map), prefer add_stage${
+    conversationContext && (conversationContext.recentSpeech.length > 0 || conversationContext.recentBeliefs.length > 0)
+      ? `\n\n── RECENT CONVERSATION CONTEXT ──\nUse this to bootstrap journey interactions from what participants have described. If a stage, actor, or interaction is mentioned but not yet on the map, propose it with appropriate confidence.\n${
+          conversationContext.recentBeliefs.length > 0
+            ? `\nRecent beliefs/insights extracted:\n${conversationContext.recentBeliefs.map(b => `• ${b}`).join('\n')}`
+            : ''
+        }${
+          conversationContext.recentSpeech.length > 0
+            ? `\nRecent participant speech:\n${conversationContext.recentSpeech.map(u => `> ${u}`).join('\n')}`
+            : ''
+        }`
+      : ''
+  }`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -271,11 +346,13 @@ export async function runJourneyCompletionAgent(
   guidanceState: GuidanceState,
   liveJourney: LiveJourneyData,
   onConversation?: AgentConversationCallback,
+  conversationContext?: JourneyConversationContext,
 ): Promise<JourneyAssessment | null> {
   if (!env.OPENAI_API_KEY) return null;
 
+  console.log(`[JourneyAgent] START stages=${liveJourney.stages.length} actors=${liveJourney.actors.length} interactions=${liveJourney.interactions.length} contextBeliefs=${conversationContext?.recentBeliefs.length ?? 0} contextSpeech=${conversationContext?.recentSpeech.length ?? 0}`);
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const systemPrompt = buildJourneySystemPrompt(guidanceState, liveJourney);
+  const systemPrompt = buildJourneySystemPrompt(guidanceState, liveJourney, conversationContext);
   const startMs = Date.now();
   const existingGaps = guidanceState.journeyCompletionState?.gaps || [];
 
@@ -283,9 +360,16 @@ export async function runJourneyCompletionAgent(
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: 'Assess the current journey map completeness. Use get_journey_state to review what we have, then assess_completion with your findings and gap analysis.',
+      content: liveJourney.interactions.length === 0 && conversationContext && (conversationContext.recentSpeech.length > 0 || conversationContext.recentBeliefs.length > 0)
+        ? 'The journey map is EMPTY. Call get_journey_state to confirm, then IMMEDIATELY call suggest_mutations to populate the map from the recent conversation context in your system prompt. Extract every stage, actor, and interaction described in the speech. After suggest_mutations, call assess_completion.'
+        : `Assess the current journey map completeness. Use get_journey_state to review what we have, then assess_completion with your findings.${conversationContext && (conversationContext.recentSpeech.length > 0 || conversationContext.recentBeliefs.length > 0) ? ' Recent conversation context is in your system prompt — use it to propose mutations for anything mentioned verbally but not yet on the map. Call suggest_mutations after assess_completion.' : ' If get_journey_state reveals specific missing fields you can infer from context, call suggest_mutations after assess_completion.'}`,
     },
   ];
+
+  // Accumulate suggested mutations across all iterations
+  const collectedMutations: SuggestedMutation[] = [];
+  // Track whether assess_completion was called (mutations attach to its assessment)
+  let pendingAssessment: JourneyAssessment | null = null;
 
   try {
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
@@ -296,13 +380,13 @@ export async function runJourneyCompletionAgent(
         ? { type: 'function', function: { name: 'assess_completion' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools: JOURNEY_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);
@@ -343,7 +427,7 @@ export async function runJourneyCompletionAgent(
             ? fnArgs.suggestedPadPrompts as Array<Record<string, unknown>>
             : [];
 
-          const assessment: JourneyAssessment = {
+          pendingAssessment = {
             overallCompletionPercent: typeof fnArgs.overallCompletionPercent === 'number'
               ? fnArgs.overallCompletionPercent : 0,
             stageCompletionPercents: (fnArgs.stageCompletionPercents as Record<string, number>) || {},
@@ -368,15 +452,48 @@ export async function runJourneyCompletionAgent(
             timestampMs: Date.now(),
             agent: 'journey-completion-agent',
             to: 'orchestrator',
-            message: `**Journey Assessment**: ${assessment.overallCompletionPercent}% complete. ${gaps.length} gaps identified. ${assessment.domainActorName ? `Using domain actor: "${assessment.domainActorName}".` : ''} ${gapSummary}`,
+            message: `**Journey Assessment**: ${pendingAssessment.overallCompletionPercent}% complete. ${gaps.length} gaps identified. ${pendingAssessment.domainActorName ? `Using domain actor: "${pendingAssessment.domainActorName}".` : ''} ${gapSummary}`,
             type: 'proposal',
-            metadata: {
-              sourceCount: gaps.length,
-            },
+            metadata: { sourceCount: gaps.length },
           });
 
-          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '{"status":"submitted"}' });
-          return assessment;
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '{"status":"submitted","note":"You may now call suggest_mutations if you have high-confidence structural changes to propose."}' });
+          // Don't return yet — allow suggest_mutations in next iteration
+
+        } else if (fnName === 'suggest_mutations') {
+          const rawMuts = Array.isArray(fnArgs.mutations)
+            ? fnArgs.mutations as Array<Record<string, unknown>>
+            : [];
+          for (const m of rawMuts) {
+            collectedMutations.push({
+              type: String(m.type || 'add_interaction') as SuggestedMutation['type'],
+              payload: (m.payload as Record<string, unknown>) || {},
+              confidence: typeof m.confidence === 'number' ? Math.max(0, Math.min(1, m.confidence)) : 0,
+              rationale: String(m.rationale || ''),
+              sourceNodeIds: Array.isArray(m.sourceNodeIds) ? (m.sourceNodeIds as string[]) : [],
+              gapId: m.gapId ? String(m.gapId) : undefined,
+            });
+          }
+          if (collectedMutations.length > 0) {
+            await onConversation?.({
+              timestampMs: Date.now(),
+              agent: 'journey-completion-agent',
+              to: 'orchestrator',
+              message: `Proposed ${collectedMutations.length} mutation(s): ${collectedMutations.map(m => `${m.type} (${Math.round(m.confidence * 100)}% confidence)`).join(', ')}`,
+              type: 'proposal',
+            });
+          }
+          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify({ status: 'acknowledged', count: rawMuts.length }) });
+
+          // If we already have an assessment, we can return now
+          if (pendingAssessment) {
+            const finalAssessment: JourneyAssessment = {
+              ...pendingAssessment,
+              suggestedMutations: collectedMutations.length > 0 ? collectedMutations : undefined,
+            };
+            return finalAssessment;
+          }
+
         } else {
           const toolResult = executeJourneyTool(fnName, fnArgs, liveJourney, existingGaps);
           messages.push({ role: 'tool', tool_call_id: toolCall.id, content: toolResult.result });
@@ -391,11 +508,29 @@ export async function runJourneyCompletionAgent(
           });
         }
       }
+
+      // If we have a pending assessment and the agent didn't call suggest_mutations, return it
+      if (pendingAssessment && !assistantMessage.tool_calls?.some(tc => tc.type === 'function' && tc.function.name === 'suggest_mutations')) {
+        return {
+          ...pendingAssessment,
+          suggestedMutations: collectedMutations.length > 0 ? collectedMutations : undefined,
+        };
+      }
     }
   } catch (error) {
-    console.error('[Journey Completion Agent] Failed:', error instanceof Error ? error.message : error);
+    console.error('[JourneyAgent] Failed:', error instanceof Error ? error.message : error);
   }
 
+  // Return whatever we have
+  if (pendingAssessment) {
+    console.log(`[JourneyAgent] DONE assessment=${pendingAssessment.overallCompletionPercent}% gaps=${pendingAssessment.gaps.length} mutations=${collectedMutations.length}`);
+    return {
+      ...pendingAssessment,
+      suggestedMutations: collectedMutations.length > 0 ? collectedMutations : undefined,
+    };
+  }
+
+  console.log('[JourneyAgent] DONE — no assessment returned');
   return null;
 }
 
@@ -474,13 +609,13 @@ Always suggest the most impactful journey data to collect next.`;
         ? { type: 'function', function: { name: 'submit_review' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools: JOURNEY_REVIEW_TOOLS,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

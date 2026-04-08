@@ -9,6 +9,7 @@ import {
   Building,
   Users,
   ShieldCheck,
+  BarChart2,
   LogOut,
 } from 'lucide-react';
 
@@ -48,6 +49,12 @@ const ADMIN_NAV: NavItem[] = [
     label: 'Audit Logs',
     href: '/admin/audit-logs',
     icon: <ShieldCheck className="h-4 w-4" />,
+    roles: ['PLATFORM_ADMIN', 'TENANT_ADMIN'],
+  },
+  {
+    label: 'Analytics',
+    href: '/admin/analytics',
+    icon: <BarChart2 className="h-4 w-4" />,
     roles: ['PLATFORM_ADMIN', 'TENANT_ADMIN'],
   },
 ];

@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { MeetingPlan } from '@/lib/sales/sales-analysis';
 
 /**
@@ -244,7 +245,7 @@ export async function analyzeSalesUtteranceAgentically(params: {
   );
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.3,
       messages: [
@@ -252,7 +253,7 @@ export async function analyzeSalesUtteranceAgentically(params: {
         { role: 'user', content: userPrompt },
       ],
       response_format: { type: 'json_object' },
-    });
+    }));
 
     const raw = completion.choices?.[0]?.message?.content || '{}';
     const analysis = JSON.parse(raw) as Partial<SalesAgenticAnalysis>;
@@ -379,7 +380,7 @@ Produce a comprehensive JSON report with ALL of the following sections:
 Be thorough, be specific, and always cite evidence from the utterances.`;
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
       model: 'gpt-4o',
       temperature: 0.2,
       messages: [
@@ -387,7 +388,7 @@ Be thorough, be specific, and always cite evidence from the utterances.`;
         { role: 'user', content: userPrompt },
       ],
       response_format: { type: 'json_object' },
-    });
+    }));
 
     const raw = completion.choices?.[0]?.message?.content || '{}';
     return JSON.parse(raw) as SalesCallSynthesis;
@@ -661,7 +662,7 @@ Be specific about what's missing and why it matters for this particular call.`;
   let gapAnalysis: { gaps: AgenticStrategyResult['gapAnalysis']; overallReadiness: { score: number; summary: string }; reasoning: string };
 
   try {
-    const gapCompletion = await openai.chat.completions.create({
+    const gapCompletion = await openAiBreaker.execute(() => openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.3,
       messages: [
@@ -669,7 +670,7 @@ Be specific about what's missing and why it matters for this particular call.`;
         { role: 'user', content: gapUserPrompt },
       ],
       response_format: { type: 'json_object' },
-    });
+    }));
 
     const gapRaw = gapCompletion.choices?.[0]?.message?.content || '{}';
     gapAnalysis = JSON.parse(gapRaw);
@@ -728,7 +729,7 @@ Return JSON with this exact structure:
 Max 5 talking points, max 5 questions, max 5 objection handlers, max 5 red flags. Quality over quantity.`;
 
   try {
-    const strategyCompletion = await openai.chat.completions.create({
+    const strategyCompletion = await openAiBreaker.execute(() => openai.chat.completions.create({
       model: 'gpt-4o',
       temperature: 0.2,
       messages: [
@@ -736,7 +737,7 @@ Max 5 talking points, max 5 questions, max 5 objection handlers, max 5 red flags
         { role: 'user', content: strategyUserPrompt },
       ],
       response_format: { type: 'json_object' },
-    });
+    }));
 
     const strategyRaw = strategyCompletion.choices?.[0]?.message?.content || '{}';
     const strategyResult = JSON.parse(strategyRaw);

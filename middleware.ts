@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionWithDB, createSessionToken } from '@/lib/auth/session';
+import { verifyExecSessionWithDB } from '@/lib/auth/exec-session';
 import * as jose from 'jose';
 
 // Node.js runtime so Prisma DB session checks work in middleware
@@ -56,27 +57,51 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Support session auto-exit: if Andrew navigates to /admin/platform while holding a
+    // Support session auto-exit: if navigating to /admin/platform while holding a
     // scoped TENANT_ADMIN session (impersonatedBy is set), automatically restore the
     // original PLATFORM_ADMIN session from the backup cookie before serving the page.
+    // SECURITY: validate the backup JWT against the DB before reinstating it.
+    // Signature-only validation is insufficient — a revoked admin backup must NOT
+    // be restorable via this path.
+    let clearBackupCookie = false; // set when backup is stale; applied to final response
     if (session.impersonatedBy && pathname.startsWith('/admin/platform')) {
       const backupJwt = request.cookies.get('dream-admin-session')?.value;
       if (backupJwt) {
-        const isProduction = process.env.NODE_ENV === 'production';
-        const response = NextResponse.redirect(new URL('/admin/platform', request.url));
-        response.cookies.set('session', backupJwt, {
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: 'strict',
-          path: '/',
-          maxAge: 60 * 60 * 24,
-        });
-        response.cookies.delete('dream-admin-session');
-        return response;
+        // DB-backed check: rejects revoked/expired admin backup sessions
+        const backupSession = await verifySessionWithDB(backupJwt).catch(() => null);
+        if (!backupSession) {
+          // Backup is revoked, expired, or invalid — mark the cookie for deletion
+          // but DO NOT early-return.  Fall through so the remaining RBAC guards
+          // (role check, /admin/platform access) still evaluate the current session.
+          clearBackupCookie = true;
+        } else {
+          const isProduction = process.env.NODE_ENV === 'production';
+          const response = NextResponse.redirect(new URL('/admin/platform', request.url));
+          response.cookies.set('session', backupJwt, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: 'strict',
+            path: '/',
+            maxAge: 60 * 60 * 24,
+          });
+          response.cookies.delete('dream-admin-session');
+          return response;
+        }
       }
     }
 
     // Role-based access control
+    // /admin/platform and /api/admin/platform/* are PLATFORM_ADMIN-only.
+    // Tenant-scoped and impersonation sessions must never reach either namespace,
+    // including when backup restore has failed and the request falls back to the
+    // scoped tenant session.
+    const isPlatformNamespace =
+      pathname.startsWith('/admin/platform') ||
+      pathname.startsWith('/api/admin/platform');
+    if (isPlatformNamespace && session.role !== 'PLATFORM_ADMIN') {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
     if (isAdminPath && session.role !== 'PLATFORM_ADMIN' && !TENANT_ROLES.includes(session.role)) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
@@ -91,8 +116,13 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    // Sliding-window token refresh: if the JWT is close to expiry, reissue it
+    // Sliding-window token refresh: if the JWT is close to expiry, reissue it.
+    // IMPORTANT: preserve all revocation-critical fields so that revoking a parent
+    // PLATFORM_ADMIN session still invalidates an impersonation token after refresh.
     const response = NextResponse.next();
+    if (clearBackupCookie) {
+      response.cookies.delete('dream-admin-session');
+    }
     if (shouldRefreshToken(request)) {
       try {
         const freshJwt = await createSessionToken({
@@ -102,6 +132,10 @@ export async function middleware(request: NextRequest) {
           role: session.role,
           organizationId: session.organizationId,
           createdAt: session.createdAt,
+          // Preserve impersonation linkage — without these the parent-session
+          // revocation chain is broken on the first middleware-driven refresh.
+          ...(session.impersonatedBy !== undefined && { impersonatedBy: session.impersonatedBy }),
+          ...(session.parentSessionId !== undefined && { parentSessionId: session.parentSessionId }),
         });
         response.cookies.set('session', freshJwt, {
           httpOnly: true,
@@ -117,9 +151,33 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // ── Executive portal guard ──────────────────────────────────────────────────
+  // /executive (root) is the login page — allow through without auth check.
+  // Everything under /executive/* and /api/executive/* (except /api/executive/login) is protected.
+  const isExecProtected = pathname.startsWith('/executive/') && pathname !== '/executive';
+  const isExecApi = pathname.startsWith('/api/executive/') && pathname !== '/api/executive/login';
+
+  if (isExecProtected || isExecApi) {
+    const execCookie = request.cookies.get('exec-session');
+    let execSession = null;
+    if (execCookie?.value) {
+      try {
+        execSession = await verifyExecSessionWithDB(execCookie.value);
+      } catch {
+        execSession = null;
+      }
+    }
+    if (!execSession) {
+      if (isExecApi) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      return NextResponse.redirect(new URL('/executive', request.url));
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*', '/tenant/:path*', '/login'],
+  matcher: ['/admin/:path*', '/api/admin/:path*', '/tenant/:path*', '/login', '/executive/:path*', '/api/executive/:path*'],
 };

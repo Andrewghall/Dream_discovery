@@ -1,0 +1,177 @@
+'use client'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+// Extend window for speech recognition
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => ISpeechRecognition
+    webkitSpeechRecognition?: new () => ISpeechRecognition
+  }
+}
+
+interface ISpeechRecognition {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((e: ISpeechRecognitionEvent) => void) | null
+  onend: (() => void) | null
+  onerror: (() => void) | null
+  start(): void
+  stop(): void
+}
+
+interface ISpeechRecognitionEvent {
+  resultIndex: number
+  results: ISpeechRecognitionResultList
+}
+
+interface ISpeechRecognitionResultList {
+  length: number
+  [index: number]: ISpeechRecognitionResult
+}
+
+interface ISpeechRecognitionResult {
+  isFinal: boolean
+  [index: number]: { transcript: string }
+}
+
+export type VoiceState = 'idle' | 'speaking' | 'listening' | 'processing' | 'reflecting'
+
+export function useVoice() {
+  const [state, setVoiceState] = useState<VoiceState>('idle')
+  const [transcript, setTranscript] = useState('')
+  const [interimTranscript, setInterimTranscript] = useState('')
+  const [supported, setSupported] = useState(false)
+  const recognitionRef = useRef<ISpeechRecognition | null>(null)
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onDoneRef = useRef<((t: string) => void) | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    const hasSpeech = typeof window !== 'undefined' &&
+      ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSupported(hasSpeech)
+  }, [])
+
+  const speak = useCallback(async (text: string, onEnd?: () => void) => {
+    if (typeof window === 'undefined') return
+
+    // Stop any current playback
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
+    }
+    window.speechSynthesis?.cancel()
+
+    setVoiceState('speaking')
+
+    try {
+      const res = await fetch('/api/public/assessment/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      if (!res.ok) throw new Error('TTS request failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => {
+        URL.revokeObjectURL(url)
+        audioRef.current = null
+        setVoiceState('idle')
+        onEnd?.()
+      }
+      audio.onerror = () => {
+        URL.revokeObjectURL(url)
+        audioRef.current = null
+        setVoiceState('idle')
+        onEnd?.()
+      }
+      await audio.play()
+    } catch {
+      // Fallback to Web Speech API
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.rate = 0.88
+      utterance.pitch = 1.05
+      const voices = window.speechSynthesis.getVoices()
+      const preferred = voices.find(v => v.lang === 'en-GB' && v.localService) ||
+                        voices.find(v => v.lang === 'en-GB') ||
+                        voices.find(v => v.lang.startsWith('en'))
+      if (preferred) utterance.voice = preferred
+      utterance.onend = () => { setVoiceState('idle'); onEnd?.() }
+      window.speechSynthesis.speak(utterance)
+    }
+  }, [])
+
+  const stopSpeaking = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
+    }
+    if (typeof window !== 'undefined') window.speechSynthesis?.cancel()
+    setVoiceState('idle')
+  }, [])
+
+  const stopListening = useCallback(() => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+    recognitionRef.current?.stop()
+    setVoiceState('processing')
+  }, [])
+
+  const startListening = useCallback((onDone: (transcript: string) => void) => {
+    if (!supported) return
+    const SRConstructor = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SRConstructor) return
+    const rec = new SRConstructor()
+    recognitionRef.current = rec
+    onDoneRef.current = onDone
+
+    rec.continuous = true
+    rec.interimResults = true
+    rec.lang = 'en-GB'
+
+    let finalTranscript = ''
+
+    rec.onresult = (e: ISpeechRecognitionEvent) => {
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i]
+        if (r.isFinal) finalTranscript += r[0].transcript + ' '
+        else interim += r[0].transcript
+      }
+      setTranscript(finalTranscript)
+      setInterimTranscript(interim)
+
+      // Reset silence timer
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+      silenceTimerRef.current = setTimeout(() => {
+        if (finalTranscript.trim().length > 5) {
+          stopListening()
+        }
+      }, 2200)
+    }
+
+    rec.onend = () => {
+      setVoiceState('idle')
+      setInterimTranscript('')
+      if (finalTranscript.trim()) {
+        onDoneRef.current?.(finalTranscript.trim())
+      }
+    }
+
+    rec.onerror = () => {
+      setVoiceState('idle')
+    }
+
+    setTranscript('')
+    setInterimTranscript('')
+    setVoiceState('listening')
+    rec.start()
+  }, [supported, stopListening])
+
+  return { state, transcript, interimTranscript, supported, speak, stopSpeaking, startListening, stopListening, setVoiceState }
+}

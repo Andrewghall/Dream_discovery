@@ -274,11 +274,13 @@ describe('calculateSessionConfidence', () => {
       }),
     ];
 
-    const coverage = calculateLensCoverage(nodes);
+    // Must pass explicit effectiveLenses — no fallback to legacy ALL_LENSES
+    const effectiveLenses = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
+    const coverage = calculateLensCoverage(nodes, effectiveLenses);
     const result = calculateSessionConfidence(nodes, coverage, [], 0);
 
     // People (4 nodes) and Customer (4 nodes) >= 3, Technology (1 node) < 3
-    // lensCoverageRate = 2 / 5 (ALL_LENSES has 5 lenses)
+    // lensCoverageRate = 2 / 5 (5 effectiveLenses, 2 have coverage ≥ 3 nodes)
     expect(result.lensCoverageRate).toBeCloseTo(2 / 5, 2);
   });
 });

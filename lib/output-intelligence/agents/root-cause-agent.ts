@@ -1,18 +1,36 @@
 /**
  * Engine 2: Root Cause Intelligence Agent
  *
- * Analyses workshop signals to surface systemic root causes — not symptoms.
- * Produces a ranked list of root causes, a friction map by journey stage,
- * and a systemic pattern narrative.
+ * Analyses workshop signals to surface systemic root causes AND the force field
+ * of constraining vs driving forces. Preserves participant voice. Maps each
+ * constraint to whether the reimagined vision addresses it.
  */
 
 import OpenAI from 'openai';
-import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopSignals, RootCauseIntelligence } from '../types';
 
-const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
-
 const SCHEMA = `{
+  "forceFieldHeadline": "string — one memorable sentence capturing the essential tension e.g. 'A willing organisation held back by its own infrastructure'",
+  "systemicPattern": "string — 1-2 paragraph diagnosis of the deeper structural pattern. Write with authority. Name the pattern, not the symptoms.",
+  "workshopConstraints": [
+    {
+      "title": "string — constraint name (5-10 words, specific)",
+      "type": "Structural | Cultural | Technical | Regulatory | Resource | Leadership",
+      "severity": "critical | significant | moderate",
+      "participantVoice": "string — a representative quote or close paraphrase capturing this constraint in the participant's OWN language. Use their words, not consulting language.",
+      "affectedLenses": ["string — lens names"],
+      "rootCause": "string — 2-3 sentences on WHY this constraint exists at a systemic level. What created it? What keeps it in place?",
+      "resolutionStatus": "Addressed in Vision | Partially Addressed | Requires Enabler | Structural — Hard to Change"
+    }
+  ],
+  "drivingForces": [
+    {
+      "force": "string — what is working in favour of transformation (specific, not generic)",
+      "strength": "strong | moderate | emerging",
+      "source": "string — where this comes from e.g. 'Leadership mandate from COO', 'Staff aspiration signals across all cohorts', 'Regulatory deadline creating urgency'"
+    }
+  ],
   "rootCauses": [
     {
       "rank": 1,
@@ -24,7 +42,6 @@ const SCHEMA = `{
       "severity": "critical | significant | moderate"
     }
   ],
-  "systemicPattern": "string — 1-2 paragraph diagnosis of the deeper structural pattern driving these causes",
   "frictionMap": [
     {
       "stage": "string — journey stage name",
@@ -52,7 +69,7 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('No tensions identified in discovery phase.');
   }
 
-  lines.push('\n=== CONSTRAINTS ===');
+  lines.push('\n=== CONSTRAINTS (structured discovery) ===');
   if (signals.discovery.constraints.length > 0) {
     signals.discovery.constraints.forEach((c) => {
       lines.push(`• ${c.title}${c.description ? ': ' + c.description : ''} [${c.type ?? 'general'}]`);
@@ -78,15 +95,27 @@ function buildSignalDump(signals: WorkshopSignals): string {
     });
   }
 
+  // ── CONSTRAINTS phase — participant voice preserved ───────────────────────
   if (signals.liveSession.constraintPads.length > 0) {
-    lines.push('\n=== CONSTRAINT PADS (LIVE WORKSHOP) ===');
-    signals.liveSession.constraintPads.slice(0, 25).forEach((p) => {
-      lines.push(`• ${p.text}${p.lens ? ` [${p.lens}]` : ''}`);
+    lines.push('\n=== CONSTRAINT WORKSHOP SIGNALS (participant voice — use these verbatim in participantVoice field) ===');
+    lines.push(`(${signals.liveSession.constraintPads.length} total signals — read all of them, each distinct constraint should become its own workshopConstraint entry)`);
+    signals.liveSession.constraintPads.forEach((p) => {
+      lines.push(`• ${p.text}${p.lens ? ` [${p.lens}]` : ''}${p.actor ? ` — ${p.actor}` : ''}`);
     });
   }
 
+  // ── DISCOVERY phase signals — current-state pain ─────────────────────────
+  const discoveryPads = signals.liveSession.discoveryPads ?? [];
+  if (discoveryPads.length > 0) {
+    lines.push('\n=== DISCOVERY SIGNALS — CURRENT PAIN BY ACTOR ===');
+    discoveryPads.slice(0, 40).forEach((p) => {
+      lines.push(`• ${p.text}${p.lens ? ` [${p.lens}]` : ''}${p.actor ? ` — ${p.actor}` : ''}`);
+    });
+  }
+
+  // ── Reimagine signals — driving forces evidence ──────────────────────────
   if (signals.liveSession.reimaginePads.length > 0) {
-    lines.push('\n=== REIMAGINE PADS (WHAT NEEDS TO CHANGE) ===');
+    lines.push('\n=== REIMAGINE SIGNALS (use these to assess resolutionStatus AND to identify drivingForces) ===');
     signals.liveSession.reimaginePads.slice(0, 25).forEach((p) => {
       lines.push(`• ${p.text}${p.lens ? ` [${p.lens}]` : ''}`);
     });
@@ -100,6 +129,14 @@ function buildSignalDump(signals: WorkshopSignals): string {
       lines.push('\n=== KEY CHALLENGES FROM PARTICIPANTS ===');
       challenges.forEach((i) => lines.push(`• ${i.text}`));
     }
+
+    const enablers = signals.discovery.insights
+      .filter((i) => i.type === 'ENABLER' || i.type === 'OPPORTUNITY' || i.type === 'VISION')
+      .slice(0, 10);
+    if (enablers.length > 0) {
+      lines.push('\n=== ENABLING SIGNALS (driving forces evidence) ===');
+      enablers.forEach((i) => lines.push(`• ${i.text}`));
+    }
   }
 
   if (signals.discovery.cohortBreakdown?.length) {
@@ -112,16 +149,91 @@ function buildSignalDump(signals: WorkshopSignals): string {
       if (cohort.topAspirations.length)
         lines.push(`  Top aspirations:\n${cohort.topAspirations.map((a) => `    • ${a}`).join('\n')}`);
     }
-    lines.push('\nUse cohort divergence to identify role-specific root causes and where cohorts must move in lockstep for transformation to succeed.');
+    lines.push('\nHigh aspiration ratio = driving force. Low aspiration + high friction = deep constraint.');
   }
 
   if (signals.historicalMemory?.chunks.length) {
     lines.push('\n=== CROSS-WORKSHOP HISTORICAL MEMORY ===');
-    lines.push('Relevant findings from past workshops in this organisation:');
     for (const c of signals.historicalMemory.chunks) {
       lines.push(`• [${c.source}, ${c.similarity.toFixed(2)}] ${c.text}`);
     }
-    lines.push('(Supporting context only — not from this workshop)');
+    lines.push('(Supporting context only)');
+  }
+
+  if (signals.evidenceDocuments?.length) {
+    lines.push('\n=== UPLOADED EVIDENCE DOCUMENTS ===');
+    lines.push('Documentary evidence uploaded and validated for this workshop:');
+    for (const doc of signals.evidenceDocuments) {
+      lines.push(`\nDocument: ${doc.fileName} (signal direction: ${doc.signalDirection}, confidence: ${Math.round(doc.confidence * 100)}%)`);
+      lines.push(`Summary: ${doc.summary}`);
+      if (doc.keyFindings.length > 0) {
+        lines.push(`Key findings:\n${doc.keyFindings.map(f => `  • ${f}`).join('\n')}`);
+      }
+    }
+    lines.push('\nUse these documents to validate root causes. Where documentary evidence confirms a systemic pattern, increase severity and cite in the evidence field. Where it contradicts a cause, note the discrepancy. Where evidence reveals causes not mentioned in workshop signals, include them as distinct root causes grounded in the document findings.');
+  }
+
+  if (signals.evidenceValidation) {
+    const ev = signals.evidenceValidation;
+    lines.push('\n=== EVIDENCE VALIDATION VERDICT ===');
+    lines.push('Cross-validation of uploaded documentary evidence against workshop discovery:');
+
+    if (ev.corroborated.length > 0) {
+      lines.push(`\nCORROBORATED BY DATA (${ev.corroborated.length} findings confirmed):`);
+      ev.corroborated.slice(0, 8).forEach(f => lines.push(`  ✓ ${f}`));
+    }
+
+    if (ev.contradicted.length > 0) {
+      lines.push(`\nCONFIRMED CONTRADICTIONS (2+ independent sources — treat with high weight):`);
+      ev.contradicted.slice(0, 5).forEach(f => lines.push(`  ✗ ${f}`));
+    }
+
+    if (ev.perceptionGaps.length > 0) {
+      lines.push(`\nPERCEPTION GAPS (participants believed X but data shows Y — organisational blind spots):`);
+      ev.perceptionGaps.slice(0, 5).forEach(f => lines.push(`  ⚠ ${f}`));
+    }
+
+    if (ev.blindSpots.length > 0) {
+      lines.push(`\nDATA BLIND SPOTS (significant findings in data not raised by any participant):`);
+      ev.blindSpots.slice(0, 5).forEach(f => lines.push(`  ● ${f}`));
+    }
+
+    const uncoveredLenses = ev.lensGaps.filter(l => !l.covered).map(l => l.lens);
+    if (uncoveredLenses.length > 0) {
+      lines.push(`\nLENS COVERAGE GAPS (no empirical evidence for these lenses): ${uncoveredLenses.join(', ')}`);
+      lines.push('Findings in these lenses rest on participant testimony alone — flag where relevant.');
+    }
+
+    if (ev.conclusionImpact) {
+      lines.push(`\nOVERALL VERDICT: ${ev.conclusionImpact}`);
+    }
+  }
+
+  if (signals.graphIntelligence) {
+    const gi = signals.graphIntelligence;
+
+    if (gi.bottlenecks.length > 0) {
+      lines.push('\n=== RELATIONSHIP GRAPH: STRUCTURAL BOTTLENECKS ===');
+      lines.push('Highest-leverage constraint candidates (evidence-backed):');
+      for (const b of gi.bottlenecks.slice(0, 5)) {
+        lines.push(`• "${b.displayLabel}" — affects ${b.outDegree} areas, tier: ${b.evidenceTier}, score: ${b.compositeScore}`);
+      }
+    }
+
+    if (gi.compensatingBehaviours.length > 0) {
+      lines.push('\n=== RELATIONSHIP GRAPH: COMPENSATING BEHAVIOURS ===');
+      for (const cb of gi.compensatingBehaviours.slice(0, 5)) {
+        lines.push(`• "${cb.enablerLabel}" compensates for "${cb.constraintLabel}" — risk: ${cb.riskLevel}`);
+      }
+    }
+
+    if (gi.brokenChains.filter(bc => bc.brokenChainType === 'CONSTRAINT_NO_RESPONSE' && bc.severity === 'high').length > 0) {
+      lines.push('\n=== RELATIONSHIP GRAPH: UNADDRESSED CONSTRAINTS ===');
+      gi.brokenChains
+        .filter(bc => bc.brokenChainType === 'CONSTRAINT_NO_RESPONSE' && bc.severity === 'high')
+        .slice(0, 5)
+        .forEach(bc => lines.push(`• "${bc.displayLabel}" — ${bc.rawFrequency} mentions, no response pathway detected`));
+    }
   }
 
   return lines.join('\n');
@@ -133,25 +245,42 @@ export async function runRootCauseAgent(
 ): Promise<RootCauseIntelligence> {
   onProgress?.('Root Cause Intelligence: analysing systemic causes…');
 
-  const systemPrompt = `You are the DREAM INHIBITION Signal engine — scanning the forces preventing transformation in this organisation. Identify governance barriers, technology fragmentation, decision bottlenecks, cross-team friction, and knowledge silos. Move beyond symptoms to systemic causes. Rank constraints by their power to block transformation. Every output must be grounded in specific workshop evidence.
+  const systemPrompt = `You are the DREAM INHIBITION Signal engine — scanning the forces preventing transformation in this organisation.
 
-Your role is to identify SYSTEMIC ROOT CAUSES — not surface symptoms.
-Look for patterns across lenses, tensions, constraints, and journey stages that reveal WHY the organisation is experiencing its challenges.
+YOUR JOB IS TO PRODUCE A FORCE FIELD ANALYSIS. There are forces RESTRAINING transformation (constraints) and forces DRIVING it forward. You must identify both sides with equal rigour.
 
-Rules:
-• Use ONLY the signals provided — never invent evidence
-• Rank root causes by severity and evidence strength
-• If evidence is weak, note this in the cause description
-• frictionLevel must be 0-10 (10 = maximum friction)
-• Generate frictionMap entries for each journey stage provided
-• If no journey stages exist, create a generic frictionMap based on lenses
-• Output MUST be valid JSON matching the schema — no commentary outside JSON`;
+CRITICAL RULES:
+
+forceFieldHeadline: Make it memorable and specific. Capture the essential tension in one sentence. Not "The organisation faces challenges" — something like "A workforce ready to change, trapped by infrastructure that cannot keep up."
+
+workshopConstraints (12-20 items — a 2-hour constraints workshop surfaces many distinct constraints; be thorough and don't collapse distinct issues into one):
+- These are what PARTICIPANTS named as constraints in their own words
+- participantVoice MUST be a near-verbatim quote or very close paraphrase from the actual signals — do not rewrite into consulting language
+- type must be one of: Structural / Cultural / Technical / Regulatory / Resource / Leadership
+- resolutionStatus: honestly assess whether the reimagine signals address this constraint. "Addressed in Vision" = clear reimagine signal resolves it. "Requires Enabler" = vision aspires to it but no clear mechanism. "Structural — Hard to Change" = not addressed, likely systemic.
+
+drivingForces (4-6 items):
+- The genuine forces working in FAVOUR of transformation
+- Ground each in specific signals — aspiration signals, leadership signals, competitive pressure, regulatory deadlines
+- Be honest about strength: "emerging" if it's tentative
+
+systemicPattern: Write a diagnosis, not a list. Name the underlying pattern driving ALL the constraints. What is the organisation's fundamental challenge?
+
+rootCauses: 8-12 ranked causes. Go deeper than symptoms. WHY does the constraint exist? Each cause should be distinct — don't merge separate issues.
+
+frictionMap: If journey stages exist, use them. If not, create stages based on the lenses (e.g. "Customer Contact", "Agent Resolution", "Back Office Processing", "Compliance Review").
+
+evidenceValidation: Where provided, confirmed contradictions and perceptionGaps are high-quality signals — use them to validate or challenge root cause severity. BlindSpots may represent root causes participants were unaware of. Lens coverage gaps mean those lenses lack empirical grounding — note this honestly.
+
+Use ONLY signals provided. Output MUST be valid JSON. No commentary outside JSON.`;
 
   const userMessage = `${buildSignalDump(signals)}
 
 Return JSON matching this schema exactly:
 ${SCHEMA}`;
 
+  const apiKey = process.env.OPENAI_API_KEY;
+  const openai = apiKey ? new OpenAI({ apiKey }) : null;
   if (!openai) throw new Error('OPENAI_API_KEY is not configured');
 
   let lastError: Error | null = null;
@@ -159,7 +288,7 @@ ${SCHEMA}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 100_000);
     try {
-      const response = await openai.chat.completions.create(
+      const response = await openAiBreaker.execute(() => openai.chat.completions.create(
         {
           model: 'gpt-4o',
           response_format: { type: 'json_object' },
@@ -168,10 +297,10 @@ ${SCHEMA}`;
             { role: 'user', content: userMessage },
           ],
           temperature: 0.3,
-          max_tokens: 3000,
+          max_tokens: 8000,
         },
         { signal: controller.signal }
-      );
+      ));
 
       clearTimeout(timeoutId);
       const raw = response.choices[0]?.message?.content ?? '{}';

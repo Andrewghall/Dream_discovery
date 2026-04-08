@@ -150,10 +150,24 @@ export async function POST(
     .join('\n');
 
   // ── Build context from blueprint / prep ──────────────────────────
-  const stages: string[] =
-    blueprint?.journeyStages?.map((s: { name: string }) => s.name) ??
-    (versionPayload?.liveJourney as any)?.stages ??
-    ['Booking & Pre-trip', 'Check-in & Departure', 'Disruption & Real-time', 'In-flight Experience', 'Arrival & Baggage', 'Post-trip & Recovery', 'Loyalty & Retention'];
+  // Blueprint (authored in Prep) is the source of truth for journey stages.
+  // Saved liveJourney stages are accepted as a fallback for legacy workshops that
+  // pre-date blueprint journey stage configuration.
+  // If neither exists, return a clear error rather than injecting fabricated stages.
+  const stages: string[] | null =
+    blueprint?.journeyStages?.map((s: { name: string }) => s.name)?.filter(Boolean) ??
+    ((versionPayload?.liveJourney as any)?.stages as string[] | undefined) ??
+    null;
+
+  if (!stages || stages.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          'No journey stages found. Complete the workshop blueprint in Prep (journey stages section) before generating the Actor Journey.',
+      },
+      { status: 422 },
+    );
+  }
 
   // Blueprint doesn't carry actors — pull from the saved session journey or start empty.
   const blueprintActors: LiveJourneyActor[] =

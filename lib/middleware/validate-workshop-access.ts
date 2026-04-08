@@ -37,6 +37,11 @@ export async function validateWorkshopAccess(
   userRole: string,
   userId?: string
 ): Promise<WorkshopAccessValidation> {
+  const KNOWN_ROLES = ['PLATFORM_ADMIN', 'TENANT_ADMIN', 'TENANT_USER'];
+  if (!KNOWN_ROLES.includes(userRole)) {
+    return { valid: false, error: 'Invalid user role' };
+  }
+
   if (userRole === 'PLATFORM_ADMIN') {
     // Super-admin: universal read access across all organisations
     const workshop = await prisma.workshop.findUnique({

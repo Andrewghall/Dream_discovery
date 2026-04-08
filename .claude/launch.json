@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "Next.js Dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3000
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH node node_modules/.bin/next dev --webpack -p 3003"],
+      "port": 3003
     }
   ]
 }

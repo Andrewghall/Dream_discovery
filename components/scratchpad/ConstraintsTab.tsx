@@ -2,7 +2,7 @@
 
 import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Shield, Code, DollarSign, Users } from 'lucide-react';
+import { Shield, Code, PoundSterling, Users } from 'lucide-react';
 import { EditableText } from './EditableText';
 import { AiInsightCard } from './AiInsightCard';
 
@@ -35,7 +35,7 @@ const mitigationStyles: Record<string, { bg50: string; border400: string; text90
 const CATEGORIES = [
   { key: 'regulatory', label: 'Regulatory Constraints', sublabel: 'compliance requirements', Icon: Shield, color: 'blue', mitigationColor: 'green' },
   { key: 'technical', label: 'Technical Constraints', sublabel: 'technical blockers', Icon: Code, color: 'purple', mitigationColor: 'purple' },
-  { key: 'commercial', label: 'Commercial Constraints', sublabel: 'commercial barriers', Icon: DollarSign, color: 'green', mitigationColor: 'green' },
+  { key: 'commercial', label: 'Commercial Constraints', sublabel: 'commercial barriers', Icon: PoundSterling, color: 'green', mitigationColor: 'green' },
   { key: 'organizational', label: 'Organizational Constraints', sublabel: 'people & culture barriers', Icon: Users, color: 'orange', mitigationColor: 'orange' },
 ] as const;
 

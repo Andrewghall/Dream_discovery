@@ -5,6 +5,8 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, X } from 'lucide-r
 import type { WorkshopOutputIntelligence, ReportSummary } from '@/lib/output-intelligence/types';
 import { ItemToggle } from '@/components/report-builder/DraggableSection';
 import { EditableText, AddItemInput } from './ScratchpadEditors';
+import { renderPdfRoadmapGantt } from '@/lib/report/html-renderers';
+import { SectionAction } from '@/components/scratchpad/SectionAction';
 
 // ── Phase colours for roadmap ─────────────────────────────────────────────────
 
@@ -21,13 +23,20 @@ export function ExecutiveSummaryBlock({
   onUpdate,
   excludedItems = [],
   onToggleItem = () => {},
+  intelligence,
 }: {
   summary: ReportSummary;
   onUpdate: (updated: ReportSummary) => void;
   excludedItems?: string[];
   onToggleItem?: (id: string) => void;
+  intelligence?: WorkshopOutputIntelligence | null;
 }) {
   const es = summary.executiveSummary;
+  if (!es) return null;
+  const whatWeFound = es.whatWeFound ?? [];
+  const lensFindings = es.lensFindings ?? [];
+  const ganttSvg = intelligence?.roadmap ? renderPdfRoadmapGantt(intelligence.roadmap) : '';
+  const roi = intelligence?.roadmap?.roiSummary;
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -60,57 +69,134 @@ export function ExecutiveSummaryBlock({
         />
       </div>
 
+      {/* Decision Ask — what we're asking the exec to decide */}
+      {es.decisionAsk && (
+        <div className="px-6 py-5 bg-amber-50 border-b border-amber-200">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-700 mb-2">
+            Decision Required
+          </p>
+          <p className="text-sm font-semibold text-amber-900 leading-snug mb-3">{es.decisionAsk.statement}</p>
+          {es.decisionAsk.options && es.decisionAsk.options.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {es.decisionAsk.options.map((opt, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm text-amber-900">
+                  <span className="mt-0.5 shrink-0 w-5 h-5 rounded-full bg-amber-200 text-amber-800 text-[10px] font-bold flex items-center justify-center">{i + 1}</span>
+                  <div><span className="font-semibold">{opt.label}:</span> {opt.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 mb-1">Our Recommendation</p>
+              <p className="text-xs text-emerald-900">{es.decisionAsk.recommendation}</p>
+            </div>
+            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-red-700 mb-1">If No Action</p>
+              <p className="text-xs text-red-900">{es.decisionAsk.ifNoAction}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Body */}
       <div className="px-6 py-6 space-y-7">
 
-        {/* What We Found — numbered findings */}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
-            What We Found
-          </p>
-          <ul className="space-y-3">
-            {es.whatWeFound.map((finding, i) => (
-              <ItemToggle key={i} id={`finding:${i}`} excluded={excludedItems.includes(`finding:${i}`)} onToggle={onToggleItem}>
-                <div className="flex items-start gap-3 group/finding">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary mt-0.5">
-                    {i + 1}
-                  </span>
-                  <EditableText
-                    value={finding}
-                    onSave={(v) => {
-                      const updated = es.whatWeFound.map((f, j) => j === i ? v : f);
-                      onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
-                    }}
-                    className="flex-1 text-sm text-foreground leading-relaxed"
-                  />
-                  <button
-                    onClick={() => {
-                      const updated = es.whatWeFound.filter((_, j) => j !== i);
-                      onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
-                    }}
-                    className="opacity-0 group-hover/finding:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
-                    title="Remove finding"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </ItemToggle>
-            ))}
-          </ul>
-          <AddItemInput
-            onAdd={(text) => onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: [...es.whatWeFound, text] } })}
-            placeholder="Add a finding — name a system, metric, or process"
-          />
+        {/* What We Found — positives first, then challenges */}
+        <div className="space-y-5">
+
+          {/* Strengths & Enablers */}
+          {(es.whatWeFoundPositive ?? []).length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700 mb-3">
+                What&rsquo;s Working
+              </p>
+              <ul className="space-y-2">
+                {(es.whatWeFoundPositive ?? []).map((item, i) => (
+                  <ItemToggle key={i} id={`positive:${i}`} excluded={excludedItems.includes(`positive:${i}`)} onToggle={onToggleItem}>
+                    <div className="flex items-start gap-3 group/positive rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-200 text-[10px] font-bold text-emerald-800 mt-0.5">
+                        ✓
+                      </span>
+                      <EditableText
+                        value={item}
+                        onSave={(v) => {
+                          const updated = (es.whatWeFoundPositive ?? []).map((f, j) => j === i ? v : f);
+                          onUpdate({ ...summary, executiveSummary: { ...es, whatWeFoundPositive: updated } });
+                        }}
+                        className="flex-1 text-sm text-emerald-900 leading-relaxed"
+                      />
+                      <button
+                        onClick={() => {
+                          const updated = (es.whatWeFoundPositive ?? []).filter((_, j) => j !== i);
+                          onUpdate({ ...summary, executiveSummary: { ...es, whatWeFoundPositive: updated } });
+                        }}
+                        className="opacity-0 group-hover/positive:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
+                        title="Remove"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </ItemToggle>
+                ))}
+              </ul>
+              <AddItemInput
+                onAdd={(text) => onUpdate({ ...summary, executiveSummary: { ...es, whatWeFoundPositive: [...(es.whatWeFoundPositive ?? []), text] } })}
+                placeholder="Add a strength or enabler"
+              />
+            </div>
+          )}
+
+          {/* Challenges */}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+              {(es.whatWeFoundPositive ?? []).length > 0 ? 'Challenges' : 'What We Found'}
+            </p>
+            <ul className="space-y-3">
+              {whatWeFound.map((finding, i) => (
+                <ItemToggle key={i} id={`finding:${i}`} excluded={excludedItems.includes(`finding:${i}`)} onToggle={onToggleItem}>
+                  <div className="flex items-start gap-3 group/finding">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary mt-0.5">
+                      {i + 1}
+                    </span>
+                    <EditableText
+                      value={finding}
+                      onSave={(v) => {
+                        const updated = whatWeFound.map((f, j) => j === i ? v : f);
+                        onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
+                      }}
+                      className="flex-1 text-sm text-foreground leading-relaxed"
+                    />
+                    <button
+                      onClick={() => {
+                        const updated = whatWeFound.filter((_, j) => j !== i);
+                        onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: updated } });
+                      }}
+                      className="opacity-0 group-hover/finding:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all mt-0.5"
+                      title="Remove finding"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </ItemToggle>
+              ))}
+            </ul>
+            <AddItemInput
+              onAdd={(text) => onUpdate({ ...summary, executiveSummary: { ...es, whatWeFound: [...whatWeFound, text] } })}
+              placeholder="Add a challenge — name a system, metric, or process"
+            />
+          </div>
+
         </div>
 
         {/* Per-Lens Findings */}
-        {es.lensFindings && es.lensFindings.length > 0 && (
+        {lensFindings.length > 0 && (
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
               Findings by Lens
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {es.lensFindings.map((lf, i) => (
+              {lensFindings.map((lf, i) => (
                 <ItemToggle key={i} id={`lens:${lf.lens}`} excluded={excludedItems.includes(`lens:${lf.lens}`)} onToggle={onToggleItem}>
                   <div className="rounded-xl border border-border bg-muted/20 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
@@ -119,7 +205,7 @@ export function ExecutiveSummaryBlock({
                     <EditableText
                       value={lf.finding}
                       onSave={(v) => {
-                        const updated = es.lensFindings.map((f, j) => j === i ? { ...f, finding: v } : f);
+                        const updated = lensFindings.map((f, j) => j === i ? { ...f, finding: v } : f);
                         onUpdate({ ...summary, executiveSummary: { ...es, lensFindings: updated } });
                       }}
                       multiline
@@ -186,7 +272,45 @@ export function ExecutiveSummaryBlock({
             />
           </div>
         )}
+
       </div>
+
+      {/* Delivery Timeline — Gantt + ROI — last item in exec summary */}
+      {(ganttSvg || roi) && (
+        <div className="px-6 py-5 border-t border-border bg-slate-50 space-y-4">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Delivery Timeline &amp; ROI
+          </p>
+          {ganttSvg && (
+            <div
+              className="overflow-x-auto rounded-xl border border-border bg-white p-3"
+              dangerouslySetInnerHTML={{ __html: ganttSvg }}
+            />
+          )}
+          {roi && (
+            <div className="grid grid-cols-3 gap-3">
+              {roi.totalProgrammeCost && (
+                <div className="rounded-xl border border-border bg-white px-4 py-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Investment</p>
+                  <p className="text-sm font-bold text-foreground">{roi.totalProgrammeCost}</p>
+                </div>
+              )}
+              {roi.totalThreeYearBenefit && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide mb-1">3-Year Benefit</p>
+                  <p className="text-sm font-bold text-emerald-800">{roi.totalThreeYearBenefit}</p>
+                </div>
+              )}
+              {roi.paybackPeriod && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide mb-1">Payback Period</p>
+                  <p className="text-sm font-bold text-foreground">{roi.paybackPeriod}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -203,12 +327,19 @@ export function SupportingEvidenceBlock({
   onToggleItem?: (id: string) => void;
 }) {
   const [showNew, setShowNew] = useState(false);
-  const { discoveryValidation } = intelligence;
+  const discoveryValidation = intelligence.discoveryValidation;
+  if (!discoveryValidation) return null;
+  const confirmedIssues = discoveryValidation.confirmedIssues ?? [];
+  const newIssues = discoveryValidation.newIssues ?? [];
 
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="Issues validated by participant evidence — confirmed issues were already suspected, new issues were surfaced for the first time in this workshop."
+        action="High-confidence confirmed issues are non-negotiable scope items. New issues should be added to pre-programme discovery or investigated before sign-off — they are risks you didn't know you had."
+      />
       {/* Confirmed Issues */}
-      {discoveryValidation.confirmedIssues.length > 0 && (
+      {confirmedIssues.length > 0 && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="px-5 py-3.5 border-b border-border bg-muted/30 flex items-center justify-between">
             <p className="text-xs font-semibold text-foreground">Confirmed Issues</p>
@@ -217,7 +348,7 @@ export function SupportingEvidenceBlock({
             </span>
           </div>
           <div className="divide-y divide-border">
-            {discoveryValidation.confirmedIssues.map((ci, i) => (
+            {confirmedIssues.map((ci, i) => (
               <ItemToggle key={i} id={`confirmed:${i}`} excluded={excludedItems.includes(`confirmed:${i}`)} onToggle={onToggleItem} className="px-5 py-3.5">
                 <div className="flex items-start gap-3">
                   <span
@@ -243,7 +374,7 @@ export function SupportingEvidenceBlock({
       )}
 
       {/* New Issues */}
-      {discoveryValidation.newIssues.length > 0 && (
+      {newIssues.length > 0 && (
         <div className="rounded-xl border border-blue-200 bg-card overflow-hidden">
           <button
             onClick={() => setShowNew((v) => !v)}
@@ -252,7 +383,7 @@ export function SupportingEvidenceBlock({
             <p className="text-xs font-semibold text-blue-800">
               New Issues — Surfaced in Workshop
               <span className="ml-2 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px]">
-                {discoveryValidation.newIssues.length}
+                {newIssues.length}
               </span>
             </p>
             {showNew ? (
@@ -263,7 +394,7 @@ export function SupportingEvidenceBlock({
           </button>
           {showNew && (
             <div className="divide-y divide-blue-100">
-              {discoveryValidation.newIssues.map((ni, i) => (
+              {newIssues.map((ni, i) => (
                 <ItemToggle key={i} id={`new:${i}`} excluded={excludedItems.includes(`new:${i}`)} onToggle={onToggleItem} className="px-5 py-3.5">
                   <div>
                     <p className="text-sm font-medium text-foreground">{ni.issue}</p>
@@ -291,7 +422,9 @@ export function RootCausesBlock({
   excludedItems?: string[];
   onToggleItem?: (id: string) => void;
 }) {
-  const { rootCause } = intelligence;
+  const rootCause = intelligence.rootCause;
+  if (!rootCause) return null;
+  const rootCauses = rootCause.rootCauses ?? [];
   const severityColor: Record<string, string> = {
     critical: 'bg-red-100 text-red-700 border-red-200',
     significant: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -300,6 +433,10 @@ export function RootCausesBlock({
 
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="The underlying systemic pattern driving the organisation's problems, with root causes ranked by severity and the lenses they affect."
+        action="Critical root causes ranked #1–2 must be addressed in Phase 1 — fixing symptoms without resolving these will cause regression. Present this section to the executive sponsor to justify programme scope and investment."
+      />
       {/* Systemic pattern banner */}
       <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
@@ -310,7 +447,7 @@ export function RootCausesBlock({
 
       {/* Cause cards */}
       <div className="grid gap-3">
-        {rootCause.rootCauses.map((rc) => (
+        {rootCauses.map((rc) => (
           <ItemToggle key={rc.rank} id={`cause:${rc.rank}`} excluded={excludedItems.includes(`cause:${rc.rank}`)} onToggle={onToggleItem}>
             <div className="rounded-xl border border-border bg-card px-5 py-4 flex items-start gap-4">
               <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
@@ -326,9 +463,9 @@ export function RootCausesBlock({
               <div className="flex-1 min-w-0 space-y-1.5">
                 <p className="text-sm font-semibold text-foreground">{rc.cause}</p>
                 <p className="text-xs text-muted-foreground">{rc.category}</p>
-                {rc.evidence.length > 0 && (
+                {(rc.evidence ?? []).length > 0 && (
                   <ul className="mt-1 space-y-0.5">
-                    {rc.evidence.slice(0, 2).map((e, i) => (
+                    {(rc.evidence ?? []).slice(0, 2).map((e, i) => (
                       <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
                         <span className="shrink-0 mt-0.5">·</span>
                         {e}
@@ -336,9 +473,9 @@ export function RootCausesBlock({
                     ))}
                   </ul>
                 )}
-                {rc.affectedLenses.length > 0 && (
+                {(rc.affectedLenses ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1">
-                    {rc.affectedLenses.map((l) => (
+                    {(rc.affectedLenses ?? []).map((l) => (
                       <span key={l} className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground">
                         {l}
                       </span>
@@ -370,10 +507,16 @@ export function SolutionDirectionBlock({
   onToggleItem?: (id: string) => void;
 }) {
   const ss = summary.solutionSummary;
-  const { roadmap, futureState } = intelligence;
+  if (!ss) return null;
+  const roadmap = intelligence.roadmap;
+  const futureState = intelligence.futureState;
 
   return (
     <div className="space-y-6">
+      <SectionAction
+        what="The agreed transformation direction — where the organisation is heading, why, and what must structurally change to get there."
+        action="Use 'What Must Change' as the formal contract between the programme sponsor and the delivery team. Any item here not assigned an owner and a date is a risk to programme success."
+      />
 
       {/* Direction headline card */}
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5">
@@ -406,13 +549,13 @@ export function SolutionDirectionBlock({
           What Must Change
         </p>
         <div className="space-y-3">
-          {ss.whatMustChange.map((item, i) => (
+          {(ss.whatMustChange ?? []).map((item, i) => (
             <ItemToggle key={i} id={`step:${i}`} excluded={excludedItems.includes(`step:${i}`)} onToggle={onToggleItem}>
               <div className="rounded-xl border border-border bg-card p-4">
                 <EditableText
                   value={item.area}
                   onSave={(v) => {
-                    const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, area: v } : x);
+                    const updated = (ss.whatMustChange ?? []).map((x, j) => j === i ? { ...x, area: v } : x);
                     onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
                   }}
                   className="text-xs font-bold text-foreground mb-2.5"
@@ -425,7 +568,7 @@ export function SolutionDirectionBlock({
                     <EditableText
                       value={item.currentState}
                       onSave={(v) => {
-                        const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, currentState: v } : x);
+                        const updated = (ss.whatMustChange ?? []).map((x, j) => j === i ? { ...x, currentState: v } : x);
                         onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
                       }}
                       multiline
@@ -439,7 +582,7 @@ export function SolutionDirectionBlock({
                     <EditableText
                       value={item.requiredChange}
                       onSave={(v) => {
-                        const updated = ss.whatMustChange.map((x, j) => j === i ? { ...x, requiredChange: v } : x);
+                        const updated = (ss.whatMustChange ?? []).map((x, j) => j === i ? { ...x, requiredChange: v } : x);
                         onUpdate({ ...summary, solutionSummary: { ...ss, whatMustChange: updated } });
                       }}
                       multiline
@@ -454,23 +597,23 @@ export function SolutionDirectionBlock({
       </div>
 
       {/* Target Operating Model */}
-      {futureState.targetOperatingModel && (
+      {futureState?.targetOperatingModel && (
         <div className="rounded-xl border border-border bg-card px-5 py-5 space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Target Operating Model
           </p>
-          <p className="text-sm text-foreground leading-relaxed">{futureState.targetOperatingModel}</p>
+          <p className="text-sm text-foreground leading-relaxed">{futureState?.targetOperatingModel}</p>
         </div>
       )}
 
       {/* Redesign Principles */}
-      {futureState.redesignPrinciples.length > 0 && (
+      {(futureState?.redesignPrinciples ?? []).length > 0 && (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
             Redesign Principles
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {futureState.redesignPrinciples.map((p, i) => (
+            {(futureState?.redesignPrinciples ?? []).map((p, i) => (
               <div key={i} className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 flex items-start gap-2">
                 <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
                 <p className="text-xs text-foreground">{p}</p>
@@ -481,13 +624,13 @@ export function SolutionDirectionBlock({
       )}
 
       {/* Transformation Roadmap */}
-      {roadmap.phases.length > 0 && (
+      {(roadmap?.phases ?? []).length > 0 && (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
             Transformation Roadmap
           </p>
           <div className="space-y-3">
-            {roadmap.phases.map((phase, i) => {
+            {(roadmap?.phases ?? []).map((phase, i) => {
               const colors = PHASE_COLORS[i] ?? PHASE_COLORS[0];
               return (
                 <ItemToggle key={i} id={`phase:${i}`} excluded={excludedItems.includes(`phase:${i}`)} onToggle={onToggleItem}>
@@ -501,9 +644,9 @@ export function SolutionDirectionBlock({
                           <p className={`text-sm font-bold ${colors.label}`}>{phase.phase}</p>
                           <span className="text-xs text-muted-foreground shrink-0">{phase.timeframe}</span>
                         </div>
-                        {phase.initiatives.length > 0 && (
+                        {(phase.initiatives ?? []).length > 0 && (
                           <ul className="space-y-1.5">
-                            {phase.initiatives.map((init, j) => (
+                            {(phase.initiatives ?? []).map((init, j) => (
                               <li key={j} className="flex items-start gap-2">
                                 <span className="text-muted-foreground shrink-0 text-xs mt-0.5">·</span>
                                 <span className="text-xs text-foreground">
@@ -514,9 +657,9 @@ export function SolutionDirectionBlock({
                             ))}
                           </ul>
                         )}
-                        {phase.capabilities.length > 0 && (
+                        {(phase.capabilities ?? []).length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1">
-                            {phase.capabilities.map((c) => (
+                            {(phase.capabilities ?? []).map((c) => (
                               <span key={c} className="px-1.5 py-0.5 rounded bg-white/60 border border-white text-[10px] text-foreground/70">
                                 {c}
                               </span>
@@ -531,22 +674,22 @@ export function SolutionDirectionBlock({
             })}
           </div>
 
-          {roadmap.criticalPath && (
+          {roadmap?.criticalPath && (
             <div className="mt-3 rounded-lg border border-border bg-muted/20 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
                 Critical Path
               </p>
-              <p className="text-sm text-foreground">{roadmap.criticalPath}</p>
+              <p className="text-sm text-foreground">{roadmap?.criticalPath}</p>
             </div>
           )}
 
-          {roadmap.keyRisks.length > 0 && (
+          {(roadmap?.keyRisks ?? []).length > 0 && (
             <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-700 mb-1.5">
                 Key Risks
               </p>
               <ul className="space-y-1">
-                {roadmap.keyRisks.map((r, i) => (
+                {(roadmap?.keyRisks ?? []).map((r, i) => (
                   <li key={i} className="text-xs text-amber-900 flex items-start gap-2">
                     <span className="shrink-0">·</span>{r}
                   </li>
@@ -576,20 +719,20 @@ export function SolutionDirectionBlock({
             Success Looks Like
           </p>
           <ul className="space-y-2">
-            {ss.successIndicators.map((indicator, i) => (
+            {(ss.successIndicators ?? []).map((indicator, i) => (
               <li key={i} className="flex items-start gap-2.5 group/item">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                 <EditableText
                   value={indicator}
                   onSave={(v) => {
-                    const updated = ss.successIndicators.map((x, j) => j === i ? v : x);
+                    const updated = (ss.successIndicators ?? []).map((x, j) => j === i ? v : x);
                     onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: updated } });
                   }}
                   className="flex-1 text-sm text-foreground"
                 />
                 <button
                   onClick={() => {
-                    const updated = ss.successIndicators.filter((_, j) => j !== i);
+                    const updated = (ss.successIndicators ?? []).filter((_, j) => j !== i);
                     onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: updated } });
                   }}
                   className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-red-500 shrink-0 transition-all"
@@ -601,7 +744,7 @@ export function SolutionDirectionBlock({
             ))}
           </ul>
           <AddItemInput
-            onAdd={(text) => onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: [...ss.successIndicators, text] } })}
+            onAdd={(text) => onUpdate({ ...summary, solutionSummary: { ...ss, successIndicators: [...(ss.successIndicators ?? []), text] } })}
             placeholder="Add a success indicator — must be observable"
           />
         </div>
@@ -623,6 +766,7 @@ export function StrategicImpactBlock({
   onToggleItem?: (id: string) => void;
 }) {
   const si = intelligence.strategicImpact;
+  if (!si) return null;
 
   const statItems = [
     { id: 'automation', label: 'Automation Potential', pct: si.automationPotential?.percentage ?? null, color: 'bg-violet-100 text-violet-700 border-violet-200' },
@@ -632,6 +776,10 @@ export function StrategicImpactBlock({
 
   return (
     <div className="space-y-5">
+      <SectionAction
+        what="The quantified business case — automation potential, AI-assisted work, and the efficiency gains the transformation is expected to unlock."
+        action="Present this section to the executive sponsor to secure programme mandate and budget. Confidence score below 70% means the business case needs more evidence before financial sign-off."
+      />
       {/* Business case */}
       <div className="rounded-xl border border-border bg-card px-5 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Business Case Summary</p>
@@ -658,7 +806,7 @@ export function StrategicImpactBlock({
       </div>
 
       {/* Efficiency gains table */}
-      {si.efficiencyGains.length > 0 && (
+      {(si.efficiencyGains ?? []).length > 0 && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="px-5 py-3 border-b border-border bg-muted/30">
             <p className="text-xs font-semibold text-foreground">Efficiency Gains</p>
@@ -672,7 +820,7 @@ export function StrategicImpactBlock({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {si.efficiencyGains.map((g, i) => (
+              {(si.efficiencyGains ?? []).map((g, i) => (
                 <tr key={i}>
                   <td className="px-4 py-2.5 font-medium text-foreground">{g.metric}</td>
                   <td className="px-4 py-2.5 text-emerald-700 font-semibold">{g.estimated}</td>
@@ -683,6 +831,77 @@ export function StrategicImpactBlock({
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Way Forward block ─────────────────────────────────────────────────────────
+
+const WF_COLORS = [
+  { border: 'border-primary/30',   header: 'bg-primary/10',   label: 'text-primary',     dot: 'bg-primary',     badge: 'bg-primary/10 text-primary' },
+  { border: 'border-violet-200',   header: 'bg-violet-50',    label: 'text-violet-700',  dot: 'bg-violet-500',  badge: 'bg-violet-50 text-violet-700' },
+  { border: 'border-emerald-200',  header: 'bg-emerald-50',   label: 'text-emerald-700', dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700' },
+];
+
+export function WayForwardBlock({ intelligence }: { intelligence: WorkshopOutputIntelligence }) {
+  const phases = intelligence.roadmap?.phases ?? [];
+
+  if (!phases.length) {
+    return (
+      <p className="text-sm text-muted-foreground py-2 px-1">
+        No roadmap phases found. Run the output intelligence pipeline to generate Way Forward content.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionAction
+        what="Phased delivery roadmap — what gets done, in what order, and what must be true before each phase can start."
+        action="Commit owners and start dates to every phase before leaving the room. Any phase without a sponsor and a date is aspirational, not a plan."
+      />
+      {/* Phase cards */}
+      <div className="grid grid-cols-1 gap-3">
+        {phases.map((p, i) => {
+          const c = WF_COLORS[i] ?? WF_COLORS[0];
+          return (
+            <div key={i} className={`rounded-xl border-2 ${c.border} overflow-hidden`}>
+              <div className={`${c.header} px-4 py-2.5 flex items-center justify-between`}>
+                <span className={`text-xs font-bold uppercase tracking-wide ${c.label}`}>
+                  {p.phase}
+                </span>
+                {p.timeframe && (
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${c.badge}`}>
+                    {p.timeframe}
+                  </span>
+                )}
+              </div>
+              <div className="px-4 py-3">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                  {(p.initiatives ?? []).slice(0, 6).map((init, j) => (
+                    <div key={j} className="flex items-start gap-1.5 text-xs text-foreground py-0.5">
+                      <span className={`mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                      <span className="leading-snug">{init.title}</span>
+                    </div>
+                  ))}
+                  {(p.initiatives ?? []).length > 6 && (
+                    <div className="text-[10px] text-muted-foreground col-span-2 mt-1">
+                      +{(p.initiatives ?? []).length - 6} more initiatives in PDF
+                    </div>
+                  )}
+                </div>
+                {p.dependencies?.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Dependencies</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{p.dependencies.join(' · ')}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
     </div>
   );
 }

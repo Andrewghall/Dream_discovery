@@ -7,6 +7,7 @@ import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator'
 import { readBlueprintFromJson, WorkshopBlueprintSchema } from '@/lib/workshop/blueprint';
 import type { EngagementType } from '@prisma/client';
 import type { WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
+import { validateQuestionSet } from '@/lib/cognition/agents/question-set-validator';
 
 export const dynamic = 'force-dynamic';
 
@@ -504,7 +505,13 @@ export async function PATCH(
     if (typeof body.businessContext === 'string') updateData.businessContext = body.businessContext || null;
     // JSON fields -- stored directly
     if (body.prepResearch !== undefined) updateData.prepResearch = body.prepResearch;
-    if (body.customQuestions !== undefined) updateData.customQuestions = body.customQuestions;
+    if (body.customQuestions !== undefined) {
+      const qsError = validateQuestionSet(body.customQuestions);
+      if (qsError) {
+        return NextResponse.json({ error: `customQuestions: ${qsError}` }, { status: 422 });
+      }
+      updateData.customQuestions = body.customQuestions;
+    }
     if (body.discoveryBriefing !== undefined) updateData.discoveryBriefing = body.discoveryBriefing;
     // Field Discovery / Diagnostic extension
     if (typeof body.engagementType === 'string') updateData.engagementType = toEngagementEnum(body.engagementType);

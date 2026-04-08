@@ -25,6 +25,8 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { classifyWorkshopArchetype } from '@/lib/output/archetype-classifier';
 import type { ClassifierInput } from '@/lib/output/archetype-classifier';
+import { runV2SynthesisAgent, extractBlueprintKnowledgePack } from '@/lib/output/v2-synthesis-agent';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -75,6 +77,7 @@ function safeStr(v: unknown): string {
 function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
   const byDomain: Record<string, DomainBucket> = {};
   const byPhase: Record<string, SnapshotNode[]> = {
+    DISCOVERY: [],
     REIMAGINE: [],
     CONSTRAINTS: [],
     DEFINE_APPROACH: [],
@@ -94,8 +97,9 @@ function aggregateNodes(nodesById: Record<string, SnapshotNode>) {
     if (byPhase[phase]) byPhase[phase].push(node);
 
     const primaryType = safeStr(node.classification?.primaryType).toUpperCase();
-    const confidence = node.agenticAnalysis?.overallConfidence ?? node.classification?.confidence ?? 0;
-    if (confidence < 0.5) lowConfidenceCount++;
+    const rawConf = node.agenticAnalysis?.overallConfidence ?? node.classification?.confidence;
+    // Only count nodes that have an explicit confidence score
+    if (rawConf !== undefined && rawConf !== null && rawConf < 0.5) lowConfidenceCount++;
 
     if (['VISIONARY', 'OPPORTUNITY'].includes(primaryType)) {
       transformationalCount++;
@@ -236,6 +240,20 @@ function buildSynthesisPrompt(workshopName: string, data: ReturnType<typeof aggr
     'regulation': '📋', 'default': '🔍',
   };
 
+  // Compute per-domain utterance counts from DISCOVERY phase signals only
+  const discoveryDomainCounts: Record<string, number> = {};
+  for (const node of data.byPhase['DISCOVERY'] ?? []) {
+    const rawDomains = Array.isArray(node.agenticAnalysis?.domains) ? node.agenticAnalysis!.domains : [];
+    const domainList: string[] = rawDomains.length > 0
+      ? rawDomains.map((d: { domain: string }) => d.domain)
+      : typeof (node as any).lens === 'string' && (node as any).lens.trim()
+        ? [(node as any).lens.trim()]
+        : [];
+    for (const d of domainList) {
+      if (d) discoveryDomainCounts[d] = (discoveryDomainCounts[d] || 0) + 1;
+    }
+  }
+
   return `You are the DREAM Organisational Brain Scanner — a system that scans and interprets the organisational brain, revealing how a company thinks, what it wants to achieve, what blocks progress, and how it can transform. Your output is strategic intelligence, not a workshop report. Every insight must be derived from the workshop signals and grounded in evidence. If signal strength is insufficient, say so rather than generating filler.
 
 Workshop: "${workshopName}"
@@ -243,12 +261,21 @@ Total data points analysed: ${data.totalNodes}
 Domains identified: ${domainNames.join(', ')}
 Phases covered: ${Object.entries(data.byPhase).filter(([, v]) => v.length > 0).map(([k, v]) => `${k} (${v.length} utterances)`).join(', ')}
 
-─── THEME AGENT ANALYSIS ───
-${themeAnalysis}
+─── PHASE-SEPARATED WORKSHOP SIGNALS ───
+Use the correct phase source for each report section (see CRITICAL RULES below).
 
-─── CONSTRAINT AGENT ANALYSIS ───
-${constraintAnalysis}
-${researchContext ? `\n─── RESEARCH AGENT CONTEXT ───\n${researchContext}\n` : ''}
+DISCOVERY PHASE — ${data.byPhase['DISCOVERY']?.length ?? 0} signals (current-state observations — what IS true today):
+${(data.byPhase['DISCOVERY'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "${n.rawText.trim()}"`).join('\n') || '  (none captured)'}
+
+REIMAGINE PHASE — ${data.byPhase['REIMAGINE']?.length ?? 0} signals (what participants envision — pure future vision):
+${(data.byPhase['REIMAGINE'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "${n.rawText.trim()}"`).join('\n') || '  (none captured)'}
+
+CONSTRAINTS PHASE — ${data.byPhase['CONSTRAINTS']?.length ?? 0} signals (what blocks progress — barriers only):
+${(data.byPhase['CONSTRAINTS'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "${n.rawText.trim()}"`).join('\n') || '  (none captured)'}
+
+DEFINE APPROACH PHASE — ${data.byPhase['DEFINE_APPROACH']?.length ?? 0} signals (how to move forward — enablers and plan):
+${(data.byPhase['DEFINE_APPROACH'] ?? []).slice(0, 40).map((n, i) => `  ${i + 1}. "${n.rawText.trim()}"`).join('\n') || '  (none captured)'}
+
 Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components depend on these exact property names and structures:
 
 {
@@ -269,19 +296,17 @@ Return ONLY valid JSON. Follow this EXACT schema precisely — the UI components
     ]
   },
   "discoveryOutput": {
-    "_aiSummary": "string — 3-5 sentence PERCEPTION SIGNAL summary. This is how the organisation currently sees itself and its environment. Identify: operational friction patterns, capability maturity signals, actor misalignment, and mindset distribution. State the dominant perception the organisation holds — and where that perception diverges from reality. Be specific and evidence-grounded.",
-    "participants": ${JSON.stringify(participantNames.length > 0 ? participantNames : data.topActors.slice(0, 8).map(a => a.name))},
-    "totalUtterances": ${data.totalNodes},
+    "_aiSummary": "string — 3-5 sentence PERCEPTION SIGNAL summary drawn ONLY from DISCOVERY PHASE signals. This is how the organisation currently sees itself and its environment — current state only, no future visions or solutions. Identify: operational friction patterns, capability maturity signals, actor misalignment, and mindset distribution. State the dominant perception the organisation holds — and where that perception diverges from reality. Be specific and evidence-grounded.",
+    "participants": ${JSON.stringify(participantNames.length > 0 ? participantNames : [])},
+    "totalUtterances": ${data.byPhase['DISCOVERY']?.length ?? 0},
     "sections": [
 ${domainNames.map((dn, i) => {
-  const bucket = data.byDomain[dn];
-  const total = (bucket?.aspirations?.length || 0) + (bucket?.constraints?.length || 0) + (bucket?.enablers?.length || 0) + (bucket?.opportunities?.length || 0) + (bucket?.actions?.length || 0);
   const icon = domainIcons[dn.toLowerCase()] || domainIcons['default'];
   return `      {
         "domain": "${dn}",
         "icon": "${icon}",
         "color": "${domainColors[i % domainColors.length]}",
-        "utteranceCount": ${total},
+        "utteranceCount": ${discoveryDomainCounts[dn] ?? 0},
         "topThemes": ["generate 3-5 top theme labels for ${dn}"],
         "wordCloud": [{"word": "string", "size": 1-4}],
         "quotes": [{"text": "representative quote from the data", "author": "speaker role"}],
@@ -309,7 +334,7 @@ ${domainNames.map((dn, i) => {
     "finalDiscoverySummary": "string — 2-3 sentence executive diagnosis. The strategic spine of this discovery. State: what the workshop most clearly revealed about this organisation's operational reality, and what that means for transformation. Be direct — not a summary of summaries."
   },
   "reimagineContent": {
-    "_aiSummary": "string — 3-5 sentence IMAGINATION SIGNAL summary. This is what future the organisation believes is possible. Identify: ambition clusters, desired outcomes, transformation opportunities, and innovation signals. What does this organisation dare to imagine? What does that ambition reveal about its aspirations and self-belief? Be specific and evidence-grounded.",
+    "_aiSummary": "string — 3-5 sentence IMAGINATION SIGNAL summary drawn ONLY from REIMAGINE PHASE signals. Pure future vision — no constraints, no current-state problems, no implementation steps. This is what participants dare to imagine, unconstrained. Identify: ambition clusters, desired outcomes, transformation opportunities, and innovation signals. What does that ambition reveal about aspirations and self-belief? Be specific and evidence-grounded.",
     "reimagineContent": {
       "title": "string — compelling title for the reimagine output",
       "description": "string — 2-3 sentence overview of what the reimagine session revealed",
@@ -324,48 +349,64 @@ ${domainNames.map((dn, i) => {
         {"title": "string", "description": "string", "points": ["3-5 points"]}
       ],
       "journeyMapping": {"title": "Customer Journey Mapping"},
+      "directionOfTravel": [
+        {"from": "string — short label for the current state e.g. 'reactive management'", "to": "string — short evocative label for the desired future e.g. 'confident control'"}
+      ],
       "primaryThemes": [
-        {"title": "string — theme name", "weighting": "string — e.g. Mentioned by 85% of participants", "badge": "PRIMARY or CRITICAL", "description": "string — 2-3 sentence explanation of this theme and its significance", "details": ["3-4 supporting detail points for this theme"]}
+        {
+          "title": "string — evocative, specific theme name",
+          "weighting": "very high or high",
+          "badge": "very high or high — must match weighting",
+          "description": "string — 2-3 sentence explanation of why this theme dominated the discussion and what it reveals about the organisation's aspirations",
+          "subSections": [
+            {"title": "string — named sub-topic heading that unpacks one dimension of this theme", "description": "string — 2-3 sentences on this specific aspect, grounded in what participants said"}
+          ],
+          "details": ["3-4 specific evidence-grounded supporting detail points"]
+        }
       ],
-      "shiftOne": {
-        "title": "string — first key strategic shift",
-        "description": "string — 2-3 sentence explanation",
-        "details": ["3-4 supporting detail points"]
-      },
       "supportingThemes": [
-        {"title": "string", "weighting": "string", "badge": "SUPPORTING or EMERGING", "description": "string — 2-3 sentence explanation of this supporting theme", "details": ["3-4 supporting detail points"]}
+        {
+          "title": "string — evocative, specific theme name",
+          "weighting": "medium",
+          "badge": "medium",
+          "description": "string — 2-3 sentence explanation of this supporting theme and why it matters",
+          "subSections": [
+            {"title": "string — named sub-topic heading", "description": "string — 2-3 sentences on this specific aspect"}
+          ],
+          "details": ["3-4 evidence-grounded supporting detail points"]
+        }
       ],
-      "shiftTwo": {
-        "title": "string — second key strategic shift",
-        "description": "string — 2-3 sentence explanation",
-        "details": ["3-4 supporting detail points"]
+      "visionAlignment": {
+        "context": "string — 1 sentence framing what the workshop confirmed about the future model must prioritise",
+        "corePrinciples": ["4-5 core design principles for the future operating model — specific, actionable, grounded in reimagine signals"],
+        "platformPosition": ["3-4 points about how the platform or product enables and unlocks this vision"]
       },
       "horizonVision": {
-        "title": "Horizon Vision Alignment",
+        "title": "Desired Future State",
         "columns": [
-          {"title": "Horizon 1: Foundation (Months 1-6)", "points": ["3-5 initiative points"]},
-          {"title": "Horizon 2: Transformation (Months 6-18)", "points": ["3-5 initiative points"]}
+          {"title": "Near-term vision: what good looks like", "points": ["3-5 aspiration points — desired outcomes only, no plans or timelines"]},
+          {"title": "Long-term ambition: the transformed organisation", "points": ["3-5 aspiration points — the ideal future state this organisation is aiming for"]}
         ]
       }
     }
   },
   "constraintsContent": {
-    "_aiSummary": "string — 3-5 sentence INHIBITION SIGNAL summary. These are the forces preventing transformation. Identify: governance barriers, technology fragmentation, decision bottlenecks, cross-team friction, and knowledge silos. What is the primary inhibition pattern? Which constraint, if removed first, would unlock the most momentum? Be specific and evidence-grounded.",
+    "_aiSummary": "string — 3-5 sentence INHIBITION SIGNAL summary drawn ONLY from CONSTRAINTS PHASE signals. What blocks the vision — no solutions, no enablers, no roadmap items. Identify: governance barriers, technology fragmentation, decision bottlenecks, cross-team friction, and knowledge silos. What is the primary inhibition pattern? Which constraint, if removed first, would unlock the most momentum? Be specific and evidence-grounded.",
     "regulatory": [
-      {"title": "string", "description": "string — 1-2 sentences", "impact": "Critical or High or Medium or Low", "mitigation": "string — mitigation strategy"}
+      {"title": "string", "description": "string — 1-2 sentences describing the blocker only. No solutions or mitigations.", "impact": "Critical or High or Medium or Low"}
     ],
     "technical": [
-      {"title": "string", "description": "string", "impact": "Critical or High or Medium or Low", "mitigation": "string"}
+      {"title": "string", "description": "string — blocker only, no solutions", "impact": "Critical or High or Medium or Low"}
     ],
     "commercial": [
-      {"title": "string", "description": "string", "impact": "Critical or High or Medium or Low", "mitigation": "string"}
+      {"title": "string", "description": "string — blocker only, no solutions", "impact": "Critical or High or Medium or Low"}
     ],
     "organizational": [
-      {"title": "string", "description": "string", "impact": "Critical or High or Medium or Low", "mitigation": "string"}
+      {"title": "string", "description": "string — blocker only, no solutions", "impact": "Critical or High or Medium or Low"}
     ]
   },
   "potentialSolution": {
-    "_aiSummary": "string — 3-5 sentence EXECUTION SIGNAL summary. This is how transformation can actually happen. Identify: initiative clusters, dependency chains, transformation horizons, and capability development pathways. What is the logical sequence? What must be built first? What are the critical enablers? Be specific and evidence-grounded.",
+    "_aiSummary": "string — 3-5 sentence EXECUTION SIGNAL summary drawn ONLY from DEFINE APPROACH PHASE signals. Concrete path forward — no current-state descriptions, no raw constraint statements. Identify: initiative clusters, dependency chains, transformation horizons, and capability development pathways. What is the logical sequence? What must be built first? What are the critical enablers? Be specific and evidence-grounded.",
     "overview": "string — 1-2 paragraphs on the proposed solution approach",
     "enablers": [
       {"title": "string", "domain": "string", "priority": "HIGH or MEDIUM or LOW", "description": "string", "dependencies": ["string array"]}
@@ -414,21 +455,43 @@ ${domainNames.map((dn, i) => {
 }
 
 CRITICAL RULES:
-- Use ONLY the source material below. Do not invent facts.
+- Use ONLY the source material above. Do not invent facts.
 - Be CONCISE. Keep descriptions to 1-2 sentences. Do NOT write essays.
 - Write in confident, board-level language suitable for C-suite audiences.
+
+PHASE PURITY — MANDATORY. Each section draws from exactly one phase:
+- discoveryOutput: Draw EXCLUSIVELY from DISCOVERY PHASE signals listed above. Ignore ALL other analyses (Theme Agent, Constraint Agent, domain analysis). Discovery = current state only — what IS true right now. No futures, no solutions, no aspirations.
+- reimagineContent: Draw EXCLUSIVELY from REIMAGINE PHASE signals listed above. Ignore ALL other analyses. Reimagine = pure future vision only — no constraints, no blockers, no current-state problems, no implementation steps.
+- constraintsContent: Draw EXCLUSIVELY from CONSTRAINTS PHASE signals listed above. Ignore ALL other analyses. Constraints = blockers only — no solutions, no mitigations, no enablers, no roadmap items.
+- potentialSolution: Draw EXCLUSIVELY from DEFINE APPROACH PHASE signals listed above. Ignore ALL other analyses. Way Forward = the concrete plan only — no current-state descriptions, no raw constraint statements.
+- execSummary, commercialContent, customerJourney, summaryContent: May use the cross-phase context block below the rules.
+
+The Theme Agent analysis, Constraint Agent analysis, research context, and domain analysis that appear AFTER this rules block are ONLY for: execSummary, commercialContent, customerJourney, summaryContent. They are invisible to the four phase-specific sections.
+
+STRUCTURAL RULES:
 - _aiSummary fields: Each is a COGNITIVE SIGNAL summary framed through the DREAM Organisational Brain model. Every summary must be a specific signal reading — not a generic summary. Reference evidence from the data. Identify what the signal reveals about how this organisation thinks. Every sentence must carry weight. NEVER use generic consulting filler or restate findings without interpretation.
 - execSummary.keyFindings: 5-7 findings. metrics values must be NUMBERS not strings.
 - discoveryOutput.sections: exactly ${domainNames.length} sections. Each needs 8-10 wordCloud items (size 1-4). Sentiment MUST sum to 100.
-- discoveryOutput must include: operationalReality, organisationalMisalignment, systemicFriction, transformationReadiness (each with insight string + evidence array of exactly 4 strings grounded in workshop signals), and finalDiscoverySummary string. These are the primary executive intelligence outputs — do not use generic language.
-- reimagineContent: 3-4 primaryThemes and 2-3 supportingThemes.
-- constraintsContent: 2-3 items per category.
-- potentialSolution.enablers: 5-8 items. implementationPath: 3 phases.
+- discoveryOutput must include: operationalReality, organisationalMisalignment, systemicFriction, transformationReadiness (each with insight string + evidence array of exactly 4 strings from DISCOVERY phase signals only), and finalDiscoverySummary string. These are the primary executive intelligence outputs — do not use generic language.
+- reimagineContent: exactly 5 primaryThemes (weighting: "very high" or "high") and exactly 3 supportingThemes (weighting: "medium"). Each theme must have 1-2 subSections with named headings that unpack specific dimensions of the theme. directionOfTravel: exactly 5 transformation pairs (from → to) that capture the overall shift the organisation is moving towards. visionAlignment: 4-5 corePrinciples + 3-4 platformPosition points. horizonVision describes desired future states only — no timelines, no initiative language, no month ranges. All from REIMAGINE phase signals only.
+- constraintsContent: 2-3 items per category. All from CONSTRAINTS phase signals only.
+- potentialSolution.enablers: 5-8 items. implementationPath: 3 phases. All from DEFINE_APPROACH phase signals only.
 - commercialContent.deliveryPhases: 3 phases. riskAssessment: 3-5 risks.
 - customerJourney: 6 stages, 5-6 actors, 15-20 interactions. Mark 3-4 as isPainPoint:true, 2 as isMomentOfTruth:true.
 - summaryContent.keyFindings: 3-4 categories. recommendedNextSteps: 3 steps. successMetrics: 4 metrics.
 
-─── DOMAIN ANALYSIS ───
+━━━ CROSS-PHASE CONTEXT (NOT FOR PHASE SECTIONS) ━━━
+The sections below apply ONLY to: execSummary, commercialContent, customerJourney, summaryContent.
+They MUST NOT be used as sources for discoveryOutput, reimagineContent, constraintsContent, or potentialSolution.
+Those four sections draw exclusively from the phase-separated signals above.
+
+─── THEME AGENT ANALYSIS (cross-phase — execSummary / summaryContent use only) ───
+${themeAnalysis}
+
+─── CONSTRAINT AGENT ANALYSIS (cross-phase — execSummary / commercialContent use only) ───
+${constraintAnalysis}
+${researchContext ? `\n─── RESEARCH AGENT CONTEXT (background — customerJourney / execSummary use only) ───\n${researchContext}\n` : ''}
+─── DOMAIN ANALYSIS (cross-phase — execSummary / summaryContent use only) ───
 ${domainText}
 
 ─── TOP ACTORS & INTERACTIONS ───
@@ -464,11 +527,22 @@ ${domainNames.map(d => {
   return `${d}: ${b.aspirations.length} aspirations, ${b.constraints.length} constraints, ${b.enablers.length} enablers, ${b.opportunities.length} opportunities`;
 }).join('\n')}
 
+PHASE SIGNAL DISTRIBUTION:
+${Object.entries(data.byPhase).filter(([, v]) => v.length > 0).map(([phase, nodes]) => {
+  const phaseDescriptions: Record<string, string> = {
+    DISCOVERY: 'current-state observations',
+    REIMAGINE: 'future vision signals',
+    CONSTRAINTS: 'blocker and barrier signals',
+    DEFINE_APPROACH: 'enabler and action signals',
+  };
+  return `${phase} (${nodes.length} signals — ${phaseDescriptions[phase] ?? 'general'}): ${nodes.slice(0, 3).map(n => `"${n.rawText.trim().slice(0, 80)}"`).join(' | ')}`;
+}).join('\n')}
+
 Provide a concise thematic analysis (3-5 paragraphs) covering:
 1. The dominant strategic narrative emerging from the themes
-2. Cross-domain theme connections (themes that span multiple domains)
+2. Which themes are strongest in which phases (Discovery vs Reimagine vs Constraints vs Define Approach)
 3. Thematic gaps or underexplored areas
-4. The strategic implication of the theme distribution
+4. The strategic implication of the theme distribution across phases
 
 Write as a senior strategy consultant. Be specific and evidence-grounded.`;
 
@@ -483,27 +557,27 @@ Write as a senior strategy consultant. Be specific and evidence-grounded.`;
 }
 
 async function runConstraintAgentAnalysis(workshopName: string, data: ReturnType<typeof aggregateNodes>): Promise<string> {
-  const domainNames = Object.keys(data.byDomain);
-  const constraintData = domainNames.map(d => {
-    const b = data.byDomain[d];
-    return { domain: d, constraints: b.constraints.slice(0, 5), count: b.constraints.length };
-  }).filter(d => d.count > 0);
+  // Use CONSTRAINTS phase signals only — no cross-phase domain data
+  const constraintsPhaseSignals = (data.byPhase['CONSTRAINTS'] ?? []).slice(0, 40);
 
-  const prompt = `You are the Constraint Agent for the DREAM Discovery workshop "${workshopName}". Analyse the constraint landscape from the workshop data.
+  const prompt = `You are the Constraint Agent for the DREAM Discovery workshop "${workshopName}". Analyse ONLY what blocks transformation — no solutions, no mitigations, no enablers.
 
-CONSTRAINT DATA BY DOMAIN:
-${constraintData.map(d => `${d.domain} (${d.count} constraints):\n${d.constraints.map(c => `  - ${c.slice(0, 120)}`).join('\n')}`).join('\n\n')}
+SOURCE: CONSTRAINTS PHASE SIGNALS ONLY (${constraintsPhaseSignals.length} signals):
+${constraintsPhaseSignals.map((n, i) => `  ${i + 1}. "${n.rawText.trim().slice(0, 150)}"`).join('\n') || '  (none captured)'}
 
-TOTAL: ${constraintData.reduce((s, d) => s + d.count, 0)} constraints across ${constraintData.length} domains
 RISK INDICATORS: ${data.topKeywords.filter(k => ['risk', 'challenge', 'barrier', 'concern', 'issue', 'problem', 'limitation', 'compliance', 'regulation'].includes(k.word)).map(k => `${k.word}(${k.count})`).join(', ') || 'None detected'}
 
 Provide a concise constraint analysis (2-4 paragraphs) covering:
-1. The most critical constraints that could block transformation
-2. Constraint clusters and dependencies between domains
-3. Which constraints are manageable vs potentially blocking
-4. Risk-adjusted priority ranking
+1. The most critical blockers that prevent transformation
+2. Constraint clusters and dependencies
+3. Which constraints are existential vs manageable
 
-Write as a risk analyst. Be direct and actionable.`;
+STRICT RULES:
+- Use ONLY the Constraints phase signals above. Do not draw from other phases.
+- Report blockers only. Do not include solutions, mitigations, or recommendations.
+- If a signal describes a solution or enabler, ignore it — it belongs to a different phase.
+
+Write as a risk analyst. Be direct and factual.`;
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -785,16 +859,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         })();
         const totalExpectedDomains = blueprintLensCount;
         const coveragePct = ((domainNames.length / totalExpectedDomains) * 100).toFixed(0);
-        const lowConfPct = aggregated.totalNodes > 0
+        const lowConfPct = aggregated.lowConfidenceCount > 0 && aggregated.totalNodes > 0
           ? ((aggregated.lowConfidenceCount / aggregated.totalNodes) * 100).toFixed(1)
-          : '0';
+          : null;
+        const confidenceLine = lowConfPct !== null
+          ? `• **Signal quality**: ${lowConfPct}% of scored nodes flagged low-confidence`
+          : `• **Signal quality**: All ${aggregated.totalNodes} nodes captured (no confidence scoring applied)`;
+        const qualityVerdict = lowConfPct !== null && Number(lowConfPct) > 50
+          ? '⚠️ High proportion of low-confidence nodes — synthesis will note this.'
+          : '✓ Data quality acceptable for synthesis.';
 
         emit(
           'guardian',
           'orchestrator',
-          `Data quality assessment:\n• **Coverage**: ${coveragePct}% domain coverage (${domainNames.length}/${totalExpectedDomains} domains)\n• **Confidence**: ${lowConfPct}% of data points below 50% confidence threshold\n• **Phase balance**: ${phaseBreakdown}\n• **Actor depth**: ${aggregated.topActors.length} unique actors, top contributor has ${aggregated.topActors[0]?.mentions || 0} mentions\n\n${Number(lowConfPct) > 30 ? '⚠️ High proportion of low-confidence data — synthesis quality may be affected.' : '✓ Data quality is acceptable for synthesis.'}`,
+          `Data quality assessment:\n• **Coverage**: ${coveragePct}% domain coverage (${domainNames.length}/${totalExpectedDomains} domains)\n${confidenceLine}\n• **Phase balance**: ${phaseBreakdown}\n• **Actor depth**: ${aggregated.topActors.length} unique actors, top contributor has ${aggregated.topActors[0]?.mentions || 0} mentions\n\n${qualityVerdict}`,
           'verification',
-          { verdict: Number(lowConfPct) > 50 ? 'modify' : 'approve', reasoning: `${lowConfPct}% low-confidence data points` },
+          { verdict: lowConfPct !== null && Number(lowConfPct) > 50 ? 'modify' : 'approve', reasoning: lowConfPct !== null ? `${lowConfPct}% low-confidence nodes` : 'No confidence scoring — proceeding' },
         );
 
         // ════════════════════════════════════════════════════
@@ -817,13 +897,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const prompt = buildSynthesisPrompt(workshop.name || 'Workshop', aggregated, themeAnalysis, constraintAnalysis, researchContext, discoveryParticipants.map(p => p.name));
         console.log(`[synthesise] Prompt length: ${prompt.length} chars. Running synthesis for workshop ${workshopId} (${aggregated.totalNodes} nodes)...`);
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.3,
-          max_tokens: 12000,
-          response_format: { type: 'json_object' },
-        });
+        const completion = await openAiBreaker.execute(() =>
+          openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3,
+            max_tokens: 12000,
+            response_format: { type: 'json_object' },
+          }),
+        );
         console.log(`[synthesise] GPT responded. Usage: ${JSON.stringify(completion.usage)}`);
 
         const raw = completion.choices[0]?.message?.content;
@@ -1002,6 +1084,131 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         console.log(`[synthesise] ✓ Scratchpad ${existing ? 'updated' : 'created'} for workshop ${workshopId}`);
 
         // ════════════════════════════════════════════════════
+        // STEP 11: V2 Synthesis Agent — knowledge-pack-anchored output
+        // ════════════════════════════════════════════════════
+        emit(
+          'orchestrator',
+          'facilitation-agent',
+          `V1 synthesis saved. Running **V2 Synthesis Agent** — anchoring every output to actor → journey stage → lens using the workshop Knowledge Pack.`,
+          'handoff',
+        );
+
+        try {
+          const knowledgePack = extractBlueprintKnowledgePack(workshop.blueprint);
+          // If blueprint has no actors defined, fall back to the top detected actors so
+          // the V2 agent anchors to real actor names rather than generic placeholders.
+          if (knowledgePack.actors.length === 0) {
+            knowledgePack.actors = aggregated.topActors.slice(0, 8).map(a => a.name).filter(Boolean);
+          }
+
+          // Build raw signal package — verbatim node texts + domain breakdown.
+          //
+          // Phase bucketing strategy:
+          //   Many live sessions tag all captured nodes under a single dialoguePhase
+          //   (e.g. REIMAGINE) regardless of content. We use primaryType as the
+          //   authoritative signal for the V2 synthesis sections:
+          //
+          //   DISCOVERY  ← explicit DISCOVERY phase nodes, or INSIGHT-type nodes
+          //                (INSIGHT = current-state observation = discovery content)
+          //   REIMAGINE  ← VISIONARY + OPPORTUNITY type nodes (genuine future-state)
+          //   CONSTRAINTS← explicit CONSTRAINTS phase nodes, or CONSTRAINT + RISK types
+          //   DEFINE_APPROACH ← explicit DEFINE_APPROACH nodes, or ACTION + ENABLER types
+          //
+          //   This prevents the V2 agent from receiving empty Discovery / Constraints
+          //   buckets and fabricating output when real evidence exists under a different
+          //   phase label.
+          //
+          // Sample sizes: 50 per bucket (up from 35) — larger samples reduce fabrication.
+
+          const allNodesArr = Object.values(rawNodes as Record<string, SnapshotNode>)
+            .filter((n): n is SnapshotNode => !!(n && n.rawText));
+
+          const textsByType = (types: string[]) =>
+            allNodesArr
+              .filter(n => types.includes(safeStr(n.classification?.primaryType).toUpperCase()))
+              .map(n => (n.rawText as string).trim())
+              .filter(Boolean);
+
+          const phaseTexts = (phase: string) =>
+            (aggregated.byPhase[phase] || [])
+              .map((n: { rawText?: string }) => n.rawText || '')
+              .filter(Boolean);
+
+          const discoveryExplicit = phaseTexts('DISCOVERY');
+          const constraintsExplicit = phaseTexts('CONSTRAINTS');
+
+          const v2RawSignals = {
+            totalNodes: aggregated.totalNodes,
+            participantCount: discoveryParticipants.length || aggregated.topActors.length,
+            nodesByPhase: {
+              // DISCOVERY: prefer explicit phase nodes; fall back to INSIGHT-type nodes
+              DISCOVERY: discoveryExplicit.length >= 10
+                ? discoveryExplicit.slice(0, 50)
+                : textsByType(['INSIGHT']).slice(0, 50),
+
+              // REIMAGINE: VISIONARY + OPPORTUNITY = genuine future-state thinking
+              REIMAGINE: textsByType(['VISIONARY', 'OPPORTUNITY']).slice(0, 50),
+
+              // CONSTRAINTS: prefer explicit phase nodes; fall back to CONSTRAINT + RISK types
+              CONSTRAINTS: constraintsExplicit.length >= 10
+                ? constraintsExplicit.slice(0, 50)
+                : textsByType(['CONSTRAINT', 'RISK']).slice(0, 50),
+
+              // DEFINE_APPROACH: explicit phase + ACTION/ENABLER (deduplicated)
+              DEFINE_APPROACH: [
+                ...phaseTexts('DEFINE_APPROACH'),
+                ...textsByType(['ACTION', 'ENABLER']),
+              ].filter((t, i, arr) => arr.indexOf(t) === i).slice(0, 50),
+            },
+            domainSummary: Object.entries(aggregated.byDomain).map(([domain, bucket]) => ({
+              domain,
+              aspirationCount: bucket.aspirations.length,
+              constraintCount: bucket.constraints.length,
+              topAspirations:  bucket.aspirations.slice(0, 8),
+              topConstraints:  bucket.constraints.slice(0, 8),
+              topEnablers:     bucket.enablers.slice(0, 5),
+            })),
+            topThemes: aggregated.topThemes.slice(0, 20).map(t => ({ label: t.label, count: t.count })),
+            topActors: aggregated.topActors.slice(0, 10).map(a => ({ name: a.name, mentions: a.mentions })),
+          };
+
+          const v2Output = await runV2SynthesisAgent(
+            workshop.name || 'Workshop',
+            workshop.industry || null,
+            knowledgePack,
+            v2RawSignals,
+          );
+
+          if (v2Output) {
+            await prisma.workshopScratchpad.update({
+              where: { workshopId },
+              data: { v2Output: v2Output as unknown as Prisma.InputJsonValue },
+            });
+            emit(
+              'facilitation-agent',
+              'orchestrator',
+              `**V2 Synthesis complete.** Generated consulting-grade output across 5 sections from ${v2RawSignals.totalNodes} signals (${v2RawSignals.nodesByPhase.DISCOVERY.length} Discovery / ${v2RawSignals.nodesByPhase.REIMAGINE.length} Reimagine / ${v2RawSignals.nodesByPhase.CONSTRAINTS.length} Constraints / ${v2RawSignals.nodesByPhase.DEFINE_APPROACH.length} Define Approach). Anchored to ${knowledgePack.actors.length} actors, ${knowledgePack.journeyStages.length} journey stages, ${knowledgePack.lenses.length} lenses.`,
+              'info',
+            );
+          } else {
+            emit(
+              'facilitation-agent',
+              'orchestrator',
+              `V2 Synthesis returned no output — V1 synthesis is unaffected. V2 tab will show empty state.`,
+              'info',
+            );
+          }
+        } catch (v2Err) {
+          console.error('[synthesise] V2 agent error (non-fatal):', v2Err);
+          emit(
+            'facilitation-agent',
+            'orchestrator',
+            `V2 Synthesis encountered an error — V1 synthesis is unaffected. Check logs.`,
+            'info',
+          );
+        }
+
+        // ════════════════════════════════════════════════════
         // FINAL: Orchestrator summary
         // ════════════════════════════════════════════════════
         emit(
@@ -1017,6 +1224,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           workshopId,
           snapshotId: snapshot!.id,
           nodesProcessed: aggregated.totalNodes,
+          hasV2Output: true,
         });
 
       } catch (error) {

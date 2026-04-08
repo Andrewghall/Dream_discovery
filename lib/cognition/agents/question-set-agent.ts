@@ -18,6 +18,7 @@
 import OpenAI from 'openai';
 import { nanoid } from 'nanoid';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import { hasDiscoveryData } from './agent-types';
 import type {
   WorkshopQuestionSet,
@@ -38,18 +39,10 @@ const MAX_ITERATIONS = 6;
 const LOOP_TIMEOUT_MS = 40_000;
 const MODEL = 'gpt-4o-mini';
 
-// ── Phase context: what lenses apply and in what order ──────
-
-const DEFAULT_PHASE_LENS_ORDER: Record<WorkshopPhase, string[]> = {
-  REIMAGINE: ['People', 'Customer', 'Organisation'],
-  CONSTRAINTS: ['Regulation', 'Customer', 'Technology', 'Organisation', 'People'],
-  DEFINE_APPROACH: ['People', 'Organisation', 'Technology', 'Customer', 'Regulation'],
-};
-
 /**
  * Get lens order for a phase.
- * Priority: blueprint phaseLensPolicy > research dimensions > hardcoded defaults.
- * Returns both the lens list and the source for tracking.
+ * Priority: blueprint phaseLensPolicy > research dimensions.
+ * THROWS if neither is available — never falls back to a hardcoded default order.
  */
 export function getPhaseLensOrder(
   phase: WorkshopPhase,
@@ -63,11 +56,11 @@ export function getPhaseLensOrder(
   if (research?.industryDimensions?.length) {
     return { lenses: research.industryDimensions.map(d => d.name), source: 'research_dimensions' };
   }
-  return { lenses: DEFAULT_PHASE_LENS_ORDER[phase], source: 'generic_fallback' };
+  throw new Error(
+    `Workshop lens set is required for phase "${phase}" — no fallback to generic defaults. ` +
+    'Ensure workshop prep (blueprint or research dimensions) is completed before generating questions.',
+  );
 }
-
-/** @deprecated Use getPhaseLensOrder - kept for backward compat */
-const PHASE_LENS_ORDER = DEFAULT_PHASE_LENS_ORDER;
 
 const PHASE_GUIDANCE: Record<WorkshopPhase, string> = {
   REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Customer, and Organisation lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
@@ -475,7 +468,7 @@ function executeQuestionSetTool(
             },
           },
         }),
-        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE APPROACH (${defineApproach.lenses.length} dimensions).${lensSource !== 'generic_fallback' ? ` Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}.` : ' Using generic default lenses.'} Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
+        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE APPROACH (${defineApproach.lenses.length} dimensions). Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}. Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
       };
     }
 
@@ -757,8 +750,7 @@ export async function runQuestionSetAgent(
     },
   ];
 
-  try {
-    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
       if (Date.now() - startMs > LOOP_TIMEOUT_MS) {
         console.log(`[Question Set Agent] Timeout after ${iteration} iterations`);
         break;
@@ -771,14 +763,14 @@ export async function runQuestionSetAgent(
 
       console.log(`[Question Set Agent] Iteration ${iteration}${isLastIteration ? ' (forced commit)' : ''}`);
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.4,
         messages,
         tools: QUESTION_SET_TOOLS,
         tool_choice: toolChoice,
         parallel_tool_calls: true,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);
@@ -831,7 +823,7 @@ export async function runQuestionSetAgent(
             }
           }
 
-          const { source: lensSourceLabel } = getPhaseLensOrder('REIMAGINE', research, context.blueprint);
+          const lensSourceLabel = getPhaseLensOrder('REIMAGINE', research, context.blueprint).source;
           const confidenceLabel = String(fnArgs.dataConfidence || 'moderate');
           const sufficiencyNotes = Array.isArray(fnArgs.dataSufficiencyNotes) ? fnArgs.dataSufficiencyNotes.map(String) : [];
           const sufficiencyBlock = sufficiencyNotes.length > 0
@@ -906,29 +898,10 @@ export async function runQuestionSetAgent(
       }
     }
 
-    // Loop ended without commit -- build from whatever phases were designed
-    console.log('[Question Set Agent] Loop ended without commit -- building from designed phases');
-    return buildWorkshopQuestionSet(
-      designedPhases,
-      'Workshop facilitation questions designed based on company context.',
-      research,
-      context.blueprint,
-      'moderate',
-      ['Agent loop ended without explicit commit -- confidence assessment may be incomplete'],
-    );
-  } catch (error) {
-    console.error('[Question Set Agent] Failed:', error instanceof Error ? error.message : error);
-
-    onConversation?.({
-      timestampMs: Date.now(),
-      agent: 'question-set-agent',
-      to: 'prep-orchestrator',
-      message: `I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Falling back to generic workshop facilitation questions.`,
-      type: 'info',
-    });
-
-    return fallbackQuestionSet(context);
-  }
+  throw new Error(
+    '[Question Set Agent] Loop ended without explicit commit — question set is incomplete. ' +
+    'Re-run question generation to produce a valid question set.',
+  );
 }
 
 // Helper to extract all commit args from the committed message
@@ -978,13 +951,20 @@ export function buildWorkshopQuestionSet(
   for (const phase of allPhases) {
     const designed = designedPhases.get(phase);
     const phaseLabel = phase === 'DEFINE_APPROACH' ? 'Define Approach' : phase.charAt(0) + phase.slice(1).toLowerCase();
-    const { lenses } = getPhaseLensOrder(phase, research, blueprint);
+    const lenses = getPhaseLensOrder(phase, research, blueprint).lenses;
+
+    if (!designed?.length) {
+      throw new Error(
+        `Phase "${phase}" has no questions — workshop question set is incomplete. ` +
+        'Ensure the agent has committed questions for all phases before calling buildWorkshopQuestionSet().',
+      );
+    }
 
     phases[phase] = {
       label: phaseLabel,
       description: PHASE_GUIDANCE[phase],
       lensOrder: lenses,
-      questions: designed || generateFallbackPhaseQuestions(phase),
+      questions: designed,
     };
   }
 
@@ -995,124 +975,4 @@ export function buildWorkshopQuestionSet(
     dataConfidence: dataConfidence ?? 'low',
     dataSufficiencyNotes: dataSufficiencyNotes ?? ['No data confidence assessment available'],
   };
-}
-
-function generateFallbackPhaseQuestions(phase: WorkshopPhase): FacilitationQuestion[] {
-  type FallbackQ = { lens: string; text: string; purpose: string; subQuestions?: Array<{ lens: string; text: string; purpose: string }> };
-  const fallbacks: Record<WorkshopPhase, FallbackQ[]> = {
-    REIMAGINE: [
-      { lens: 'General', text: 'If we could design the ideal future state for this business with no constraints at all, what does success look like in 3 years?', purpose: 'Opens the vision conversation with a broad, unconstrained prompt', subQuestions: [
-        { lens: 'People', text: 'In this ideal future, how do people experience their work day? What makes it fulfilling?', purpose: 'Explore the human experience dimension' },
-        { lens: 'Customer', text: 'Describe the perfect customer interaction from start to finish - what does effortless look like?', purpose: 'Paint the ideal customer experience' },
-      ] },
-      { lens: 'People', text: 'In this ideal future, how are the people in the organisation working? What does their day look like?', purpose: 'Explores the human dimension of the vision', subQuestions: [
-        { lens: 'People', text: 'What new skills or capabilities do people have in this future?', purpose: 'Explore capability aspirations' },
-        { lens: 'Organisation', text: 'How do teams collaborate differently in this vision?', purpose: 'Explore structural changes' },
-      ] },
-      { lens: 'Customer', text: 'What does the customer experience look like in this reimagined future? Walk me through a perfect interaction.', purpose: 'Gets specific about customer outcomes', subQuestions: [
-        { lens: 'Customer', text: 'What does the customer never have to worry about in this future?', purpose: 'Identify friction points to eliminate' },
-        { lens: 'People', text: 'How do front-line staff make customers feel in this ideal experience?', purpose: 'Connect people to customer outcomes' },
-      ] },
-      { lens: 'Organisation', text: 'How does the organisation need to be structured to deliver this vision? What changes?', purpose: 'Explores organisational design implications', subQuestions: [
-        { lens: 'Organisation', text: 'What processes or structures disappear in this reimagined organisation?', purpose: 'Challenge existing structures' },
-        { lens: 'People', text: 'Who are the new roles or functions that emerge?', purpose: 'Explore new capability needs' },
-      ] },
-      { lens: 'People', text: 'Who are the key actors and stakeholders that make this vision real? What roles matter most?', purpose: 'Identifies critical stakeholders and roles', subQuestions: [
-        { lens: 'People', text: 'Which roles have the most impact on delivering the vision?', purpose: 'Prioritise stakeholder importance' },
-        { lens: 'Customer', text: 'Who does the customer interact with most, and what does that relationship look like?', purpose: 'Map customer-facing roles' },
-      ] },
-      { lens: 'General', text: 'What are the top 3 measurable business outcomes that tell us we\'ve succeeded?', purpose: 'Anchors the vision in concrete outcomes', subQuestions: [
-        { lens: 'Customer', text: 'What does the customer measure us by in this ideal state?', purpose: 'Define customer success metrics' },
-        { lens: 'Organisation', text: 'What internal metrics shift most dramatically?', purpose: 'Identify organisational KPIs' },
-      ] },
-    ],
-    CONSTRAINTS: [
-      { lens: 'Regulation', text: 'What regulatory, compliance, or legal requirements must we work within? Which are non-negotiable?', purpose: 'Starts with hard external constraints', subQuestions: [
-        { lens: 'Regulation', text: 'Which regulations have the most operational impact day-to-day?', purpose: 'Identify highest-friction regulations' },
-        { lens: 'Technology', text: 'What technology limitations exist because of regulatory requirements?', purpose: 'Map regulation-technology overlap' },
-      ] },
-      { lens: 'Customer', text: 'What customer-side constraints exist? Budget limitations, adoption barriers, behavioural challenges?', purpose: 'Identifies customer-facing limitations', subQuestions: [
-        { lens: 'Customer', text: 'What do customers resist most about change?', purpose: 'Understand adoption barriers' },
-        { lens: 'People', text: 'How do customer constraints affect staff ways of working?', purpose: 'Connect customer to people constraints' },
-      ] },
-      { lens: 'Technology', text: 'What technology constraints are we dealing with? Legacy systems, integration challenges, data limitations?', purpose: 'Maps technical debt and platform constraints', subQuestions: [
-        { lens: 'Technology', text: 'Which systems are the biggest blockers to progress?', purpose: 'Prioritise technical debt' },
-        { lens: 'Organisation', text: 'What organisational decisions created these technology constraints?', purpose: 'Connect tech debt to governance' },
-      ] },
-      { lens: 'Organisation', text: 'What organisational constraints exist? Budget, structure, politics, competing priorities?', purpose: 'Surfaces internal organisational blockers', subQuestions: [
-        { lens: 'Organisation', text: 'Which competing priorities most directly threaten this work?', purpose: 'Identify priority conflicts' },
-        { lens: 'People', text: 'Where is political resistance strongest and why?', purpose: 'Map organisational politics' },
-      ] },
-      { lens: 'People', text: 'What people constraints apply? Skills gaps, capacity issues, change readiness, cultural resistance?', purpose: 'Identifies human factors that constrain progress', subQuestions: [
-        { lens: 'People', text: 'What skills are we most lacking to deliver the vision?', purpose: 'Identify critical skill gaps' },
-        { lens: 'Organisation', text: 'How does the current culture resist the change we need?', purpose: 'Map cultural barriers' },
-      ] },
-      { lens: 'General', text: 'Looking at all these constraints, which are absolute blockers versus conditions we can manage or work around?', purpose: 'Prioritises constraints by severity', subQuestions: [
-        { lens: 'General', text: 'What constraints would disappear if we had full executive sponsorship?', purpose: 'Separate structural from political constraints' },
-        { lens: 'General', text: 'Which constraints are we most able to influence or change?', purpose: 'Identify actionable constraints' },
-      ] },
-      { lens: 'General', text: 'Where does the vision from our Reimagine session most conflict with the reality of these constraints?', purpose: 'Connects constraints back to the vision', subQuestions: [
-        { lens: 'General', text: 'What parts of the vision survive even the toughest constraints?', purpose: 'Find resilient vision elements' },
-        { lens: 'General', text: 'Where must the vision adapt to constraint reality?', purpose: 'Identify required vision adjustments' },
-      ] },
-    ],
-    DEFINE_APPROACH: [
-      { lens: 'People', text: 'What do the people need to make this work? Training, new roles, different ways of working?', purpose: 'Starts with human needs and capabilities', subQuestions: [
-        { lens: 'People', text: 'What training programme do we start in the first 90 days?', purpose: 'Define immediate people actions' },
-        { lens: 'Organisation', text: 'Which teams need restructuring to support this approach?', purpose: 'Connect people to org changes' },
-      ] },
-      { lens: 'Organisation', text: 'How does the organisation need to change? New processes, governance structures, ways of measuring success?', purpose: 'Designs organisational enablers', subQuestions: [
-        { lens: 'Organisation', text: 'What governance model ensures accountability without bureaucracy?', purpose: 'Design lean governance' },
-        { lens: 'General', text: 'How do we measure progress in the first 6 months?', purpose: 'Define success metrics' },
-      ] },
-      { lens: 'Technology', text: 'What technology enables this approach? What do we build, buy, or integrate?', purpose: 'Identifies technology requirements', subQuestions: [
-        { lens: 'Technology', text: 'What quick-win technology changes can we make in the first quarter?', purpose: 'Identify immediate tech wins' },
-        { lens: 'Customer', text: 'Which technology change has the biggest customer impact?', purpose: 'Prioritise by customer value' },
-      ] },
-      { lens: 'Customer', text: 'How do we prove the customer outcome? What does the customer journey look like in practice?', purpose: 'Validates the customer experience design', subQuestions: [
-        { lens: 'Customer', text: 'What is the first customer touchpoint we redesign?', purpose: 'Define starting point for CX improvement' },
-        { lens: 'People', text: 'Who owns the customer experience end-to-end?', purpose: 'Assign CX ownership' },
-      ] },
-      { lens: 'Regulation', text: 'How do we satisfy the regulatory requirements we identified while still delivering the vision?', purpose: 'Ensures compliance is designed in', subQuestions: [
-        { lens: 'Regulation', text: 'What compliance work can run in parallel with delivery?', purpose: 'Parallelise compliance' },
-        { lens: 'Organisation', text: 'Who owns the regulatory relationship going forward?', purpose: 'Assign regulatory ownership' },
-      ] },
-      { lens: 'General', text: 'Who owns each workstream? What are the immediate next steps and quick wins?', purpose: 'Drives toward actionable ownership', subQuestions: [
-        { lens: 'People', text: 'Who is the single accountable person for each workstream?', purpose: 'Drive individual accountability' },
-        { lens: 'General', text: 'What can we deliver in the first 2 weeks to build momentum?', purpose: 'Create early wins' },
-      ] },
-      { lens: 'General', text: 'What does the 90-day plan look like? What can we start tomorrow?', purpose: 'Creates urgency and near-term commitments', subQuestions: [
-        { lens: 'General', text: 'What is the single most impactful action we take in week one?', purpose: 'Drive immediate action' },
-        { lens: 'Organisation', text: 'What governance cadence keeps this on track - weekly, fortnightly?', purpose: 'Establish rhythm' },
-      ] },
-    ],
-  };
-
-  return (fallbacks[phase] || []).map((q, i) => ({
-    id: nanoid(8),
-    phase,
-    lens: q.lens,
-    text: q.text,
-    purpose: q.purpose,
-    grounding: 'Generic facilitation question - not tailored to specific client context.',
-    order: i + 1,
-    isEdited: false,
-    subQuestions: (q.subQuestions || []).map((sq) => ({
-      id: nanoid(8),
-      lens: sq.lens,
-      text: sq.text,
-      purpose: sq.purpose,
-    })),
-  }));
-}
-
-function fallbackQuestionSet(context: PrepContext): WorkshopQuestionSet {
-  return buildWorkshopQuestionSet(
-    new Map(),
-    `Generic workshop facilitation questions for ${context.clientName || 'the client'}. These have not been tailored to specific company context or Discovery insights -- the facilitator should review and modify as needed.`,
-    null,
-    context.blueprint,
-    'low',
-    ['Fallback question set used -- agent could not complete design'],
-  );
 }

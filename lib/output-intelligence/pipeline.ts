@@ -20,6 +20,8 @@ import { runRootCauseAgent } from './agents/root-cause-agent';
 import { runFutureStateAgent } from './agents/future-state-agent';
 import { runExecutionRoadmapAgent } from './agents/execution-roadmap-agent';
 import { runStrategicImpactAgent } from './agents/strategic-impact-agent';
+import { runCausalSynthesisAgent } from './agents/causal-synthesis-agent';
+import { buildTransformationLogicMap } from './engines/transformation-logic-engine';
 
 export type EngineProgressCallback = (engine: EngineKey, event: 'started' | 'complete' | 'error', detail?: string) => void;
 
@@ -121,13 +123,14 @@ export async function runIntelligencePipeline(
   ];
   engines.forEach((e) => onEngineProgress?.(e, 'started'));
 
-  // Run all 5 agents in parallel
-  const [dv, rc, fs, er, si] = await Promise.allSettled([
+  // Run all 6 agents in parallel (5 LLM agents + 1 graph-backed causal synthesis)
+  const [dv, rc, fs, er, si, cs] = await Promise.allSettled([
     runDiscoveryValidationAgent(signals, (msg) => console.log(msg)),
     runRootCauseAgent(signals, (msg) => console.log(msg)),
     runFutureStateAgent(signals, (msg) => console.log(msg)),
     runExecutionRoadmapAgent(signals, (msg) => console.log(msg)),
     runStrategicImpactAgent(signals, (msg) => console.log(msg)),
+    runCausalSynthesisAgent(signals, (msg) => console.log(msg)),
   ]);
 
   // Compute evidence scores for gating
@@ -172,12 +175,35 @@ export async function runIntelligencePipeline(
   onEngineProgress?.('roadmap', er.status === 'fulfilled' ? 'complete' : 'error', errors.roadmap);
   onEngineProgress?.('strategicImpact', si.status === 'fulfilled' ? 'complete' : 'error', errors.strategicImpact);
 
+  // Causal synthesis — optional, null when graph has insufficient data
+  const causalIntelligence =
+    cs.status === 'fulfilled' && cs.value !== null
+      ? cs.value
+      : undefined;
+  // Causal synthesis failures are silent (no error logged — null result is valid when graph is absent)
+
+  // Transformation Logic Map — deterministic, no LLM — derived from graphIntelligence
+  let transformationLogicMap: WorkshopOutputIntelligence['transformationLogicMap'];
+  if (signals.graphIntelligence && (
+    signals.graphIntelligence.dominantCausalChains.length > 0 ||
+    signals.graphIntelligence.bottlenecks.length > 0 ||
+    signals.graphIntelligence.brokenChains.length > 0
+  )) {
+    try {
+      transformationLogicMap = buildTransformationLogicMap(signals.graphIntelligence);
+    } catch (err) {
+      console.error('[pipeline] transformation logic map build failed:', err);
+    }
+  }
+
   const intelligence: WorkshopOutputIntelligence = {
     discoveryValidation,
     rootCause,
     futureState,
     roadmap,
     strategicImpact,
+    causalIntelligence,
+    transformationLogicMap,
     generatedAtMs: Date.now(),
     lensesUsed: signals.context.lenses,
   };
@@ -198,7 +224,7 @@ export async function runReportSummaryPipeline(
   // 1. Load existing output intelligence from DB
   const workshop = await prisma.workshop.findUnique({
     where: { id: workshopId },
-    select: { outputIntelligence: true },
+    select: { outputIntelligence: true, reportSummary: true },
   });
 
   if (!workshop) throw new Error(`Workshop ${workshopId} not found`);
@@ -214,7 +240,17 @@ export async function runReportSummaryPipeline(
   const signals = await aggregateWorkshopSignals(workshopId);
 
   // 3. Run single GPT-4o report summary agent
-  const reportSummary = await runReportSummaryAgent(signals, intelligence, onProgress);
+  const generatedReportSummary = await runReportSummaryAgent(signals, intelligence, onProgress);
+  const existingReportSummary = (workshop.reportSummary ?? {}) as Partial<ReportSummary>;
+  // Use `in` rather than `??` so that an explicit null stored by the PATCH route
+  // (meaning "user cleared this field") is preserved rather than overwritten by AI output.
+  const reportSummary: ReportSummary = {
+    ...generatedReportSummary,
+    layout: 'layout' in existingReportSummary ? existingReportSummary.layout : generatedReportSummary.layout,
+    reportConclusion: 'reportConclusion' in existingReportSummary ? existingReportSummary.reportConclusion : generatedReportSummary.reportConclusion,
+    facilitatorContact: 'facilitatorContact' in existingReportSummary ? existingReportSummary.facilitatorContact : generatedReportSummary.facilitatorContact,
+    signalMapImageUrl: 'signalMapImageUrl' in existingReportSummary ? existingReportSummary.signalMapImageUrl : generatedReportSummary.signalMapImageUrl,
+  };
 
   // 4. Store in DB (non-fatal — column may not exist until prisma db push is run)
   try {

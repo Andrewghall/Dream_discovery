@@ -29,6 +29,9 @@ import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { PromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 import { ItemToggle } from '@/components/report-builder/DraggableSection';
 import { EditableText } from './ScratchpadEditors';
+import type { BehaviouralInterventionsOutput } from '@/lib/behavioural-interventions/types';
+import { SectionAction } from '@/components/scratchpad/SectionAction';
+import { ComBWheel } from '@/app/admin/workshops/[id]/behavioural-interventions/_components/ComBWheel';
 
 // ── Discovery Diagnostic block ─────────────────────────────────────────────────
 
@@ -56,6 +59,10 @@ export function DiscoveryDiagnosticBlock({
 
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="Four diagnostic lenses — operational reality, leadership alignment, systemic friction, and transformation readiness — scored against workshop evidence."
+        action="The lowest-scored card is your highest-risk programme assumption. Address it explicitly in your programme charter before kick-off."
+      />
       {discoveryOutput.finalDiscoverySummary && (
         <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Diagnostic Summary</p>
@@ -114,14 +121,26 @@ export function DiscoverySignalsBlock({
     <div className="space-y-3">
       {discoveryOutput._aiSummary && (
         <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Perception Summary</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Organisational Perception</p>
           <p className="text-sm text-foreground leading-relaxed">{discoveryOutput._aiSummary}</p>
+          <p className="text-[10px] text-muted-foreground mt-2 italic">How the organisation describes itself — and where that diverges from what participants actually reported.</p>
         </div>
       )}
+      <SectionAction
+        what="The red bar = friction (concern / resistance). Green = opportunity (energy, optimism). Agreement % = how much participants agreed with each other — low agreement means people see the same domain very differently."
+        action="High friction + high agreement = confirmed pain point, goes into programme scope. High friction + low agreement = contested problem, needs structured resolution first. Low friction = potential enabler — lean on it."
+      />
       <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="px-5 py-2.5 bg-muted/30 border-b border-border flex items-center justify-between">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">How participants feel about each area</p>
+          <p className="text-[10px] text-muted-foreground">Agreement % = how much participants agree with each other</p>
+        </div>
         <div className="divide-y divide-border">
           {sections.map((s, i) => {
             const itemId = `signal:${String(s.domain ?? i).toLowerCase().replace(/\s+/g, '_')}`;
+            const concerned = s.sentiment?.concerned ?? 0;
+            const optimistic = s.sentiment?.optimistic ?? 0;
+            const dominantTone = concerned > optimistic + 15 ? 'tension' : optimistic > concerned + 15 ? 'opportunity' : 'mixed';
             return (
               <ItemToggle key={i} id={itemId} excluded={excludedItems.includes(itemId)} onToggle={onToggleItem} className="px-5 py-3.5">
                 <div>
@@ -129,8 +148,13 @@ export function DiscoverySignalsBlock({
                     <div className="flex items-center gap-2">
                       <span className="text-base">{s.icon}</span>
                       <span className="text-sm font-medium text-foreground">{s.domain}</span>
+                      {dominantTone === 'tension' && <span className="text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">Tension area</span>}
+                      {dominantTone === 'opportunity' && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">Opportunity area</span>}
                     </div>
-                    <span className="text-xs text-muted-foreground">Consensus: <span className="font-medium text-foreground">{s.consensusLevel}%</span></span>
+                    <span className="text-xs text-muted-foreground">
+                      Agreement: <span className="font-semibold text-foreground">{s.consensusLevel}%</span>
+                      <span className="ml-1 text-[10px] text-muted-foreground/70">{(s.consensusLevel ?? 0) >= 70 ? '(aligned)' : (s.consensusLevel ?? 0) >= 50 ? '(mixed)' : '(contested)'}</span>
+                    </span>
                   </div>
                   {/* Sentiment bar */}
                   <div className="h-2 rounded-full overflow-hidden flex gap-0.5">
@@ -139,14 +163,17 @@ export function DiscoverySignalsBlock({
                     <div className="bg-emerald-400 h-full rounded-r-full transition-all" style={{ width: `${s.sentiment?.optimistic ?? 0}%` }} />
                   </div>
                   <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-[10px] text-red-600">Concerned {s.sentiment?.concerned ?? 0}%</span>
+                    <span className="text-[10px] text-red-600">⚠ Friction {s.sentiment?.concerned ?? 0}%</span>
                     <span className="text-[10px] text-muted-foreground">Neutral {s.sentiment?.neutral ?? 0}%</span>
-                    <span className="text-[10px] text-emerald-600">Optimistic {s.sentiment?.optimistic ?? 0}%</span>
+                    <span className="text-[10px] text-emerald-600">✓ Opportunity {s.sentiment?.optimistic ?? 0}%</span>
                   </div>
                 </div>
               </ItemToggle>
             );
           })}
+        </div>
+        <div className="px-5 py-2.5 bg-muted/20 border-t border-border">
+          <p className="text-[10px] text-muted-foreground">High friction + high agreement = a confirmed, shared problem. High friction + low agreement = a contested tension worth exploring in the room.</p>
         </div>
       </div>
     </div>
@@ -159,6 +186,10 @@ export function InsightSummaryBlock({ intelligence }: { intelligence: WorkshopOu
   const { discoveryValidation } = intelligence;
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="How much of the pre-workshop hypothesis was confirmed by participant evidence, and how many new issues were surfaced that weren't anticipated."
+        action="Hypothesis accuracy below 60% means your brief going in was materially wrong — revisit programme scope before proceeding. New issues surfaced here should be investigated before Phase 1 begins."
+      />
       <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Insight Map Summary</p>
         <p className="text-sm text-foreground leading-relaxed">{discoveryValidation.summary}</p>
@@ -191,6 +222,10 @@ export function AlignmentBlock({ discoverAnalysis }: { discoverAnalysis: Discove
   const divergent = [...cells].sort((a, b) => a.alignmentScore - b.alignmentScore).slice(0, 10);
   return (
     <div className="space-y-3">
+      <SectionAction
+        what="Where specific actors are misaligned on key themes — negative scores signal a communication or expectation gap between stakeholders."
+        action="Pairs with scores below -0.5 need a named owner and a resolution checkpoint in the first 30 days. Don't start delivery until the top 3 are addressed."
+      />
       <p className="text-xs text-muted-foreground">Top divergent actor × theme pairs (negative = misalignment)</p>
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <table className="w-full text-xs">
@@ -237,6 +272,11 @@ export function NarrativeDivergenceBlock({ discoverAnalysis }: { discoverAnalysi
     mixed:    'text-amber-700',
   };
   return (
+    <div className="space-y-3">
+      <SectionAction
+        what="The language gap between executive, operational and frontline levels — different terms dominate at each layer, revealing where the transformation story has not been shared."
+        action="Where frontline language contradicts executive language, there is no shared narrative. Run a joint alignment session before programme kick-off to establish common vocabulary and a single transformation story."
+      />
     <div className="grid grid-cols-3 gap-3">
       {layers.map((layer) => (
         <div key={layer.layer} className={`rounded-xl border px-4 py-3.5 ${LAYER_COLORS[layer.layer] ?? 'border-border bg-muted/20'}`}>
@@ -257,6 +297,7 @@ export function NarrativeDivergenceBlock({ discoverAnalysis }: { discoverAnalysi
         </div>
       ))}
     </div>
+    </div>
   );
 }
 
@@ -272,6 +313,10 @@ export function TensionsBlock({ discoverAnalysis }: { discoverAnalysis: Discover
   };
   return (
     <div className="space-y-2">
+      <SectionAction
+        what="Competing viewpoints between actors on critical topics — where the organisation is pulling in different directions at the same time."
+        action="Critical tensions need a named decision-maker and a resolution checkpoint before Phase 1 begins. Unresolved critical tensions will stall delivery."
+      />
       {tensions.slice(0, 8).map((t, i) => (
         <div key={t.id} className="rounded-xl border border-border bg-card px-4 py-3">
           <div className="flex items-start gap-3">
@@ -308,6 +353,11 @@ export function StructuralBarriersBlock({ discoverAnalysis }: { discoverAnalysis
     moderate:    'bg-slate-100 text-slate-600',
   };
   return (
+    <div className="space-y-3">
+      <SectionAction
+        what="Structural constraints ranked by weight — the hard limits on what the transformation can realistically achieve, and how fast."
+        action="The top 3 rows are your Phase 1 gates. Any item rated critical with a high weight must be resolved or formally accepted as a risk before the programme starts. A critical barrier with low weight is a blind spot — investigate why it scores low before moving on."
+      />
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <table className="w-full text-xs">
         <thead>
@@ -331,6 +381,7 @@ export function StructuralBarriersBlock({ discoverAnalysis }: { discoverAnalysis
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }
@@ -697,6 +748,20 @@ export function CustomSectionEditor({
         />
       </div>
 
+      {/* Commentary — shown for GPT-generated sections */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+          Context / Commentary
+        </p>
+        <textarea
+          className="w-full text-sm bg-muted/20 border border-border rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
+          rows={2}
+          value={section.customContent?.commentary ?? ''}
+          onChange={(e) => onUpdate({ customContent: { ...section.customContent, commentary: e.target.value } })}
+          placeholder="Add context or edit this section…"
+        />
+      </div>
+
       {/* Image upload */}
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
@@ -1027,6 +1092,10 @@ export function StructuralConfidenceBlock({ data }: { data: DiscoverAnalysis }) 
   const uncertainPct = 100 - certainPct - hedgingPct;
   return (
     <div className="space-y-4">
+      <SectionAction
+        what="The confidence profile of every statement made in discovery — Certain = stated as fact. Hedging = 'we think / we believe / it might be'. Uncertain = admitted not knowing. High hedging across all domains means the organisation is describing problems it hasn't yet diagnosed."
+        action="If hedging exceeds 70% overall, do not start the programme yet — run a structured diagnostic first to convert assumptions into confirmed evidence. Domains with the highest hedging are where your biggest hidden risks live."
+      />
       <div>
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">Overall Confidence</p>
         <div className="flex h-3 rounded-full overflow-hidden">
@@ -1081,6 +1150,165 @@ export function SignalMapBlock({ imageUrl }: { imageUrl: string | null; workshop
       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
         <span>● Aspiration</span><span>● Enablers</span><span>● Friction</span><span>● Constraint</span>
       </div>
+    </div>
+  );
+}
+
+// ── Behavioural Interventions Block ──────────────────────────────────────────
+
+const LENS_COLOURS: Record<string, { bg: string; border: string; dot: string }> = {
+  People:       { bg: 'bg-blue-50',    border: 'border-blue-200',   dot: 'bg-blue-500'    },
+  Customer:     { bg: 'bg-purple-50',  border: 'border-purple-200', dot: 'bg-purple-500'  },
+  Organisation: { bg: 'bg-emerald-50', border: 'border-emerald-200',dot: 'bg-emerald-500' },
+  Technology:   { bg: 'bg-orange-50',  border: 'border-orange-200', dot: 'bg-orange-500'  },
+  Regulation:   { bg: 'bg-red-50',     border: 'border-red-200',    dot: 'bg-red-500'     },
+};
+
+const PRIORITY_COLOURS: Record<string, string> = {
+  High:   'bg-red-100 text-red-700',
+  Medium: 'bg-amber-100 text-amber-700',
+  Low:    'bg-slate-100 text-slate-600',
+};
+
+const COMBTRANSLATIONS: Record<string, { headline: string; plain: string }> = {
+  psychological_capability: { headline: 'Confidence & mindset gap', plain: 'People understand what needs to change but lack the belief or mental frameworks to act differently.' },
+  physical_capability:      { headline: 'Skills gap',               plain: 'People don\'t yet have the practical skills or physical ability to perform the new behaviour.' },
+  reflective_motivation:    { headline: 'Unconvinced to change',    plain: 'Staff are consciously weighing up the change and deciding the effort or risk isn\'t worth it.' },
+  automatic_motivation:     { headline: 'Habit working against change', plain: 'The old way is deeply ingrained — people revert without thinking. Persuasion alone won\'t fix this.' },
+  physical_opportunity:     { headline: 'Systems & environment block change', plain: 'Even motivated people can\'t change if the processes, tools, or structures work against them.' },
+  social_opportunity:       { headline: 'Culture & norms blocking change', plain: 'Peer behaviour, social norms, or what leadership models is pulling people back to old habits.' },
+};
+
+export function BehaviouralInterventionsBlock({
+  data,
+  workshopId,
+}: {
+  data: BehaviouralInterventionsOutput | null;
+  workshopId: string;
+}) {
+  if (!data) {
+    return (
+      <p className="text-xs text-muted-foreground py-2">
+        Behavioural Interventions not available. Go to the Behavioural Interventions page and run the analysis.
+      </p>
+    );
+  }
+
+  const allItems = data.behavioural_interventions.flatMap(l =>
+    l.items.map(i => ({ ...i, lens: l.lens })),
+  );
+  const highPriority = allItems.filter(i => i.priority === 'High').slice(0, 5);
+  const totalCount = allItems.length;
+
+  // Compute COM-B sub-type counts for plain-English summary
+  const subtypeCounts: Record<string, number> = {
+    psychological_capability: 0, physical_capability: 0,
+    reflective_motivation: 0,    automatic_motivation: 0,
+    social_opportunity: 0,       physical_opportunity: 0,
+  };
+  for (const item of allItems) {
+    if (item.capability_type === 'Psychological' || item.capability_type === 'Both') subtypeCounts.psychological_capability++;
+    if (item.capability_type === 'Physical'      || item.capability_type === 'Both') subtypeCounts.physical_capability++;
+    if (item.motivation_type  === 'Reflective'   || item.motivation_type  === 'Both') subtypeCounts.reflective_motivation++;
+    if (item.motivation_type  === 'Automatic'    || item.motivation_type  === 'Both') subtypeCounts.automatic_motivation++;
+    if (item.opportunity_type === 'Social'       || item.opportunity_type === 'Both') subtypeCounts.social_opportunity++;
+    if (item.opportunity_type === 'Physical'     || item.opportunity_type === 'Both') subtypeCounts.physical_opportunity++;
+  }
+  const topBlockers = Object.entries(subtypeCounts)
+    .filter(([, n]) => n > 0)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3);
+
+  return (
+    <div className="space-y-5">
+      <SectionAction
+        what="Where and why behaviour change is being blocked across the organisation — mapped through the COM-B framework (Capability, Opportunity, Motivation)."
+        action="Use the top blockers below to decide where to focus first. Fix the environment before asking for behaviour change, then address confidence and mindset."
+      />
+
+      {/* COM-B Wheel */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
+          COM-B Profile
+        </p>
+        <ComBWheel
+          interventions={allItems}
+          activeFilter={null}
+          onFilter={() => {}}
+        />
+      </div>
+
+      {/* Plain-English top blockers */}
+      {topBlockers.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+            <p className="text-xs font-semibold text-slate-700">What the profile is telling you</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Top behavioural blockers in plain English</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {topBlockers.map(([key, count]) => {
+              const t = COMBTRANSLATIONS[key];
+              if (!t) return null;
+              return (
+                <div key={key} className="px-4 py-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-slate-800">{t.headline}</p>
+                    <span className="text-[10px] font-bold text-slate-500">{count} interventions</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">{t.plain}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* High priority interventions */}
+      {highPriority.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            High Priority Interventions
+          </h4>
+          {highPriority.map((item, idx) => {
+            const c = LENS_COLOURS[item.lens] ?? { bg: 'bg-slate-50', border: 'border-slate-200', dot: 'bg-slate-400' };
+            return (
+              <div key={idx} className={`rounded-lg border p-4 ${c.bg} ${c.border}`}>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <p className="text-sm font-semibold text-foreground leading-snug">{item.target_behaviour}</p>
+                  <div className="flex gap-1 shrink-0">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLOURS[item.priority]}`}>
+                      {item.priority}
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${c.bg} ${c.border}`}>
+                      {item.lens}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-foreground/80 leading-relaxed mb-2">{item.action}</p>
+                {item.evidence_basis && (
+                  <p className="text-[10px] text-muted-foreground italic border-t border-current/10 pt-2 mt-2">
+                    Evidence: {item.evidence_basis}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Link to full analysis */}
+      <p className="text-xs text-muted-foreground">
+        Full analysis across all {totalCount} interventions available in the{' '}
+        <a
+          href={`/admin/workshops/${workshopId}/behavioural-interventions`}
+          className="underline text-foreground hover:text-foreground/70"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Behavioural Interventions
+        </a>{' '}
+        page.
+      </p>
     </div>
   );
 }

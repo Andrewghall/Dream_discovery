@@ -11,6 +11,9 @@
 // ── Domains ─────────────────────────────────────────────────
 // Widened to string to support research-driven dynamic dimensions.
 // Default dimensions: People, Operations, Customer, Technology, Regulation
+// NOTE: These are CaptureAPI domain names used for belief classification and lens-projector grouping.
+// Beliefs are stored with domain:'Operations'. Do NOT rename here — it would break live session lens
+// grouping. The pipeline.ts DEFAULT_DOMAIN_TO_LENS map bridges Operations→Organisation for display.
 export type Domain = string;
 export const DEFAULT_DOMAINS: Domain[] = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
 /** @deprecated Use DEFAULT_DOMAINS — kept for backward compatibility */

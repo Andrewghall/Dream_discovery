@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateQuestionSet } from '@/lib/cognition/agents/question-set-validator';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,7 +124,10 @@ export async function POST(
         blueprint: source.blueprint ?? undefined,
         // Copy all synthesis outputs so users see the full populated state
         prepResearch: source.prepResearch ?? undefined,
-        customQuestions: source.customQuestions ?? undefined,
+        // Only copy customQuestions if it passes validation — never propagate invalid data
+        customQuestions: validateQuestionSet(source.customQuestions) === null
+          ? (source.customQuestions ?? undefined)
+          : undefined,
         discoveryQuestions: source.discoveryQuestions ?? undefined,
         discoveryBriefing: source.discoveryBriefing ?? undefined,
         discoverAnalysis: source.discoverAnalysis ?? undefined,

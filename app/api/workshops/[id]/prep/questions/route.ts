@@ -16,7 +16,8 @@ import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-acces
 import { runQuestionSetAgent } from '@/lib/cognition/agents/question-set-agent';
 import { hasDiscoveryData } from '@/lib/cognition/agents/agent-types';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
-import type { PrepContext, AgentConversationEntry, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
+import type { PrepContext, AgentConversationEntry, WorkshopPrepResearch, WorkshopQuestionSet } from '@/lib/cognition/agents/agent-types';
+import { validateQuestionSet } from '@/lib/cognition/agents/question-set-validator';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -111,12 +112,43 @@ export async function POST(
         type: 'handoff',
       } satisfies AgentConversationEntry);
 
+      // Step 1: Run agent — errors close the stream with an error event.
+      // Agent execution is isolated in its own try/catch so that runtime failures
+      // are reported and the stream is cleanly closed.
+      let questionSet: WorkshopQuestionSet | null = null;
       try {
-        const questionSet = await runQuestionSetAgent(context, research, (entry) => {
+        questionSet = await runQuestionSetAgent(context, research, (entry) => {
           sendEvent('agent.conversation', entry);
         }, discoveryBriefing);
+      } catch (error) {
+        sendEvent('agent.conversation', {
+          timestampMs: Date.now(),
+          agent: 'prep-orchestrator',
+          to: '',
+          message: `Question generation encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+          type: 'info',
+        } satisfies AgentConversationEntry);
+        sendEvent('error', {
+          message: error instanceof Error ? error.message : 'Question set agent failed',
+        });
+        controller.close();
+        return;
+      }
 
-        // Store in workshop
+      // Step 2: Validate — OUTSIDE the catch block so validation failures cannot
+      // be silently swallowed. If validation fails the stream closes with an error;
+      // the DB is never written.
+      const qsValidationError = validateQuestionSet(questionSet);
+      if (qsValidationError) {
+        sendEvent('error', {
+          message: `Question set failed validation before save: ${qsValidationError}`,
+        });
+        controller.close();
+        return;
+      }
+
+      // Step 3: Persist and acknowledge — only reached when validation passes.
+      try {
         await prisma.workshop.update({
           where: { id: workshopId },
           data: { customQuestions: JSON.parse(JSON.stringify(questionSet)) },
@@ -137,17 +169,9 @@ export async function POST(
         } satisfies AgentConversationEntry);
 
         sendEvent('questions.generated', { questions: questionSet });
-      } catch (error) {
-        sendEvent('agent.conversation', {
-          timestampMs: Date.now(),
-          agent: 'prep-orchestrator',
-          to: '',
-          message: `Question generation encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
-          type: 'info',
-        } satisfies AgentConversationEntry);
-
+      } catch (dbError) {
         sendEvent('error', {
-          message: error instanceof Error ? error.message : 'Question set agent failed',
+          message: dbError instanceof Error ? dbError.message : 'Failed to save question set',
         });
       } finally {
         controller.close();
@@ -200,6 +224,11 @@ export async function PUT(
   }
 
   const body = await request.json();
+
+  const validationError = validateQuestionSet(body.customQuestions);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 422 });
+  }
 
   await prisma.workshop.update({
     where: { id: workshopId },

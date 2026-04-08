@@ -108,7 +108,13 @@ export async function POST(
     ? (clientLogoUrlRaw.startsWith('http') ? await fetchLogoAsBase64(clientLogoUrlRaw) : readLogoAsBase64(clientLogoUrlRaw))
     : null;
 
-  const enrichedBody = { ...body, workshopName, orgName };
+  const houseImages = {
+    old:       readLogoAsBase64('framework/house-old.png'),
+    refreshed: readLogoAsBase64('framework/house-refreshed.png'),
+    ideal:     readLogoAsBase64('framework/house-ideal.png'),
+  };
+
+  const enrichedBody = { ...body, workshopName, orgName, houseImages };
   const html = buildReportHtml(enrichedBody, dreamLogoBase64, tenantLogoBase64, clientLogoBase64);
 
   const footerTemplate = `
@@ -119,9 +125,16 @@ export async function POST(
 
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
   try {
-    const executablePath = await chromium.executablePath();
+    // @sparticuz/chromium bundles a Linux-only binary — on macOS fall back to system Chrome
+    const isMac = process.platform === 'darwin';
+    const LOCAL_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    const executablePath = isMac ? LOCAL_CHROME : await chromium.executablePath();
+    const launchArgs = isMac
+      ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      : chromium.args;
+
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args: launchArgs,
       defaultViewport: chromium.defaultViewport,
       executablePath,
       headless: true,

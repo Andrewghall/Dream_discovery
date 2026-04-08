@@ -21,7 +21,6 @@ import {
   type DialoguePhase,
   type LiveJourneyData,
   type LiveJourneyInteraction,
-  ALL_LENSES,
   ALL_PHASES,
   PHASE_LABELS,
   DEFAULT_JOURNEY_STAGES,
@@ -60,6 +59,8 @@ import type { WorkshopPhase, FacilitationQuestion, SubQuestion, WorkshopPrepRese
 import { getDimensionColors, darkenHex, lightenHex } from '@/lib/cognition/workshop-dimensions';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { useAudioCapture } from '@/hooks/use-audio-capture';
+import { useJourneyMutations } from '@/hooks/use-journey-mutations';
+import type { JourneyMutationIntent } from '@/lib/cognition/agents/journey-mutation-types';
 import type { StreamTranscript } from '@/lib/captureapi/client';
 import { MicSetupDialog } from '@/components/cognitive-guidance/mic-setup-dialog';
 import VersionHistoryPanel from '@/components/cognitive-guidance/version-history-panel';
@@ -67,14 +68,11 @@ import type { LiveSessionVersionPayload } from '@/lib/cognitive-guidance/pipelin
 import { toast } from 'sonner';
 import {
   COVERAGE_THRESHOLD,
-  RETAIL_WORKSHOP_ID,
   dialoguePhaseToWorkshopPhase,
   lensToStickyPadType,
   buildSessionPadsFromPrep,
   seedPad,
   getSeedPadsForPhase,
-  getDemoHemisphereNodes,
-  getDemoLiveJourney,
   type PrepQuestion,
   type PrepPhaseData,
   type PrepQuestionSet,
@@ -152,7 +150,6 @@ type AgenticAnalyzedPayload = {
 
 export default function CognitiveGuidancePage({ params }: PageProps) {
   const { id: workshopId } = use(params);
-  const isRetailDemo = workshopId === RETAIL_WORKSHOP_ID;
 
   // ── Core state ─────────────────────────────────────────
   const [cogNodes, setCogNodes] = useState<Map<string, CogNode>>(new Map());
@@ -163,9 +160,15 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [stickyPads, setStickyPads] = useState<StickyPad[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [lensCoverage, setLensCoverage] = useState<Map<Lens, LensCoverage>>(new Map());
-  const [liveJourney, setLiveJourney] = useState<LiveJourneyData>(
-    { stages: DEFAULT_JOURNEY_STAGES.REIMAGINE, actors: [], interactions: [] }
-  );
+  const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
+  const {
+    journey: liveJourney,
+    setJourney: setLiveJourney,
+    applyMutationIntent,
+  } = useJourneyMutations({
+    initialJourney: { stages: DEFAULT_JOURNEY_STAGES.REIMAGINE, actors: [], interactions: [] },
+    dialoguePhase,
+  });
   const [sessionConfidence, setSessionConfidence] = useState<SessionConfidence>({
     overallConfidence: 0,
     categorisedRate: 0,
@@ -310,7 +313,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     if (newJourney) setLiveJourney(newJourney);
   };
 
-  const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
   // Keep ref in sync for the audio capture hook (avoids stale closure)
   useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
   const [expandedNode, setExpandedNode] = useState<HemisphereNodeDatum | null>(null);
@@ -345,9 +347,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Client-only: populate seed data after hydration (avoids React #418) ──
   useEffect(() => {
     setStickyPads(prev => prev.length === 0 ? getSeedPadsForPhase('REIMAGINE').slice(0, 4) : prev);
-    if (isRetailDemo) {
-      setLiveJourney(getDemoLiveJourney());
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1492,6 +1491,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       'belief.stabilised',
       'contradiction.detected',
       'journey.completion',
+      'journey.mutation',
       'agentic.analyzed',
     ].join(',');
 
@@ -1723,6 +1723,14 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             break;
           }
 
+          case 'journey.mutation': {
+            const intent = payload as JourneyMutationIntent;
+            if (intent?.id && intent?.type) {
+              applyMutationIntent(intent);
+            }
+            break;
+          }
+
           // belief.created and belief.reinforced — no UI handler currently
           default:
             break;
@@ -1762,12 +1770,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     return () => clearInterval(interval);
   }, [listening, workshopId]);
 
-  // Use demo nodes only for retail workshop; otherwise real nodes or empty
+  // Use real nodes if available; otherwise empty array.
   const hemisphereNodeArray = useMemo(() => {
-    const realNodes = Object.values(hemisphereNodes);
-    if (realNodes.length > 0) return realNodes;
-    return isRetailDemo ? getDemoHemisphereNodes() : [];
-  }, [hemisphereNodes, isRetailDemo]);
+    return Object.values(hemisphereNodes);
+  }, [hemisphereNodes]);
 
   // ── Sticky pad actions ─────────────────────────────────
   const handleDismissPad = useCallback((id: string) => {
@@ -1782,10 +1788,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     ));
   }, []);
 
-  // Auto-move overflow pads to covered when >maxVisible active
+  // Auto-move overflow pads to covered when >maxVisible active.
+  // Must also set status='snoozed' so they leave allActivePads on the next render —
+  // otherwise the canvas keeps firing onOverflow in a setTimeout loop.
   const handleOverflowPads = useCallback((padIds: string[]) => {
     setStickyPads(prev => prev.map(p =>
-      padIds.includes(p.id) ? { ...p, coverageState: 'covered' as const } : p
+      padIds.includes(p.id) ? { ...p, status: 'snoozed' as const, coverageState: 'covered' as const } : p
     ));
   }, []);
 
@@ -1794,7 +1802,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Computed: sub-pads for current main question ──────────
   const activeSubPads = useMemo(
     () => stickyPads.filter(
-      (p) => p.mainQuestionIndex === mainQuestionIndex && p.source !== 'seed' && p.status === 'active',
+      // Exclude seed AND signal pads — signal pads have their own canvas below
+      (p) => p.mainQuestionIndex === mainQuestionIndex && p.source !== 'seed' && p.source !== 'signal' && p.status === 'active',
     ),
     [stickyPads, mainQuestionIndex],
   );
@@ -2067,6 +2076,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                         onSelectPad={setSelectedPadId}
                         onDismissPad={handleDismissPad}
                         onSnoozePad={handleSnoozePad}
+                        maxVisible={4}
                         customLensColors={customLensColors}
                       />
                     </div>

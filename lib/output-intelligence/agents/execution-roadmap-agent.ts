@@ -6,10 +6,9 @@
  */
 
 import OpenAI from 'openai';
-import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopSignals, ExecutionRoadmap } from '../types';
-
-const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+// OpenAI client constructed lazily inside runExecutionRoadmapAgent() — never at module load.
 
 const SCHEMA = `{
   "phases": [
@@ -47,7 +46,27 @@ const SCHEMA = `{
   "criticalPath": "string — 1-2 sentences describing the most critical sequence of activities",
   "keyRisks": [
     "string — key risk that could derail transformation"
-  ]
+  ],
+  "roiSummary": {
+    "phases": [
+      {
+        "phase": "Phase 1",
+        "estimatedCost": "string — investment range to deliver this phase e.g. '£150k – £300k'",
+        "estimatedAnnualBenefit": "string — annualised benefit once delivered e.g. '£380k – £520k / yr'",
+        "benefitDrivers": ["string — specific benefit e.g. 'FTE efficiency gain from unified desktop'"],
+        "breakEvenTimeline": "string — e.g. '6–9 months post-delivery'",
+        "roiMultiple": "string — e.g. '2.4×'",
+        "confidenceLevel": "High | Medium | Low"
+      },
+      { "phase": "Phase 2", "estimatedCost": "string", "estimatedAnnualBenefit": "string", "benefitDrivers": [], "breakEvenTimeline": "string", "roiMultiple": "string", "confidenceLevel": "Medium" },
+      { "phase": "Phase 3", "estimatedCost": "string", "estimatedAnnualBenefit": "string", "benefitDrivers": [], "breakEvenTimeline": "string", "roiMultiple": "string", "confidenceLevel": "Low" }
+    ],
+    "totalProgrammeCost": "string — total investment across all phases e.g. '£600k – £1.1m'",
+    "totalThreeYearBenefit": "string — cumulative 3-year benefit e.g. '£2.3m – £3.8m'",
+    "paybackPeriod": "string — programme-level payback e.g. '12–18 months'",
+    "keyAssumptions": ["string — grounding assumption drawn from workshop signals e.g. 'Based on stated 30% escalation burden across ~200 FTE'"],
+    "narrative": "string — 1-2 sentences summarising the investment case"
+  }
 }`;
 
 function buildSignalDump(signals: WorkshopSignals): string {
@@ -92,10 +111,8 @@ function buildSignalDump(signals: WorkshopSignals): string {
     });
   }
 
-  if (signals.scratchpad.potentialSolution) {
-    lines.push('\n=== POTENTIAL SOLUTION (PRE-SYNTHESISED) ===');
-    lines.push(signals.scratchpad.potentialSolution);
-  }
+  // NOTE: scratchpad potential solution intentionally excluded — prior LLM
+  // output is not raw evidence. Ground roadmap in participant signals only.
 
   if (signals.discovery.cohortBreakdown?.length) {
     lines.push('\n=== SIGNALS BY PARTICIPANT COHORT ===');
@@ -130,9 +147,9 @@ export async function runExecutionRoadmapAgent(
 
   const systemPrompt = `You are the DREAM EXECUTION Signal engine — scanning how transformation can actually happen in this organisation. Convert future state signals into a phased transformation plan. Identify initiative clusters, dependency chains, transformation horizons, and capability development pathways. Turn vision into delivery. Every output must be grounded in specific workshop evidence.
 
-Your role is to convert the workshop signals into a practical phased transformation roadmap.
+Your role is to convert the workshop signals into a practical phased transformation roadmap, INCLUDING realistic ROI and benefits realisation estimates.
 
-Rules:
+Roadmap rules:
 • All 3 phases MUST be present: "Phase 1 — Immediate Enablement", "Phase 2 — Structural Transformation", "Phase 3 — Advanced Automation"
 • Phase 1 should contain quick wins and foundation-setting (0-3 months)
 • Phase 2 should contain structural changes requiring planning (3-9 months)
@@ -140,7 +157,18 @@ Rules:
 • Each phase should have 3-5 initiatives minimum
 • Initiatives should be specific, not generic
 • Base everything on the signals provided — do not invent initiatives not implied by the data
-• If signals are sparse, create reasonable initiatives but note low confidence
+
+ROI estimation rules (roiSummary):
+• Use appropriate currency based on client context (UK clients → GBP, US → USD, etc.)
+• Cost estimates cover: technology, implementation/consulting effort, change management, training
+• Phase 1 typically £100k–£400k; Phase 2 £200k–£700k; Phase 3 £300k–£1m+ (scale to org size implied by signals)
+• Benefits MUST be grounded in specific workshop frictions (e.g. if signals mention 30% escalation rate and 200 agents, estimate FTE savings from that)
+• Use ranges, never point estimates — reflects genuine uncertainty
+• benefitDrivers must name the specific workshop signal they come from (e.g. "Reduced 30% escalation burden cited by frontline agents")
+• confidenceLevel: High = strong quantified signals, Medium = directional signals, Low = sparse signals
+• keyAssumptions must trace back to actual workshop evidence — do not invent org size or metrics not implied by signals
+• roiMultiple = totalThreeYearBenefit ÷ totalProgrammeCost (midpoint of ranges)
+• Be realistic and conservative — credibility matters more than optimism
 • Output MUST be valid JSON matching the schema — no commentary outside JSON`;
 
   const userMessage = `${buildSignalDump(signals)}
@@ -148,6 +176,8 @@ Rules:
 Return JSON matching this schema exactly:
 ${SCHEMA}`;
 
+  const apiKey = process.env.OPENAI_API_KEY;
+  const openai = apiKey ? new OpenAI({ apiKey }) : null;
   if (!openai) throw new Error('OPENAI_API_KEY is not configured');
 
   let lastError: Error | null = null;
@@ -155,7 +185,7 @@ ${SCHEMA}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 100_000);
     try {
-      const response = await openai.chat.completions.create(
+      const response = await openAiBreaker.execute(() => openai.chat.completions.create(
         {
           model: 'gpt-4o-mini',
           response_format: { type: 'json_object' },
@@ -167,7 +197,7 @@ ${SCHEMA}`;
           max_tokens: 4000,
         },
         { signal: controller.signal }
-      );
+      ));
 
       clearTimeout(timeoutId);
       const raw = response.choices[0]?.message?.content ?? '{}';

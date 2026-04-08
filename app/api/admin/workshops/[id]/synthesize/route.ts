@@ -5,6 +5,7 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 
 export const dynamic = 'force-dynamic';
+type SynthesisPhase = 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
 
 /**
  * POST /api/admin/workshops/[id]/synthesize
@@ -23,6 +24,12 @@ export async function POST(
 ) {
   try {
     const { id: workshopId } = await params;
+    const body = (await request.json().catch(() => null)) as { phase?: unknown } | null;
+    const requestedPhase = typeof body?.phase === 'string' ? body.phase.trim().toUpperCase() : null;
+    const phase: SynthesisPhase | null =
+      requestedPhase === 'REIMAGINE' || requestedPhase === 'CONSTRAINTS' || requestedPhase === 'DEFINE_APPROACH'
+        ? requestedPhase
+        : null;
     const user = await getAuthenticatedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -38,10 +45,20 @@ export async function POST(
     const dataPoints = await prisma.dataPoint.findMany({
       where: {
         workshopId,
+        ...(phase
+          ? {
+              annotation: {
+                is: {
+                  dialoguePhase: phase,
+                },
+              },
+            }
+          : {}),
       },
       include: {
         agenticAnalysis: true,
         transcriptChunk: true,
+        annotation: true,
       },
       orderBy: {
         createdAt: 'asc',
@@ -97,7 +114,7 @@ export async function POST(
     const synthesis = await synthesizeThemesAgentically({
       utterances,
       workshopGoal: workshop.businessContext || workshop.description || workshop.name,
-      currentPhase: 'REIMAGINE', // Default phase; could be derived from annotations
+      currentPhase: phase || 'REIMAGINE',
     });
 
     console.log('[Workshop Synthesis] Synthesis complete');

@@ -24,6 +24,7 @@ model Organization {
   updatedAt      DateTime   @updatedAt
   users          User[]
   workshops      Workshop[]
+  execLicences   ExecLicence[]
 
   @@map("organizations")
 }
@@ -76,7 +77,8 @@ model LoginAttempt {
 
 model Session {
   id             String    @id @default(cuid())
-  userId         String
+  userId         String?
+  execLicenceId  String?
   token          String    @unique
   userAgent      String?
   ipAddress      String?
@@ -84,13 +86,32 @@ model Session {
   lastActivityAt DateTime  @default(now())
   createdAt      DateTime  @default(now())
   revokedAt      DateTime?
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([token])
   @@index([expiresAt])
   @@index([userId, expiresAt])
   @@map("sessions")
+}
+
+model ExecLicence {
+  id             String    @id @default(cuid())
+  organizationId String
+  email          String    @unique
+  hashedPassword String
+  name           String
+  title          String?
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("exec_licences")
 }
 
 model PasswordResetToken {
@@ -150,6 +171,10 @@ model Workshop {
   discoveryQuestions  Json?                 @map("discovery_questions")  // Per-lens Discovery interview questions (editable)
   blueprint           Json?                 @map("blueprint")            // Composed WorkshopBlueprint snapshot (runtime config)
   historicalMetrics   Json?                 @map("historical_metrics")   // Normalized metric time series from CSV upload
+  evidenceSynthesis   Json?                 @map("evidence_synthesis")   // Cross-document synthesis (themes, outliers, contradictions)
+
+  // COM-B Behavioural Interventions (generated layer)
+  behaviouralInterventions Json?         @map("behavioural_interventions")
 
   // Example/demo flag — example workshops are visible to all authenticated users (cross-org)
   // and are read-only. Users must fork to run synthesis on their own copy.
@@ -172,6 +197,7 @@ model Workshop {
   findings          Finding[]
   diagnosticSynthesis DiagnosticSynthesis?
   documentChunks    DocumentChunk[]
+  evidenceDocuments EvidenceDocument[]
   createdBy         User                  @relation(fields: [createdById], references: [id])
   organization      Organization          @relation(fields: [organizationId], references: [id])
 
@@ -532,6 +558,9 @@ model WorkshopScratchpad {
   clientLogoUrl      String?  // URL to uploaded client logo
   solutionImageUrl   String?  // URL to uploaded solution overview image
 
+  // V2 Output (knowledge-pack-anchored structured output)
+  v2Output           Json?    @map("v2_output")  // V2Output: discover/reimagine/constraints/pathForward/outcomes/futureView
+
   // Output Assessment (archetype classification from deterministic classifier)
   outputAssessment   Json?    // { archetype, secondaryArchetypes, confidence, rationale, requiredSections }
 
@@ -809,4 +838,63 @@ model DocumentChunk {
 
   @@index([workshopId])
   @@map("document_chunks")
+}
+
+model EvidenceDocument {
+  id               String   @id @default(cuid())
+  workshopId       String   @map("workshop_id")
+  originalFileName String   @map("original_file_name")
+  mimeType         String   @map("mime_type")
+  fileSizeBytes    Int      @map("file_size_bytes")
+  storageKey       String   @map("storage_key")
+
+  status           String   @default("uploading")
+  errorMessage     String?  @map("error_message")
+
+  sourceCategory   String?  @map("source_category")
+  summary          String?
+  timeframeFrom    String?  @map("timeframe_from")
+  timeframeTo      String?  @map("timeframe_to")
+
+  findings         Json?
+  metrics          Json?
+  excerpts         Json?
+
+  signalDirection  String?  @map("signal_direction")
+  confidence       Float?
+
+  relevantLenses         Json? @map("relevant_lenses")
+  relevantActors         Json? @map("relevant_actors")
+  relevantJourneyStages  Json? @map("relevant_journey_stages")
+
+  crossValidation  Json?  @map("cross_validation")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt     @map("updated_at")
+
+  workshop         Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId])
+  @@index([workshopId, status])
+  @@map("evidence_documents")
+}
+
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  type        String
+  visitorId   String   @map("visitor_id")
+  sessionId   String   @map("session_id")
+  pagePath    String   @map("page_path")
+  pageTitle   String?  @map("page_title")
+  referrer    String?
+  deviceType  String?  @map("device_type")
+  durationMs  Int?     @map("duration_ms")
+  country     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([visitorId])
+  @@index([sessionId])
+  @@index([pagePath])
+  @@map("analytics_events")
 }

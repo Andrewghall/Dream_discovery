@@ -2,7 +2,7 @@
 
 import { Card } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { DollarSign, TrendingUp, Calendar, AlertTriangle } from 'lucide-react';
+import { PoundSterling, TrendingUp, Calendar, AlertTriangle } from 'lucide-react';
 import { EditableText } from './EditableText';
 import { EditableList } from './EditableList';
 import { AiInsightCard } from './AiInsightCard';
@@ -46,7 +46,7 @@ export function CommercialTab({ data, onChange }: CommercialTabProps) {
       {data.investmentSummary && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="p-6 text-center border-2 border-blue-100 bg-blue-50">
-            <DollarSign className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+            <PoundSterling className="h-8 w-8 mx-auto mb-2 text-blue-600" />
             <div className="text-3xl font-bold text-blue-600">
               <EditableText
                 value={data.investmentSummary.totalInvestment}
@@ -79,7 +79,7 @@ export function CommercialTab({ data, onChange }: CommercialTabProps) {
             <div className="text-sm text-muted-foreground">Payback Period</div>
           </Card>
           <Card className="p-6 text-center border-2 border-purple-100 bg-purple-50">
-            <DollarSign className="h-8 w-8 mx-auto mb-2 text-purple-600" />
+            <PoundSterling className="h-8 w-8 mx-auto mb-2 text-purple-600" />
             <div className="text-3xl font-bold text-purple-600">
               <EditableText
                 value={data.investmentSummary.annualSavings}

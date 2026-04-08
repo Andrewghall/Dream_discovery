@@ -11,6 +11,7 @@
 
 import OpenAI from 'openai';
 import { nanoid } from 'nanoid';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type {
   TensionEntry,
   TensionSurfaceData,
@@ -194,13 +195,13 @@ export async function runDiscoverAnalysisAgent(
       const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption =
         isLastIteration ? { type: 'function', function: { name: 'commit_analysis' } } : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

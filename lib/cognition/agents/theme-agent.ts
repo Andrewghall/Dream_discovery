@@ -12,6 +12,7 @@
 
 import OpenAI from 'openai';
 import { env } from '@/lib/env';
+import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, GuidedTheme } from '../guidance-state';
 import type { AgentConversationCallback, AgentReview, WorkshopPrepResearch } from './agent-types';
@@ -29,7 +30,7 @@ const MODEL = 'gpt-4o-mini';
 // TOOL DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 
-const DEFAULT_THEME_DOMAINS = ['People', 'Operations', 'Customer', 'Technology', 'Regulation'];
+const DEFAULT_THEME_DOMAINS = ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'];
 const DEFAULT_THEME_LENSES = ['People', 'Organisation', 'Technology', 'Regulation', 'Customer'];
 
 function buildThemeTools(dimensions?: string[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
@@ -292,13 +293,13 @@ export async function runThemeAgent(
         ? { type: 'function', function: { name: 'suggest_theme' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);
@@ -464,13 +465,13 @@ Use query_beliefs and get_coverage_summary to ground your assessment, then submi
         ? { type: 'function', function: { name: 'submit_review' } }
         : 'auto';
 
-      const completion = await openai.chat.completions.create({
+      const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
         tools: reviewTools,
         tool_choice: toolChoice,
-      });
+      }));
 
       const assistantMessage = completion.choices[0].message;
       messages.push(assistantMessage);

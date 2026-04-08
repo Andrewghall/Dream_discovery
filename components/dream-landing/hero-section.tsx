@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { ScrollReveal, AnimatedCounter } from './scroll-reveal';
 import { CalendlyButton } from './calendly-button';
 
@@ -25,15 +24,16 @@ export function HeroSection() {
           </p>
         </ScrollReveal>
 
-        {/* DREAM Banner */}
+        {/* DREAM Animated Logo */}
         <ScrollReveal delay={200}>
           <div className="dream-banner-glow mx-auto mb-10">
-            <Image
-              src="/Dream.PNG"
-              alt="DREAM  -  Discover, Reimagine, Educate, Apply, Mobilise"
-              width={700}
-              height={253}
-              priority
+            <video
+              src="/DREAMMovingLogo.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              aria-label="DREAM  -  Discover, Reimagine, Educate, Apply, Mobilise"
               className="mx-auto w-full max-w-[700px] rounded-xl"
             />
           </div>
@@ -51,7 +51,7 @@ export function HeroSection() {
 
         {/* Elevator pitch */}
         <ScrollReveal delay={500}>
-          <p className="text-lg md:text-xl text-white/60 max-w-3xl mx-auto leading-relaxed mb-10">
+          <p className="text-lg md:text-xl text-white/75 max-w-3xl mx-auto leading-relaxed mb-10">
             Built for leadership teams who must align strategy, cut through conflicting
             priorities, and produce decisions executives can defend. Multiple agentic AI specialists
             work in concert  -  capturing, synthesising, and analysing  -  to turn how your
@@ -68,13 +68,21 @@ export function HeroSection() {
               See It in Action
             </CalendlyButton>
             <a
+              href="/experience"
+              className="px-8 py-4 text-lg font-semibold rounded-xl border border-[#5cf28e]/30 text-[#5cf28e] hover:bg-[#5cf28e]/10 transition-all"
+            >
+              The DREAM Story →
+            </a>
+          </div>
+          <div className="flex justify-center mb-4">
+            <a
               href="#assessment"
-              className="px-8 py-4 text-lg font-semibold rounded-xl border border-white/20 text-white hover:bg-white/10 transition-all"
+              className="px-6 py-2.5 text-sm font-medium rounded-xl border border-white/15 text-white/60 hover:bg-white/5 hover:text-white/80 transition-all"
             >
               Take a 5-Minute Assessment
             </a>
           </div>
-          <p className="text-sm text-white/40 max-w-xl mx-auto mb-16">
+          <p className="text-sm text-white/60 max-w-xl mx-auto mb-16">
             Rate your readiness across People, Organisation, Customer, Technology
             and Regulation and receive a personalised transformation score.
           </p>
@@ -87,19 +95,19 @@ export function HeroSection() {
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 <AnimatedCounter target={1000} suffix="+" />
               </div>
-              <div className="text-xs sm:text-sm text-white/40 mt-1">Insights per session</div>
+              <div className="text-xs sm:text-sm text-white/60 mt-1">Insights per session</div>
             </div>
             <div>
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 10&times;
               </div>
-              <div className="text-xs sm:text-sm text-white/40 mt-1">Faster than surveys</div>
+              <div className="text-xs sm:text-sm text-white/60 mt-1">Faster than surveys</div>
             </div>
             <div>
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 <AnimatedCounter target={7} />
               </div>
-              <div className="text-xs sm:text-sm text-white/40 mt-1">Analytical views</div>
+              <div className="text-xs sm:text-sm text-white/60 mt-1">Analytical views</div>
             </div>
           </div>
         </ScrollReveal>

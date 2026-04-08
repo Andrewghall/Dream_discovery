@@ -40,8 +40,6 @@ export type PrepQuestionSet = {
 
 export const COVERAGE_THRESHOLD = 70;
 
-export const RETAIL_WORKSHOP_ID = 'retail-cx-workshop';
-
 // ── Phase / lens helpers ──────────────────────────────────
 
 export function dialoguePhaseToWorkshopPhase(phase: DialoguePhase): WorkshopPhase | null {
