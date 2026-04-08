@@ -328,6 +328,90 @@ interface Scores { [qId: string]: number | null }
 const EMPTY_SCORES: Scores = Object.fromEntries(ALL_QUESTIONS.map(q => [q.id, null]));
 
 /* ─────────────────────────────────────────────────────────────
+   Text Answer Input Component
+   ───────────────────────────────────────────────────────────── */
+
+function TextAnswerInput({
+  domainColourHex,
+  onSubmit,
+  onQuickSelect,
+  maturityLevels,
+  descriptors,
+}: {
+  domainColourHex: string
+  onSubmit: (text: string) => void
+  onQuickSelect: (level: number) => void
+  maturityLevels: readonly { level: number; name: string; description: string }[]
+  descriptors: [string, string, string, string, string]
+}) {
+  const [text, setText] = useState('')
+  const [showLevels, setShowLevels] = useState(false)
+
+  const handleSubmit = () => {
+    const trimmed = text.trim()
+    if (trimmed.length < 5) return
+    onSubmit(trimmed)
+  }
+
+  return (
+    <div className="space-y-4" style={{ animation: 'qFadeUp 0.3s ease both' }}>
+      {/* Free-text input */}
+      <div className="relative">
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Describe how your organisation approaches this in your own words…"
+          rows={4}
+          className="w-full bg-white/[0.04] border border-white/10 rounded-2xl px-5 py-4 text-white/80 text-sm leading-relaxed placeholder-white/20 resize-none focus:outline-none focus:border-white/25 transition-colors max-w-lg"
+          onKeyDown={e => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit()
+          }}
+        />
+        <span className="absolute bottom-3 right-4 text-[10px] text-white/15 pointer-events-none">
+          ⌘↵ to submit
+        </span>
+      </div>
+      <button
+        onClick={handleSubmit}
+        disabled={text.trim().length < 5}
+        className="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+        style={{ background: domainColourHex, color: '#0a0a0a' }}
+      >
+        Interpret my answer
+      </button>
+
+      {/* Quick-select toggle */}
+      <button
+        onClick={() => setShowLevels(v => !v)}
+        className="text-xs text-white/20 hover:text-white/40 transition-colors"
+      >
+        {showLevels ? 'Hide levels ↑' : 'Or pick a level directly →'}
+      </button>
+
+      {showLevels && (
+        <div className="space-y-2 pt-1">
+          {maturityLevels.map((level, i) => (
+            <button key={level.level} type="button" onClick={() => onQuickSelect(level.level)}
+              className="w-full text-left p-4 rounded-xl border-2 border-white/[0.08] bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04] transition-all"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 bg-white/[0.08] text-white/35">
+                  {level.level}
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-white/60 block mb-0.5">{level.name}</span>
+                  <span className="text-xs text-white/35 leading-relaxed">{descriptors[i]}</span>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
    Main Component
    ───────────────────────────────────────────────────────────── */
 
@@ -492,13 +576,13 @@ export function AssessmentSection() {
                   <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-white/50">5-Minute Diagnostic</span>
                 </div>
                 <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-[1.05] tracking-tight mb-5">
-                  Most transformations don&apos;t fail<br className="hidden sm:block" /> from lack of effort.
+                  Every organisation has<br className="hidden sm:block" /> untapped potential.
                 </h2>
                 <p className="text-white/50 text-lg sm:text-xl font-light leading-relaxed mb-3">
-                  They fail because the real constraints were never found.
+                  The question is where it lives — and what&apos;s ready to be unlocked.
                 </p>
                 <p className="text-white/30 text-sm leading-relaxed mb-10 max-w-lg">
-                  Answer 15 questions — by voice or text — and discover exactly where your organisation is strong, where it&apos;s constrained, and what a DREAM session would surface.
+                  Speak or write your way through 15 questions. In five minutes, you&apos;ll see your organisation&apos;s full capability profile — and exactly where a DREAM session would accelerate you.
                 </p>
 
                 {/* Voice toggle */}
@@ -523,7 +607,7 @@ export function AssessmentSection() {
                   onClick={() => setStep(1)}
                   className="inline-flex items-center gap-2.5 px-7 py-3.5 text-base font-bold rounded-xl bg-[#5cf28e] text-[#0a0a0a] hover:bg-[#50d47e] transition-all shadow-lg shadow-[#5cf28e]/20 hover:shadow-xl hover:shadow-[#5cf28e]/30"
                 >
-                  Find Your Constraints
+                  Discover Your Profile
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
@@ -579,111 +663,89 @@ export function AssessmentSection() {
               {currentQ.question}
             </h2>
 
-            {/* Voice mode */}
-            {voiceMode && (
-              <div className="space-y-6">
-                {!showConfirm && !interpreting && (
-                  <div className="flex flex-col items-start gap-4">
-                    {voice.state === 'idle' || voice.state === 'speaking' ? (
-                      <button
-                        onClick={() => { voice.stopSpeaking(); voice.startListening(handleVoiceAnswer); }}
-                        className="flex items-center gap-3 px-5 py-3.5 rounded-2xl font-semibold text-sm transition-all"
-                        style={{ background: `${domain.colourHex}18`, border: `1.5px solid ${domain.colourHex}50`, color: domain.colourHex }}
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/></svg>
-                        {voice.state === 'speaking' ? 'Listening to question…' : 'Tap to answer'}
-                      </button>
-                    ) : voice.state === 'listening' ? (
-                      <div className="space-y-3 w-full">
-                        <button
-                          onClick={voice.stopListening}
-                          className="flex items-center gap-3 px-5 py-3.5 rounded-2xl font-semibold text-sm"
-                          style={{ background: 'rgba(92,242,142,0.15)', border: '1.5px solid rgba(92,242,142,0.6)', color: '#5cf28e', animation: 'micPulse 2s ease-in-out infinite' }}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-[#5cf28e]" style={{ animation: 'micPulse 1s ease-in-out infinite' }} />
-                          Listening — tap to finish
-                        </button>
-                        {(voice.transcript || voice.interimTranscript) && (
-                          <p className="text-white/50 text-sm leading-relaxed pl-1 max-w-lg">
-                            {voice.transcript}<span className="text-white/25">{voice.interimTranscript}</span>
-                          </p>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-
-                {/* Processing */}
-                {(interpreting || voice.state === 'processing') && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1">
-                      {[0,1,2].map(i => (
-                        <span key={i} className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]/60" style={{ animation: `processingDot 1.4s ease-in-out ${i * 0.16}s infinite` }} />
-                      ))}
-                    </div>
-                    <span className="text-white/40 text-sm">Understanding your answer…</span>
-                  </div>
-                )}
-
-                {/* Reflection + confirm */}
-                {showConfirm && pendingLevel !== null && (
-                  <div className="space-y-4" style={{ animation: 'qFadeUp 0.4s ease both' }}>
-                    <div className="p-5 rounded-2xl border border-white/10 bg-white/[0.04]">
-                      <p className="text-white/70 text-sm leading-relaxed mb-4">{currentReflection}</p>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          onClick={() => confirmAnswer(pendingLevel)}
-                          className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                          style={{ background: domain.colourHex, color: '#0a0a0a' }}
-                        >
-                          That&apos;s right
-                        </button>
-                        <span className="text-white/25 text-xs">or adjust:</span>
-                        {MATURITY_LEVELS.map(l => (
-                          <button key={l.level} onClick={() => confirmAnswer(l.level)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${pendingLevel === l.level ? 'text-[#0a0a0a]' : 'border-white/10 text-white/35 hover:border-white/25'}`}
-                            style={pendingLevel === l.level ? { background: domain.colourHex, borderColor: domain.colourHex } : {}}
-                          >
-                            L{l.level}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Switch to text */}
-                {!showConfirm && !interpreting && (
-                  <button onClick={() => setVoiceMode(false)} className="text-xs text-white/20 hover:text-white/40 transition-colors">
-                    Prefer to type instead →
+            {/* Voice mode — mic button */}
+            {voiceMode && !showConfirm && !interpreting && (
+              <div className="flex flex-col items-start gap-4">
+                {voice.state === 'idle' || voice.state === 'speaking' ? (
+                  <button
+                    onClick={() => { voice.stopSpeaking(); voice.startListening(handleVoiceAnswer); }}
+                    className="flex items-center gap-3 px-5 py-3.5 rounded-2xl font-semibold text-sm transition-all"
+                    style={{ background: `${domain.colourHex}18`, border: `1.5px solid ${domain.colourHex}50`, color: domain.colourHex }}
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/></svg>
+                    {voice.state === 'speaking' ? 'Listening to question…' : 'Tap to answer'}
                   </button>
-                )}
+                ) : voice.state === 'listening' ? (
+                  <div className="space-y-3 w-full">
+                    <button
+                      onClick={voice.stopListening}
+                      className="flex items-center gap-3 px-5 py-3.5 rounded-2xl font-semibold text-sm"
+                      style={{ background: 'rgba(92,242,142,0.15)', border: '1.5px solid rgba(92,242,142,0.6)', color: '#5cf28e', animation: 'micPulse 2s ease-in-out infinite' }}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-[#5cf28e]" style={{ animation: 'micPulse 1s ease-in-out infinite' }} />
+                      Listening — tap to finish
+                    </button>
+                    {(voice.transcript || voice.interimTranscript) && (
+                      <p className="text-white/50 text-sm leading-relaxed pl-1 max-w-lg">
+                        {voice.transcript}<span className="text-white/25">{voice.interimTranscript}</span>
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+                <button onClick={() => setVoiceMode(false)} className="text-xs text-white/20 hover:text-white/40 transition-colors">
+                  Prefer to type instead →
+                </button>
               </div>
             )}
 
             {/* Text mode */}
-            {!voiceMode && (
-              <div className="space-y-2.5" style={{ animation: 'qFadeUp 0.3s ease both' }}>
-                {MATURITY_LEVELS.map((level, i) => {
-                  const isSelected = scores[currentQ.id] === level.level;
-                  return (
-                    <button key={level.level} type="button" onClick={() => handleManualSelect(level.level)}
-                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${isSelected ? 'shadow-md' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]'}`}
-                      style={isSelected ? { borderColor: domain.colourHex, backgroundColor: `${domain.colourHex}10` } : {}}
+            {!voiceMode && !showConfirm && !interpreting && (
+              <TextAnswerInput
+                key={step}
+                domainColourHex={domain.colourHex}
+                onSubmit={handleVoiceAnswer}
+                onQuickSelect={handleManualSelect}
+                maturityLevels={MATURITY_LEVELS}
+                descriptors={currentQ.descriptors}
+              />
+            )}
+
+            {/* Processing — shared between voice and text */}
+            {(interpreting || voice.state === 'processing') && (
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1">
+                  {[0,1,2].map(i => (
+                    <span key={i} className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]/60" style={{ animation: `processingDot 1.4s ease-in-out ${i * 0.16}s infinite` }} />
+                  ))}
+                </div>
+                <span className="text-white/40 text-sm">Understanding your answer…</span>
+              </div>
+            )}
+
+            {/* Reflection + confirm — shared between voice and text */}
+            {showConfirm && pendingLevel !== null && (
+              <div className="space-y-4" style={{ animation: 'qFadeUp 0.4s ease both' }}>
+                <div className="p-5 rounded-2xl border border-white/10 bg-white/[0.04]">
+                  <p className="text-white/70 text-sm leading-relaxed mb-4">{currentReflection}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => confirmAnswer(pendingLevel)}
+                      className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                      style={{ background: domain.colourHex, color: '#0a0a0a' }}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 transition-all"
-                          style={{ background: isSelected ? domain.colourHex : 'rgba(255,255,255,0.08)', color: isSelected ? '#0a0a0a' : 'rgba(255,255,255,0.35)' }}>
-                          {level.level}
-                        </div>
-                        <div>
-                          <span className="text-xs font-bold text-white/60 block mb-0.5">{level.name}</span>
-                          <span className="text-xs text-white/35 leading-relaxed">{currentQ.descriptors[i]}</span>
-                        </div>
-                      </div>
+                      That&apos;s right
                     </button>
-                  );
-                })}
+                    <span className="text-white/25 text-xs">or adjust:</span>
+                    {MATURITY_LEVELS.map(l => (
+                      <button key={l.level} onClick={() => confirmAnswer(l.level)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${pendingLevel === l.level ? 'text-[#0a0a0a]' : 'border-white/10 text-white/35 hover:border-white/25'}`}
+                        style={pendingLevel === l.level ? { background: domain.colourHex, borderColor: domain.colourHex } : {}}
+                      >
+                        L{l.level}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>

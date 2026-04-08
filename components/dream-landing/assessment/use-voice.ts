@@ -45,6 +45,7 @@ export function useVoice() {
   const recognitionRef = useRef<ISpeechRecognition | null>(null)
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onDoneRef = useRef<((t: string) => void) | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     const hasSpeech = typeof window !== 'undefined' &&
@@ -53,27 +54,65 @@ export function useVoice() {
     setSupported(hasSpeech)
   }, [])
 
-  const speak = useCallback((text: string, onEnd?: () => void) => {
+  const speak = useCallback(async (text: string, onEnd?: () => void) => {
     if (typeof window === 'undefined') return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = 0.88
-    utterance.pitch = 1.05
-    utterance.volume = 1
-    // Prefer a natural English voice
-    const voices = window.speechSynthesis.getVoices()
-    const preferred = voices.find(v => v.lang === 'en-GB' && v.localService) ||
-                      voices.find(v => v.lang === 'en-GB') ||
-                      voices.find(v => v.lang.startsWith('en') && v.localService) ||
-                      voices.find(v => v.lang.startsWith('en'))
-    if (preferred) utterance.voice = preferred
-    utterance.onend = () => { setVoiceState('idle'); onEnd?.() }
+
+    // Stop any current playback
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
+    }
+    window.speechSynthesis?.cancel()
+
     setVoiceState('speaking')
-    window.speechSynthesis.speak(utterance)
+
+    try {
+      const res = await fetch('/api/public/assessment/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      if (!res.ok) throw new Error('TTS request failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => {
+        URL.revokeObjectURL(url)
+        audioRef.current = null
+        setVoiceState('idle')
+        onEnd?.()
+      }
+      audio.onerror = () => {
+        URL.revokeObjectURL(url)
+        audioRef.current = null
+        setVoiceState('idle')
+        onEnd?.()
+      }
+      await audio.play()
+    } catch {
+      // Fallback to Web Speech API
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.rate = 0.88
+      utterance.pitch = 1.05
+      const voices = window.speechSynthesis.getVoices()
+      const preferred = voices.find(v => v.lang === 'en-GB' && v.localService) ||
+                        voices.find(v => v.lang === 'en-GB') ||
+                        voices.find(v => v.lang.startsWith('en'))
+      if (preferred) utterance.voice = preferred
+      utterance.onend = () => { setVoiceState('idle'); onEnd?.() }
+      window.speechSynthesis.speak(utterance)
+    }
   }, [])
 
   const stopSpeaking = useCallback(() => {
-    if (typeof window !== 'undefined') window.speechSynthesis.cancel()
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
+    }
+    if (typeof window !== 'undefined') window.speechSynthesis?.cancel()
     setVoiceState('idle')
   }, [])
 
