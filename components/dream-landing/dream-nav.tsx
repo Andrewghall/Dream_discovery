@@ -160,8 +160,14 @@ export function DreamNav() {
           )}
         </div>
 
-        {/* Right side: WhatsApp + Book a Demo + Sign In */}
+        {/* Right side: Experience + WhatsApp + Book a Demo + Sign In */}
         <div className="hidden lg:flex items-center gap-3">
+          <a
+            href="/experience"
+            className="px-3 py-2 text-sm font-medium rounded-lg text-[#5cf28e] border border-[#5cf28e]/20 hover:bg-[#5cf28e]/10 transition-all"
+          >
+            Experience DREAM
+          </a>
           <a
             href="https://wa.me/447471944765"
             target="_blank"
@@ -256,6 +262,12 @@ export function DreamNav() {
             )}
 
             <div className="pt-3 mt-3 border-t border-slate-100 space-y-2">
+              <a
+                href="/experience"
+                className="block text-center px-4 py-2.5 text-sm font-semibold rounded-lg border border-[#5cf28e]/30 text-[#33824d] hover:bg-[#5cf28e]/10 transition-all"
+              >
+                Experience DREAM
+              </a>
               <CalendlyButton
                 className="block w-full text-center px-4 py-2.5 text-sm font-semibold rounded-lg bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all cursor-pointer"
               >

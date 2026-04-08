@@ -68,8 +68,16 @@ export function HeroSection() {
               See It in Action
             </CalendlyButton>
             <a
+              href="/experience"
+              className="px-8 py-4 text-lg font-semibold rounded-xl border border-[#5cf28e]/30 text-[#5cf28e] hover:bg-[#5cf28e]/10 transition-all"
+            >
+              Experience DREAM →
+            </a>
+          </div>
+          <div className="flex justify-center mb-4">
+            <a
               href="#assessment"
-              className="px-8 py-4 text-lg font-semibold rounded-xl border border-white/20 text-white hover:bg-white/10 transition-all"
+              className="px-6 py-2.5 text-sm font-medium rounded-xl border border-white/15 text-white/60 hover:bg-white/5 hover:text-white/80 transition-all"
             >
               Take a 5-Minute Assessment
             </a>
