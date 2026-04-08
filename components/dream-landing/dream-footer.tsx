@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { CalendlyButton } from './calendly-button';
+import { FooterPageName } from './footer-page-name';
 
 export function DreamFooter() {
   return (
@@ -109,9 +110,10 @@ export function DreamFooter() {
         </div>
       </div>
 
-      {/* Copyright */}
-      <div className="max-w-7xl mx-auto mt-12 pt-8 border-t border-slate-800 text-sm text-center text-slate-500">
-        &copy; {new Date().getFullYear()} Ethenta Ltd. All rights reserved. DREAM and EthentaFlow are trademarks of Ethenta Ltd.
+      {/* Copyright bar */}
+      <div className="max-w-7xl mx-auto mt-12 pt-8 border-t border-slate-800 flex items-center justify-between gap-4 text-sm text-slate-500">
+        <span>&copy; Ethenta 2026. All rights reserved.</span>
+        <FooterPageName />
       </div>
     </footer>
   );
