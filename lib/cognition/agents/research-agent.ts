@@ -42,8 +42,8 @@ export class ResearchClarificationNeededError extends Error {
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 14;        // Enough for thorough 4-phase research + synthesis pass
-const LOOP_TIMEOUT_MS = 120_000;  // 2 minutes — gpt-4o needs a little more room
+const MAX_ITERATIONS = 20;        // Enough for thorough 4-phase research + synthesis pass
+const LOOP_TIMEOUT_MS = 300_000;  // 5 minutes — GPT-4o + Tavily takes ~15-20s per iteration; 8-10 searches needs room
 const MODEL = 'gpt-4o';           // Full model — research synthesis quality matters here
 const LIVE_REVIEW_MODEL = 'gpt-4o-mini';  // Keep fast for latency-sensitive live reviews
 const MIN_SEARCHES_BEFORE_COMMIT = 8;
@@ -1024,6 +1024,27 @@ BEFORE you call commit_research, stop and think through these questions. Your an
 
 5. expectedRoomTensions: Write 4-6 specific dynamics likely to emerge between people in the room. Ground these in who will be there and what the research suggests about internal tensions between functions, levels, or perspectives. Examples: "Different leaders may define \'performance\' differently — growth, cost, CX quality, delivery stability, or transformation pace — and this will surface as competing priorities." / "Operations and technology leaders are likely to have divergent views on the pace of AI deployment."
 
+═══ MANDATORY SEARCH SEQUENCE — FOLLOW THIS EXACTLY ═══
+
+Your first searches MUST be in this order. Do NOT skip any of them. Do NOT use generic queries that return SEO blogs.
+
+SEARCH 1 (Phase 1 — Foundation):
+  Query: "${context.clientName || 'the company'} investor relations annual report"
+  Tool: search_company_info, focus: overview
+  Purpose: Find the IR page for verified financial data, revenue, employee count, and strategic priorities.
+
+SEARCH 2 (Phase 1 — Foundation):
+  Query: "${context.clientName || 'the company'} news press releases strategy"
+  Tool: search_company_info, focus: strategy
+  Purpose: Get official news, press releases, and leadership announcements from their official site or newsroom.
+
+SEARCH 3 (Phase 1 — Foundation):
+  Query: "${context.clientName || 'the company'} glassdoor indeed employee reviews"
+  Tool: search_company_info, focus: overview
+  Purpose: Get employee sentiment data — morale, culture, management, and internal tensions.
+
+After these 3 mandatory searches, continue with Phase 2 (industry/competitive) and Phase 3 (domain or digital transformation) as planned.
+
 ═══ MINIMUM SEARCH REQUIREMENTS ═══
 
 You MUST conduct at least ${minSearches} different searches before calling commit_research. Do NOT commit after 2-3 searches — that produces thin, surface-level output that is useless for workshop facilitation. Use different queries for each search to explore different angles and build a truly comprehensive picture.
@@ -1143,10 +1164,12 @@ ${context.companyWebsite ? `The company website has been provided: ${context.com
 
 If verify_company returns verified=false, you MUST call request_clarification immediately. Do not continue with any other research.
 
-If verify_company returns verified=true, then follow the phased approach:
-1. Phase 1: Company foundation — history, what they do, size, market position, strategic direction (3-4 searches)
+If verify_company returns verified=true, then follow the MANDATORY SEARCH SEQUENCE from your instructions — start with the 3 prescribed searches (IR/annual report, official news/press releases, Glassdoor/employee sentiment), then continue:
+1. Phase 1 continues: market position, key products/services, leadership structure
 2. Phase 2: Industry and competitive landscape — macro trends, disruption forces, competitors (3-4 searches)
 ${context.dreamTrack === 'DOMAIN' ? `3. Phase 3: Deep domain research — drill deep into "${context.targetDomain || 'the target domain'}" from multiple angles (3-4 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)` : '3. Phase 3: Cross-functional challenges and digital transformation (1-2 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)'}
+
+⚠️ SEARCH QUALITY RULE: If your search returns results from businessmodelcanvastemplate.com, simplywall.st, comparably.com, koalagains.com, or clutch.co — DISCARD those results immediately and run a different search. Do NOT cite them. Your commit will be rejected if any of these appear in your output.
 
 Remember: every fact must be cited. Every challenge and development must end with [Source: title, URL]. Do not include any fact you cannot attribute to a real search result.`,
     },
@@ -1383,7 +1406,10 @@ Remember: every fact must be cited. Every challenge and development must end wit
           });
         } else {
           // Execute research tool
-          searchCount++;
+          // verify_company is Step 0 (verification), not a research search — don't count it
+          if (fnName !== 'verify_company') {
+            searchCount++;
+          }
           const toolResult = await executeResearchTool(openai, fnName, fnArgs, context);
 
           onConversation?.({

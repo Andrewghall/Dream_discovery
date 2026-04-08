@@ -19,7 +19,7 @@ import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 180; // 3 minutes for deep research with gpt-4o
+export const maxDuration = 300; // 5 minutes — GPT-4o + 8-10 Tavily searches needs ~4-5 min
 
 export async function POST(
   request: NextRequest,
