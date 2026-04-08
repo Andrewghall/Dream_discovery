@@ -185,7 +185,7 @@ export default function HowItWorksPage() {
                   <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                     <AnimatedCounter target={stat.target} suffix={stat.suffix} />
                   </div>
-                  <div className="text-xs sm:text-sm text-white/40 mt-1">{stat.label}</div>
+                  <div className="text-xs sm:text-sm text-white/70 mt-1">{stat.label}</div>
                 </div>
               ))}
             </div>

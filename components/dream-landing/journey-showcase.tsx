@@ -133,7 +133,7 @@ export function JourneyShowcase() {
           </h2>
         </ScrollReveal>
         <ScrollReveal delay={150}>
-          <p className="text-lg text-white/50 max-w-2xl mx-auto text-center mb-12">
+          <p className="text-lg text-white/75 max-w-2xl mx-auto text-center mb-12">
             DREAM maps every actor&apos;s journey, showing exactly where AI augments
             human decision-making  -  and where humans must lead.
           </p>
@@ -148,7 +148,7 @@ export function JourneyShowcase() {
                 <div /> {/* empty corner */}
                 {STAGES.map((stage) => (
                   <div key={stage} className="text-center">
-                    <span className="text-xs font-bold text-white/65 uppercase tracking-wider">
+                    <span className="text-xs font-bold text-white/85 uppercase tracking-wider">
                       {stage}
                     </span>
                   </div>
@@ -188,7 +188,7 @@ export function JourneyShowcase() {
                           </div>
 
                           {/* Action text */}
-                          <p className="text-[11px] text-white/60 leading-snug mb-2 flex-1">
+                          <p className="text-[11px] text-white/80 leading-snug mb-2 flex-1">
                             {cell.action}
                           </p>
 

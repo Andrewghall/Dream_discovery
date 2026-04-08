@@ -127,7 +127,7 @@ export default function DreamLandingPage() {
               <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
                 The DREAM Story
               </h2>
-              <p className="text-white/50 max-w-xl mx-auto text-base leading-relaxed">
+              <p className="text-white/75 max-w-xl mx-auto text-base leading-relaxed">
                 Ten slides. The problem every leadership team faces, why traditional methods fail, and how DREAM solves it — step by step, with live platform demos built in.
               </p>
             </div>
@@ -149,7 +149,7 @@ export default function DreamLandingPage() {
                 <div key={s.num} className="flex items-center shrink-0">
                   <div className="text-center px-3">
                     <p className="text-[10px] text-[#5cf28e]/40 font-mono mb-1">{s.num}</p>
-                    <p className="text-xs text-white/50 whitespace-nowrap">{s.label}</p>
+                    <p className="text-xs text-white/75 whitespace-nowrap">{s.label}</p>
                   </div>
                   {i < arr.length - 1 && (
                     <div className="w-6 h-px bg-white/10 shrink-0" />
@@ -197,7 +197,7 @@ export default function DreamLandingPage() {
                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4">
                   Enterprise AI Adoption
                 </h2>
-                <p className="text-white/60 max-w-2xl mb-6 leading-relaxed">
+                <p className="text-white/80 max-w-2xl mb-6 leading-relaxed">
                   Every enterprise wants to adopt AI. Few know how. DREAM cuts through the noise  - 
                   conflicting priorities, siloed thinking, misaligned maturity perceptions  -  and builds
                   a transformation roadmap grounded in what people actually think.
@@ -223,10 +223,10 @@ export default function DreamLandingPage() {
 
                 {/* Breadth signal */}
                 <div className="mt-8 pt-6 border-t border-white/10">
-                  <p className="text-white/55 text-xs font-semibold uppercase tracking-wider mb-3">DREAM also powers</p>
+                  <p className="text-white/75 text-xs font-semibold uppercase tracking-wider mb-3">DREAM also powers</p>
                   <div className="flex flex-wrap gap-2 mb-4">
                     {['Operating model redesign', 'Compliance & regulation', 'Human-AI workflow design', 'Partner ecosystem alignment'].map((uc) => (
-                      <span key={uc} className="px-3 py-1.5 text-xs text-white/50 border border-white/10 rounded-full">
+                      <span key={uc} className="px-3 py-1.5 text-xs text-white/75 border border-white/10 rounded-full">
                         {uc}
                       </span>
                     ))}

@@ -32,7 +32,7 @@ export function CTASection({
         : 'bg-slate-50';
 
   const textClass = variant === 'light' ? 'text-slate-900' : 'text-white';
-  const subTextClass = variant === 'light' ? 'text-slate-600' : 'text-white/60';
+  const subTextClass = variant === 'light' ? 'text-slate-600' : 'text-white/80';
 
   return (
     <section className={`${bgClass} py-20 px-6`}>

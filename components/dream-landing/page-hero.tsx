@@ -34,9 +34,9 @@ export function PageHero({
   const bgClass = dark ? 'bg-[#0d0d0d]' : 'bg-white';
   const eyebrowClass = dark ? 'text-[#5cf28e]' : 'text-[#50c878]';
   const headlineClass = dark ? 'text-white' : 'text-slate-900';
-  const subClass = dark ? 'text-white/60' : 'text-slate-600';
+  const subClass = dark ? 'text-white/80' : 'text-slate-600';
   const statValueClass = dark ? 'text-[#5cf28e]' : 'text-[#50c878]';
-  const statLabelClass = dark ? 'text-white/40' : 'text-slate-500';
+  const statLabelClass = dark ? 'text-white/70' : 'text-slate-500';
   const borderClass = dark ? 'border-white/10' : 'border-slate-200';
 
   return (

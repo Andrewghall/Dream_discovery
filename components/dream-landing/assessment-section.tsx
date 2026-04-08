@@ -376,7 +376,7 @@ function MultipleChoiceInput({
               >
                 {lvl.name}
               </span>
-              <span className="text-xs text-white/60 leading-relaxed">{descriptors[i]}</span>
+              <span className="text-xs text-white/80 leading-relaxed">{descriptors[i]}</span>
             </div>
           </div>
         </button>
@@ -478,15 +478,15 @@ export function AssessmentSection() {
               <div className="relative z-10 px-8 sm:px-14 py-14 sm:py-16">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.04] mb-8">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]" />
-                  <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-white/50">5-Minute Diagnostic</span>
+                  <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-white/75">5-Minute Diagnostic</span>
                 </div>
                 <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-[1.05] tracking-tight mb-5">
                   Every organisation has<br className="hidden sm:block" /> untapped potential.
                 </h2>
-                <p className="text-white/50 text-lg sm:text-xl font-light leading-relaxed mb-3">
+                <p className="text-white/75 text-lg sm:text-xl font-light leading-relaxed mb-3">
                   The question is where it lives — and what&apos;s ready to be unlocked.
                 </p>
-                <p className="text-white/60 text-sm leading-relaxed mb-10 max-w-lg">
+                <p className="text-white/80 text-sm leading-relaxed mb-10 max-w-lg">
                   15 multiple-choice questions across five capability areas. Select the option that best describes your organisation today — no right or wrong answers.
                 </p>
 
@@ -494,14 +494,14 @@ export function AssessmentSection() {
                 <div className="flex items-center gap-3 mb-8">
                   <button
                     onClick={() => setVoiceMode(true)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${voiceMode ? 'bg-[#5cf28e] text-[#0a0a0a]' : 'border border-white/15 text-white/50 hover:border-white/30'}`}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${voiceMode ? 'bg-[#5cf28e] text-[#0a0a0a]' : 'border border-white/15 text-white/75 hover:border-white/30'}`}
                   >
                     <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/></svg>
                     Read aloud
                   </button>
                   <button
                     onClick={() => setVoiceMode(false)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${!voiceMode ? 'bg-[#5cf28e] text-[#0a0a0a]' : 'border border-white/15 text-white/50 hover:border-white/30'}`}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${!voiceMode ? 'bg-[#5cf28e] text-[#0a0a0a]' : 'border border-white/15 text-white/75 hover:border-white/30'}`}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
                     Silent
@@ -575,7 +575,7 @@ export function AssessmentSection() {
           <div className="mb-8 text-center">
             <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#5cf28e]/60 mb-3">Your Pattern</p>
             <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-3">{pattern.name}</h2>
-            <p className="text-white/40 text-base font-light leading-relaxed max-w-sm mx-auto">{pattern.headline}</p>
+            <p className="text-white/70 text-base font-light leading-relaxed max-w-sm mx-auto">{pattern.headline}</p>
           </div>
 
           {/* Gate card */}
@@ -584,7 +584,7 @@ export function AssessmentSection() {
               <div className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]" />
               <h3 className="text-sm font-bold text-white">Unlock your full profile</h3>
             </div>
-            <p className="text-white/60 text-xs leading-relaxed mb-6 pl-4">
+            <p className="text-white/80 text-xs leading-relaxed mb-6 pl-4">
               Enter your details to see your complete capability breakdown, domain scores, and what a DREAM session would surface for your specific constraints. Your PDF report will be emailed to you.
             </p>
 
@@ -599,7 +599,7 @@ export function AssessmentSection() {
                   onChange={e => { setEmail(e.target.value); setSubmitError(''); }}
                   className={`w-full px-4 py-3 text-sm bg-white/[0.04] border rounded-xl text-white placeholder-white/25 focus:outline-none transition-colors ${submitError && submitError.includes('email') ? 'border-red-500/50 focus:border-red-500/70' : 'border-white/10 focus:border-[#5cf28e]/40'}`}
                 />
-                <p className="text-[10px] text-white/45 mt-1.5 pl-1">Work email required — personal addresses not accepted</p>
+                <p className="text-[10px] text-white/70 mt-1.5 pl-1">Work email required — personal addresses not accepted</p>
               </div>
               <input
                 type="text" placeholder="Organisation" value={organisation} onChange={e => setOrganisation(e.target.value)}
@@ -621,7 +621,7 @@ export function AssessmentSection() {
             </button>
           </div>
 
-          <button onClick={reset} className="mt-5 w-full text-xs text-white/40 hover:text-white/65 transition-colors text-center">
+          <button onClick={reset} className="mt-5 w-full text-xs text-white/70 hover:text-white/85 transition-colors text-center">
             ← Start over
           </button>
         </div>
@@ -650,9 +650,9 @@ export function AssessmentSection() {
             <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${domain.colourHex}25` }}>
               <DomainIcon className="w-3.5 h-3.5" style={{ color: domain.colourHex }} />
             </div>
-            <span className="text-xs font-semibold text-white/40 tracking-wide">{domain.name}</span>
+            <span className="text-xs font-semibold text-white/70 tracking-wide">{domain.name}</span>
           </div>
-          <span className="text-xs text-white/55 tabular-nums">{step} / 15</span>
+          <span className="text-xs text-white/75 tabular-nums">{step} / 15</span>
         </div>
 
         {/* Progress bar */}
@@ -684,7 +684,7 @@ export function AssessmentSection() {
 
           {/* Live radar — desktop only */}
           <div className="hidden lg:flex flex-col items-center justify-center w-72 shrink-0">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-white/45 mb-3">Your Profile</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-white/70 mb-3">Your Profile</p>
             <RadarChart
               domains={DOMAINS.map(d => d.name)}
               current={liveDomainScores}
@@ -692,7 +692,7 @@ export function AssessmentSection() {
               size={240}
               animated={false}
             />
-            <p className="text-[10px] text-white/45 mt-2 text-center max-w-[180px] leading-relaxed">
+            <p className="text-[10px] text-white/70 mt-2 text-center max-w-[180px] leading-relaxed">
               Updates as you answer each question
             </p>
           </div>
@@ -700,7 +700,7 @@ export function AssessmentSection() {
 
         {/* Back */}
         <div className="px-6 pb-6">
-          <button onClick={() => setStep(s => Math.max(0, s - 1))} className="text-xs text-white/45 hover:text-white/70 transition-colors flex items-center gap-1">
+          <button onClick={() => setStep(s => Math.max(0, s - 1))} className="text-xs text-white/70 hover:text-white/70 transition-colors flex items-center gap-1">
             <ArrowLeft className="w-3 h-3" /> Back
           </button>
         </div>
@@ -727,10 +727,10 @@ export function AssessmentSection() {
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-tight tracking-tight mb-4">
             {pattern.name}
           </h2>
-          <p className="text-white/50 text-xl font-light leading-relaxed mb-3 max-w-2xl">
+          <p className="text-white/75 text-xl font-light leading-relaxed mb-3 max-w-2xl">
             {pattern.headline}
           </p>
-          <p className="text-white/65 text-sm leading-relaxed max-w-xl">
+          <p className="text-white/85 text-sm leading-relaxed max-w-xl">
             {pattern.insight}
           </p>
         </div>
@@ -739,7 +739,7 @@ export function AssessmentSection() {
         <div className="grid lg:grid-cols-2 gap-8" style={{ animation: 'rFadeUp 0.6s ease 0.15s both', opacity: 0 }}>
           {/* Radar */}
           <div className="bg-white/[0.03] rounded-2xl border border-white/[0.07] p-6 flex flex-col items-center">
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/55 mb-4">Transformation Profile</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/75 mb-4">Transformation Profile</p>
             <RadarChart
               domains={DOMAINS.map(d => d.name)}
               current={domainResults.map(r => r.score)}
@@ -751,11 +751,11 @@ export function AssessmentSection() {
             <div className="flex items-center gap-6 mt-4">
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-0.5 rounded-full bg-[#5cf28e]/70" />
-                <span className="text-[10px] text-white/55">Your profile</span>
+                <span className="text-[10px] text-white/75">Your profile</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-0.5 rounded-full border-t border-dashed border-white/30" />
-                <span className="text-[10px] text-white/55">Transformation-ready threshold</span>
+                <span className="text-[10px] text-white/75">Transformation-ready threshold</span>
               </div>
             </div>
           </div>
@@ -776,7 +776,7 @@ export function AssessmentSection() {
                   <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(r.score / 5) * 100}%`, backgroundColor: r.colourHex, opacity: 0.8 }} />
                   </div>
-                  {i === 0 && <p className="text-[10px] text-white/55 mt-2 leading-relaxed">{r.levelDescriptor}</p>}
+                  {i === 0 && <p className="text-[10px] text-white/75 mt-2 leading-relaxed">{r.levelDescriptor}</p>}
                 </div>
               );
             })}
@@ -786,18 +786,18 @@ export function AssessmentSection() {
         {/* What DREAM would find */}
         <div style={{ animation: 'rFadeUp 0.6s ease 0.3s both', opacity: 0 }}>
           <div className="border-t border-white/[0.06] pt-10">
-            <p className="text-[10px] uppercase tracking-[0.3em] text-white/55 mb-2">What A DREAM Session Would Surface</p>
-            <p className="text-white/50 text-sm mb-6 max-w-xl">{pattern.dreamFocus}</p>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-white/75 mb-2">What A DREAM Session Would Surface</p>
+            <p className="text-white/75 text-sm mb-6 max-w-xl">{pattern.dreamFocus}</p>
             <div className="grid sm:grid-cols-3 gap-4 mb-8">
               {pattern.signals.map((signal, i) => (
                 <div key={i} className="p-4 rounded-xl border border-white/[0.07] bg-white/[0.02]"
                   style={{ animation: `signalIn 0.5s ease ${0.4 + i * 0.1}s both`, opacity: 0 }}>
                   <div className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]/60 mb-3" />
-                  <p className="text-white/55 text-xs leading-relaxed">{signal}</p>
+                  <p className="text-white/75 text-xs leading-relaxed">{signal}</p>
                 </div>
               ))}
             </div>
-            <p className="text-white/45 text-xs italic max-w-lg">
+            <p className="text-white/70 text-xs italic max-w-lg">
               These patterns don&apos;t come from surveys. They surface when the right people are in the room, asked the right questions, in the right order.
             </p>
           </div>
@@ -807,7 +807,7 @@ export function AssessmentSection() {
         <div className="bg-gradient-to-r from-[#0d1a10] to-[#0a0a0a] rounded-2xl border border-[#5cf28e]/15 p-8" style={{ animation: 'rFadeUp 0.6s ease 0.45s both', opacity: 0 }}>
           <p className="text-[#5cf28e] text-[10px] font-bold uppercase tracking-[0.25em] mb-3">Ready to go deeper?</p>
           <h3 className="text-xl font-bold text-white mb-2">Book a DREAM Discovery Session</h3>
-          <p className="text-white/45 text-sm leading-relaxed mb-6 max-w-lg">
+          <p className="text-white/70 text-sm leading-relaxed mb-6 max-w-lg">
             In 90 minutes, DREAM would surface the constraints behind this profile — the ones that don&apos;t show up in data, but shape every decision your organisation makes.
           </p>
           <CalendlyButton className="inline-flex items-center gap-2 px-6 py-3 text-sm font-bold rounded-xl bg-[#5cf28e] text-[#0a0a0a] hover:bg-[#50d47e] transition-all shadow-lg shadow-[#5cf28e]/20 cursor-pointer">
@@ -817,12 +817,12 @@ export function AssessmentSection() {
 
         {/* PDF sent confirmation + start over */}
         <div className="flex items-center justify-between" style={{ animation: 'rFadeUp 0.6s ease 0.55s both', opacity: 0 }}>
-          <div className="flex items-center gap-2 text-white/55 text-xs">
+          <div className="flex items-center gap-2 text-white/75 text-xs">
             <CheckCircle2 className="h-3.5 w-3.5 text-[#5cf28e]/60" />
             PDF report sent to {email}
           </div>
           {overallLevelIndex != null && (
-            <button onClick={reset} className="text-xs text-white/40 hover:text-white/65 transition-colors">← Start over</button>
+            <button onClick={reset} className="text-xs text-white/70 hover:text-white/85 transition-colors">← Start over</button>
           )}
         </div>
       </div>
