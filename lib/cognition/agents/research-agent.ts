@@ -282,12 +282,12 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           industryContext: {
             type: 'string',
             description:
-              '2-3 detailed paragraphs covering: macro trends reshaping the industry, disruption forces (technology, regulation, competition, demographics), specific challenges facing organisations like this client, and a forward-looking 2-5 year outlook. Include specific evidence and data points — not generic statements like "the industry is evolving".',
+              '2-3 paragraphs. Write about TENSIONS and PRESSURES in this industry — not generic trends. What are the structural contradictions companies in this space face? What is the pressure that makes operating in this industry hard right now? Be specific to this sector. Avoid generic statements like "AI is transforming the industry". Instead: what specific pressure does AI create for companies like this client? What is the tension between scale and margin? Between client-centricity and standardisation? Give the facilitator something they can use to frame the room — not something they already know.',
           },
           keyPublicChallenges: {
             type: 'array',
             items: { type: 'string' },
-            description: '5-8 specific, detailed challenges. Each item MUST end with a citation in this exact format: [Source: Page Title, https://url]. ONLY include challenges that are supported by a specific search result you found. Do NOT invent or infer challenges without a cited source. Example: "Declining law school enrollment (down 28% from peak in 2010) is putting revenue pressure on member institutions. [Source: Law School Admissions Council Annual Report, https://lsac.org/report]"',
+            description: '5-6 direct, analytical observations about this company\'s situation. These are YOUR interpretations based on what you found — own them, do not hide behind citations. Write each as a clear statement: what is the challenge and why does it matter. Only append a [Source: title, URL] if the item contains a SPECIFIC VERIFIABLE FACT (a revenue figure, an acquisition date, a product name, a headcount) that must be attributable. Do NOT add a citation just because the challenge is informed by a source — the analysis itself is yours. Example with fact: "Revenue grew 2.2% to $9.8B in 2025, but non-GAAP operating margin contracted — growth is not translating to profitability. [Source: Concentrix FY2025 Annual Report, https://ir.concentrix.com]". Example without citation: "Operations are fragmented by design: each client relationship runs its own process, tooling, and SLA model, which caps the ability to standardise or share best practice at scale."',
           },
           recentDevelopments: {
             type: 'array',
@@ -331,10 +331,32 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             description:
               'A set of 4-6 specific tensions that are likely to emerge in the workshop room based on what you found in research. These are different from strategic tensions (which are about the company) — these are about the people who will be in the room and the dynamics between them. Examples: "Different leaders may define \'performance\' differently: growth, cost, CX quality, delivery stability, or transformation pace — and this will surface as competing priorities in the room." / "Operations and technology leaders are likely to have divergent views on the pace of AI deployment." Write each as one or two direct sentences describing the expected dynamic.',
           },
+          workshopImplications: {
+            type: 'object',
+            description: 'The most important section. Synthesises the research into direct workshop reality — what this company will bring into the room. Write this as the facilitator\'s briefing note, not a research summary.',
+            properties: {
+              whatTheyBringIn: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '4-6 bullet points describing what this specific company will walk into the workshop with. These are the live conditions the facilitator must navigate. Write each as a direct statement. Examples: "Multiple competing views of what \'performance\' means — no single version of truth exists across functions and regions." / "Existing transformation narratives that senior leaders have already committed to publicly — the room will defend them." / "AI positioned as a strategic priority externally, but internally adopted unevenly and not yet grounded in operational evidence."',
+              },
+              expectedTensions: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '4-5 specific fault lines likely to surface in the room. Write each as a simple vs statement or a named conflict. Examples: "Global standardisation vs client-specific flexibility." / "Technology ambition vs operational reality." / "Growth narrative vs margin pressure."',
+              },
+              hypothesesToTest: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '4-5 testable propositions the facilitator should hold going into the room. These are directional hypotheses the workshop should confirm or refute. Write each as one direct sentence. Examples: "There is no single version of truth — different leaders will define the current state differently." / "Root causes are not consistently agreed — the room will diagnose symptoms, not causes." / "AI initiatives are not mapped to actual operational breakdowns."',
+              },
+            },
+            required: ['whatTheyBringIn', 'expectedTensions', 'hypothesesToTest'],
+          },
           sourceUrls: {
             type: 'array',
             items: { type: 'string' },
-            description: 'All URLs and references used in your research. Include every source that informed your findings.',
+            description: 'All URLs and references used in your research. Include every source that informed your findings. DO NOT include Glassdoor, Indeed, Reddit, or any employee review platform — these are not credible sources for a leadership workshop briefing.',
           },
           journeyStages: {
             type: 'array',
@@ -424,6 +446,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           'workshopBrief',
           'workshopHypotheses',
           'expectedRoomTensions',
+          'workshopImplications',
           'sourceUrls',
           'journeyStages',
           'industryDimensions',
@@ -972,6 +995,19 @@ SEARCH CAPABILITY: ${searchMode}
    If you are not sure whether a search result applies to the client company, do not use it.
    Call request_clarification if you cannot build a verified research picture.
 
+6. NEVER USE EMPLOYEE REVIEW SITES
+   Do NOT search Glassdoor, Indeed, Reddit, Trustpilot, or any employee review platform.
+   Do NOT include employee sentiment in any output field.
+   This is a leadership workshop briefing — employee reviews are low credibility and irrelevant.
+
+7. OWN YOUR ANALYSIS — DO NOT CITE YOUR THINKING
+   When you write an analytical observation (an interpretation, a pattern, a tension), write it
+   as your direct insight. Do NOT add a [Source: ...] citation to it.
+   Citations belong only on SPECIFIC VERIFIABLE FACTS: a revenue number, a date, an acquisition,
+   a product name, a headcount figure, a direct quote from an official document.
+   If you cite the Annual Report as the source for "operations are fragmented", that is wrong —
+   that is YOUR interpretation of what you read. Own it. Write it directly. No citation.
+
 ═══ RESEARCH STRATEGY — PHASED APPROACH ═══
 
 Follow this phased research strategy exactly. Do NOT skip phases or rush to commit.
@@ -1038,12 +1074,12 @@ SEARCH 2 (Phase 1 — Foundation):
   Tool: search_company_info, focus: strategy
   Purpose: Get official news, press releases, and leadership announcements from their official site or newsroom.
 
-SEARCH 3 (Phase 1 — Foundation):
-  Query: "${context.clientName || 'the company'} glassdoor indeed employee reviews"
-  Tool: search_company_info, focus: overview
-  Purpose: Get employee sentiment data — morale, culture, management, and internal tensions.
+SEARCH 3 (Phase 2 — Competitive pressure):
+  Query: "${context.clientName || 'the company'} competitors market position challenges analyst"
+  Tool: search_company_info, focus: challenges
+  Purpose: Find what analysts and financial press say about the pressures this company faces and how it compares to competitors.
 
-After these 3 mandatory searches, continue with Phase 2 (industry/competitive) and Phase 3 (domain or digital transformation) as planned.
+After these 3 mandatory searches, continue with Phase 2 (industry tensions and competitive dynamics) and Phase 3 (domain deep-dive) as planned.
 
 ═══ MINIMUM SEARCH REQUIREMENTS ═══
 
@@ -1055,15 +1091,21 @@ When you call commit_research, EACH field must be SUBSTANTIVE and CITED:
 
 - companyOverview: 3-4 detailed paragraphs minimum. Cover history and founding, what they do today in detail, market position and size, key products/services, recent strategic direction, leadership. Every specific fact must have an inline citation (Source: title, URL). ONLY include facts you verified for this exact company.
 
-- industryContext: 2-3 paragraphs minimum. Cover macro trends reshaping the industry, disruption forces, challenges facing organisations like this client, and forward-looking outlook. Clearly label these as INDUSTRY-LEVEL facts, not company-specific. Include citations for all data points.
+- industryContext: 2-3 paragraphs. Write about TENSIONS, not trends. What are the structural contradictions in this industry that make it hard to operate in right now? What pressure does AI create (not just "AI is changing things" — what specific tension does it introduce for companies like this)? What is the conflict between scale and margin, between client-centricity and standardisation? Give the facilitator something they can use to frame the room — not something they already know.
 
-- keyPublicChallenges: 5-8 challenges. Each must be a full sentence with context and evidence, ending with [Source: title, URL]. ONLY include challenges found in verified search results. Distinguish company-specific challenges (cited to company sources) from industry-wide challenges (clearly labelled as such).
+- keyPublicChallenges: 5-6 direct analytical observations about this company's situation. Write them as your own insight — not as quoted findings. Only append a [Source: title, URL] when the item contains a specific verifiable fact (a number, date, product name, acquisition). The challenge STATEMENT itself does not need a citation — only the fact inside it does. Do NOT include employee sentiment (no Glassdoor, Indeed, Reddit).
 
 - recentDevelopments: 4-6 developments with dates. Each must end with [Source: title, URL]. ONLY include developments you found in an actual search result for THIS company. Do not invent dates or events.
 
 - competitorLandscape: 2-3 paragraphs. Name specific competitors, explain differentiation, competitive advantages/disadvantages. Include inline citations (Source: title, URL) for all competitor claims.
 
 ${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${context.targetDomain || 'the domain'} in this industry, emerging trends, common pain points, best practices, transformation opportunities. Include citations. This is the CENTREPIECE of a Domain track workshop.` : '- domainInsights: null for Enterprise track.'}
+
+- workshopImplications: The most important section — what this company will bring into the room. Three parts:
+  (1) whatTheyBringIn: 4-6 live conditions the facilitator must navigate, written as direct statements.
+  (2) expectedTensions: 4-5 fault lines likely to surface — write as simple vs/and conflicts.
+  (3) hypothesesToTest: 4-5 directional propositions the workshop should confirm or refute.
+  Write this LAST, after all other research is complete. These must be specific to this company — not generic.
 
 - journeyStages: 6-12 industry-specific stages with detailed descriptions (2-3 sentences each) and 3-5 specific touchpoints per stage.
 
@@ -1478,6 +1520,15 @@ function normaliseResearchOutput(args: Record<string, unknown>): WorkshopPrepRes
     workshopBrief: args.workshopBrief ? String(args.workshopBrief) : null,
     workshopHypotheses: Array.isArray(args.workshopHypotheses) ? args.workshopHypotheses.map(String) : null,
     expectedRoomTensions: Array.isArray(args.expectedRoomTensions) ? args.expectedRoomTensions.map(String) : null,
+    workshopImplications: (() => {
+      const wi = args.workshopImplications as Record<string, unknown> | null | undefined;
+      if (!wi || typeof wi !== 'object') return null;
+      return {
+        whatTheyBringIn: Array.isArray(wi.whatTheyBringIn) ? wi.whatTheyBringIn.map(String) : [],
+        expectedTensions: Array.isArray(wi.expectedTensions) ? wi.expectedTensions.map(String) : [],
+        hypothesesToTest: Array.isArray(wi.hypothesesToTest) ? wi.hypothesesToTest.map(String) : [],
+      };
+    })(),
     researchedAtMs: Date.now(),
     sourceUrls: Array.isArray(args.sourceUrls) ? args.sourceUrls.map(String) : [],
     journeyStages: Array.isArray(args.journeyStages) ? args.journeyStages as WorkshopPrepResearch['journeyStages'] : null,

@@ -58,6 +58,13 @@ export type WorkshopPrepResearch = {
   workshopHypotheses: string[] | null;    // Testable propositions for the room — what the workshop should surface or challenge
   expectedRoomTensions: string[] | null;  // Who will be in the room and what fault lines they are likely to bring
 
+  // Workshop reality — what this company brings into the room
+  workshopImplications: {
+    whatTheyBringIn: string[];     // Live conditions the facilitator must navigate
+    expectedTensions: string[];    // Fault lines likely to surface — written as vs/and conflicts
+    hypothesesToTest: string[];    // Directional propositions the workshop should confirm or refute
+  } | null;
+
   // Research-driven workshop configuration (null for legacy workshops)
   journeyStages: JourneyStageResearch[] | null;    // Typical customer journey for this industry
   industryDimensions: IndustryDimension[] | null;   // Industry-specific axes (replaces hardcoded 5)
