@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, ChevronDown, ChevronUp, Loader2, Sparkles, X } from 'lucide-react';
+import { Send, ChevronDown, ChevronUp, Loader2, Sparkles, X, Mic, Square } from 'lucide-react';
+import { useVoice } from './assessment/use-voice';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -15,14 +16,46 @@ const PLACEHOLDER_SUGGESTIONS = [
   'Who is DREAM built for?',
 ];
 
+/* Small animated wave — shown while AI is speaking */
+function SpeakingWave({ colour = '#5cf28e' }: { colour?: string }) {
+  return (
+    <span className="inline-flex items-end gap-[2px] h-4" aria-hidden>
+      {[0, 1, 2, 3].map((i) => (
+        <span
+          key={i}
+          className="w-[3px] rounded-full"
+          style={{
+            backgroundColor: colour,
+            height: '100%',
+            animation: `waveBar 0.9s ease-in-out ${i * 0.15}s infinite alternate`,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes waveBar {
+          from { transform: scaleY(0.25); opacity: 0.5; }
+          to   { transform: scaleY(1);    opacity: 1; }
+        }
+      `}</style>
+    </span>
+  );
+}
+
 export function DreamChatBar() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [speakResponse, setSpeakResponse] = useState(false); // true when last q came from mic
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const voice = useVoice();
+  const isSpeaking = voice.state === 'speaking';
+  const isListening = voice.state === 'listening';
+  const isVoiceProcessing = voice.state === 'processing' || voice.state === 'reflecting';
+  const micBusy = isListening || isVoiceProcessing;
 
   // Rotate placeholder suggestions
   useEffect(() => {
@@ -39,19 +72,17 @@ export function DreamChatBar() {
     }
   }, [messages, isExpanded]);
 
-  const handleSubmit = useCallback(async () => {
-    const question = input.trim();
+  /* Core submit — accepts text directly so voice can call it without touching input state */
+  const submitMessage = useCallback(async (question: string, withVoice: boolean) => {
     if (!question || isStreaming) return;
 
-    setInput('');
     setIsExpanded(true);
+    setSpeakResponse(withVoice);
 
-    // Add user message
     const userMsg: ChatMessage = { role: 'user', content: question };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
 
-    // Start streaming
     setIsStreaming(true);
     let assistantContent = '';
 
@@ -59,10 +90,7 @@ export function DreamChatBar() {
       const response = await fetch('/api/public/dream-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question,
-          history: newMessages.slice(-6),
-        }),
+        body: JSON.stringify({ question, history: newMessages.slice(-6) }),
       });
 
       if (!response.ok) {
@@ -72,10 +100,8 @@ export function DreamChatBar() {
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response stream');
-
       const decoder = new TextDecoder();
 
-      // Add empty assistant message to fill
       setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
       while (true) {
@@ -83,9 +109,7 @@ export function DreamChatBar() {
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
+        for (const line of chunk.split('\n')) {
           if (!line.startsWith('data: ')) continue;
           try {
             const data = JSON.parse(line.slice(6));
@@ -93,29 +117,25 @@ export function DreamChatBar() {
               assistantContent += data.content;
               setMessages((prev) => {
                 const updated = [...prev];
-                updated[updated.length - 1] = {
-                  role: 'assistant',
-                  content: assistantContent,
-                };
+                updated[updated.length - 1] = { role: 'assistant', content: assistantContent };
                 return updated;
               });
             }
-            if (data.done) break;
             if (data.error) {
               assistantContent += `\n\n*Error: ${data.error}*`;
               setMessages((prev) => {
                 const updated = [...prev];
-                updated[updated.length - 1] = {
-                  role: 'assistant',
-                  content: assistantContent,
-                };
+                updated[updated.length - 1] = { role: 'assistant', content: assistantContent };
                 return updated;
               });
             }
-          } catch {
-            // Skip malformed SSE data
-          }
+          } catch { /* skip malformed SSE */ }
         }
+      }
+
+      // Speak the response if triggered by voice
+      if (withVoice && assistantContent) {
+        voice.speak(assistantContent);
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to get response';
@@ -128,12 +148,48 @@ export function DreamChatBar() {
     } finally {
       setIsStreaming(false);
     }
-  }, [input, isStreaming, messages]);
+  }, [isStreaming, messages, voice]);
+
+  /* Text submission */
+  const handleSubmit = useCallback(() => {
+    const question = input.trim();
+    if (!question) return;
+    setInput('');
+    voice.stopSpeaking();
+    submitMessage(question, false);
+  }, [input, submitMessage, voice]);
+
+  /* Mic button — tap to speak, auto-submits on transcript */
+  const handleMicClick = useCallback(() => {
+    if (isSpeaking) {
+      voice.stopSpeaking();
+      return;
+    }
+    if (isListening) {
+      voice.stopListening();
+      return;
+    }
+    voice.stopSpeaking();
+    voice.startListening((transcript) => {
+      if (transcript.trim()) {
+        submitMessage(transcript.trim(), true);
+      }
+    });
+  }, [isSpeaking, isListening, voice, submitMessage]);
 
   const handleSuggestionClick = (suggestion: string) => {
     setInput(suggestion);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
+
+  /* Mic button appearance */
+  const micLabel = isSpeaking ? 'Stop speaking' : isListening ? 'Stop listening' : 'Ask by voice';
+  const micBg = isSpeaking
+    ? 'bg-[#5cf28e]/20 hover:bg-[#5cf28e]/30'
+    : isListening
+    ? 'bg-red-500/15 hover:bg-red-500/25'
+    : 'bg-slate-100 hover:bg-slate-200';
+  const micColour = isSpeaking ? '#5cf28e' : isListening ? '#ef4444' : '#64748b';
 
   return (
     <div id="ask-dream" className="fixed bottom-0 left-0 right-0 z-50">
@@ -144,18 +200,30 @@ export function DreamChatBar() {
             {/* Thread header */}
             <div className="flex items-center justify-between px-6 py-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-[#50c878]" />
-                <span className="text-xs text-slate-500 font-medium">DREAM AI</span>
+                {isSpeaking ? (
+                  <SpeakingWave />
+                ) : (
+                  <Sparkles className="h-4 w-4 text-[#50c878]" />
+                )}
+                <span className="text-xs text-slate-500 font-medium">
+                  {isSpeaking ? 'DREAM AI is speaking…' : 'DREAM AI'}
+                </span>
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setIsExpanded(false)}
-                  className="text-slate-400 hover:text-slate-600 p-1 rounded"
-                >
+                {isSpeaking && (
+                  <button
+                    onClick={() => voice.stopSpeaking()}
+                    className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded flex items-center gap-1"
+                    title="Stop speaking"
+                  >
+                    <Square className="h-3 w-3" /> Stop
+                  </button>
+                )}
+                <button onClick={() => setIsExpanded(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded">
                   <ChevronDown className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => { setMessages([]); setIsExpanded(false); }}
+                  onClick={() => { voice.stopSpeaking(); setMessages([]); setIsExpanded(false); }}
                   className="text-slate-400 hover:text-slate-600 p-1 rounded"
                 >
                   <X className="h-4 w-4" />
@@ -164,15 +232,9 @@ export function DreamChatBar() {
             </div>
 
             {/* Messages */}
-            <div
-              ref={scrollAreaRef}
-              className="max-h-96 overflow-y-auto px-6 py-4 space-y-4"
-            >
+            <div ref={scrollAreaRef} className="max-h-96 overflow-y-auto px-6 py-4 space-y-4">
               {messages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                       msg.role === 'user'
@@ -180,7 +242,15 @@ export function DreamChatBar() {
                         : 'bg-[#5cf28e]/10 text-slate-700 border border-[#50c878]/20'
                     }`}
                   >
-                    <div className="whitespace-pre-wrap">{msg.content || '...'}</div>
+                    {/* Show wave on last assistant message while speaking */}
+                    {msg.role === 'assistant' && isSpeaking && i === messages.length - 1 ? (
+                      <div className="flex items-center gap-2">
+                        <SpeakingWave />
+                        <span className="whitespace-pre-wrap">{msg.content || '...'}</span>
+                      </div>
+                    ) : (
+                      <div className="whitespace-pre-wrap">{msg.content || '...'}</div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -192,7 +262,7 @@ export function DreamChatBar() {
       {/* Input bar */}
       <div className="bg-white/90 backdrop-blur-xl border-t border-slate-200 shadow-2xl">
         <div className="max-w-4xl mx-auto px-6 py-3">
-          {/* Suggestion chips  -  only when no messages */}
+          {/* Suggestion chips — only when no messages */}
           {messages.length === 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {PLACEHOLDER_SUGGESTIONS.map((suggestion) => (
@@ -209,32 +279,42 @@ export function DreamChatBar() {
 
           <div className="flex items-center gap-3">
             {messages.length > 0 && !isExpanded && (
-              <button
-                onClick={() => setIsExpanded(true)}
-                className="flex-shrink-0 text-slate-400 hover:text-slate-600 p-1"
-              >
+              <button onClick={() => setIsExpanded(true)} className="flex-shrink-0 text-slate-400 hover:text-slate-600 p-1">
                 <ChevronUp className="h-4 w-4" />
               </button>
             )}
 
             <Sparkles className="h-5 w-5 text-[#50c878] flex-shrink-0" />
 
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit();
-                }
-              }}
-              placeholder={PLACEHOLDER_SUGGESTIONS[placeholderIndex]}
-              disabled={isStreaming}
-              className="flex-1 text-sm text-slate-700 placeholder:text-slate-400 bg-transparent border-0 outline-none disabled:opacity-50"
-            />
+            {/* Listening state — show interim transcript or prompt */}
+            {isListening ? (
+              <div className="flex-1 flex items-center gap-2">
+                <span className="text-sm text-slate-400 italic animate-pulse">
+                  {voice.interimTranscript || 'Listening…'}
+                </span>
+                <span className="flex gap-0.5 items-end h-4">
+                  {[0,1,2].map(i => (
+                    <span key={i} className="w-1 rounded-full bg-red-400"
+                      style={{ height: '100%', animation: `waveBar 0.6s ease-in-out ${i*0.2}s infinite alternate` }} />
+                  ))}
+                </span>
+              </div>
+            ) : (
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+                }}
+                placeholder={PLACEHOLDER_SUGGESTIONS[placeholderIndex]}
+                disabled={isStreaming || micBusy}
+                className="flex-1 text-sm text-slate-700 placeholder:text-slate-400 bg-transparent border-0 outline-none disabled:opacity-50"
+              />
+            )}
 
+            {/* WhatsApp */}
             <a
               href="https://wa.me/447471944765?text=Hi%20Andrew%2C%20I%20have%20a%20question%20about%20DREAM%20Discovery"
               target="_blank"
@@ -247,17 +327,35 @@ export function DreamChatBar() {
               </svg>
             </a>
 
-            <button
-              onClick={handleSubmit}
-              disabled={!input.trim() || isStreaming}
-              className="flex-shrink-0 p-2.5 rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
-            >
-              {isStreaming ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </button>
+            {/* Mic button — always visible; doubles as stop-speaking when AI is talking */}
+            {voice.supported && (
+              <button
+                onClick={handleMicClick}
+                disabled={isStreaming || isVoiceProcessing}
+                title={micLabel}
+                className={`flex-shrink-0 p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${micBg}`}
+                style={isListening ? { boxShadow: `0 0 0 4px rgba(239,68,68,0.15)` } : undefined}
+              >
+                {isSpeaking ? (
+                  <SpeakingWave colour={micColour} />
+                ) : isVoiceProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                ) : (
+                  <Mic className="h-4 w-4" style={{ color: micColour }} />
+                )}
+              </button>
+            )}
+
+            {/* Send button — only when there's typed text */}
+            {input.trim() && (
+              <button
+                onClick={handleSubmit}
+                disabled={isStreaming}
+                className="flex-shrink-0 p-2.5 rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+              >
+                {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </button>
+            )}
           </div>
         </div>
       </div>
