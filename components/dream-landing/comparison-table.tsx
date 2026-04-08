@@ -114,15 +114,15 @@ export function ComparisonTable() {
                   <th className="text-left px-5 py-4 text-white/80 font-semibold text-xs tracking-wide w-[42%]">
                     Capability
                   </th>
+                  <th className="px-4 py-4 text-center text-xs font-bold tracking-wide"
+                    style={{ color: '#5cf28e', background: 'rgba(92,242,142,0.07)' }}>
+                    DREAM
+                  </th>
                   {COMPETITORS.map(c => (
                     <th key={c} className="px-3 py-4 text-center text-white/75 font-semibold text-xs tracking-wide">
                       {c}
                     </th>
                   ))}
-                  <th className="px-4 py-4 text-center text-xs font-bold tracking-wide"
-                    style={{ color: '#5cf28e', background: 'rgba(92,242,142,0.07)' }}>
-                    DREAM
-                  </th>
                 </tr>
               </thead>
 
@@ -137,6 +137,11 @@ export function ComparisonTable() {
                     <td className="px-5 py-3.5 text-white/85 text-sm leading-snug font-medium">
                       {row.capability}
                     </td>
+                    <td className="px-4 py-3.5 text-center" style={{ background: 'rgba(92,242,142,0.05)' }}>
+                      <div className="flex items-center justify-center">
+                        <Cell value={row.dream} note={row.dreamNote} isDream />
+                      </div>
+                    </td>
                     {COMPETITORS.map(c => (
                       <td key={c} className="px-3 py-3.5 text-center">
                         <div className="flex items-center justify-center">
@@ -144,11 +149,7 @@ export function ComparisonTable() {
                         </div>
                       </td>
                     ))}
-                    <td className="px-4 py-3.5 text-center" style={{ background: 'rgba(92,242,142,0.05)' }}>
-                      <div className="flex items-center justify-center">
-                        <Cell value={row.dream} note={row.dreamNote} isDream />
-                      </div>
-                    </td>
+
                   </tr>
                 ))}
               </tbody>
