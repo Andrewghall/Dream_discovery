@@ -10,6 +10,7 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { runResearchAgent, ResearchClarificationNeededError } from '@/lib/cognition/agents/research-agent';
@@ -105,12 +106,18 @@ export async function POST(
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'research-agent',
-        message: `Good morning. We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise - full end-to-end assessment.'}${purposeBlock}${outcomesBlock}\n\nResearch Agent, could you please research the company and provide context that will help us tailor our approach? Keep the workshop purpose and desired outcomes front of mind - all research should serve why we are here.`,
+        message: `We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise - full end-to-end assessment.'}${purposeBlock}${outcomesBlock}\n\nResearch Agent, could you please research the company and provide context that will help us tailor our approach? Keep the workshop purpose and desired outcomes front of mind - all research should serve why we are here.`,
         type: 'handoff',
       };
       sendEvent('agent.conversation', openingEntry);
 
       try {
+        // Clear any existing research before starting fresh
+        await prisma.workshop.update({
+          where: { id: workshopId },
+          data: { prepResearch: Prisma.JsonNull },
+        });
+
         // Run the Research Agent with conversation callbacks
         const research = await runResearchAgent(context, (entry) => {
           sendEvent('agent.conversation', entry);

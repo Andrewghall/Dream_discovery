@@ -55,6 +55,8 @@ export type WorkshopPrepResearch = {
   keyFacilitatorInsight: string | null;   // The single most important reframing insight for the facilitator
   strategicTensions: string[] | null;     // Company-specific paradoxes/fault lines to probe in the workshop
   workshopBrief: string | null;           // Research mapped explicitly to each workshop purpose/outcome
+  workshopHypotheses: string[] | null;    // Testable propositions for the room — what the workshop should surface or challenge
+  expectedRoomTensions: string[] | null;  // Who will be in the room and what fault lines they are likely to bring
 
   // Research-driven workshop configuration (null for legacy workshops)
   journeyStages: JourneyStageResearch[] | null;    // Typical customer journey for this industry

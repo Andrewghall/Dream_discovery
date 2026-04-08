@@ -308,6 +308,18 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             description:
               'A structured facilitator brief that explicitly maps the research to the workshop purposes and desired outcomes. This is the most important output — everything else feeds into this. Structure it as: for each workshop purpose provided, write 2-3 sentences explaining what the research reveals that is directly relevant to achieving that purpose in THIS company. Do not write generic statements. Every sentence must be specific to this company and cite what you found. End with a "Room dynamics" paragraph: who is likely to be in the room, what tensions they may bring, and what the facilitator should watch for.',
           },
+          workshopHypotheses: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'A set of 4-6 testable propositions that the workshop should surface, challenge, or confirm. These are NOT findings — they are hypotheses the facilitator should hold going into the room. Each hypothesis should be a specific, directional statement that participants will either validate or refute. Examples: "There is no single operating truth across regions — different leaders will define the current state differently." / "AI positioning is ahead of operational consistency — the AI narrative is more advanced than what the business can currently deliver." / "Webhelp integration has amplified process and tooling variation rather than resolved it." Write each as one direct sentence.',
+          },
+          expectedRoomTensions: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'A set of 4-6 specific tensions that are likely to emerge in the workshop room based on what you found in research. These are different from strategic tensions (which are about the company) — these are about the people who will be in the room and the dynamics between them. Examples: "Different leaders may define \'performance\' differently: growth, cost, CX quality, delivery stability, or transformation pace — and this will surface as competing priorities in the room." / "Operations and technology leaders are likely to have divergent views on the pace of AI deployment." Write each as one or two direct sentences describing the expected dynamic.',
+          },
           sourceUrls: {
             type: 'array',
             items: { type: 'string' },
@@ -399,6 +411,8 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           'keyFacilitatorInsight',
           'strategicTensions',
           'workshopBrief',
+          'workshopHypotheses',
+          'expectedRoomTensions',
           'sourceUrls',
           'journeyStages',
           'industryDimensions',
@@ -986,13 +1000,17 @@ PHASE 4: Journey, Dimensions, Actor Research, and Current State (3-5 searches)
 ${isDomain ? `- MANDATORY for Domain track: search what ${context.clientName || 'the company'} currently uses, does, or has in place for "${context.targetDomain || 'this domain'}" today — existing tools, systems, processes, maturity level. The facilitator must understand the current starting point before the workshop.` : '- Current strategic initiatives or transformation programmes underway at the company'}
 
 PHASE 5: Synthesis — Purpose-Led Analysis (before commit_research)
-BEFORE you call commit_research, stop and think through these questions. Your answers will form the three new required fields:
+BEFORE you call commit_research, stop and think through these questions. Your answers will form five required fields:
 
 1. keyFacilitatorInsight: What is the SINGLE most important thing you found that reframes how the facilitator should approach this workshop? Look for: paradoxes (they sell X but struggle with X internally), tensions (strategy says one thing, operations show another), surprises (something you found that contradicts the obvious narrative), or a critical context that changes everything. Write 2-3 sentences maximum. Be brutally specific.
 
-2. strategicTensions: What are 3-5 specific fault lines at this company? A tension is a real contradiction — not a generic challenge. Examples of tensions: "Concentrix positions itself as the \'intelligent transformation partner\' yet internally manages an average of 3.9 fragmented technology platforms — the same fragmentation they sell to clients." Search specifically for evidence of these tensions if you have not already found them.
+2. strategicTensions: What are 3-5 specific fault lines at this company? A tension is a real contradiction — not a generic challenge. Examples: "Concentrix positions itself as the \'intelligent transformation partner\' yet internally manages an average of 3.9 fragmented technology platforms — the same fragmentation they sell to clients." Search specifically for evidence of these tensions if you have not already found them.
 
 3. workshopBrief: Go through EACH workshop purpose one by one. For each purpose, write 2-3 sentences: what does your research reveal that is directly relevant to achieving THIS purpose at THIS company? Be specific. Use facts. Then add a "Room dynamics" paragraph at the end.
+
+4. workshopHypotheses: Write 4-6 testable propositions for the room — specific, directional statements that the workshop dialogue should either confirm or refute. These are NOT findings. They are hypotheses the facilitator holds going in. Examples: "There is no single operating truth across regions — different leaders will define the current state differently." / "AI positioning is ahead of operational consistency." / "Margin pressure increases the importance of prioritising automation correctly." / "Webhelp integration has amplified variation in process, tooling, and ways of working rather than resolved it."
+
+5. expectedRoomTensions: Write 4-6 specific dynamics likely to emerge between people in the room. Ground these in who will be there and what the research suggests about internal tensions between functions, levels, or perspectives. Examples: "Different leaders may define \'performance\' differently — growth, cost, CX quality, delivery stability, or transformation pace — and this will surface as competing priorities." / "Operations and technology leaders are likely to have divergent views on the pace of AI deployment."
 
 ═══ MINIMUM SEARCH REQUIREMENTS ═══
 
@@ -1022,18 +1040,59 @@ ${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${cont
 
 - journeyActors: 4-8 roles who DIRECTLY interact with customers or end-users at one or more journey stages. These are the actors who appear in the customer journey map — a focused subset of actorTaxonomy. ALWAYS include the Customer (or equivalent: household, council, business client). Include frontline operatives, service agents, account managers, and any external parties who touch the customer experience. EXCLUDE board members, C-suite, and executives who set strategy but do not appear in customer touchpoints. Example for waste management: Customer, HGV Driver/Loader, Customer Service Agent, Account Manager, Weighbridge Operator. Example for retail: Customer, Store Associate, Customer Service Agent, Account Manager.
 
+═══ SOURCE QUALITY HIERARCHY ═══
+
+When searching, ALWAYS prioritise sources in this order. Never cite a lower-tier source when a higher-tier source is available:
+
+TIER 1 — PREFERRED (use these first):
+- Official company investor relations pages (ir.company.com, annual reports, earnings releases)
+- Official company newsroom / press releases (newsroom.company.com, company.com/news)
+- Official company About / Leadership pages
+- Tier-1 analyst reports (Everest Group, Gartner, Forrester) referenced by the company itself
+- Regulatory filings (SEC 10-K, 10-Q, 8-K for US-listed companies)
+
+TIER 2 — ACCEPTABLE:
+- Major financial press (Reuters, Bloomberg, Financial Times, Wall Street Journal)
+- Industry trade publications (CX Today, Contact Centre Helper, NASSCOM)
+- Company LinkedIn official pages for headcount and leadership
+
+TIER 3 — USE WITH CAUTION, FLAG CLEARLY:
+- Investing.com, MarketWatch, Seeking Alpha — acceptable for financial data but flag as secondary
+- Company Wikipedia page — acceptable for history/founding ONLY; never for current state
+- LinkedIn individual profiles
+
+TIER 4 — DO NOT USE:
+- businessmodelcanvastemplate.com, koalagains.com, clutch.co, comparably.com, or any aggregator / listicle / SEO content farm
+- Anonymous blog posts or unverifiable "analysis" sites
+- Any source that appears to aggregate or repackage other sources without primary research
+
+When you find a Tier 4 source, discard it and search again with a more targeted query toward official sources.
+
+═══ COMPETITIVE LANDSCAPE FRAMING ═══
+
+The competitorLandscape field must NOT be a neutral company profile comparison. It must answer: "Why is this company under competitive pressure, and what does that pressure mean for this workshop?"
+
+Convert facts into pressure narrative. For example, instead of: "Teleperformance is a direct competitor in terms of size and scale" — write: "Teleperformance is executing a comparable AI-led differentiation strategy while operating at greater scale, which means Concentrix's window to establish AI leadership is narrow — a generic AI transformation story will not be sufficient."
+
+Every competitor mentioned should have a "so what for the workshop" implication.
+
 ═══ QUALITY STANDARDS ═══
 
 - Verify before you write. Every company-specific fact must come from a confirmed search result for this exact company.
 - Cite everything. No citation = do not include the claim.
 - Label industry vs company. Never present industry-wide trends as if they describe the specific client.
 - Prefer recent sources (2024-2026). Flag anything that might be outdated.
+- Follow the source quality hierarchy above. Flag Tier 3 sources. Never use Tier 4 sources.
 - Assign each dimension a distinct, accessible hex color for UI rendering (blues, greens, purples, oranges, teals — avoid red which is reserved for alerts).
 - keyFacilitatorInsight: 2-3 sentences maximum. The single reframing insight. Not a summary — a specific, surprising, or contradictory finding that changes how the facilitator approaches the room. MUST be company-specific.
 
 - strategicTensions: 3-5 items. Each is a real paradox or contradiction specific to this company — not a generic industry challenge. Cite sources. Be direct.
 
 - workshopBrief: Maps research findings to each workshop purpose explicitly. For each purpose: 2-3 sentences of specific, cited insight. End with a "Room dynamics" paragraph. This is the centrepiece of the whole briefing — write it last, after all other research is complete.
+
+- workshopHypotheses: 4-6 testable propositions the facilitator should hold going into the room. These are specific, directional statements — not findings. They should be things the workshop dialogue will either confirm or refute.
+
+- expectedRoomTensions: 4-6 specific interpersonal or functional dynamics likely to emerge in the room. Ground these in who will be there and what the research suggests about internal tensions between functions, levels, or perspectives.
 
 - Write as a senior analyst briefing a facilitator the morning of the workshop — professional, sharp, and purpose-led. Every sentence should earn its place.`;
 }
@@ -1222,11 +1281,19 @@ Remember: every fact must be cited. Every challenge and development must end wit
             ? (fnArgs.strategicTensions as string[]).map((t) => `  ⚡ ${t}`).join('\n')
             : '  (none identified)';
 
+          const hypotheses = Array.isArray(fnArgs.workshopHypotheses)
+            ? (fnArgs.workshopHypotheses as string[]).map((h) => `  🔬 ${h}`).join('\n')
+            : '  (none identified)';
+
+          const roomTensions = Array.isArray(fnArgs.expectedRoomTensions)
+            ? (fnArgs.expectedRoomTensions as string[]).map((r) => `  👥 ${r}`).join('\n')
+            : '  (none identified)';
+
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'research-agent',
             to: 'prep-orchestrator',
-            message: `${searchLabel} — Research complete on ${context.clientName || 'the company'}.\n\n${ fnArgs.keyFacilitatorInsight ? `🔑 **KEY FACILITATOR INSIGHT**\n${String(fnArgs.keyFacilitatorInsight)}\n\n` : ''}${ fnArgs.workshopBrief ? `📋 **WORKSHOP BRIEF — PURPOSE-LED ANALYSIS**\n${String(fnArgs.workshopBrief)}\n\n` : ''}**Strategic Tensions**\n${tensions}\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}${journeySection}${dimensionsSection}${actorsSection}${sourcesSection}`,
+            message: `${searchLabel} — Research complete on ${context.clientName || 'the company'}.\n\n${ fnArgs.keyFacilitatorInsight ? `🔑 **KEY FACILITATOR INSIGHT**\n${String(fnArgs.keyFacilitatorInsight)}\n\n` : ''}${ fnArgs.workshopBrief ? `📋 **WORKSHOP BRIEF — PURPOSE-LED ANALYSIS**\n${String(fnArgs.workshopBrief)}\n\n` : ''}**Strategic Tensions**\n${tensions}\n\n**Workshop Hypotheses**\n${hypotheses}\n\n**Expected Room Tensions**\n${roomTensions}\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}${journeySection}${dimensionsSection}${actorsSection}${sourcesSection}`,
             type: 'proposal',
             metadata: {
               toolsUsed: ['search_company_info', 'search_industry_trends', 'search_domain_challenges', 'search_customer_journey', 'search_industry_dimensions', 'search_actor_roles'],
@@ -1312,6 +1379,8 @@ function normaliseResearchOutput(args: Record<string, unknown>): WorkshopPrepRes
     keyFacilitatorInsight: args.keyFacilitatorInsight ? String(args.keyFacilitatorInsight) : null,
     strategicTensions: Array.isArray(args.strategicTensions) ? args.strategicTensions.map(String) : null,
     workshopBrief: args.workshopBrief ? String(args.workshopBrief) : null,
+    workshopHypotheses: Array.isArray(args.workshopHypotheses) ? args.workshopHypotheses.map(String) : null,
+    expectedRoomTensions: Array.isArray(args.expectedRoomTensions) ? args.expectedRoomTensions.map(String) : null,
     researchedAtMs: Date.now(),
     sourceUrls: Array.isArray(args.sourceUrls) ? args.sourceUrls.map(String) : [],
     journeyStages: Array.isArray(args.journeyStages) ? args.journeyStages as WorkshopPrepResearch['journeyStages'] : null,
@@ -1363,6 +1432,8 @@ function fallbackResearch(context: PrepContext): WorkshopPrepResearch {
     keyFacilitatorInsight: null,
     strategicTensions: null,
     workshopBrief: null,
+    workshopHypotheses: null,
+    expectedRoomTensions: null,
     researchedAtMs: Date.now(),
     sourceUrls: [],
     journeyStages: null,
