@@ -82,7 +82,7 @@ export default function ExperiencePage() {
     <>
       <style>{`
         .exp-snap-root {
-          height: 100vh;
+          height: 100dvh;
           overflow-y: scroll;
           overflow-x: hidden;
           scroll-snap-type: y mandatory;
@@ -94,7 +94,7 @@ export default function ExperiencePage() {
         .snap-section {
           scroll-snap-align: start;
           scroll-snap-stop: always;
-          min-height: 100vh;
+          min-height: 100dvh;
           overflow: hidden;
           position: relative;
         }
@@ -117,18 +117,18 @@ export default function ExperiencePage() {
 
       <div className="relative bg-[#0a0a0a]">
         {/* Ethenta logo — fixed */}
-        <div className="fixed top-7 left-10 z-50">
+        <div className="fixed top-5 sm:top-7 left-4 sm:left-10 z-50">
           <img
             src="/ethenta-logo.png"
             alt="Ethenta"
-            style={{ height: 22, opacity: 0.55, filter: 'invert(1) brightness(0.8)' }}
+            style={{ height: 20, opacity: 0.55, filter: 'invert(1) brightness(0.8)' }}
           />
         </div>
 
         {/* Exit link back to marketing site */}
         <a
           href="/dream"
-          className="fixed top-6 right-8 z-50 text-[11px] text-white/30 hover:text-white/60 transition-colors tracking-wide"
+          className="fixed top-5 sm:top-6 right-4 sm:right-8 z-50 text-[11px] text-white/30 hover:text-white/60 transition-colors tracking-wide"
         >
           ← ethenta.com
         </a>
@@ -165,11 +165,11 @@ export default function ExperiencePage() {
         </nav>
 
         {/* Bottom-right: counter + prev/next */}
-        <div className="fixed bottom-8 right-8 z-50 flex items-center gap-4">
+        <div className="fixed bottom-5 sm:bottom-8 right-4 sm:right-8 z-50 flex items-center gap-4">
           <span className="text-white/25 text-xs tabular-nums">
             {String(currentIndex + 1).padStart(2, '0')}&thinsp;/&thinsp;{String(NAV.length).padStart(2, '0')}
           </span>
-          <div className="flex flex-col gap-1.5">
+          <div className="hidden sm:flex flex-col gap-1.5">
             <button
               onClick={goPrev}
               disabled={currentIndex === 0}
@@ -185,6 +185,19 @@ export default function ExperiencePage() {
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
           </div>
+        </div>
+
+        {/* Mobile slide indicator — replaces sidebar on mobile */}
+        <div className="lg:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2">
+          {NAV.map((s, i) => (
+            <button
+              key={s.id}
+              onClick={() => scrollTo(s.id)}
+              className={`rounded-full transition-all duration-300 ${
+                active === s.id ? 'w-4 h-1.5 bg-[#5cf28e]' : 'w-1.5 h-1.5 bg-white/25'
+              }`}
+            />
+          ))}
         </div>
 
         {/* Snap-scroll container */}

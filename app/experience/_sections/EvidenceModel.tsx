@@ -3,7 +3,7 @@
 // THE PAUSE — pure silence, stark contrast to The Noise
 export default function EvidenceModel() {
   return (
-    <div className="relative h-screen flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative min-h-[100dvh] flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
 
       {/* Single thin horizontal line — slowly draws itself */}
       <div
@@ -26,12 +26,12 @@ export default function EvidenceModel() {
         }
       `}</style>
 
-      <div className="relative z-10 text-center px-8">
+      <div className="relative z-10 text-center px-5 sm:px-8">
 
         <h2
           className="font-black tracking-[-0.04em] text-white leading-[1.05]"
           style={{
-            fontSize: 'clamp(52px, 9vw, 108px)',
+            fontSize: 'clamp(40px, 9vw, 108px)',
             animation: 'fadeUpSlow 1s ease-out 0.1s both',
           }}
         >

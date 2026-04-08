@@ -13,7 +13,7 @@ const sources = [
 
 export default function Validation() {
   return (
-    <div className="relative h-screen flex items-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative min-h-[100dvh] flex items-center bg-[#0a0a0a] overflow-hidden">
 
       <style>{`
         @keyframes v-pop {
@@ -37,6 +37,12 @@ export default function Validation() {
         @keyframes v-orbit { 0%{transform:translate(-50%,-50%) rotate(0deg) translateX(68px) rotate(0deg)} 100%{transform:translate(-50%,-50%) rotate(360deg) translateX(68px) rotate(-360deg)} }
         @keyframes v-orbit2{ 0%{transform:translate(-50%,-50%) rotate(180deg) translateX(82px) rotate(-180deg)} 100%{transform:translate(-50%,-50%) rotate(540deg) translateX(82px) rotate(-540deg)} }
         @keyframes v-dotBlink { 0%,100%{opacity:0.9;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.6)} }
+        @media (max-width: 768px) {
+          .validation-inner { flex-direction: column !important; align-items: center !important; gap: 0 !important; }
+          .validation-text { width: 100% !important; margin-bottom: 0 !important; }
+          .validation-diagram-wrap { flex: none !important; overflow: hidden !important; height: 250px !important; display: flex !important; align-items: center !important; justify-content: center !important; }
+          .validation-diagram { transform: scale(0.55) !important; transform-origin: center center !important; }
+        }
       `}</style>
 
       {/* live-capture subtle background */}
@@ -44,10 +50,10 @@ export default function Validation() {
         style={{ backgroundImage:"url('/experience/live-capture.png')", backgroundSize:'cover', backgroundPosition:'center', opacity:0.055, filter:'saturate(0.2)' }} />
       <div className="absolute inset-0 bg-[#0a0a0a]/65" />
 
-      <div className="relative z-10 w-full max-w-6xl mx-auto px-8 flex items-center gap-8">
+      <div className="relative z-10 w-full max-w-6xl mx-auto px-5 sm:px-8 flex items-center gap-8 validation-inner">
 
         {/* Left — copy */}
-        <div style={{ width: 230, flexShrink: 0 }}>
+        <div className="validation-text" style={{ width: 230, flexShrink: 0 }}>
           <p className="snap-animate snap-animate-1 text-[11px] text-[#5cf28e]/75 tracking-[0.3em] uppercase mb-6">
             How We Listen
           </p>
@@ -65,8 +71,8 @@ export default function Validation() {
         </div>
 
         {/* Right — diagram */}
-        <div className="flex-1 flex items-center justify-center">
-          <div style={{ position: 'relative', width: 440, height: 440, flexShrink: 0 }}>
+        <div className="flex-1 flex items-center justify-center validation-diagram-wrap">
+          <div className="validation-diagram" style={{ position: 'relative', width: 440, height: 440, flexShrink: 0 }}>
 
             {/* === TRUTH burst rings — arrive at 2.4s === */}
             {/* burst 1 */}

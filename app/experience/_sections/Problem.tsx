@@ -3,7 +3,7 @@
 // THE NOISE — visual overwhelm, multiple overlapping screenshots, one bold statement
 export default function Problem() {
   return (
-    <div className="relative h-screen flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative min-h-[100dvh] flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
 
       {/* Chaotic background: multiple screenshots overlapping at different scales */}
       <div className="absolute inset-0">
@@ -65,14 +65,14 @@ export default function Problem() {
       </div>
 
       {/* Content — dead centre, sparse */}
-      <div className="relative z-10 text-center px-8 max-w-4xl mx-auto">
+      <div className="relative z-10 text-center px-5 sm:px-8 max-w-4xl mx-auto">
         <p className="snap-animate snap-animate-1 text-[11px] text-[#5cf28e]/70 tracking-[0.3em] uppercase mb-10">
           The Reality
         </p>
 
         <h2
           className="snap-animate snap-animate-2 font-black leading-[0.92] tracking-[-0.04em] text-white mb-8"
-          style={{ fontSize: 'clamp(64px, 11vw, 128px)' }}
+          style={{ fontSize: 'clamp(52px, 10vw, 128px)' }}
         >
           Too much<br />
           <span className="text-white/50">noise.</span>

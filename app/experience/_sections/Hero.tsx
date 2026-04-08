@@ -17,7 +17,7 @@ export default function Hero({ onNext }: HeroProps) {
   }
 
   return (
-    <div className="relative h-screen flex flex-col items-center justify-center overflow-hidden bg-[#0a0a0a]">
+    <div className="relative min-h-[100dvh] flex flex-col items-center justify-center overflow-hidden bg-[#0a0a0a]">
 
       {/* Signal graph background */}
       <div
@@ -43,7 +43,7 @@ export default function Hero({ onNext }: HeroProps) {
       />
 
       {/* Content */}
-      <div className="relative z-10 text-center px-6 max-w-5xl mx-auto">
+      <div className="relative z-10 text-center px-5 sm:px-8 lg:px-6 max-w-5xl mx-auto">
 
         {/* Pill label */}
         <div className="anim-fade-up anim-fade-up-1 inline-flex items-center gap-2.5 mb-10 px-4 py-2 rounded-full border border-white/12 bg-white/[0.04] text-white/45 text-[11px] tracking-[0.22em] uppercase">
@@ -59,7 +59,7 @@ export default function Hero({ onNext }: HeroProps) {
             loop
             muted
             playsInline
-            style={{ height: 'clamp(130px, 18vw, 210px)', objectFit: 'contain', filter: 'drop-shadow(0 0 40px rgba(92,242,142,0.15))' }}
+            style={{ height: 'clamp(100px, 14vw, 180px)', objectFit: 'contain', filter: 'drop-shadow(0 0 40px rgba(92,242,142,0.15))' }}
           />
         </div>
 

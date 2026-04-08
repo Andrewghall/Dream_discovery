@@ -210,7 +210,7 @@ export default function Screenshots() {
   const track = [...items, ...items]
 
   return (
-    <div className="relative h-screen flex flex-col bg-[#0d0d0d] overflow-hidden">
+    <div className="relative min-h-[100dvh] flex flex-col bg-[#0d0d0d] overflow-hidden">
 
       {/* Edge fades */}
       <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#0d0d0d] to-transparent z-10 pointer-events-none" />
@@ -219,7 +219,7 @@ export default function Screenshots() {
       <div className="absolute inset-y-0 right-0 w-40 bg-gradient-to-l from-[#0d0d0d] to-transparent z-10 pointer-events-none" />
 
       {/* Header */}
-      <div className="flex-shrink-0 z-20 px-14 pt-12 pb-6 flex items-end justify-between">
+      <div className="flex-shrink-0 z-20 px-5 sm:px-10 lg:px-14 pt-8 sm:pt-12 pb-6 flex items-end justify-between">
         <div>
           <p className="snap-animate snap-animate-1 text-[11px] text-[#5cf28e]/75 tracking-[0.3em] uppercase mb-3">
             The Platform

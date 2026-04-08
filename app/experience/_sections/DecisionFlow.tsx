@@ -26,6 +26,10 @@ const GLOBAL_STYLES = `
   @keyframes gTextOn   { from{color:rgba(255,255,255,0.65)} to{color:rgba(92,242,142,0.92)} }
   @keyframes gSubOn    { from{color:rgba(220,60,60,0.6)} to{color:rgba(92,242,142,0.65)} }
   @keyframes gVisionR  { 0%{transform:scale(1);opacity:0.8;border-width:2.5px} 100%{transform:scale(3.5);opacity:0;border-width:0.5px} }
+  @media (max-width: 640px) {
+    .phase-btns { gap: 6px !important; }
+    .phase-btn-item { padding: 7px 14px !important; font-size: 10px !important; letter-spacing: 0.1em !important; }
+  }
 `
 
 // ── Shared: circle node (HTML, no distortion) ─────────────────────
@@ -385,7 +389,7 @@ export default function DecisionFlow() {
   const gc = ap?.rgb ?? '92,242,142'
 
   return (
-    <div className="relative h-screen flex flex-col justify-center bg-[#0d0d0d] overflow-hidden">
+    <div className="relative min-h-[100dvh] flex flex-col justify-center bg-[#0d0d0d] overflow-hidden">
       <style>{GLOBAL_STYLES}</style>
       <div style={{ position:'absolute', inset:0, pointerEvents:'none', transition:'all 1s ease',
         background:`radial-gradient(ellipse 55% 60% at ${glowX} 50%, rgba(${gc},0.065) 0%, transparent 70%)` }}/>
@@ -393,21 +397,21 @@ export default function DecisionFlow() {
         backgroundImage:'linear-gradient(rgba(255,255,255,0.8) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.8) 1px,transparent 1px)',
         backgroundSize:'60px 60px' }}/>
 
-      <div className="relative z-10 w-full max-w-6xl mx-auto px-10">
+      <div className="relative z-10 w-full max-w-6xl mx-auto px-5 sm:px-8 lg:px-10">
         <p className="snap-animate snap-animate-1 text-[11px] text-[#5cf28e]/75 tracking-[0.3em] uppercase mb-4">
           EthentaFlow™ — Conversation State Intelligence
         </p>
         <h2 className="snap-animate snap-animate-2 font-black tracking-[-0.04em] text-white mb-7"
-          style={{ fontSize:'clamp(28px,4vw,52px)' }}>
+          style={{ fontSize:'clamp(24px,4vw,52px)' }}>
           Four stages.<br/>
           <span className="text-[#5cf28e]">One journey.</span>
         </h2>
 
-        <div className="snap-animate snap-animate-3 flex gap-2 mb-5 flex-wrap">
+        <div className="snap-animate snap-animate-3 phase-btns flex gap-2 mb-5 flex-wrap">
           {PHASES.map(p => {
             const on = active===p.id
             return (
-              <button key={p.id} onClick={() => select(p.id)} style={{
+              <button key={p.id} onClick={() => select(p.id)} className="phase-btn-item" style={{
                 display:'flex', alignItems:'center', gap:8,
                 padding:'10px 22px', borderRadius:999,
                 fontSize:11, fontWeight:700, letterSpacing:'0.16em', textTransform:'uppercase',
@@ -426,7 +430,7 @@ export default function DecisionFlow() {
           })}
         </div>
 
-        <div style={{ position:'relative', borderRadius:18, overflow:'hidden', height:245,
+        <div style={{ position:'relative', borderRadius:18, overflow:'hidden', height:'clamp(200px, 28vh, 320px)',
           border:`1px solid ${active ? `rgba(${gc},0.16)` : 'rgba(255,255,255,0.06)'}`,
           background: active ? `rgba(${gc},0.02)` : 'rgba(255,255,255,0.01)',
           boxShadow: active ? `0 0 70px rgba(${gc},0.07), inset 0 0 50px rgba(${gc},0.03)` : 'none',

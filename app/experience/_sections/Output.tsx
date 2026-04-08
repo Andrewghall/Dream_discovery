@@ -9,7 +9,7 @@ const deliverables = [
 
 export default function Output() {
   return (
-    <div className="relative h-screen flex items-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative min-h-[100dvh] flex items-center bg-[#0a0a0a] overflow-hidden">
 
       {/* Full-bleed phased roadmap as background */}
       <div
@@ -24,14 +24,14 @@ export default function Output() {
       />
       <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a]/98 via-[#0a0a0a]/75 to-[#0a0a0a]/30" />
 
-      <div className="relative z-10 w-full max-w-5xl mx-auto px-16">
+      <div className="relative z-10 w-full max-w-5xl mx-auto px-5 sm:px-8 lg:px-16">
 
         <p className="snap-animate snap-animate-1 text-[11px] text-[#5cf28e]/75 tracking-[0.3em] uppercase mb-6">
           What You Walk Away With
         </p>
         <h2
           className="snap-animate snap-animate-2 font-black tracking-[-0.04em] text-white mb-14"
-          style={{ fontSize: 'clamp(48px, 8vw, 96px)' }}
+          style={{ fontSize: 'clamp(40px, 8vw, 96px)' }}
         >
           Clarity.<br />
           <span className="text-[#5cf28e]">Direction.</span><br />

@@ -105,6 +105,11 @@ const STYLES = `
   @keyframes cf-finalGlow  { 0%{opacity:0;transform:translate(-50%,-50%) scale(0.5)} 40%{opacity:1;transform:translate(-50%,-50%) scale(1.3)} 100%{opacity:1;transform:translate(-50%,-50%) scale(1)} }
   @keyframes cf-cursor     { 0%,100%{opacity:1} 50%{opacity:0} }
   @keyframes cf-msgSlide   { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:translateX(0)} }
+  @media (max-width: 768px) {
+    .ef-canvas { display: none !important; }
+    .ef-terminal { display: none !important; }
+    .ef-mobile-summary { display: flex !important; }
+  }
 `
 
 export default function EthentaFlowSection() {
@@ -126,10 +131,10 @@ export default function EthentaFlowSection() {
     return () => obs.disconnect()
   }, [mounted])
 
-  if (!mounted) return <div className="relative h-screen bg-[#080810]" />
+  if (!mounted) return <div className="relative min-h-[100dvh] bg-[#080810]" />
 
   return (
-    <div ref={sectionRef} className="relative h-screen flex flex-col justify-center bg-[#07090f] overflow-hidden">
+    <div ref={sectionRef} className="relative min-h-[100dvh] flex flex-col justify-center bg-[#07090f] overflow-hidden">
       <style>{STYLES}</style>
 
       {/* Subtle hero backdrop */}
@@ -144,7 +149,7 @@ export default function EthentaFlowSection() {
         <img src="/ethenta_flow_transparent_white.png" alt="EthentaFlow" style={{ height:34 }}/>
       </div>
 
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-10">
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-8 lg:px-10">
 
         {/* Header */}
         <div className="mb-5">
@@ -153,7 +158,7 @@ export default function EthentaFlowSection() {
             EthentaFlow™ — The Engine
           </p>
           <h2 className="snap-animate snap-animate-2 font-black tracking-[-0.04em] text-white leading-[0.92]"
-            style={{ fontSize:'clamp(28px,3.5vw,50px)' }}>
+            style={{ fontSize:'clamp(28px,4vw,64px)' }}>
             Conversation State<br/>
             <span style={{ color:'#5cc6f2' }}>Intelligence.</span>
           </h2>
@@ -163,9 +168,23 @@ export default function EthentaFlowSection() {
           </p>
         </div>
 
+        {/* Mobile fallback — shown instead of animation on small screens */}
+        <div className="ef-mobile-summary" style={{ display: 'none', flexDirection: 'column', gap: 16 }}>
+          {[
+            { label: 'CAPTURE', sub: 'Audio → structured context. 800+ utterances in 30 minutes.', color: 'rgba(92,198,242,0.9)' },
+            { label: 'SYNTHESISE', sub: 'Three specialist agents build a shared context window in real-time.', color: 'rgba(92,242,142,0.9)' },
+            { label: 'CLASSIFY', sub: 'Signals placed into the hemisphere by POCTR domain and type.', color: 'rgba(198,92,242,0.9)' },
+          ].map((z) => (
+            <div key={z.label} style={{ padding: '14px 18px', borderRadius: 12, border: `1px solid rgba(255,255,255,0.1)`, background: 'rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.18em', color: z.color, marginBottom: 6 }}>{z.label}</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>{z.sub}</div>
+            </div>
+          ))}
+        </div>
+
         {/* ── Main animation canvas ── */}
         {visible && <>
-        <div style={{ position:'relative', width:'100%', height:290,
+        <div className="ef-canvas" style={{ position:'relative', width:'100%', height:'clamp(260px, 32vh, 380px)',
           borderRadius:20, border:'1px solid rgba(92,198,242,0.2)',
           background:'rgba(12,18,32,0.8)',
           boxShadow:'0 0 60px rgba(92,198,242,0.08), inset 0 0 40px rgba(7,9,15,0.4)',
@@ -372,7 +391,7 @@ export default function EthentaFlowSection() {
         </div>
 
         {/* ── Agentic conversation terminal ── */}
-        <div style={{
+        <div className="ef-terminal" style={{
           marginTop:10, width:'100%',
           borderRadius:14, border:'1px solid rgba(92,242,142,0.2)',
           background:'rgba(8,12,20,0.85)',
@@ -380,7 +399,7 @@ export default function EthentaFlowSection() {
           padding:'12px 20px',
           fontFamily:'monospace',
           display:'flex', flexDirection:'column', gap:0,
-          overflow:'hidden',
+          overflow:'auto',
           boxShadow:'0 0 40px rgba(92,242,142,0.06), inset 0 1px 0 rgba(255,255,255,0.05)',
         }}>
           {/* Terminal title bar */}

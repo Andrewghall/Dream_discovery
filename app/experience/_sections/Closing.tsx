@@ -2,7 +2,7 @@
 
 export default function Closing() {
   return (
-    <div className="relative h-screen flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative min-h-[100dvh] flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
 
       {/* Signal graph — now visible and organised. Contrast to the noise slide. */}
       <div
@@ -33,7 +33,7 @@ export default function Closing() {
         }}
       />
 
-      <div className="relative z-10 text-center px-8 max-w-4xl mx-auto">
+      <div className="relative z-10 text-center px-5 sm:px-8 max-w-4xl mx-auto">
 
         <div
           className="snap-animate snap-animate-1 inline-flex items-center gap-2.5 mb-12 px-4 py-2 rounded-full border border-white/10 bg-white/[0.03] text-white/62 text-[11px] tracking-[0.22em] uppercase"
@@ -44,7 +44,7 @@ export default function Closing() {
 
         <h2
           className="snap-animate snap-animate-2 font-black tracking-[-0.04em] text-white leading-[0.95] mb-6"
-          style={{ fontSize: 'clamp(52px, 9vw, 108px)' }}
+          style={{ fontSize: 'clamp(40px, 9vw, 108px)' }}
         >
           Decision<br />
           <span className="text-[#5cf28e]">Intelligence.</span>
