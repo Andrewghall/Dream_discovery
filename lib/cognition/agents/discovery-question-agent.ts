@@ -32,6 +32,7 @@ import type { DomainPack } from '@/lib/domain-packs/registry';
 import { getDomainPack } from '@/lib/domain-packs/registry';
 import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { getEngagementType } from '@/lib/domain-packs/engagement-types';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -408,6 +409,14 @@ function buildDiscoverySystemPrompt(
 ${direction}\n`
     : '';
 
+  // Build engagement type block — shapes how questions are designed
+  const engagementTypeBlock = (() => {
+    if (!context.engagementType) return '';
+    const et = getEngagementType(context.engagementType);
+    if (!et) return '';
+    return `\n═══ ENGAGEMENT TYPE: ${et.label.toUpperCase()} ═══\n${et.questionDesignPrinciple}\n`;
+  })();
+
   // Build audience awareness block from blueprint actor taxonomy
   const actors = bp?.actorTaxonomy;
   const actorBlock = actors?.length
@@ -431,7 +440,7 @@ These questions will be used in one-on-one Discovery interviews with participant
 BEFORE the live workshop session. Each interview explores the participant's
 perspective through multiple lenses.
 
-${context.workshopPurpose ? `WORKSHOP PURPOSE (WHY WE ARE HERE):\n${context.workshopPurpose}\n` : ''}${context.desiredOutcomes ? `DESIRED OUTCOMES (WHAT WE MUST WALK AWAY WITH):\n${context.desiredOutcomes}\n` : ''}${context.workshopPurpose || context.desiredOutcomes ? `THIS IS THE MOST IMPORTANT INPUT. Every Discovery question you design MUST serve this purpose and drive toward surfacing the insights needed to achieve these outcomes.\n` : ''}${directionBlock}${actorBlock}
+${context.workshopPurpose ? `WORKSHOP PURPOSE (WHY WE ARE HERE):\n${context.workshopPurpose}\n` : ''}${context.desiredOutcomes ? `DESIRED OUTCOMES (WHAT WE MUST WALK AWAY WITH):\n${context.desiredOutcomes}\n` : ''}${context.workshopPurpose || context.desiredOutcomes ? `THIS IS THE MOST IMPORTANT INPUT. Every Discovery question you design MUST serve this purpose and drive toward surfacing the insights needed to achieve these outcomes.\n` : ''}${engagementTypeBlock}${directionBlock}${actorBlock}
 YOUR APPROACH:
 1. First, get the domain pack context (tool 1) to see the lenses and question templates.
 2. Get the research context (tool 2) to understand the company, industry, and challenges.
