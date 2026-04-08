@@ -1288,6 +1288,32 @@ Remember: every fact must be cited. Every challenge and development must end wit
             continue;
           }
 
+          // ── Commit gate 3: Wikipedia used for non-history claims ──
+          // Wikipedia is only acceptable for founding date / acquisition history.
+          // If it appears as the source for Key Public Challenges, competitor claims,
+          // or current-state company facts, reject and force proper sourcing.
+          const challengesText = Array.isArray(fnArgs.keyPublicChallenges)
+            ? (fnArgs.keyPublicChallenges as string[]).join(' ').toLowerCase()
+            : '';
+          const competitorText = typeof fnArgs.competitorLandscape === 'string'
+            ? fnArgs.competitorLandscape.toLowerCase()
+            : '';
+          const wikiInChallenges = challengesText.includes('wikipedia');
+          const wikiInCompetitor = competitorText.includes('wikipedia');
+
+          if (wikiInChallenges || wikiInCompetitor) {
+            console.log('[Research Agent] Commit rejected — Wikipedia cited for operational claims');
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({
+                status: 'rejected',
+                reason: `COMMIT REJECTED: Wikipedia is cited as a source for ${wikiInChallenges ? 'Key Public Challenges' : ''}${wikiInChallenges && wikiInCompetitor ? ' and ' : ''}${wikiInCompetitor ? 'Competitor Landscape' : ''}. Wikipedia is only permitted for founding history. For specific company challenges and competitor analysis you MUST use: Tier 1 (IR page, press releases, official site) or Tier 2 (Reuters, Bloomberg, FT, Yahoo Finance, Fortune) sources. Search the company IR page and financial press for these findings before committing.`,
+              }),
+            });
+            continue;
+          }
+
           commitArgs = fnArgs;
 
           // Build full research summary — no truncation
@@ -1452,14 +1478,52 @@ async function forceResearchCommit(
     const toolCalls = completion.choices[0]?.message?.tool_calls;
     const fnCall = toolCalls?.find((tc) => tc.type === 'function');
     if (fnCall && fnCall.type === 'function') {
-      const args = JSON.parse(fnCall.function.arguments);
-      return normaliseResearchOutput(args);
+      const args = JSON.parse(fnCall.function.arguments) as Record<string, unknown>;
+      // Apply banned source scrubbing before normalising — forceResearchCommit must
+      // not bypass quality checks. Strip any citation of banned domains from all text
+      // fields so they don't appear in the stored output.
+      const sanitised = sanitiseBannedSources(args);
+      return normaliseResearchOutput(sanitised);
     }
   } catch (error) {
     console.error('[Research Agent] Force commit failed:', error instanceof Error ? error.message : error);
   }
 
   return fallbackResearch(context);
+}
+
+/**
+ * Strips citations of banned Tier 4 domains from all text fields in the commit args.
+ * Used as a last-resort sanitiser when forceResearchCommit bypasses the rejection gate.
+ */
+function sanitiseBannedSources(args: Record<string, unknown>): Record<string, unknown> {
+  const bannedPattern = new RegExp(
+    BANNED_SOURCE_DOMAINS.map(d => d.replace('.', '\\.')).join('|'),
+    'gi'
+  );
+
+  const cleanText = (value: unknown): unknown => {
+    if (typeof value === 'string') {
+      // Remove inline citations containing banned domains: (Source: ..., https://banneddomain...)
+      // and [Source: ..., https://banneddomain...] patterns
+      return value
+        .replace(/\[Source:[^\]]*(?:businessmodelcanvastemplate|simplywall|comparably|koalagains|clutch\.co)[^\]]*\]/gi, '[Source: see official company sources]')
+        .replace(/\(Source:[^)]*(?:businessmodelcanvastemplate|simplywall|comparably|koalagains|clutch\.co)[^)]*\)/gi, '(Source: see official company sources)');
+    }
+    if (Array.isArray(value)) return value.map(cleanText);
+    return value;
+  };
+
+  // Filter banned URLs from sourceUrls
+  const cleanedSourceUrls = Array.isArray(args.sourceUrls)
+    ? (args.sourceUrls as string[]).filter(url => !bannedPattern.test(url))
+    : args.sourceUrls;
+
+  return {
+    ...Object.fromEntries(
+      Object.entries(args).map(([k, v]) => [k, k === 'sourceUrls' ? cleanedSourceUrls : cleanText(v)])
+    ),
+  };
 }
 
 function fallbackResearch(context: PrepContext): WorkshopPrepResearch {
