@@ -205,8 +205,10 @@ export async function POST(request: NextRequest) {
     const resend = new Resend(resendApiKey);
     const fromEmail = process.env.FROM_EMAIL || 'onboarding@resend.dev';
 
+    const fromAddress = fromEmail.includes('<') ? fromEmail.split('<')[1].replace('>', '') : fromEmail;
+
     const { error: emailError } = await resend.emails.send({
-      from: `DREAM Assessment <${fromEmail.includes('<') ? fromEmail.split('<')[1].replace('>', '') : fromEmail}>`,
+      from: `DREAM Assessment <${fromAddress}>`,
       to: [payload.email],
       subject: 'Your DREAM Transformation Readiness Report',
       html: emailHtml,
@@ -221,6 +223,24 @@ export async function POST(request: NextRequest) {
     if (emailError) {
       console.error('[Assessment] Email send error:', emailError);
       return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });
+    }
+
+    // Notify owner with submission details + same PDF
+    const notifyEmail = process.env.ASSESSMENT_NOTIFY_EMAIL;
+    if (notifyEmail) {
+      const notifyHtml = buildNotificationEmail(payload);
+      await resend.emails.send({
+        from: `DREAM Assessment <${fromAddress}>`,
+        to: [notifyEmail],
+        subject: `New Assessment — ${escHtml(payload.name)}${payload.organisation ? ` · ${escHtml(payload.organisation)}` : ''} · ${payload.overallLevelName}`,
+        html: notifyHtml,
+        attachments: [
+          {
+            filename: `DREAM-Assessment-${payload.name.replace(/\s+/g, '-')}.pdf`,
+            content: pdfBuffer.toString('base64'),
+          },
+        ],
+      }).catch(err => console.error('[Assessment] Notification email error:', err));
     }
 
     console.log(
@@ -273,6 +293,76 @@ function buildConfirmationEmail(name: string, focus: string, levelName: string):
     <p style="text-align: center; font-size: 11px; color: #94a3b8; margin-top: 24px;">
       Ethenta  -  Decision Intelligence for Transformation
     </p>
+  </div>
+</body>
+</html>`;
+}
+
+function buildNotificationEmail(payload: SubmissionPayload): string {
+  const scoreRows = payload.scores
+    .map(
+      (s) =>
+        `<tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:13px;">${escHtml(s.domain)}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #1e293b;text-align:center;font-weight:700;color:#5cf28e;font-size:13px;">${s.score.toFixed(1)}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #1e293b;color:#cbd5e1;font-size:13px;">${escHtml(s.levelName)}</td>
+        </tr>`,
+    )
+    .join('');
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#0d0d0d;margin:0;padding:0;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 20px;">
+    <div style="margin-bottom:8px;">
+      <span style="display:inline-flex;align-items:center;gap:6px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#5cf28e;display:inline-block;"></span>
+        <span style="color:#5cf28e;font-size:11px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;">New Assessment Submission</span>
+      </span>
+    </div>
+
+    <div style="background:#111111;border:1px solid #1e293b;border-radius:16px;padding:24px;margin-bottom:16px;">
+      <table style="width:100%;border-collapse:collapse;">
+        <tr>
+          <td style="padding:6px 0;color:#64748b;font-size:12px;width:110px;">Name</td>
+          <td style="padding:6px 0;color:#f1f5f9;font-size:13px;font-weight:600;">${escHtml(payload.name)}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#64748b;font-size:12px;">Email</td>
+          <td style="padding:6px 0;font-size:13px;">
+            <a href="mailto:${escHtml(payload.email)}" style="color:#5cf28e;text-decoration:none;">${escHtml(payload.email)}</a>
+          </td>
+        </tr>
+        ${payload.organisation ? `<tr>
+          <td style="padding:6px 0;color:#64748b;font-size:12px;">Organisation</td>
+          <td style="padding:6px 0;color:#f1f5f9;font-size:13px;">${escHtml(payload.organisation)}</td>
+        </tr>` : ''}
+        <tr>
+          <td style="padding:6px 0;color:#64748b;font-size:12px;">Overall</td>
+          <td style="padding:6px 0;color:#5cf28e;font-size:14px;font-weight:700;">${payload.overallScore.toFixed(1)} · ${escHtml(payload.overallLevelName)}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#64748b;font-size:12px;">Workshop</td>
+          <td style="padding:6px 0;color:#f1f5f9;font-size:13px;">${escHtml(payload.recommendation)}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="background:#111111;border:1px solid #1e293b;border-radius:16px;overflow:hidden;margin-bottom:16px;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid #1e293b;">
+            <th style="padding:10px 12px;text-align:left;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;">Domain</th>
+            <th style="padding:10px 12px;text-align:center;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;">Score</th>
+            <th style="padding:10px 12px;text-align:left;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;">Level</th>
+          </tr>
+        </thead>
+        <tbody>${scoreRows}</tbody>
+      </table>
+    </div>
+
+    <p style="color:#334155;font-size:11px;text-align:center;margin:0;">PDF report attached · DREAM Assessment Notification</p>
   </div>
 </body>
 </html>`;
