@@ -31,6 +31,7 @@ import { ItemToggle } from '@/components/report-builder/DraggableSection';
 import { EditableText } from './ScratchpadEditors';
 import type { BehaviouralInterventionsOutput } from '@/lib/behavioural-interventions/types';
 import { SectionAction } from '@/components/scratchpad/SectionAction';
+import { ComBWheel } from '@/app/admin/workshops/[id]/behavioural-interventions/_components/ComBWheel';
 
 // ── Discovery Diagnostic block ─────────────────────────────────────────────────
 
@@ -1169,6 +1170,15 @@ const PRIORITY_COLOURS: Record<string, string> = {
   Low:    'bg-slate-100 text-slate-600',
 };
 
+const COMBTRANSLATIONS: Record<string, { headline: string; plain: string }> = {
+  psychological_capability: { headline: 'Confidence & mindset gap', plain: 'People understand what needs to change but lack the belief or mental frameworks to act differently.' },
+  physical_capability:      { headline: 'Skills gap',               plain: 'People don\'t yet have the practical skills or physical ability to perform the new behaviour.' },
+  reflective_motivation:    { headline: 'Unconvinced to change',    plain: 'Staff are consciously weighing up the change and deciding the effort or risk isn\'t worth it.' },
+  automatic_motivation:     { headline: 'Habit working against change', plain: 'The old way is deeply ingrained — people revert without thinking. Persuasion alone won\'t fix this.' },
+  physical_opportunity:     { headline: 'Systems & environment block change', plain: 'Even motivated people can\'t change if the processes, tools, or structures work against them.' },
+  social_opportunity:       { headline: 'Culture & norms blocking change', plain: 'Peer behaviour, social norms, or what leadership models is pulling people back to old habits.' },
+};
+
 export function BehaviouralInterventionsBlock({
   data,
   workshopId,
@@ -1189,35 +1199,69 @@ export function BehaviouralInterventionsBlock({
   );
   const highPriority = allItems.filter(i => i.priority === 'High').slice(0, 5);
   const totalCount = allItems.length;
-  const lensesCovered = data.behavioural_interventions.filter(l => l.items.length > 0).map(l => l.lens);
+
+  // Compute COM-B sub-type counts for plain-English summary
+  const subtypeCounts: Record<string, number> = {
+    psychological_capability: 0, physical_capability: 0,
+    reflective_motivation: 0,    automatic_motivation: 0,
+    social_opportunity: 0,       physical_opportunity: 0,
+  };
+  for (const item of allItems) {
+    if (item.capability_type === 'Psychological' || item.capability_type === 'Both') subtypeCounts.psychological_capability++;
+    if (item.capability_type === 'Physical'      || item.capability_type === 'Both') subtypeCounts.physical_capability++;
+    if (item.motivation_type  === 'Reflective'   || item.motivation_type  === 'Both') subtypeCounts.reflective_motivation++;
+    if (item.motivation_type  === 'Automatic'    || item.motivation_type  === 'Both') subtypeCounts.automatic_motivation++;
+    if (item.opportunity_type === 'Social'       || item.opportunity_type === 'Both') subtypeCounts.social_opportunity++;
+    if (item.opportunity_type === 'Physical'     || item.opportunity_type === 'Both') subtypeCounts.physical_opportunity++;
+  }
+  const topBlockers = Object.entries(subtypeCounts)
+    .filter(([, n]) => n > 0)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3);
 
   return (
     <div className="space-y-5">
-      {/* Summary row */}
-      <div className="flex flex-wrap gap-4">
-        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-center min-w-[90px]">
-          <p className="text-2xl font-bold text-foreground">{totalCount}</p>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">Interventions</p>
-        </div>
-        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-center min-w-[90px]">
-          <p className="text-2xl font-bold text-red-600">{allItems.filter(i => i.priority === 'High').length}</p>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">High Priority</p>
-        </div>
-        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 flex-1 min-w-[160px]">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Lenses Covered</p>
-          <div className="flex flex-wrap gap-1">
-            {lensesCovered.map(lens => {
-              const c = LENS_COLOURS[lens] ?? { bg: 'bg-slate-50', border: 'border-slate-200', dot: 'bg-slate-400' };
+      <SectionAction
+        what="Where and why behaviour change is being blocked across the organisation — mapped through the COM-B framework (Capability, Opportunity, Motivation)."
+        action="Use the top blockers below to decide where to focus first. Fix the environment before asking for behaviour change, then address confidence and mindset."
+      />
+
+      {/* COM-B Wheel */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
+          COM-B Profile
+        </p>
+        <ComBWheel
+          interventions={allItems}
+          activeFilter={null}
+          onFilter={() => {}}
+        />
+      </div>
+
+      {/* Plain-English top blockers */}
+      {topBlockers.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+            <p className="text-xs font-semibold text-slate-700">What the profile is telling you</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Top behavioural blockers in plain English</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {topBlockers.map(([key, count]) => {
+              const t = COMBTRANSLATIONS[key];
+              if (!t) return null;
               return (
-                <span key={lens} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${c.bg} ${c.border}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-                  {lens}
-                </span>
+                <div key={key} className="px-4 py-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-slate-800">{t.headline}</p>
+                    <span className="text-[10px] font-bold text-slate-500">{count} interventions</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">{t.plain}</p>
+                </div>
               );
             })}
           </div>
         </div>
-      </div>
+      )}
 
       {/* High priority interventions */}
       {highPriority.length > 0 && (
