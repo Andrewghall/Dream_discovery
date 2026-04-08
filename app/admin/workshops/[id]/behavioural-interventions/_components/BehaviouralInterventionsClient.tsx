@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw, Zap } from 'lucide-react';
 import type {
   BehaviouralInterventionsOutput,
@@ -264,6 +264,112 @@ function itemMatchesFilter(item: BehaviouralIntervention, filter: string): boole
   }
 }
 
+// ── Plain-English COM-B Summary ───────────────────────────────────────────────
+
+const SUBTYPE_PLAIN: Record<string, { headline: string; what: string; action: string; colour: string }> = {
+  psychological_capability: {
+    headline: 'People lack confidence or mental frameworks to change',
+    what: 'Staff understand the change is needed but don\'t feel equipped to think or act differently. This is about belief and self-efficacy, not skills.',
+    action: 'Prioritise coaching, safe-to-fail pilots, and visible role models who demonstrate the new way of working.',
+    colour: 'border-red-200 bg-red-50 text-red-900',
+  },
+  physical_capability: {
+    headline: 'People lack the practical skills to perform the new behaviour',
+    what: 'The change requires doing something people haven\'t done before — they need training or hands-on practice to build the ability.',
+    action: 'Invest in structured skills development, job aids at point of need, and supervised practice environments.',
+    colour: 'border-orange-200 bg-orange-50 text-orange-900',
+  },
+  reflective_motivation: {
+    headline: 'People aren\'t convinced the change is worth making',
+    what: 'Staff are consciously weighing up the change and deciding it\'s not worth the effort, risk, or disruption. Attitudes and goals aren\'t aligned.',
+    action: 'Make the "why" compelling and personal. Show evidence of benefit, address fears directly, and involve people in shaping the solution.',
+    colour: 'border-amber-200 bg-amber-50 text-amber-900',
+  },
+  automatic_motivation: {
+    headline: 'Ingrained habits are working against the change',
+    what: 'The old way of doing things is deeply automatic — people revert without thinking. This is about rewiring default behaviour, not persuasion.',
+    action: 'Redesign environments to make the old habit harder and the new habit easier. Use prompts, nudges, and workflow redesign.',
+    colour: 'border-yellow-200 bg-yellow-50 text-yellow-900',
+  },
+  physical_opportunity: {
+    headline: 'The systems and environment don\'t support the change',
+    what: 'Even motivated people can\'t change if the processes, tools, or structures around them work against the new behaviour.',
+    action: 'Fix the environment first — redesign processes, remove friction, and ensure the right resources and tools are in place before asking people to change.',
+    colour: 'border-green-200 bg-green-50 text-green-900',
+  },
+  social_opportunity: {
+    headline: 'Culture or peer norms are blocking change',
+    what: 'The social environment — what colleagues do, what leadership models, what\'s seen as normal — is pulling people back to old behaviours.',
+    action: 'Identify peer champions, make new norms visible and celebrated, and ensure leadership visibly models the change.',
+    colour: 'border-teal-200 bg-teal-50 text-teal-900',
+  },
+};
+
+function ComBPlainEnglishSummary({ interventions }: { interventions: BehaviouralIntervention[] }) {
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {
+      psychological_capability: 0,
+      physical_capability: 0,
+      reflective_motivation: 0,
+      automatic_motivation: 0,
+      social_opportunity: 0,
+      physical_opportunity: 0,
+    };
+    for (const item of interventions) {
+      if (item.capability_type === 'Psychological' || item.capability_type === 'Both') c.psychological_capability++;
+      if (item.capability_type === 'Physical' || item.capability_type === 'Both') c.physical_capability++;
+      if (item.motivation_type === 'Reflective' || item.motivation_type === 'Both') c.reflective_motivation++;
+      if (item.motivation_type === 'Automatic' || item.motivation_type === 'Both') c.automatic_motivation++;
+      if (item.opportunity_type === 'Social' || item.opportunity_type === 'Both') c.social_opportunity++;
+      if (item.opportunity_type === 'Physical' || item.opportunity_type === 'Both') c.physical_opportunity++;
+    }
+    return c;
+  }, [interventions]);
+
+  const total = interventions.length;
+
+  const ranked = Object.entries(counts)
+    .filter(([, n]) => n > 0)
+    .sort(([, a], [, b]) => b - a);
+
+  if (ranked.length === 0) return null;
+
+  const dominant = ranked.slice(0, 3);
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+        <h2 className="text-sm font-semibold text-slate-800">What this means in plain English</h2>
+        <p className="text-xs text-slate-500 mt-0.5">
+          The top behavioural blockers across {total} intervention{total !== 1 ? 's' : ''} — and what to do about them
+        </p>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {dominant.map(([key, count]) => {
+          const info = SUBTYPE_PLAIN[key];
+          if (!info) return null;
+          const pct = Math.round((count / total) * 100);
+          return (
+            <div key={key} className="px-5 py-4 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-900">{info.headline}</p>
+                <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border ${info.colour}`}>
+                  {count} intervention{count !== 1 ? 's' : ''} · {pct}%
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">{info.what}</p>
+              <div className="flex items-start gap-2 rounded-lg bg-slate-900 px-3 py-2.5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0 mt-0.5">→ Action</span>
+                <p className="text-xs text-white leading-relaxed">{info.action}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function BehaviouralInterventionsClient({ workshopId, workshopName, initialData }: Props) {
   const [data, setData] = useState<BehaviouralInterventionsOutput | null>(initialData);
   const [loading, setLoading] = useState(false);
@@ -412,6 +518,11 @@ export function BehaviouralInterventionsClient({ workshopId, workshopName, initi
             onFilter={setActiveFilter}
           />
         </div>
+      )}
+
+      {/* Plain-English summary */}
+      {data && !loading && (
+        <ComBPlainEnglishSummary interventions={allInterventions} />
       )}
 
       {/* Lens sections */}
