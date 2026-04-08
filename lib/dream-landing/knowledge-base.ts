@@ -44,7 +44,7 @@ EthentaFlow uses a **deterministic diagnostic engine** for sentiment, bias, and 
 ## Discovery Phase — Deep Detail
 Each participant has a private 15-minute AI-guided conversation covering 5 organisational domains:
 
-1. **People** — Skills, capability, culture, collaboration, leadership effectiveness
+1. **People** — Capability, culture, collaboration, leadership effectiveness
 2. **Organisation** — Governance, processes, decision-making, structure, policies
 3. **Customer** — Customer experience, expectations, satisfaction, journey pain points
 4. **Technology** — Systems, tools, data, digital capability, technical debt
@@ -115,7 +115,7 @@ DREAM includes a COM-B (Capability, Opportunity, Motivation — Behaviour) analy
 
 ### What COM-B Is
 COM-B is a model from behavioural science that identifies the root causes of behaviour gaps:
-- **Capability** — Do people have the knowledge and skills? (Physical and psychological capability)
+- **Capability** — Does the organisation have the capacity to perform the required behaviours? (Physical and psychological capability)
 - **Opportunity** — Does the environment enable the behaviour? (Physical and social opportunity)
 - **Motivation** — Do people want to and feel they should? (Reflective and automatic motivation)
 - **Behaviour** — The target behaviour the organisation is trying to achieve or change
@@ -130,7 +130,7 @@ DREAM's AI analyses workshop data through the COM-B lens to surface WHY the orga
 - Evidence drawn from actual participant voices in the workshop
 
 ### Why This Matters
-Traditional workshops identify problems. DREAM identifies the behavioural root cause of those problems. A technology transformation that keeps failing isn't a technology problem — it's often a COM-B problem: people lack the motivation (they don't believe it will work), or the opportunity (the environment doesn't support new behaviours), or the capability (they haven't been given the right skills).
+Traditional workshops identify problems. DREAM identifies the behavioural root cause of those problems. A technology transformation that keeps failing isn't a technology problem — it's often a COM-B problem: people lack the motivation (they don't believe it will work), or the opportunity (the environment doesn't support new behaviours), or the capability (the organisation doesn't yet have the capacity to behave differently).
 
 ---
 
