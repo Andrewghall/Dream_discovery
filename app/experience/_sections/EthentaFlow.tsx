@@ -118,6 +118,7 @@ export default function EthentaFlowSection() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sectionRef = useRef(null as any)
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {

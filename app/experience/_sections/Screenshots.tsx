@@ -159,6 +159,7 @@ export default function Screenshots() {
     } else {
       lastTimeRef.current = null
     }
+    // eslint-disable-next-line react-hooks/immutability
     rafRef.current = requestAnimationFrame(tick)
   }, [])
 

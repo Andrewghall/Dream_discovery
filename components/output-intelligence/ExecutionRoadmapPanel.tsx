@@ -745,6 +745,7 @@ export function ExecutionRoadmapPanel({ data }: Props) {
 
   // Sync if parent data changes (e.g., Brain Scan re-run)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (data.roiSummary) setEditableRoi(data.roiSummary);
   }, [data.roiSummary]);
 

@@ -203,6 +203,7 @@ function OrgRow({ org }: { org: OrgActivity }) {
   const { summary } = org;
 
   const isActive = !!summary.lastLoginAt && (
+    // eslint-disable-next-line react-hooks/purity
     Date.now() - new Date(summary.lastLoginAt).getTime() < 30 * 24 * 60 * 60 * 1000
   );
 

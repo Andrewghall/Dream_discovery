@@ -382,6 +382,7 @@ export default function DecisionFlow() {
   const [active, setActive] = useState<Phase>(null)
   const [animKey, setAnimKey] = useState(0)
   function select(p: Phase) { setActive(p); setAnimKey(k => k+1) }
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { select(1) }, [])
 
   const ap = PHASES.find(p => p.id === active)
