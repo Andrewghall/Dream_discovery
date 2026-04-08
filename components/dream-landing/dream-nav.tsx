@@ -166,7 +166,7 @@ export function DreamNav() {
             href="/experience"
             className="px-3 py-2 text-sm font-medium rounded-lg text-[#5cf28e] border border-[#5cf28e]/20 hover:bg-[#5cf28e]/10 transition-all"
           >
-            Experience DREAM
+            The DREAM Story
           </a>
           <a
             href="https://wa.me/447471944765"
@@ -266,7 +266,7 @@ export function DreamNav() {
                 href="/experience"
                 className="block text-center px-4 py-2.5 text-sm font-semibold rounded-lg border border-[#5cf28e]/30 text-[#33824d] hover:bg-[#5cf28e]/10 transition-all"
               >
-                Experience DREAM
+                The DREAM Story
               </a>
               <CalendlyButton
                 className="block w-full text-center px-4 py-2.5 text-sm font-semibold rounded-lg bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] transition-all cursor-pointer"

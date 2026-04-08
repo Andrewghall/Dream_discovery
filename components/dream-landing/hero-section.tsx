@@ -71,7 +71,7 @@ export function HeroSection() {
               href="/experience"
               className="px-8 py-4 text-lg font-semibold rounded-xl border border-[#5cf28e]/30 text-[#5cf28e] hover:bg-[#5cf28e]/10 transition-all"
             >
-              Experience DREAM →
+              The DREAM Story →
             </a>
           </div>
           <div className="flex justify-center mb-4">
