@@ -95,15 +95,19 @@ export function DreamNav() {
           {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
 
-        {/* Logo */}
-        <Link href="/dream" className="flex-shrink-0 lg:mr-6">
+        {/* Logo + title */}
+        <Link href="/dream" className="flex-shrink-0 lg:mr-6 flex items-center gap-3">
           <Image
             src="/ethenta-logo.png"
             alt="Ethenta"
-            width={130}
-            height={38}
+            width={110}
+            height={32}
             priority
           />
+          <span className="hidden sm:block h-5 w-px bg-slate-200" aria-hidden />
+          <span className="hidden sm:block text-[13px] font-semibold tracking-widest text-slate-700 uppercase">
+            DREAM
+          </span>
         </Link>
 
         {/* Desktop nav links */}
