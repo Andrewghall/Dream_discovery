@@ -31,6 +31,8 @@ const ROWS: Row[] = [
     dividerAbove: true,
   },
   { capability: 'Cross-domain synthesis (people + process + tech)', competitors: 'no', dream: 'yes' },
+  { capability: 'Corporate psyche mapping',           competitors: 'no',      dream: 'yes' },
+  { capability: 'Internal belief vs. customer & empirical reality gap analysis', competitors: 'no', dream: 'yes' },
   { capability: 'Facilitated structured capture',     competitors: 'no',      dream: 'yes' },
   { capability: 'Actor-based modelling',              competitors: 'no',      dream: 'yes' },
   { capability: 'Constraint mapping',                 competitors: 'no',      dream: 'yes' },
@@ -99,7 +101,7 @@ export function ComparisonTable() {
             DREAM alongside the leading feedback platforms.
           </h2>
           <p className="text-white/65 text-base leading-relaxed mb-10 max-w-2xl">
-            Qualtrics, Medallia, InMoment and Forsta are excellent at capturing signal. DREAM does that too — and goes further, turning signal into structured decisions and a transformation plan your organisation can act on.
+            Qualtrics, Medallia, InMoment and Forsta are excellent at capturing signal. DREAM does that too — and goes further. It maps how your organisation actually thinks, then cross-checks that corporate psychology against customer data and empirical evidence to surface the gaps between internal belief and external reality.
           </p>
         </ScrollReveal>
 
