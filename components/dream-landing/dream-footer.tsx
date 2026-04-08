@@ -13,7 +13,8 @@ export function DreamFooter() {
             alt="Ethenta"
             width={120}
             height={35}
-            className="brightness-0 invert mb-4"
+            className="mb-4"
+            style={{ mixBlendMode: 'screen' }}
           />
           <p className="text-sm leading-relaxed max-w-xs">
             Decision intelligence that transforms workshops into measurable organisational insight.
