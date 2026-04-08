@@ -120,14 +120,14 @@ COM-B is a model from behavioural science that identifies the root causes of beh
 - **Motivation** — Do people want to and feel they should? (Reflective and automatic motivation)
 - **Behaviour** — The target behaviour the organisation is trying to achieve or change
 
-DREAM's AI analyses workshop data through the COM-B lens to surface WHY the organisation is stuck — not just what the symptoms are.
+DREAM's AI analyses the full synthesis of Discovery AND live workshop dialogue through the COM-B lens to surface WHY the organisation is stuck — not just what the symptoms are. The COM-B output requires the complete workshop: Discovery provides individual perspectives, but it is the live workshop phases (Reimagine, Constraints, Apply) where the collective dynamics, tensions, and behavioural patterns emerge with enough depth and richness to support a meaningful COM-B analysis. Discovery alone is not sufficient.
 
 ### What DREAM's COM-B Output Provides
 - An interactive COM-B wheel showing scores across all 6 sub-components
 - Lens-grouped behavioural interventions with specific, actionable recommendations
 - Plain-English summary explaining what the data means for leadership
-- Specific intervention types mapped to each COM-B gap (e.g., training for capability gaps, policy changes for opportunity gaps, incentives for motivation gaps)
-- Evidence drawn from actual participant voices in the workshop
+- Specific intervention types mapped to each COM-B gap (e.g., environmental changes for opportunity gaps, leadership signalling for motivation gaps, structural enablement for capability gaps)
+- Evidence drawn from actual participant voices across the full workshop
 
 ### Why This Matters
 Traditional workshops identify problems. DREAM identifies the behavioural root cause of those problems. A technology transformation that keeps failing isn't a technology problem — it's often a COM-B problem: people lack the motivation (they don't believe it will work), or the opportunity (the environment doesn't support new behaviours), or the capability (the organisation doesn't yet have the capacity to behave differently).
