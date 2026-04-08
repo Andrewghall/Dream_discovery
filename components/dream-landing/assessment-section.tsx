@@ -319,10 +319,12 @@ const DOMAINS: Domain[] = [
 ];
 
 /* ─────────────────────────────────────────────────────────────
-   All questions flattened
+   All questions flattened + quick track (1 per domain)
    ───────────────────────────────────────────────────────────── */
 
 const ALL_QUESTIONS = DOMAINS.flatMap(d => d.questions.map(q => ({ ...q, domain: d })));
+// Quick track: first question from each domain — one per capability area
+const QUICK_QUESTIONS = DOMAINS.map(d => ({ ...d.questions[0], domain: d }));
 
 interface Scores { [qId: string]: number | null }
 const EMPTY_SCORES: Scores = Object.fromEntries(ALL_QUESTIONS.map(q => [q.id, null]));
@@ -343,44 +345,59 @@ function MultipleChoiceInput({
   onSelect: (level: number) => void
 }) {
   const [hovered, setHovered] = useState<number | null>(null)
+  const [selected, setSelected] = useState<number | null>(null)
+
+  const handleClick = (level: number) => {
+    if (selected !== null) return; // prevent double-tap
+    setSelected(level)
+    // Brief green flash so user sees their choice registered, then advance
+    setTimeout(() => onSelect(level), 150)
+  }
 
   return (
     <div className="space-y-2.5 w-full max-w-lg" style={{ animation: 'qFadeUp 0.3s ease both' }}>
-      {maturityLevels.map((lvl, i) => (
-        <button
-          key={lvl.level}
-          type="button"
-          onClick={() => onSelect(lvl.level)}
-          onMouseEnter={() => setHovered(lvl.level)}
-          onMouseLeave={() => setHovered(null)}
-          className="w-full text-left p-4 rounded-xl border-2 transition-all"
-          style={{
-            borderColor: hovered === lvl.level ? `${domainColourHex}60` : 'rgba(255,255,255,0.08)',
-            background: hovered === lvl.level ? `${domainColourHex}10` : 'rgba(255,255,255,0.02)',
-          }}
-        >
-          <div className="flex items-start gap-3">
-            <span
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 transition-all"
-              style={{
-                background: hovered === lvl.level ? `${domainColourHex}25` : 'rgba(255,255,255,0.07)',
-                color: hovered === lvl.level ? domainColourHex : 'rgba(255,255,255,0.35)',
-              }}
-            >
-              {lvl.level}
-            </span>
-            <div>
+      <p className="text-xs text-white/70 mb-3">Select the level that best describes your organisation today</p>
+      {maturityLevels.map((lvl, i) => {
+        const isSelected = selected === lvl.level
+        const isHovered = hovered === lvl.level && selected === null
+        return (
+          <button
+            key={lvl.level}
+            type="button"
+            onClick={() => handleClick(lvl.level)}
+            onMouseEnter={() => setHovered(lvl.level)}
+            onMouseLeave={() => setHovered(null)}
+            disabled={selected !== null}
+            className="w-full text-left p-4 rounded-xl border-2 transition-all"
+            style={{
+              borderColor: isSelected ? `${domainColourHex}90` : isHovered ? `${domainColourHex}60` : 'rgba(255,255,255,0.08)',
+              background: isSelected ? `${domainColourHex}18` : isHovered ? `${domainColourHex}10` : 'rgba(255,255,255,0.02)',
+              opacity: selected !== null && !isSelected ? 0.45 : 1,
+            }}
+          >
+            <div className="flex items-start gap-3">
               <span
-                className="text-xs font-bold block mb-0.5 transition-colors"
-                style={{ color: hovered === lvl.level ? domainColourHex : 'rgba(255,255,255,0.55)' }}
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 transition-all"
+                style={{
+                  background: isSelected ? `${domainColourHex}35` : isHovered ? `${domainColourHex}25` : 'rgba(255,255,255,0.07)',
+                  color: isSelected ? domainColourHex : isHovered ? domainColourHex : 'rgba(255,255,255,0.35)',
+                }}
               >
-                {lvl.name}
+                {isSelected ? '✓' : lvl.level}
               </span>
-              <span className="text-xs text-white/80 leading-relaxed">{descriptors[i]}</span>
+              <div>
+                <span
+                  className="text-xs font-bold block mb-0.5 transition-colors"
+                  style={{ color: isSelected ? domainColourHex : isHovered ? domainColourHex : 'rgba(255,255,255,0.55)' }}
+                >
+                  {lvl.name}
+                </span>
+                <span className="text-xs text-white/80 leading-relaxed">{descriptors[i]}</span>
+              </div>
             </div>
-          </div>
-        </button>
-      ))}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -390,7 +407,9 @@ function MultipleChoiceInput({
    ───────────────────────────────────────────────────────────── */
 
 export function AssessmentSection() {
-  // step: 0=intro, 1-15=question, 16=analysing, 17=results
+  // mode: null=not chosen, 'quick'=5 questions, 'full'=15 questions
+  const [mode, setMode] = useState<'quick' | 'full' | null>(null);
+  // step: 0=intro, 1-N=question, N+1=analysing, N+2=email gate, N+3=results
   const [step, setStep] = useState(0);
   const [scores, setScores] = useState<Scores>({ ...EMPTY_SCORES });
   const [voiceMode, setVoiceMode] = useState(false); // opt-in — silent by default for fast answering
@@ -405,7 +424,14 @@ export function AssessmentSection() {
   const voice = useVoice();
   const sectionRef = useRef<HTMLElement>(null);
 
-  const currentQ = step >= 1 && step <= 15 ? ALL_QUESTIONS[step - 1] : null;
+  // Derive active question set and counts from chosen mode
+  const activeQuestions = mode === 'quick' ? QUICK_QUESTIONS : ALL_QUESTIONS;
+  const totalSteps = activeQuestions.length; // 5 or 15
+  const analysingStep = totalSteps + 1;
+  const gateStep = totalSteps + 2;
+  const resultsStep = totalSteps + 3;
+
+  const currentQ = step >= 1 && step <= totalSteps ? activeQuestions[step - 1] : null;
 
   // Live domain scores (partial — uses answered questions only)
   const liveDomainScores = useMemo(() => DOMAINS.map(d => {
@@ -437,14 +463,14 @@ export function AssessmentSection() {
 
   // Scroll question into view on each step change
   useEffect(() => {
-    if (step >= 1 && step <= 15 && sectionRef.current) {
+    if (step >= 1 && step <= totalSteps && sectionRef.current) {
       sectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [step]);
+  }, [step, totalSteps]);
 
   // Speak question when it appears (only if read-aloud mode is on)
   useEffect(() => {
-    if (!voiceMode || !currentQ || step < 1 || step > 15) return;
+    if (!voiceMode || !currentQ || step < 1 || step > totalSteps) return;
     voice.stopSpeaking();
     voice.speak(currentQ.question);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -454,16 +480,17 @@ export function AssessmentSection() {
     if (!currentQ) return;
     voice.stopSpeaking();
     setScores(prev => ({ ...prev, [currentQ.id]: level }));
-    if (step < 15) {
-      setTimeout(() => setStep(s => s + 1), 200);
+    // MultipleChoiceInput already flashed 150ms — advance immediately
+    if (step < totalSteps) {
+      setStep(s => s + 1);
     } else {
-      setTimeout(() => setStep(16), 200);
+      setStep(analysingStep);
     }
-  }, [currentQ, step, voice]);
+  }, [currentQ, step, totalSteps, analysingStep, voice]);
 
   const reset = () => {
     voice.stopSpeaking();
-    setStep(0); setScores({ ...EMPTY_SCORES });
+    setMode(null); setStep(0); setScores({ ...EMPTY_SCORES });
     setSubmitError(''); setName(''); setEmail(''); setOrganisation('');
   };
 
@@ -478,7 +505,7 @@ export function AssessmentSection() {
               <div className="relative z-10 px-8 sm:px-14 py-14 sm:py-16">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.04] mb-8">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]" />
-                  <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-white/75">5-Minute Diagnostic</span>
+                  <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-white/75">Capability Diagnostic</span>
                 </div>
                 <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-[1.05] tracking-tight mb-5">
                   Every organisation has<br className="hidden sm:block" /> untapped potential.
@@ -487,7 +514,7 @@ export function AssessmentSection() {
                   The question is where it lives — and what&apos;s ready to be unlocked.
                 </p>
                 <p className="text-white/80 text-sm leading-relaxed mb-10 max-w-lg">
-                  15 multiple-choice questions across five capability areas. Select the option that best describes your organisation today — no right or wrong answers.
+                  Five capability areas — People, Organisation, Customer, Technology and Regulation. Choose a quick 2-minute version or go deeper with the full 15-minute assessment. No right or wrong answers.
                 </p>
 
                 {/* Read aloud toggle */}
@@ -508,13 +535,24 @@ export function AssessmentSection() {
                   </button>
                 </div>
 
-                <button
-                  onClick={() => setStep(1)}
-                  className="inline-flex items-center gap-2.5 px-7 py-3.5 text-base font-bold rounded-xl bg-[#5cf28e] text-[#0a0a0a] hover:bg-[#50d47e] transition-all shadow-lg shadow-[#5cf28e]/20 hover:shadow-xl hover:shadow-[#5cf28e]/30"
-                >
-                  Discover Your Profile
-                  <ArrowRight className="h-4 w-4" />
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => { setMode('quick'); setStep(1); }}
+                    className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 text-base font-bold rounded-xl bg-[#5cf28e] text-[#0a0a0a] hover:bg-[#50d47e] transition-all shadow-lg shadow-[#5cf28e]/20 hover:shadow-xl hover:shadow-[#5cf28e]/30"
+                  >
+                    Quick — 2 minutes
+                    <span className="text-[11px] font-normal opacity-70">(5 questions)</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => { setMode('full'); setStep(1); }}
+                    className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 text-base font-bold rounded-xl border border-white/20 text-white hover:bg-white/[0.06] transition-all"
+                  >
+                    Full Assessment — 15 minutes
+                    <span className="text-[11px] font-normal opacity-70">(15 questions)</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </ScrollReveal>
@@ -524,10 +562,10 @@ export function AssessmentSection() {
   }
 
   /* ── ANALYSING ── */
-  if (step === 16) return <AnalysingScreen onDone={() => setStep(17)} />;
+  if (step === analysingStep) return <AnalysingScreen onDone={() => setStep(gateStep)} />;
 
-  /* ── EMAIL GATE (step 17) ── */
-  if (step === 17) {
+  /* ── EMAIL GATE ── */
+  if (step === gateStep) {
     const isCompanyEmail = (addr: string) => {
       const domain = addr.split('@')[1]?.toLowerCase() ?? '';
       const FREE_DOMAINS = [
@@ -563,7 +601,7 @@ export function AssessmentSection() {
         });
       } catch { /* non-blocking — advance regardless */ }
       finally { setSubmitting(false); }
-      setStep(18);
+      setStep(resultsStep);
     };
 
     return (
@@ -629,10 +667,10 @@ export function AssessmentSection() {
     );
   }
 
-  /* ── QUESTIONS (steps 1-15) ── */
-  if (step >= 1 && step <= 15 && currentQ) {
+  /* ── QUESTIONS ── */
+  if (step >= 1 && step <= totalSteps && currentQ) {
     const domain = currentQ.domain;
-    const progressPct = ((step - 1) / 15) * 100;
+    const progressPct = ((step - 1) / totalSteps) * 100;
     const DomainIcon = domain.icon;
 
     return (
@@ -652,7 +690,7 @@ export function AssessmentSection() {
             </div>
             <span className="text-xs font-semibold text-white/70 tracking-wide">{domain.name}</span>
           </div>
-          <span className="text-xs text-white/75 tabular-nums">{step} / 15</span>
+          <span className="text-xs text-white/75 tabular-nums">{step} / {totalSteps}</span>
         </div>
 
         {/* Progress bar */}
