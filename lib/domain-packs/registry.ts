@@ -2157,6 +2157,376 @@ const CONTACT_CENTRE_AIRLINE: DomainPack = {
 };
 
 // ---------------------------------------------------------------------------
+// BPO (Business Process Outsourcing)
+// ---------------------------------------------------------------------------
+
+const BPO: DomainPack = {
+  key: 'bpo',
+  label: 'Business Process Outsourcing (BPO)',
+  description: 'Operational domain pack for global BPO and managed services environments — multi-client, multi-region, high complexity',
+  category: 'operational',
+  lenses: ['Operational Consistency', 'Client Delivery & Performance', 'Workforce & Capability', 'Technology & Integration', 'AI & Automation Reality', 'Commercial & Client Alignment'],
+  actorTaxonomy: [
+    { key: 'ceo', label: 'Chief Executive Officer', description: 'Executive leadership and global strategic direction' },
+    { key: 'coo', label: 'Chief Operating Officer', description: 'Global operations leadership and delivery accountability' },
+    { key: 'cto', label: 'Chief Technology Officer', description: 'Technology strategy, platforms, and AI programme ownership' },
+    { key: 'cfo', label: 'Chief Financial Officer', description: 'Financial performance, margin management, and commercial strategy' },
+    { key: 'global_client_director', label: 'Global Client Director', description: 'Senior relationship ownership for a strategic client account' },
+    { key: 'vp_operations', label: 'VP Operations', description: 'Regional or vertical operational leadership' },
+    { key: 'site_director', label: 'Site Director', description: 'Full accountability for a delivery site — P&L, performance, people' },
+    { key: 'ops_manager', label: 'Operations Manager', description: 'Day-to-day operational management across one or more client programmes' },
+    { key: 'programme_manager', label: 'Programme Manager', description: 'Manages the delivery of a specific client programme end to end' },
+    { key: 'team_leader', label: 'Team Leader', description: 'Front-line management of agent teams within a programme' },
+    { key: 'agent', label: 'Agent / Advisor', description: 'Front-line staff handling customer or process transactions on behalf of a client' },
+    { key: 'wfm_analyst', label: 'WFM Analyst', description: 'Workforce management, forecasting, and scheduling' },
+    { key: 'quality_analyst', label: 'Quality Analyst', description: 'QA monitoring, calibration, and coaching input' },
+    { key: 'transformation_lead', label: 'Transformation Lead', description: 'Leads improvement and change programmes across operations' },
+    { key: 'client', label: 'Client (Buyer)', description: 'The client organisation that contracts and funds the BPO service' },
+  ],
+  metricReferences: [
+    { key: 'aht', label: 'Average Handle Time', unit: 'seconds', description: 'Mean duration of agent interactions per programme' },
+    { key: 'fcr', label: 'First Contact Resolution', unit: '%', description: 'Percentage of contacts resolved without repeat contact' },
+    { key: 'csat', label: 'Customer Satisfaction', unit: 'score', description: 'Post-interaction satisfaction score per client programme' },
+    { key: 'service_level', label: 'Service Level', unit: '%', description: 'Percentage of contacts answered within contracted SLA' },
+    { key: 'quality_score', label: 'Quality Score', unit: 'score', description: 'QA evaluation score per interaction or programme' },
+    { key: 'attrition', label: 'Agent Attrition Rate', unit: '%', description: 'Agent turnover rate — a primary cost and performance driver in BPO' },
+    { key: 'occupancy', label: 'Occupancy Rate', unit: '%', description: 'Percentage of logged-in time agents are handling contacts' },
+    { key: 'shrinkage', label: 'Shrinkage', unit: '%', description: 'Planned and unplanned time away from available state' },
+    { key: 'cost_per_contact', label: 'Cost Per Contact', unit: 'currency', description: 'Fully loaded cost per interaction — key commercial metric' },
+    { key: 'revenue_per_fte', label: 'Revenue Per FTE', unit: 'currency', description: 'Revenue generated per full-time equivalent — productivity indicator' },
+    { key: 'automation_rate', label: 'Automation Rate', unit: '%', description: 'Percentage of contacts or tasks handled without human agent involvement' },
+    { key: 'client_nps', label: 'Client NPS / CSAT', unit: 'score', description: 'Client satisfaction with the BPO relationship, not end-customer satisfaction' },
+  ],
+  questionTemplates: [
+    {
+      lens: 'Operational Consistency',
+      text: 'If you ran the same process across three different sites today, how different would the output look? What drives that variation?',
+      purpose: 'Expose operational inconsistency and its root causes across the delivery network',
+      captureTypes: ['executive_interview', 'manager_interview'],
+    },
+    {
+      lens: 'Client Delivery & Performance',
+      text: 'When a client asks how their programme is performing, what do you show them and what do you leave out?',
+      purpose: 'Reveal gaps between reported performance and operational reality',
+      captureTypes: ['executive_interview', 'manager_interview'],
+    },
+    {
+      lens: 'Workforce & Capability',
+      text: 'What separates your top-performing sites from your most challenged? Is it people, process, leadership, or client?',
+      purpose: 'Identify performance variation drivers across the delivery network',
+      captureTypes: ['manager_interview', 'executive_interview'],
+    },
+    {
+      lens: 'Technology & Integration',
+      text: 'Which system integrations between your platforms and your clients\' systems do not work as intended? What is the workaround?',
+      purpose: 'Surface technology fragmentation and integration debt',
+      captureTypes: ['manager_interview', 'executive_interview'],
+    },
+    {
+      lens: 'AI & Automation Reality',
+      text: 'Name one AI or automation tool live in your operation today. What does it actually do versus what was promised?',
+      purpose: 'Ground AI discussion in deployed reality rather than roadmap aspiration',
+      captureTypes: ['executive_interview', 'manager_interview'],
+    },
+    {
+      lens: 'Commercial & Client Alignment',
+      text: 'Where does the way you are commercially structured conflict with the way you need to operate to deliver well?',
+      purpose: 'Surface commercial model tensions that constrain operational improvement',
+      captureTypes: ['executive_interview'],
+    },
+  ],
+  diagnosticOutputFields: [
+    { key: 'operational_consistency', label: 'Operational Consistency', lens: 'Operational Consistency', description: 'Degree to which processes, standards, and outputs are consistent across sites, clients, and regions' },
+    { key: 'client_delivery', label: 'Client Delivery & Performance', lens: 'Client Delivery & Performance', description: 'Accuracy, transparency, and reliability of performance reporting and SLA management' },
+    { key: 'workforce_capability', label: 'Workforce & Capability', lens: 'Workforce & Capability', description: 'Agent and leadership capability, attrition drivers, and development effectiveness' },
+    { key: 'technology_integration', label: 'Technology & Integration', lens: 'Technology & Integration', description: 'Platform fragmentation, integration maturity, and data flow reliability' },
+    { key: 'ai_automation_reality', label: 'AI & Automation Reality', lens: 'AI & Automation Reality', description: 'Gap between AI ambition and deployed capability, and readiness for further automation' },
+    { key: 'commercial_alignment', label: 'Commercial & Client Alignment', lens: 'Commercial & Client Alignment', description: 'Alignment between commercial model, client expectations, and operational delivery constraints' },
+    { key: 'structural_gaps', label: 'Structural Gaps', lens: 'cross-lens', description: 'Cross-domain systemic weaknesses that no single lens fully captures' },
+  ],
+  discoveryLenses: [
+    {
+      key: 'operational_consistency',
+      label: 'Operational Consistency',
+      description: 'Process standardisation, cross-site variation, SLA adherence, single version of truth',
+      objective: 'Establish where operational delivery is consistent versus fragmented across sites, client programmes, and regions — and what drives the gap',
+      estimatedDuration: '25 mins',
+      minimumInsights: 5,
+    },
+    {
+      key: 'client_delivery',
+      label: 'Client Delivery & Performance',
+      description: 'SLA management, performance reporting, client relationship, escalation handling, delivery accountability',
+      objective: 'Assess how reliably performance is measured, reported, and owned — and where the gap between reported and actual delivery is widest',
+      estimatedDuration: '25 mins',
+      minimumInsights: 5,
+    },
+    {
+      key: 'workforce_capability',
+      label: 'Workforce & Capability',
+      description: 'Agent performance, attrition, onboarding, coaching, team leader effectiveness, capability variation',
+      objective: 'Understand the capability and stability of the workforce — where performance varies, why attrition occurs, and how effectively capability is built and retained',
+      estimatedDuration: '25 mins',
+      minimumInsights: 5,
+    },
+    {
+      key: 'technology_integration',
+      label: 'Technology & Integration',
+      description: 'Platform landscape, client system integrations, data flows, tooling fragmentation, technical debt',
+      objective: 'Map the technology reality across the operation — where fragmentation, integration failure, and tooling inconsistency create friction and cost',
+      estimatedDuration: '20 mins',
+      minimumInsights: 4,
+    },
+    {
+      key: 'ai_automation_reality',
+      label: 'AI & Automation Reality',
+      description: 'Deployed AI tools, automation rate, AI roadmap vs reality, client AI expectations, internal AI capability',
+      objective: 'Separate AI ambition from deployed reality — what is live, what is working, what has failed, and where genuine automation opportunity exists',
+      estimatedDuration: '20 mins',
+      minimumInsights: 4,
+    },
+    {
+      key: 'commercial_alignment',
+      label: 'Commercial & Client Alignment',
+      description: 'Contract model, pricing pressure, margin dynamics, client expectation management, commercial vs operational tensions',
+      objective: 'Understand how the commercial model shapes operational behaviour — where it enables delivery and where it constrains it',
+      estimatedDuration: '20 mins',
+      minimumInsights: 4,
+    },
+  ],
+  discoveryQuestionTemplates: [
+    // --- Operational Consistency ---
+    {
+      lens: 'operational_consistency',
+      text: 'When looking specifically at Operational Consistency, state where you believe the organisation is today, where it should be, and where it will be if nothing changes.\n\nRate how consistently your operations deliver the same standard of service across sites, client programmes, and regions',
+      tag: 'triple_rating',
+      maturityScale: [
+        'Every site operates differently. No standard processes. SLA performance varies widely. No single version of truth across programmes.',
+        'Some standards documented but inconsistently followed. Performance varies by site and leader. Reporting fragmented across systems.',
+        'Core processes standardised. SLA performance broadly consistent. A single operational view exists for most programmes.',
+        'Consistency enforced through governance and tooling. Variation quickly identified and corrected. Real-time operational picture available.',
+        'Operations self-regulating. Continuous improvement embedded. Variation is an exception, not a norm. Clients see a seamless global operation.',
+      ],
+      purpose: 'Establish a maturity baseline for operational consistency and standardisation across the BPO network',
+    },
+    {
+      lens: 'operational_consistency',
+      text: 'Pick one process that runs across at least three of your sites. Describe how it works at your best site versus your most challenged. What drives that gap?',
+      tag: 'friction',
+      purpose: 'Surface specific process variation and expose the root causes of operational inconsistency',
+    },
+    {
+      lens: 'operational_consistency',
+      text: 'When a new client programme goes live, how long before it is running to the standard you would want? What slows that down?',
+      tag: 'gaps',
+      purpose: 'Identify onboarding and ramp-up inefficiencies that delay consistent delivery',
+    },
+    {
+      lens: 'operational_consistency',
+      text: 'If you had to produce a single, accurate view of performance across all your programmes right now, how long would that take and what systems would you touch?',
+      tag: 'pain_points',
+      purpose: 'Quantify the data fragmentation problem and its operational cost',
+    },
+    {
+      lens: 'operational_consistency',
+      text: 'What does a site leader do when they receive a directive from the centre that conflicts with how things work on their floor?',
+      tag: 'friction',
+      purpose: 'Reveal the gap between central governance and local operational reality',
+    },
+    // --- Client Delivery & Performance ---
+    {
+      lens: 'client_delivery',
+      text: 'When looking specifically at Client Delivery and Performance, state where you believe the organisation is today, where it should be, and where it will be if nothing changes.\n\nRate how accurately and transparently you measure, manage, and report delivery performance to clients',
+      tag: 'triple_rating',
+      maturityScale: [
+        'Performance data unreliable. SLA reporting manual and delayed. Clients often find issues before we do. Escalations reactive.',
+        'Core SLAs tracked. Reports produced but time-consuming. Some metrics disputed by clients. Relationship management varies by account.',
+        'Accurate, timely reporting across key SLAs. Client dashboards available. Escalations handled with clear process. Relationships stable.',
+        'Real-time client visibility into performance. Proactive issue identification. Data drives continuous improvement conversations with clients.',
+        'Clients trust our data as much as their own. Performance management is collaborative. Insight drives joint transformation, not just reporting.',
+      ],
+      purpose: 'Establish a maturity baseline for client delivery management and performance transparency',
+    },
+    {
+      lens: 'client_delivery',
+      text: 'When a client escalates, is it usually because something broke or because they found out something was already broken? What does your response look like in each case?',
+      tag: 'friction',
+      purpose: 'Distinguish reactive from proactive performance management and expose accountability gaps',
+    },
+    {
+      lens: 'client_delivery',
+      text: 'Which metrics do you track that you trust least? Why do you still report them to clients?',
+      tag: 'gaps',
+      purpose: 'Surface data quality issues and the gap between reported and actual performance',
+    },
+    {
+      lens: 'client_delivery',
+      text: 'Describe a recent situation where your performance data told one story and what was happening on the floor told a different one. What happened?',
+      tag: 'pain_points',
+      purpose: 'Identify disconnects between operational reality and reported performance',
+    },
+    {
+      lens: 'client_delivery',
+      text: 'Where does client expectation consistently outpace what the contract and operating model can realistically deliver?',
+      tag: 'constraint',
+      purpose: 'Expose misalignment between what was sold and what can be delivered',
+    },
+    // --- Workforce & Capability ---
+    {
+      lens: 'workforce_capability',
+      text: 'When looking specifically at Workforce and Capability, state where you believe the organisation is today, where it should be, and where it will be if nothing changes.\n\nRate how effectively you build, retain, and develop the workforce capability needed to deliver across your client portfolio',
+      tag: 'triple_rating',
+      maturityScale: [
+        'High attrition across most sites. Onboarding inconsistent. Coaching rarely happens. Performance driven by compliance not capability. TLs firefighting.',
+        'Structured onboarding exists but quality varies. Some coaching. Attrition managed but not addressed. Capability gaps visible but not systematically closed.',
+        'Consistent onboarding. Regular coaching with structured frameworks. Attrition understood by cause. Performance distribution actively managed.',
+        'Capability planning proactive. AI-assisted coaching. Attrition significantly reduced through targeted interventions. Career paths visible across the network.',
+        'Workforce is a competitive advantage. Continuous development embedded. Attrition minimal. Capability adapts ahead of client and market demand.',
+      ],
+      purpose: 'Establish a maturity baseline for workforce capability, development, and retention across the BPO network',
+    },
+    {
+      lens: 'workforce_capability',
+      text: 'What separates your highest-performing sites from your most challenged ones? Is it the people, the leaders, the client, or something else?',
+      tag: 'friction',
+      purpose: 'Identify the primary drivers of performance variation across the delivery network',
+    },
+    {
+      lens: 'workforce_capability',
+      text: 'When a team leader loses their best agents to attrition, what actually happens to performance? How long before it recovers?',
+      tag: 'pain_points',
+      purpose: 'Quantify the operational impact of attrition and the resilience of the workforce model',
+    },
+    {
+      lens: 'workforce_capability',
+      text: 'What does a team leader actually spend their day doing? How much is coaching, how much is admin, how much is firefighting?',
+      tag: 'gaps',
+      purpose: 'Assess TL time allocation and identify barriers to effective people development at scale',
+    },
+    {
+      lens: 'workforce_capability',
+      text: 'If you asked your ten most senior team leaders to describe what good looks like on their programme, how many different answers would you get?',
+      tag: 'friction',
+      purpose: 'Surface variation in performance standards and the absence of a shared definition of excellence',
+    },
+    // --- Technology & Integration ---
+    {
+      lens: 'technology_integration',
+      text: 'When looking specifically at Technology and Integration, state where you believe the organisation is today, where it should be, and where it will be if nothing changes.\n\nRate the maturity of your technology landscape — including platform consistency, client system integrations, and data flow reliability',
+      tag: 'triple_rating',
+      maturityScale: [
+        'Multiple legacy platforms across sites. No consistent tech stack. Client integrations manual or unreliable. Data siloed by programme. Agents use multiple screens.',
+        'Core platforms in place but inconsistently deployed. Some client integrations working. Data available but hard to access across programmes. Workarounds common.',
+        'Standardised platform across most sites. Key client integrations functional. Single operational view achievable. Agents broadly on unified desktop.',
+        'Cloud-native, consistent platform. Client integrations robust and monitored. Real-time data flows across all programmes. Technology enables rather than constrains.',
+        'Technology is invisible to agents. Integrations self-healing. Data flows in real time across the entire network. Platform adapts to new clients rapidly.',
+      ],
+      purpose: 'Establish a maturity baseline for technology consistency, integration health, and data reliability',
+    },
+    {
+      lens: 'technology_integration',
+      text: 'How many different systems does an agent need open to handle a typical interaction today? What does that look like on the busiest programmes?',
+      tag: 'pain_points',
+      purpose: 'Quantify desktop complexity and its impact on handle time, quality, and agent experience',
+    },
+    {
+      lens: 'technology_integration',
+      text: 'Name a client integration that does not work as intended. What is the workaround, who maintains it, and how long has it existed?',
+      tag: 'friction',
+      purpose: 'Surface integration debt and the operational cost of maintaining manual workarounds',
+    },
+    {
+      lens: 'technology_integration',
+      text: 'When a new client comes on board, how long does it take to get all integrations live and reliable? What creates the most delay?',
+      tag: 'gaps',
+      purpose: 'Identify technology onboarding bottlenecks that delay delivery readiness',
+    },
+    {
+      lens: 'technology_integration',
+      text: 'Which technology investment from the last two years has delivered the least return? What happened?',
+      tag: 'friction',
+      purpose: 'Surface failed or underperforming technology investments and the decision-making behind them',
+    },
+    // --- AI & Automation Reality ---
+    {
+      lens: 'ai_automation_reality',
+      text: 'When looking specifically at AI and Automation Reality, state where you believe the organisation is today, where it should be, and where it will be if nothing changes.\n\nRate the gap between your AI and automation ambition and what is actually live and delivering value in your operation today',
+      tag: 'triple_rating',
+      maturityScale: [
+        'AI discussed but nothing deployed at scale. Automation pilots incomplete. Clients asking for AI capability we cannot yet demonstrate. Internal scepticism high.',
+        'Some automation live — chatbots, basic RPA. AI tools in pilot. Results mixed. Scaling has stalled. Gap between roadmap and reality is wide.',
+        'AI assistant tools live for agents on key programmes. Automation delivering measurable handle time reduction. AI narrative backed by real examples.',
+        'AI co-pilot deployed across most programmes. Automation reducing contact volume significantly. AI capability a genuine differentiator in client conversations.',
+        'AI and human delivery seamlessly integrated. Automation handles the majority of routine transactions. AI capability continuously improving from operational data.',
+      ],
+      purpose: 'Establish a maturity baseline for deployed AI capability versus stated ambition',
+    },
+    {
+      lens: 'ai_automation_reality',
+      text: 'Name one AI tool that is live in your operation today. What does it actually do, what does it not do that you expected, and is anyone measuring the impact?',
+      tag: 'pain_points',
+      purpose: 'Ground AI discussion in specific deployed tools and their real-world performance',
+    },
+    {
+      lens: 'ai_automation_reality',
+      text: 'Where has an AI or automation initiative been deployed and then quietly scaled back or abandoned? What happened?',
+      tag: 'friction',
+      purpose: 'Surface failed AI deployments and the organisational or technical reasons behind them',
+    },
+    {
+      lens: 'ai_automation_reality',
+      text: 'If a client asked you to demonstrate your AI capability in a live environment tomorrow, what would you show them and what would you keep them away from?',
+      tag: 'gaps',
+      purpose: 'Reveal the gap between how AI capability is positioned externally and what is genuinely production-ready',
+    },
+    {
+      lens: 'ai_automation_reality',
+      text: 'Which agent tasks could be automated today if you had the integration or data in place? What is specifically blocking that?',
+      tag: 'future',
+      purpose: 'Identify the nearest-term automation opportunities and the specific constraints preventing them',
+    },
+    // --- Commercial & Client Alignment ---
+    {
+      lens: 'commercial_alignment',
+      text: 'When looking specifically at Commercial and Client Alignment, state where you believe the organisation is today, where it should be, and where it will be if nothing changes.\n\nRate how well your commercial model, client relationships, and operational delivery are aligned',
+      tag: 'triple_rating',
+      maturityScale: [
+        'Commercial model drives short-term decisions that damage delivery. Client expectations systematically exceed what contracts allow. Margin under constant pressure.',
+        'Commercial and operational teams often in tension. Client scope creep common. Some accounts profitable, others not. Pricing does not reflect true cost to serve.',
+        'Commercial model broadly supports delivery. Most clients understand scope. Profitability managed at account level. Pricing aligned to major cost drivers.',
+        'Commercial and operational strategy integrated. Clients see BPO as a transformation partner. Pricing reflects value, not just headcount. Margin improving.',
+        'Commercial model enables continuous investment in delivery. Clients co-invest in transformation. Relationships are long-term and value-based. Growth self-funding.',
+      ],
+      purpose: 'Establish a maturity baseline for commercial and operational alignment across the client portfolio',
+    },
+    {
+      lens: 'commercial_alignment',
+      text: 'Where does the way you are commercially structured conflict with how you need to operate to deliver well? Give a specific example.',
+      tag: 'constraint',
+      purpose: 'Surface commercial model tensions that directly constrain operational improvement',
+    },
+    {
+      lens: 'commercial_alignment',
+      text: 'Which client accounts are genuinely profitable and which are not? What is the primary driver of that difference?',
+      tag: 'pain_points',
+      purpose: 'Understand the commercial reality of the portfolio and the drivers of margin pressure',
+    },
+    {
+      lens: 'commercial_alignment',
+      text: 'When a client asks for something outside the contract, what typically happens? Who decides, and what does it cost you when you say yes?',
+      tag: 'friction',
+      purpose: 'Expose scope creep dynamics and the commercial and operational cost of undisciplined client management',
+    },
+    {
+      lens: 'commercial_alignment',
+      text: 'If you could redesign your commercial model from scratch, what would you change first to better align incentives between your organisation and your clients?',
+      tag: 'future',
+      purpose: 'Surface strategic thinking about commercial model evolution and value-based contracting',
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
 // Registry map + lookup
 // ---------------------------------------------------------------------------
 
@@ -2168,6 +2538,7 @@ export const DOMAIN_PACKS: Record<string, DomainPack> = {
   sales: SALES,
   compliance: COMPLIANCE,
   enterprise: ENTERPRISE,
+  bpo: BPO,
 };
 
 /**

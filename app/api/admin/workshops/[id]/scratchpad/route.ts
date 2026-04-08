@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth/require-auth';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { logAuditEvent } from '@/lib/audit/audit-logger';
 
 export async function GET(
   _request: NextRequest,
@@ -75,6 +76,10 @@ export async function PATCH(
         updatedAt: new Date(),
       },
     });
+
+    if (auth.organizationId) {
+      logAuditEvent({ organizationId: auth.organizationId, userId: auth.userId ?? undefined, action: 'UPDATE_OUTPUT', resourceType: 'workshop', resourceId: workshopId, success: true }).catch(err => console.error('[audit] update_output:', err));
+    }
 
     return NextResponse.json({ scratchpad });
   } catch (error) {

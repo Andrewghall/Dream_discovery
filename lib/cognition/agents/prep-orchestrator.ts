@@ -13,6 +13,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { runResearchAgent } from './research-agent';
 import { runQuestionSetAgent } from './question-set-agent';
 import { validateQuestionSet } from './question-set-validator';
@@ -47,6 +48,9 @@ export async function runPrepOrchestrator(
 
   // ── Opening message ─────────────────────────────────
 
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
   const purposeIntro = context.workshopPurpose
     ? `\n\nWORKSHOP PURPOSE (WHY WE ARE HERE): ${context.workshopPurpose}`
     : '';
@@ -58,11 +62,17 @@ export async function runPrepOrchestrator(
     timestampMs: Date.now(),
     agent: 'prep-orchestrator',
     to: 'research-agent',
-    message: `Good morning, team. We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise - full end-to-end assessment.'}${purposeIntro}${outcomesIntro}\n\nResearch Agent, could you begin by investigating the company and providing context that will help us tailor our approach? Keep the workshop purpose and desired outcomes front of mind - all research should serve why we are here.`,
+    message: `${timeGreeting}. We're preparing for a workshop with ${context.clientName || 'a client'}${context.industry ? ` in the ${context.industry} industry` : ''}. ${context.dreamTrack === 'DOMAIN' ? `The DREAM track is Domain, focused on ${context.targetDomain || 'a specific area'}.` : 'The DREAM track is Enterprise - full end-to-end assessment.'}${purposeIntro}${outcomesIntro}\n\nResearch Agent, could you begin by investigating the company and providing context that will help us tailor our approach? Keep the workshop purpose and desired outcomes front of mind - all research should serve why we are here.`,
     type: 'handoff',
   });
 
   // ── Phase 1: Research ───────────────────────────────
+
+  // Clear any existing research before starting fresh
+  await prisma.workshop.update({
+    where: { id: context.workshopId },
+    data: { prepResearch: Prisma.JsonNull },
+  });
 
   try {
     research = await runResearchAgent(context, onConversation);

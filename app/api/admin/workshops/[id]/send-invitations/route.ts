@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { sendDiscoveryInvitation } from '@/lib/email/send-invitation';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { logAuditEvent } from '@/lib/audit/audit-logger';
 
 export async function POST(
   request: NextRequest,
@@ -148,6 +149,10 @@ export async function POST(
           status: 'DISCOVERY_SENT',
         },
       });
+    }
+
+    if (user.organizationId && emailsSent > 0) {
+      logAuditEvent({ organizationId: user.organizationId, userId: user.userId ?? undefined, userEmail: user.email ?? undefined, action: 'SEND_INVITATION', resourceType: 'workshop', resourceId: workshopId, metadata: { emailsSent, emailsFailed, resend }, success: emailsFailed === 0 }).catch(err => console.error('[audit] send_invitation:', err));
     }
 
     return NextResponse.json({
