@@ -179,7 +179,7 @@ export default function MethodologyPage() {
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 text-center">
               The Directional Flow
             </h2>
-            <p className="text-lg text-white/60 text-center max-w-2xl mx-auto mb-12">
+            <p className="text-lg text-white/80 text-center max-w-2xl mx-auto mb-12">
               DREAM creates directional clarity  -  constraints are mapped right-to-left from the future, then transformation is planned left-to-right from the present.
             </p>
           </ScrollReveal>

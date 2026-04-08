@@ -65,11 +65,11 @@ function Cell({ value, note, isDream }: { value: CellValue; note?: string; isDre
   if (value === 'partial') {
     return (
       <span className="inline-flex items-center gap-1.5">
-        <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-white/55" fill="none">
+        <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-white/75" fill="none">
           <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
           <path d="M8 2 A6 6 0 0 1 8 14 Z" fill="currentColor" />
         </svg>
-        {note && <span className="text-[11px] text-white/55">{note}</span>}
+        {note && <span className="text-[11px] text-white/75">{note}</span>}
       </span>
     );
   }
@@ -100,7 +100,7 @@ export function ComparisonTable() {
           <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight mb-3">
             DREAM alongside the leading feedback platforms.
           </h2>
-          <p className="text-white/65 text-base leading-relaxed mb-10 max-w-2xl">
+          <p className="text-white/85 text-base leading-relaxed mb-10 max-w-2xl">
             Qualtrics, Medallia, InMoment and Forsta are excellent at capturing signal. DREAM does that too — and goes further. It maps how your organisation actually thinks, then cross-checks that corporate psychology against customer data and empirical evidence to surface the gaps between internal belief and external reality.
           </p>
         </ScrollReveal>
@@ -111,18 +111,18 @@ export function ComparisonTable() {
               {/* Header */}
               <thead>
                 <tr className="border-b border-white/[0.10]">
-                  <th className="text-left px-5 py-4 text-white/60 font-semibold text-xs tracking-wide w-[42%]">
+                  <th className="text-left px-5 py-4 text-white/80 font-semibold text-xs tracking-wide w-[42%]">
                     Capability
                   </th>
-                  {COMPETITORS.map(c => (
-                    <th key={c} className="px-3 py-4 text-center text-white/55 font-semibold text-xs tracking-wide">
-                      {c}
-                    </th>
-                  ))}
                   <th className="px-4 py-4 text-center text-xs font-bold tracking-wide"
                     style={{ color: '#5cf28e', background: 'rgba(92,242,142,0.07)' }}>
                     DREAM
                   </th>
+                  {COMPETITORS.map(c => (
+                    <th key={c} className="px-3 py-4 text-center text-white/75 font-semibold text-xs tracking-wide">
+                      {c}
+                    </th>
+                  ))}
                 </tr>
               </thead>
 
@@ -137,6 +137,11 @@ export function ComparisonTable() {
                     <td className="px-5 py-3.5 text-white/85 text-sm leading-snug font-medium">
                       {row.capability}
                     </td>
+                    <td className="px-4 py-3.5 text-center" style={{ background: 'rgba(92,242,142,0.05)' }}>
+                      <div className="flex items-center justify-center">
+                        <Cell value={row.dream} note={row.dreamNote} isDream />
+                      </div>
+                    </td>
                     {COMPETITORS.map(c => (
                       <td key={c} className="px-3 py-3.5 text-center">
                         <div className="flex items-center justify-center">
@@ -144,11 +149,7 @@ export function ComparisonTable() {
                         </div>
                       </td>
                     ))}
-                    <td className="px-4 py-3.5 text-center" style={{ background: 'rgba(92,242,142,0.05)' }}>
-                      <div className="flex items-center justify-center">
-                        <Cell value={row.dream} note={row.dreamNote} isDream />
-                      </div>
-                    </td>
+
                   </tr>
                 ))}
               </tbody>
@@ -157,7 +158,7 @@ export function ComparisonTable() {
         </ScrollReveal>
 
         <ScrollReveal delay={150}>
-          <p className="mt-5 text-white/45 text-xs leading-relaxed max-w-xl">
+          <p className="mt-5 text-white/70 text-xs leading-relaxed max-w-xl">
             Competitor assessment based on publicly available product documentation and feature comparisons.
             DREAM capabilities reflect the current platform.
           </p>

@@ -234,7 +234,7 @@ export default function EnterpriseAIAdoptionPage() {
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4 text-center">
               DREAM Creates Directional Clarity
             </h2>
-            <p className="text-lg text-white/60 text-center max-w-2xl mx-auto mb-12">
+            <p className="text-lg text-white/80 text-center max-w-2xl mx-auto mb-12">
               Not just data. Direction. Constraints are mapped right-to-left from the future,
               then transformation is planned left-to-right from the present.
             </p>
@@ -329,7 +329,7 @@ export default function EnterpriseAIAdoptionPage() {
 
           {/* Flow arrows */}
           <ScrollReveal delay={300}>
-            <div className="flex items-center justify-center gap-4 text-sm text-white/40">
+            <div className="flex items-center justify-center gap-4 text-sm text-white/70">
               <div className="flex items-center gap-2">
                 <ArrowRight className="h-4 w-4 text-[#5cf28e]" />
                 <span>Plan the path forward</span>

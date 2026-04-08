@@ -77,12 +77,12 @@ export function HeroSection() {
           <div className="flex justify-center mb-4">
             <a
               href="#assessment"
-              className="px-6 py-2.5 text-sm font-medium rounded-xl border border-white/15 text-white/60 hover:bg-white/5 hover:text-white/80 transition-all"
+              className="px-6 py-2.5 text-sm font-medium rounded-xl border border-white/15 text-white/80 hover:bg-white/5 hover:text-white/80 transition-all"
             >
               Take a 5-Minute Assessment
             </a>
           </div>
-          <p className="text-sm text-white/60 max-w-xl mx-auto mb-16">
+          <p className="text-sm text-white/80 max-w-xl mx-auto mb-16">
             Rate your readiness across People, Organisation, Customer, Technology
             and Regulation and receive a personalised transformation score.
           </p>
@@ -95,19 +95,19 @@ export function HeroSection() {
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 <AnimatedCounter target={1000} suffix="+" />
               </div>
-              <div className="text-xs sm:text-sm text-white/60 mt-1">Insights per session</div>
+              <div className="text-xs sm:text-sm text-white/80 mt-1">Insights per session</div>
             </div>
             <div>
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 10&times;
               </div>
-              <div className="text-xs sm:text-sm text-white/60 mt-1">Faster than surveys</div>
+              <div className="text-xs sm:text-sm text-white/80 mt-1">Faster than surveys</div>
             </div>
             <div>
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 <AnimatedCounter target={7} />
               </div>
-              <div className="text-xs sm:text-sm text-white/60 mt-1">Analytical views</div>
+              <div className="text-xs sm:text-sm text-white/80 mt-1">Analytical views</div>
             </div>
           </div>
         </ScrollReveal>

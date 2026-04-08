@@ -68,7 +68,7 @@ function SentimentVisual() {
     <div className="w-full h-32 flex flex-col justify-center gap-2 px-4">
       {['People', 'Organisation', 'Customer'].map((label, i) => (
         <div key={label} className="flex items-center gap-2">
-          <span className="text-[10px] text-white/50 w-16 text-right">{label}</span>
+          <span className="text-[10px] text-white/75 w-16 text-right">{label}</span>
           <div className="flex-1 flex gap-0.5 h-4">
             <div
               className="bg-emerald-400 rounded-l"
@@ -117,7 +117,7 @@ function BiasVisual() {
             0.72
           </text>
         </svg>
-        <div className="absolute -bottom-1 w-full text-center text-[9px] text-white/40">
+        <div className="absolute -bottom-1 w-full text-center text-[9px] text-white/70">
           Equity Score
         </div>
       </div>
