@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, ChevronDown, ChevronUp, Loader2, Sparkles, X, Mic, Square } from 'lucide-react';
+import { Send, ChevronDown, ChevronUp, Loader2, Sparkles, X, Mic } from 'lucide-react';
 import { useVoice } from './assessment/use-voice';
 
 interface ChatMessage {
@@ -16,10 +16,14 @@ const PLACEHOLDER_SUGGESTIONS = [
   'Who is DREAM built for?',
 ];
 
-/* Small animated wave — shown while AI is speaking */
-function SpeakingWave({ colour = '#5cf28e' }: { colour?: string }) {
+// Regex that matches end-of-sentence boundaries
+const SENTENCE_END_RE = /[.!?](?:\s|$)|\n\n/;
+
+/* Animated wave bars */
+function SpeakingWave({ colour = '#5cf28e', size = 'md' }: { colour?: string; size?: 'sm' | 'md' }) {
+  const h = size === 'sm' ? 'h-3' : 'h-4';
   return (
-    <span className="inline-flex items-end gap-[2px] h-4" aria-hidden>
+    <span className={`inline-flex items-end gap-[2px] ${h}`} aria-hidden>
       {[0, 1, 2, 3].map((i) => (
         <span
           key={i}
@@ -27,16 +31,11 @@ function SpeakingWave({ colour = '#5cf28e' }: { colour?: string }) {
           style={{
             backgroundColor: colour,
             height: '100%',
-            animation: `waveBar 0.9s ease-in-out ${i * 0.15}s infinite alternate`,
+            animation: `waveBar 0.85s ease-in-out ${i * 0.15}s infinite alternate`,
           }}
         />
       ))}
-      <style>{`
-        @keyframes waveBar {
-          from { transform: scaleY(0.25); opacity: 0.5; }
-          to   { transform: scaleY(1);    opacity: 1; }
-        }
-      `}</style>
+      <style>{`@keyframes waveBar{from{transform:scaleY(0.2);opacity:.4}to{transform:scaleY(1);opacity:1}}`}</style>
     </span>
   );
 }
@@ -45,52 +44,115 @@ export function DreamChatBar() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  const [speakResponse, setSpeakResponse] = useState(false); // true when last q came from mic
+
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Audio queue for sentence-chunked TTS
+  type AudioChunk = { sentence: string; audio: HTMLAudioElement; url: string };
+  const audioQueueRef = useRef<AudioChunk[]>([]);
+  const isPlayingRef = useRef(false);
+  const streamActiveRef = useRef(false); // true while GPT is still streaming
+
   const voice = useVoice();
-  const isSpeaking = voice.state === 'speaking';
   const isListening = voice.state === 'listening';
   const isVoiceProcessing = voice.state === 'processing' || voice.state === 'reflecting';
-  const micBusy = isListening || isVoiceProcessing;
 
-  // Rotate placeholder suggestions
   useEffect(() => {
-    const interval = setInterval(() => {
-      setPlaceholderIndex((prev) => (prev + 1) % PLACEHOLDER_SUGGESTIONS.length);
-    }, 4000);
+    const interval = setInterval(() => setPlaceholderIndex(p => (p + 1) % PLACEHOLDER_SUGGESTIONS.length), 4000);
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-scroll messages
   useEffect(() => {
     if (isExpanded && scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
   }, [messages, isExpanded]);
 
-  /* Core submit — accepts text directly so voice can call it without touching input state */
+  /* ── Audio queue player ─────────────────────────────────── */
+  const playNextChunk = useCallback(() => {
+    const chunk = audioQueueRef.current.shift();
+    if (!chunk) {
+      // Queue empty — stop only if stream is also done
+      if (!streamActiveRef.current) setIsSpeaking(false);
+      isPlayingRef.current = false;
+      return;
+    }
+
+    isPlayingRef.current = true;
+    setIsSpeaking(true);
+
+    chunk.audio.play().catch(() => {});
+    chunk.audio.onended = () => {
+      URL.revokeObjectURL(chunk.url);
+      // Reveal this sentence's text now that it's been spoken
+      setMessages(prev => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last?.role === 'assistant') {
+          updated[updated.length - 1] = {
+            role: 'assistant',
+            content: last.content + (last.content ? ' ' : '') + chunk.sentence,
+          };
+        }
+        return updated;
+      });
+      playNextChunk();
+    };
+  }, []);
+
+  /* Fetch TTS for one sentence and add to queue */
+  const enqueueSentence = useCallback(async (sentence: string) => {
+    const trimmed = sentence.trim();
+    if (!trimmed) return;
+    try {
+      const res = await fetch('/api/public/assessment/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: trimmed }),
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioQueueRef.current.push({ sentence: trimmed, audio, url });
+      if (!isPlayingRef.current) playNextChunk();
+    } catch { /* non-blocking */ }
+  }, [playNextChunk]);
+
+  const stopAllAudio = useCallback(() => {
+    // Drain queue and stop any playing audio
+    audioQueueRef.current.forEach(c => { try { c.audio.pause(); URL.revokeObjectURL(c.url); } catch { /* ignore */ } });
+    audioQueueRef.current = [];
+    isPlayingRef.current = false;
+    setIsSpeaking(false);
+    voice.stopSpeaking();
+  }, [voice]);
+
+  /* ── Core message submit ────────────────────────────────── */
   const submitMessage = useCallback(async (question: string, withVoice: boolean) => {
     if (!question || isStreaming) return;
 
+    stopAllAudio();
     setIsExpanded(true);
-    setSpeakResponse(withVoice);
 
     const userMsg: ChatMessage = { role: 'user', content: question };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-
+    const history = [...messages, userMsg];
+    setMessages(history);
     setIsStreaming(true);
-    let assistantContent = '';
+    streamActiveRef.current = true;
+
+    let sentenceBuffer = '';
+    let fullContent = '';
 
     try {
       const response = await fetch('/api/public/dream-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, history: newMessages.slice(-6) }),
+        body: JSON.stringify({ question, history: history.slice(-6) }),
       });
 
       if (!response.ok) {
@@ -102,128 +164,125 @@ export function DreamChatBar() {
       if (!reader) throw new Error('No response stream');
       const decoder = new TextDecoder();
 
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+      // For voice mode: start with empty message — text revealed as audio plays
+      // For text mode: stream content directly into message
+      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n')) {
+        for (const line of decoder.decode(value, { stream: true }).split('\n')) {
           if (!line.startsWith('data: ')) continue;
           try {
             const data = JSON.parse(line.slice(6));
+            if (data.error) throw new Error(data.error);
+
             if (data.content) {
-              assistantContent += data.content;
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', content: assistantContent };
-                return updated;
-              });
+              fullContent += data.content;
+
+              if (withVoice) {
+                // Accumulate into sentence buffer; dispatch complete sentences to TTS
+                sentenceBuffer += data.content;
+                let match: RegExpExecArray | null;
+                while ((match = SENTENCE_END_RE.exec(sentenceBuffer)) !== null) {
+                  const end = match.index + match[0].length;
+                  const sentence = sentenceBuffer.slice(0, end);
+                  sentenceBuffer = sentenceBuffer.slice(end);
+                  enqueueSentence(sentence); // fire-and-forget — queued async
+                }
+                // Text is NOT streamed to screen — voice reveals it
+              } else {
+                // Text mode: stream directly to screen as before
+                setMessages(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { role: 'assistant', content: fullContent };
+                  return updated;
+                });
+              }
             }
-            if (data.error) {
-              assistantContent += `\n\n*Error: ${data.error}*`;
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', content: assistantContent };
-                return updated;
-              });
-            }
-          } catch { /* skip malformed SSE */ }
+          } catch (e) {
+            if (e instanceof Error && e.message !== 'undefined') throw e;
+          }
         }
       }
 
-      // Speak the response if triggered by voice
-      if (withVoice && assistantContent) {
-        voice.speak(assistantContent);
+      // Flush any remaining buffer (last sentence may not end with punctuation)
+      if (withVoice && sentenceBuffer.trim()) {
+        enqueueSentence(sentenceBuffer);
       }
+
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to get response';
-      setMessages((prev) => {
-        if (prev.length > 0 && prev[prev.length - 1].role === 'assistant' && prev[prev.length - 1].content === '') {
-          return [...prev.slice(0, -1), { role: 'assistant', content: `*${errorMsg}*` }];
+      const msg = error instanceof Error ? error.message : 'Failed to get response';
+      setMessages(prev => {
+        const updated = [...prev];
+        if (updated[updated.length - 1]?.role === 'assistant' && !updated[updated.length - 1].content) {
+          updated[updated.length - 1] = { role: 'assistant', content: `*${msg}*` };
+        } else {
+          updated.push({ role: 'assistant', content: `*${msg}*` });
         }
-        return [...prev, { role: 'assistant', content: `*${errorMsg}*` }];
+        return updated;
       });
     } finally {
       setIsStreaming(false);
-    }
-  }, [isStreaming, messages, voice]);
-
-  /* Text submission */
-  const handleSubmit = useCallback(() => {
-    const question = input.trim();
-    if (!question) return;
-    setInput('');
-    voice.stopSpeaking();
-    submitMessage(question, false);
-  }, [input, submitMessage, voice]);
-
-  /* Mic button — tap to speak, auto-submits on transcript */
-  const handleMicClick = useCallback(() => {
-    if (isSpeaking) {
-      voice.stopSpeaking();
-      return;
-    }
-    if (isListening) {
-      voice.stopListening();
-      return;
-    }
-    voice.stopSpeaking();
-    voice.startListening((transcript) => {
-      if (transcript.trim()) {
-        submitMessage(transcript.trim(), true);
+      streamActiveRef.current = false;
+      // If queue already drained while streaming, ensure speaking flag cleared
+      if (audioQueueRef.current.length === 0 && !isPlayingRef.current) {
+        setIsSpeaking(false);
       }
-    });
-  }, [isSpeaking, isListening, voice, submitMessage]);
+    }
+  }, [isStreaming, messages, stopAllAudio, enqueueSentence]);
 
-  const handleSuggestionClick = (suggestion: string) => {
-    setInput(suggestion);
+  /* Text submit */
+  const handleSubmit = useCallback(() => {
+    const q = input.trim();
+    if (!q) return;
+    setInput('');
+    submitMessage(q, false);
+  }, [input, submitMessage]);
+
+  /* Mic button */
+  const handleMicClick = useCallback(() => {
+    if (isSpeaking) { stopAllAudio(); return; }
+    if (isListening) { voice.stopListening(); return; }
+    stopAllAudio();
+    voice.startListening((transcript) => {
+      if (transcript.trim()) submitMessage(transcript.trim(), true);
+    });
+  }, [isSpeaking, isListening, voice, stopAllAudio, submitMessage]);
+
+  const handleSuggestionClick = (s: string) => {
+    setInput(s);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
-  /* Mic button appearance */
-  const micLabel = isSpeaking ? 'Stop speaking' : isListening ? 'Stop listening' : 'Ask by voice';
-  const micBg = isSpeaking
-    ? 'bg-[#5cf28e]/20 hover:bg-[#5cf28e]/30'
-    : isListening
-    ? 'bg-red-500/15 hover:bg-red-500/25'
-    : 'bg-slate-100 hover:bg-slate-200';
   const micColour = isSpeaking ? '#5cf28e' : isListening ? '#ef4444' : '#64748b';
+  const micBg = isSpeaking ? 'bg-[#5cf28e]/15' : isListening ? 'bg-red-500/15' : 'bg-slate-100 hover:bg-slate-200';
 
   return (
     <div id="ask-dream" className="fixed bottom-0 left-0 right-0 z-50">
-      {/* Expanded message thread */}
+      {/* Expanded thread */}
       {isExpanded && messages.length > 0 && (
         <div className="bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl">
           <div className="max-w-4xl mx-auto">
-            {/* Thread header */}
             <div className="flex items-center justify-between px-6 py-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                {isSpeaking ? (
-                  <SpeakingWave />
-                ) : (
-                  <Sparkles className="h-4 w-4 text-[#50c878]" />
-                )}
+                {isSpeaking ? <SpeakingWave size="sm" /> : <Sparkles className="h-4 w-4 text-[#50c878]" />}
                 <span className="text-xs text-slate-500 font-medium">
-                  {isSpeaking ? 'DREAM AI is speaking…' : 'DREAM AI'}
+                  {isSpeaking ? 'Speaking…' : isStreaming ? 'Thinking…' : 'DREAM AI'}
                 </span>
               </div>
               <div className="flex items-center gap-1">
                 {isSpeaking && (
-                  <button
-                    onClick={() => voice.stopSpeaking()}
-                    className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded flex items-center gap-1"
-                    title="Stop speaking"
-                  >
-                    <Square className="h-3 w-3" /> Stop
+                  <button onClick={stopAllAudio} className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded">
+                    Stop
                   </button>
                 )}
                 <button onClick={() => setIsExpanded(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded">
                   <ChevronDown className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => { voice.stopSpeaking(); setMessages([]); setIsExpanded(false); }}
+                  onClick={() => { stopAllAudio(); setMessages([]); setIsExpanded(false); }}
                   className="text-slate-400 hover:text-slate-600 p-1 rounded"
                 >
                   <X className="h-4 w-4" />
@@ -231,29 +290,34 @@ export function DreamChatBar() {
               </div>
             </div>
 
-            {/* Messages */}
             <div ref={scrollAreaRef} className="max-h-96 overflow-y-auto px-6 py-4 space-y-4">
-              {messages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-slate-100 text-slate-700'
-                        : 'bg-[#5cf28e]/10 text-slate-700 border border-[#50c878]/20'
-                    }`}
-                  >
-                    {/* Show wave on last assistant message while speaking */}
-                    {msg.role === 'assistant' && isSpeaking && i === messages.length - 1 ? (
-                      <div className="flex items-center gap-2">
+              {messages.map((msg, i) => {
+                const isLastAssistant = msg.role === 'assistant' && i === messages.length - 1;
+                return (
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-slate-100 text-slate-700'
+                          : 'bg-[#5cf28e]/10 text-slate-700 border border-[#50c878]/20'
+                      }`}
+                    >
+                      {isLastAssistant && isSpeaking && !msg.content ? (
+                        /* Voice mode: waiting for first sentence — show wave only */
                         <SpeakingWave />
-                        <span className="whitespace-pre-wrap">{msg.content || '...'}</span>
-                      </div>
-                    ) : (
-                      <div className="whitespace-pre-wrap">{msg.content || '...'}</div>
-                    )}
+                      ) : (
+                        <div className="whitespace-pre-wrap">
+                          {msg.content || (isLastAssistant && isStreaming ? '…' : '')}
+                          {/* Cursor while voice is speaking more sentences */}
+                          {isLastAssistant && isSpeaking && msg.content && (
+                            <span className="inline-block w-1 h-4 bg-[#5cf28e] ml-0.5 align-middle animate-pulse" />
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -262,16 +326,15 @@ export function DreamChatBar() {
       {/* Input bar */}
       <div className="bg-white/90 backdrop-blur-xl border-t border-slate-200 shadow-2xl">
         <div className="max-w-4xl mx-auto px-6 py-3">
-          {/* Suggestion chips — only when no messages */}
           {messages.length === 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
-              {PLACEHOLDER_SUGGESTIONS.map((suggestion) => (
+              {PLACEHOLDER_SUGGESTIONS.map((s) => (
                 <button
-                  key={suggestion}
-                  onClick={() => handleSuggestionClick(suggestion)}
+                  key={s}
+                  onClick={() => handleSuggestionClick(s)}
                   className="px-3 py-1 text-xs text-[#33824d] bg-[#5cf28e]/10 border border-[#50c878]/30 rounded-full hover:bg-[#5cf28e]/20 transition-colors"
                 >
-                  {suggestion}
+                  {s}
                 </button>
               ))}
             </div>
@@ -286,18 +349,12 @@ export function DreamChatBar() {
 
             <Sparkles className="h-5 w-5 text-[#50c878] flex-shrink-0" />
 
-            {/* Listening state — show interim transcript or prompt */}
             {isListening ? (
               <div className="flex-1 flex items-center gap-2">
                 <span className="text-sm text-slate-400 italic animate-pulse">
                   {voice.interimTranscript || 'Listening…'}
                 </span>
-                <span className="flex gap-0.5 items-end h-4">
-                  {[0,1,2].map(i => (
-                    <span key={i} className="w-1 rounded-full bg-red-400"
-                      style={{ height: '100%', animation: `waveBar 0.6s ease-in-out ${i*0.2}s infinite alternate` }} />
-                  ))}
-                </span>
+                <SpeakingWave colour="#ef4444" size="sm" />
               </div>
             ) : (
               <input
@@ -305,11 +362,9 @@ export function DreamChatBar() {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
-                }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
                 placeholder={PLACEHOLDER_SUGGESTIONS[placeholderIndex]}
-                disabled={isStreaming || micBusy}
+                disabled={isStreaming || isVoiceProcessing}
                 className="flex-1 text-sm text-slate-700 placeholder:text-slate-400 bg-transparent border-0 outline-none disabled:opacity-50"
               />
             )}
@@ -317,8 +372,7 @@ export function DreamChatBar() {
             {/* WhatsApp */}
             <a
               href="https://wa.me/447471944765?text=Hi%20Andrew%2C%20I%20have%20a%20question%20about%20DREAM%20Discovery"
-              target="_blank"
-              rel="noopener noreferrer"
+              target="_blank" rel="noopener noreferrer"
               title="Chat with Andrew on WhatsApp"
               className="flex-shrink-0 p-2.5 rounded-xl bg-[#25D366]/10 hover:bg-[#25D366]/20 transition-all"
             >
@@ -327,17 +381,17 @@ export function DreamChatBar() {
               </svg>
             </a>
 
-            {/* Mic button — always visible; doubles as stop-speaking when AI is talking */}
+            {/* Mic — always visible; tap while speaking to stop */}
             {voice.supported && (
               <button
                 onClick={handleMicClick}
                 disabled={isStreaming || isVoiceProcessing}
-                title={micLabel}
+                title={isSpeaking ? 'Stop' : isListening ? 'Stop listening' : 'Ask by voice'}
                 className={`flex-shrink-0 p-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${micBg}`}
-                style={isListening ? { boxShadow: `0 0 0 4px rgba(239,68,68,0.15)` } : undefined}
+                style={isListening ? { boxShadow: '0 0 0 4px rgba(239,68,68,0.15)' } : undefined}
               >
                 {isSpeaking ? (
-                  <SpeakingWave colour={micColour} />
+                  <SpeakingWave colour={micColour} size="sm" />
                 ) : isVoiceProcessing ? (
                   <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
                 ) : (
@@ -346,12 +400,12 @@ export function DreamChatBar() {
               </button>
             )}
 
-            {/* Send button — only when there's typed text */}
+            {/* Send — only when text is typed */}
             {input.trim() && (
               <button
                 onClick={handleSubmit}
                 disabled={isStreaming}
-                className="flex-shrink-0 p-2.5 rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+                className="flex-shrink-0 p-2.5 rounded-xl bg-[#5cf28e] text-[#0d0d0d] hover:bg-[#50c878] disabled:opacity-30 transition-all shadow-sm"
               >
                 {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
