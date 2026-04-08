@@ -36,7 +36,8 @@ export type IndustryDimension = {
 
 export type ActorResearch = {
   role: string;              // "Customer Service Agent", "Operations Manager"
-  description: string;       // What this role does in this context (1-2 sentences)
+  description: string;       // What this role does in this context (1-2 sentences) + primary objective
+  objective?: string;        // What this role optimises for — how they see the world (e.g. "stability and SLA adherence")
   seniority: string;         // "executive" | "manager" | "operational" | "external"
   department: string;        // "Operations", "Technology", "Quality", etc.
 };
