@@ -24,6 +24,7 @@ model Organization {
   updatedAt      DateTime   @updatedAt
   users          User[]
   workshops      Workshop[]
+  execLicences   ExecLicence[]
 
   @@map("organizations")
 }
@@ -77,6 +78,7 @@ model LoginAttempt {
 model Session {
   id             String    @id @default(cuid())
   userId         String?
+  execLicenceId  String?
   token          String    @unique
   userAgent      String?
   ipAddress      String?
@@ -91,6 +93,25 @@ model Session {
   @@index([expiresAt])
   @@index([userId, expiresAt])
   @@map("sessions")
+}
+
+model ExecLicence {
+  id             String    @id @default(cuid())
+  organizationId String
+  email          String    @unique
+  hashedPassword String
+  name           String
+  title          String?
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("exec_licences")
 }
 
 model PasswordResetToken {

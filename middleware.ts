@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionWithDB, createSessionToken } from '@/lib/auth/session';
+import { verifyExecSessionWithDB } from '@/lib/auth/exec-session';
 import * as jose from 'jose';
 
 // Node.js runtime so Prisma DB session checks work in middleware
@@ -150,9 +151,33 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // ── Executive portal guard ──────────────────────────────────────────────────
+  // /executive (root) is the login page — allow through without auth check.
+  // Everything under /executive/* and /api/executive/* (except /api/executive/login) is protected.
+  const isExecProtected = pathname.startsWith('/executive/') && pathname !== '/executive';
+  const isExecApi = pathname.startsWith('/api/executive/') && pathname !== '/api/executive/login';
+
+  if (isExecProtected || isExecApi) {
+    const execCookie = request.cookies.get('exec-session');
+    let execSession = null;
+    if (execCookie?.value) {
+      try {
+        execSession = await verifyExecSessionWithDB(execCookie.value);
+      } catch {
+        execSession = null;
+      }
+    }
+    if (!execSession) {
+      if (isExecApi) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      return NextResponse.redirect(new URL('/executive', request.url));
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*', '/tenant/:path*', '/login'],
+  matcher: ['/admin/:path*', '/api/admin/:path*', '/tenant/:path*', '/login', '/executive/:path*', '/api/executive/:path*'],
 };
