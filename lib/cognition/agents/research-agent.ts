@@ -46,8 +46,18 @@ const MAX_ITERATIONS = 14;        // Enough for thorough 4-phase research + synt
 const LOOP_TIMEOUT_MS = 120_000;  // 2 minutes — gpt-4o needs a little more room
 const MODEL = 'gpt-4o';           // Full model — research synthesis quality matters here
 const LIVE_REVIEW_MODEL = 'gpt-4o-mini';  // Keep fast for latency-sensitive live reviews
-const MIN_SEARCHES_BEFORE_COMMIT = 6;
-const MIN_SEARCHES_DOMAIN_TRACK = 7;
+const MIN_SEARCHES_BEFORE_COMMIT = 8;
+const MIN_SEARCHES_DOMAIN_TRACK = 10;
+
+// Domains banned from research output — citing these will cause commit rejection
+const BANNED_SOURCE_DOMAINS = [
+  'businessmodelcanvastemplate.com',
+  'simplywall.st',
+  'simplywallst.com',
+  'comparably.com',
+  'koalagains.com',
+  'clutch.co',
+];
 
 // ══════════════════════════════════════════════════════════════
 // TOOL DEFINITIONS
@@ -1044,31 +1054,38 @@ ${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${cont
 
 ═══ SOURCE QUALITY HIERARCHY ═══
 
-When searching, ALWAYS prioritise sources in this order. Never cite a lower-tier source when a higher-tier source is available:
+When searching, ALWAYS prioritise sources in this order. Never cite a lower-tier source when a higher-tier source is available.
 
-TIER 1 — PREFERRED (use these first):
-- Official company investor relations pages (ir.company.com, annual reports, earnings releases)
-- Official company newsroom / press releases (newsroom.company.com, company.com/news)
-- Official company About / Leadership pages
-- Tier-1 analyst reports (Everest Group, Gartner, Forrester) referenced by the company itself
-- Regulatory filings (SEC 10-K, 10-Q, 8-K for US-listed companies)
+✅ TIER 1 — USE THESE FIRST (primary sources only):
+- Official company website: About, What We Do, News/Newsroom pages (company.com/about, company.com/news)
+- Investor Relations: earnings releases, annual reports, 10-K/10-Q filings, IR page (ir.company.com)
+- Official press releases: acquisitions, partnerships, AI announcements, product launches
+- Analyst reports cited by the company itself (Everest Group, Gartner, Forrester — via company.com)
+- SEC regulatory filings (EDGAR: sec.gov)
 
-TIER 2 — ACCEPTABLE:
-- Major financial press (Reuters, Bloomberg, Financial Times, Wall Street Journal)
-- Industry trade publications (CX Today, Contact Centre Helper, NASSCOM)
-- Company LinkedIn official pages for headcount and leadership
+✅ TIER 2 — ACCEPTABLE:
+- Fortune (rankings, scale validation)
+- Major financial press: Reuters, Bloomberg, Financial Times, Wall Street Journal
+- Industry trade publications: CX Today, Contact Centre Helper, NASSCOM
+- Yahoo Finance (basic financial validation only)
+- Everest Group, Gartner, Forrester reports — original source, not quoted via aggregator
+- Company official LinkedIn page (headcount, leadership)
 
-TIER 3 — USE WITH CAUTION, FLAG CLEARLY:
-- Investing.com, MarketWatch, Seeking Alpha — acceptable for financial data but flag as secondary
-- Company Wikipedia page — acceptable for history/founding ONLY; never for current state
-- LinkedIn individual profiles
+⚠️ TIER 3 — USE WITH CAUTION, ALWAYS FLAG:
+- Wikipedia — ONLY for company history and founding dates. NEVER for current state, performance, or strategy. Always flag as: [History only — Wikipedia].
+- News aggregators — only if findings are consistent with Tier 1/2 sources. Flag as secondary.
+- Glassdoor, Indeed — acceptable for employee sentiment only. Flag clearly.
 
-TIER 4 — DO NOT USE:
-- businessmodelcanvastemplate.com, koalagains.com, clutch.co, comparably.com, or any aggregator / listicle / SEO content farm
-- Anonymous blog posts or unverifiable "analysis" sites
-- Any source that appears to aggregate or repackage other sources without primary research
+❌ TIER 4 — BANNED. DO NOT CITE. COMMIT WILL BE REJECTED:
+- businessmodelcanvastemplate.com — banned
+- simplywall.st / simplywallst.com — banned
+- comparably.com — banned
+- koalagains.com — banned
+- clutch.co — banned
+- Any "top 10 competitors" style blog, listicle, or SEO content farm
+- Any site that aggregates or repackages other sources without original research
 
-When you find a Tier 4 source, discard it and search again with a more targeted query toward official sources.
+When your search returns a Tier 4 result, DISCARD IT. Do not read it. Search again with a more targeted query pointing at official sources. If you cite a banned source, your commit will be automatically rejected and you will be required to replace it.
 
 ═══ COMPETITIVE LANDSCAPE FRAMING ═══
 
@@ -1224,9 +1241,9 @@ Remember: every fact must be cited. Every challenge and development must end wit
         }
 
         if (fnName === 'commit_research') {
-          // ── Commit gate: reject premature commits ──
-          if (searchCount < minSearches && iteration < MAX_ITERATIONS - 1) {
-            console.log(`[Research Agent] Commit attempted after only ${searchCount}/${minSearches} searches — nudging to continue`);
+          // ── Commit gate 1: reject premature commits (no bypass on last iteration) ──
+          if (searchCount < minSearches) {
+            console.log(`[Research Agent] Commit attempted after only ${searchCount}/${minSearches} searches — rejecting`);
             onConversation?.({
               timestampMs: Date.now(),
               agent: 'research-agent',
@@ -1239,7 +1256,33 @@ Remember: every fact must be cited. Every challenge and development must end wit
               tool_call_id: toolCall.id,
               content: JSON.stringify({
                 status: 'rejected',
-                reason: `You have only conducted ${searchCount} searches so far. The minimum for a thorough research briefing is ${minSearches}. Please continue researching — explore more angles before committing. Your current findings would produce a surface-level brief. Have you covered: company foundation, industry/competitive landscape, ${context.dreamTrack === 'DOMAIN' ? 'domain deep-dive, ' : ''}customer journey, strategic dimensions, and actor roles?`,
+                reason: `COMMIT REJECTED: Only ${searchCount} searches conducted. The minimum for a thorough briefing is ${minSearches}. Continue researching. Required coverage: official company site (About, News, IR), competitive landscape from official/financial sources, ${context.dreamTrack === 'DOMAIN' ? `domain deep-dive for "${context.targetDomain || 'the domain'}", ` : ''}employee sentiment (Glassdoor/Indeed), recent financial performance, industry analyst data. Do not commit until all angles are covered.`,
+              }),
+            });
+            continue;
+          }
+
+          // ── Commit gate 2: banned source detection ──
+          const allResearchText = [
+            fnArgs.companyOverview,
+            fnArgs.industryContext,
+            fnArgs.competitorLandscape,
+            fnArgs.domainInsights,
+            ...(Array.isArray(fnArgs.keyPublicChallenges) ? fnArgs.keyPublicChallenges : []),
+            ...(Array.isArray(fnArgs.recentDevelopments) ? fnArgs.recentDevelopments : []),
+            ...(Array.isArray(fnArgs.sourceUrls) ? fnArgs.sourceUrls : []),
+          ].filter(Boolean).join(' ').toLowerCase();
+
+          const bannedFound = BANNED_SOURCE_DOMAINS.filter(domain => allResearchText.includes(domain.toLowerCase()));
+
+          if (bannedFound.length > 0) {
+            console.log(`[Research Agent] Commit rejected — banned sources found: ${bannedFound.join(', ')}`);
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({
+                status: 'rejected',
+                reason: `COMMIT REJECTED: Your output cites banned Tier 4 sources: ${bannedFound.join(', ')}. These sources are not permitted. Remove ALL findings sourced from these domains. Replace them with Tier 1 sources: the company's official site (About, News, IR), official press releases, SEC filings, or Tier 2 sources (Reuters, Bloomberg, FT, WSJ, Fortune). Search again using targeted queries toward official sources before committing.`,
               }),
             });
             continue;
