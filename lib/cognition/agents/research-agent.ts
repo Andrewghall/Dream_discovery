@@ -1620,6 +1620,7 @@ function fallbackResearch(context: PrepContext): WorkshopPrepResearch {
     workshopBrief: null,
     workshopHypotheses: null,
     expectedRoomTensions: null,
+    workshopImplications: null,
     researchedAtMs: Date.now(),
     sourceUrls: [],
     journeyStages: null,
