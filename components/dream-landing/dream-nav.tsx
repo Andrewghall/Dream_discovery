@@ -164,8 +164,11 @@ export function DreamNav() {
         <div className="hidden lg:flex items-center gap-3">
           <a
             href="/experience"
-            className="px-3 py-2 text-sm font-medium rounded-lg text-[#5cf28e] border border-[#5cf28e]/20 hover:bg-[#5cf28e]/10 transition-all"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg text-[#5cf28e] border border-[#5cf28e]/25 bg-[#5cf28e]/5 hover:bg-[#5cf28e]/15 transition-all"
           >
+            <svg viewBox="0 0 12 12" fill="currentColor" className="w-3 h-3 shrink-0">
+              <path d="M2 1.5a.5.5 0 0 1 .8-.4l7 4.5a.5.5 0 0 1 0 .8l-7 4.5A.5.5 0 0 1 2 10.5v-9Z"/>
+            </svg>
             The DREAM Story
           </a>
           <a
