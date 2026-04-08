@@ -223,7 +223,7 @@ export default function DreamLandingPage() {
 
                 {/* Breadth signal */}
                 <div className="mt-8 pt-6 border-t border-white/10">
-                  <p className="text-white/30 text-xs font-semibold uppercase tracking-wider mb-3">DREAM also powers</p>
+                  <p className="text-white/55 text-xs font-semibold uppercase tracking-wider mb-3">DREAM also powers</p>
                   <div className="flex flex-wrap gap-2 mb-4">
                     {['Operating model redesign', 'Compliance & regulation', 'Human-AI workflow design', 'Partner ecosystem alignment'].map((uc) => (
                       <span key={uc} className="px-3 py-1.5 text-xs text-white/50 border border-white/10 rounded-full">

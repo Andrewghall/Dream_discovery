@@ -51,7 +51,7 @@ export function HeroSection() {
 
         {/* Elevator pitch */}
         <ScrollReveal delay={500}>
-          <p className="text-lg md:text-xl text-white/60 max-w-3xl mx-auto leading-relaxed mb-10">
+          <p className="text-lg md:text-xl text-white/75 max-w-3xl mx-auto leading-relaxed mb-10">
             Built for leadership teams who must align strategy, cut through conflicting
             priorities, and produce decisions executives can defend. Multiple agentic AI specialists
             work in concert  -  capturing, synthesising, and analysing  -  to turn how your
@@ -82,7 +82,7 @@ export function HeroSection() {
               Take a 5-Minute Assessment
             </a>
           </div>
-          <p className="text-sm text-white/40 max-w-xl mx-auto mb-16">
+          <p className="text-sm text-white/60 max-w-xl mx-auto mb-16">
             Rate your readiness across People, Organisation, Customer, Technology
             and Regulation and receive a personalised transformation score.
           </p>
@@ -95,19 +95,19 @@ export function HeroSection() {
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 <AnimatedCounter target={1000} suffix="+" />
               </div>
-              <div className="text-xs sm:text-sm text-white/40 mt-1">Insights per session</div>
+              <div className="text-xs sm:text-sm text-white/60 mt-1">Insights per session</div>
             </div>
             <div>
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 10&times;
               </div>
-              <div className="text-xs sm:text-sm text-white/40 mt-1">Faster than surveys</div>
+              <div className="text-xs sm:text-sm text-white/60 mt-1">Faster than surveys</div>
             </div>
             <div>
               <div className="text-3xl md:text-4xl font-bold text-[#5cf28e]">
                 <AnimatedCounter target={7} />
               </div>
-              <div className="text-xs sm:text-sm text-white/40 mt-1">Analytical views</div>
+              <div className="text-xs sm:text-sm text-white/60 mt-1">Analytical views</div>
             </div>
           </div>
         </ScrollReveal>

@@ -100,7 +100,7 @@ const JOURNEY: Record<string, Record<string, JourneyCell>> = {
 /* ── Visual config ─────────────────────────────────────── */
 
 const AGENCY_CONFIG: Record<AgencyLevel, { icon: string; label: string; bg: string; text: string }> = {
-  human:      { icon: '\u{1F464}', label: 'Human',      bg: 'bg-slate-700',    text: 'text-slate-300' },
+  human:      { icon: '\u{1F464}', label: 'Human',      bg: 'bg-slate-700',    text: 'text-white/80' },
   assisted:   { icon: '\u{1F91D}', label: 'Assisted',   bg: 'bg-blue-900/60',  text: 'text-blue-300' },
   autonomous: { icon: '\u{1F916}', label: 'Autonomous', bg: 'bg-emerald-900/60', text: 'text-emerald-300' },
 };
@@ -148,7 +148,7 @@ export function JourneyShowcase() {
                 <div /> {/* empty corner */}
                 {STAGES.map((stage) => (
                   <div key={stage} className="text-center">
-                    <span className="text-xs font-bold text-white/40 uppercase tracking-wider">
+                    <span className="text-xs font-bold text-white/65 uppercase tracking-wider">
                       {stage}
                     </span>
                   </div>
