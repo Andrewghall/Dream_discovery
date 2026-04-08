@@ -42,7 +42,13 @@ EthentaFlow uses a **deterministic diagnostic engine** for sentiment, bias, and 
 ---
 
 ## Discovery Phase — Deep Detail
-Each participant has a private 15-minute AI-guided conversation covering 5 organisational domains:
+Discovery is the full pre-workshop intelligence gathering phase. It is not limited to AI conversations — it encompasses all structured input methods used to capture the organisational picture before the live workshop, including:
+
+- **AI-guided individual conversations** — private 15-minute structured sessions with each participant
+- **Workshops** — pre-workshop group sessions that surface collective perspectives and dynamics
+- **Field interviews** — in-person or remote interviews with key stakeholders conducted as part of the discovery process
+
+All discovery inputs cover the same 5 organisational domains:
 
 1. **People** — Capability, culture, collaboration, leadership effectiveness
 2. **Organisation** — Governance, processes, decision-making, structure, policies
@@ -50,7 +56,7 @@ Each participant has a private 15-minute AI-guided conversation covering 5 organ
 4. **Technology** — Systems, tools, data, digital capability, technical debt
 5. **Regulation** — Compliance requirements, regulatory constraints, risk management
 
-During each conversation, the AI:
+During AI-guided conversations, the AI:
 - Asks structured questions about current state, desired state, and projected state (if nothing changes)
 - Captures maturity ratings on a 1–10 scale for each domain
 - Extracts insights automatically: what works, challenges, constraints, visions, beliefs
@@ -58,7 +64,7 @@ During each conversation, the AI:
 - Supports voice input and multiple languages
 - Generates a detailed conversation report for each participant
 
-All conversations are synthesised into a Discovery Intelligence briefing that feeds directly into the live workshop.
+All discovery inputs — conversations, workshop outputs, and field interview findings — are synthesised into a Discovery Intelligence briefing that feeds directly into the live workshop.
 
 ### Discovery Analysis Engine (5 components)
 - **Alignment Heatmap** — Visual matrix showing alignment and divergence across themes and actors
