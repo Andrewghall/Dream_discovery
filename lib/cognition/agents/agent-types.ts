@@ -51,6 +51,11 @@ export type WorkshopPrepResearch = {
   researchedAtMs: number;
   sourceUrls: string[];
 
+  // Purpose-led synthesis — the core of a useful research brief
+  keyFacilitatorInsight: string | null;   // The single most important reframing insight for the facilitator
+  strategicTensions: string[] | null;     // Company-specific paradoxes/fault lines to probe in the workshop
+  workshopBrief: string | null;           // Research mapped explicitly to each workshop purpose/outcome
+
   // Research-driven workshop configuration (null for legacy workshops)
   journeyStages: JourneyStageResearch[] | null;    // Typical customer journey for this industry
   industryDimensions: IndustryDimension[] | null;   // Industry-specific axes (replaces hardcoded 5)
