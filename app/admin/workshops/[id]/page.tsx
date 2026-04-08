@@ -338,9 +338,6 @@ const handleBackfillReports = async () => {
               </Button>
             </div>
           </div>
-          {workshop.description && (
-            <p className="text-muted-foreground">{workshop.description}</p>
-          )}
         </div>
 
         {/* Stats */}
