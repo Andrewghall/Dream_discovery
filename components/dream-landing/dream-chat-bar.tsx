@@ -72,6 +72,7 @@ export function DreamChatBar() {
   const isPlayingRef = useRef(false);
   const streamActiveRef = useRef(false); // true while GPT is still streaming
   const spokenContentRef = useRef('');  // text already fully spoken — base for word reveal
+  const ttsGenRef = useRef(0);          // incremented on each new message; stale fetches self-discard
 
   const voice = useVoice();
   const isListening = voice.state === 'listening';
@@ -104,8 +105,10 @@ export function DreamChatBar() {
     let wordIndex = 0;
     let wordInterval: ReturnType<typeof setInterval> | null = null;
 
+    let revealStarted = false;
     const startWordReveal = () => {
-      if (words.length === 0 || !chunk.audio.duration) return;
+      if (revealStarted || words.length === 0 || !chunk.audio.duration) return;
+      revealStarted = true;
       const msPerWord = Math.max(40, (chunk.audio.duration * 1000) / words.length);
       wordInterval = setInterval(() => {
         wordIndex = Math.min(wordIndex + 1, words.length);
@@ -151,24 +154,25 @@ export function DreamChatBar() {
   const enqueueSentence = useCallback(async (sentence: string) => {
     const trimmed = stripMarkdown(sentence.trim());
     if (!trimmed) return;
+    const gen = ttsGenRef.current; // capture generation — if a new message starts, this goes stale
     try {
       const res = await fetch('/api/public/assessment/speak', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: trimmed }),
       });
-      if (!res.ok) return;
+      if (!res.ok || gen !== ttsGenRef.current) return; // stale or error — discard
       const blob = await res.blob();
+      if (gen !== ttsGenRef.current) return; // still stale after second await — discard
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      // Store the clean (stripped) sentence so display matches what was spoken
       audioQueueRef.current.push({ sentence: trimmed, audio, url });
       if (!isPlayingRef.current) playNextChunk();
     } catch { /* non-blocking */ }
   }, [playNextChunk]);
 
   const stopAllAudio = useCallback(() => {
-    // Drain queue and stop any playing audio
+    ttsGenRef.current++;          // invalidate all in-flight TTS fetches immediately
     audioQueueRef.current.forEach(c => { try { c.audio.pause(); URL.revokeObjectURL(c.url); } catch { /* ignore */ } });
     audioQueueRef.current = [];
     isPlayingRef.current = false;
