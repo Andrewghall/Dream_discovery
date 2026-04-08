@@ -78,10 +78,13 @@ export default function DreamLandingPage() {
       {/* ═══ 1. HERO ═══ */}
       <HeroSection />
 
-      {/* ═══ 2. CAPABILITY MATURITY ASSESSMENT ═══ */}
+      {/* ═══ 2. COMPETITIVE COMPARISON TABLE ═══ */}
+      <ComparisonTable />
+
+      {/* ═══ 3. CAPABILITY MATURITY ASSESSMENT ═══ */}
       <AssessmentSection />
 
-      {/* ═══ 3. VALUE GRID ═══ */}
+      {/* ═══ 4. VALUE GRID ═══ */}
       <section className="bg-white py-16">
         <div className="max-w-5xl mx-auto px-6">
           <ScrollReveal>
@@ -105,11 +108,8 @@ export default function DreamLandingPage() {
         </div>
       </section>
 
-      {/* ═══ 4. WHAT MAKES DREAM DIFFERENT  -  collapsible cards ═══ */}
+      {/* ═══ 5. WHAT MAKES DREAM DIFFERENT  -  collapsible cards ═══ */}
       <DifferentiatorsSection />
-
-      {/* ═══ 5. COMPETITIVE COMPARISON TABLE ═══ */}
-      <ComparisonTable />
 
       {/* ═══ 6. THE DREAM STORY BANNER ═══ */}
       <section className="bg-[#0a0a0a] py-20 relative overflow-hidden">
