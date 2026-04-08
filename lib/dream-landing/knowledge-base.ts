@@ -66,6 +66,8 @@ During AI-guided conversations, the AI:
 
 All discovery inputs — conversations, workshop outputs, and field interview findings — are synthesised into a Discovery Intelligence briefing that feeds directly into the live workshop.
 
+**Ethenta-facilitated Discovery**: For organisations operating across multiple regions or geographies, Ethenta can facilitate the full Discovery phase on the client's behalf — conducting AI-guided conversations, running pre-workshop sessions, and carrying out field interviews across locations. This ensures consistent, high-quality capture regardless of where participants are based, and removes the operational burden from the client entirely.
+
 ### Discovery Analysis Engine (5 components)
 - **Alignment Heatmap** — Visual matrix showing alignment and divergence across themes and actors
 - **Tension Surface** — Ranked unresolved tensions with competing viewpoints and severity levels
