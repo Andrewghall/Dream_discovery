@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Users,
   Building2,
@@ -394,7 +394,7 @@ export function AssessmentSection() {
   // step: 0=intro, 1-15=question, 16=analysing, 17=results
   const [step, setStep] = useState(0);
   const [scores, setScores] = useState<Scores>({ ...EMPTY_SCORES });
-  const [voiceMode, setVoiceMode] = useState(true);
+  const [voiceMode, setVoiceMode] = useState(false); // opt-in — silent by default for fast answering
 
   // Email / submit state
   const [name, setName] = useState('');
@@ -405,6 +405,7 @@ export function AssessmentSection() {
   const [submitError, setSubmitError] = useState('');
 
   const voice = useVoice();
+  const sectionRef = useRef<HTMLElement>(null);
 
   const currentQ = step >= 1 && step <= 15 ? ALL_QUESTIONS[step - 1] : null;
 
@@ -436,14 +437,18 @@ export function AssessmentSection() {
   );
   const pattern = useMemo(() => detectPattern(domainResults), [domainResults]);
 
-  // Speak question when it appears
+  // Scroll question into view on each step change
+  useEffect(() => {
+    if (step >= 1 && step <= 15 && sectionRef.current) {
+      sectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [step]);
+
+  // Speak question when it appears (only if read-aloud mode is on)
   useEffect(() => {
     if (!voiceMode || !currentQ || step < 1 || step > 15) return;
     voice.stopSpeaking();
-    const timer = setTimeout(() => {
-      voice.speak(currentQ.question);
-    }, 400);
-    return () => clearTimeout(timer);
+    voice.speak(currentQ.question);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, voiceMode]);
 
@@ -555,7 +560,7 @@ export function AssessmentSection() {
     const DomainIcon = domain.icon;
 
     return (
-      <section id="assessment" className="bg-[#0a0a0a] min-h-screen flex flex-col">
+      <section ref={sectionRef} id="assessment" className="bg-[#0a0a0a] min-h-screen flex flex-col">
         <style>{`
           @keyframes qFadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
           @keyframes micPulse { 0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(92,242,142,0.4)} 50%{transform:scale(1.05);box-shadow:0 0 0 16px rgba(92,242,142,0)} }
