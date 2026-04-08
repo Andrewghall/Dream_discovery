@@ -10,8 +10,7 @@ import {
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
-  Mail,
-  Download,
+
 } from 'lucide-react';
 
 import { ScrollReveal } from './scroll-reveal';
@@ -401,7 +400,6 @@ export function AssessmentSection() {
   const [email, setEmail] = useState('');
   const [organisation, setOrganisation] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
   const voice = useVoice();
@@ -463,35 +461,10 @@ export function AssessmentSection() {
     }
   }, [currentQ, step, voice]);
 
-  const handleSubmitEmail = async () => {
-    if (!name.trim() || !email.trim()) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setSubmitError('Please enter a valid email address.'); return; }
-    setSubmitting(true); setSubmitError('');
-    try {
-      const res = await fetch('/api/public/assessment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(), email: email.trim(), organisation: organisation.trim() || undefined,
-          scores: domainResults.map(r => ({
-            domain: r.name, score: r.score, levelName: r.levelName,
-            levelDescriptor: r.levelDescriptor, nextLevelName: '', nextLevelDescriptor: '',
-          })),
-          overallScore,
-          overallLevelName: MATURITY_LEVELS[Math.min(Math.max(Math.round(overallScore) - 1, 0), 4)].name,
-          recommendation: overallScore <= 2 ? 'Foundation' : overallScore <= 3.5 ? 'Acceleration' : 'Optimisation',
-        }),
-      });
-      if (!res.ok) throw new Error('Failed');
-      setSubmitted(true);
-    } catch { setSubmitError('Something went wrong. Please try again.'); }
-    finally { setSubmitting(false); }
-  };
-
   const reset = () => {
     voice.stopSpeaking();
     setStep(0); setScores({ ...EMPTY_SCORES });
-    setSubmitted(false); setSubmitError(''); setName(''); setEmail(''); setOrganisation('');
+    setSubmitError(''); setName(''); setEmail(''); setOrganisation('');
   };
 
   /* ── INTRO ── */
@@ -552,6 +525,109 @@ export function AssessmentSection() {
 
   /* ── ANALYSING ── */
   if (step === 16) return <AnalysingScreen onDone={() => setStep(17)} />;
+
+  /* ── EMAIL GATE (step 17) ── */
+  if (step === 17) {
+    const isCompanyEmail = (addr: string) => {
+      const domain = addr.split('@')[1]?.toLowerCase() ?? '';
+      const FREE_DOMAINS = [
+        'gmail.com','googlemail.com','yahoo.com','yahoo.co.uk','yahoo.fr','yahoo.de','yahoo.es','yahoo.it',
+        'yahoo.ca','yahoo.com.au','yahoo.co.in','hotmail.com','hotmail.co.uk','hotmail.fr','hotmail.de',
+        'hotmail.es','hotmail.it','outlook.com','outlook.co.uk','outlook.fr','live.com','live.co.uk',
+        'icloud.com','me.com','mac.com','aol.com','protonmail.com','proton.me','mail.com','ymail.com',
+        'msn.com','gmx.com','gmx.de','web.de','inbox.com','fastmail.com','zohomail.com','tutanota.com',
+      ];
+      return domain.length > 0 && !FREE_DOMAINS.includes(domain);
+    };
+
+    const handleGateSubmit = async () => {
+      if (!name.trim()) { setSubmitError('Please enter your name.'); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setSubmitError('Please enter a valid email address.'); return; }
+      if (!isCompanyEmail(email)) { setSubmitError('Please use your work email address — personal email providers are not accepted.'); return; }
+      setSubmitError('');
+      setSubmitting(true);
+      try {
+        await fetch('/api/public/assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim(), email: email.trim(), organisation: organisation.trim() || undefined,
+            scores: domainResults.map(r => ({
+              domain: r.name, score: r.score, levelName: r.levelName,
+              levelDescriptor: r.levelDescriptor, nextLevelName: '', nextLevelDescriptor: '',
+            })),
+            overallScore,
+            overallLevelName: MATURITY_LEVELS[Math.min(Math.max(Math.round(overallScore) - 1, 0), 4)].name,
+            recommendation: overallScore <= 2 ? 'Foundation' : overallScore <= 3.5 ? 'Acceleration' : 'Optimisation',
+          }),
+        });
+      } catch { /* non-blocking — advance regardless */ }
+      finally { setSubmitting(false); }
+      setStep(18);
+    };
+
+    return (
+      <section id="assessment" className="bg-[#0a0a0a] min-h-screen flex items-center justify-center px-6 py-16">
+        <style>{`@keyframes gFadeUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}`}</style>
+        <div className="w-full max-w-lg" style={{ animation: 'gFadeUp 0.5s cubic-bezier(0.22,1,0.36,1) both' }}>
+
+          {/* Pattern teaser */}
+          <div className="mb-8 text-center">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#5cf28e]/60 mb-3">Your Pattern</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-3">{pattern.name}</h2>
+            <p className="text-white/40 text-base font-light leading-relaxed max-w-sm mx-auto">{pattern.headline}</p>
+          </div>
+
+          {/* Gate card */}
+          <div className="bg-[#111111] border border-white/[0.08] rounded-2xl p-7">
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#5cf28e]" />
+              <h3 className="text-sm font-bold text-white">Unlock your full profile</h3>
+            </div>
+            <p className="text-white/35 text-xs leading-relaxed mb-6 pl-4">
+              Enter your details to see your complete capability breakdown, domain scores, and what a DREAM session would surface for your specific constraints. Your PDF report will be emailed to you.
+            </p>
+
+            <div className="space-y-3">
+              <input
+                type="text" placeholder="Your name *" value={name} onChange={e => setName(e.target.value)}
+                className="w-full px-4 py-3 text-sm bg-white/[0.04] border border-white/10 rounded-xl text-white placeholder-white/25 focus:outline-none focus:border-[#5cf28e]/40 transition-colors"
+              />
+              <div>
+                <input
+                  type="email" placeholder="Work email address *" value={email}
+                  onChange={e => { setEmail(e.target.value); setSubmitError(''); }}
+                  className={`w-full px-4 py-3 text-sm bg-white/[0.04] border rounded-xl text-white placeholder-white/25 focus:outline-none transition-colors ${submitError && submitError.includes('email') ? 'border-red-500/50 focus:border-red-500/70' : 'border-white/10 focus:border-[#5cf28e]/40'}`}
+                />
+                <p className="text-[10px] text-white/20 mt-1.5 pl-1">Work email required — personal addresses not accepted</p>
+              </div>
+              <input
+                type="text" placeholder="Organisation" value={organisation} onChange={e => setOrganisation(e.target.value)}
+                className="w-full px-4 py-3 text-sm bg-white/[0.04] border border-white/10 rounded-xl text-white placeholder-white/25 focus:outline-none focus:border-[#5cf28e]/40 transition-colors"
+              />
+            </div>
+
+            {submitError && <p className="text-red-400 text-xs mt-3">{submitError}</p>}
+
+            <button
+              onClick={handleGateSubmit}
+              disabled={submitting || !name.trim() || !email.trim()}
+              className="w-full mt-5 flex items-center justify-center gap-2 px-5 py-3 text-sm font-bold rounded-xl bg-[#5cf28e] text-[#0a0a0a] hover:bg-[#50d47e] transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-[#5cf28e]/15"
+            >
+              {submitting
+                ? <><span className="w-4 h-4 border-2 border-[#0a0a0a]/20 border-t-[#0a0a0a] rounded-full animate-spin" />Sending…</>
+                : <>Unlock My Results <ArrowRight className="h-4 w-4" /></>
+              }
+            </button>
+          </div>
+
+          <button onClick={reset} className="mt-5 w-full text-xs text-white/15 hover:text-white/35 transition-colors text-center">
+            ← Start over
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   /* ── QUESTIONS (steps 1-15) ── */
   if (step >= 1 && step <= 15 && currentQ) {
@@ -632,7 +708,7 @@ export function AssessmentSection() {
     );
   }
 
-  /* ── RESULTS (step 17) ── */
+  /* ── RESULTS (step 18) ── */
   const overallLevelIndex = Math.min(Math.max(Math.round(overallScore) - 1, 0), 4);
   const BENCHMARK = [3.5, 3.5, 3.5, 3.5, 3.5];
 
@@ -739,44 +815,16 @@ export function AssessmentSection() {
           </CalendlyButton>
         </div>
 
-        {/* Email capture */}
-        {!submitted ? (
-          <div className="bg-white/[0.03] rounded-2xl border border-white/[0.07] p-6" style={{ animation: 'rFadeUp 0.6s ease 0.55s both', opacity: 0 }}>
-            <div className="flex items-center gap-2 mb-1">
-              <Download className="h-4 w-4 text-[#5cf28e]/60" />
-              <h4 className="text-sm font-bold text-white">Get your full diagnostic as a PDF</h4>
-            </div>
-            <p className="text-white/35 text-xs mb-4 ml-6">We&apos;ll send your pattern analysis, profile breakdown, and what a DREAM session would focus on for your specific constraints.</p>
-            <div className="grid sm:grid-cols-3 gap-3 mb-3">
-              <input type="text" placeholder="Your name *" value={name} onChange={e => setName(e.target.value)}
-                className="px-4 py-2.5 text-sm bg-white/[0.04] border border-white/10 rounded-xl text-white placeholder-white/25 focus:outline-none focus:border-[#5cf28e]/40 transition-colors" />
-              <input type="email" placeholder="Email address *" value={email} onChange={e => setEmail(e.target.value)}
-                className="px-4 py-2.5 text-sm bg-white/[0.04] border border-white/10 rounded-xl text-white placeholder-white/25 focus:outline-none focus:border-[#5cf28e]/40 transition-colors" />
-              <input type="text" placeholder="Organisation" value={organisation} onChange={e => setOrganisation(e.target.value)}
-                className="px-4 py-2.5 text-sm bg-white/[0.04] border border-white/10 rounded-xl text-white placeholder-white/25 focus:outline-none focus:border-[#5cf28e]/40 transition-colors" />
-            </div>
-            {submitError && <p className="text-red-400 text-xs mb-2">{submitError}</p>}
-            <button onClick={handleSubmitEmail} disabled={submitting || !name.trim() || !email.trim()}
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#5cf28e] text-[#0a0a0a] hover:bg-[#50d47e] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-              {submitting ? (
-                <><span className="w-3.5 h-3.5 border-2 border-[#0a0a0a]/20 border-t-[#0a0a0a] rounded-full animate-spin" />Sending…</>
-              ) : (
-                <><Mail className="h-3.5 w-3.5" />Send My Diagnostic</>
-              )}
-            </button>
+        {/* PDF sent confirmation + start over */}
+        <div className="flex items-center justify-between" style={{ animation: 'rFadeUp 0.6s ease 0.55s both', opacity: 0 }}>
+          <div className="flex items-center gap-2 text-white/30 text-xs">
+            <CheckCircle2 className="h-3.5 w-3.5 text-[#5cf28e]/60" />
+            PDF report sent to {email}
           </div>
-        ) : (
-          <div className="bg-white/[0.03] rounded-2xl border border-[#5cf28e]/20 p-6 text-center" style={{ animation: 'rFadeUp 0.4s ease both' }}>
-            <CheckCircle2 className="h-8 w-8 text-[#5cf28e] mx-auto mb-3" />
-            <h4 className="text-base font-bold text-white mb-1">Diagnostic sent.</h4>
-            <p className="text-white/35 text-sm">Check your inbox — your DREAM pattern analysis is on its way.</p>
-          </div>
-        )}
-
-        {/* suppress unused variable warning for overallLevelIndex */}
-        {overallLevelIndex != null && (
-          <button onClick={reset} className="text-xs text-white/15 hover:text-white/35 transition-colors">← Start over</button>
-        )}
+          {overallLevelIndex != null && (
+            <button onClick={reset} className="text-xs text-white/15 hover:text-white/35 transition-colors">← Start over</button>
+          )}
+        </div>
       </div>
     </section>
   );

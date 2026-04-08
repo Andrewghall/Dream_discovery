@@ -75,6 +75,15 @@ function validatePayload(body: unknown): SubmissionPayload | string {
 
   const email = String(b.email || '').trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Valid email is required';
+  const emailDomain = email.split('@')[1]?.toLowerCase() ?? '';
+  const FREE_DOMAINS = [
+    'gmail.com','googlemail.com','yahoo.com','yahoo.co.uk','yahoo.fr','yahoo.de','yahoo.es','yahoo.it',
+    'yahoo.ca','yahoo.com.au','yahoo.co.in','hotmail.com','hotmail.co.uk','hotmail.fr','hotmail.de',
+    'hotmail.es','hotmail.it','outlook.com','outlook.co.uk','outlook.fr','live.com','live.co.uk',
+    'icloud.com','me.com','mac.com','aol.com','protonmail.com','proton.me','mail.com','ymail.com',
+    'msn.com','gmx.com','gmx.de','web.de','inbox.com','fastmail.com','zohomail.com','tutanota.com',
+  ];
+  if (FREE_DOMAINS.includes(emailDomain)) return 'Please use a work email address';
 
   const organisation = b.organisation ? String(b.organisation).trim().slice(0, 200) : undefined;
 
