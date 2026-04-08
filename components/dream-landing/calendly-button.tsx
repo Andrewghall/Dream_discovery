@@ -9,7 +9,7 @@ import { useCallback } from 'react';
  * URL comes from `NEXT_PUBLIC_CALENDLY_URL` env var  -  nothing hard-coded.
  *
  * Gracefully degrades:
- *  1. If env var is empty → falls back to mailto:hello@ethenta.com
+ *  1. If env var is empty → falls back to mailto:Andrew.Hall@ethenta.com
  *  2. If widget script fails to load → opens Calendly URL in a new tab
  */
 
@@ -78,7 +78,7 @@ export function CalendlyButton({ className, children }: CalendlyButtonProps) {
   const handleClick = useCallback(async () => {
     if (!CALENDLY_URL) {
       window.location.href =
-        'mailto:hello@ethenta.com?subject=DREAM%20Demo%20Request';
+        'mailto:Andrew.Hall@ethenta.com?subject=DREAM%20Demo%20Request';
       return;
     }
 

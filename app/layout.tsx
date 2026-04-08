@@ -50,7 +50,7 @@ const organizationJsonLd = {
   logo: `${SITE_URL}/ethenta-logo.png`,
   description:
     'Ethenta builds enterprise decision intelligence tools that transform workshops into measurable organisational insight.',
-  email: 'hello@ethenta.com',
+  email: 'Andrew.Hall@ethenta.com',
   sameAs: ['https://ethenta.com'],
 };
 

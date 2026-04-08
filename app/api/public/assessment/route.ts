@@ -265,7 +265,7 @@ function buildConfirmationEmail(name: string, focus: string, levelName: string):
       </p>
     </div>
     <div style="text-align: center; padding: 8px 0;">
-      <a href="mailto:hello@ethenta.com?subject=DREAM%20Assessment%20%E2%80%94%20Book%20a%20Demo"
+      <a href="mailto:Andrew.Hall@ethenta.com?subject=DREAM%20Assessment%20%E2%80%94%20Book%20a%20Demo"
          style="display: inline-block; background: #5cf28e; color: #0d0d0d; font-weight: 600; font-size: 14px; padding: 12px 28px; border-radius: 10px; text-decoration: none;">
         Book a Demo
       </a>

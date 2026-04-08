@@ -23,7 +23,7 @@ export default function DreamNotFound() {
             Back to DREAM
           </Link>
           <a
-            href="mailto:hello@ethenta.com"
+            href="mailto:Andrew.Hall@ethenta.com"
             className="px-6 py-3 text-sm font-semibold rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all"
           >
             Contact Us
