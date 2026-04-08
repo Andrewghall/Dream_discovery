@@ -41,9 +41,9 @@ export class ResearchClarificationNeededError extends Error {
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 12;        // Enough for thorough 4-phase research without dragging
-const LOOP_TIMEOUT_MS = 90_000;   // 1.5 minutes — gpt-4o-mini is fast, keep it tight
-const MODEL = 'gpt-4o-mini';      // Fast, cost-effective — research quality driven by good prompting
+const MAX_ITERATIONS = 14;        // Enough for thorough 4-phase research + synthesis pass
+const LOOP_TIMEOUT_MS = 120_000;  // 2 minutes — gpt-4o needs a little more room
+const MODEL = 'gpt-4o';           // Full model — research synthesis quality matters here
 const LIVE_REVIEW_MODEL = 'gpt-4o-mini';  // Keep fast for latency-sensitive live reviews
 const MIN_SEARCHES_BEFORE_COMMIT = 6;
 const MIN_SEARCHES_DOMAIN_TRACK = 7;
@@ -292,6 +292,22 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             description:
               '3-4 detailed paragraphs covering: current state of the domain in this industry, emerging trends and innovations, common pain points and failure modes, best practices from leading organisations, and transformation opportunities. This is the centrepiece of a Domain track workshop. Set to null for Enterprise track.',
           },
+          keyFacilitatorInsight: {
+            type: 'string',
+            description:
+              'The single most important thing a facilitator must know walking into this workshop — the insight that changes how they approach the room. This is NOT a summary. It is the one thing that reframes everything else. Example: "Concentrix is actively selling AI transformation to clients via its own iX Hero/iX Hello products — meaning this workshop sits inside a company that IS already positioning itself as an AI leader. The tension is between what they sell and how they operate internally." Write 2-3 sentences maximum. Be direct and specific.',
+          },
+          strategicTensions: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              '3-5 specific tensions, paradoxes, or contradictions that this company faces — the things that will make this workshop interesting and difficult. These are NOT generic industry challenges. They are company-specific fault lines that the facilitator should probe. Example: "Concentrix brands itself as the \'intelligent transformation partner\' yet internally manages 3.9+ fragmented technology platforms — the same fragmentation problem they sell solutions for." Each tension should be 1-2 sentences. Cite sources where possible.',
+          },
+          workshopBrief: {
+            type: 'string',
+            description:
+              'A structured facilitator brief that explicitly maps the research to the workshop purposes and desired outcomes. This is the most important output — everything else feeds into this. Structure it as: for each workshop purpose provided, write 2-3 sentences explaining what the research reveals that is directly relevant to achieving that purpose in THIS company. Do not write generic statements. Every sentence must be specific to this company and cite what you found. End with a "Room dynamics" paragraph: who is likely to be in the room, what tensions they may bring, and what the facilitator should watch for.',
+          },
           sourceUrls: {
             type: 'array',
             items: { type: 'string' },
@@ -380,6 +396,9 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           'keyPublicChallenges',
           'recentDevelopments',
           'competitorLandscape',
+          'keyFacilitatorInsight',
+          'strategicTensions',
+          'workshopBrief',
           'sourceUrls',
           'journeyStages',
           'industryDimensions',
@@ -882,19 +901,19 @@ function buildResearchSystemPrompt(context: PrepContext): string {
     ? 'You have LIVE WEB SEARCH via Tavily. Your search tools return real, current web results with full page content and source URLs. Use many different queries to build a thorough, evidence-based picture. Each search gives you fresh material — use it extensively.'
     : '⚠️ No web search API configured. Your search tools use parametric knowledge only. Results should be treated as general knowledge that needs verification. Even so, provide thorough, detailed multi-paragraph responses.';
 
-  return `You are the DREAM Research Agent. Your job is to build a DEEP, COMPREHENSIVE research briefing on a client company before their full-day strategic workshop.
+  return `You are the DREAM Research Agent. Your job is to build a DEEP, PURPOSEFUL research briefing on a client company before their full-day strategic workshop.
 
-This research will brief facilitators who spend an ENTIRE DAY guiding strategic discussions with senior stakeholders. Surface-level summaries are NOT sufficient. Your output must be detailed enough that a facilitator who knows nothing about this company or industry could walk in and lead informed, insightful strategic conversations.
+This research has ONE job: give the facilitator exactly what they need to achieve the workshop purposes. Not a Wikipedia article. Not a company profile. A briefing that reframes how the facilitator sees the room before they walk in.
 
-A good research briefing has MULTIPLE PARAGRAPHS per section, specific facts, evidence, and real insight — not generic statements. Think "analyst research report", not "Wikipedia introduction".
+The test of good research is this: does the facilitator know something at the end that changes how they will run the workshop? If the answer is no, the research has failed.
 
 Client: ${context.clientName || 'Unknown'}
 Industry: ${context.industry || 'Unknown'}
 Website: ${context.companyWebsite || 'Not provided'}
 ${trackDesc}
-${context.workshopPurpose ? `\nWORKSHOP PURPOSE: ${context.workshopPurpose}\n⟹ Let this shape your Phase 3–4 search angles. If this mentions AI → search what ${context.clientName || 'the company'} currently uses for AI/technology today. If it mentions cost/efficiency → focus on operational pain points and benchmarks. If it mentions transformation → find what programmes are underway. The purpose tells you what the facilitator most needs to understand.` : ''}
-${context.desiredOutcomes ? `\nDESIRED OUTCOMES: ${context.desiredOutcomes}\n⟹ Every section of your briefing should give the facilitator the context needed to achieve these outcomes.` : ''}
-${context.workshopPurpose || context.desiredOutcomes ? '' : ''}
+${context.workshopPurpose ? `\n═══ WORKSHOP PURPOSE — THIS IS YOUR NORTH STAR ═══\n${context.workshopPurpose}\n\n⟹ EVERY search you run should be motivated by this purpose. Before each search ask: "will this help the facilitator achieve one of these purposes?" If not, search for something else instead.\n⟹ When you find something relevant to a specific purpose, note it. You will need to map every major finding back to a purpose in your workshopBrief.\n⟹ Key search angles this purpose demands: ${context.workshopPurpose.toLowerCase().includes('ai') ? `Search specifically for what ${context.clientName || 'the company'} currently uses for AI/automation today — their actual tools, products, initiatives. The facilitator needs to know their starting point.` : ''} ${context.workshopPurpose.toLowerCase().includes('align') ? `Search for evidence of internal fragmentation, competing views, or strategic misalignment at ${context.clientName || 'the company'}.` : ''} ${context.workshopPurpose.toLowerCase().includes('root cause') ? `Search for what the company or analysts identify as the underlying causes of their performance challenges — not just symptoms.` : ''}` : ''}
+${context.desiredOutcomes ? `\n═══ DESIRED OUTCOMES ═══\n${context.desiredOutcomes}\n⟹ These outcomes tell you what the room must leave with. Use them to prioritise what you research and what you surface.` : ''}
+
 SEARCH CAPABILITY: ${searchMode}
 
 ═══════════════════════════════════════════
@@ -966,6 +985,15 @@ PHASE 4: Journey, Dimensions, Actor Research, and Current State (3-5 searches)
 - Key roles and stakeholders: search specifically for "${context.clientName || context.industry || 'the company'} job titles roles employees" — use the actual company name to get company-specific results
 ${isDomain ? `- MANDATORY for Domain track: search what ${context.clientName || 'the company'} currently uses, does, or has in place for "${context.targetDomain || 'this domain'}" today — existing tools, systems, processes, maturity level. The facilitator must understand the current starting point before the workshop.` : '- Current strategic initiatives or transformation programmes underway at the company'}
 
+PHASE 5: Synthesis — Purpose-Led Analysis (before commit_research)
+BEFORE you call commit_research, stop and think through these questions. Your answers will form the three new required fields:
+
+1. keyFacilitatorInsight: What is the SINGLE most important thing you found that reframes how the facilitator should approach this workshop? Look for: paradoxes (they sell X but struggle with X internally), tensions (strategy says one thing, operations show another), surprises (something you found that contradicts the obvious narrative), or a critical context that changes everything. Write 2-3 sentences maximum. Be brutally specific.
+
+2. strategicTensions: What are 3-5 specific fault lines at this company? A tension is a real contradiction — not a generic challenge. Examples of tensions: "Concentrix positions itself as the \'intelligent transformation partner\' yet internally manages an average of 3.9 fragmented technology platforms — the same fragmentation they sell to clients." Search specifically for evidence of these tensions if you have not already found them.
+
+3. workshopBrief: Go through EACH workshop purpose one by one. For each purpose, write 2-3 sentences: what does your research reveal that is directly relevant to achieving THIS purpose at THIS company? Be specific. Use facts. Then add a "Room dynamics" paragraph at the end.
+
 ═══ MINIMUM SEARCH REQUIREMENTS ═══
 
 You MUST conduct at least ${minSearches} different searches before calling commit_research. Do NOT commit after 2-3 searches — that produces thin, surface-level output that is useless for workshop facilitation. Use different queries for each search to explore different angles and build a truly comprehensive picture.
@@ -1001,7 +1029,13 @@ ${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${cont
 - Label industry vs company. Never present industry-wide trends as if they describe the specific client.
 - Prefer recent sources (2024-2026). Flag anything that might be outdated.
 - Assign each dimension a distinct, accessible hex color for UI rendering (blues, greens, purples, oranges, teals — avoid red which is reserved for alerts).
-- Write as a colleague would brief another colleague — professional, thorough, and insightful.`;
+- keyFacilitatorInsight: 2-3 sentences maximum. The single reframing insight. Not a summary — a specific, surprising, or contradictory finding that changes how the facilitator approaches the room. MUST be company-specific.
+
+- strategicTensions: 3-5 items. Each is a real paradox or contradiction specific to this company — not a generic industry challenge. Cite sources. Be direct.
+
+- workshopBrief: Maps research findings to each workshop purpose explicitly. For each purpose: 2-3 sentences of specific, cited insight. End with a "Room dynamics" paragraph. This is the centrepiece of the whole briefing — write it last, after all other research is complete.
+
+- Write as a senior analyst briefing a facilitator the morning of the workshop — professional, sharp, and purpose-led. Every sentence should earn its place.`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1184,11 +1218,15 @@ Remember: every fact must be cited. Every challenge and development must end wit
             ? `\n\n**Actor Taxonomy** (${actors.length} roles)\n${actors.map((a) => `  \u2022 ${a.role} (${a.seniority || 'unknown'}): ${a.description || 'No description'}`).join('\n')}`
             : '';
 
+          const tensions = Array.isArray(fnArgs.strategicTensions)
+            ? (fnArgs.strategicTensions as string[]).map((t) => `  ⚡ ${t}`).join('\n')
+            : '  (none identified)';
+
           onConversation?.({
             timestampMs: Date.now(),
             agent: 'research-agent',
             to: 'prep-orchestrator',
-            message: `${searchLabel} — I've completed my research on ${context.clientName || 'the company'}. Here are my full findings:\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}${journeySection}${dimensionsSection}${actorsSection}${sourcesSection}`,
+            message: `${searchLabel} — Research complete on ${context.clientName || 'the company'}.\n\n${ fnArgs.keyFacilitatorInsight ? `🔑 **KEY FACILITATOR INSIGHT**\n${String(fnArgs.keyFacilitatorInsight)}\n\n` : ''}${ fnArgs.workshopBrief ? `📋 **WORKSHOP BRIEF — PURPOSE-LED ANALYSIS**\n${String(fnArgs.workshopBrief)}\n\n` : ''}**Strategic Tensions**\n${tensions}\n\n**Company Overview**\n${String(fnArgs.companyOverview || 'No overview available')}\n\n**Industry Context**\n${String(fnArgs.industryContext || 'No industry context available')}\n\n**Key Public Challenges**\n${challenges}\n\n**Recent Developments**\n${developments}\n\n**Competitive Landscape**\n${String(fnArgs.competitorLandscape || 'Not available')}${fnArgs.domainInsights ? `\n\n**Domain Insights (${context.targetDomain || 'Target Domain'})**\n${String(fnArgs.domainInsights)}` : ''}${journeySection}${dimensionsSection}${actorsSection}${sourcesSection}`,
             type: 'proposal',
             metadata: {
               toolsUsed: ['search_company_info', 'search_industry_trends', 'search_domain_challenges', 'search_customer_journey', 'search_industry_dimensions', 'search_actor_roles'],
@@ -1271,6 +1309,9 @@ function normaliseResearchOutput(args: Record<string, unknown>): WorkshopPrepRes
       : [],
     competitorLandscape: String(args.competitorLandscape || 'No competitor data available'),
     domainInsights: args.domainInsights ? String(args.domainInsights) : null,
+    keyFacilitatorInsight: args.keyFacilitatorInsight ? String(args.keyFacilitatorInsight) : null,
+    strategicTensions: Array.isArray(args.strategicTensions) ? args.strategicTensions.map(String) : null,
+    workshopBrief: args.workshopBrief ? String(args.workshopBrief) : null,
     researchedAtMs: Date.now(),
     sourceUrls: Array.isArray(args.sourceUrls) ? args.sourceUrls.map(String) : [],
     journeyStages: Array.isArray(args.journeyStages) ? args.journeyStages as WorkshopPrepResearch['journeyStages'] : null,
@@ -1319,6 +1360,9 @@ function fallbackResearch(context: PrepContext): WorkshopPrepResearch {
     domainInsights: context.dreamTrack === 'DOMAIN' && context.targetDomain
       ? `Domain-specific insights for ${context.targetDomain} need manual research.`
       : null,
+    keyFacilitatorInsight: null,
+    strategicTensions: null,
+    workshopBrief: null,
     researchedAtMs: Date.now(),
     sourceUrls: [],
     journeyStages: null,
