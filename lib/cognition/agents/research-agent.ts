@@ -57,6 +57,10 @@ const BANNED_SOURCE_DOMAINS = [
   'comparably.com',
   'koalagains.com',
   'clutch.co',
+  'hireinsouth.com',       // "best X companies" listicle, no original research
+  'neowork.com',           // competitor comparison blog, SEO content
+  '1840andco.com',         // outsourcing vendor comparison blog
+  'outsourceaccelerator.com', // BPO marketplace / content marketing
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -374,7 +378,7 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               required: ['name', 'description'],
             },
             description:
-              'Industry-specific customer/user journey stages in chronological order. 6-12 stages covering the full lifecycle. Each stage needs a detailed description and 3-5 touchpoints. Be specific to this industry.',
+              'The operating lifecycle specific to this company and industry — NOT a generic customer journey. For BPO/contact centre, this means the stages of how the service is designed, delivered, governed, and evolved: e.g. (1) Client Acquisition & Solution Shaping, (2) Transition & Onboarding, (3) Live Service Delivery, (4) Performance Governance, (5) Continuous Improvement & Transformation, (6) Renewal & Expansion. For retail, it would be the shopper lifecycle. For legal education, the applicant journey. Ground this in how the client actually operates — not a generic "awareness to loyalty" framework. 6-8 stages. Each needs a 2-3 sentence description and 3-5 specific touchpoints.',
           },
           industryDimensions: {
             type: 'array',
@@ -410,7 +414,8 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               type: 'object',
               properties: {
                 role: { type: 'string', description: 'Actual job title used at this company or in this industry. Cover the full hierarchy from board/executive down to frontline operational staff. Use the real titles people hold in this organisation — draw from the search_actor_roles results.' },
-                description: { type: 'string', description: 'What this role does in this specific industry context (1-2 sentences). Be concrete, not generic.' },
+                description: { type: 'string', description: 'What this role does in this specific industry context AND what their primary objective is in a workshop context. Be concrete and specific. Example: "Responsible for delivery performance across client accounts — primarily focused on stability, SLA adherence, and preventing client escalation."' },
+                objective: { type: 'string', description: 'What this role is optimising for — the lens through which they see the world. This is what drives their workshop behaviour. Examples: "Growth, margin, and market position." / "Client-specific flexibility and commercial retention." / "Standardisation, platform leverage, and AI adoption velocity." / "Practical workload management and real process friction." Write one sentence.' },
                 seniority: {
                   type: 'string',
                   enum: ['executive', 'manager', 'operational', 'external'],
@@ -418,9 +423,9 @@ const RESEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                 },
                 department: { type: 'string', description: 'Department or functional area specific to this industry — e.g. "Collections Operations", "Fleet & Logistics", "Environmental Compliance", "Recycling Processing".' },
               },
-              required: ['role', 'description', 'seniority', 'department'],
+              required: ['role', 'description', 'objective', 'seniority', 'department'],
             },
-            description: '12-15 roles drawn from the search_actor_roles research results. Must cover the full hierarchy: board/executive, management, operational/specialist, and external stakeholders. Use only roles found through actual research for this specific company and industry.',
+            description: '10-14 roles covering the full hierarchy: board/executive, management, operational/specialist, and external stakeholders. For each role, include their PRIMARY OBJECTIVE — what they are optimising for. This is the most useful part for a facilitator: knowing what each person is trying to protect or advance tells you how they will behave in the room. Group mentally as: executives (growth/margin/market), operations leaders (stability/delivery), client/account leaders (flexibility/retention), technology leaders (standardisation/AI), frontline teams (workload/reality). Draw from search_actor_roles results for this specific company and industry.',
           },
           journeyActors: {
             type: 'array',
@@ -1111,7 +1116,7 @@ ${isDomain ? `- domainInsights: 3-4 paragraphs covering: current state of ${cont
 
 - industryDimensions: 4-6 dimensions with descriptive names, detailed descriptions, and 10-20 classification keywords each. Choose dimensions that matter for THIS industry.
 
-- actorTaxonomy: 12-15 roles covering the FULL hierarchy — board/executive, management, operational/specialist, and external stakeholders. Draw directly from the search_actor_roles results. Use only the actual roles found through research for this company and industry — do not invent or template roles.
+- actorTaxonomy: 10-14 roles covering the FULL hierarchy. For each role, include their OBJECTIVE — what they are optimising for. This is what makes the taxonomy useful: it tells the facilitator how each person will behave in the room. Think in clusters: executives (growth/margin/market position), operations leaders (stability/delivery/SLAs), client leaders (flexibility/retention), technology leaders (standardisation/AI), frontline teams (workload/practical friction). Draw from search_actor_roles results.
 
 - journeyActors: 4-8 roles who DIRECTLY interact with customers or end-users at one or more journey stages. These are the actors who appear in the customer journey map — a focused subset of actorTaxonomy. ALWAYS include the Customer (or equivalent: household, council, business client). Include frontline operatives, service agents, account managers, and any external parties who touch the customer experience. EXCLUDE board members, C-suite, and executives who set strategy but do not appear in customer touchpoints. Example for waste management: Customer, HGV Driver/Loader, Customer Service Agent, Account Manager, Weighbridge Operator. Example for retail: Customer, Store Associate, Customer Service Agent, Account Manager.
 
@@ -1211,7 +1216,7 @@ If verify_company returns verified=true, then follow the MANDATORY SEARCH SEQUEN
 2. Phase 2: Industry and competitive landscape — macro trends, disruption forces, competitors (3-4 searches)
 ${context.dreamTrack === 'DOMAIN' ? `3. Phase 3: Deep domain research — drill deep into "${context.targetDomain || 'the target domain'}" from multiple angles (3-4 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)` : '3. Phase 3: Cross-functional challenges and digital transformation (1-2 searches)\n4. Phase 4: Customer/user journey stages and strategic dimensions (2-3 searches)'}
 
-⚠️ SEARCH QUALITY RULE: If your search returns results from businessmodelcanvastemplate.com, simplywall.st, comparably.com, koalagains.com, or clutch.co — DISCARD those results immediately and run a different search. Do NOT cite them. Your commit will be rejected if any of these appear in your output.
+⚠️ SEARCH QUALITY RULE: If your search returns results from businessmodelcanvastemplate.com, simplywall.st, comparably.com, koalagains.com, clutch.co, hireinsouth.com, neowork.com, 1840andco.com, or outsourceaccelerator.com — DISCARD those results immediately and run a different search targeting official sources (IR page, press releases, Reuters, Bloomberg, FT, Fortune). Your commit will be rejected if any of these appear in your output.
 
 Remember: every fact must be cited. Every challenge and development must end with [Source: title, URL]. Do not include any fact you cannot attribute to a real search result.`,
     },
@@ -1228,17 +1233,28 @@ Remember: every fact must be cited. Every challenge and development must end wit
       }
 
       const isLastIteration = iteration === MAX_ITERATIONS - 1;
-      const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption = isLastIteration
-        ? { type: 'function', function: { name: 'commit_research' } }
-        : 'auto';
 
-      console.log(`[Research Agent] Iteration ${iteration}${isLastIteration ? ' (forced commit)' : ''}`);
+      // Key enforcement: when the agent has not yet reached the minimum search count,
+      // physically remove commit_research from the available tools so it CANNOT commit early.
+      // This is more reliable than rejection messages — the agent has no choice but to search.
+      // On the last iteration, if minimum still not met, let the loop end and forceResearchCommit handles it.
+      const hasMinSearches = searchCount >= minSearches;
+      const availableTools = hasMinSearches
+        ? RESEARCH_TOOLS
+        : RESEARCH_TOOLS.filter(t => t.function.name !== 'commit_research');
+
+      const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption =
+        (isLastIteration && hasMinSearches)
+          ? { type: 'function', function: { name: 'commit_research' } }
+          : 'auto';
+
+      console.log(`[Research Agent] Iteration ${iteration}, searches=${searchCount}/${minSearches}${isLastIteration ? ' (last)' : ''}${!hasMinSearches ? ' [commit locked]' : ''}`);
 
       const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
         temperature: 0.3,
         messages,
-        tools: RESEARCH_TOOLS,
+        tools: availableTools,
         tool_choice: toolChoice,
       }));
 
