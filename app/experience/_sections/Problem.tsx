@@ -3,7 +3,7 @@
 // THE NOISE — visual overwhelm, multiple overlapping screenshots, one bold statement
 export default function Problem() {
   return (
-    <div className="relative min-h-[100dvh] flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative h-[100dvh] flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
 
       {/* Chaotic background: multiple screenshots overlapping at different scales */}
       <div className="absolute inset-0">

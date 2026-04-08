@@ -3,7 +3,7 @@
 // BECOME — vision-first, transformation arc as full-bleed background
 export default function CaptureFlow() {
   return (
-    <div className="relative min-h-[100dvh] flex items-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative h-[100dvh] flex items-center bg-[#0a0a0a] overflow-hidden">
 
       {/* Full-bleed transformation arc image */}
       <div

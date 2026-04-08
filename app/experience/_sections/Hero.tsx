@@ -17,7 +17,7 @@ export default function Hero({ onNext }: HeroProps) {
   }
 
   return (
-    <div className="relative min-h-[100dvh] flex flex-col items-center justify-center overflow-hidden bg-[#0a0a0a]">
+    <div className="relative h-[100dvh] flex flex-col items-center justify-center overflow-hidden bg-[#0a0a0a]">
 
       {/* Signal graph background */}
       <div

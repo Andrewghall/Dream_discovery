@@ -131,10 +131,10 @@ export default function EthentaFlowSection() {
     return () => obs.disconnect()
   }, [mounted])
 
-  if (!mounted) return <div className="relative min-h-[100dvh] bg-[#080810]" />
+  if (!mounted) return <div className="relative h-[100dvh] bg-[#080810]" />
 
   return (
-    <div ref={sectionRef} className="relative min-h-[100dvh] flex flex-col justify-center bg-[#07090f] overflow-hidden">
+    <div ref={sectionRef} className="relative h-[100dvh] flex flex-col justify-center bg-[#07090f] overflow-hidden">
       <style>{STYLES}</style>
 
       {/* Subtle hero backdrop */}

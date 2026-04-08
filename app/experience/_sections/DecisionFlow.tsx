@@ -389,7 +389,7 @@ export default function DecisionFlow() {
   const gc = ap?.rgb ?? '92,242,142'
 
   return (
-    <div className="relative min-h-[100dvh] flex flex-col justify-center bg-[#0d0d0d] overflow-hidden">
+    <div className="relative h-[100dvh] flex flex-col justify-center bg-[#0d0d0d] overflow-hidden">
       <style>{GLOBAL_STYLES}</style>
       <div style={{ position:'absolute', inset:0, pointerEvents:'none', transition:'all 1s ease',
         background:`radial-gradient(ellipse 55% 60% at ${glowX} 50%, rgba(${gc},0.065) 0%, transparent 70%)` }}/>

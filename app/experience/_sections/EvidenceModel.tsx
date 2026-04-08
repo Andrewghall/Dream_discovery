@@ -3,7 +3,7 @@
 // THE PAUSE — pure silence, stark contrast to The Noise
 export default function EvidenceModel() {
   return (
-    <div className="relative min-h-[100dvh] flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative h-[100dvh] flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
 
       {/* Single thin horizontal line — slowly draws itself */}
       <div

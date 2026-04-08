@@ -2,7 +2,7 @@
 
 export default function Closing() {
   return (
-    <div className="relative min-h-[100dvh] flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative h-[100dvh] flex items-center justify-center bg-[#0a0a0a] overflow-hidden">
 
       {/* Signal graph — now visible and organised. Contrast to the noise slide. */}
       <div

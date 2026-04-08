@@ -13,7 +13,7 @@ const sources = [
 
 export default function Validation() {
   return (
-    <div className="relative min-h-[100dvh] flex items-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative h-[100dvh] flex items-center bg-[#0a0a0a] overflow-hidden">
 
       <style>{`
         @keyframes v-pop {

@@ -94,7 +94,7 @@ export default function ExperiencePage() {
         .snap-section {
           scroll-snap-align: start;
           scroll-snap-stop: always;
-          min-height: 100dvh;
+          height: 100dvh;
           overflow: hidden;
           position: relative;
         }

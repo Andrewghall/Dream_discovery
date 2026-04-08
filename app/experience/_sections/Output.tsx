@@ -9,7 +9,7 @@ const deliverables = [
 
 export default function Output() {
   return (
-    <div className="relative min-h-[100dvh] flex items-center bg-[#0a0a0a] overflow-hidden">
+    <div className="relative h-[100dvh] flex items-center bg-[#0a0a0a] overflow-hidden">
 
       {/* Full-bleed phased roadmap as background */}
       <div

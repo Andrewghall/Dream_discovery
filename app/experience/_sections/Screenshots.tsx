@@ -210,7 +210,7 @@ export default function Screenshots() {
   const track = [...items, ...items]
 
   return (
-    <div className="relative min-h-[100dvh] flex flex-col bg-[#0d0d0d] overflow-hidden">
+    <div className="relative h-[100dvh] flex flex-col bg-[#0d0d0d] overflow-hidden">
 
       {/* Edge fades */}
       <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#0d0d0d] to-transparent z-10 pointer-events-none" />
