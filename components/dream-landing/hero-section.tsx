@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { ScrollReveal, AnimatedCounter } from './scroll-reveal';
 import { CalendlyButton } from './calendly-button';
 
@@ -25,15 +24,16 @@ export function HeroSection() {
           </p>
         </ScrollReveal>
 
-        {/* DREAM Banner */}
+        {/* DREAM Animated Logo */}
         <ScrollReveal delay={200}>
           <div className="dream-banner-glow mx-auto mb-10">
-            <Image
-              src="/Dream.PNG"
-              alt="DREAM  -  Discover, Reimagine, Educate, Apply, Mobilise"
-              width={700}
-              height={253}
-              priority
+            <video
+              src="/DREAMMovingLogo.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              aria-label="DREAM  -  Discover, Reimagine, Educate, Apply, Mobilise"
               className="mx-auto w-full max-w-[700px] rounded-xl"
             />
           </div>
