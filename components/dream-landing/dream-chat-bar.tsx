@@ -16,8 +16,23 @@ const PLACEHOLDER_SUGGESTIONS = [
   'Who is DREAM built for?',
 ];
 
-// Regex that matches end-of-sentence boundaries
-const SENTENCE_END_RE = /[.!?](?:\s|$)|\n\n/;
+// Sentence boundary — negative lookbehind avoids splitting on "1." "2." etc.
+const SENTENCE_END_RE = /(?<!\d)[.!?](?:\s+|$)|\n\n/;
+
+/** Remove markdown formatting so TTS and display stay clean */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s+/g, '')               // headers
+    .replace(/\*\*([^*\r\n]+)\*\*/g, '$1')   // bold
+    .replace(/\*([^*\r\n]+)\*/g, '$1')       // italic
+    .replace(/`{1,3}[^`]*`{1,3}/g, '')       // inline / fenced code
+    .replace(/^\s*[-*]\s+/gm, '')            // bullet points
+    .replace(/^\s*\d+\.\s+/gm, '')           // numbered lists
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')      // links
+    .replace(/^-{3,}$/gm, '')                // horizontal rules
+    .replace(/\n{3,}/g, '\n\n')              // excess newlines
+    .trim();
+}
 
 /* Animated wave bars */
 function SpeakingWave({ colour = '#5cf28e', size = 'md' }: { colour?: string; size?: 'sm' | 'md' }) {
@@ -56,6 +71,7 @@ export function DreamChatBar() {
   const audioQueueRef = useRef<AudioChunk[]>([]);
   const isPlayingRef = useRef(false);
   const streamActiveRef = useRef(false); // true while GPT is still streaming
+  const spokenContentRef = useRef('');  // text already fully spoken — base for word reveal
 
   const voice = useVoice();
   const isListening = voice.state === 'listening';
@@ -72,11 +88,10 @@ export function DreamChatBar() {
     }
   }, [messages, isExpanded]);
 
-  /* ── Audio queue player ─────────────────────────────────── */
+  /* ── Audio queue player — word-by-word reveal ──────────── */
   const playNextChunk = useCallback(() => {
     const chunk = audioQueueRef.current.shift();
     if (!chunk) {
-      // Queue empty — stop only if stream is also done
       if (!streamActiveRef.current) setIsSpeaking(false);
       isPlayingRef.current = false;
       return;
@@ -85,18 +100,46 @@ export function DreamChatBar() {
     isPlayingRef.current = true;
     setIsSpeaking(true);
 
+    const words = chunk.sentence.split(/\s+/).filter(Boolean);
+    let wordIndex = 0;
+    let wordInterval: ReturnType<typeof setInterval> | null = null;
+
+    const startWordReveal = () => {
+      if (words.length === 0 || !chunk.audio.duration) return;
+      const msPerWord = Math.max(40, (chunk.audio.duration * 1000) / words.length);
+      wordInterval = setInterval(() => {
+        wordIndex = Math.min(wordIndex + 1, words.length);
+        const base = spokenContentRef.current;
+        const visible = base + (base ? ' ' : '') + words.slice(0, wordIndex).join(' ');
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last?.role === 'assistant') {
+            updated[updated.length - 1] = { role: 'assistant', content: visible };
+          }
+          return updated;
+        });
+        if (wordIndex >= words.length && wordInterval) {
+          clearInterval(wordInterval);
+          wordInterval = null;
+        }
+      }, msPerWord);
+    };
+
+    chunk.audio.addEventListener('canplay', startWordReveal, { once: true });
+
     chunk.audio.play().catch(() => {});
     chunk.audio.onended = () => {
+      if (wordInterval) { clearInterval(wordInterval); wordInterval = null; }
       URL.revokeObjectURL(chunk.url);
-      // Reveal this sentence's text now that it's been spoken
+      // Commit the full sentence as the new stable base
+      const base = spokenContentRef.current;
+      spokenContentRef.current = base + (base ? ' ' : '') + chunk.sentence;
       setMessages(prev => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
         if (last?.role === 'assistant') {
-          updated[updated.length - 1] = {
-            role: 'assistant',
-            content: last.content + (last.content ? ' ' : '') + chunk.sentence,
-          };
+          updated[updated.length - 1] = { role: 'assistant', content: spokenContentRef.current };
         }
         return updated;
       });
@@ -106,7 +149,7 @@ export function DreamChatBar() {
 
   /* Fetch TTS for one sentence and add to queue */
   const enqueueSentence = useCallback(async (sentence: string) => {
-    const trimmed = sentence.trim();
+    const trimmed = stripMarkdown(sentence.trim());
     if (!trimmed) return;
     try {
       const res = await fetch('/api/public/assessment/speak', {
@@ -118,6 +161,7 @@ export function DreamChatBar() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      // Store the clean (stripped) sentence so display matches what was spoken
       audioQueueRef.current.push({ sentence: trimmed, audio, url });
       if (!isPlayingRef.current) playNextChunk();
     } catch { /* non-blocking */ }
@@ -137,6 +181,7 @@ export function DreamChatBar() {
     if (!question || isStreaming) return;
 
     stopAllAudio();
+    spokenContentRef.current = ''; // reset spoken base for the new response
     setIsExpanded(true);
 
     const userMsg: ChatMessage = { role: 'user', content: question };
@@ -152,7 +197,7 @@ export function DreamChatBar() {
       const response = await fetch('/api/public/dream-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, history: history.slice(-6) }),
+        body: JSON.stringify({ question, history: history.slice(-6), voice: withVoice }),
       });
 
       if (!response.ok) {
@@ -185,13 +230,16 @@ export function DreamChatBar() {
                 // Accumulate into sentence buffer; dispatch complete sentences to TTS
                 sentenceBuffer += data.content;
                 let match: RegExpExecArray | null;
+                // Reset lastIndex so exec scans from start each iteration
+                SENTENCE_END_RE.lastIndex = 0;
                 while ((match = SENTENCE_END_RE.exec(sentenceBuffer)) !== null) {
                   const end = match.index + match[0].length;
                   const sentence = sentenceBuffer.slice(0, end);
                   sentenceBuffer = sentenceBuffer.slice(end);
+                  SENTENCE_END_RE.lastIndex = 0;
                   enqueueSentence(sentence); // fire-and-forget — queued async
                 }
-                // Text is NOT streamed to screen — voice reveals it
+                // Text is NOT streamed to screen — voice reveals it word-by-word
               } else {
                 // Text mode: stream directly to screen as before
                 setMessages(prev => {
