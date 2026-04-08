@@ -8,6 +8,7 @@ import { readBlueprintFromJson, WorkshopBlueprintSchema } from '@/lib/workshop/b
 import type { EngagementType } from '@prisma/client';
 import type { WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 import { validateQuestionSet } from '@/lib/cognition/agents/question-set-validator';
+import { logAuditEvent } from '@/lib/audit/audit-logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -686,7 +687,7 @@ export async function DELETE(
 
     const workshop = await prisma.workshop.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, name: true, clientName: true },
     });
 
     if (!workshop) {
@@ -780,6 +781,22 @@ export async function DELETE(
           { status: 409 }
         );
       }
+    }
+
+    if (user.organizationId) {
+      await logAuditEvent({
+        organizationId: user.organizationId,
+        userId: user.userId ?? undefined,
+        userEmail: user.email ?? undefined,
+        action: 'DELETE_WORKSHOP',
+        resourceType: 'workshop',
+        resourceId: id,
+        metadata: {
+          workshopName: workshop.name,
+          clientName: workshop.clientName ?? null,
+        },
+        success: true,
+      });
     }
 
     return NextResponse.json({ success: true });
