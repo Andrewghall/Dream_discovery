@@ -27,6 +27,7 @@ import { classifyWorkshopArchetype } from '@/lib/output/archetype-classifier';
 import type { ClassifierInput } from '@/lib/output/archetype-classifier';
 import { runV2SynthesisAgent, extractBlueprintKnowledgePack } from '@/lib/output/v2-synthesis-agent';
 import { openAiBreaker } from '@/lib/circuit-breaker';
+import { getEngagementType } from '@/lib/domain-packs/engagement-types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -229,7 +230,7 @@ function actorSummary(topActors: Array<{ name: string; role: string; mentions: n
 
 // ── GPT Prompts ────────────────────────────────────────────────────────
 
-function buildSynthesisPrompt(workshopName: string, data: ReturnType<typeof aggregateNodes>, themeAnalysis: string, constraintAnalysis: string, researchContext: string | null, participantNames: string[] = []): string {
+function buildSynthesisPrompt(workshopName: string, data: ReturnType<typeof aggregateNodes>, themeAnalysis: string, constraintAnalysis: string, researchContext: string | null, participantNames: string[] = [], engagementTypeKey?: string | null): string {
   const domainText = domainSummary(data.byDomain);
   const actorText = actorSummary(data.topActors);
   const keywordText = data.topKeywords.slice(0, 30).map(k => `${k.word} (${k.count})`).join(', ');
@@ -254,13 +255,20 @@ function buildSynthesisPrompt(workshopName: string, data: ReturnType<typeof aggr
     }
   }
 
+  const engagementTypeInstruction = (() => {
+    if (!engagementTypeKey) return '';
+    const et = getEngagementType(engagementTypeKey);
+    if (!et) return '';
+    return `\n═══ ENGAGEMENT TYPE: ${et.label.toUpperCase()} ═══\n${et.synthesisInstruction}\n`;
+  })();
+
   return `You are the DREAM Organisational Brain Scanner — a system that scans and interprets the organisational brain, revealing how a company thinks, what it wants to achieve, what blocks progress, and how it can transform. Your output is strategic intelligence, not a workshop report. Every insight must be derived from the workshop signals and grounded in evidence. If signal strength is insufficient, say so rather than generating filler.
 
 Workshop: "${workshopName}"
 Total data points analysed: ${data.totalNodes}
 Domains identified: ${domainNames.join(', ')}
 Phases covered: ${Object.entries(data.byPhase).filter(([, v]) => v.length > 0).map(([k, v]) => `${k} (${v.length} utterances)`).join(', ')}
-
+${engagementTypeInstruction}
 ─── PHASE-SEPARATED WORKSHOP SIGNALS ───
 Use the correct phase source for each report section (see CRITICAL RULES below).
 
@@ -619,7 +627,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // ── Pre-stream validation ───────────────────────────
   const workshop = await prisma.workshop.findUnique({
     where: { id: workshopId },
-    select: { id: true, name: true, organizationId: true, prepResearch: true, industry: true, dreamTrack: true, targetDomain: true, blueprint: true },
+    select: { id: true, name: true, organizationId: true, prepResearch: true, industry: true, dreamTrack: true, targetDomain: true, blueprint: true, engagementType: true },
   });
   if (!workshop) {
     return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
@@ -894,7 +902,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           'acknowledgement',
         );
 
-        const prompt = buildSynthesisPrompt(workshop.name || 'Workshop', aggregated, themeAnalysis, constraintAnalysis, researchContext, discoveryParticipants.map(p => p.name));
+        const prompt = buildSynthesisPrompt(workshop.name || 'Workshop', aggregated, themeAnalysis, constraintAnalysis, researchContext, discoveryParticipants.map(p => p.name), workshop.engagementType);
         console.log(`[synthesise] Prompt length: ${prompt.length} chars. Running synthesis for workshop ${workshopId} (${aggregated.totalNodes} nodes)...`);
 
         const completion = await openAiBreaker.execute(() =>

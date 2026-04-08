@@ -18,6 +18,7 @@ import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopPrepResearch, PrepContext, AgentConversationCallback, AgentReview } from './agent-types';
 import type { GuidanceState } from '../guidance-state';
 import { buildJourneyContextString } from '../journey-completion-state';
+import { getEngagementType } from '@/lib/domain-packs/engagement-types';
 
 // ══════════════════════════════════════════════════════════════
 // ERRORS
@@ -925,6 +926,7 @@ Client: ${context.clientName || 'Unknown'}
 Industry: ${context.industry || 'Unknown'}
 Website: ${context.companyWebsite || 'Not provided'}
 ${trackDesc}
+${context.engagementType ? (() => { const et = getEngagementType(context.engagementType!); return et ? `\n═══ ENGAGEMENT TYPE: ${et.label.toUpperCase()} ═══\n${et.researchAngle}\n` : ''; })() : ''}
 ${context.workshopPurpose ? `\n═══ WORKSHOP PURPOSE — THIS IS YOUR NORTH STAR ═══\n${context.workshopPurpose}\n\n⟹ EVERY search you run should be motivated by this purpose. Before each search ask: "will this help the facilitator achieve one of these purposes?" If not, search for something else instead.\n⟹ When you find something relevant to a specific purpose, note it. You will need to map every major finding back to a purpose in your workshopBrief.\n⟹ Key search angles this purpose demands: ${context.workshopPurpose.toLowerCase().includes('ai') ? `Search specifically for what ${context.clientName || 'the company'} currently uses for AI/automation today — their actual tools, products, initiatives. The facilitator needs to know their starting point.` : ''} ${context.workshopPurpose.toLowerCase().includes('align') ? `Search for evidence of internal fragmentation, competing views, or strategic misalignment at ${context.clientName || 'the company'}.` : ''} ${context.workshopPurpose.toLowerCase().includes('root cause') ? `Search for what the company or analysts identify as the underlying causes of their performance challenges — not just symptoms.` : ''}` : ''}
 ${context.desiredOutcomes ? `\n═══ DESIRED OUTCOMES ═══\n${context.desiredOutcomes}\n⟹ These outcomes tell you what the room must leave with. Use them to prioritise what you research and what you surface.` : ''}
 
