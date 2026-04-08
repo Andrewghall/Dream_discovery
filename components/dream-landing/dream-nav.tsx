@@ -27,7 +27,7 @@ interface NavLink {
 const NAV_LINKS: NavLink[] = [
   { href: '/dream/technology', label: 'Technology' },
   { href: '/dream/methodology', label: 'Methodology' },
-  { href: '/dream/compare', label: 'Where We Fit' },
+  { href: '/dream/compare', label: 'How We Compare' },
   { href: '/dream/insights', label: 'Insights' },
   { href: '/dream/how-it-works', label: 'How It Works' },
   {

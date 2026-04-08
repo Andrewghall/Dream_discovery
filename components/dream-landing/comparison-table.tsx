@@ -93,14 +93,13 @@ export function ComparisonTable() {
       <div className="max-w-5xl mx-auto relative z-10">
         <ScrollReveal>
           <p className="text-[#5cf28e]/70 text-[11px] font-semibold tracking-[0.25em] uppercase mb-3">
-            Where We Fit
+            How We Compare
           </p>
           <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight mb-3">
-            How DREAM sits alongside the market.
+            DREAM alongside the leading feedback platforms.
           </h2>
           <p className="text-white/65 text-base leading-relaxed mb-10 max-w-2xl">
-            Enterprise feedback platforms are excellent at capturing signal. DREAM goes further — turning
-            that signal into structured decisions and a transformation plan your organisation can act on.
+            Qualtrics, Medallia, InMoment and Forsta are excellent at capturing signal. DREAM does that too — and goes further, turning signal into structured decisions and a transformation plan your organisation can act on.
           </p>
         </ScrollReveal>
 
