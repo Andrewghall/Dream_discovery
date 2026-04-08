@@ -278,12 +278,15 @@ export function DreamChatBar() {
                     Stop
                   </button>
                 )}
-                <button onClick={() => setIsExpanded(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded">
+                {/* Collapse — hides panel, keeps conversation */}
+                <button onClick={() => setIsExpanded(false)} title="Minimise" className="text-slate-400 hover:text-slate-600 p-1 rounded">
                   <ChevronDown className="h-4 w-4" />
                 </button>
+                {/* Close — ends conversation and returns to page */}
                 <button
                   onClick={() => { stopAllAudio(); setMessages([]); setIsExpanded(false); }}
-                  className="text-slate-400 hover:text-slate-600 p-1 rounded"
+                  title="Close conversation"
+                  className="text-slate-400 hover:text-red-400 p-1 rounded transition-colors"
                 >
                   <X className="h-4 w-4" />
                 </button>
