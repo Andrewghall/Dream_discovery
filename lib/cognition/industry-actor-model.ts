@@ -278,6 +278,21 @@ export const INDUSTRY_ACTOR_MODEL: IndustryActorSet[] = [
     ],
   },
   {
+    industry: 'BPO & Outsourcing',
+    aliases: ['bpo', 'business process outsourcing', 'outsourcing', 'managed services', 'shared services', 'contact centre outsourcing', 'offshoring', 'nearshoring'],
+    actors: [
+      { name: 'End Client (Buyer)', tier: 'Customer' },
+      { name: 'Contact Centre Agent', tier: 'Experience' },
+      { name: 'Client Success Manager', tier: 'Experience' },
+      { name: 'Operations Manager', tier: 'Execution' },
+      { name: 'Quality & Compliance', tier: 'Execution' },
+      { name: 'Workforce Management', tier: 'Execution' },
+      { name: 'Field / Site Lead', tier: 'Field' },
+      { name: 'CRM / Ticketing System', tier: 'Intelligence' },
+      { name: 'AI Automation / RPA', tier: 'Intelligence' },
+    ],
+  },
+  {
     industry: 'Airline & Aviation',
     aliases: ['airline', 'aviation', 'airport', 'flight', 'airways', 'air travel', 'jo air'],
     actors: [
