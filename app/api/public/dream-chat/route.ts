@@ -11,6 +11,88 @@ import { buildDreamChatSystemPrompt } from '@/lib/dream-landing/knowledge-base';
 
 export const maxDuration = 60;
 
+// ── Quick company research via Tavily ────────────────────────
+
+interface TavilyResult { title: string; content: string; url: string }
+interface TavilyResponse { results?: TavilyResult[] }
+
+const BANNED_RESEARCH_DOMAINS = [
+  'glassdoor.com', 'indeed.com', 'reddit.com', 'quora.com',
+  'comparably.com', 'simplywall.st', 'businessmodelcanvastemplate.com',
+];
+
+async function tavilySearch(query: string): Promise<TavilyResult[]> {
+  const key = process.env.TAVILY_API_KEY;
+  if (!key) return [];
+  const res = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: key,
+      query,
+      search_depth: 'basic',
+      max_results: 3,
+      include_raw_content: false,
+    }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json() as TavilyResponse;
+  return (data.results ?? []).filter(r =>
+    !BANNED_RESEARCH_DOMAINS.some(d => r.url?.includes(d))
+  );
+}
+
+async function quickCompanyResearch(company: string): Promise<string> {
+  try {
+    const [overviewResults, challengeResults] = await Promise.all([
+      tavilySearch(`${company} company strategy business overview 2024 2025`),
+      tavilySearch(`${company} business challenges transformation priorities`),
+    ]);
+
+    const all = [...overviewResults, ...challengeResults].slice(0, 5);
+    if (all.length === 0) return '';
+
+    const snippets = all
+      .map(r => `• ${r.title}: ${r.content?.slice(0, 250).replace(/\n/g, ' ')}`)
+      .join('\n');
+
+    return `\n\n## LIVE RESEARCH — ${company}\nThe following was retrieved via real-time web search. Use it to ground your response in what is actually known about this company. Reference it naturally ("based on what I can see about ${company}…"). Do NOT fabricate details beyond what is shown here.\n\n${snippets}`;
+  } catch {
+    return '';
+  }
+}
+
+/** Extract a company/client name from the question if one is mentioned */
+function detectCompanyName(question: string): string | null {
+  // Look for phrases that strongly suggest a named company
+  const patterns: RegExp[] = [
+    /\bfor\s+([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\b/,
+    /\b([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\s+(?:could|can|would|might|should)\s+(?:use|benefit|leverage|deploy)/,
+    /\bworking\s+with\s+([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\b/i,
+    /\bclient\s+(?:called\s+|like\s+)?([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\b/i,
+    /\bcompany\s+(?:called\s+|like\s+)?([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\b/i,
+    /\babout\s+([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})(?:\s*[,?]|\s+and\b)/,
+    // Two consecutive title-case words that aren't common sentence starters
+    /\b([A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\b(?=.*\b(?:use|benefit|deploy|DREAM|work|transform|help)\b)/,
+  ];
+
+  const STOP_WORDS = new Set([
+    'DREAM', 'Ethenta', 'EthentaFlow', 'Discovery', 'Reimagine', 'Apply', 'Mobilise',
+    'What', 'How', 'Why', 'Who', 'Can', 'Could', 'Would', 'Should', 'Does', 'Is',
+    'The', 'This', 'That', 'These', 'Those', 'When', 'Where', 'Which',
+    'COM-B', 'TLM', 'AI',
+  ]);
+
+  for (const pattern of patterns) {
+    const match = question.match(pattern);
+    if (match?.[1]) {
+      const name = match[1].trim();
+      if (name.length >= 3 && !STOP_WORDS.has(name)) return name;
+    }
+  }
+  return null;
+}
+
 const MODEL = 'gpt-4o-mini';
 const MAX_QUESTION_LENGTH = 500;
 const MAX_HISTORY = 6;
@@ -85,8 +167,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'AI service not configured' }, { status: 500 });
     }
 
+    // Quick company research — run before GPT if a company name is detected
+    const detectedCompany = detectCompanyName(question);
+    const researchContext = detectedCompany
+      ? await quickCompanyResearch(detectedCompany)
+      : '';
+
     // Build messages
-    const basePrompt = buildDreamChatSystemPrompt();
+    const basePrompt = buildDreamChatSystemPrompt() + researchContext;
     const systemPrompt = isVoice
       ? basePrompt + `\n\n## VOICE MODE — CRITICAL\nThis response will be spoken aloud immediately. You MUST write in plain conversational prose only. Absolutely no markdown of any kind: no headers (#), no bold (**), no italic (*), no bullet points (-), no numbered lists (1. 2. 3.), no backticks, no horizontal rules. Write flowing sentences and paragraphs as if speaking naturally in conversation.`
       : basePrompt;

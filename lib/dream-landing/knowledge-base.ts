@@ -48,13 +48,32 @@ Discovery is the full pre-workshop intelligence gathering phase. It is not limit
 - **Workshops** — pre-workshop group sessions that surface collective perspectives and dynamics
 - **Field interviews** — in-person or remote interviews with key stakeholders conducted as part of the discovery process
 
-All discovery inputs cover the same 5 organisational domains:
+All discovery inputs are structured around DREAM's **lens framework** — a configurable set of analytical lenses that define which dimensions of the organisation are explored. Every lens comes from the domain pack deployed for the engagement. The lens set is not fixed — it adapts to the industry, operating model, and engagement type.
 
+**Standard lenses** (used across Customer Engagement, HR, Sales, Enterprise Strategy, Governance engagements):
 1. **People** — Capability, culture, collaboration, leadership effectiveness
 2. **Organisation** — Governance, processes, decision-making, structure, policies
 3. **Customer** — Customer experience, expectations, satisfaction, journey pain points
 4. **Technology** — Systems, tools, data, digital capability, technical debt
 5. **Regulation** — Compliance requirements, regulatory constraints, risk management
+
+**Contact Centre — Airline domain pack** (8 lenses):
+1. **Customer Experience** — Passenger and agent experience, satisfaction, journey pain points
+2. **People & Workforce** — Frontline capability, scheduling, culture, team dynamics
+3. **Operations** — Operational efficiency, process adherence, service delivery, demand management
+4. **Technology** — Systems, telephony, automation, digital capability
+5. **Training & Capability** — Knowledge management, onboarding, performance support, coaching
+6. **Regulation & Compliance** — Aviation regulations, safety protocols, data privacy, contractual obligations
+7. **Organisation & Leadership** — Governance, management structures, decision-making authority
+8. **Culture** — Values alignment, team psychology, engagement, behavioural patterns
+
+**Business Process Outsourcing (BPO) domain pack** (6 lenses):
+1. **Operational Consistency** — Process standardisation, quality assurance, SLA adherence
+2. **Client Delivery & Performance** — Contract delivery, client satisfaction, KPI management
+3. **Workforce & Capability** — Team structure, skills, attrition, engagement
+4. **Technology & Integration** — Platform integration, automation, data flows between client and BPO
+5. **AI & Automation Reality** — Current AI usage, readiness, adoption barriers, automation ROI
+6. **Commercial & Client Alignment** — Commercial model fit, scope management, margin dynamics
 
 During AI-guided conversations, the AI:
 - Asks structured questions about current state, desired state, and projected state (if nothing changes)
@@ -83,7 +102,7 @@ The live workshop is AI-facilitated with cognitive guidance:
 - Real-time theme detection and signal analysis
 - Agentic AI facilitation that suggests probing sub-questions
 - Dynamic sticky-pad canvas for capturing workshop dialogue
-- Lens-based colouring: People (blue), Organisation (green), Customer (purple), Technology (orange), Regulation (red)
+- Lens-based colouring: each lens has a distinct colour so facilitators can track domain coverage at a glance — the palette adapts to the domain pack in use
 - Coverage tracking ensures all domains and perspectives are explored
 - A live 360° Hemisphere builds in real-time as dialogue unfolds on-screen
 
@@ -245,7 +264,7 @@ One question per domain — gives a fast directional read on your organisation's
 Three questions per domain — a comprehensive view of your maturity across all 5 capability areas.
 
 ### How It Works
-- 5 domains: People, Organisation & Partners, Customer, Technology, Regulation
+- 5 standard domains assessed in the Quick Track: People, Organisation & Partners, Customer, Technology, Regulation (domain-specific assessments adapt to the relevant lens pack)
 - Each question presents 5 maturity levels (Ad Hoc → Emerging → Defined → Managed → Leading)
 - Select the level that best describes your organisation today
 - Results are instant — radar chart + pattern detection
