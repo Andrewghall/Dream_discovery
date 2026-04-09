@@ -62,34 +62,57 @@ async function quickCompanyResearch(company: string): Promise<string> {
   }
 }
 
-/** Extract a company/client name from the question if one is mentioned */
+/** Extract the most prominent company/client name from the question */
 function detectCompanyName(question: string): string | null {
-  // Look for phrases that strongly suggest a named company
-  const patterns: RegExp[] = [
-    /\bfor\s+([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\b/,
-    /\b([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\s+(?:could|can|would|might|should)\s+(?:use|benefit|leverage|deploy)/,
-    /\bworking\s+with\s+([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\b/i,
-    /\bclient\s+(?:called\s+|like\s+)?([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\b/i,
-    /\bcompany\s+(?:called\s+|like\s+)?([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})\b/i,
-    /\babout\s+([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,2})(?:\s*[,?]|\s+and\b)/,
-    // Two consecutive title-case words that aren't common sentence starters
-    /\b([A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\b(?=.*\b(?:use|benefit|deploy|DREAM|work|transform|help)\b)/,
-  ];
-
   const STOP_WORDS = new Set([
     'DREAM', 'Ethenta', 'EthentaFlow', 'Discovery', 'Reimagine', 'Apply', 'Mobilise',
     'What', 'How', 'Why', 'Who', 'Can', 'Could', 'Would', 'Should', 'Does', 'Is',
     'The', 'This', 'That', 'These', 'Those', 'When', 'Where', 'Which',
-    'COM-B', 'TLM', 'AI',
+    'COM-B', 'TLM', 'AI', 'Contact', 'Centre', 'Center',
   ]);
 
-  for (const pattern of patterns) {
-    const match = question.match(pattern);
+  // Normalise — strip possessives so "Marks and Spencer's" → "Marks and Spencer"
+  const q = question.replace(/'\s*s\b/gi, '').replace(/\u2019s\b/g, '');
+
+  // Pattern 1: well-known multi-word company names with connectors (Marks and Spencer, Boots and Co, etc.)
+  const connectorPattern = /\b([A-Z][a-zA-Z]{1,}(?:\s+(?:and|&|of|the)\s+[A-Z][a-zA-Z]{1,}){1,3})\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = connectorPattern.exec(q)) !== null) {
+    const name = m[1].trim();
+    if (!STOP_WORDS.has(name.split(/\s+/)[0])) return name;
+  }
+
+  // Pattern 2: explicit sales context phrases — capture whatever follows
+  const contextPatterns: RegExp[] = [
+    /\bfor\s+([A-Z][a-zA-Z0-9&.\s]{2,40}?)(?:\s+(?:contact|specifically|in\s+particular)|\s*[,?.]|$)/,
+    /\bwith\s+([A-Z][a-zA-Z0-9&.\s]{2,30}?)(?:'s)?\s+(?:contact\s+cent(?:er|re)|work|bid|tender|team|contract)/i,
+    /\b(?:client|company|organisation|organization|firm|prospect)\s+(?:called\s+|like\s+)?([A-Z][a-zA-Z0-9&.\s]{2,30}?)(?:\s*[,?]|$)/i,
+    /\bworking\s+with\s+([A-Z][a-zA-Z0-9&.\s]{2,30}?)(?:\s+and\b|\s*[,?]|$)/i,
+    /\bpitch(?:ing)?\s+(?:to\s+)?([A-Z][a-zA-Z0-9&.\s]{2,30}?)(?:\s+as\b|\s+a\b|\s*[,?]|$)/i,
+    /\bhelp\s+([A-Z][a-zA-Z0-9&.\s]{2,30}?)\s+(?:reimagin|transform|understand|think)/i,
+    /\b([A-Z][a-zA-Z0-9&]{2,}(?:\s+[A-Z][a-zA-Z0-9&]{2,}){0,3})\s+(?:could|can|would|might|should)\s+(?:use|benefit|leverage|deploy)/,
+  ];
+
+  for (const pattern of contextPatterns) {
+    const match = q.match(pattern);
     if (match?.[1]) {
-      const name = match[1].trim();
-      if (name.length >= 3 && !STOP_WORDS.has(name)) return name;
+      const name = match[1].trim().replace(/\s+/g, ' ');
+      const first = name.split(/\s+/)[0];
+      if (name.length >= 3 && !STOP_WORDS.has(first) && !STOP_WORDS.has(name)) return name;
     }
   }
+
+  // Pattern 3: single well-capitalised word that looks like a brand/company name
+  // (e.g. "Capita", "Endava", "Concentrix") — only if it appears near sales keywords
+  const singleWordPattern = /\b([A-Z][a-z]{3,})\b/g;
+  const salesKeywords = /\b(?:bid|tender|pitch|sell|client|contact\s*cent(?:er|re)|contract|opportunity|proposal)\b/i;
+  if (salesKeywords.test(q)) {
+    while ((m = singleWordPattern.exec(q)) !== null) {
+      const name = m[1];
+      if (!STOP_WORDS.has(name)) return name;
+    }
+  }
+
   return null;
 }
 
