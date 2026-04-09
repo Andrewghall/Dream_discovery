@@ -80,10 +80,11 @@ export async function POST(
     });
 
     const url = new URL('https://api.deepgram.com/v1/listen');
-    url.searchParams.set('model', 'nova-2');
+    url.searchParams.set('model', 'nova-3');  // nova-3 (2025): better accuracy on mobile audio and noisy environments
     url.searchParams.set('smart_format', 'true');
     url.searchParams.set('punctuate', 'true');
     url.searchParams.set('diarize', 'false');
+    url.searchParams.set('filler_words', 'false');  // Strip um/uh/er before returning transcript
 
     const dgRes = await fetch(url.toString(), {
       method: 'POST',
