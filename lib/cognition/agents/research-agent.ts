@@ -1241,7 +1241,7 @@ Remember: every fact must be cited. Every challenge and development must end wit
       const hasMinSearches = searchCount >= minSearches;
       const availableTools = hasMinSearches
         ? RESEARCH_TOOLS
-        : RESEARCH_TOOLS.filter(t => t.function.name !== 'commit_research');
+        : RESEARCH_TOOLS.filter(t => t.type === 'function' && t.function.name !== 'commit_research');
 
       const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption =
         (isLastIteration && hasMinSearches)
