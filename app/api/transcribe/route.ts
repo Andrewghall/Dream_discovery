@@ -49,10 +49,11 @@ export async function POST(request: NextRequest) {
 
     const transcription = await openai.audio.transcriptions.create({
       file: audioFile,
-      model: 'whisper-1',
+      model: 'gpt-4o-transcribe',  // Significantly better than whisper-1 on mobile audio and accented speech
       language,
       response_format: 'text',
-      temperature: 0.2, // Lower temperature for more accurate transcription
+      // Note: gpt-4o-transcribe does not support 'temperature' parameter
+      prompt: 'Workshop facilitation discussion about business strategy, digital transformation, customer experience, and organisational change.',
     });
 
     console.log('✅ Transcription:', transcription);

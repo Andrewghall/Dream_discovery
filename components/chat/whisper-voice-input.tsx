@@ -103,9 +103,10 @@ export function WhisperVoiceInput({ onTranscript, language, voiceEnabled, onVoic
     }
   };
 
-  const isAndroid = () => {
+  const isMobile = () => {
     if (typeof navigator === 'undefined') return false;
-    return /Android/i.test(navigator.userAgent);
+    // iOS Safari supports MediaRecorder since iOS 14.5 — use it instead of deprecated ScriptProcessorNode
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   };
 
   const getSupportedRecorderMimeType = () => {
@@ -331,8 +332,9 @@ export function WhisperVoiceInput({ onTranscript, language, voiceEnabled, onVoic
       // Track input level + silence for auto-stop (works for both MediaRecorder and PCM)
       await startMonitor(stream);
 
-      // Android browsers are often more reliable with MediaRecorder than ScriptProcessor.
-      const shouldUseMediaRecorder = isAndroid() && typeof MediaRecorder !== 'undefined';
+      // Mobile browsers (Android + iOS Safari 14.5+) are more reliable with MediaRecorder
+      // than the deprecated ScriptProcessorNode PCM path.
+      const shouldUseMediaRecorder = isMobile() && typeof MediaRecorder !== 'undefined';
       if (shouldUseMediaRecorder) {
         const mimeType = getSupportedRecorderMimeType();
         const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
