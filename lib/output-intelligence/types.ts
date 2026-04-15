@@ -56,6 +56,13 @@ export interface WorkshopSignals {
     discoveryPads: Array<{ text: string; type?: string; lens?: string; actor?: string }>;
     journey: Array<{ stage: string; description?: string; aiScore?: number; painPoints?: string[] }>;
     hemisphereShift: number | null;  // 0-1 shift from left to right brain
+    /**
+     * True when the session didn't use formal phase separations — discovery,
+     * reimagine (and often constraints/way-ahead) were all discussed together
+     * as one flowing conversation. The agent should treat all signals as a
+     * unified pool rather than trying to enforce artificial phase boundaries.
+     */
+    isCombinedSession: boolean;
   };
   scratchpad: {
     execSummary: string | null;

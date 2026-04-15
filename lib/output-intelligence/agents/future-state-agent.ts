@@ -125,6 +125,9 @@ function buildSignalDump(signals: WorkshopSignals): string {
   lines.push(`Lenses: ${signals.context.lenses.join(', ')}`);
   lines.push(`Business context: ${signals.context.businessContext || 'Not specified'}`);
   lines.push(`Objectives: ${signals.context.objectives || 'Not specified'}`);
+  if (signals.liveSession.isCombinedSession) {
+    lines.push(`Session mode: COMBINED — participants did not formally separate Discovery, Reimagine, Constraints or Way Ahead into distinct phases. Everything was discussed as one flowing conversation. Treat all signals as a unified pool: Truth Today and The Dream are both present in the same signals.`);
+  }
 
   // ── REIMAGINE signals — grouped by lens first, then by actor ─────────────
   if (signals.liveSession.reimaginePads.length > 0) {
@@ -300,8 +303,10 @@ Use ONLY these actor names in the reimaginedJourney. Do not invent roles or subs
 CRITICAL: THE REIMAGINED JOURNEY IS THE HEART OF THIS OUTPUT.
 Build "reimaginedJourney" as a collective synthesis — the combined story of what the group said together, not a per-person breakdown.
 
-- "collectiveTruthToday": synthesise the DISCOVERY signals into the shared current reality. What is broken? What is painful? What is constrained? 3-4 sentences using the exact language from the session.
-- "collectiveFuture": synthesise the REIMAGINE signals into the shared vision. What did the group collectively aspire to? What does the world look like when it works? Use their exact words, ideas, and terminology.
+If the context says "Session mode: COMBINED", the group did not formally separate phases. Discovery (truth today) and Reimagine (the dream) are both woven through the same signals. Extract both from the unified pool — don't force artificial phase boundaries. Some statements will contain both the problem and the aspiration in one breath: capture both.
+
+- "collectiveTruthToday": synthesise the current reality across all signals. What is broken? What is painful? What is constrained today? 3-4 sentences using the exact language from the session.
+- "collectiveFuture": synthesise the shared vision. What did the group collectively aspire to? What does the world look like when this works? Use their exact words, ideas, and terminology.
 - "coreNarrative": the connecting proposition. What is the transformation story? What changes, why it matters, what it makes possible. This is the thread that runs through everything.
 - "keyVoices": 8-12 specific insights or positions from the session — the most important things said, preserved verbatim. Spread across lenses. These are the evidence base for everything else.
 

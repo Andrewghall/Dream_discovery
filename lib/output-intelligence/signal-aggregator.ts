@@ -279,13 +279,20 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   let journey: WorkshopSignals['liveSession']['journey'] = [];
   let hemisphereShift: number | null = null;
 
+  let isCombinedSession = false;
+
   const latestSnapshot = latestSnapshotRows;
   if (latestSnapshot) {
     const payload = safeJson<SnapshotPayload>(latestSnapshot.payload);
     const rawNodes = payload?.nodesById ?? payload?.nodes ?? {};
 
-    for (const node of Object.values(rawNodes)) {
-      if (!node.rawText) continue;
+    // Detect combined session: if ≥70% of nodes have no dialoguePhase, the
+    // facilitator didn't formally separate phases — treat as one unified conversation.
+    const allNodes = Object.values(rawNodes).filter((n) => n.rawText);
+    const unphasedCount = allNodes.filter((n) => !n.dialoguePhase).length;
+    isCombinedSession = allNodes.length > 0 && unphasedCount / allNodes.length >= 0.7;
+
+    for (const node of allNodes) {
       const pad = {
         text: truncate(node.rawText, 400),
         type: node.classification?.primaryType ?? undefined,
@@ -463,6 +470,7 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       discoveryPads,
       journey,
       hemisphereShift,
+      isCombinedSession,
     },
     scratchpad: {
       execSummary,
