@@ -374,7 +374,6 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
     if (!json) return null;
     if (typeof json === 'string') return truncate(json, 800);
     if (typeof json === 'object') {
-      // Extract string values from objects
       const vals = Object.values(json as Record<string, unknown>)
         .filter((v) => typeof v === 'string')
         .map((v) => truncate(v as string, 200));
@@ -383,17 +382,120 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
     return null;
   }
 
+  /**
+   * Extract meaningful text from a discoveryOutput blob.
+   * Shape: { _aiSummary, sections[], operationalReality, organisationalMisalignment,
+   *          systemicFriction, transformationReadiness, finalDiscoverySummary }
+   */
+  function extractDiscoveryOutput(raw: unknown): string | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const d = raw as Record<string, unknown>;
+    const lines: string[] = [];
+
+    if (typeof d._aiSummary === 'string') lines.push(`DISCOVERY SUMMARY: ${d._aiSummary}`);
+    if (typeof d.finalDiscoverySummary === 'string') lines.push(`\nSTRATEGIC DIAGNOSIS: ${d.finalDiscoverySummary}`);
+
+    // Per-domain sections — extract themes and verbatim quotes
+    if (Array.isArray(d.sections)) {
+      for (const s of d.sections as Array<Record<string, unknown>>) {
+        if (!s || typeof s !== 'object') continue;
+        const domain = typeof s.domain === 'string' ? s.domain : 'Unknown';
+        lines.push(`\n[${domain} lens]`);
+        if (Array.isArray(s.topThemes)) lines.push(`  Themes: ${(s.topThemes as string[]).join(', ')}`);
+        if (Array.isArray(s.quotes)) {
+          for (const q of s.quotes as Array<Record<string, unknown>>) {
+            if (typeof q?.text === 'string') lines.push(`  • "${q.text}"`);
+          }
+        }
+      }
+    }
+
+    // Four diagnostic insight blocks
+    for (const key of ['operationalReality', 'organisationalMisalignment', 'systemicFriction', 'transformationReadiness'] as const) {
+      const block = d[key] as Record<string, unknown> | undefined;
+      if (!block) continue;
+      const label = key.replace(/([A-Z])/g, ' $1').trim().toUpperCase();
+      if (typeof block.insight === 'string') lines.push(`\n${label}: ${block.insight}`);
+      if (Array.isArray(block.evidence)) {
+        (block.evidence as string[]).forEach((e) => { if (e) lines.push(`  • ${e}`); });
+      }
+    }
+
+    return lines.length > 0 ? lines.join('\n') : null;
+  }
+
+  /**
+   * Extract meaningful text from a reimagineContent blob.
+   * Shape: { _aiSummary, reimagineContent: { title, description, directionOfTravel[],
+   *          primaryThemes[], supportingThemes[], visionAlignment, horizonVision } }
+   */
+  function extractReimagineContent(raw: unknown): string | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const outer = raw as Record<string, unknown>;
+    const lines: string[] = [];
+
+    if (typeof outer._aiSummary === 'string') lines.push(`REIMAGINE SUMMARY: ${outer._aiSummary}`);
+
+    const r = (outer.reimagineContent ?? outer) as Record<string, unknown>;
+    if (typeof r.title === 'string') lines.push(`\nTITLE: ${r.title}`);
+    if (typeof r.description === 'string') lines.push(`DESCRIPTION: ${r.description}`);
+
+    // Direction of travel — the from→to shifts are gold
+    if (Array.isArray(r.directionOfTravel)) {
+      lines.push('\nDIRECTION OF TRAVEL:');
+      for (const shift of r.directionOfTravel as Array<Record<string, unknown>>) {
+        if (typeof shift?.from === 'string' && typeof shift?.to === 'string') {
+          lines.push(`  FROM: ${shift.from} → TO: ${shift.to}`);
+        }
+      }
+    }
+
+    // Primary themes with evidence
+    if (Array.isArray(r.primaryThemes)) {
+      lines.push('\nPRIMARY THEMES:');
+      for (const t of r.primaryThemes as Array<Record<string, unknown>>) {
+        if (typeof t?.title === 'string') lines.push(`\n  [${t.title}]`);
+        if (typeof t?.description === 'string') lines.push(`  ${t.description}`);
+        if (Array.isArray(t?.details)) (t.details as string[]).forEach((d) => { if (d) lines.push(`    • ${d}`); });
+        if (Array.isArray(t?.subSections)) {
+          for (const ss of t.subSections as Array<Record<string, unknown>>) {
+            if (typeof ss?.title === 'string') lines.push(`    — ${ss.title}: ${ss.description ?? ''}`);
+          }
+        }
+      }
+    }
+
+    // Supporting themes
+    if (Array.isArray(r.supportingThemes)) {
+      lines.push('\nSUPPORTING THEMES:');
+      for (const t of r.supportingThemes as Array<Record<string, unknown>>) {
+        if (typeof t?.title === 'string') lines.push(`  [${t.title}] ${t.description ?? ''}`);
+        if (Array.isArray(t?.details)) (t.details as string[]).forEach((d) => { if (d) lines.push(`    • ${d}`); });
+      }
+    }
+
+    // Horizon vision
+    const hv = r.horizonVision as Record<string, unknown> | undefined;
+    if (hv && Array.isArray(hv.columns)) {
+      lines.push('\nHORIZON VISION:');
+      for (const col of hv.columns as Array<Record<string, unknown>>) {
+        if (typeof col?.title === 'string') lines.push(`  ${col.title}`);
+        if (Array.isArray(col?.points)) (col.points as string[]).forEach((p) => { if (p) lines.push(`    • ${p}`); });
+      }
+    }
+
+    return lines.length > 0 ? lines.join('\n') : null;
+  }
+
   const execSummary = extractText(workshop.scratchpad?.execSummary);
   const potentialSolution = extractText(workshop.scratchpad?.potentialSolution);
   const summaryContent = extractText(workshop.scratchpad?.summaryContent);
 
-  // Pull Discovery and Reimagine tab content as first-class signals.
-  // These are the most direct record of what the workshop actually produced —
-  // if live hemisphere nodes are sparse or missing, this IS the workshop content.
-  const scratchpadDiscovery = extractText((workshop.scratchpad as Record<string, unknown> | null | undefined)?.discoveryOutput);
-  const scratchpadReimagine = extractText((workshop.scratchpad as Record<string, unknown> | null | undefined)?.reimagineContent);
-  const scratchpadConstraints = extractText((workshop.scratchpad as Record<string, unknown> | null | undefined)?.constraintsContent);
-  const scratchpadV2 = extractText((workshop.scratchpad as Record<string, unknown> | null | undefined)?.v2Output);
+  const sp = workshop.scratchpad as Record<string, unknown> | null | undefined;
+  const scratchpadDiscovery = extractDiscoveryOutput(sp?.discoveryOutput);
+  const scratchpadReimagine = extractReimagineContent(sp?.reimagineContent);
+  const scratchpadConstraints = extractText(sp?.constraintsContent);
+  const scratchpadV2 = extractText(sp?.v2Output);
 
   // ── Evidence Documents ───────────────────────────────────────────────────
   // Attach normalised findings from ready evidence documents so OI agents can
