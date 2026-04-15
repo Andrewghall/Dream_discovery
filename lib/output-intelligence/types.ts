@@ -68,6 +68,14 @@ export interface WorkshopSignals {
     execSummary: string | null;
     potentialSolution: string | null;
     summaryContent: string | null;
+    /** Full Discovery tab content — primary signal when live nodes are sparse */
+    discoveryOutput: string | null;
+    /** Full Reimagine tab content — primary signal when live nodes are sparse */
+    reimagineContent: string | null;
+    /** Constraints tab content */
+    constraintsContent: string | null;
+    /** V2 structured output */
+    v2Output: string | null;
   };
   /** Semantically relevant findings from past workshops in the same organisation */
   historicalMemory?: {
