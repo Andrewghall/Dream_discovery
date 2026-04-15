@@ -244,20 +244,30 @@ export interface FutureStateDesign {
   /** 2-3 sentences on what 3-5 year success looks like */
   horizonVision?: string;
   /**
-   * Actor-perspective future journey — what each role now experiences
-   * in the reimagined operating model. Built from actor-tagged REIMAGINE
-   * signals cross-referenced with DISCOVERY current-pain signals.
+   * Collective synthesis of the group's shared truth and reimagined future.
+   * Replaces the old per-actor journey model — the combined story is always
+   * more valuable than anonymous speaker cards.
    */
   reimaginedJourney?: {
     headline: string;
-    actorJourneys: Array<{
-      /** e.g. "Customer & Passenger", "Frontline Agent", "BPO Agent" */
+    /** The collective truth today — synthesised current reality across all lenses */
+    collectiveTruthToday: string;
+    /** The collective reimagined future — what the group envisions */
+    collectiveFuture: string;
+    /** The core narrative that connects truth today to the future state */
+    coreNarrative: string;
+    /** Specific voices / perspectives captured verbatim from the session */
+    keyVoices: Array<{
+      /** The specific insight, idea or position stated in the session */
+      insight: string;
+      /** Which lens this connects to: People, Organisation, Customer, Technology, Regulation, General */
+      lens: string;
+    }>;
+    /** Legacy: per-actor journeys — retained for backwards compat when actors are named */
+    actorJourneys?: Array<{
       actor: string;
-      /** 2-3 sentences on their current reality grounded in discovery signals */
       currentReality: string;
-      /** 3-4 vivid sentences painting their future experience from reimagine signals */
       reimaginedExperience: string;
-      /** 2-3 specific enablers that make this actor's future possible */
       keyEnablers: string[];
     }>;
   };

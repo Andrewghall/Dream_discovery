@@ -28,14 +28,12 @@ const SCHEMA = `{
     "future":     { "label": "string — 3-5 word label", "description": "string — 2 sentences: the dream fully realised" }
   },
   "reimaginedJourney": {
-    "headline": "string — 6-10 words capturing what the future journey feels like",
-    "actorJourneys": [
-      {
-        "actor": "string — use the exact role/actor names present in the workshop signals",
-        "currentReality": "string — 2-3 sentences grounded in DISCOVERY signals: what does this actor experience TODAY? Be specific about pain, friction, frustration.",
-        "reimaginedExperience": "string — 3-4 vivid sentences: what does this actor NOW experience in the future state? Paint the scene. What do they feel, see, do differently? Ground it in REIMAGINE signals.",
-        "keyEnablers": ["string — specific enabler grounded in the workshop signals"]
-      }
+    "headline": "string — 6-10 words capturing the essence of the transformation",
+    "collectiveTruthToday": "string — 3-4 sentences synthesising the group's shared current reality across all lenses. What is broken, painful, or constrained TODAY? Use the exact language from the session.",
+    "collectiveFuture": "string — 3-4 sentences synthesising the group's collective reimagined future. What does the world look like when this is fixed? Use the exact aspirations and terminology from the session.",
+    "coreNarrative": "string — 2-3 sentences: the connecting story from truth today to the future state. This is the proposition — what changes, why it matters, what it makes possible.",
+    "keyVoices": [
+      { "insight": "string — a specific idea, position or insight stated in the session, preserved verbatim", "lens": "string — People | Organisation | Customer | Technology | Regulation | General" }
     ]
   },
   "directionOfTravel": [
@@ -300,11 +298,12 @@ THE ACTORS IN THIS WORKSHOP ARE: ${actorList}
 Use ONLY these actor names in the reimaginedJourney. Do not invent roles or substitute generic archetypes. If a pad is unattributed, assign it to the most contextually relevant actor from the list above.
 
 CRITICAL: THE REIMAGINED JOURNEY IS THE HEART OF THIS OUTPUT.
-Build "reimaginedJourney" carefully. For each actor present in the signals:
-- Ground "currentReality" in DISCOVERY signals — what is their actual pain today? Be specific: name systems, name processes, name the exact friction they described.
-- Build "reimaginedExperience" from REIMAGINE signals — describe their future using the specific ideas they voiced. What do they now feel? What can they do that they couldn't before? Quote their exact aspirations and make them feel real.
-- "keyEnablers" must be concrete — not "better technology" but the specific capabilities and ideas the workshop actually discussed.
-Include a journey for each actor named above. Order them by signal volume (most signals first).
+Build "reimaginedJourney" as a collective synthesis — the combined story of what the group said together, not a per-person breakdown.
+
+- "collectiveTruthToday": synthesise the DISCOVERY signals into the shared current reality. What is broken? What is painful? What is constrained? 3-4 sentences using the exact language from the session.
+- "collectiveFuture": synthesise the REIMAGINE signals into the shared vision. What did the group collectively aspire to? What does the world look like when it works? Use their exact words, ideas, and terminology.
+- "coreNarrative": the connecting proposition. What is the transformation story? What changes, why it matters, what it makes possible. This is the thread that runs through everything.
+- "keyVoices": 8-12 specific insights or positions from the session — the most important things said, preserved verbatim. Spread across lenses. These are the evidence base for everything else.
 
 WRITING QUALITY RULES:
 • title: specific to this client and their actual transformation. Not generic.

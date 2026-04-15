@@ -80,54 +80,71 @@ function ActorIcon({ actor }: { actor: string }) {
   );
 }
 
-type ActorJourney = NonNullable<FutureStateDesign['reimaginedJourney']>['actorJourneys'][number];
+const LENS_COLOURS: Record<string, { bg: string; text: string; dot: string }> = {
+  People:       { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-400' },
+  Organisation: { bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-400' },
+  Customer:     { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
+  Technology:   { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
+  Regulation:   { bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-400' },
+  General:      { bg: 'bg-slate-50',  text: 'text-slate-600',  dot: 'bg-slate-400' },
+};
 
-function ActorJourneyCard({ journey }: { journey: ActorJourney }) {
-  const isCustomer = journey.actor.toLowerCase().includes('customer') || journey.actor.toLowerCase().includes('passenger');
-  const accentBorder = isCustomer ? 'border-indigo-200' : 'border-slate-200';
-  const accentTop    = isCustomer ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white';
+type CollectiveNarrative = NonNullable<FutureStateDesign['reimaginedJourney']>;
 
+function CollectiveNarrativeBlock({ journey }: { journey: CollectiveNarrative }) {
   return (
-    <div className={`rounded-xl border ${accentBorder} overflow-hidden shadow-sm`}>
-      {/* Actor header */}
-      <div className={`${accentTop} px-5 py-3 flex items-center gap-2.5`}>
-        <ActorIcon actor={journey.actor} />
-        <span className="font-bold text-sm tracking-wide">{journey.actor}</span>
-      </div>
-
-      <div className="p-5 space-y-4 bg-white">
-        {/* Today */}
-        <div className="rounded-lg bg-slate-50 border border-slate-100 p-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1.5">Today</p>
-          <p className="text-sm text-slate-600 leading-relaxed">{journey.currentReality}</p>
-        </div>
-
-        {/* Arrow */}
-        <div className="flex justify-center">
-          <ArrowDown className="h-4 w-4 text-slate-300" />
-        </div>
-
-        {/* Tomorrow */}
-        <div className={`rounded-lg p-4 ${isCustomer ? 'bg-indigo-50 border border-indigo-100' : 'bg-emerald-50 border border-emerald-100'}`}>
-          <p className={`text-xs font-bold uppercase tracking-widest mb-1.5 ${isCustomer ? 'text-indigo-500' : 'text-emerald-600'}`}>
-            The Dream
-          </p>
-          <p className={`text-sm leading-relaxed ${isCustomer ? 'text-indigo-900' : 'text-emerald-900'}`}>
-            {journey.reimaginedExperience}
-          </p>
-        </div>
-
-        {/* Key enablers */}
-        {(journey.keyEnablers ?? []).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {journey.keyEnablers.map((e, i) => (
-              <span key={i} className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
-                {e}
-              </span>
-            ))}
+    <div className="space-y-6">
+      {/* Truth Today + Future — side by side */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="bg-slate-800 text-white px-5 py-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-0.5">Truth Today</p>
+            <p className="text-sm font-semibold">Where we are now</p>
           </div>
-        )}
+          <div className="p-5 bg-white">
+            <p className="text-sm text-slate-600 leading-relaxed">{journey.collectiveTruthToday}</p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-emerald-200 overflow-hidden shadow-sm">
+          <div className="bg-emerald-700 text-white px-5 py-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-200 mb-0.5">The Dream</p>
+            <p className="text-sm font-semibold">What we reimagine</p>
+          </div>
+          <div className="p-5 bg-emerald-50">
+            <p className="text-sm text-emerald-900 leading-relaxed">{journey.collectiveFuture}</p>
+          </div>
+        </div>
       </div>
+
+      {/* Core narrative */}
+      {journey.coreNarrative && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">The Proposition</p>
+          <p className="text-sm text-indigo-900 leading-relaxed font-medium">{journey.coreNarrative}</p>
+        </div>
+      )}
+
+      {/* Key voices — verbatim insights from the session */}
+      {(journey.keyVoices ?? []).length > 0 && (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">From the session</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {journey.keyVoices.map((v, i) => {
+              const colours = LENS_COLOURS[v.lens] ?? LENS_COLOURS.General;
+              return (
+                <div key={i} className={`rounded-lg p-4 ${colours.bg} border border-transparent`}>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${colours.dot}`} />
+                    <span className={`text-xs font-semibold uppercase tracking-wider ${colours.text}`}>{v.lens}</span>
+                  </div>
+                  <p className="text-sm text-slate-700 leading-relaxed">&ldquo;{v.insight}&rdquo;</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -314,20 +331,16 @@ export function FutureStatePanel({ data }: Props) {
             </div>
           )}
 
-          {/* 3. The Journey Reimagined — actor perspective cards */}
-          {data.reimaginedJourney && (data.reimaginedJourney.actorJourneys ?? []).length > 0 && (
+          {/* 3. The Journey Reimagined — collective narrative synthesis */}
+          {data.reimaginedJourney && (data.reimaginedJourney.collectiveTruthToday || data.reimaginedJourney.collectiveFuture) && (
             <div>
               <div className="mb-5">
                 <h3 className="text-xl font-bold text-slate-900">{data.reimaginedJourney.headline || 'The Journey Reimagined'}</h3>
                 <p className="text-sm text-slate-500 mt-1">
-                  What each actor experiences in the future state — grounded in their own signals.
+                  The collective story — truth today and the reimagined future, in the group&rsquo;s own words.
                 </p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {data.reimaginedJourney.actorJourneys.map((j, i) => (
-                  <ActorJourneyCard key={i} journey={j} />
-                ))}
-              </div>
+              <CollectiveNarrativeBlock journey={data.reimaginedJourney} />
             </div>
           )}
 
