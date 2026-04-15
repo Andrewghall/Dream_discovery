@@ -2970,7 +2970,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 confidence: msg.confidence,
                 source: 'deepgram' as const,
                 dialoguePhase,
-                flush: false, // Let utterance buffer accumulate into complete thoughts; speechFinal triggers flush
+                flush: true, // WebSocket path: each isFinal=true is already a complete Deepgram utterance — flush immediately so serverless isolate boundary doesn't swallow it
                 slmMetadata: {
                   entities: msg.entities,
                   emotionalTone: msg.emotionalTone,
