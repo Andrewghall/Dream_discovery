@@ -129,6 +129,26 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push(`Session mode: COMBINED — participants did not formally separate Discovery, Reimagine, Constraints or Way Ahead into distinct phases. Everything was discussed as one flowing conversation. Treat all signals as a unified pool: Truth Today and The Dream are both present in the same signals.`);
   }
 
+  // ── Scratchpad Discovery + Reimagine — primary signals when live nodes sparse ─
+  // These are the actual workshop output tabs. Use them as the primary source
+  // of truth — they contain the full content of what was discussed and captured.
+  if (signals.scratchpad.discoveryOutput) {
+    lines.push('\n=== DISCOVERY TAB OUTPUT (primary source — what the workshop captured as truth today) ===');
+    lines.push(signals.scratchpad.discoveryOutput);
+  }
+  if (signals.scratchpad.reimagineContent) {
+    lines.push('\n=== REIMAGINE TAB OUTPUT (primary source — what the workshop captured as the future vision) ===');
+    lines.push(signals.scratchpad.reimagineContent);
+  }
+  if (signals.scratchpad.constraintsContent) {
+    lines.push('\n=== CONSTRAINTS TAB OUTPUT ===');
+    lines.push(signals.scratchpad.constraintsContent);
+  }
+  if (signals.scratchpad.v2Output) {
+    lines.push('\n=== V2 STRUCTURED OUTPUT (use as additional signal) ===');
+    lines.push(signals.scratchpad.v2Output);
+  }
+
   // ── REIMAGINE signals — grouped by lens first, then by actor ─────────────
   if (signals.liveSession.reimaginePads.length > 0) {
     lines.push('\n=== REIMAGINE SIGNALS — WHAT THE FUTURE SHOULD BE ===');

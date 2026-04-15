@@ -85,8 +85,12 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
         scratchpad: {
           select: {
             execSummary: true,
+            discoveryOutput: true,
+            reimagineContent: true,
+            constraintsContent: true,
             potentialSolution: true,
             summaryContent: true,
+            v2Output: true,
           },
         },
         participants: {
@@ -383,6 +387,14 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
   const potentialSolution = extractText(workshop.scratchpad?.potentialSolution);
   const summaryContent = extractText(workshop.scratchpad?.summaryContent);
 
+  // Pull Discovery and Reimagine tab content as first-class signals.
+  // These are the most direct record of what the workshop actually produced —
+  // if live hemisphere nodes are sparse or missing, this IS the workshop content.
+  const scratchpadDiscovery = extractText((workshop.scratchpad as Record<string, unknown> | null | undefined)?.discoveryOutput);
+  const scratchpadReimagine = extractText((workshop.scratchpad as Record<string, unknown> | null | undefined)?.reimagineContent);
+  const scratchpadConstraints = extractText((workshop.scratchpad as Record<string, unknown> | null | undefined)?.constraintsContent);
+  const scratchpadV2 = extractText((workshop.scratchpad as Record<string, unknown> | null | undefined)?.v2Output);
+
   // ── Evidence Documents ───────────────────────────────────────────────────
   // Attach normalised findings from ready evidence documents so OI agents can
   // corroborate or challenge discovery signals with uploaded documentary evidence.
@@ -476,6 +488,10 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       execSummary,
       potentialSolution,
       summaryContent,
+      discoveryOutput: scratchpadDiscovery,
+      reimagineContent: scratchpadReimagine,
+      constraintsContent: scratchpadConstraints,
+      v2Output: scratchpadV2,
     },
     evidenceDocuments,
     evidenceValidation,
