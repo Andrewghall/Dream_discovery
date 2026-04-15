@@ -61,11 +61,13 @@ export interface JourneyMutationsReturn {
 // -----------------------------------------------------------------------
 
 function stageExists(stages: string[], name: string): boolean {
-  return stages.some((s) => s.toLowerCase() === name.toLowerCase());
+  if (!name) return false;
+  return stages.some((s) => (s || '').toLowerCase() === name.toLowerCase());
 }
 
 function actorExists(actors: LiveJourneyActor[], name: string): boolean {
-  return actors.some((a) => a.name.toLowerCase() === name.toLowerCase());
+  if (!name) return false;
+  return actors.some((a) => (a?.name || '').toLowerCase() === name.toLowerCase());
 }
 
 // -----------------------------------------------------------------------
@@ -88,7 +90,7 @@ function applyAddStage(
   const stages = [...journey.stages];
   if (payload.afterStage) {
     const idx = stages.findIndex(
-      (s) => s.toLowerCase() === payload.afterStage!.toLowerCase(),
+      (s) => (s || '').toLowerCase() === (payload.afterStage || '').toLowerCase(),
     );
     if (idx >= 0) {
       stages.splice(idx + 1, 0, payload.stageName);
@@ -112,12 +114,12 @@ function applyRenameStage(
   }
 
   const stages = journey.stages.map((s) =>
-    s.toLowerCase() === payload.oldName.toLowerCase() ? payload.newName : s,
+    (s || '').toLowerCase() === (payload.oldName || '').toLowerCase() ? payload.newName : s,
   );
 
   // Cascade to all interactions referencing this stage
   const interactions = journey.interactions.map((ix) =>
-    ix.stage.toLowerCase() === payload.oldName.toLowerCase()
+    (ix.stage || '').toLowerCase() === (payload.oldName || '').toLowerCase()
       ? { ...ix, stage: payload.newName }
       : ix,
   );
@@ -137,11 +139,11 @@ function applyMergeStage(
     return journey;
   }
 
-  const sourceNamesLower = payload.sourceStages.map((s) => s.toLowerCase());
+  const sourceNamesLower = payload.sourceStages.map((s) => (s || '').toLowerCase());
 
   // Remove source stages, add target if not present
   const stages = journey.stages.filter(
-    (s) => !sourceNamesLower.includes(s.toLowerCase()),
+    (s) => !sourceNamesLower.includes((s || '').toLowerCase()),
   );
   if (!stageExists(stages, payload.targetName)) {
     stages.push(payload.targetName);
@@ -149,7 +151,7 @@ function applyMergeStage(
 
   // Move interactions from source stages to target
   const interactions = journey.interactions.map((ix) =>
-    sourceNamesLower.includes(ix.stage.toLowerCase())
+    sourceNamesLower.includes((ix.stage || '').toLowerCase())
       ? { ...ix, stage: payload.targetName }
       : ix,
   );
@@ -167,7 +169,7 @@ function applyRemoveStage(
   }
 
   const affectedCount = journey.interactions.filter(
-    (ix) => ix.stage.toLowerCase() === payload.stageName.toLowerCase(),
+    (ix) => (ix.stage || '').toLowerCase() === (payload.stageName || '').toLowerCase(),
   ).length;
 
   if (affectedCount > REMOVE_STAGE_INTERACTION_LIMIT && !payload.force) {
@@ -178,10 +180,10 @@ function applyRemoveStage(
   }
 
   const stages = journey.stages.filter(
-    (s) => s.toLowerCase() !== payload.stageName.toLowerCase(),
+    (s) => (s || '').toLowerCase() !== (payload.stageName || '').toLowerCase(),
   );
   const interactions = journey.interactions.filter(
-    (ix) => ix.stage.toLowerCase() !== payload.stageName.toLowerCase(),
+    (ix) => (ix.stage || '').toLowerCase() !== (payload.stageName || '').toLowerCase(),
   );
 
   return { ...journey, stages, interactions };
@@ -218,14 +220,14 @@ function applyRenameActor(
   }
 
   const actors = journey.actors.map((a) =>
-    a.name.toLowerCase() === payload.oldName.toLowerCase()
+    (a?.name || '').toLowerCase() === (payload.oldName || '').toLowerCase()
       ? { ...a, name: payload.newName }
       : a,
   );
 
   // Cascade to all interactions referencing this actor
   const interactions = journey.interactions.map((ix) =>
-    ix.actor.toLowerCase() === payload.oldName.toLowerCase()
+    (ix.actor || '').toLowerCase() === (payload.oldName || '').toLowerCase()
       ? { ...ix, actor: payload.newName }
       : ix,
   );
