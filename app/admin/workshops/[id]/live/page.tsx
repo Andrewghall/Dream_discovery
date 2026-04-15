@@ -68,6 +68,7 @@ const STAGE_KEYWORDS: [string[], string][] = [
 ];
 
 function inferStage(action: string): string {
+  if (!action) return 'Processing';
   const a = action.toLowerCase();
   for (const [keywords, stage] of STAGE_KEYWORDS) {
     if (keywords.some((kw) => a.includes(kw))) return stage;
@@ -76,7 +77,7 @@ function inferStage(action: string): string {
 }
 
 function sentimentColor(sentiment: string): string {
-  const s = sentiment.toLowerCase();
+  const s = (sentiment || '').toLowerCase();
   if (s.includes('frustrat') || s.includes('critical') || s.includes('angry') || s.includes('block') || s.includes('fail') || s.includes('break'))
     return 'bg-red-900/40 border-red-500/50 text-red-200';
   if (s.includes('concern') || s.includes('delay') || s.includes('slow') || s.includes('confus') || s.includes('unclear') || s.includes('anxious'))
@@ -87,7 +88,7 @@ function sentimentColor(sentiment: string): string {
 }
 
 function sentimentCategory(sentiment: string): 'positive' | 'concerned' | 'critical' | 'neutral' {
-  const s = sentiment.toLowerCase();
+  const s = (sentiment || '').toLowerCase();
   if (s.includes('frustrat') || s.includes('critical') || s.includes('angry') || s.includes('block') || s.includes('fail') || s.includes('break'))
     return 'critical';
   if (s.includes('concern') || s.includes('delay') || s.includes('slow') || s.includes('confus') || s.includes('unclear') || s.includes('anxious'))
