@@ -1876,14 +1876,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
               </Button>
             ) : (
               <Button onClick={async () => {
-                // Flush any buffered fragments before closing the stream
-                await fetch(`/api/workshops/${encodeURIComponent(workshopId)}/transcript`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ flush: true, text: '__flush__', speakerId: null, dialoguePhase }),
-                }).catch(() => {});
-                // Brief delay so server-side buffer flush completes
-                await new Promise(r => setTimeout(r, 500));
                 audio.stopCapture();
                 stopListening();
                 const savedId = await autoSave();

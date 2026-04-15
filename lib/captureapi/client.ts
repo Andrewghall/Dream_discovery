@@ -202,6 +202,8 @@ export async function transcribeAudio(
 export interface StreamTranscript {
   type: 'transcript'
   speaker: number | null
+  /** SLM-cleaned text */
+  text?: string
   rawText: string
   cleanText: string
   entities: CaptureAPIEntity[]
@@ -212,6 +214,9 @@ export interface StreamTranscript {
   isFinal?: boolean      // true when Deepgram has finalized this result
   speechFinal?: boolean  // true when speaker finished (utterance boundary)
   chunk: number
+  /** Absolute wall-clock milliseconds derived from Deepgram segment timing */
+  startTimeMs?: number
+  endTimeMs?: number
 }
 
 export type StreamMessage =
@@ -238,10 +243,20 @@ export class CaptureAPIStream {
     onTranscript: (msg: StreamTranscript) => void
     onError?: (err: string) => void
     onReady?: () => void
+    /** DREAM workshop UUID — when supplied, CaptureAPI POSTs transcripts
+     *  directly to DREAM server-to-server (bypasses browser as relay). */
+    workshopId?: string
+    /** Active dialogue phase tag forwarded to DREAM for DataPoint annotation. */
+    dialoguePhase?: string
   }) {
     const base = getCaptureAPIURL()
     // Convert http(s) to ws(s)
-    this.url = base.replace(/^http/, 'ws') + '/api/v1/stream'
+    const wsBase = base.replace(/^http/, 'ws') + '/api/v1/stream'
+    const params = new URLSearchParams()
+    if (opts.workshopId) params.set('workshop_id', opts.workshopId)
+    if (opts.dialoguePhase) params.set('dialogue_phase', opts.dialoguePhase)
+    const qs = params.toString()
+    this.url = qs ? `${wsBase}?${qs}` : wsBase
     this.onTranscript = opts.onTranscript
     this.onError = opts.onError || ((e) => console.error('[CaptureAPIStream]', e))
     this.onReady = opts.onReady || null
