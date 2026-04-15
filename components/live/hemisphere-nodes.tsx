@@ -141,7 +141,8 @@ function buildDomainAngles(lensNames: string[]): Record<string, number> {
  * 2. One is a prefix of the other (e.g. "Customer" ↔ "Customer Experience")
  * 3. Best word-overlap match (e.g. "Operations" ↔ "Operations & Oversight")
  */
-function findAngleForDomain(domain: string, domainAngles: Record<string, number>): number | undefined {
+function findAngleForDomain(domain: string | null | undefined, domainAngles: Record<string, number>): number | undefined {
+  if (!domain) return undefined;
   const lower = domain.toLowerCase().trim();
   // 1. Exact case-insensitive
   for (const [key, angle] of Object.entries(domainAngles)) {
