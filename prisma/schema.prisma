@@ -237,7 +237,9 @@ model TranscriptChunk {
   dataPoint   DataPoint?
   workshop    Workshop         @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 
+  @@unique([workshopId, startTimeMs, text], name: "workshopId_startTimeMs_text")
   @@index([workshopId])
+  @@index([workshopId, startTimeMs])
   @@index([workshopId, createdAt])
   @@index([workshopId, speakerId, startTimeMs])
   @@map("transcript_chunks")

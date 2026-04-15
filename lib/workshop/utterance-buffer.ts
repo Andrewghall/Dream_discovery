@@ -37,8 +37,8 @@ type BufferEntry = {
 
 // ── Configuration ───────────────────────────────────────────
 const PAUSE_THRESHOLD_MS = 3_000;   // 3s gap = speaker paused → flush
-const MAX_BUFFER_AGE_MS = 30_000;   // Never hold text longer than 30s
-const MAX_BUFFER_WORDS = 80;        // Flush if accumulated text > 80 words
+const MAX_BUFFER_AGE_MS = 60_000;   // Never hold text longer than 60s
+const MAX_BUFFER_WORDS = 300;       // Flush if accumulated text > 300 words (was 80 — too aggressive, cut mid-sentence)
 const CLEANUP_INTERVAL_MS = 60_000; // Clean stale entries every 60s
 
 // ── In-memory buffer store ──────────────────────────────────
