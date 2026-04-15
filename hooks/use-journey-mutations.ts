@@ -93,9 +93,12 @@ function validateAddStage(raw: unknown): AddStagePayload | null {
   if (!raw || typeof raw !== 'object') return null;
   const p = raw as Record<string, unknown>;
   if (typeof p.stageName !== 'string' || !p.stageName.trim()) return null;
+  // afterStage is optional — but if present it must be a non-empty string.
+  // A non-string value (e.g. 123) changes insertion semantics, so reject the intent.
+  if (p.afterStage !== undefined && (typeof p.afterStage !== 'string' || !p.afterStage.trim())) return null;
   return {
     stageName: p.stageName.trim(),
-    afterStage: typeof p.afterStage === 'string' && p.afterStage.trim() ? p.afterStage.trim() : undefined,
+    afterStage: p.afterStage !== undefined ? (p.afterStage as string).trim() : undefined,
   };
 }
 
@@ -112,10 +115,10 @@ function validateMergeStage(raw: unknown): MergeStagePayload | null {
   const p = raw as Record<string, unknown>;
   if (typeof p.targetName !== 'string' || !p.targetName.trim()) return null;
   if (!Array.isArray(p.sourceStages) || p.sourceStages.length === 0) return null;
-  const sources = (p.sourceStages as unknown[])
-    .filter((s) => typeof s === 'string' && (s as string).trim())
-    .map((s) => (s as string).trim());
-  if (sources.length === 0) return null;
+  // Every entry must be a non-empty string — a partial merge would diverge from
+  // the server-side accumulator which operates on the full sourceStages array.
+  if ((p.sourceStages as unknown[]).some((s) => typeof s !== 'string' || !(s as string).trim())) return null;
+  const sources = (p.sourceStages as string[]).map((s) => s.trim());
   return { sourceStages: sources, targetName: p.targetName.trim() };
 }
 
