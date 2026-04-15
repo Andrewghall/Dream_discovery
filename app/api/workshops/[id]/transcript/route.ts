@@ -7,7 +7,7 @@ import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-acces
 import { apiLimiter } from '@/lib/rate-limit';
 import { emitWorkshopEvent, persistAndEmit } from '@/lib/realtime/workshop-events';
 import { deriveIntent } from '@/lib/workshop/derive-intent';
-import { addFragment, flushWorkshop, type FlushedUtterance } from '@/lib/workshop/utterance-buffer';
+import type { FlushedUtterance } from '@/lib/workshop/utterance-buffer';
 import { getOrCreateCognitiveState } from '@/lib/cognition/state-store';
 import { applyCognitiveUpdate } from '@/lib/cognition/reasoning-engine';
 import { getGPT4oMiniEngine } from '@/lib/cognition/engines/gpt4o-mini-engine';
@@ -585,34 +585,10 @@ export async function POST(
 
     const text = (body?.text || '').trim();
 
-    // ── Handle flush-only requests (no real text) ─────────────
+    // ── Flush-only requests (capture stopped) — no buffer to drain ──
+    // CaptureAPI SLM produces complete sentences; no in-memory accumulation.
     if (body.flush && (!text || text === '__flush__')) {
-      const flushed = flushWorkshop(workshopId);
-      const results: Array<{ dataPointId?: string; deduped?: boolean }> = [];
-
-      for (const utterance of flushed) {
-        if (isTextTrivial(utterance.text)) continue;
-        try {
-          const result = await processCompleteUtterance(
-            workshopId,
-            utterance,
-            body.dialoguePhase,
-            body.speakerId,
-            undefined,
-            traceId,
-          );
-          results.push(result);
-        } catch (error) {
-          console.error(`[Transcript][trace:${traceId}] Error processing flushed utterance:`, error);
-        }
-      }
-
-      return NextResponse.json({
-        ok: true,
-        flushed: true,
-        flushedCount: results.length,
-        results,
-      });
+      return NextResponse.json({ ok: true, flushed: true, flushedCount: 0, results: [] });
     }
 
     if (!text) {
@@ -624,16 +600,8 @@ export async function POST(
     const src =
       body.source === 'deepgram' ? 'DEEPGRAM' : body.source === 'whisper' ? 'WHISPER' : 'ZOOM';
 
-    // ── Always store the raw transcript chunk for audio timeline ──
-    // Skip if an identical chunk already exists (same workshop + startTime + text).
-    // This prevents double-writes when a fragment goes through both this path
-    // AND processCompleteUtterance. TODO: replace with upsert once migration
-    // adds the unique constraint (workshopId, startTimeMs, text) to the DB.
-    const existingChunk = await prisma.transcriptChunk.findFirst({
-      where: { workshopId, startTimeMs, text },
-      select: { id: true },
-    });
-    if (!existingChunk) {
+    // ── Filter trivial text — store raw chunk only, skip analysis ─
+    if (isTextTrivial(text)) {
       await prisma.transcriptChunk.create({
         data: {
           workshopId,
@@ -651,22 +619,18 @@ export async function POST(
             : undefined,
         },
       }).catch(() => null);
-    }
 
-    // ── Filter trivial text before buffering ─────────────────
-    if (isTextTrivial(text)) {
       return NextResponse.json({
         ok: true,
         buffered: false,
         skipped: true,
-        reason: 'Trivial fragment — transcript chunk stored only',
+        reason: 'Trivial fragment — stored only',
       });
     }
 
-    // ── Feed into the utterance buffer ───────────────────────
-    // The buffer accumulates fragments until it detects a complete
-    // thought (sentence boundary, speaker change, or time gap).
-    const flushed = addFragment(workshopId, {
+    // ── Each chunk from CaptureAPI SLM is already a complete sentence ──
+    // No buffering needed. Process directly.
+    const utterance: FlushedUtterance = {
       text,
       speakerId: body.speakerId || null,
       startTimeMs,
@@ -676,63 +640,34 @@ export async function POST(
       rawText: body.rawText,
       slmMetadata: body.slmMetadata as Record<string, unknown> | undefined,
       dialoguePhase: body.dialoguePhase || null,
-    });
+    };
 
-    // If client requested a flush (e.g. capture stopped), force-flush remaining
-    if (body.flush) {
-      const remaining = flushWorkshop(workshopId);
-      for (const r of remaining) {
-        if (!flushed.some((f) => f.text === r.text)) {
-          flushed.push(r);
-        }
-      }
-    }
-
-    if (flushed.length === 0) {
-      // Text is being accumulated — waiting for more context
+    try {
+      const result = await processCompleteUtterance(
+        workshopId,
+        utterance,
+        body.dialoguePhase,
+        body.speakerId,
+        body.slmMetadata as Record<string, unknown> | undefined,
+        traceId,
+      );
       return NextResponse.json({
         ok: true,
-        buffered: true,
-        message: 'Fragment buffered — waiting for complete thought',
+        buffered: false,
+        flushedCount: 1,
+        results: [result],
+        classificationId: null,
+      });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Transcript][trace:${traceId}] Error processing utterance:`, error);
+      return NextResponse.json({
+        ok: true,
+        buffered: false,
+        flushedCount: 0,
+        results: [{ error: errMsg }],
       });
     }
-
-    // ── Process each flushed complete utterance ──────────────
-    const results: Array<{ dataPointId?: string; deduped?: boolean; error?: string }> = [];
-    const skippedTrivial: string[] = [];
-
-    for (const utterance of flushed) {
-      // Skip if the merged text is still trivial
-      if (isTextTrivial(utterance.text)) {
-        skippedTrivial.push(utterance.text.substring(0, 60));
-        continue;
-      }
-
-      try {
-        const result = await processCompleteUtterance(
-          workshopId,
-          utterance,
-          body.dialoguePhase,
-          body.speakerId,
-          body.slmMetadata as Record<string, unknown> | undefined,
-          traceId,
-        );
-        results.push(result);
-      } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error);
-        console.error(`[Transcript][trace:${traceId}] Error processing buffered utterance:`, error);
-        results.push({ error: errMsg });
-      }
-    }
-
-    return NextResponse.json({
-      ok: true,
-      buffered: false,
-      flushedCount: flushed.length,
-      results,
-      skippedTrivial: skippedTrivial.length > 0 ? skippedTrivial : undefined,
-      classificationId: null, // Classification arrives asynchronously
-    });
   } catch (error) {
     console.error('[Transcript] Error ingesting transcript chunk:', error);
     return NextResponse.json({ error: 'Failed to ingest transcript chunk' }, { status: 500 });
