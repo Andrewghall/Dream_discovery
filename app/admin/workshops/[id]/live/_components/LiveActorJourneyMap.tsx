@@ -46,7 +46,7 @@ type ActorJourneyData = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function sentimentColor(sentiment: string): string {
-  const s = sentiment.toLowerCase();
+  const s = (sentiment || '').toLowerCase();
   if (
     s.includes('frustrat') ||
     s.includes('critical') ||
@@ -81,7 +81,7 @@ function sentimentColor(sentiment: string): string {
 function sentimentCategory(
   sentiment: string,
 ): 'positive' | 'concerned' | 'critical' | 'neutral' {
-  const s = sentiment.toLowerCase();
+  const s = (sentiment || '').toLowerCase();
   if (
     s.includes('frustrat') ||
     s.includes('critical') ||

@@ -68,6 +68,7 @@ const STAGE_KEYWORDS: [string[], string][] = [
 ];
 
 function inferStage(action: string): string {
+  if (!action) return 'Processing';
   const a = action.toLowerCase();
   for (const [keywords, stage] of STAGE_KEYWORDS) {
     if (keywords.some((kw) => a.includes(kw))) return stage;
@@ -76,7 +77,7 @@ function inferStage(action: string): string {
 }
 
 function sentimentColor(sentiment: string): string {
-  const s = sentiment.toLowerCase();
+  const s = (sentiment || '').toLowerCase();
   if (s.includes('frustrat') || s.includes('critical') || s.includes('angry') || s.includes('block') || s.includes('fail') || s.includes('break'))
     return 'bg-red-900/40 border-red-500/50 text-red-200';
   if (s.includes('concern') || s.includes('delay') || s.includes('slow') || s.includes('confus') || s.includes('unclear') || s.includes('anxious'))
@@ -87,7 +88,7 @@ function sentimentColor(sentiment: string): string {
 }
 
 function sentimentCategory(sentiment: string): 'positive' | 'concerned' | 'critical' | 'neutral' {
-  const s = sentiment.toLowerCase();
+  const s = (sentiment || '').toLowerCase();
   if (s.includes('frustrat') || s.includes('critical') || s.includes('angry') || s.includes('block') || s.includes('fail') || s.includes('break'))
     return 'critical';
   if (s.includes('concern') || s.includes('delay') || s.includes('slow') || s.includes('confus') || s.includes('unclear') || s.includes('anxious'))
@@ -2219,7 +2220,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   }, [utteranceNodes]);
 
   /* ── Actor journey aggregation ──────────────────────────── */
-  const actorJourney = useMemo(() => {
+  const actorJourney = useMemo(() => { try {
     const actorMap = new Map<string, { roles: Set<string>; mentionCount: number; sentiments: string[] }>();
     const allInteractions: AggInteraction[] = [];
     const stageOrder: string[] = [];
@@ -2315,7 +2316,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
 
     return { actors, stages, grid, allInteractions, totalInteractions: allInteractions.length, sentimentBreakdown };
-  }, [nodesById]);
+  } catch { return { actors: [], stages: [], grid: new Map(), allInteractions: [], totalInteractions: 0, sentimentBreakdown: { positive: 0, concerned: 0, critical: 0, neutral: 0 } }; } }, [nodesById]);
 
   // Auto-expand actor journey when enough data arrives
   useEffect(() => {
@@ -2969,7 +2970,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 confidence: msg.confidence,
                 source: 'deepgram' as const,
                 dialoguePhase,
-                flush: false, // Let utterance buffer accumulate into complete thoughts; speechFinal triggers flush
+                flush: true, // WebSocket path: each isFinal=true is already a complete Deepgram utterance — flush immediately so serverless isolate boundary doesn't swallow it
                 slmMetadata: {
                   entities: msg.entities,
                   emotionalTone: msg.emotionalTone,

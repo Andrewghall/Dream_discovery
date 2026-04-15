@@ -73,6 +73,7 @@ export function DreamChatBar() {
   const streamActiveRef = useRef(false); // true while GPT is still streaming
   const spokenContentRef = useRef('');  // text already fully spoken — base for word reveal
   const ttsGenRef = useRef(0);          // incremented on each new message; stale fetches self-discard
+  const abortControllerRef = useRef<AbortController | null>(null); // aborts the SSE stream on stop
 
   const voice = useVoice();
   const isListening = voice.state === 'listening';
@@ -172,6 +173,10 @@ export function DreamChatBar() {
   }, [playNextChunk]);
 
   const stopAllAudio = useCallback(() => {
+    // Abort the SSE stream — this is the root fix; without it the stream keeps
+    // calling enqueueSentence after stop and audio restarts immediately
+    if (abortControllerRef.current) { abortControllerRef.current.abort(); abortControllerRef.current = null; }
+    streamActiveRef.current = false;
     ttsGenRef.current++;          // invalidate all in-flight TTS fetches immediately
     audioQueueRef.current.forEach(c => { try { c.audio.pause(); URL.revokeObjectURL(c.url); } catch { /* ignore */ } });
     audioQueueRef.current = [];
@@ -198,10 +203,13 @@ export function DreamChatBar() {
     let fullContent = '';
 
     try {
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       const response = await fetch('/api/public/dream-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question, history: history.slice(-6), voice: withVoice }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -265,6 +273,8 @@ export function DreamChatBar() {
       }
 
     } catch (error) {
+      // Ignore intentional aborts (user pressed stop)
+      if (error instanceof Error && (error.name === 'AbortError' || error.message?.includes('aborted'))) return;
       const msg = error instanceof Error ? error.message : 'Failed to get response';
       setMessages(prev => {
         const updated = [...prev];
