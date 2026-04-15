@@ -2220,7 +2220,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   }, [utteranceNodes]);
 
   /* ── Actor journey aggregation ──────────────────────────── */
-  const actorJourney = useMemo(() => {
+  const actorJourney = useMemo(() => { try {
     const actorMap = new Map<string, { roles: Set<string>; mentionCount: number; sentiments: string[] }>();
     const allInteractions: AggInteraction[] = [];
     const stageOrder: string[] = [];
@@ -2316,7 +2316,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
     }
 
     return { actors, stages, grid, allInteractions, totalInteractions: allInteractions.length, sentimentBreakdown };
-  }, [nodesById]);
+  } catch { return { actors: [], stages: [], grid: new Map(), allInteractions: [], totalInteractions: 0, sentimentBreakdown: { positive: 0, concerned: 0, critical: 0, neutral: 0 } }; } }, [nodesById]);
 
   // Auto-expand actor journey when enough data arrives
   useEffect(() => {
