@@ -93,12 +93,16 @@ function validateAddStage(raw: unknown): AddStagePayload | null {
   if (!raw || typeof raw !== 'object') return null;
   const p = raw as Record<string, unknown>;
   if (typeof p.stageName !== 'string' || !p.stageName.trim()) return null;
-  // afterStage is optional — but if present it must be a non-empty string.
-  // A non-string value (e.g. 123) changes insertion semantics, so reject the intent.
-  if (p.afterStage !== undefined && (typeof p.afterStage !== 'string' || !p.afterStage.trim())) return null;
+  // Mirror server: `if (afterStage)` — falsy values (undefined, null, '')
+  // mean "no anchor; append". A non-string truthy value (e.g. 123) would crash
+  // the server's .toLowerCase() call, so we reject the intent rather than coerce.
+  if (p.afterStage !== undefined && p.afterStage !== null && p.afterStage !== '') {
+    if (typeof p.afterStage !== 'string') return null;
+  }
+  const afterStageStr = typeof p.afterStage === 'string' ? p.afterStage.trim() : undefined;
   return {
     stageName: p.stageName.trim(),
-    afterStage: p.afterStage !== undefined ? (p.afterStage as string).trim() : undefined,
+    afterStage: afterStageStr || undefined,
   };
 }
 
