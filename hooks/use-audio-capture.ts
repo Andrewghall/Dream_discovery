@@ -63,8 +63,6 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
   const captureAudioCtxRef = useRef<AudioContext | null>(null);
   const captureRafRef = useRef<number | null>(null);
 
-  const ingestUrl = `/api/workshops/${encodeURIComponent(workshopId)}/transcript`;
-
   // ── refreshMicDevices ──
   const refreshMicDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -168,55 +166,19 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
     await stopMicTest(); // Stop any running mic test
 
     // 1. Connect CaptureAPI WebSocket
+    // Pass workshopId so Railway POSTs transcripts directly to DREAM
+    // server-to-server — browser is no longer the relay for persistence.
     try {
       const stream = new CaptureAPIStream({
-        onTranscript: async (msg: StreamTranscript) => {
-          const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
+        workshopId,
+        dialoguePhase: getDialoguePhase(),
+        onTranscript: (msg: StreamTranscript) => {
+          const text = (msg.text?.trim() || msg.rawText?.trim() || msg.cleanText?.trim() || '');
           if (!text) return;
 
-          // Stream ALL updates to the page for live hemisphere positioning
-          // (CaptureAPI sends growing text: "Okay" → "Okay. Let's have a test" → etc.)
+          // Stream ALL updates to the page for live hemisphere positioning.
+          // Railway handles Supabase persistence — browser just drives the UI.
           onTranscriptStream?.(msg);
-
-          // Only ingest FINAL transcripts to backend
-          if (msg.isFinal === false) return;
-
-          const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : null;
-          const now = Date.now();
-          try {
-            await fetch(ingestUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                speakerId,
-                startTime: now - 5000,
-                endTime: now,
-                text,
-                rawText: msg.rawText,
-                confidence: msg.confidence,
-                source: 'deepgram' as const,
-                dialoguePhase: getDialoguePhase(),
-                flush: false,
-                slmMetadata: {
-                  entities: msg.entities,
-                  emotionalTone: msg.emotionalTone,
-                  slmConfidence: msg.slmConfidence,
-                  slmUsed: msg.slmUsed,
-                },
-              }),
-            });
-          } catch {
-            // Ingest errors are non-fatal — SSE will still propagate to cognitive guidance
-          }
-
-          // When speaker finishes utterance, flush buffer
-          if (msg.speechFinal) {
-            fetch(ingestUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ flush: true, text: '__flush__', speakerId, dialoguePhase: getDialoguePhase() }),
-            }).catch(() => {});
-          }
         },
         onError: (err) => {
           setCaptureError(`CaptureAPI stream error — ${err}`);
@@ -304,7 +266,7 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
       setCaptureError(`Audio capture failed: ${e instanceof Error ? e.message : String(e)}`);
       stopCapture();
     }
-  }, [selectedMicId, stopMicTest, stopCapture, ingestUrl, getDialoguePhase]);
+  }, [selectedMicId, stopMicTest, stopCapture, workshopId, getDialoguePhase]);
 
   // ── Cleanup on unmount ──
   useEffect(() => {

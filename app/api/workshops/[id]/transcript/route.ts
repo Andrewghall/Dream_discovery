@@ -563,13 +563,21 @@ export async function POST(
   try {
     const { id: workshopId } = await params;
 
-    const user = await getAuthenticatedUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
-    if (!access.valid) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // ── Auth: session cookie (browser) OR X-Capture-Secret (Railway server-to-server) ──
+    const captureSecret = request.headers.get('x-capture-secret');
+    const expectedSecret = process.env.CAPTURE_INGEST_SECRET;
+    const isServerToServer = !!(captureSecret && expectedSecret && captureSecret === expectedSecret);
+
+    if (!isServerToServer) {
+      // Fall back to session cookie auth (browser path)
+      const user = await getAuthenticatedUser();
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
+      if (!access.valid) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Rate limit: 120 req/min per workshop (2/s — well above normal live-session cadence)
