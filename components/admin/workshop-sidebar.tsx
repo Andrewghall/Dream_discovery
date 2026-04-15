@@ -25,6 +25,7 @@ import {
   Users,
   FlaskConical,
   Download,
+  ScrollText,
 } from 'lucide-react';
 
 interface WorkshopSidebarProps {
@@ -55,6 +56,7 @@ function buildNavSections(_domainPack?: string | null) {
       label: 'Analysis',
       items: [
         { label: 'Generate Analysis', path: '/generate-analysis', icon: Sparkles, highlight: true },
+        { label: 'Transcript', path: '/transcript', icon: ScrollText },
         { label: 'Discovery Output', path: '/discovery-output', icon: BarChart2 },
         { label: 'Insight Map', path: '/hemisphere', icon: Globe },
         { label: 'Actor Journey', path: '/actor-journey', icon: Route },

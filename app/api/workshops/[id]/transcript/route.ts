@@ -625,23 +625,33 @@ export async function POST(
       body.source === 'deepgram' ? 'DEEPGRAM' : body.source === 'whisper' ? 'WHISPER' : 'ZOOM';
 
     // ── Always store the raw transcript chunk for audio timeline ──
-    await prisma.transcriptChunk.create({
-      data: {
-        workshopId,
-        speakerId: body.speakerId || null,
-        startTimeMs,
-        endTimeMs,
-        text,
-        confidence: typeof body.confidence === 'number' ? body.confidence : null,
-        source: src,
-        metadata: body.slmMetadata || body.rawText
-          ? {
-              ...(body.rawText && { rawText: body.rawText }),
-              ...(body.slmMetadata && { slmMetadata: body.slmMetadata }),
-            }
-          : undefined,
-      },
-    }).catch(() => null); // Ignore duplicates
+    // Skip if an identical chunk already exists (same workshop + startTime + text).
+    // This prevents double-writes when a fragment goes through both this path
+    // AND processCompleteUtterance. TODO: replace with upsert once migration
+    // adds the unique constraint (workshopId, startTimeMs, text) to the DB.
+    const existingChunk = await prisma.transcriptChunk.findFirst({
+      where: { workshopId, startTimeMs, text },
+      select: { id: true },
+    });
+    if (!existingChunk) {
+      await prisma.transcriptChunk.create({
+        data: {
+          workshopId,
+          speakerId: body.speakerId || null,
+          startTimeMs,
+          endTimeMs,
+          text,
+          confidence: typeof body.confidence === 'number' ? body.confidence : null,
+          source: src,
+          metadata: body.slmMetadata || body.rawText
+            ? {
+                ...(body.rawText && { rawText: body.rawText }),
+                ...(body.slmMetadata && { slmMetadata: body.slmMetadata }),
+              }
+            : undefined,
+        },
+      }).catch(() => null);
+    }
 
     // ── Filter trivial text before buffering ─────────────────
     if (isTextTrivial(text)) {
