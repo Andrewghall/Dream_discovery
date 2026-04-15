@@ -28,14 +28,12 @@ const SCHEMA = `{
     "future":     { "label": "string — 3-5 word label", "description": "string — 2 sentences: the dream fully realised" }
   },
   "reimaginedJourney": {
-    "headline": "string — 6-10 words capturing what the future journey feels like",
-    "actorJourneys": [
-      {
-        "actor": "string — use the exact role/actor names present in the workshop signals",
-        "currentReality": "string — 2-3 sentences grounded in DISCOVERY signals: what does this actor experience TODAY? Be specific about pain, friction, frustration.",
-        "reimaginedExperience": "string — 3-4 vivid sentences: what does this actor NOW experience in the future state? Paint the scene. What do they feel, see, do differently? Ground it in REIMAGINE signals.",
-        "keyEnablers": ["string — specific enabler grounded in the workshop signals"]
-      }
+    "headline": "string — 6-10 words capturing the essence of the transformation",
+    "collectiveTruthToday": "string — 3-4 sentences synthesising the group's shared current reality across all lenses. What is broken, painful, or constrained TODAY? Use the exact language from the session.",
+    "collectiveFuture": "string — 3-4 sentences synthesising the group's collective reimagined future. What does the world look like when this is fixed? Use the exact aspirations and terminology from the session.",
+    "coreNarrative": "string — 2-3 sentences: the connecting story from truth today to the future state. This is the proposition — what changes, why it matters, what it makes possible.",
+    "keyVoices": [
+      { "insight": "string — a specific idea, position or insight stated in the session, preserved verbatim", "lens": "string — People | Organisation | Customer | Technology | Regulation | General" }
     ]
   },
   "directionOfTravel": [
@@ -127,6 +125,9 @@ function buildSignalDump(signals: WorkshopSignals): string {
   lines.push(`Lenses: ${signals.context.lenses.join(', ')}`);
   lines.push(`Business context: ${signals.context.businessContext || 'Not specified'}`);
   lines.push(`Objectives: ${signals.context.objectives || 'Not specified'}`);
+  if (signals.liveSession.isCombinedSession) {
+    lines.push(`Session mode: COMBINED — participants did not formally separate Discovery, Reimagine, Constraints or Way Ahead into distinct phases. Everything was discussed as one flowing conversation. Treat all signals as a unified pool: Truth Today and The Dream are both present in the same signals.`);
+  }
 
   // ── REIMAGINE signals — grouped by lens first, then by actor ─────────────
   if (signals.liveSession.reimaginePads.length > 0) {
@@ -236,6 +237,25 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('\nUse cohort data alongside actor-specific signals to ensure the reimaginedJourney represents each role\'s lived experience, not just leadership aspiration.');
   }
 
+  // ── Verbatim quotes — exact language from the room ───────────────────────
+  // Collect raw text from all pads and list them once so GPT has the literal words,
+  // acronyms, and company-specific terms to preserve rather than paraphrase.
+  {
+    const allVerbatim = [
+      ...signals.liveSession.reimaginePads,
+      ...(signals.liveSession.discoveryPads ?? []),
+      ...signals.liveSession.constraintPads,
+      ...signals.liveSession.defineApproachPads,
+    ].slice(0, 120);
+    if (allVerbatim.length > 0) {
+      lines.push('\n=== VERBATIM WORKSHOP LANGUAGE (use these exact words, phrases and acronyms) ===');
+      lines.push('Every bullet below is an exact quote from the session. Preserve the specific terminology, acronyms, product names, process names, and role names as-is in your output. Do NOT paraphrase or substitute with generic alternatives.');
+      allVerbatim.forEach((p) =>
+        lines.push(`  "${p.text}"${p.actor ? ` (${p.actor})` : ''}`)
+      );
+    }
+  }
+
   // ── Historical memory ────────────────────────────────────────────────────
   if (signals.historicalMemory?.chunks.length) {
     lines.push('\n=== CROSS-WORKSHOP HISTORICAL MEMORY ===');
@@ -272,29 +292,35 @@ export async function runFutureStateAgent(
 
   const systemPrompt = `You are the DREAM IMAGINATION Signal engine. You transform workshop signals into a high-quality, executive-standard REIMAGINE output — the vision chapter of a strategic transformation report.
 
-YOUR PRIMARY JOB IS TO SURFACE THE DREAM. Every actor in this workshop has a vision of what their future should look like. Your job is to find those visions in the signals and bring them to life with clarity and emotional resonance.
+YOUR PRIMARY JOB IS TO SURFACE THE DREAM. Every actor in this workshop has a vision of what their future should look like. Your job is to find those visions in the signals and represent them faithfully — in the exact language the participants used.
+
+⚠ VERBATIM LANGUAGE RULE — THIS IS MANDATORY:
+The workshop signals contain exact words, phrases, acronyms, system names, process names, and role names from the real session. You MUST carry these through into your output unchanged. Do NOT paraphrase. Do NOT substitute with generic alternatives. If a participant said "Salesforce", write "Salesforce" — not "CRM platform". If they said "SMART triage", write "SMART triage" — not "intelligent routing". If they said "the 48-hour SLA", write "the 48-hour SLA" — not "current turnaround times". The output must read as if the participants wrote it themselves — their words, their ideas, their terminology.
 
 THE ACTORS IN THIS WORKSHOP ARE: ${actorList}
 Use ONLY these actor names in the reimaginedJourney. Do not invent roles or substitute generic archetypes. If a pad is unattributed, assign it to the most contextually relevant actor from the list above.
 
 CRITICAL: THE REIMAGINED JOURNEY IS THE HEART OF THIS OUTPUT.
-Build "reimaginedJourney" carefully. For each actor present in the signals:
-- Ground "currentReality" in DISCOVERY signals — what is their actual pain today? Be specific, name systems, name processes, name the frustration.
-- Build "reimaginedExperience" from REIMAGINE signals — paint their future in vivid, specific language. What do they now feel? What can they do that they couldn't before? What has gone away? Make it feel real.
-- "keyEnablers" must be concrete — not "better technology" but specific capabilities grounded in what the workshop discussed.
-Include a journey for each actor named above. Order them by signal volume (most signals first).
+Build "reimaginedJourney" as a collective synthesis — the combined story of what the group said together, not a per-person breakdown.
+
+If the context says "Session mode: COMBINED", the group did not formally separate phases. Discovery (truth today) and Reimagine (the dream) are both woven through the same signals. Extract both from the unified pool — don't force artificial phase boundaries. Some statements will contain both the problem and the aspiration in one breath: capture both.
+
+- "collectiveTruthToday": synthesise the current reality across all signals. What is broken? What is painful? What is constrained today? 3-4 sentences using the exact language from the session.
+- "collectiveFuture": synthesise the shared vision. What did the group collectively aspire to? What does the world look like when this works? Use their exact words, ideas, and terminology.
+- "coreNarrative": the connecting proposition. What is the transformation story? What changes, why it matters, what it makes possible. This is the thread that runs through everything.
+- "keyVoices": 8-12 specific insights or positions from the session — the most important things said, preserved verbatim. Spread across lenses. These are the evidence base for everything else.
 
 WRITING QUALITY RULES:
-• title: specific to this client. Not generic.
+• title: specific to this client and their actual transformation. Not generic.
 • description: 3 sentences. First names the transformation. Second says what it means for the PEOPLE (staff and customers). Third names what it unlocks for the business.
-• threeHouses: each label is crisp (3-5 words). Each description is 2 sentences — honest about today's pain, specific about tomorrow's change.
-• directionOfTravel: EXACTLY 5 shifts. "from" = real current pain in plain language. "to" = the vivid alternative. Earned by signals, not invented.
-• primaryThemes: EXACTLY 5. Themes 1-2 badge "very high", 3-4 badge "high", 5 badge "high". Each has EXACTLY 2 subSections. Each subSection detail = 4-5 full sentences covering: current problem, why it matters, what changes, who benefits, what it feels like when it works.
+• threeHouses: each label is crisp (3-5 words). Each description is 2 sentences — honest about today's pain using the workshop's own language, specific about tomorrow's change using the workshop's own aspirations.
+• directionOfTravel: EXACTLY 5 shifts. "from" = real current pain in the workshop's own words. "to" = the specific alternative they described. Earned by signals, not invented.
+• primaryThemes: EXACTLY 5. Themes 1-2 badge "very high", 3-4 badge "high", 5 badge "high". Each has EXACTLY 2 subSections. Each subSection detail = 4-5 full sentences covering: current problem, why it matters, what changes, who benefits, what it feels like when it works. Use workshop-specific language throughout.
 • supportingThemes: EXACTLY 3, badge "medium", 1-2 subSections each, 3-4 sentence detail blocks.
-• visionAlignment.corePrinciples: 5-6 commitment statements. Not platitudes. Ground them in signals.
-• horizonVision: 3 sentences. Name something a customer can now do. Name something a staff member now feels. Name something the business can now measure.
+• visionAlignment.corePrinciples: 5-6 commitment statements. Not platitudes. Ground them in the specific signals from this workshop.
+• horizonVision: 3 sentences. Name something a customer can now do. Name something a staff member now feels. Name something the business can now measure. All grounded in what the workshop actually discussed.
 
-Every field must be grounded in specific workshop evidence. Output MUST be valid JSON matching the schema — no commentary outside JSON.`;
+Every field must be grounded in specific workshop evidence using the participants' own language. Output MUST be valid JSON matching the schema — no commentary outside JSON.`;
 
   const userMessage = `${buildSignalDump(signals)}
 
