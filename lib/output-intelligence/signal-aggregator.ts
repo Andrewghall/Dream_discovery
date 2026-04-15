@@ -297,6 +297,19 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       else if (phase === 'CONSTRAINTS') constraintPads.push(pad);
       else if (phase === 'DEFINE_APPROACH') defineApproachPads.push(pad);
       else if (phase === 'DISCOVERY') discoveryPads.push(pad);
+      else {
+        // No dialoguePhase set — route by classification type so live-session nodes
+        // captured before a phase was selected are never silently dropped.
+        const ctype = (node.classification?.primaryType ?? '').toUpperCase();
+        if (['CONSTRAINT', 'BLOCKER', 'RISK', 'BARRIER'].includes(ctype)) {
+          constraintPads.push(pad);
+        } else if (['PAIN', 'FRICTION', 'CHALLENGE', 'PROBLEM', 'ISSUE'].includes(ctype)) {
+          discoveryPads.push(pad);
+        } else {
+          // Default: treat as reimagine signal (visions, opportunities, ideas, unclassified)
+          reimaginePads.push(pad);
+        }
+      }
     }
 
     if (Array.isArray(payload?.journey)) {

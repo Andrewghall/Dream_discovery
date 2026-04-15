@@ -236,6 +236,25 @@ function buildSignalDump(signals: WorkshopSignals): string {
     lines.push('\nUse cohort data alongside actor-specific signals to ensure the reimaginedJourney represents each role\'s lived experience, not just leadership aspiration.');
   }
 
+  // ── Verbatim quotes — exact language from the room ───────────────────────
+  // Collect raw text from all pads and list them once so GPT has the literal words,
+  // acronyms, and company-specific terms to preserve rather than paraphrase.
+  {
+    const allVerbatim = [
+      ...signals.liveSession.reimaginePads,
+      ...(signals.liveSession.discoveryPads ?? []),
+      ...signals.liveSession.constraintPads,
+      ...signals.liveSession.defineApproachPads,
+    ].slice(0, 120);
+    if (allVerbatim.length > 0) {
+      lines.push('\n=== VERBATIM WORKSHOP LANGUAGE (use these exact words, phrases and acronyms) ===');
+      lines.push('Every bullet below is an exact quote from the session. Preserve the specific terminology, acronyms, product names, process names, and role names as-is in your output. Do NOT paraphrase or substitute with generic alternatives.');
+      allVerbatim.forEach((p) =>
+        lines.push(`  "${p.text}"${p.actor ? ` (${p.actor})` : ''}`)
+      );
+    }
+  }
+
   // ── Historical memory ────────────────────────────────────────────────────
   if (signals.historicalMemory?.chunks.length) {
     lines.push('\n=== CROSS-WORKSHOP HISTORICAL MEMORY ===');
@@ -272,29 +291,32 @@ export async function runFutureStateAgent(
 
   const systemPrompt = `You are the DREAM IMAGINATION Signal engine. You transform workshop signals into a high-quality, executive-standard REIMAGINE output — the vision chapter of a strategic transformation report.
 
-YOUR PRIMARY JOB IS TO SURFACE THE DREAM. Every actor in this workshop has a vision of what their future should look like. Your job is to find those visions in the signals and bring them to life with clarity and emotional resonance.
+YOUR PRIMARY JOB IS TO SURFACE THE DREAM. Every actor in this workshop has a vision of what their future should look like. Your job is to find those visions in the signals and represent them faithfully — in the exact language the participants used.
+
+⚠ VERBATIM LANGUAGE RULE — THIS IS MANDATORY:
+The workshop signals contain exact words, phrases, acronyms, system names, process names, and role names from the real session. You MUST carry these through into your output unchanged. Do NOT paraphrase. Do NOT substitute with generic alternatives. If a participant said "Salesforce", write "Salesforce" — not "CRM platform". If they said "SMART triage", write "SMART triage" — not "intelligent routing". If they said "the 48-hour SLA", write "the 48-hour SLA" — not "current turnaround times". The output must read as if the participants wrote it themselves — their words, their ideas, their terminology.
 
 THE ACTORS IN THIS WORKSHOP ARE: ${actorList}
 Use ONLY these actor names in the reimaginedJourney. Do not invent roles or substitute generic archetypes. If a pad is unattributed, assign it to the most contextually relevant actor from the list above.
 
 CRITICAL: THE REIMAGINED JOURNEY IS THE HEART OF THIS OUTPUT.
 Build "reimaginedJourney" carefully. For each actor present in the signals:
-- Ground "currentReality" in DISCOVERY signals — what is their actual pain today? Be specific, name systems, name processes, name the frustration.
-- Build "reimaginedExperience" from REIMAGINE signals — paint their future in vivid, specific language. What do they now feel? What can they do that they couldn't before? What has gone away? Make it feel real.
-- "keyEnablers" must be concrete — not "better technology" but specific capabilities grounded in what the workshop discussed.
+- Ground "currentReality" in DISCOVERY signals — what is their actual pain today? Be specific: name systems, name processes, name the exact friction they described.
+- Build "reimaginedExperience" from REIMAGINE signals — describe their future using the specific ideas they voiced. What do they now feel? What can they do that they couldn't before? Quote their exact aspirations and make them feel real.
+- "keyEnablers" must be concrete — not "better technology" but the specific capabilities and ideas the workshop actually discussed.
 Include a journey for each actor named above. Order them by signal volume (most signals first).
 
 WRITING QUALITY RULES:
-• title: specific to this client. Not generic.
+• title: specific to this client and their actual transformation. Not generic.
 • description: 3 sentences. First names the transformation. Second says what it means for the PEOPLE (staff and customers). Third names what it unlocks for the business.
-• threeHouses: each label is crisp (3-5 words). Each description is 2 sentences — honest about today's pain, specific about tomorrow's change.
-• directionOfTravel: EXACTLY 5 shifts. "from" = real current pain in plain language. "to" = the vivid alternative. Earned by signals, not invented.
-• primaryThemes: EXACTLY 5. Themes 1-2 badge "very high", 3-4 badge "high", 5 badge "high". Each has EXACTLY 2 subSections. Each subSection detail = 4-5 full sentences covering: current problem, why it matters, what changes, who benefits, what it feels like when it works.
+• threeHouses: each label is crisp (3-5 words). Each description is 2 sentences — honest about today's pain using the workshop's own language, specific about tomorrow's change using the workshop's own aspirations.
+• directionOfTravel: EXACTLY 5 shifts. "from" = real current pain in the workshop's own words. "to" = the specific alternative they described. Earned by signals, not invented.
+• primaryThemes: EXACTLY 5. Themes 1-2 badge "very high", 3-4 badge "high", 5 badge "high". Each has EXACTLY 2 subSections. Each subSection detail = 4-5 full sentences covering: current problem, why it matters, what changes, who benefits, what it feels like when it works. Use workshop-specific language throughout.
 • supportingThemes: EXACTLY 3, badge "medium", 1-2 subSections each, 3-4 sentence detail blocks.
-• visionAlignment.corePrinciples: 5-6 commitment statements. Not platitudes. Ground them in signals.
-• horizonVision: 3 sentences. Name something a customer can now do. Name something a staff member now feels. Name something the business can now measure.
+• visionAlignment.corePrinciples: 5-6 commitment statements. Not platitudes. Ground them in the specific signals from this workshop.
+• horizonVision: 3 sentences. Name something a customer can now do. Name something a staff member now feels. Name something the business can now measure. All grounded in what the workshop actually discussed.
 
-Every field must be grounded in specific workshop evidence. Output MUST be valid JSON matching the schema — no commentary outside JSON.`;
+Every field must be grounded in specific workshop evidence using the participants' own language. Output MUST be valid JSON matching the schema — no commentary outside JSON.`;
 
   const userMessage = `${buildSignalDump(signals)}
 
