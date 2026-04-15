@@ -31,10 +31,10 @@ const SCHEMA = `{
     "headline": "string — 6-10 words capturing what the future journey feels like",
     "actorJourneys": [
       {
-        "actor": "string — role name e.g. 'Customer & Passenger', 'Frontline Contact Agent', 'BPO Agent', 'Operations Manager'",
+        "actor": "string — use the exact role/actor names present in the workshop signals",
         "currentReality": "string — 2-3 sentences grounded in DISCOVERY signals: what does this actor experience TODAY? Be specific about pain, friction, frustration.",
         "reimaginedExperience": "string — 3-4 vivid sentences: what does this actor NOW experience in the future state? Paint the scene. What do they feel, see, do differently? Ground it in REIMAGINE signals.",
-        "keyEnablers": ["string — specific enabler e.g. 'Unified agent desktop', 'Real-time EU261 automation'"]
+        "keyEnablers": ["string — specific enabler grounded in the workshop signals"]
       }
     ]
   },
@@ -75,30 +75,41 @@ const SCHEMA = `{
 
 // ── Actor grouping helpers ────────────────────────────────────────────────────
 
-/** Map actor labels to broad groups for deduplication in the signal dump */
-function actorGroup(actor: string | undefined): string {
-  if (!actor) return 'Other';
-  const a = actor.toLowerCase();
-  if (a.includes('customer') || a.includes('passenger')) return 'Customer / Passenger';
-  if (a.includes('frontline') || a.includes('front line')) return 'Frontline Agent';
-  if (a.includes('bpo')) return 'BPO Agent';
-  if (a.includes('team lead') || a.includes('supervisor')) return 'Team Lead / Supervisor';
-  if (a.includes('operations manager')) return 'Operations Manager';
-  if (a.includes('head of') || a.includes('chief') || a.includes('director')) return 'Leadership';
-  if (a.includes('it ') || a.includes('technology')) return 'IT / Technology';
-  if (a.includes('compliance')) return 'Compliance';
-  if (a.includes('hr') || a.includes('l&d') || a.includes('learning')) return 'HR / L&D';
-  if (a.includes('commercial')) return 'Commercial';
-  return 'Other';
+/**
+ * Extract unique actor names from all pad sources in the signals.
+ * Returns the actual role names from this specific workshop — no hardcoded buckets.
+ */
+function extractActors(signals: WorkshopSignals): string[] {
+  const seen = new Set<string>();
+  const allPads = [
+    ...signals.liveSession.reimaginePads,
+    ...(signals.liveSession.discoveryPads ?? []),
+    ...signals.liveSession.constraintPads,
+    ...signals.liveSession.defineApproachPads,
+  ];
+  for (const pad of allPads) {
+    if (pad.actor && pad.actor.trim()) seen.add(pad.actor.trim());
+  }
+  // Also include cohort labels as fallback if pads have no actor tags
+  if (seen.size === 0 && signals.discovery.cohortBreakdown?.length) {
+    for (const cohort of signals.discovery.cohortBreakdown) {
+      seen.add(cohort.cohortLabel);
+    }
+  }
+  return Array.from(seen);
 }
 
+/**
+ * Group pads by the actor name as it appears in the signal data.
+ * Falls back to 'Unattributed' for pads with no actor label.
+ */
 function groupByActor<T extends { text: string; lens?: string; actor?: string }>(
   pads: T[],
   limit: number
 ): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const pad of pads.slice(0, limit)) {
-    const group = actorGroup(pad.actor);
+    const group = pad.actor?.trim() || 'Unattributed';
     if (!map.has(group)) map.set(group, []);
     map.get(group)!.push(pad);
   }
@@ -254,16 +265,24 @@ export async function runFutureStateAgent(
 ): Promise<FutureStateDesign> {
   onProgress?.('Future State Design: generating target operating model…');
 
+  const workshopActors = extractActors(signals);
+  const actorList = workshopActors.length > 0
+    ? workshopActors.map((a) => `"${a}"`).join(', ')
+    : 'the roles present in the workshop signals';
+
   const systemPrompt = `You are the DREAM IMAGINATION Signal engine. You transform workshop signals into a high-quality, executive-standard REIMAGINE output — the vision chapter of a strategic transformation report.
 
-YOUR PRIMARY JOB IS TO SURFACE THE DREAM. Every actor involved — the customer, the frontline agent, the BPO agent, the manager — has a vision of what their future should look like. Your job is to find those visions in the signals and bring them to life with clarity and emotional resonance.
+YOUR PRIMARY JOB IS TO SURFACE THE DREAM. Every actor in this workshop has a vision of what their future should look like. Your job is to find those visions in the signals and bring them to life with clarity and emotional resonance.
+
+THE ACTORS IN THIS WORKSHOP ARE: ${actorList}
+Use ONLY these actor names in the reimaginedJourney. Do not invent roles or substitute generic archetypes. If a pad is unattributed, assign it to the most contextually relevant actor from the list above.
 
 CRITICAL: THE REIMAGINED JOURNEY IS THE HEART OF THIS OUTPUT.
-Build "reimaginedJourney" carefully. For each major actor type present in the signals:
+Build "reimaginedJourney" carefully. For each actor present in the signals:
 - Ground "currentReality" in DISCOVERY signals — what is their actual pain today? Be specific, name systems, name processes, name the frustration.
 - Build "reimaginedExperience" from REIMAGINE signals — paint their future in vivid, specific language. What do they now feel? What can they do that they couldn't before? What has gone away? Make it feel real.
-- "keyEnablers" must be concrete — not "better technology" but "unified agent desktop with real-time customer record" or "automated EU261 processing via AI decisioning".
-Include at least 4 actor journeys. Start with the customer/passenger. Then frontline agent. Then BPO agent. Then a leadership/operations perspective.
+- "keyEnablers" must be concrete — not "better technology" but specific capabilities grounded in what the workshop discussed.
+Include a journey for each actor named above. Order them by signal volume (most signals first).
 
 WRITING QUALITY RULES:
 • title: specific to this client. Not generic.
