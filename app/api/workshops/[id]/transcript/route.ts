@@ -179,9 +179,8 @@ async function processCompleteUtterance(
     });
   }
 
-  // ── Emit SSE: node appears immediately on hemisphere ──────
-  emitWorkshopEvent(workshopId, {
-    id: nanoid(),
+  // ── Persist + emit: node appears on hemisphere for all sessions ──
+  await persistAndEmit(workshopId, {
     type: 'datapoint.created',
     createdAt: Date.now(),
     payload: {
@@ -224,8 +223,7 @@ async function processCompleteUtterance(
       update: { intent },
     });
 
-    emitWorkshopEvent(workshopId, {
-      id: nanoid(),
+    await persistAndEmit(workshopId, {
       type: 'annotation.updated',
       createdAt: Date.now(),
       payload: {
