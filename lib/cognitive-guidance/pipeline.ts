@@ -1156,8 +1156,9 @@ export function buildLiveJourney(
   const actorsMap = new Map<string, LiveJourneyActor>();
   const existingInteractionIds = new Set(existingData.interactions.map(i => i.id));
 
-  // Preserve existing actors
-  for (const a of existingData.actors) {
+  // Preserve existing actors — skip malformed entries
+  for (const a of existingData.actors ?? []) {
+    if (!a?.name || typeof a.name !== 'string' || !a.name.trim()) continue;
     actorsMap.set(a.name.toLowerCase(), { ...a });
   }
 
@@ -1234,22 +1235,24 @@ export function mergeBackendJourney(
   existing: LiveJourneyData,
   backend: LiveJourneyData,
 ): LiveJourneyData {
-  const stages = existing.stages.length > 0 ? existing.stages : backend.stages;
+  const stages = existing.stages.length > 0 ? existing.stages : (backend.stages ?? []);
   const actorsMap = new Map<string, LiveJourneyActor>();
 
-  // Preserve existing actors
-  for (const a of existing.actors) {
+  // Preserve existing actors — skip any with missing/invalid names
+  for (const a of existing.actors ?? []) {
+    if (!a?.name || typeof a.name !== 'string' || !a.name.trim()) continue;
     actorsMap.set(a.name.toLowerCase(), { ...a });
   }
 
-  // Merge backend actors --update mention counts if higher
-  for (const a of backend.actors) {
+  // Merge backend actors — skip malformed entries, update mention counts if higher
+  for (const a of backend.actors ?? []) {
+    if (!a?.name || typeof a.name !== 'string' || !a.name.trim()) continue;
     const key = a.name.toLowerCase();
     const ex = actorsMap.get(key);
     if (ex) {
       actorsMap.set(key, {
         ...ex,
-        mentionCount: Math.max(ex.mentionCount, a.mentionCount),
+        mentionCount: Math.max(ex.mentionCount, a.mentionCount ?? 0),
         role: a.role || ex.role,
       });
     } else {
@@ -1257,14 +1260,16 @@ export function mergeBackendJourney(
     }
   }
 
-  // Merge interactions --dedup by id
-  const existingIds = new Set(existing.interactions.map(i => i.id));
-  const newInteractions = backend.interactions.filter(i => !existingIds.has(i.id));
+  // Merge interactions — dedup by id, skip entries missing required fields
+  const existingIds = new Set((existing.interactions ?? []).map(i => i.id));
+  const newInteractions = (backend.interactions ?? []).filter(
+    i => i?.id && !existingIds.has(i.id),
+  );
 
   return {
     stages,
     actors: Array.from(actorsMap.values()),
-    interactions: [...existing.interactions, ...newInteractions],
+    interactions: [...(existing.interactions ?? []), ...newInteractions],
   };
 }
 

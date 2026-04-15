@@ -12,6 +12,10 @@
  *
  * Provides guardrails (max stages, max actors, cascade renames, etc.)
  * and replay-safe dedup via appliedIntentIds.
+ *
+ * All incoming intent payloads are treated as UNTRUSTED and validated
+ * before use. Malformed payloads are rejected with a warning — they
+ * never crash the client.
  */
 
 import { useCallback, useRef, useState } from 'react';
@@ -57,21 +61,121 @@ export interface JourneyMutationsReturn {
 }
 
 // -----------------------------------------------------------------------
-// Helpers
+// Guard helpers — never crash on unknown/malformed data
 // -----------------------------------------------------------------------
 
-function stageExists(stages: string[], name: string): boolean {
-  if (!name) return false;
-  return stages.some((s) => (s || '').toLowerCase() === name.toLowerCase());
+/** Returns the lowercase form of a string, or null if the value is not a non-empty string. */
+function safeLower(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  return value.toLowerCase();
 }
 
-function actorExists(actors: LiveJourneyActor[], name: string): boolean {
-  if (!name) return false;
-  return actors.some((a) => (a?.name || '').toLowerCase() === name.toLowerCase());
+/** True iff `name` is a non-empty string that matches (case-insensitive) an entry in `stages`. */
+function stageExists(stages: string[], name: unknown): boolean {
+  const needle = safeLower(name);
+  if (needle === null) return false;
+  return stages.some((s) => safeLower(s) === needle);
+}
+
+/** True iff `name` is a non-empty string matching (case-insensitive) an actor in `actors`. */
+function actorExists(actors: LiveJourneyActor[], name: unknown): boolean {
+  const needle = safeLower(name);
+  if (needle === null) return false;
+  return actors.some((a) => safeLower(a?.name) === needle);
+}
+
+// -----------------------------------------------------------------------
+// Per-intent payload validators
+// Returns a typed, cleaned payload or null if the payload is invalid.
+// -----------------------------------------------------------------------
+
+function validateAddStage(raw: unknown): AddStagePayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.stageName !== 'string' || !p.stageName.trim()) return null;
+  return {
+    stageName: p.stageName.trim(),
+    afterStage: typeof p.afterStage === 'string' && p.afterStage.trim() ? p.afterStage.trim() : undefined,
+  };
+}
+
+function validateRenameStage(raw: unknown): RenameStagePayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.oldName !== 'string' || !p.oldName.trim()) return null;
+  if (typeof p.newName !== 'string' || !p.newName.trim()) return null;
+  return { oldName: p.oldName.trim(), newName: p.newName.trim() };
+}
+
+function validateMergeStage(raw: unknown): MergeStagePayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.targetName !== 'string' || !p.targetName.trim()) return null;
+  if (!Array.isArray(p.sourceStages) || p.sourceStages.length === 0) return null;
+  const sources = (p.sourceStages as unknown[])
+    .filter((s) => typeof s === 'string' && (s as string).trim())
+    .map((s) => (s as string).trim());
+  if (sources.length === 0) return null;
+  return { sourceStages: sources, targetName: p.targetName.trim() };
+}
+
+function validateRemoveStage(raw: unknown): RemoveStagePayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.stageName !== 'string' || !p.stageName.trim()) return null;
+  return {
+    stageName: p.stageName.trim(),
+    force: p.force === true,
+  };
+}
+
+function validateAddActor(raw: unknown): AddActorPayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.name !== 'string' || !p.name.trim()) return null;
+  return {
+    name: p.name.trim(),
+    role: typeof p.role === 'string' && p.role.trim() ? p.role.trim() : 'Participant',
+  };
+}
+
+function validateRenameActor(raw: unknown): RenameActorPayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.oldName !== 'string' || !p.oldName.trim()) return null;
+  if (typeof p.newName !== 'string' || !p.newName.trim()) return null;
+  return { oldName: p.oldName.trim(), newName: p.newName.trim() };
+}
+
+function validateAddInteraction(raw: unknown): AddInteractionPayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.actor !== 'string' || !p.actor.trim()) return null;
+  if (typeof p.stage !== 'string' || !p.stage.trim()) return null;
+  if (typeof p.action !== 'string' || !p.action.trim()) return null;
+  const VALID_SENTIMENTS = new Set(['positive', 'neutral', 'concerned', 'critical']);
+  const sentiment =
+    typeof p.sentiment === 'string' && VALID_SENTIMENTS.has(p.sentiment) ? p.sentiment : 'neutral';
+  return {
+    actor: p.actor.trim(),
+    stage: p.stage.trim(),
+    action: p.action.trim(),
+    context: typeof p.context === 'string' ? p.context : '',
+    sentiment: sentiment as 'positive' | 'neutral' | 'concerned' | 'critical',
+  };
+}
+
+function validateUpdateInteraction(raw: unknown): UpdateInteractionPayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.interactionId !== 'string' || !p.interactionId.trim()) return null;
+  if (!p.updates || typeof p.updates !== 'object') return null;
+  return { interactionId: p.interactionId.trim(), updates: p.updates as UpdateInteractionPayload['updates'] };
 }
 
 // -----------------------------------------------------------------------
 // Mutation appliers (pure functions, return new journey state)
+// All receive VALIDATED payloads — no further defensive checks needed.
 // -----------------------------------------------------------------------
 
 function applyAddStage(
@@ -89,9 +193,8 @@ function applyAddStage(
 
   const stages = [...journey.stages];
   if (payload.afterStage) {
-    const idx = stages.findIndex(
-      (s) => (s || '').toLowerCase() === (payload.afterStage || '').toLowerCase(),
-    );
+    const afterLower = safeLower(payload.afterStage);
+    const idx = stages.findIndex((s) => safeLower(s) === afterLower);
     if (idx >= 0) {
       stages.splice(idx + 1, 0, payload.stageName);
     } else {
@@ -113,15 +216,12 @@ function applyRenameStage(
     return journey;
   }
 
+  const oldLower = safeLower(payload.oldName)!;
   const stages = journey.stages.map((s) =>
-    (s || '').toLowerCase() === (payload.oldName || '').toLowerCase() ? payload.newName : s,
+    safeLower(s) === oldLower ? payload.newName : s,
   );
-
-  // Cascade to all interactions referencing this stage
   const interactions = journey.interactions.map((ix) =>
-    (ix.stage || '').toLowerCase() === (payload.oldName || '').toLowerCase()
-      ? { ...ix, stage: payload.newName }
-      : ix,
+    safeLower(ix.stage) === oldLower ? { ...ix, stage: payload.newName } : ix,
   );
 
   return { ...journey, stages, interactions };
@@ -131,27 +231,21 @@ function applyMergeStage(
   journey: LiveJourneyData,
   payload: MergeStagePayload,
 ): LiveJourneyData {
-  const missing = payload.sourceStages.filter(
-    (s) => !stageExists(journey.stages, s),
-  );
+  const missing = payload.sourceStages.filter((s) => !stageExists(journey.stages, s));
   if (missing.length > 0) {
     console.warn(`[JourneyMutations] Rejected merge_stage: stages not found: ${missing.join(', ')}`);
     return journey;
   }
 
-  const sourceNamesLower = payload.sourceStages.map((s) => (s || '').toLowerCase());
+  const sourceNamesLower = new Set(payload.sourceStages.map((s) => safeLower(s)!));
 
-  // Remove source stages, add target if not present
-  const stages = journey.stages.filter(
-    (s) => !sourceNamesLower.includes((s || '').toLowerCase()),
-  );
+  const stages = journey.stages.filter((s) => !sourceNamesLower.has(safeLower(s)!));
   if (!stageExists(stages, payload.targetName)) {
     stages.push(payload.targetName);
   }
 
-  // Move interactions from source stages to target
   const interactions = journey.interactions.map((ix) =>
-    sourceNamesLower.includes((ix.stage || '').toLowerCase())
+    sourceNamesLower.has(safeLower(ix.stage) ?? '')
       ? { ...ix, stage: payload.targetName }
       : ix,
   );
@@ -168,8 +262,9 @@ function applyRemoveStage(
     return journey;
   }
 
+  const stageNameLower = safeLower(payload.stageName)!;
   const affectedCount = journey.interactions.filter(
-    (ix) => (ix.stage || '').toLowerCase() === (payload.stageName || '').toLowerCase(),
+    (ix) => safeLower(ix.stage) === stageNameLower,
   ).length;
 
   if (affectedCount > REMOVE_STAGE_INTERACTION_LIMIT && !payload.force) {
@@ -179,11 +274,9 @@ function applyRemoveStage(
     return journey;
   }
 
-  const stages = journey.stages.filter(
-    (s) => (s || '').toLowerCase() !== (payload.stageName || '').toLowerCase(),
-  );
+  const stages = journey.stages.filter((s) => safeLower(s) !== stageNameLower);
   const interactions = journey.interactions.filter(
-    (ix) => (ix.stage || '').toLowerCase() !== (payload.stageName || '').toLowerCase(),
+    (ix) => safeLower(ix.stage) !== stageNameLower,
   );
 
   return { ...journey, stages, interactions };
@@ -219,17 +312,12 @@ function applyRenameActor(
     return journey;
   }
 
+  const oldLower = safeLower(payload.oldName)!;
   const actors = journey.actors.map((a) =>
-    (a?.name || '').toLowerCase() === (payload.oldName || '').toLowerCase()
-      ? { ...a, name: payload.newName }
-      : a,
+    safeLower(a?.name) === oldLower ? { ...a, name: payload.newName } : a,
   );
-
-  // Cascade to all interactions referencing this actor
   const interactions = journey.interactions.map((ix) =>
-    (ix.actor || '').toLowerCase() === (payload.oldName || '').toLowerCase()
-      ? { ...ix, actor: payload.newName }
-      : ix,
+    safeLower(ix.actor) === oldLower ? { ...ix, actor: payload.newName } : ix,
   );
 
   return { ...journey, actors, interactions };
@@ -241,7 +329,6 @@ function applyAddInteraction(
 ): LiveJourneyData {
   let result = { ...journey };
 
-  // Auto-create missing actor
   if (!actorExists(result.actors, payload.actor)) {
     if (result.actors.length < MAX_ACTORS) {
       result = {
@@ -254,7 +341,6 @@ function applyAddInteraction(
     }
   }
 
-  // Auto-create missing stage
   if (!stageExists(result.stages, payload.stage)) {
     if (result.stages.length < MAX_STAGES) {
       result = {
@@ -294,14 +380,12 @@ function applyUpdateInteraction(
 ): LiveJourneyData {
   const target = journey.interactions.find((ix) => ix.id === payload.interactionId);
 
-  // Manual edit protection: never allow AI mutations to overwrite facilitator-added interactions
   if (target?.addedBy === 'facilitator') {
     console.warn(`[JourneyMutations] Rejected update_interaction: "${payload.interactionId}" is facilitator-owned`);
     return journey;
   }
 
-  const exists = !!target;
-  if (!exists) {
+  if (!target) {
     console.warn(`[JourneyMutations] Rejected update_interaction: "${payload.interactionId}" not found`);
     return journey;
   }
@@ -343,25 +427,74 @@ export function useJourneyMutations(
     appliedIntentIdsRef.current.add(intent.id);
 
     setJourney((prev) => {
+      // Validate payload before any mutation — reject with warning rather than crash
       switch (intent.type) {
-        case 'add_stage':
-          return applyAddStage(prev, intent.payload as unknown as AddStagePayload);
-        case 'rename_stage':
-          return applyRenameStage(prev, intent.payload as unknown as RenameStagePayload);
-        case 'merge_stage':
-          return applyMergeStage(prev, intent.payload as unknown as MergeStagePayload);
-        case 'remove_stage':
-          return applyRemoveStage(prev, intent.payload as unknown as RemoveStagePayload);
-        case 'add_actor':
-          return applyAddActor(prev, intent.payload as unknown as AddActorPayload);
-        case 'rename_actor':
-          return applyRenameActor(prev, intent.payload as unknown as RenameActorPayload);
-        case 'add_interaction':
-          return applyAddInteraction(prev, intent.payload as unknown as AddInteractionPayload);
-        case 'update_interaction':
-          return applyUpdateInteraction(prev, intent.payload as unknown as UpdateInteractionPayload);
+        case 'add_stage': {
+          const p = validateAddStage(intent.payload);
+          if (!p) {
+            console.warn('[JourneyMutations] Rejected add_stage: invalid payload', intent.payload);
+            return prev;
+          }
+          return applyAddStage(prev, p);
+        }
+        case 'rename_stage': {
+          const p = validateRenameStage(intent.payload);
+          if (!p) {
+            console.warn('[JourneyMutations] Rejected rename_stage: invalid payload', intent.payload);
+            return prev;
+          }
+          return applyRenameStage(prev, p);
+        }
+        case 'merge_stage': {
+          const p = validateMergeStage(intent.payload);
+          if (!p) {
+            console.warn('[JourneyMutations] Rejected merge_stage: invalid payload', intent.payload);
+            return prev;
+          }
+          return applyMergeStage(prev, p);
+        }
+        case 'remove_stage': {
+          const p = validateRemoveStage(intent.payload);
+          if (!p) {
+            console.warn('[JourneyMutations] Rejected remove_stage: invalid payload', intent.payload);
+            return prev;
+          }
+          return applyRemoveStage(prev, p);
+        }
+        case 'add_actor': {
+          const p = validateAddActor(intent.payload);
+          if (!p) {
+            console.warn('[JourneyMutations] Rejected add_actor: invalid payload', intent.payload);
+            return prev;
+          }
+          return applyAddActor(prev, p);
+        }
+        case 'rename_actor': {
+          const p = validateRenameActor(intent.payload);
+          if (!p) {
+            console.warn('[JourneyMutations] Rejected rename_actor: invalid payload', intent.payload);
+            return prev;
+          }
+          return applyRenameActor(prev, p);
+        }
+        case 'add_interaction': {
+          const p = validateAddInteraction(intent.payload);
+          if (!p) {
+            console.warn('[JourneyMutations] Rejected add_interaction: invalid payload', intent.payload);
+            return prev;
+          }
+          return applyAddInteraction(prev, p);
+        }
+        case 'update_interaction': {
+          const p = validateUpdateInteraction(intent.payload);
+          if (!p) {
+            console.warn('[JourneyMutations] Rejected update_interaction: invalid payload', intent.payload);
+            return prev;
+          }
+          return applyUpdateInteraction(prev, p);
+        }
         default:
-          console.warn(`[JourneyMutations] Unknown intent type: ${intent.type}`);
+          console.warn(`[JourneyMutations] Unknown intent type: ${intent.type}`, intent.payload);
           return prev;
       }
     });
@@ -370,6 +503,13 @@ export function useJourneyMutations(
   // ---- Merge full backend journey (from journey.completion events) ----
 
   const mergeBackend = useCallback((backendJourney: LiveJourneyData) => {
+    // Warn about obviously malformed backend data before merging
+    if (backendJourney?.actors?.some((a) => !a?.name)) {
+      console.warn('[JourneyMutations] journey.completion: backend actors contain missing names — malformed entries will be skipped');
+    }
+    if (backendJourney?.stages?.some((s) => !s)) {
+      console.warn('[JourneyMutations] journey.completion: backend stages contain empty/null values — malformed entries will be skipped');
+    }
     setJourney((prev) => mergeBackendJourney(prev, backendJourney));
   }, []);
 
