@@ -59,12 +59,34 @@ export interface DiscoveryQuestionTemplate {
   purpose: string;
 }
 
+export interface JourneyStage {
+  stage: number;
+  label: string;
+  description: string;
+}
+
+/** Per-engagement-type lens variant: which lenses to use for a specific engagement type */
+export interface EngagementVariant {
+  /** Lenses to use for this engagement type (overrides base lenses if set) */
+  lenses?: LensName[];
+  /** Additional lenses to add on top of base lenses */
+  addLenses?: LensName[];
+  /** Lenses from base to exclude */
+  excludeLenses?: LensName[];
+  /** Practitioner notes on what to focus on for this engagement type in this industry */
+  notes?: string;
+}
+
 export interface DomainPack {
   key: string;
   label: string;
   description: string;
   category: 'operational' | 'strategic';
   lenses: LensName[];
+  /** Industry-specific journey stages — replaces generic research-derived stages */
+  journeyStages?: JourneyStage[];
+  /** Per-engagement-type lens overrides */
+  engagementVariants?: Record<string, EngagementVariant>;
   actorTaxonomy: ActorRole[];
   metricReferences: MetricReference[];
   questionTemplates: QuestionTemplate[];

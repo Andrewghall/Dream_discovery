@@ -10,10 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Building2, Globe, Target, Compass, Briefcase } from 'lucide-react';
 import Link from 'next/link';
-import { listDomainPacks, listEngagementTypes } from '@/lib/domain-packs';
+import { listEngagementTypes, resolveIndustryPack } from '@/lib/domain-packs';
 import { INDUSTRY_OPTIONS } from '@/lib/cognition/industry-actor-model';
 
-const DOMAIN_PACK_OPTIONS = listDomainPacks();
 const ENGAGEMENT_TYPE_OPTIONS = listEngagementTypes();
 
 type OrgOption = { id: string; name: string };
@@ -40,7 +39,6 @@ export default function NewWorkshopPage() {
     targetDomain: '',
     // Field Discovery / Diagnostic extension
     engagementType: '',
-    domainPack: '',
   });
 
   const isDream = formData.workshopType !== 'SALES';
@@ -87,7 +85,9 @@ export default function NewWorkshopPage() {
           targetDomain: isDream && formData.dreamTrack === 'DOMAIN' ? formData.targetDomain || undefined : undefined,
           // Field Discovery / Diagnostic extension
           engagementType: isDream && formData.engagementType ? formData.engagementType : undefined,
-          domainPack: isDream && formData.domainPack ? formData.domainPack : undefined,
+          domainPack: isDream
+            ? (resolveIndustryPack(formData.industry, formData.engagementType, formData.dreamTrack)?.key ?? undefined)
+            : undefined,
         }),
       });
 
@@ -302,57 +302,31 @@ export default function NewWorkshopPage() {
                     Optional: configure for structured diagnostic mode with field discovery capture
                   </p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="engagementType">
-                        <span className="flex items-center gap-1.5">
-                          <Briefcase className="h-3.5 w-3.5" />
-                          Engagement Type
-                        </span>
-                      </Label>
-                      <Select
-                        value={formData.engagementType}
-                        onValueChange={(value) => setFormData({ ...formData, engagementType: value })}
-                      >
-                        <SelectTrigger id="engagementType">
-                          <SelectValue placeholder="Select engagement type..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ENGAGEMENT_TYPE_OPTIONS.map((et) => (
-                            <SelectItem key={et.key} value={et.key}>
-                              {et.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="domainPack">
-                        <span className="flex items-center gap-1.5">
-                          <Target className="h-3.5 w-3.5" />
-                          Domain Pack
-                        </span>
-                      </Label>
-                      <Select
-                        value={formData.domainPack}
-                        onValueChange={(value) => setFormData({ ...formData, domainPack: value })}
-                      >
-                        <SelectTrigger id="domainPack">
-                          <SelectValue placeholder="Select domain pack..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DOMAIN_PACK_OPTIONS.map((dp) => (
-                            <SelectItem key={dp.key} value={dp.key}>
-                              {dp.label} ({dp.category})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="engagementType">
+                      <span className="flex items-center gap-1.5">
+                        <Briefcase className="h-3.5 w-3.5" />
+                        Engagement Type
+                      </span>
+                    </Label>
+                    <Select
+                      value={formData.engagementType}
+                      onValueChange={(value) => setFormData({ ...formData, engagementType: value })}
+                    >
+                      <SelectTrigger id="engagementType">
+                        <SelectValue placeholder="Select engagement type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ENGAGEMENT_TYPE_OPTIONS.map((et) => (
+                          <SelectItem key={et.key} value={et.key}>
+                            {et.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Domain packs configure lenses, actor taxonomy, metrics, and question templates for field discovery
+                    Domain pack is resolved automatically from the selected industry and engagement type
                   </p>
                 </div>
               )}

@@ -28,3 +28,10 @@ export type {
   EngagementTypeConfig,
   SessionMixSuggestion,
 } from './engagement-types';
+
+export { INDUSTRY_PACKS } from './industry-packs';
+
+export {
+  resolveIndustryPack,
+  industryToPackKey,
+} from './resolution';

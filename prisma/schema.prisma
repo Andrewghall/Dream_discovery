@@ -705,6 +705,7 @@ enum EngagementType {
   AI_ENABLEMENT
   TRANSFORMATION_SPRINT
   CULTURAL_ALIGNMENT
+  GO_TO_MARKET
 }
 
 enum CaptureType {

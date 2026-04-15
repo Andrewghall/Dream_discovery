@@ -314,12 +314,68 @@ Specific output requirements:
 // Registry map + lookup
 // ---------------------------------------------------------------------------
 
+const GO_TO_MARKET: EngagementTypeConfig = {
+  key: 'go_to_market',
+  label: 'Go-to-Market Strategy',
+  description: 'Define or sharpen commercial strategy, market positioning, and revenue growth plan',
+  diagnosticFocus: 'Market positioning, commercial model, pipeline and channel effectiveness',
+  outputEmphasis: [
+    'Market positioning and competitive differentiation',
+    'ICP and segment clarity',
+    'Channel and pipeline effectiveness',
+    'Pricing and commercial model',
+    'Sales and marketing alignment',
+  ],
+  suggestedSessionMix: [
+    { captureType: 'executive_interview', minSessions: 3, idealSessions: 6, description: 'Commercial strategy, growth ambition, competitive context' },
+    { captureType: 'manager_interview', minSessions: 5, idealSessions: 10, description: 'Sales motion, pipeline reality, channel performance' },
+    { captureType: 'operational_interview', minSessions: 5, idealSessions: 10, description: 'Customer-facing team experience, objection patterns' },
+    { captureType: 'walkaround', minSessions: 1, idealSessions: 2, description: 'Sales floor or commercial team observation' },
+  ],
+  typicalDurationDays: 2,
+  typicalInterviewCount: '20-35',
+  researchAngle: `ENGAGEMENT TYPE: Go-to-Market Strategy
+This workshop is sharpening or rebuilding the commercial go-to-market strategy. Your research must answer: "What does this company's current GTM look like, and where is the biggest gap between what they have and what market leaders in their sector do?"
+
+Research priorities:
+- Competitive landscape: who are the top 3-5 competitors? How do they position, price, and go to market? Find analyst reports, G2/Capterra comparisons, LinkedIn ads, job postings.
+- Market sizing and segment dynamics: what is the TAM/SAM for this company? Are there underserved segments?
+- Pricing and commercial model benchmarks: how does this company's pricing compare to peers? Search for public pricing pages, analyst reports on pricing in this sector.
+- Sales motion signals: search for the company's sales job postings — they reveal what motion (inbound, outbound, enterprise, PLG) they're using. Search for SDR/AE/CSM ratios.
+- Customer voice: search for customer reviews (G2, Trustpilot, Capterra) — what do buyers say about the buying process? What objections come up?
+- Win/loss signals: search for any public case studies, press releases about deals won — what value proposition did they lead with?
+
+The facilitator needs to walk in knowing the competitive context AND what this company currently uses as its GTM narrative — so they can probe the gap between the two.`,
+
+  questionDesignPrinciple: `ENGAGEMENT TYPE: Go-to-Market Strategy
+This session is building or sharpening a commercial strategy. Every question must surface a signal about market reality, commercial effectiveness, or strategic clarity.
+
+Question design rules for this engagement type:
+- Lead with the customer: "Who is your ideal customer and what problem do you solve for them that no one else does?" — if this can't be answered clearly, that IS the finding.
+- Surface the competitive reality: "When you lose a deal, who do you lose to and why?" — loss patterns are more revealing than win stories.
+- Test ICP clarity: "Describe the last three customers who churned or didn't renew — what did they have in common?" — ICP is revealed by who leaves, not just who buys.
+- Probe pricing confidence: "How do you justify your price in a competitive sales situation? Where does it feel uncomfortable?" — pricing confidence reveals positioning strength.
+- Challenge channel assumptions: "Where does your pipeline actually come from today vs where you believe it comes from?" — there is almost always a gap.
+- The maturity scale should anchor on GTM clarity and commercial velocity — from "undefined ICP, reactive sales" to "predictable revenue engine, clear category positioning."`,
+
+  synthesisInstruction: `ENGAGEMENT TYPE: Go-to-Market Strategy — output must read as a commercial strategy assessment and GTM roadmap, not a general diagnostic.
+
+Specific output requirements:
+- discoveryOutput: Truths must surface the current GTM reality — who is being sold to, how, at what price, through which channels, with what results. The _aiSummary must describe the dominant GTM pattern and its primary weakness.
+- reimagineContent: Visions must be market-facing — what does the company look like to the market when GTM is working? Frame in terms of buyer experience, market position, and revenue characteristics.
+- constraintsContent: Separate market constraints (structural, competitive) from internal constraints (capability, resource, clarity). Label each: Market Structure Constraint / Internal Capability Gap / Positioning Ambiguity / Resource Constraint.
+- potentialSolution: Must read as a GTM playbook. Each solution should specify: the motion (inbound/outbound/partner/PLG), the segment, the value proposition, and the channel. Avoid generic "improve sales" recommendations.
+- summaryContent: The narrative must describe the GTM gap — where is this company in the market today vs where it could be, and what is the specific change that unlocks growth?
+- pathForward steps: Sequence around commercial velocity. Step 1 = sharpen ICP and value proposition (enabler for everything else). Step 2 = optimise highest-performing channel. Step 3 = build the next channel or segment.`,
+};
+
 export const ENGAGEMENT_TYPES: Record<string, EngagementTypeConfig> = {
   diagnostic_baseline: DIAGNOSTIC_BASELINE,
   operational_deep_dive: OPERATIONAL_DEEP_DIVE,
   ai_enablement: AI_ENABLEMENT,
   transformation_sprint: TRANSFORMATION_SPRINT,
   cultural_alignment: CULTURAL_ALIGNMENT,
+  go_to_market: GO_TO_MARKET,
 };
 
 /**
