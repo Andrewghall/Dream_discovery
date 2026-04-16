@@ -925,8 +925,27 @@ export async function runQuestionSetAgent(
       }
     }
 
+  // Loop exhausted without explicit commit. If all 3 phases are designed, build from what we have.
+  // This handles the race condition where the LLM commits and designs a phase in the same
+  // parallel call — the commit guard correctly blocked it, but the phase was stored in the
+  // same iteration, and there were no remaining iterations for the retry commit.
+  const REQUIRED_PHASES: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
+  const stillMissing = REQUIRED_PHASES.filter(p => !designedPhases.get(p)?.length);
+  if (stillMissing.length === 0) {
+    console.log('[Question Set Agent] All phases designed — building from phases (no explicit commit)');
+    const commitArgs = fnArgs_extract_full(messages);
+    return buildWorkshopQuestionSet(
+      designedPhases,
+      commitArgs.designRationale || 'Questions designed for workshop facilitation.',
+      research,
+      context.blueprint,
+      (commitArgs.dataConfidence as DataConfidence) || 'moderate',
+      commitArgs.dataSufficiencyNotes || [],
+    );
+  }
+
   throw new Error(
-    '[Question Set Agent] Loop ended without explicit commit — question set is incomplete. ' +
+    `[Question Set Agent] Loop ended without explicit commit — missing phases: ${stillMissing.join(', ')}. ` +
     'Re-run question generation to produce a valid question set.',
   );
 }
