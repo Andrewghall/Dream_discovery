@@ -174,43 +174,41 @@ function isAirlineContactCentreContext(input: GeneratorInput): boolean {
  * Returns null when no industry-specific override applies.
  */
 function resolveIndustryLenses(input: GeneratorInput): LensPolicyEntry[] | null {
-  // Legacy curated override — airline contact centre
-  if (isAirlineContactCentreContext(input)) {
-    return CONTACT_CENTRE_AIRLINE_LENSES;
-  }
-  // New industry packs system
-  const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack);
-  if (industryPack && industryPack.lenses.length > 0) {
-    return industryPack.lenses.map((lensName) => ({
-      name: lensName,
-      description: '',
-      color: '#e2e8f0',
-      keywords: [],
-    }));
-  }
-  if ((input.dreamTrack ?? '').toUpperCase() === 'ENTERPRISE') {
-    return ENTERPRISE_LENSES;
+  // Legacy curated overrides — highest priority
+  if (isAirlineContactCentreContext(input)) return CONTACT_CENTRE_AIRLINE_LENSES;
+  if ((input.dreamTrack ?? '').toUpperCase() === 'ENTERPRISE') return ENTERPRISE_LENSES;
+  // Industry auto-resolve only when no explicit legacy pack key is set
+  if (!input.domainPack) {
+    const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack);
+    if (industryPack && industryPack.lenses.length > 0) {
+      return industryPack.lenses.map((lensName) => ({
+        name: lensName,
+        description: '',
+        color: '#e2e8f0',
+        keywords: [],
+      }));
+    }
   }
   return null;
 }
 
 function resolveJourneyTemplate(input: GeneratorInput): JourneyStageEntry[] | null {
   // Legacy curated override — airline contact centre
-  if (isAirlineContactCentreContext(input)) {
-    return CONTACT_CENTRE_AIRLINE_JOURNEY_TEMPLATE;
-  }
-  // New industry packs system — use journeyStages from resolved pack
-  const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack);
-  if (industryPack && industryPack.journeyStages && industryPack.journeyStages.length > 0) {
-    return industryPack.journeyStages.map((s) => ({
-      name: s.label,
-      description: s.description,
-    }));
-  }
-  // Legacy domain journey templates fallback
+  if (isAirlineContactCentreContext(input)) return CONTACT_CENTRE_AIRLINE_JOURNEY_TEMPLATE;
+  // Explicit legacy pack key is authoritative over industry auto-resolve
   const packKey = (input.domainPack ?? '').toLowerCase();
-  if (!packKey) return null;
-  return DOMAIN_JOURNEY_TEMPLATES[packKey] ?? null;
+  if (packKey && DOMAIN_JOURNEY_TEMPLATES[packKey]) return DOMAIN_JOURNEY_TEMPLATES[packKey];
+  // No explicit pack — use industry pack journey stages
+  if (!input.domainPack) {
+    const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack);
+    if (industryPack?.journeyStages?.length) {
+      return industryPack.journeyStages.map((s) => ({
+        name: s.label,
+        description: s.description,
+      }));
+    }
+  }
+  return null;
 }
 
 // ================================================================
@@ -436,7 +434,8 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
 
   // Detect whether we have a curated industry-specific override (e.g. airline).
   // Industry-specific data is higher confidence than research output and wins.
-  const hasIndustryOverride = isAirlineContactCentreContext(input);
+  const hasIndustryOverride = isAirlineContactCentreContext(input)
+    || (!input.domainPack && !!resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack)?.journeyStages?.length);
 
   // Layer 2: Domain-specific journey stages (baseline for the domain pack)
   const journeyTemplate = resolveJourneyTemplate(input);

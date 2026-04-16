@@ -491,10 +491,10 @@ export function composeBlueprint(input: ComposeInput): WorkshopBlueprint {
   }
 
   // Layer 3: Domain pack overrides
-  // Try new industry packs first (keyed by industry), then fall back to legacy registry key
+  // Explicit domainPack key is authoritative; industry auto-resolve only when no explicit key set.
   if (input.domainPack || input.industry) {
-    const pack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack)
-      ?? (input.domainPack ? getDomainPack(input.domainPack) : null);
+    const pack = (input.domainPack ? getDomainPack(input.domainPack) : null)
+      ?? (input.industry ? resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack) : null);
     if (pack) {
       // Map domain pack lenses to LensPolicyEntry, reusing DEFAULT_DIMENSIONS
       // data (keywords, color, description) when the name matches.
