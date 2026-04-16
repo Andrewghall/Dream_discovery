@@ -1346,7 +1346,7 @@ export default function PrepPage({ params }: PageProps) {
           )}
 
           {/* ── Discovery Interview Questions Output ─────────────── */}
-          {workshop?.domainPack && discoveryQuestionsData && (
+          {discoveryQuestionsData && (
             <div className="rounded-xl border bg-card overflow-hidden">
               <button
                 onClick={() => setDiscoveryQuestionsCollapsed(!discoveryQuestionsCollapsed)}

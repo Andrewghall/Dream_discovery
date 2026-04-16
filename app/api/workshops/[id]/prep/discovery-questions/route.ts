@@ -80,6 +80,7 @@ export async function POST(
       id: true,
       clientName: true,
       domainPack: true,
+      domainPackConfig: true,
       blueprint: true,
     },
   });
@@ -91,7 +92,7 @@ export async function POST(
     });
   }
 
-  if (!workshop.domainPack) {
+  if (!workshop.domainPack && !workshop.domainPackConfig) {
     return new Response(JSON.stringify({ error: 'Workshop has no domain pack configured' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },

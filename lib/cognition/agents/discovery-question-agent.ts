@@ -30,6 +30,7 @@ import type {
 } from './agent-types';
 import type { DomainPack } from '@/lib/domain-packs/registry';
 import { getDomainPack } from '@/lib/domain-packs/registry';
+import { resolveIndustryPack } from '@/lib/domain-packs/resolution';
 import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { getEngagementType } from '@/lib/domain-packs/engagement-types';
@@ -577,7 +578,8 @@ export async function runDiscoveryQuestionAgent(
   };
 
   const research = workshop.prepResearch as WorkshopPrepResearch | null;
-  const domainPack = workshop.domainPack ? getDomainPack(workshop.domainPack) : null;
+  const domainPack = resolveIndustryPack(workshop.industry, workshop.engagementType, workshop.dreamTrack)
+    ?? (workshop.domainPack ? getDomainPack(workshop.domainPack) : null);
 
   // Wrap callback to match AgentConversationCallback style
   const emitConversation = (message: string, type: string = 'info') => {
