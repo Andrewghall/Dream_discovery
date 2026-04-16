@@ -224,7 +224,10 @@ export async function POST(request: NextRequest) {
       targetDomain: targetDomain || undefined,
       // Field Discovery / Diagnostic extension
       engagementType: normalizedEngagementType,
-      domainPack: resolvedPack?.key || undefined,
+      // domainPack column is for legacy pack keys only (contact_centre, enterprise, etc.)
+      // Industry packs are fully represented in domainPackConfig — never write an industry
+      // pack key into domainPack or it pollutes every downstream key-based discriminator.
+      domainPack: undefined,
       domainPackConfig: resolvedPack ? (resolvedPack as any) : undefined,
       // Runtime blueprint snapshot
       blueprint: blueprint as any,
