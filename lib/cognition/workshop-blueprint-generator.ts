@@ -21,7 +21,7 @@ import {
   type ActorEntry,
   type QuestionConstraints,
 } from '@/lib/workshop/blueprint';
-import { getDomainPack } from '@/lib/domain-packs/registry';
+import { resolveIndustryPack } from '@/lib/domain-packs/resolution';
 import { getIndustryActors } from '@/lib/cognition/industry-actor-model';
 import type {
   JourneyStageResearch,
@@ -169,11 +169,24 @@ function isAirlineContactCentreContext(input: GeneratorInput): boolean {
 
 /**
  * Resolve industry-specific lens overrides.
- * Returns null when no industry-specific override applies (domain pack default is kept).
+ * First tries the new INDUSTRY_PACKS system (resolveIndustryPack), then falls
+ * back to legacy curated overrides (airline contact centre, enterprise).
+ * Returns null when no industry-specific override applies.
  */
 function resolveIndustryLenses(input: GeneratorInput): LensPolicyEntry[] | null {
+  // Legacy curated override — airline contact centre
   if (isAirlineContactCentreContext(input)) {
     return CONTACT_CENTRE_AIRLINE_LENSES;
+  }
+  // New industry packs system
+  const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack);
+  if (industryPack && industryPack.lenses.length > 0) {
+    return industryPack.lenses.map((lensName) => ({
+      name: lensName,
+      description: '',
+      color: '#e2e8f0',
+      keywords: [],
+    }));
   }
   if ((input.dreamTrack ?? '').toUpperCase() === 'ENTERPRISE') {
     return ENTERPRISE_LENSES;
@@ -182,11 +195,21 @@ function resolveIndustryLenses(input: GeneratorInput): LensPolicyEntry[] | null 
 }
 
 function resolveJourneyTemplate(input: GeneratorInput): JourneyStageEntry[] | null {
-  const packKey = (input.domainPack ?? '').toLowerCase();
-  if (!packKey) return null;
+  // Legacy curated override — airline contact centre
   if (isAirlineContactCentreContext(input)) {
     return CONTACT_CENTRE_AIRLINE_JOURNEY_TEMPLATE;
   }
+  // New industry packs system — use journeyStages from resolved pack
+  const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack);
+  if (industryPack && industryPack.journeyStages && industryPack.journeyStages.length > 0) {
+    return industryPack.journeyStages.map((s) => ({
+      name: s.label,
+      description: s.description,
+    }));
+  }
+  // Legacy domain journey templates fallback
+  const packKey = (input.domainPack ?? '').toLowerCase();
+  if (!packKey) return null;
   return DOMAIN_JOURNEY_TEMPLATES[packKey] ?? null;
 }
 

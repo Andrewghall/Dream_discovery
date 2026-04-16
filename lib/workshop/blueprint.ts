@@ -18,6 +18,7 @@
 
 import { z } from 'zod';
 import { getDomainPack } from '@/lib/domain-packs/registry';
+import { resolveIndustryPack } from '@/lib/domain-packs/resolution';
 import { getEngagementType } from '@/lib/domain-packs/engagement-types';
 import {
   DEFAULT_DIMENSIONS,
@@ -490,8 +491,10 @@ export function composeBlueprint(input: ComposeInput): WorkshopBlueprint {
   }
 
   // Layer 3: Domain pack overrides
-  if (input.domainPack) {
-    const pack = getDomainPack(input.domainPack);
+  // Try new industry packs first (keyed by industry), then fall back to legacy registry key
+  if (input.domainPack || input.industry) {
+    const pack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack)
+      ?? (input.domainPack ? getDomainPack(input.domainPack) : null);
     if (pack) {
       // Map domain pack lenses to LensPolicyEntry, reusing DEFAULT_DIMENSIONS
       // data (keywords, color, description) when the name matches.
