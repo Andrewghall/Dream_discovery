@@ -397,7 +397,9 @@ export async function GET(
 
         const speakerId = typeof datum.speakerId === 'string' ? datum.speakerId : null;
 
-        // Derive weight from richness of the node data
+        // Derive weight from richness of the node data.
+        // Seeded/synthetic nodes may lack agenticAnalysis — rawText length provides
+        // a fallback signal so they aren't penalised for missing live-session metadata.
         const domainCount = Array.isArray(agenticAnalysis?.domains) ? (agenticAnalysis.domains as unknown[]).length : 0;
         const actorCount = Array.isArray(agenticAnalysis?.actors) ? (agenticAnalysis.actors as unknown[]).length : 0;
         const interactionCount = Array.isArray(agenticAnalysis?.actors)
@@ -405,16 +407,15 @@ export async function GET(
               (sum: number, a) => sum + (Array.isArray(a?.interactions) ? (a.interactions as unknown[]).length : 0), 0)
           : 0;
         const keywordCount = Array.isArray(classification?.keywords) ? (classification.keywords as unknown[]).length : 0;
-        const computedWeight = 1 + domainCount + actorCount + Math.floor(interactionCount / 2) + Math.floor(keywordCount / 3);
+        // textBonus: +1 for substantive text (≥40 chars), +1 for longer signal (≥100 chars)
+        const textBonus = (rawText.length >= 40 ? 1 : 0) + (rawText.length >= 100 ? 1 : 0);
+        const computedWeight = 1 + domainCount + actorCount + Math.floor(interactionCount / 2) + Math.floor(keywordCount / 3) + textBonus;
 
         // ── Viability gates ──────────────────────────────────────────────────
-        // 1. Minimum weight — must have some agentic richness
-        if (computedWeight < 3) continue;
-        // 2. Confidence gate — if scored, must be majority-confidence
-        if (confidence !== undefined && confidence < 0.55) continue;
-        // 3. Single-source non-senior gate — weak single voice not enough
-        //    (speakerId heuristic: no role data in snapshot, use weight as proxy)
-        if (computedWeight < 5 && !speakerId) continue;
+        // 1. Minimum weight — filter truly empty signals (no content, no metadata)
+        if (computedWeight < 2) continue;
+        // 2. Confidence gate — only apply if confidence is scored AND very low
+        if (confidence !== undefined && confidence < 0.35) continue;
 
         const nodeId = `${mappedType}:live:${dataPointId}`;
         nodesById.set(nodeId, {
