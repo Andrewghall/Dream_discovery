@@ -821,6 +821,21 @@ export async function runQuestionSetAgent(
         }
 
         if (fnName === 'commit_question_set') {
+          // Guard: all 3 phases must be designed before committing
+          const allPhases: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
+          const missingPhases = allPhases.filter(p => !designedPhases.get(p)?.length);
+          if (missingPhases.length > 0) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({
+                error: `Cannot commit yet. The following phases have no questions: ${missingPhases.join(', ')}. You MUST call design_phase_questions for each missing phase before committing. Do it now.`,
+              }),
+            });
+            console.log(`[Question Set Agent] Commit blocked — missing phases: ${missingPhases.join(', ')}`);
+            continue; // don't set committed = true, keep iterating
+          }
+
           committed = true;
 
           // Build summary of all designed phases
