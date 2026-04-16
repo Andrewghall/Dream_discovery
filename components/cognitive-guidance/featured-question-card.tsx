@@ -6,10 +6,12 @@ import type { FacilitationQuestion, LensName } from '@/lib/cognition/agents/agen
 // ── Lens colour dots for the main question card ──────────────
 const LENS_DOT_COLORS: Record<string, string> = {
   People: '#3b82f6',
-  Organisation: '#10b981',
-  Customer: '#8b5cf6',
+  Operations: '#10b981',
   Technology: '#f97316',
-  Regulation: '#ef4444',
+  Customer: '#8b5cf6',
+  Commercial: '#ca8a04',
+  'Risk/Compliance': '#ef4444',
+  Partners: '#6366f1',
   General: '#94a3b8',
 };
 

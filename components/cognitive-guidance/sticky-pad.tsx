@@ -5,12 +5,14 @@ import type { StickyPad as StickyPadType, StickyPadType as PadType } from '@/lib
 
 // ── Lens-based colours — sub-post-its coloured by which lens they explore ──
 export const LENS_COLORS: Record<string, { bg: string; text: string; accent: string; label: string }> = {
-  People:       { bg: '#bfdbfe', text: '#1e3a5f', accent: '#93c5fd', label: 'People' },
-  Organisation: { bg: '#a7f3d0', text: '#064e3b', accent: '#6ee7b7', label: 'Organisation' },
-  Customer:     { bg: '#ddd6fe', text: '#3b0764', accent: '#c4b5fd', label: 'Customer' },
-  Technology:   { bg: '#fed7aa', text: '#7c2d12', accent: '#fdba74', label: 'Technology' },
-  Regulation:   { bg: '#fecaca', text: '#7f1d1d', accent: '#fca5a5', label: 'Regulation' },
-  General:      { bg: '#e2e8f0', text: '#1e293b', accent: '#cbd5e1', label: 'Explore' },
+  People:           { bg: '#bfdbfe', text: '#1e3a5f', accent: '#93c5fd', label: 'People' },
+  Operations:       { bg: '#a7f3d0', text: '#064e3b', accent: '#6ee7b7', label: 'Operations' },
+  Technology:       { bg: '#fed7aa', text: '#7c2d12', accent: '#fdba74', label: 'Technology' },
+  Customer:         { bg: '#ddd6fe', text: '#3b0764', accent: '#c4b5fd', label: 'Customer' },
+  Commercial:       { bg: '#fef9c3', text: '#713f12', accent: '#fde68a', label: 'Commercial' },
+  'Risk/Compliance':{ bg: '#fecaca', text: '#7f1d1d', accent: '#fca5a5', label: 'Risk/Compliance' },
+  Partners:         { bg: '#e0e7ff', text: '#3730a3', accent: '#c7d2fe', label: 'Partners' },
+  General:          { bg: '#e2e8f0', text: '#1e293b', accent: '#cbd5e1', label: 'Explore' },
 };
 
 // ── Fallback: legacy pad-type colours for seed/signal pads without a lens ──

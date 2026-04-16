@@ -71,7 +71,7 @@ export const DEMO_DIAGNOSTIC_BEFORE: HemisphereDiagnostic = {
         sentimentLabel: 'risk-aware',
       },
       {
-        domain: 'Regulation',
+        domain: 'Risk/Compliance',
         creativeDensity: 12,
         constraintDensity: 65,
         redesignEnergy: 1,
@@ -126,7 +126,7 @@ export const DEMO_DIAGNOSTIC_BEFORE: HemisphereDiagnostic = {
       {
         type: 'excess_constraint',
         severity: 'warning',
-        message: 'Operations and Regulation domains are heavily constraint-weighted, limiting creative exploration of future possibilities.',
+        message: 'Operations and Risk/Compliance domains are heavily constraint-weighted, limiting creative exploration of future possibilities.',
         metric: 0.48,
         threshold: 0.45,
       },
@@ -148,7 +148,7 @@ export const DEMO_DIAGNOSTIC_BEFORE: HemisphereDiagnostic = {
       { lens: 'Operations', score: 41, evidence: ['Legacy POS integration blocking omnichannel', '3 critical process bottlenecks identified'], concern: 'Operational debt constraining transformation speed' },
       { lens: 'Customer', score: 78, evidence: ['Clear personalisation vision from leadership', 'Customer journey pain points well-documented'], concern: null },
       { lens: 'Technology', score: 49, evidence: ['Data platform fragmentation across 7 systems', 'AI readiness assessed at early stage'], concern: 'Technology stack coherence needed before AI adoption' },
-      { lens: 'Regulation', score: 34, evidence: ['GDPR constraints on personalisation data', 'Compliance costs cited as innovation blocker'], concern: 'Regulatory burden disproportionately limiting customer domain innovation' },
+      { lens: 'Risk/Compliance', score: 34, evidence: ['GDPR constraints on personalisation data', 'Compliance costs cited as innovation blocker'], concern: 'Regulatory burden disproportionately limiting customer domain innovation' },
     ],
   },
 };
@@ -211,7 +211,7 @@ export const DEMO_DIAGNOSTIC_AFTER: HemisphereDiagnostic = {
         sentimentLabel: 'balanced',
       },
       {
-        domain: 'Regulation',
+        domain: 'Risk/Compliance',
         creativeDensity: 19,
         constraintDensity: 55,
         redesignEnergy: 3,
@@ -266,7 +266,7 @@ export const DEMO_DIAGNOSTIC_AFTER: HemisphereDiagnostic = {
       {
         type: 'excess_constraint',
         severity: 'info',
-        message: 'Regulation domain remains constraint-heavy, though overall balance has improved significantly.',
+        message: 'Risk/Compliance domain remains constraint-heavy, though overall balance has improved significantly.',
         metric: 0.55,
         threshold: 0.50,
       },
@@ -281,7 +281,7 @@ export const DEMO_DIAGNOSTIC_AFTER: HemisphereDiagnostic = {
       { lens: 'Operations', score: 58, evidence: ['Process redesign priorities ranked by impact/effort', 'Quick-win automation candidates identified'], concern: 'Legacy system migration timeline remains uncertain' },
       { lens: 'Customer', score: 85, evidence: ['Personalisation roadmap with privacy-first approach', 'Journey pain points mapped to specific enablers'], concern: null },
       { lens: 'Technology', score: 63, evidence: ['Data platform consolidation strategy agreed', 'AI pilot scope defined with clear success metrics'], concern: 'Integration complexity may delay pilot launch' },
-      { lens: 'Regulation', score: 42, evidence: ['Compliance-by-design approach adopted', 'GDPR impact on personalisation quantified'], concern: 'Regulatory uncertainty in AI governance still a blocker' },
+      { lens: 'Risk/Compliance', score: 42, evidence: ['Compliance-by-design approach adopted', 'GDPR impact on personalisation quantified'], concern: 'Regulatory uncertainty in AI governance still a blocker' },
     ],
   },
 };
@@ -296,7 +296,7 @@ export const DEMO_DIAGNOSTIC_DELTA: DiagnosticDelta = {
     { domain: 'Operations', creativeDelta: 11, constraintDelta: -10, direction: 'more-creative' },
     { domain: 'Customer', creativeDelta: 7, constraintDelta: -4, direction: 'more-creative' },
     { domain: 'Technology', creativeDelta: 12, constraintDelta: -11, direction: 'more-creative' },
-    { domain: 'Regulation', creativeDelta: 7, constraintDelta: -10, direction: 'more-creative' },
+    { domain: 'Risk/Compliance', creativeDelta: 7, constraintDelta: -10, direction: 'more-creative' },
   ],
   newDomainsAppeared: [],
   balanceShift: 'Moved from fragmented to aligned — creative energy increased across all domains while constraint density decreased',

@@ -63,11 +63,11 @@ export function getPhaseLensOrder(
 }
 
 const PHASE_GUIDANCE: Record<WorkshopPhase, string> = {
-  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Customer, and Organisation lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
+  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Customer, and Partners lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
 
-  CONSTRAINTS: `CONSTRAINTS maps the real-world limitations, working RIGHT-TO-LEFT through the lenses: Regulation → Customer → Technology → Organisation → People. Start with hard external constraints (regulatory, compliance) and work inward to softer people constraints. The goal is to systematically identify what stands between today and the reimagined vision. This phase references the vision from REIMAGINE to assess each constraint's impact.`,
+  CONSTRAINTS: `CONSTRAINTS maps the real-world limitations, working RIGHT-TO-LEFT through the lenses: Risk/Compliance → Commercial → Technology → Operations → Customer → People → Partners. Start with hard external constraints (regulatory, compliance) and work inward to softer people constraints. The goal is to systematically identify what stands between today and the reimagined vision. This phase references the vision from REIMAGINE to assess each constraint's impact.`,
 
-  DEFINE_APPROACH: `DEFINE APPROACH builds the practical solution LEFT-TO-RIGHT: People → Organisation → Technology → Customer → Regulation. Start with human needs and build outward. The facilitator guides participants to design an approach that bridges today's reality to the reimagined future while respecting the constraints identified. Focus on actionable workstreams, ownership, and measurable outcomes.`,
+  DEFINE_APPROACH: `DEFINE APPROACH builds the practical solution LEFT-TO-RIGHT: People → Operations → Technology → Customer → Commercial → Risk/Compliance → Partners. Start with human needs and build outward. The facilitator guides participants to design an approach that bridges today's reality to the reimagined future while respecting the constraints identified. Focus on actionable workstreams, ownership, and measurable outcomes.`,
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -634,19 +634,19 @@ generic People/Organisation/Customer/Technology/Regulation names.
 ` : `THE THREE WORKSHOP PHASES:
 
 1. REIMAGINE (Pure Vision)
-   Lenses: People, Customer, Organisation ONLY
+   Lenses: People, Customer, Partners ONLY
    Goal: Get participants to paint the ideal future WITHOUT any constraints.
    No technology, no budget, no regulation - just what "amazing" looks like.
    Key: Open, aspirational, creative questions. "If you could wave a magic wand..."
 
 2. CONSTRAINTS (Map Limitations - Right-to-Left)
-   Lenses: Regulation, Customer, Technology, Organisation, People
+   Lenses: Risk/Compliance, Commercial, Technology, Operations, Customer, People, Partners
    Goal: Systematically identify what stands between today and the reimagined vision.
    Start with hard external constraints and work inward.
    Key: Specific, probing, referencing the vision they just created.
 
 3. DEFINE APPROACH (Build Solution - Left-to-Right)
-   Lenses: People, Organisation, Technology, Customer, Regulation
+   Lenses: People, Operations, Technology, Customer, Commercial, Risk/Compliance, Partners
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
 `}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}${constraintsBlock}

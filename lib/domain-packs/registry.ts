@@ -104,7 +104,7 @@ const CONTACT_CENTRE: DomainPack = {
   label: 'Contact Centre',
   description: 'Operational domain pack for contact centre and customer service operations',
   category: 'operational',
-  lenses: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'],
+  lenses: ['People', 'Operations', 'Customer', 'Technology', 'Risk/Compliance'],
   actorTaxonomy: [
     { key: 'head_of_ops', label: 'Head of Operations', description: 'Senior operational leadership' },
     { key: 'team_leader', label: 'Team Leader', description: 'Front-line management' },
@@ -141,7 +141,7 @@ const CONTACT_CENTRE: DomainPack = {
       captureTypes: ['manager_interview', 'operational_interview'],
     },
     {
-      lens: 'Organisation',
+      lens: 'Operations',
       text: 'How do decisions flow from leadership down to the floor?',
       purpose: 'Map governance and decision-making speed',
       captureTypes: ['executive_interview', 'manager_interview'],
@@ -159,7 +159,7 @@ const CONTACT_CENTRE: DomainPack = {
       captureTypes: ['operational_interview', 'walkaround'],
     },
     {
-      lens: 'Regulation',
+      lens: 'Risk/Compliance',
       text: 'Where do compliance requirements conflict with customer experience?',
       purpose: 'Surface regulatory friction and compliance overhead',
       captureTypes: ['manager_interview', 'executive_interview'],
@@ -167,10 +167,10 @@ const CONTACT_CENTRE: DomainPack = {
   ],
   diagnosticOutputFields: [
     { key: 'agent_experience', label: 'Agent Experience Assessment', lens: 'People', description: 'Front-line staff satisfaction, capability, and retention risk' },
-    { key: 'service_delivery', label: 'Service Delivery Model', lens: 'Organisation', description: 'Operating model effectiveness and process efficiency' },
+    { key: 'service_delivery', label: 'Service Delivery Model', lens: 'Operations', description: 'Operating model effectiveness and process efficiency' },
     { key: 'customer_effort', label: 'Customer Effort Score', lens: 'Customer', description: 'Friction in customer journeys and resolution paths' },
     { key: 'tech_stack_fitness', label: 'Technology Stack Fitness', lens: 'Technology', description: 'Platform capability vs operational needs' },
-    { key: 'compliance_burden', label: 'Compliance Burden', lens: 'Regulation', description: 'Regulatory overhead impact on operations' },
+    { key: 'compliance_burden', label: 'Compliance Burden', lens: 'Risk/Compliance', description: 'Regulatory overhead impact on operations' },
     { key: 'structural_gaps', label: 'Structural Gaps', lens: 'cross-lens', description: 'Cross-domain systemic weaknesses' },
   ],
   discoveryLenses: [
@@ -486,7 +486,7 @@ const CUSTOMER_ENGAGEMENT: DomainPack = {
   label: 'Customer Engagement',
   description: 'Strategic domain pack for customer engagement and experience transformation',
   category: 'strategic',
-  lenses: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'],
+  lenses: ['People', 'Operations', 'Customer', 'Technology', 'Risk/Compliance'],
   actorTaxonomy: [
     { key: 'cxo', label: 'CXO / Director', description: 'Executive leadership' },
     { key: 'head_of_cx', label: 'Head of CX', description: 'Customer experience leadership' },
@@ -513,7 +513,7 @@ const CUSTOMER_ENGAGEMENT: DomainPack = {
       captureTypes: ['executive_interview'],
     },
     {
-      lens: 'Organisation',
+      lens: 'Operations',
       text: 'How is customer experience owned and measured across departments?',
       purpose: 'Map CX governance and accountability',
       captureTypes: ['executive_interview', 'manager_interview'],
@@ -533,7 +533,7 @@ const CUSTOMER_ENGAGEMENT: DomainPack = {
   ],
   diagnosticOutputFields: [
     { key: 'cx_maturity', label: 'CX Maturity Assessment', lens: 'Customer', description: 'Current vs target customer experience maturity' },
-    { key: 'engagement_model', label: 'Engagement Model Fitness', lens: 'Organisation', description: 'How well the operating model supports customer engagement' },
+    { key: 'engagement_model', label: 'Engagement Model Fitness', lens: 'Operations', description: 'How well the operating model supports customer engagement' },
     { key: 'digital_readiness', label: 'Digital Readiness', lens: 'Technology', description: 'Technology capability to support modern engagement' },
     { key: 'people_enablement', label: 'People Enablement', lens: 'People', description: 'Staff capability and empowerment for CX delivery' },
     { key: 'cross_channel', label: 'Cross-Channel Consistency', lens: 'cross-lens', description: 'Consistency of experience across all touchpoints' },
@@ -799,7 +799,7 @@ const HR_PEOPLE: DomainPack = {
   label: 'HR / People',
   description: 'Domain pack for HR, people operations, and workforce transformation',
   category: 'strategic',
-  lenses: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'],
+  lenses: ['People', 'Operations', 'Customer', 'Technology', 'Risk/Compliance'],
   actorTaxonomy: [
     { key: 'chro', label: 'CHRO / HR Director', description: 'HR executive leadership' },
     { key: 'hr_bp', label: 'HR Business Partner', description: 'Strategic HR partnering with business units' },
@@ -826,7 +826,7 @@ const HR_PEOPLE: DomainPack = {
       captureTypes: ['executive_interview', 'manager_interview'],
     },
     {
-      lens: 'Organisation',
+      lens: 'Operations',
       text: 'How aligned is HR strategy with the overall business strategy?',
       purpose: 'Assess HR-business alignment',
       captureTypes: ['executive_interview'],
@@ -838,7 +838,7 @@ const HR_PEOPLE: DomainPack = {
       captureTypes: ['manager_interview', 'operational_interview'],
     },
     {
-      lens: 'Regulation',
+      lens: 'Risk/Compliance',
       text: 'Where do employment regulations create the most friction in daily operations?',
       purpose: 'Surface regulatory compliance burden',
       captureTypes: ['manager_interview', 'operational_interview'],
@@ -846,10 +846,10 @@ const HR_PEOPLE: DomainPack = {
   ],
   diagnosticOutputFields: [
     { key: 'talent_health', label: 'Talent Pipeline Health', lens: 'People', description: 'Recruitment, retention, and development effectiveness' },
-    { key: 'hr_operating_model', label: 'HR Operating Model', lens: 'Organisation', description: 'HR service delivery model fitness' },
+    { key: 'hr_operating_model', label: 'HR Operating Model', lens: 'Operations', description: 'HR service delivery model fitness' },
     { key: 'employee_experience', label: 'Employee Experience', lens: 'Customer', description: 'Internal customer (employee) journey quality' },
     { key: 'hr_tech_stack', label: 'HR Technology Stack', lens: 'Technology', description: 'HRIS and tooling capability assessment' },
-    { key: 'compliance_posture', label: 'Compliance Posture', lens: 'Regulation', description: 'Employment law and regulation readiness' },
+    { key: 'compliance_posture', label: 'Compliance Posture', lens: 'Risk/Compliance', description: 'Employment law and regulation readiness' },
   ],
   discoveryLenses: [
     {
@@ -1124,7 +1124,7 @@ const SALES: DomainPack = {
   label: 'Sales',
   description: 'Domain pack for sales operations and revenue transformation',
   category: 'operational',
-  lenses: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'],
+  lenses: ['People', 'Operations', 'Customer', 'Technology', 'Risk/Compliance'],
   actorTaxonomy: [
     { key: 'sales_director', label: 'Sales Director', description: 'Sales leadership' },
     { key: 'sales_manager', label: 'Sales Manager', description: 'Regional or team sales management' },
@@ -1150,7 +1150,7 @@ const SALES: DomainPack = {
       captureTypes: ['manager_interview', 'executive_interview'],
     },
     {
-      lens: 'Organisation',
+      lens: 'Operations',
       text: 'How well does the handoff work between sales and delivery?',
       purpose: 'Assess cross-functional process quality',
       captureTypes: ['manager_interview', 'operational_interview'],
@@ -1170,7 +1170,7 @@ const SALES: DomainPack = {
   ],
   diagnosticOutputFields: [
     { key: 'sales_effectiveness', label: 'Sales Effectiveness', lens: 'People', description: 'Rep capability, coaching, and performance distribution' },
-    { key: 'go_to_market', label: 'Go-to-Market Model', lens: 'Organisation', description: 'Sales motion, territory, and coverage model fitness' },
+    { key: 'go_to_market', label: 'Go-to-Market Model', lens: 'Operations', description: 'Sales motion, territory, and coverage model fitness' },
     { key: 'buyer_alignment', label: 'Buyer Alignment', lens: 'Customer', description: 'How well the sales process matches buyer expectations' },
     { key: 'sales_tech', label: 'Sales Technology Stack', lens: 'Technology', description: 'CRM, enablement, and analytics tool effectiveness' },
     { key: 'revenue_risk', label: 'Revenue Risk Factors', lens: 'cross-lens', description: 'Systemic risks to revenue performance' },
@@ -1454,7 +1454,7 @@ const COMPLIANCE: DomainPack = {
   label: 'Compliance',
   description: 'Domain pack for regulatory compliance, risk, and governance',
   category: 'strategic',
-  lenses: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'],
+  lenses: ['People', 'Operations', 'Customer', 'Technology', 'Risk/Compliance'],
   actorTaxonomy: [
     { key: 'cco', label: 'Chief Compliance Officer', description: 'Compliance executive leadership' },
     { key: 'compliance_manager', label: 'Compliance Manager', description: 'Compliance programme management' },
@@ -1473,13 +1473,13 @@ const COMPLIANCE: DomainPack = {
   ],
   questionTemplates: [
     {
-      lens: 'Regulation',
+      lens: 'Risk/Compliance',
       text: 'Which regulatory changes are most likely to disrupt your operations in the next 12 months?',
       purpose: 'Identify emerging regulatory risk',
       captureTypes: ['executive_interview', 'manager_interview'],
     },
     {
-      lens: 'Organisation',
+      lens: 'Operations',
       text: 'How does compliance accountability flow through the organisation?',
       purpose: 'Map the three lines of defence effectiveness',
       captureTypes: ['executive_interview', 'manager_interview'],
@@ -1499,10 +1499,10 @@ const COMPLIANCE: DomainPack = {
   ],
   diagnosticOutputFields: [
     { key: 'compliance_culture', label: 'Compliance Culture', lens: 'People', description: 'Staff awareness, capability, and behaviour' },
-    { key: 'governance_model', label: 'Governance Model', lens: 'Organisation', description: 'Three lines of defence effectiveness' },
+    { key: 'governance_model', label: 'Governance Model', lens: 'Operations', description: 'Three lines of defence effectiveness' },
     { key: 'customer_impact', label: 'Customer Impact', lens: 'Customer', description: 'How compliance affects customer experience' },
     { key: 'regtech_maturity', label: 'RegTech Maturity', lens: 'Technology', description: 'Compliance technology and automation capability' },
-    { key: 'regulatory_readiness', label: 'Regulatory Readiness', lens: 'Regulation', description: 'Preparedness for upcoming regulatory changes' },
+    { key: 'regulatory_readiness', label: 'Regulatory Readiness', lens: 'Risk/Compliance', description: 'Preparedness for upcoming regulatory changes' },
     { key: 'systemic_risk', label: 'Systemic Risk Factors', lens: 'cross-lens', description: 'Cross-domain compliance risk patterns' },
   ],
   discoveryLenses: [
@@ -1778,7 +1778,7 @@ const ENTERPRISE: DomainPack = {
   label: 'Enterprise',
   description: 'Full enterprise-wide domain pack covering all business functions',
   category: 'strategic',
-  lenses: ['People', 'Organisation', 'Customer', 'Technology', 'Regulation'],
+  lenses: ['People', 'Operations', 'Customer', 'Technology', 'Risk/Compliance'],
   actorTaxonomy: [
     { key: 'ceo', label: 'CEO / MD', description: 'Chief executive leadership' },
     { key: 'cfo', label: 'CFO / Finance Director', description: 'Financial leadership' },
@@ -1811,7 +1811,7 @@ const ENTERPRISE: DomainPack = {
       captureTypes: ['executive_interview', 'manager_interview'],
     },
     {
-      lens: 'Organisation',
+      lens: 'Operations',
       text: 'Which processes are the biggest drag on speed and agility?',
       purpose: 'Surface structural and process bottlenecks',
       captureTypes: ['manager_interview', 'operational_interview'],
@@ -1829,18 +1829,18 @@ const ENTERPRISE: DomainPack = {
       captureTypes: ['executive_interview', 'manager_interview'],
     },
     {
-      lens: 'Regulation',
+      lens: 'Risk/Compliance',
       text: 'Which regulatory or governance requirements create the most friction?',
       purpose: 'Identify compliance burden and regulatory risk',
       captureTypes: ['executive_interview', 'manager_interview'],
     },
   ],
   diagnosticOutputFields: [
-    { key: 'strategic_alignment', label: 'Strategic Alignment', lens: 'Organisation', description: 'How well strategy cascades through the organisation' },
+    { key: 'strategic_alignment', label: 'Strategic Alignment', lens: 'Operations', description: 'How well strategy cascades through the organisation' },
     { key: 'talent_capability', label: 'Talent & Capability', lens: 'People', description: 'Workforce capability, engagement, and readiness' },
     { key: 'customer_centricity', label: 'Customer Centricity', lens: 'Customer', description: 'How deeply customer needs drive decisions' },
     { key: 'tech_enablement', label: 'Technology Enablement', lens: 'Technology', description: 'Technology as a business enabler' },
-    { key: 'regulatory_fitness', label: 'Regulatory Fitness', lens: 'Regulation', description: 'Regulatory and compliance posture' },
+    { key: 'regulatory_fitness', label: 'Regulatory Fitness', lens: 'Risk/Compliance', description: 'Regulatory and compliance posture' },
     { key: 'transformation_readiness', label: 'Transformation Readiness', lens: 'cross-lens', description: 'Organisational readiness for change' },
   ],
   discoveryLenses: [
@@ -1862,7 +1862,7 @@ const ENTERPRISE: DomainPack = {
     },
     {
       key: 'organisation',
-      label: 'Organisation',
+      label: 'Operations',
       description: 'Structure, processes, governance, decision-making',
       objective: 'Map organisational structure effectiveness, process efficiency, governance quality, and decision-making speed and quality',
       estimatedDuration: '20 mins',

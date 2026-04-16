@@ -36,11 +36,13 @@ const INSIGHT_TYPE_TO_FINDING: Record<string, FindingType> = {
 };
 
 const CATEGORY_TO_LENS: Record<string, string> = {
-  BUSINESS: 'Organisation',
+  BUSINESS: 'Operations',
   TECHNOLOGY: 'Technology',
   PEOPLE: 'People',
   CUSTOMER: 'Customer',
-  REGULATION: 'Regulation',
+  REGULATION: 'Risk/Compliance',
+  COMMERCIAL: 'Commercial',
+  PARTNERS: 'Partners',
 };
 
 const DATA_POINT_TYPE_TO_FINDING: Record<string, FindingType> = {
@@ -87,7 +89,7 @@ export async function syncStreamAFindings(workshopId: string): Promise<StreamASy
     const findingType = INSIGHT_TYPE_TO_FINDING[insight.insightType];
     if (!findingType) continue;
 
-    const lens = insight.category ? CATEGORY_TO_LENS[insight.category] : 'Organisation';
+    const lens = insight.category ? CATEGORY_TO_LENS[insight.category] : 'Operations';
     if (!lens) continue;
 
     await prisma.finding.create({
@@ -125,7 +127,7 @@ export async function syncStreamAFindings(workshopId: string): Promise<StreamASy
     if (!findingType) continue;
 
     // Determine lens from agentic analysis domains or classification area
-    let lens = 'Organisation';
+    let lens = 'Operations';
     if (dp.agenticAnalysis?.domains) {
       const domains = dp.agenticAnalysis.domains as Array<{ domain: string }>;
       if (domains.length > 0) {
@@ -134,15 +136,19 @@ export async function syncStreamAFindings(workshopId: string): Promise<StreamASy
         if (domainName.toLowerCase().includes('people') || domainName.toLowerCase().includes('human')) lens = 'People';
         else if (domainName.toLowerCase().includes('customer')) lens = 'Customer';
         else if (domainName.toLowerCase().includes('tech')) lens = 'Technology';
-        else if (domainName.toLowerCase().includes('regulat') || domainName.toLowerCase().includes('compliance')) lens = 'Regulation';
-        else lens = 'Organisation';
+        else if (domainName.toLowerCase().includes('regulat') || domainName.toLowerCase().includes('compliance')) lens = 'Risk/Compliance';
+        else if (domainName.toLowerCase().includes('commerci') || domainName.toLowerCase().includes('revenue') || domainName.toLowerCase().includes('pric')) lens = 'Commercial';
+        else if (domainName.toLowerCase().includes('partner') || domainName.toLowerCase().includes('supplier') || domainName.toLowerCase().includes('vendor')) lens = 'Partners';
+        else lens = 'Operations';
       }
     } else if (dp.classification.suggestedArea) {
       const area = dp.classification.suggestedArea.toLowerCase();
       if (area.includes('people') || area.includes('hr') || area.includes('staff')) lens = 'People';
       else if (area.includes('customer') || area.includes('client')) lens = 'Customer';
       else if (area.includes('tech') || area.includes('system') || area.includes('digital')) lens = 'Technology';
-      else if (area.includes('regulat') || area.includes('compliance') || area.includes('risk')) lens = 'Regulation';
+      else if (area.includes('regulat') || area.includes('compliance') || area.includes('risk')) lens = 'Risk/Compliance';
+      else if (area.includes('commerci') || area.includes('revenue') || area.includes('pric')) lens = 'Commercial';
+      else if (area.includes('partner') || area.includes('supplier') || area.includes('vendor')) lens = 'Partners';
     }
 
     await prisma.finding.create({

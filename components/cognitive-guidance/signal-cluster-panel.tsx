@@ -17,11 +17,13 @@ const DOT_COLORS: Record<SignalType, string> = {
 };
 
 const LENS_BADGE_COLORS: Record<string, string> = {
-  People: 'bg-purple-100 text-purple-700',
-  Organisation: 'bg-orange-100 text-orange-700',
-  Customer: 'bg-blue-100 text-blue-700',
-  Technology: 'bg-emerald-100 text-emerald-700',
-  Regulation: 'bg-pink-100 text-pink-700',
+  People: 'bg-blue-100 text-blue-700',
+  Operations: 'bg-emerald-100 text-emerald-700',
+  Technology: 'bg-orange-100 text-orange-700',
+  Customer: 'bg-purple-100 text-purple-700',
+  Commercial: 'bg-yellow-100 text-yellow-700',
+  'Risk/Compliance': 'bg-red-100 text-red-700',
+  Partners: 'bg-indigo-100 text-indigo-700',
 };
 
 const SIGNAL_LABELS: Record<SignalType, string> = {

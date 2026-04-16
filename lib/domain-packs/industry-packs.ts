@@ -18,16 +18,7 @@ const AIRLINE_AVIATION: DomainPack = {
   label: 'Airline & Aviation',
   description: 'Commercial aviation operations — revenue, customer experience, flight operations, safety, and sustainability.',
   category: 'operational',
-  lenses: [
-    'Commercial & Revenue Strategy',
-    'Customer Experience & Brand',
-    'Flight Operations & Safety',
-    'Ground & Airport Operations',
-    'People Culture & Workforce',
-    'Technology & Digital Transformation',
-    'Regulatory & Safety Compliance',
-    'Sustainability & Environmental Performance',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Inspiration & Planning', description: 'Customer searches destinations, compares prices, explores schedules' },
     { stage: 2, label: 'Booking', description: 'Flight selection, payment, seat choice, add-ons' },
@@ -45,23 +36,18 @@ const AIRLINE_AVIATION: DomainPack = {
       notes: 'All 8 base lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Turnaround & On-Time Performance'],
       notes: 'Emphasise Flight Operations & Safety, Ground & Airport Operations, People Culture & Workforce',
     },
     ai_enablement: {
-      addLenses: ['Predictive Maintenance & AI Safety Governance'],
       notes: 'Emphasise Technology & Digital Transformation, Commercial & Revenue Strategy',
     },
     transformation_sprint: {
-      addLenses: ['Legacy Fleet/System Transition'],
       notes: 'Emphasise Technology & Digital Transformation, Commercial & Revenue Strategy, People Culture & Workforce',
     },
     cultural_alignment: {
-      addLenses: ['Crew Wellbeing & Psychological Safety'],
       notes: 'Emphasise People Culture & Workforce, Flight Operations & Safety (safety culture)',
     },
     go_to_market: {
-      addLenses: ['Route & Network Positioning'],
       notes: 'Emphasise Commercial & Revenue Strategy, Customer Experience & Brand, Sustainability & Environmental Performance',
     },
   },
@@ -103,16 +89,7 @@ const BPO_OUTSOURCING: DomainPack = {
   label: 'BPO & Outsourcing',
   description: 'Business process outsourcing — operational delivery, client management, workforce capability, and AI automation.',
   category: 'operational',
-  lenses: [
-    'Operational Consistency',
-    'Client Delivery & Performance',
-    'Workforce & Capability',
-    'Technology & Integration',
-    'AI & Automation Reality',
-    'Commercial & Client Alignment',
-    'Quality & Governance',
-    'Transition & Onboarding',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Business Development & Scoping', description: 'RFP response, solution design, commercial negotiation' },
     { stage: 2, label: 'Contract & Governance Setup', description: 'SLA definition, governance cadence, reporting framework' },
@@ -131,23 +108,18 @@ const BPO_OUTSOURCING: DomainPack = {
       notes: 'All 8 base lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Real-Time Adherence & Scheduling', 'Process Variance Analysis'],
       notes: 'Emphasise Operational Consistency, Workforce & Capability, Technology & Integration, Quality & Governance',
     },
     ai_enablement: {
-      addLenses: ['Data Readiness & Quality', 'Change Readiness & Adoption'],
       notes: 'Emphasise AI & Automation Reality, Technology & Integration, Workforce & Capability',
     },
     transformation_sprint: {
-      addLenses: ['Speed-to-Value'],
       notes: 'Emphasise Operational Consistency, Client Delivery & Performance, AI & Automation Reality',
     },
     cultural_alignment: {
-      addLenses: ['Agent Experience & Wellbeing', 'Leadership Behaviour & Modelling', 'Client-Culture Fit'],
       notes: 'Emphasise Workforce & Capability, Quality & Governance',
     },
     go_to_market: {
-      addLenses: ['Market Positioning & Differentiation', 'Proposition Development'],
       notes: 'Emphasise Commercial & Client Alignment, Client Delivery & Performance, AI & Automation Reality',
     },
   },
@@ -186,16 +158,7 @@ const TELECOMMUNICATIONS: DomainPack = {
   label: 'Telecommunications',
   description: 'Telecoms operators — customer experience, network reliability, product, field services, and digital channels.',
   category: 'operational',
-  lenses: [
-    'Customer Experience & Retention',
-    'Network & Service Reliability',
-    'Product & Commercial',
-    'People & Frontline Capability',
-    'Technology & Platform',
-    'Regulation & Spectrum',
-    'Operations & Field Services',
-    'Digital & Channel',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Awareness & Consideration', description: 'Customer explores providers; comparison sites, ads, word of mouth' },
     { stage: 2, label: 'Sales & Acquisition', description: 'Online/in-store/agent purchase; contract complexity, device bundling' },
@@ -213,23 +176,18 @@ const TELECOMMUNICATIONS: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Provisioning & Fault Operations'],
       notes: 'Emphasise Operations & Field Services, Network & Service Reliability, People & Frontline Capability, Technology & Platform',
     },
     ai_enablement: {
-      addLenses: ['Data & AI Readiness'],
       notes: 'Emphasise Technology & Platform, Customer Experience & Retention, Operations & Field Services',
     },
     transformation_sprint: {
-      addLenses: ['Change & Velocity'],
       notes: 'Emphasise Customer Experience & Retention, Operations & Field Services, People & Frontline Capability, Digital & Channel',
     },
     cultural_alignment: {
-      addLenses: ['Leadership & Culture'],
       notes: 'Emphasise People & Frontline Capability, Customer Experience & Retention',
     },
     go_to_market: {
-      addLenses: ['Market & Competitive Intelligence'],
       notes: 'Emphasise Product & Commercial, Customer Experience & Retention, Digital & Channel',
     },
   },
@@ -271,16 +229,7 @@ const ENERGY_UTILITIES: DomainPack = {
   label: 'Energy & Utilities',
   description: 'Energy suppliers and utilities — customer affordability, network assets, energy transition, and field delivery.',
   category: 'operational',
-  lenses: [
-    'Customer Experience & Affordability',
-    'Network & Asset Management',
-    'Energy Transition & Decarbonisation',
-    'Safety Environment & Compliance',
-    'Technology & Operational Systems',
-    'People & Workforce',
-    'Operations & Field Delivery',
-    'Regulation & Policy',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Property Purchase/Moving In', description: 'Supply transfer, meter reading, welcome pack' },
     { stage: 2, label: 'Account Set-Up & Onboarding', description: 'Direct debit, tariff explanation, smart meter booking' },
@@ -299,23 +248,18 @@ const ENERGY_UTILITIES: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Outage & Fault Management'],
       notes: 'Emphasise Operations & Field Delivery, Technology & Operational Systems, Network & Asset Management, People & Workforce',
     },
     ai_enablement: {
-      addLenses: ['Data Infrastructure & AI Readiness'],
       notes: 'Emphasise Technology & Operational Systems, Operations & Field Delivery, Customer Experience & Affordability',
     },
     transformation_sprint: {
-      addLenses: ['Programme Governance & Regulatory Alignment'],
       notes: 'Emphasise Customer Experience & Affordability, Operations & Field Delivery, Technology & Operational Systems, People & Workforce',
     },
     cultural_alignment: {
-      addLenses: ['Safety Culture & Psychological Safety'],
       notes: 'Emphasise People & Workforce, Safety Environment & Compliance',
     },
     go_to_market: {
-      addLenses: ['New Market & Services'],
       notes: 'Emphasise Customer Experience & Affordability, Energy Transition & Decarbonisation, Technology & Operational Systems',
     },
   },
@@ -357,16 +301,7 @@ const FINANCIAL_SERVICES: DomainPack = {
   label: 'Financial Services',
   description: 'Banks, insurers, and financial institutions — customer trust, risk, regulation, and digital innovation.',
   category: 'operational',
-  lenses: [
-    'Customer Trust & Experience',
-    'Risk Management & Control',
-    'Regulatory & Compliance',
-    'Product & Commercial',
-    'Technology & Data',
-    'Operations & Servicing',
-    'People & Talent',
-    'Digital & Innovation',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Discovery & Comparison', description: 'Prospective customer researches products; comparison sites, advisor referral' },
     { stage: 2, label: 'Application & Eligibility', description: 'Application submitted; credit check, ID verification, affordability assessment' },
@@ -386,23 +321,18 @@ const FINANCIAL_SERVICES: DomainPack = {
       notes: 'All 8 lenses; Consumer Duty outcomes framework is the maturity benchmark',
     },
     operational_deep_dive: {
-      addLenses: ['Process & Handoff Efficiency'],
       notes: 'Emphasise Operations & Servicing, Technology & Data, Risk Management & Control, People & Talent',
     },
     ai_enablement: {
-      addLenses: ['Model Risk & AI Governance'],
       notes: 'Emphasise Technology & Data, Operations & Servicing, Risk Management & Control',
     },
     transformation_sprint: {
-      addLenses: ['Regulatory Programme Alignment'],
       notes: 'Emphasise Operations & Servicing, Technology & Data, Customer Trust & Experience',
     },
     cultural_alignment: {
-      addLenses: ['Ethical Culture & Conduct'],
       notes: 'Emphasise People & Talent, Customer Trust & Experience, Regulatory & Compliance',
     },
     go_to_market: {
-      addLenses: ['Competitive & Fintech Landscape'],
       notes: 'Emphasise Product & Commercial, Customer Trust & Experience, Digital & Innovation',
     },
   },
@@ -444,16 +374,7 @@ const HEALTHCARE: DomainPack = {
   label: 'Healthcare',
   description: 'NHS trusts and healthcare providers — patient safety, clinical operations, workforce, digital health, and transformation.',
   category: 'operational',
-  lenses: [
-    'Patient Experience & Safety',
-    'Clinical Operations',
-    'Workforce & Clinical Capability',
-    'Digital Health & Technology',
-    'Governance Risk & Regulation',
-    'Finance & Resource Allocation',
-    'Integration & System Partnership',
-    'Transformation & Improvement',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Awareness & Prevention', description: 'Health promotion, screening, community outreach, early diagnosis' },
     { stage: 2, label: 'Referral & Access', description: 'GP referral, self-referral, urgent care triage, e-referral' },
@@ -473,23 +394,18 @@ const HEALTHCARE: DomainPack = {
       notes: 'All 8 lenses; CQC ratings language is the maturity benchmark',
     },
     operational_deep_dive: {
-      addLenses: ['Patient Flow & Throughput'],
       notes: 'Emphasise Clinical Operations, Workforce & Clinical Capability, Digital Health & Technology, Integration & System Partnership',
     },
     ai_enablement: {
-      addLenses: ['Clinical AI Safety & Ethics'],
       notes: 'Emphasise Digital Health & Technology, Clinical Operations, Workforce & Clinical Capability',
     },
     transformation_sprint: {
-      addLenses: ['Elective Recovery & Backlog'],
       notes: 'Emphasise Clinical Operations, Transformation & Improvement, Workforce & Clinical Capability',
     },
     cultural_alignment: {
-      addLenses: ['Psychological Safety & Speaking Up'],
       notes: 'Emphasise Workforce & Clinical Capability, Patient Experience & Safety, Governance Risk & Regulation',
     },
     go_to_market: {
-      addLenses: ['Private/Independent Healthcare Competition or New Service Line Development'],
       notes: 'Emphasise Patient Experience & Safety, Digital Health & Technology, Finance & Resource Allocation',
     },
   },
@@ -531,16 +447,7 @@ const RETAIL: DomainPack = {
   label: 'Retail',
   description: 'Retailers — customer experience, buying, supply chain, store operations, digital channels, and frontline capability.',
   category: 'operational',
-  lenses: [
-    'Customer Experience & Loyalty',
-    'Commercial & Buying',
-    'Supply Chain & Fulfilment',
-    'Store Operations',
-    'Digital & Omnichannel',
-    'People & Frontline Capability',
-    'Technology & Data',
-    'Regulation & Responsibility',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Inspiration & Discovery', description: 'Customer identifies need; social, search, email, in-store browsing' },
     { stage: 2, label: 'Research & Comparison', description: 'Compares options; reviews, price comparison, retailer website' },
@@ -560,23 +467,18 @@ const RETAIL: DomainPack = {
       notes: 'All 8 lenses; benchmark against market leader in that category',
     },
     operational_deep_dive: {
-      addLenses: ['Inventory & Availability'],
       notes: 'Emphasise Store Operations, Supply Chain & Fulfilment, People & Frontline Capability, Technology & Data',
     },
     ai_enablement: {
-      addLenses: ['Personalisation & AI Readiness'],
       notes: 'Emphasise Technology & Data, Digital & Omnichannel, Supply Chain & Fulfilment, Commercial & Buying',
     },
     transformation_sprint: {
-      addLenses: ['Change & Adoption Velocity'],
       notes: 'Emphasise Store Operations, Digital & Omnichannel, People & Frontline Capability',
     },
     cultural_alignment: {
-      addLenses: ['Store Culture & Colleague Engagement'],
       notes: 'Emphasise People & Frontline Capability, Customer Experience & Loyalty, Store Operations',
     },
     go_to_market: {
-      addLenses: ['Market Position & Competitive Differentiation'],
       notes: 'Emphasise Commercial & Buying, Customer Experience & Loyalty, Digital & Omnichannel',
     },
   },
@@ -618,15 +520,7 @@ const TECHNOLOGY: DomainPack = {
   label: 'Technology',
   description: 'Technology companies and SaaS businesses — product, engineering, go-to-market, AI readiness, and talent culture.',
   category: 'strategic',
-  lenses: [
-    'Product & Engineering',
-    'Customer & Market',
-    'Go-to-Market',
-    'Data & AI Readiness',
-    'Commercial & Pricing',
-    'Talent & Engineering Culture',
-    'Governance & Security',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Awareness & Discovery', description: 'Prospect becomes aware via channel, community, or referral' },
     { stage: 2, label: 'Evaluation & Trial', description: 'Prospect tests product, demos, self-serves' },
@@ -643,23 +537,18 @@ const TECHNOLOGY: DomainPack = {
       notes: 'All 7 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Delivery Operations'],
       notes: 'Emphasise Product & Engineering, Talent & Engineering Culture, Data & AI Readiness',
     },
     ai_enablement: {
-      addLenses: ['AI Ethics & Explainability'],
       notes: 'Emphasise Data & AI Readiness, Product & Engineering, Customer & Market, Governance & Security',
     },
     transformation_sprint: {
-      addLenses: ['Execution Velocity'],
       notes: 'All 7 lenses',
     },
     cultural_alignment: {
-      addLenses: ['Engineering Identity'],
       notes: 'Emphasise Talent & Engineering Culture, Product & Engineering, Governance & Security',
     },
     go_to_market: {
-      addLenses: ['Competitive Intelligence'],
       notes: 'Emphasise Go-to-Market, Customer & Market, Commercial & Pricing, Product & Engineering',
     },
   },
@@ -698,16 +587,7 @@ const PROFESSIONAL_SERVICES: DomainPack = {
   label: 'Professional Services',
   description: 'Consulting, legal, and advisory firms — delivery excellence, client growth, talent, IP, and commercial models.',
   category: 'strategic',
-  lenses: [
-    'Delivery & Project Execution',
-    'Client Relationship & Growth',
-    'People & Talent Pipeline',
-    'Knowledge & IP Management',
-    'Commercial Model & Pricing',
-    'Brand & Market Positioning',
-    'Operational Infrastructure',
-    'Risk & Professional Standards',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Market Positioning & Brand Awareness', description: 'Firm visible and credible in target sector' },
     { stage: 2, label: 'Lead Generation & Referral Capture', description: 'Prospect enters pipeline' },
@@ -726,23 +606,18 @@ const PROFESSIONAL_SERVICES: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Profitability per Engagement'],
       notes: 'Emphasise Delivery & Project Execution, Operational Infrastructure, Knowledge & IP Management',
     },
     ai_enablement: {
-      addLenses: ['AI Ethics in Client Work'],
       notes: 'Emphasise Knowledge & IP Management, Delivery & Project Execution, Operational Infrastructure, Risk & Professional Standards',
     },
     transformation_sprint: {
-      addLenses: ['Change Mandate'],
       notes: 'All 8 lenses',
     },
     cultural_alignment: {
-      addLenses: ['Invisible Labour'],
       notes: 'Emphasise People & Talent Pipeline, Delivery & Project Execution, Brand & Market Positioning',
     },
     go_to_market: {
-      addLenses: ['New Service Line'],
       notes: 'Emphasise Brand & Market Positioning, Client Relationship & Growth, Commercial Model & Pricing',
     },
   },
@@ -780,16 +655,7 @@ const MANUFACTURING: DomainPack = {
   label: 'Manufacturing',
   description: 'Manufacturers — production, supply chain, quality, engineering, workforce, sustainability, and automation.',
   category: 'operational',
-  lenses: [
-    'Production & Operations',
-    'Supply Chain & Procurement',
-    'Quality & Continuous Improvement',
-    'Engineering & Product Development',
-    'Workforce & Skills',
-    'Sustainability & Environmental Compliance',
-    'Technology & Automation',
-    'Commercial & Customer Fulfilment',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Market Demand Sensing', description: 'Demand signals, forecast, capacity planning' },
     { stage: 2, label: 'New Product Introduction (NPI)', description: 'Design validated, tooling specified, production proven' },
@@ -808,23 +674,18 @@ const MANUFACTURING: DomainPack = {
       notes: 'All 8 lenses; OEE and defect rate are core triple-rating anchors',
     },
     operational_deep_dive: {
-      addLenses: ['Line Walkthrough observation'],
       notes: 'Emphasise Production & Operations, Supply Chain & Procurement, Quality & Continuous Improvement, Workforce & Skills',
     },
     ai_enablement: {
-      addLenses: ['OT/IT Convergence'],
       notes: 'Emphasise Technology & Automation, Production & Operations, Quality & Continuous Improvement, Supply Chain & Procurement',
     },
     transformation_sprint: {
-      addLenses: ['Capex Mandate'],
       notes: 'All 8 lenses',
     },
     cultural_alignment: {
-      addLenses: ['Hierarchy & Voice'],
       notes: 'Emphasise Workforce & Skills, Quality & Continuous Improvement, Production & Operations',
     },
     go_to_market: {
-      addLenses: ['New Market Entry'],
       notes: 'Emphasise Commercial & Customer Fulfilment, Engineering & Product Development, Supply Chain & Procurement',
     },
   },
@@ -863,16 +724,7 @@ const TRANSPORT_LOGISTICS: DomainPack = {
   label: 'Transport & Logistics',
   description: 'Logistics operators — network operations, last-mile delivery, fleet, compliance, and sustainability.',
   category: 'operational',
-  lenses: [
-    'Network & Operations',
-    'Customer & Shipper Experience',
-    'Workforce & Driver/Operator Management',
-    'Technology & Digitalisation',
-    'Commercial & Pricing',
-    'Risk & Compliance',
-    'Sustainability & Modal Shift',
-    'Warehouse & Last-Mile Execution',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Shipper Demand & Capacity Planning', description: 'Shipment demand forecast, capacity allocated' },
     { stage: 2, label: 'Order Creation & Booking', description: 'Shipment booked, documentation, carrier assigned' },
@@ -891,23 +743,18 @@ const TRANSPORT_LOGISTICS: DomainPack = {
       notes: 'All 8 lenses; on-time delivery rate and cost-per-delivery are core anchors',
     },
     operational_deep_dive: {
-      addLenses: ['Depot Walkaround observation'],
       notes: 'Emphasise Network & Operations, Warehouse & Last-Mile Execution, Workforce & Driver/Operator Management, Technology & Digitalisation',
     },
     ai_enablement: {
-      addLenses: ['Data Infrastructure'],
       notes: 'Emphasise Technology & Digitalisation, Network & Operations, Commercial & Pricing, Risk & Compliance',
     },
     transformation_sprint: {
-      addLenses: ['Integration Dependencies'],
       notes: 'All 8 lenses',
     },
     cultural_alignment: {
-      addLenses: ['Driver Trust'],
       notes: 'Emphasise Workforce & Driver/Operator Management, Network & Operations, Risk & Compliance',
     },
     go_to_market: {
-      addLenses: ['Market Segment Focus'],
       notes: 'Emphasise Commercial & Pricing, Customer & Shipper Experience, Network & Operations, Technology & Digitalisation',
     },
   },
@@ -947,16 +794,7 @@ const AUTOMOTIVE_MOBILITY: DomainPack = {
   label: 'Automotive & Mobility',
   description: 'Automotive OEMs and mobility companies — EV transition, software-defined vehicles, manufacturing, and customer experience.',
   category: 'strategic',
-  lenses: [
-    'Vehicle Engineering & Platforms',
-    'Manufacturing & Production System',
-    'Customer & Ownership Experience',
-    'Connected Mobility & Software',
-    'Supply Chain & Electrification Readiness',
-    'Commercial & Revenue Model',
-    'Regulatory & Homologation',
-    'Talent & Capability Transformation',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Vehicle Concept & Strategy', description: 'Market gap identified, platform selected, business case approved' },
     { stage: 2, label: 'Product Development & Engineering', description: 'Engineering programme launched, suppliers nominated' },
@@ -975,23 +813,18 @@ const AUTOMOTIVE_MOBILITY: DomainPack = {
       notes: 'All 8 lenses; EV transition readiness and SDV maturity are defining anchors',
     },
     operational_deep_dive: {
-      addLenses: ['Plant Walkaround observation'],
       notes: 'Emphasise Manufacturing & Production System, Supply Chain & Electrification Readiness, Vehicle Engineering & Platforms',
     },
     ai_enablement: {
-      addLenses: ['Autonomous Driving Readiness'],
       notes: 'Emphasise Connected Mobility & Software, Manufacturing & Production System, Customer & Ownership Experience',
     },
     transformation_sprint: {
-      addLenses: ['Legacy Business Cannibalisation'],
       notes: 'All 8 lenses',
     },
     cultural_alignment: {
-      addLenses: ['Engineering Culture Shift'],
       notes: 'Emphasise Talent & Capability Transformation, Vehicle Engineering & Platforms, Manufacturing & Production System',
     },
     go_to_market: {
-      addLenses: ['Charging & Ecosystem'],
       notes: 'Emphasise Commercial & Revenue Model, Customer & Ownership Experience, Connected Mobility & Software',
     },
   },
@@ -1031,16 +864,7 @@ const PUBLIC_SECTOR: DomainPack = {
   label: 'Public Sector',
   description: 'Government departments and public bodies — citizen experience, policy, digital, workforce, and value for money.',
   category: 'operational',
-  lenses: [
-    'Citizen Experience & Access',
-    'Policy & Governance',
-    'Workforce & Capability',
-    'Digital & Data',
-    'Finance & Value for Money',
-    'Partnerships & Commissioning',
-    'Equity Diversity & Inclusion',
-    'Risk & Resilience',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Policy Formation & Mandate', description: 'Government directive or legislation triggers service' },
     { stage: 2, label: 'Service Design & Commissioning', description: 'Scope, partners, funding allocation' },
@@ -1058,23 +882,18 @@ const PUBLIC_SECTOR: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Process Efficiency & Throughput'],
       notes: 'Emphasise Citizen Experience & Access, Workforce & Capability, Digital & Data',
     },
     ai_enablement: {
-      addLenses: ['AI Ethics & Public Trust', 'Data Quality & Interoperability'],
       notes: 'Emphasise Digital & Data, Policy & Governance',
     },
     transformation_sprint: {
-      addLenses: ['Change Management & Adoption'],
       notes: 'Emphasise Citizen Experience & Access, Digital & Data, Workforce & Capability',
     },
     cultural_alignment: {
-      addLenses: ['Organisational Culture & Silos'],
       notes: 'Emphasise Workforce & Capability, Equity Diversity & Inclusion, Risk & Resilience',
     },
     go_to_market: {
-      addLenses: ['Procurement & Commercial Strategy', 'Political & Stakeholder Landscape'],
       notes: 'Emphasise Partnerships & Commissioning, Finance & Value for Money',
     },
   },
@@ -1114,16 +933,7 @@ const EDUCATION: DomainPack = {
   label: 'Education',
   description: 'Schools, colleges, and universities — learner outcomes, curriculum, staff wellbeing, EdTech, and safeguarding.',
   category: 'operational',
-  lenses: [
-    'Learner Experience & Outcomes',
-    'Curriculum & Pedagogy',
-    'Workforce & Staff Wellbeing',
-    'Technology & EdTech',
-    'Finance & Resource Allocation',
-    'Safeguarding & Compliance',
-    'Partnerships & Employer Relations',
-    'Community & Equity',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Awareness & Attraction', description: 'Prospective learner becomes aware of institution or programme' },
     { stage: 2, label: 'Enquiry & Application', description: 'Application process, admissions, offers' },
@@ -1141,23 +951,18 @@ const EDUCATION: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Timetabling & Resource Scheduling', 'Data & MI Systems'],
       notes: 'Emphasise Learner Experience & Outcomes, Workforce & Staff Wellbeing, Finance & Resource Allocation',
     },
     ai_enablement: {
-      addLenses: ['Adaptive Learning & Personalisation', 'Data Ethics & Learner Privacy'],
       notes: 'Emphasise Technology & EdTech, Curriculum & Pedagogy',
     },
     transformation_sprint: {
-      addLenses: ['Change Readiness & Staff Buy-In'],
       notes: 'Emphasise Learner Experience & Outcomes, Technology & EdTech, Workforce & Staff Wellbeing',
     },
     cultural_alignment: {
-      addLenses: ['Leadership Culture & Trust', 'Psychological Safety & Innovation'],
       notes: 'Emphasise Workforce & Staff Wellbeing, Community & Equity',
     },
     go_to_market: {
-      addLenses: ['Brand & Reputation', 'International Strategy'],
       notes: 'Emphasise Partnerships & Employer Relations, Finance & Resource Allocation',
     },
   },
@@ -1196,16 +1001,7 @@ const MEDIA_ENTERTAINMENT: DomainPack = {
   label: 'Media & Entertainment',
   description: 'Media companies, broadcasters, and streaming platforms — content, audience, technology, and commercial models.',
   category: 'strategic',
-  lenses: [
-    'Audience Experience & Engagement',
-    'Content Strategy & IP',
-    'Talent & Creative Workforce',
-    'Technology & Distribution Platforms',
-    'Commercial & Revenue Models',
-    'Data & Audience Intelligence',
-    'Rights & Regulatory Compliance',
-    'Brand & Cultural Relevance',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Content Ideation & Development', description: 'Idea generation, format development, commissioning' },
     { stage: 2, label: 'Production & Creation', description: 'Pre-production, filming/recording/writing, post-production' },
@@ -1225,23 +1021,18 @@ const MEDIA_ENTERTAINMENT: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Content Supply Chain', 'Platform Reliability & Scalability'],
       notes: 'Emphasise Technology & Distribution Platforms, Data & Audience Intelligence, Commercial & Revenue Models',
     },
     ai_enablement: {
-      addLenses: ['AI-Driven Personalisation & Recommendation', 'Generative AI in Production', 'AI Ethics & Deepfake Risk'],
       notes: 'Emphasise Data & Audience Intelligence, Technology & Distribution Platforms',
     },
     transformation_sprint: {
-      addLenses: ['Organisational Agility & Ways of Working'],
       notes: 'Emphasise Technology & Distribution Platforms, Commercial & Revenue Models, Audience Experience & Engagement',
     },
     cultural_alignment: {
-      addLenses: ['Creative Culture & Psychological Safety', 'Diversity Equity & Inclusion'],
       notes: 'Emphasise Talent & Creative Workforce, Brand & Cultural Relevance',
     },
     go_to_market: {
-      addLenses: ['Competitive Positioning & Platform Strategy', 'International & Local Market Expansion'],
       notes: 'Emphasise Commercial & Revenue Models, Brand & Cultural Relevance, Audience Experience & Engagement',
     },
   },
@@ -1281,16 +1072,7 @@ const REAL_ESTATE_PROPERTY: DomainPack = {
   label: 'Real Estate & Property',
   description: 'Estate agents, property managers, and investors — transactions, valuations, asset management, and PropTech.',
   category: 'operational',
-  lenses: [
-    'Customer & Client Experience',
-    'Market Intelligence & Valuation',
-    'Transaction & Legal Process',
-    'Portfolio & Asset Management',
-    'Technology & PropTech',
-    'Workforce & Agency Operations',
-    'Finance Investment & Lending',
-    'Regulation & Compliance',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Market Awareness & Intent', description: 'Potential buyer/investor/tenant enters awareness' },
     { stage: 2, label: 'Search & Discovery', description: 'Portal browsing, agent briefing, shortlisting' },
@@ -1310,23 +1092,18 @@ const REAL_ESTATE_PROPERTY: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Pipeline & Deal Flow Management', 'Branch Operational Efficiency'],
       notes: 'Emphasise Transaction & Legal Process, Workforce & Agency Operations, Technology & PropTech',
     },
     ai_enablement: {
-      addLenses: ['Automated Valuation Models (AVM)', 'Predictive Lead Scoring', 'Smart Building & IoT'],
       notes: 'Emphasise Technology & PropTech, Market Intelligence & Valuation',
     },
     transformation_sprint: {
-      addLenses: ['Change Adoption & Agent Behaviour'],
       notes: 'Emphasise Technology & PropTech, Customer & Client Experience, Workforce & Agency Operations',
     },
     cultural_alignment: {
-      addLenses: ['Commission Culture & Incentive Design', 'Diversity & Inclusion in Property'],
       notes: 'Emphasise Workforce & Agency Operations, Customer & Client Experience',
     },
     go_to_market: {
-      addLenses: ['Brand Positioning & Portal Strategy', 'Geographic & Segment Expansion'],
       notes: 'Emphasise Market Intelligence & Valuation, Customer & Client Experience, Finance Investment & Lending',
     },
   },
@@ -1366,16 +1143,7 @@ const CONSTRUCTION_FACILITIES: DomainPack = {
   label: 'Construction & Facilities',
   description: 'Construction contractors and FM providers — project delivery, health & safety, supply chain, and digital construction.',
   category: 'operational',
-  lenses: [
-    'Project Delivery & Programme Management',
-    'Health Safety & Wellbeing',
-    'Workforce & Supply Chain',
-    'Commercial & Contract Management',
-    'Design & Engineering Quality',
-    'Technology & Digital Construction',
-    'Sustainability & Environmental',
-    'Client & Stakeholder Relations',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Bid & Pre-Qualification', description: 'Tender opportunity, PQQ, bid strategy, estimating' },
     { stage: 2, label: 'Contract Award & Mobilisation', description: 'Contract signature, team mobilisation, site setup' },
@@ -1395,23 +1163,18 @@ const CONSTRUCTION_FACILITIES: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Programme Risk & Early Warning', 'Subcontractor Performance Management'],
       notes: 'Emphasise Project Delivery & Programme Management, Workforce & Supply Chain, Commercial & Contract Management',
     },
     ai_enablement: {
-      addLenses: ['BIM Maturity & Digital Twin Readiness', 'AI in Construction Planning', 'IoT & Smart Buildings'],
       notes: 'Emphasise Technology & Digital Construction, Design & Engineering Quality',
     },
     transformation_sprint: {
-      addLenses: ['Ways of Working & Integrated Project Delivery'],
       notes: 'Emphasise Project Delivery & Programme Management, Technology & Digital Construction, Workforce & Supply Chain',
     },
     cultural_alignment: {
-      addLenses: ['Safety Culture & Leadership Commitment', 'Mental Health & Workforce Wellbeing', 'Inclusion & Diversity'],
       notes: 'Emphasise Health Safety & Wellbeing, Workforce & Supply Chain',
     },
     go_to_market: {
-      addLenses: ['Market Positioning & Sector Focus', 'Bid Win Rate & Pipeline Strategy', 'ESG & Social Value as GTM Differentiator'],
       notes: 'Emphasise Commercial & Contract Management, Client & Stakeholder Relations',
     },
   },
@@ -1453,16 +1216,7 @@ const AGRICULTURE_ENVIRONMENTAL: DomainPack = {
   label: 'Agriculture & Environmental',
   description: 'Farming and agri-food businesses — land stewardship, seasonal operations, supply chain, sustainability, and precision agriculture.',
   category: 'operational',
-  lenses: [
-    'Land & Resource Stewardship',
-    'Operations & Seasonal Execution',
-    'Workforce & Labour',
-    'Supply Chain & Market Access',
-    'Environmental Compliance & Sustainability',
-    'Technology & Precision Agriculture',
-    'Commercial & Financial Viability',
-    'Community & Stakeholder Relations',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Strategic Planning & Crop/Programme Design', description: 'Annual planning, rotation, input budgeting' },
     { stage: 2, label: 'Input Procurement & Preparation', description: 'Seeds, chemicals, fertilisers, equipment readiness' },
@@ -1482,23 +1236,18 @@ const AGRICULTURE_ENVIRONMENTAL: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Machinery & Asset Utilisation'],
       notes: 'Emphasise Operations & Seasonal Execution, Workforce & Labour, Supply Chain & Market Access, Technology & Precision Agriculture',
     },
     ai_enablement: {
-      addLenses: ['Data Infrastructure & Connectivity', 'Automation Readiness', 'Decision Intelligence'],
       notes: 'Emphasise Technology & Precision Agriculture, Operations & Seasonal Execution, Land & Resource Stewardship',
     },
     transformation_sprint: {
-      addLenses: ['Regenerative Transition Readiness'],
       notes: 'Emphasise Operations & Seasonal Execution, Commercial & Financial Viability, Technology & Precision Agriculture, Environmental Compliance & Sustainability',
     },
     cultural_alignment: {
-      addLenses: ['Succession & Generational Dynamics', 'Risk Appetite & Mindset'],
       notes: 'Emphasise Workforce & Labour, Community & Stakeholder Relations, Commercial & Financial Viability',
     },
     go_to_market: {
-      addLenses: ['Direct-to-Consumer/Shortening Supply Chain', 'Brand & Provenance Story'],
       notes: 'Emphasise Commercial & Financial Viability, Supply Chain & Market Access, Environmental Compliance & Sustainability',
     },
   },
@@ -1537,16 +1286,7 @@ const HOME_SERVICES: DomainPack = {
   label: 'Home Services',
   description: 'Tradespeople and home service businesses — field operations, customer trust, scheduling, and revenue growth.',
   category: 'operational',
-  lenses: [
-    'Service Delivery & Field Operations',
-    'Customer Experience & Trust',
-    'Workforce & Field Workforce Management',
-    'Technology & Job Management',
-    'Commercial & Revenue Operations',
-    'Compliance Licensing & Safety',
-    'Supply Chain & Parts Management',
-    'Brand & Local Market Position',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Awareness & Lead Generation', description: 'Customer discovers via search, referral, review, ad' },
     { stage: 2, label: 'Enquiry & Booking', description: 'Inbound call/online booking, job scoping, appointment' },
@@ -1566,23 +1306,18 @@ const HOME_SERVICES: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['First-Time Fix Rate Analysis', 'Scheduling Efficiency'],
       notes: 'Emphasise Service Delivery & Field Operations, Workforce & Field Workforce Management, Technology & Job Management, Supply Chain & Parts Management',
     },
     ai_enablement: {
-      addLenses: ['AI Dispatch & Dynamic Scheduling', 'Predictive Maintenance Capability', 'Customer Communication Automation'],
       notes: 'Emphasise Technology & Job Management, Service Delivery & Field Operations, Commercial & Revenue Operations',
     },
     transformation_sprint: {
-      addLenses: ['Recurring Revenue Transition'],
       notes: 'Emphasise Service Delivery & Field Operations, Commercial & Revenue Operations, Technology & Job Management, Customer Experience & Trust',
     },
     cultural_alignment: {
-      addLenses: ['Technician Pride & Professional Identity', 'Management Trust & Psychological Safety'],
       notes: 'Emphasise Workforce & Field Workforce Management, Customer Experience & Trust, Brand & Local Market Position',
     },
     go_to_market: {
-      addLenses: ['Franchise/Network Expansion Readiness', 'Digital Presence & Lead Generation', 'B2B/Managed Services Proposition'],
       notes: 'Emphasise Brand & Local Market Position, Commercial & Revenue Operations, Customer Experience & Trust',
     },
   },
@@ -1621,16 +1356,7 @@ const WASTE_MANAGEMENT: DomainPack = {
   label: 'Waste Management',
   description: 'Waste collectors and processors — collection logistics, processing, circular economy, compliance, and fleet.',
   category: 'operational',
-  lenses: [
-    'Collection & Logistics Operations',
-    'Processing & Recovery',
-    'Compliance & Environmental Regulation',
-    'Workforce & Operational Safety',
-    'Technology & Fleet Management',
-    'Commercial & Contract Management',
-    'Circular Economy & Sustainability Strategy',
-    'Customer & Client Relationships',
-  ],
+  lenses: [],
   journeyStages: [
     { stage: 1, label: 'Contract Inception & Service Design', description: 'Scope, waste audit, service specification, mobilisation' },
     { stage: 2, label: 'Bin/Container Provisioning', description: 'Customer/site setup, container delivery, contamination education' },
@@ -1651,23 +1377,18 @@ const WASTE_MANAGEMENT: DomainPack = {
       notes: 'All 8 lenses',
     },
     operational_deep_dive: {
-      addLenses: ['Route Efficiency & Productivity', 'Contamination & Material Quality'],
       notes: 'Emphasise Collection & Logistics Operations, Processing & Recovery, Workforce & Operational Safety, Technology & Fleet Management',
     },
     ai_enablement: {
-      addLenses: ['Predictive Fleet Maintenance', 'Dynamic Route Optimisation', 'Contamination Detection'],
       notes: 'Emphasise Technology & Fleet Management, Collection & Logistics Operations, Processing & Recovery',
     },
     transformation_sprint: {
-      addLenses: ['Zero Emission Fleet Transition', 'New Revenue Stream Development'],
       notes: 'Emphasise Collection & Logistics Operations, Circular Economy & Sustainability Strategy, Technology & Fleet Management',
     },
     cultural_alignment: {
-      addLenses: ['Safety Culture & Near-Miss Reporting', 'Driver Pride & Professional Identity'],
       notes: 'Emphasise Workforce & Operational Safety, Customer & Client Relationships',
     },
     go_to_market: {
-      addLenses: ['Tender & Bid Capability', 'ESG Proposition & Net Zero Story', 'New Service Line Development'],
       notes: 'Emphasise Commercial & Contract Management, Circular Economy & Sustainability Strategy, Customer & Client Relationships',
     },
   },
