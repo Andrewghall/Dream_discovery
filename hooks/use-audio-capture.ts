@@ -63,6 +63,11 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
   const captureAudioCtxRef = useRef<AudioContext | null>(null);
   const captureRafRef = useRef<number | null>(null);
 
+  // Browser-relay ingest URL — used as fallback when Railway server-to-server is not configured.
+  // Railway handles persistence when DREAM_API_URL + DREAM_CAPTURE_SECRET are set on the Railway service.
+  // When both paths are active, the transcript route deduplicates by (workshopId, text, source).
+  const ingestUrl = `/api/workshops/${encodeURIComponent(workshopId)}/transcript`;
+
   // ── refreshMicDevices ──
   const refreshMicDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -177,8 +182,40 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
           if (!text) return;
 
           // Stream ALL updates to the page for live hemisphere positioning.
-          // Railway handles Supabase persistence — browser just drives the UI.
           onTranscriptStream?.(msg);
+
+          // Browser-relay fallback: POST final transcripts directly to DREAM.
+          // Railway handles this server-to-server when DREAM_API_URL is configured.
+          // If Railway is not configured, the browser relay ensures nothing is lost.
+          // The transcript route deduplicates on (workshopId, text, source) so
+          // double-posting when both paths are active is safe.
+          if (msg.isFinal === false) return;
+
+          const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : null;
+          const now = Date.now();
+          fetch(ingestUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              speakerId,
+              startTime: msg.startTimeMs ?? now - 5000,
+              endTime: msg.endTimeMs ?? now,
+              text,
+              rawText: msg.rawText,
+              confidence: msg.confidence,
+              source: 'deepgram' as const,
+              dialoguePhase: getDialoguePhase(),
+              flush: false,
+              slmMetadata: {
+                entities: msg.entities,
+                emotionalTone: msg.emotionalTone,
+                slmConfidence: msg.slmConfidence,
+                slmUsed: msg.slmUsed,
+              },
+            }),
+          }).catch(() => {
+            // Non-fatal — Railway server-to-server may have already handled it
+          });
         },
         onError: (err) => {
           setCaptureError(`CaptureAPI stream error — ${err}`);
@@ -266,7 +303,7 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
       setCaptureError(`Audio capture failed: ${e instanceof Error ? e.message : String(e)}`);
       stopCapture();
     }
-  }, [selectedMicId, stopMicTest, stopCapture, workshopId, getDialoguePhase]);
+  }, [selectedMicId, stopMicTest, stopCapture, workshopId, getDialoguePhase, ingestUrl]);
 
   // ── Cleanup on unmount ──
   useEffect(() => {
