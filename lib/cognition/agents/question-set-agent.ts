@@ -35,8 +35,8 @@ import { analyzeMetricTrends } from '@/lib/historical-metrics/summarize';
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 6;
-const LOOP_TIMEOUT_MS = 40_000;
+const MAX_ITERATIONS = 9;
+const LOOP_TIMEOUT_MS = 55_000;
 const MODEL = 'gpt-4o-mini';
 
 /**
@@ -161,7 +161,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               properties: {
                 lens: {
                   type: 'string',
-                  description: 'The dimension/lens this question addresses. Use the dimension names from get_workshop_phases (these may be research-derived industry dimensions or the default lenses). Use "General" for cross-cutting questions.',
+                  description: 'The dimension/lens this question addresses. CRITICAL: Use EXACTLY the lens names returned by get_workshop_phases — copy them character-for-character. For example, if get_workshop_phases returns "Risk/Compliance", use "Risk/Compliance" NOT "Regulation". If it returns "Operations", use "Operations" NOT "Organisation". Use "General" only for cross-cutting questions that span multiple lenses.',
                 },
                 text: {
                   type: 'string',
@@ -183,7 +183,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                     properties: {
                       lens: {
                         type: 'string',
-                        description: 'The dimension/lens this sub-question explores. Use dimension names from get_workshop_phases or "General".',
+                        description: 'The dimension/lens this sub-question explores. CRITICAL: Use EXACTLY the lens names from get_workshop_phases (e.g. "Risk/Compliance" not "Regulation", "Operations" not "Organisation"). Use "General" for cross-cutting.',
                       },
                       text: {
                         type: 'string',
@@ -483,11 +483,23 @@ function executeQuestionSetTool(
         };
       }
 
+      // Normalise lens names: map legacy names the LLM may still output → canonical universal names
+      const LENS_NORMALISE: Record<string, string> = {
+        'Organisation': 'Operations',
+        'Regulation': 'Risk/Compliance',
+        'Risk & Compliance': 'Risk/Compliance',
+        'Risk and Compliance': 'Risk/Compliance',
+        'Compliance': 'Risk/Compliance',
+      };
+      function normaliseLens(raw: string): string {
+        return LENS_NORMALISE[raw] ?? raw;
+      }
+
       // Build facilitation questions with starter sub-questions
       const facilitation: FacilitationQuestion[] = questions.map((q, i) => ({
         id: nanoid(8),
         phase,
-        lens: String(q.lens || 'General'),
+        lens: normaliseLens(String(q.lens || 'General')),
         text: String(q.text || ''),
         purpose: String(q.purpose || ''),
         grounding: String(q.grounding || ''),
@@ -496,7 +508,7 @@ function executeQuestionSetTool(
         subQuestions: Array.isArray(q.subQuestions)
           ? q.subQuestions.map((sq: Record<string, unknown>) => ({
               id: nanoid(8),
-              lens: String(sq.lens || 'General'),
+              lens: normaliseLens(String(sq.lens || 'General')),
               text: String(sq.text || ''),
               purpose: String(sq.purpose || ''),
             }))
@@ -656,7 +668,7 @@ YOUR APPROACH:
 3. Get blueprint constraints (required/forbidden topics, focus areas, metrics).
 4. Get historical metrics if available (operational baselines and trends).
 5. Get the workshop phase structure (lens order, purpose).
-6. For each phase in order (REIMAGINE, CONSTRAINTS, DEFINE_APPROACH):
+6. Design questions for ALL THREE phases. You MUST call design_phase_questions three times — once for REIMAGINE, once for CONSTRAINTS, once for DEFINE_APPROACH. You can call all three in a single parallel tool call to save time. DO NOT commit until all three phases have been designed.
    - Design ${bp?.questionPolicy?.questionsPerPhase ?? 5} facilitation questions per phase
    - Each question should follow the lens order for that phase
    - Questions MUST reference specific company context where possible
