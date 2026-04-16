@@ -49,13 +49,25 @@ const LAYER_STYLE: Record<TLMNode['layer'], { dot: string; label: string }> = {
 
 // ── Enriched node ─────────────────────────────────────────────────────────────
 
+interface ENConnection {
+  label:            string;
+  layer:            TLMNode['layer'];
+  relationshipType: string;
+  rationale:        string;
+  score:            number;
+  mentionCount:     number;
+  isChain:          boolean;
+  /** 'outgoing' = this node drives/enables the other; 'incoming' = other drives/enables this */
+  direction:        'outgoing' | 'incoming';
+}
+
 interface EN {
   n:        TLMNode;
   status:   Status;
   score:    number;   // = sig.score (0–100), used for radius + sort
   sig:      NodeSignificance;
   lenses:   number;
-  connects: Array<{ label: string; layer: TLMNode['layer'] }>;
+  connects: ENConnection[];
 }
 
 function enrich(tlm: TransformationLogicMap): EN[] {
@@ -69,16 +81,27 @@ function enrich(tlm: TransformationLogicMap): EN[] {
       const status = calcStatus(n);
       const sig    = weightedSignificance(n, tlmNodes);
       const lenses = new Set((n.quotes ?? []).map(q => q.lens).filter(Boolean)).size;
-      const connects = tlmEdges
+      const connects: ENConnection[] = tlmEdges
         .filter(e => (e.fromNodeId === n.nodeId || e.toNodeId === n.nodeId) && e.score >= 25)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 5)
+        .slice(0, 8)
         .map(e => {
-          const oid = e.fromNodeId === n.nodeId ? e.toNodeId : e.fromNodeId;
+          const isOutgoing = e.fromNodeId === n.nodeId;
+          const oid = isOutgoing ? e.toNodeId : e.fromNodeId;
           const o   = byId.get(oid);
-          return o ? { label: o.displayLabel, layer: o.layer } : null;
+          if (!o) return null;
+          return {
+            label:            o.displayLabel,
+            layer:            o.layer,
+            relationshipType: e.relationshipType ?? '',
+            rationale:        e.rationale ?? '',
+            score:            e.score,
+            mentionCount:     e.evidence?.mentionCount ?? 0,
+            isChain:          e.isChainEdge ?? false,
+            direction:        isOutgoing ? 'outgoing' : 'incoming',
+          } satisfies ENConnection;
         })
-        .filter(Boolean) as Array<{ label: string; layer: TLMNode['layer'] }>;
+        .filter(Boolean) as ENConnection[];
       return { n, status, score: sig.score, sig, lenses, connects };
     })
     .sort((a, b) => b.score - a.score);
@@ -399,19 +422,48 @@ function NodeDetail({
       )}
 
       {en.connects.length > 0 && (
-        <div>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Connects to</p>
-          <div className="flex flex-wrap gap-1.5">
-            {en.connects.map((c, i) => {
-              const cl = LAYER_STYLE[c.layer];
-              return (
-                <span key={i} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/70 border"
-                      style={{ color: cl.dot, borderColor: cl.dot + '44' }}>
-                  {c.label.length > 34 ? c.label.slice(0, 32) + '…' : c.label}
-                </span>
-              );
-            })}
-          </div>
+        <div className="space-y-1.5">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Connections</p>
+          {en.connects.map((c, i) => {
+            const cl = LAYER_STYLE[c.layer];
+            const relLabels: Record<string, string> = {
+              drives: 'Drives', enables: 'Enables', constrains: 'Constrains',
+              compensates_for: 'Workaround for', responds_to: 'Responds to',
+              contradicts: 'Contradicts', blocks: 'Blocks', depends_on: 'Depends on',
+            };
+            const relLabel = relLabels[c.relationshipType] ?? c.relationshipType ?? 'Connected to';
+            const arrow    = c.direction === 'outgoing' ? '→' : '←';
+            return (
+              <div key={i} className="rounded-lg bg-white/70 border border-white/90 p-2.5 space-y-1">
+                {/* Header: direction arrow + relationship type + connected node */}
+                <div className="flex items-start gap-1.5">
+                  <span className="text-[9px] font-bold mt-0.5 shrink-0 text-slate-400">{arrow}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 mr-1.5">
+                      {relLabel}
+                    </span>
+                    <span className="text-[11px] font-bold leading-snug" style={{ color: cl.dot }}>
+                      {formatLabel(c.label)}
+                    </span>
+                    {c.isChain && (
+                      <span className="ml-1.5 text-[8px] font-bold uppercase tracking-widest text-orange-500">chain</span>
+                    )}
+                  </div>
+                  {c.score > 0 && (
+                    <span className="text-[9px] tabular-nums text-slate-300 shrink-0">{c.score}</span>
+                  )}
+                </div>
+                {/* Rationale */}
+                {c.rationale && (
+                  <p className="text-[10px] text-slate-500 leading-snug pl-3">{c.rationale}</p>
+                )}
+                {/* Evidence count */}
+                {c.mentionCount >= 2 && (
+                  <p className="text-[9px] text-slate-400 pl-3">{c.mentionCount} co-occurrences across participants</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
