@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
-import { getDomainPack } from '@/lib/domain-packs';
+import { resolveIndustryPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import type { EngagementType } from '@prisma/client';
 import { auditLog, getClientIp } from '@/lib/audit/log-action';
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
       name, description, businessContext, workshopType,
       scheduledDate, responseDeadline, includeRegulation,
       clientName, industry, companyWebsite, dreamTrack, targetDomain,
-      engagementType, domainPack,
+      engagementType,
     } = body;
 
     const organizationId = session.organizationId!;
@@ -189,6 +189,10 @@ export async function POST(request: NextRequest) {
 
     const normalizedEngagementType = toEngagementEnum(engagementType);
 
+    // Resolve industry-specific domain pack from industry + engagement type + dream track.
+    // This replaces the old manual domainPack key selection.
+    const resolvedPack = resolveIndustryPack(industry, engagementType, dreamTrack);
+
     // Generate domain-aware runtime blueprint from setup selections.
     // clientName is included so industry detection (e.g. airline) can
     // fire even when the industry field is not explicitly set.
@@ -196,7 +200,7 @@ export async function POST(request: NextRequest) {
       industry: industry || null,
       dreamTrack: dreamTrack || null,
       engagementType: engagementType || null,
-      domainPack: domainPack || null,
+      domainPack: resolvedPack?.key || null,
       purpose: description || null,
       outcomes: businessContext || null,
       clientName: clientName || null,
@@ -220,8 +224,8 @@ export async function POST(request: NextRequest) {
       targetDomain: targetDomain || undefined,
       // Field Discovery / Diagnostic extension
       engagementType: normalizedEngagementType,
-      domainPack: domainPack || undefined,
-      domainPackConfig: domainPack ? (getDomainPack(domainPack) as any ?? undefined) : undefined,
+      domainPack: resolvedPack?.key || undefined,
+      domainPackConfig: resolvedPack ? (resolvedPack as any) : undefined,
       // Runtime blueprint snapshot
       blueprint: blueprint as any,
     };

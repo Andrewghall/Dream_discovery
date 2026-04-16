@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Building2, Globe, Target, Compass, Briefcase } from 'lucide-react';
 import Link from 'next/link';
-import { listEngagementTypes, resolveIndustryPack } from '@/lib/domain-packs';
+import { listEngagementTypes } from '@/lib/domain-packs';
 import { INDUSTRY_OPTIONS } from '@/lib/cognition/industry-actor-model';
 
 const ENGAGEMENT_TYPE_OPTIONS = listEngagementTypes();
@@ -84,10 +84,8 @@ export default function NewWorkshopPage() {
           dreamTrack: isDream ? formData.dreamTrack : undefined,
           targetDomain: isDream && formData.dreamTrack === 'DOMAIN' ? formData.targetDomain || undefined : undefined,
           // Field Discovery / Diagnostic extension
+          // domainPack is resolved server-side from industry + engagementType + dreamTrack
           engagementType: isDream && formData.engagementType ? formData.engagementType : undefined,
-          domainPack: isDream
-            ? (resolveIndustryPack(formData.industry, formData.engagementType, formData.dreamTrack)?.key ?? undefined)
-            : undefined,
         }),
       });
 
