@@ -161,8 +161,8 @@ function buildVisEdges(
   for (const e of bvEdges) {
     if (!featuredIds.has(e.fromNodeId) || !featuredIds.has(e.toNodeId)) continue;
     const mc = e.evidence?.mentionCount ?? 0;
-    // Gate: chain edges always shown; all others require score >= 40 AND >= 2 mentions
-    if (!e.isChainEdge && e.score < 40) continue;
+    // Gate: chain edges always shown; all others require score >= 25 (evidenced) AND >= 2 mentions
+    if (!e.isChainEdge && e.score < 25) continue;
     if (!e.isChainEdge && mc < 2) continue;
     const key = [e.fromNodeId, e.toNodeId].sort().join('|');
     const ex  = edgeByKey.get(key);
