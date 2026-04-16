@@ -468,12 +468,14 @@ function executeQuestionSetTool(
             },
           },
         }),
-        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE APPROACH (${defineApproach.lenses.length} dimensions). Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}. Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
+        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE_APPROACH (${defineApproach.lenses.length} dimensions). Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}. Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
       };
     }
 
     case 'design_phase_questions': {
-      const phase = String(args.phase || '') as WorkshopPhase;
+      // Normalise phase key: LLM may pass 'DEFINE APPROACH' (space) instead of 'DEFINE_APPROACH'
+      const rawPhase = String(args.phase || '').trim().toUpperCase().replace(/\s+/g, '_');
+      const phase = rawPhase as WorkshopPhase;
       const questions = args.questions as Array<Record<string, unknown>>;
 
       if (!phase || !Array.isArray(questions)) {
@@ -639,7 +641,7 @@ generic People/Organisation/Customer/Technology/Regulation names.
    Start with hard external constraints and work inward.
    Key: Specific, probing, referencing the vision they just created.
 
-3. DEFINE APPROACH (Build Solution)
+3. DEFINE_APPROACH (Build Solution)
    Dimensions: All (${research.industryDimensions.map(d => d.name).join(', ')})
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
@@ -657,7 +659,7 @@ generic People/Organisation/Customer/Technology/Regulation names.
    Start with hard external constraints and work inward.
    Key: Specific, probing, referencing the vision they just created.
 
-3. DEFINE APPROACH (Build Solution - Left-to-Right)
+3. DEFINE_APPROACH (Build Solution - Left-to-Right)
    Lenses: People, Operations, Technology, Customer, Commercial, Risk/Compliance, Partners
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
@@ -758,7 +760,7 @@ export async function runQuestionSetAgent(
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: `Please design a tailored set of workshop facilitation questions for ${context.clientName || 'this client'}. These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. Start by reviewing the research context and Discovery insights, then the phase structure, then design questions for each phase in order.`,
+      content: `Please design a tailored set of workshop facilitation questions for ${context.clientName || 'this client'}. These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE_APPROACH. Start by reviewing the research context and Discovery insights, then the phase structure, then design questions for each phase in order.`,
     },
   ];
 
