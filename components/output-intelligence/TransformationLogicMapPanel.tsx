@@ -145,7 +145,6 @@ interface VisEdge {
   evidence:   EdgeEvidence;
   fromLabel:  string;
   toLabel:    string;
-  strandCount: number;
 }
 
 function buildVisEdges(
@@ -176,14 +175,12 @@ function buildVisEdges(
     if (!f || !t) continue;
     const mc = e.evidence?.mentionCount ?? 0;
     const ac = e.evidence?.actorCount   ?? 0;
-    const strandCount = mc < 2 ? 1 : Math.min(Math.max(ac, 1), 4);
     out.push({
       x1: f.x, y1: f.y, x2: t.x, y2: t.y,
       score: e.score,
       isChain: e.isChainEdge,
       fromLabel: byId.get(e.fromNodeId)?.displayLabel ?? e.fromNodeId,
       toLabel:   byId.get(e.toNodeId)?.displayLabel   ?? e.toNodeId,
-      strandCount,
       evidence: {
         mentionCount:     mc,
         actorCount:       ac,
@@ -196,34 +193,28 @@ function buildVisEdges(
   return out.sort((a, b) => a.score - b.score);
 }
 
-// ── Edge bundle renderer ──────────────────────────────────────────────────────
+// ── Edge renderer — single line, thickness encodes corroboration strength ────
 
 function EdgeBundle({
-  x1, y1, x2, y2, score, isChain, dim, evidence, fromLabel, toLabel, strandCount, onClick, selected,
+  x1, y1, x2, y2, score, isChain, dim, evidence, fromLabel, toLabel, onClick, selected,
 }: VisEdge & { dim: boolean; onClick: () => void; selected: boolean }) {
   const mc    = evidence?.mentionCount ?? 0;
   const ac    = evidence?.actorCount   ?? 0;
   const color = selected ? '#0ea5e9' : isChain ? '#f97316' : '#6366f1';
 
-  const CTRL_SPREAD   = 14;
-  const midY          = (y1 + y2) / 2;
-  const midX          = (x1 + x2) / 2;
-  const isHorizontal  = Math.abs(y2 - y1) < Math.abs(x2 - x1) * 0.4;
-  const sw            = dim ? 0.6 : Math.max(0.7, 0.7 + (score / 100) * 2.0);
+  const midY         = (y1 + y2) / 2;
+  const midX         = (x1 + x2) / 2;
+  const isHorizontal = Math.abs(y2 - y1) < Math.abs(x2 - x1) * 0.4;
 
-  const strands = Array.from({ length: strandCount }, (_, i) => {
-    const offset = (i - (strandCount - 1) / 2) * CTRL_SPREAD;
-    const path   = isHorizontal
-      ? `M${x1},${y1} C${midX},${y1 - (35 + offset)} ${midX},${y2 - (35 + offset)} ${x2},${y2}`
-      : `M${x1},${y1} C${x1},${midY + offset} ${x2},${midY + offset} ${x2},${y2}`;
-    const distFromCentre = Math.abs(i - (strandCount - 1) / 2) / Math.max((strandCount - 1) / 2, 1);
-    const op = dim ? 0.04 : (0.30 + (score / 100) * 0.48) * (1 - distFromCentre * 0.35);
-    return { path, op };
-  });
-
-  const centrePath = isHorizontal
+  const path = isHorizontal
     ? `M${x1},${y1} C${midX},${y1 - 35} ${midX},${y2 - 35} ${x2},${y2}`
     : `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`;
+
+  // Stroke width: 0.8 (weak) → 3.0 (high score) — single line, no bundles
+  const sw  = dim ? 0.5 : Math.max(0.8, 0.8 + (score / 100) * 2.2);
+  // Opacity: chain edges are bolder; dim = faded when another edge is selected
+  const op  = dim ? 0.06 : isChain ? 0.75 : Math.max(0.25, 0.25 + (score / 100) * 0.50);
+
   const bx = midX;
   const by = isHorizontal ? midY - 35 : midY;
 
@@ -232,21 +223,22 @@ function EdgeBundle({
   return (
     <g onClick={onClick} style={{ cursor: 'pointer' }}>
       <title>{label}</title>
-      <path d={centrePath} fill="none" stroke="transparent" strokeWidth={20} />
+      {/* Invisible wide hit area */}
+      <path d={path} fill="none" stroke="transparent" strokeWidth={20} />
+      {/* Selection glow */}
       {selected && (
-        <path d={centrePath} fill="none" stroke={color}
-          strokeWidth={(strandCount * CTRL_SPREAD * 0.4) + sw + 4} opacity={0.15} strokeLinecap="round" />
+        <path d={path} fill="none" stroke={color} strokeWidth={sw + 5} opacity={0.15} strokeLinecap="round" />
       )}
-      {strands.map((s, i) => (
-        <path key={i} d={s.path} fill="none" stroke={color}
-          strokeWidth={selected ? sw + 0.4 : sw} opacity={s.op} strokeLinecap="round" />
-      ))}
+      {/* Single line */}
+      <path d={path} fill="none" stroke={color}
+        strokeWidth={selected ? sw + 0.5 : sw} opacity={op} strokeLinecap="round" />
+      {/* Corroboration badge — only when meaningfully evidenced */}
       {!dim && mc >= 2 && (
         <g transform={`translate(${bx},${by})`}>
           <rect x={-16} y={-7} width={32} height={13} rx={3}
             fill="white" stroke={color} strokeWidth={0.5} opacity={0.90} />
           <text fontSize={7} fill={color} textAnchor="middle" dominantBaseline="middle" fontWeight="700">
-            {mc}{ac > 1 ? `×${ac}↑` : `×`}
+            {mc}× · {ac} actor{ac !== 1 ? 's' : ''}
           </text>
         </g>
       )}
