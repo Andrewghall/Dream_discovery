@@ -161,8 +161,9 @@ function buildVisEdges(
   for (const e of bvEdges) {
     if (!featuredIds.has(e.fromNodeId) || !featuredIds.has(e.toNodeId)) continue;
     const mc = e.evidence?.mentionCount ?? 0;
-    if (mc > 0 && mc < 2) continue;
-    if (mc === 0 && e.score < 3) continue;
+    // Gate: chain edges always shown; all others require score >= 40 AND >= 2 mentions
+    if (!e.isChainEdge && e.score < 40) continue;
+    if (!e.isChainEdge && mc < 2) continue;
     const key = [e.fromNodeId, e.toNodeId].sort().join('|');
     const ex  = edgeByKey.get(key);
     if (!ex || e.score > ex.score) edgeByKey.set(key, e);
@@ -1018,6 +1019,7 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
   const [selected,      setSelected]      = useState<string | null>(null);
   const [activeFilter,  setActiveFilter]  = useState<Status | null>(null);
   const [selectedEdge,  setSelectedEdge]  = useState<VisEdge | null>(null);
+  const [showConnections, setShowConnections] = useState(false);
   // Priority nodes are in the Way Forward by default — user can deselect and re-select
   const [wayForwardIds, setWayForwardIds] = useState<Set<string>>(
     () => new Set(computePriorityNodes(data).map(p => p.nodeId)),
@@ -1030,19 +1032,21 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
     const byId   = new Map(all.map(e => [e.n.nodeId, e]));
     const chosen = new Set<string>();
 
-    // 1. Both endpoints of every TLM edge (prevents chain constraints being excluded)
-    for (const edge of (data.edges ?? [])) {
+    // 1. Both endpoints of CHAIN edges (validated paths always shown regardless of score)
+    for (const edge of (data.edges ?? []).filter(e => e.isChainEdge)) {
       const f = byId.get(edge.fromNodeId);
       const t = byId.get(edge.toNodeId);
       if (f) chosen.add(f.n.nodeId);
       if (t) chosen.add(t.n.nodeId);
     }
-    // 2. All critical nodes
+    // 2. All critical nodes (no score floor — critical = must be seen)
     all.filter(e => e.status === 'critical').forEach(e => chosen.add(e.n.nodeId));
-    // 3. Top partial + extra by layer
-    all.filter(e => e.status === 'partial').slice(0, 6).forEach(e => chosen.add(e.n.nodeId));
-    all.filter(e => e.n.layer === 'ENABLER'       && !chosen.has(e.n.nodeId)).slice(0, 5).forEach(e => chosen.add(e.n.nodeId));
-    all.filter(e => e.n.layer === 'REIMAGINATION' && !chosen.has(e.n.nodeId)).slice(0, 4).forEach(e => chosen.add(e.n.nodeId));
+
+    // 3. Only viable nodes (score >= 20) fill remaining slots
+    const viable = all.filter(e => e.score >= 20);
+    viable.filter(e => e.status === 'partial').slice(0, 6).forEach(e => chosen.add(e.n.nodeId));
+    viable.filter(e => e.n.layer === 'ENABLER'       && !chosen.has(e.n.nodeId)).slice(0, 5).forEach(e => chosen.add(e.n.nodeId));
+    viable.filter(e => e.n.layer === 'REIMAGINATION' && !chosen.has(e.n.nodeId)).slice(0, 4).forEach(e => chosen.add(e.n.nodeId));
 
     return all.filter(e => chosen.has(e.n.nodeId));
   }, [all, data.edges]);
@@ -1069,7 +1073,7 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
     );
   }
 
-  const remaining   = all.filter(e => !featured.some(f => f.n.nodeId === e.n.nodeId));
+  const remaining   = all.filter(e => !featured.some(f => f.n.nodeId === e.n.nodeId) && e.score >= 10);
   const selectedEN  = selected ? featured.find(e => e.n.nodeId === selected) ?? null : null;
 
   const connectedIds = selected
@@ -1119,6 +1123,16 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
             </span>
             <span className="ml-2 text-[10px] text-slate-300">· circle size = seniority × mentions</span>
           </div>
+          <button
+            onClick={() => setShowConnections(c => !c)}
+            className={`text-[10px] font-semibold px-2.5 py-1 rounded-lg border transition-colors ${
+              showConnections
+                ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+            }`}
+          >
+            {showConnections ? '⬡ Hide connections' : '⬡ Show connections'}
+          </button>
           {workshopId && (
             <ReportSectionToggle workshopId={workshopId} sectionId="transformation_priorities" title="Transformation Logic Map" />
           )}
@@ -1158,7 +1172,7 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
                 <LaneBands cw={canvasW} />
 
                 {/* Edges — weakest first so strong ones paint on top */}
-                {visibleEdges.map((e, i) => {
+                {showConnections && visibleEdges.map((e, i) => {
                   const nodeDim = selected !== null && connectedIds !== null && (() => {
                     const sp = pos.get(selected)!;
                     return !((e.x1 === sp.x && e.y1 === sp.y) || (e.x2 === sp.x && e.y2 === sp.y));
