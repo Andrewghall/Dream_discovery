@@ -17,7 +17,6 @@ import { env } from '@/lib/env';
 import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopPrepResearch, PrepContext, AgentConversationCallback, AgentReview } from './agent-types';
 import type { GuidanceState } from '../guidance-state';
-import { buildJourneyContextString } from '../journey-completion-state';
 import { getEngagementType } from '@/lib/domain-packs/engagement-types';
 
 // ══════════════════════════════════════════════════════════════
@@ -1776,7 +1775,7 @@ export async function reviewWithResearchAgent(
   const prep = guidanceState.prepContext;
   const startMs = Date.now();
 
-  const journeyCtx = buildJourneyContextString(guidanceState.journeyCompletionState);
+  const journeyCtx = null;
 
   const systemPrompt = `You are the DREAM Research Agent reviewing proposals from a colleague. Your domain is company and industry knowledge.
 

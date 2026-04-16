@@ -48,7 +48,6 @@ import type { DiscoverAnalysis } from '@/lib/types/discover-analysis';
 import { defaultReportLayout } from '@/lib/output-intelligence/types';
 import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
-import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
 import type { PromptOutput } from '@/components/scratchpad/ReportPromptOutput';
 import { DraggableSection, DropIndicator } from '@/components/report-builder/DraggableSection';
 import { SectionHeading } from './_components/ScratchpadEditors';
@@ -1046,7 +1045,7 @@ export default function DownloadReportPage({ params }: PageProps) {
                                   disabled={!reportSummary}
                                 />
                                 <JourneyDownloadBar workshopId={workshopId} />
-                                <LiveJourneyMap data={liveJourneyData} mode="output" />
+                                {liveJourneyData && <p className="text-xs text-muted-foreground py-2">Journey map data available (display removed).</p>}
                               </>
                             ) : (
                               <p className="text-xs text-muted-foreground py-2">

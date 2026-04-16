@@ -23,7 +23,6 @@ import type {
   LensName,
 } from './agent-types';
 import type { GuidanceState } from '../guidance-state';
-import { buildJourneyContextString } from '../journey-completion-state';
 import { getDimensionNames } from '../workshop-dimensions';
 
 // ── Constants ───────────────────────────────────────────────
@@ -729,7 +728,7 @@ export async function reviewWithDiscoveryAgent(
   const prep = guidanceState.prepContext;
   const startMs = Date.now();
 
-  const journeyCtx = buildJourneyContextString(guidanceState.journeyCompletionState);
+  const journeyCtx = null;
 
   const systemPrompt = `You are the DREAM Discovery Agent reviewing proposals from a colleague. Your domain is what participants told us in pre-workshop interviews.
 

@@ -26,22 +26,26 @@ import type {
   DialoguePhase,
 } from '@/lib/cognitive-guidance/pipeline';
 import { mergeBackendJourney } from '@/lib/cognitive-guidance/pipeline';
-import type {
-  JourneyMutationIntent,
-  AddStagePayload,
-  RenameStagePayload,
-  MergeStagePayload,
-  RemoveStagePayload,
-  AddActorPayload,
-  RenameActorPayload,
-  AddInteractionPayload,
-  UpdateInteractionPayload,
-} from '@/lib/cognition/agents/journey-mutation-types';
-import {
-  MAX_STAGES,
-  MAX_ACTORS,
-  REMOVE_STAGE_INTERACTION_LIMIT,
-} from '@/lib/cognition/agents/journey-mutation-types';
+// Journey mutation types inlined after journey-mutation-types.ts was removed
+const MAX_STAGES = 8;
+const MAX_ACTORS = 6;
+const REMOVE_STAGE_INTERACTION_LIMIT = 20;
+
+type JourneyMutationIntent = {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  sourceNodeIds?: string[];
+  emittedAtMs: number;
+};
+type AddStagePayload = { stageName: string; afterStage?: string };
+type RenameStagePayload = { oldName: string; newName: string };
+type MergeStagePayload = { sourceStages: string[]; targetName: string };
+type RemoveStagePayload = { stageName: string; force?: boolean };
+type AddActorPayload = { name: string; role: string };
+type RenameActorPayload = { oldName: string; newName: string };
+type AddInteractionPayload = { actor: string; stage: string; action: string; context: string; sentiment?: string };
+type UpdateInteractionPayload = { id?: string; interactionId?: string; updates?: Record<string, unknown> };
 
 // -----------------------------------------------------------------------
 // Hook options
@@ -363,7 +367,7 @@ function applyAddInteraction(
     stage: payload.stage,
     action: payload.action,
     context: payload.context,
-    sentiment: payload.sentiment,
+    sentiment: (payload.sentiment as 'positive' | 'neutral' | 'concerned' | 'critical') ?? 'neutral',
     businessIntensity: 0.5,
     customerIntensity: 0.5,
     aiAgencyNow: 'human',
@@ -397,17 +401,18 @@ function applyUpdateInteraction(
     return journey;
   }
 
+  const u = payload.updates ?? {};
   const interactions = journey.interactions.map((ix) => {
     if (ix.id !== payload.interactionId) return ix;
     return {
       ...ix,
-      ...(payload.updates.aiAgencyNow !== undefined && { aiAgencyNow: payload.updates.aiAgencyNow }),
-      ...(payload.updates.aiAgencyFuture !== undefined && { aiAgencyFuture: payload.updates.aiAgencyFuture }),
-      ...(payload.updates.businessIntensity !== undefined && { businessIntensity: payload.updates.businessIntensity }),
-      ...(payload.updates.customerIntensity !== undefined && { customerIntensity: payload.updates.customerIntensity }),
-      ...(payload.updates.isPainPoint !== undefined && { isPainPoint: payload.updates.isPainPoint }),
-      ...(payload.updates.isMomentOfTruth !== undefined && { isMomentOfTruth: payload.updates.isMomentOfTruth }),
-      ...(payload.updates.sentiment !== undefined && { sentiment: payload.updates.sentiment }),
+      ...(u.aiAgencyNow !== undefined && { aiAgencyNow: u.aiAgencyNow as import('@/lib/cognitive-guidance/pipeline').AiAgencyLevel }),
+      ...(u.aiAgencyFuture !== undefined && { aiAgencyFuture: u.aiAgencyFuture as import('@/lib/cognitive-guidance/pipeline').AiAgencyLevel }),
+      ...(u.businessIntensity !== undefined && { businessIntensity: u.businessIntensity as number }),
+      ...(u.customerIntensity !== undefined && { customerIntensity: u.customerIntensity as number }),
+      ...(u.isPainPoint !== undefined && { isPainPoint: u.isPainPoint as boolean }),
+      ...(u.isMomentOfTruth !== undefined && { isMomentOfTruth: u.isMomentOfTruth as boolean }),
+      ...(u.sentiment !== undefined && { sentiment: u.sentiment as 'positive' | 'neutral' | 'concerned' | 'critical' }),
     };
   });
 
