@@ -22,6 +22,7 @@ import {
   type QuestionConstraints,
 } from '@/lib/workshop/blueprint';
 import { resolveIndustryPack } from '@/lib/domain-packs/resolution';
+import { getDomainPack } from '@/lib/domain-packs/registry';
 import { getIndustryActors } from '@/lib/cognition/industry-actor-model';
 import type {
   JourneyStageResearch,
@@ -177,9 +178,13 @@ function resolveIndustryLenses(input: GeneratorInput): LensPolicyEntry[] | null 
   // Legacy curated overrides — highest priority
   if (isAirlineContactCentreContext(input)) return CONTACT_CENTRE_AIRLINE_LENSES;
   if ((input.dreamTrack ?? '').toUpperCase() === 'ENTERPRISE') return ENTERPRISE_LENSES;
-  // Industry auto-resolve only when no explicit legacy pack key is set
-  if (!input.domainPack) {
-    const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack);
+  // Skip industry auto-resolve only when domainPack resolves to a KNOWN legacy pack.
+  // Industry pack keys (e.g. 'home_services') are stored in domainPack by the creation
+  // route but getDomainPack() returns null for them — treat those as industry packs.
+  const hasLegacyPack = !!input.domainPack && !!getDomainPack(input.domainPack);
+  if (!hasLegacyPack) {
+    const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack)
+      ?? (input.domainPack ? resolveIndustryPack(input.domainPack, input.engagementType, input.dreamTrack) : null);
     if (industryPack && industryPack.lenses.length > 0) {
       return industryPack.lenses.map((lensName) => ({
         name: lensName,
@@ -195,12 +200,15 @@ function resolveIndustryLenses(input: GeneratorInput): LensPolicyEntry[] | null 
 function resolveJourneyTemplate(input: GeneratorInput): JourneyStageEntry[] | null {
   // Legacy curated override — airline contact centre
   if (isAirlineContactCentreContext(input)) return CONTACT_CENTRE_AIRLINE_JOURNEY_TEMPLATE;
-  // Explicit legacy pack key is authoritative over industry auto-resolve
+  // Explicit legacy pack key wins only when it has a journey template
   const packKey = (input.domainPack ?? '').toLowerCase();
   if (packKey && DOMAIN_JOURNEY_TEMPLATES[packKey]) return DOMAIN_JOURNEY_TEMPLATES[packKey];
-  // No explicit pack — use industry pack journey stages
-  if (!input.domainPack) {
-    const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack);
+  // Industry pack — resolve by industry field first, then try domainPack as an industry key
+  // (domainPack stores industry pack keys like 'home_services' for new workshops)
+  const hasLegacyPack = !!input.domainPack && !!getDomainPack(input.domainPack);
+  if (!hasLegacyPack) {
+    const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack)
+      ?? (input.domainPack ? resolveIndustryPack(input.domainPack, input.engagementType, input.dreamTrack) : null);
     if (industryPack?.journeyStages?.length) {
       return industryPack.journeyStages.map((s) => ({
         name: s.label,
@@ -434,8 +442,15 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
 
   // Detect whether we have a curated industry-specific override (e.g. airline).
   // Industry-specific data is higher confidence than research output and wins.
+  // Industry override: airline special-case OR any workshop whose domainPack is not a
+  // known legacy pack key (i.e. it's an industry pack key like 'home_services') AND
+  // resolveIndustryPack produces curated journey stages.
+  const hasLegacyPackKey = !!input.domainPack && !!getDomainPack(input.domainPack);
+  const resolvedIndustryPack = hasLegacyPackKey ? null
+    : (resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack)
+       ?? (input.domainPack ? resolveIndustryPack(input.domainPack, input.engagementType, input.dreamTrack) : null));
   const hasIndustryOverride = isAirlineContactCentreContext(input)
-    || (!input.domainPack && !!resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack)?.journeyStages?.length);
+    || !!resolvedIndustryPack?.journeyStages?.length;
 
   // Layer 2: Domain-specific journey stages (baseline for the domain pack)
   const journeyTemplate = resolveJourneyTemplate(input);
