@@ -5,6 +5,7 @@ import { nanoid } from 'nanoid';
 import { sendWelcomeEmail } from '@/lib/email/send';
 import { sendNewUserAlert } from '@/lib/monitoring/alerts';
 import { getSession } from '@/lib/auth/session';
+import { CreateUserSchema, zodError } from '@/lib/validation/schemas';
 
 function generateTemporaryPassword(): string {
   const words = ['Dream', 'Discovery', 'Platform', 'Secure', 'Admin', 'Access'];
@@ -31,12 +32,11 @@ export async function POST(request: NextRequest) {
     const isPlatformAdmin = session.role === 'PLATFORM_ADMIN';
     const isTenantAdmin = session.role === 'TENANT_ADMIN';
 
-    const { email, name, role, organizationId: bodyOrgId } = await request.json();
+    const rawBody = await request.json().catch(() => null);
+    const parsed = CreateUserSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
 
-    // Validation
-    if (!email || !name || !role) {
-      return NextResponse.json({ error: 'Email, name, and role are required' }, { status: 400 });
-    }
+    const { email, name, role, organizationId: bodyOrgId } = parsed.data;
 
     // Tenant admins can only create TENANT_ADMIN or TENANT_USER in their own org
     if (isTenantAdmin) {

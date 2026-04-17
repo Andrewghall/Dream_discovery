@@ -41,6 +41,11 @@ model User {
   lastLoginAt      DateTime?
   failedLoginCount Int          @default(0)
   lockedUntil      DateTime?
+  // TOTP MFA fields (ISO 27001 A.9.4.2 / SOC 2 CC6.1)
+  // totpSecret is AES-256 encrypted at rest via lib/encryption.ts
+  totpSecret       String?      @map("totp_secret")          // encrypted TOTP secret
+  totpEnabled      Boolean      @default(false) @map("totp_enabled")
+  totpVerifiedAt   DateTime?    @map("totp_verified_at")     // when setup was completed
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   organization     Organization? @relation(fields: [organizationId], references: [id])
