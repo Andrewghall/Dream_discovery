@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { env } from '@/lib/env'
+import { strictLimiter } from '@/lib/rate-limit'
+
+function getIp(req: NextRequest): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    req.headers.get('x-real-ip') ||
+    '127.0.0.1'
+}
 
 // Simple keyword fallback when no API key
 function keywordScore(transcript: string): number {
@@ -34,6 +41,14 @@ The reflection must:
 Respond ONLY with valid JSON: { "level": number, "reflection": string }`
 
 export async function POST(req: NextRequest) {
+  const rl = await strictLimiter.check(20, `interpret:${getIp(req)}`).catch(() => null)
+  if (rl && !rl.success) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait a moment.' },
+      { status: 429, headers: { 'Retry-After': Math.ceil((rl.reset - Date.now()) / 1000).toString() } }
+    )
+  }
+
   try {
     const { question, dimension, transcript } = await req.json() as { question: string; dimension: string; transcript: string }
 

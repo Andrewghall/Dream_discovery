@@ -21,7 +21,9 @@ const nextConfig: NextConfig = {
     //   - media-src includes blob: for the TTS audio blob URLs created client-side.
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // 'unsafe-eval' is NOT included — Next.js production builds don't require it.
+      // It is only needed in dev mode (HMR). Removing it strengthens XSS protection.
+      "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.supabase.co",
       "font-src 'self' data:",

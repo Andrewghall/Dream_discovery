@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { buildDreamChatSystemPrompt } from '@/lib/dream-landing/knowledge-base';
+import { strictLimiter } from '@/lib/rate-limit';
 
 export const maxDuration = 60;
 
@@ -120,34 +121,7 @@ const MODEL = 'gpt-4o-mini';
 const MAX_QUESTION_LENGTH = 500;
 const MAX_HISTORY = 6;
 
-// ── Simple in-memory rate limiter ────────────────────────────
-
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const RATE_LIMIT_MAX = 20;
-
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count++;
-  return true;
-}
-
-// Clean up stale entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of rateLimitMap) {
-    if (now > entry.resetAt) rateLimitMap.delete(ip);
-  }
-}, 5 * 60 * 1000);
+// ── Rate limiting (shared Upstash-backed infrastructure) ─────
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -159,19 +133,21 @@ interface ChatMessage {
 // ── POST handler ─────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  try {
-    // Rate limit by IP
-    const ip =
-      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      request.headers.get('x-real-ip') ||
-      'unknown';
+  // Rate limit by IP — 20 requests per minute, globally enforced via Upstash
+  const ip =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    '127.0.0.1';
 
-    if (!checkRateLimit(ip)) {
-      return NextResponse.json(
-        { error: 'Please wait a moment before asking another question.' },
-        { status: 429 },
-      );
-    }
+  const rl = await strictLimiter.check(20, `dream-chat:${ip}`).catch(() => null);
+  if (rl && !rl.success) {
+    return NextResponse.json(
+      { error: 'Please wait a moment before asking another question.' },
+      { status: 429, headers: { 'Retry-After': Math.ceil((rl.reset - Date.now()) / 1000).toString() } },
+    );
+  }
+
+  try {
 
     // Parse body
     const body = await request.json();
