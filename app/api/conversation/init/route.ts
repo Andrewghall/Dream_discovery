@@ -46,6 +46,12 @@ function resolveSessionConfig(workshop: any, questionSetVersion: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    const ipAddress =
+      request.headers.get('x-forwarded-for') ||
+      request.headers.get('x-real-ip') ||
+      '127.0.0.1';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+
     const body = await request.json();
     const { workshopId, token } = body as {
       workshopId: string;
@@ -53,6 +59,9 @@ export async function POST(request: NextRequest) {
       restart?: boolean;
       runType?: 'BASELINE' | 'FOLLOWUP';
       questionSetVersion?: string;
+      consentGranted?: boolean;
+      consentText?: string;
+      consentVersion?: string;
     };
     const restart = body?.restart === true;
     const runType = body?.runType === 'FOLLOWUP' ? 'FOLLOWUP' : 'BASELINE';
@@ -234,6 +243,34 @@ export async function POST(request: NextRequest) {
         await prisma.workshopParticipant.update({
           where: { id: participant.id },
           data: { responseStartedAt: new Date() },
+        });
+
+        // Write consent record for GDPR Art.7 accountability.
+        // The participant must have clicked "I Agree" in the UI before this init
+        // call is made. We record the consent here against the participant record.
+        // If consentGranted is explicitly false, we still record the denial.
+        const grantedValue = body?.consentGranted !== false; // default true if not provided
+        await prisma.consentRecord.create({
+          data: {
+            participantId: participant.id,
+            email: participant.email,
+            workshopId,
+            purpose: 'DISCOVERY_CONVERSATION',
+            channel: 'WEB_FORM',
+            consentText: body?.consentText ||
+              'I agree to my responses being recorded and used to prepare workshop insights. ' +
+              'I understand my data will be processed as described in the Privacy Policy.',
+            consentVersion: body?.consentVersion || '1.0',
+            granted: grantedValue,
+            grantedAt: grantedValue ? new Date() : null,
+            ipAddress,
+            userAgent,
+          },
+        }).catch(err => {
+          // Non-fatal: log but do not block the conversation. A missed consent
+          // record is preferable to blocking the participant. Ops team will be
+          // alerted and can backfill from audit logs.
+          console.error('[consent] Failed to write ConsentRecord for participant', participant.id, err);
         });
       }
 

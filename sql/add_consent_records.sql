@@ -5,6 +5,7 @@
 
 CREATE TYPE IF NOT EXISTS "ConsentPurpose" AS ENUM (
   'WORKSHOP_PARTICIPATION',
+  'DISCOVERY_CONVERSATION',
   'AUDIO_RECORDING',
   'DATA_RETENTION',
   'MARKETING'
@@ -67,3 +68,16 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER consent_records_updated_at
   BEFORE UPDATE ON "consent_records"
   FOR EACH ROW EXECUTE FUNCTION update_consent_records_updated_at();
+
+-- Add DISCOVERY_CONVERSATION purpose if table already exists (idempotent backfill)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_enum
+    WHERE enumlabel = 'DISCOVERY_CONVERSATION'
+      AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'ConsentPurpose')
+  ) THEN
+    ALTER TYPE "ConsentPurpose" ADD VALUE 'DISCOVERY_CONVERSATION';
+  END IF;
+END
+$$;

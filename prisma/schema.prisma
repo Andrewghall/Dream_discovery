@@ -915,6 +915,7 @@ model AnalyticsEvent {
 
 enum ConsentPurpose {
   WORKSHOP_PARTICIPATION    // Participant consents to voice/text capture during a workshop
+  DISCOVERY_CONVERSATION    // Participant consents to discovery conversation data processing
   AUDIO_RECORDING           // Explicit consent for audio recording + AI transcription
   DATA_RETENTION            // Consent to store session data beyond the immediate workshop
   MARKETING                 // Consent to receive marketing communications (landing page)

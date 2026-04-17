@@ -6,11 +6,47 @@ import { nanoid } from 'nanoid';
 import { authLimiter } from '@/lib/rate-limit';
 import { createSessionToken, type SessionPayload } from '@/lib/auth/session';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
+import { isMfaRequired, requiresMfa, decryptTotpSecret, verifyTotp } from '@/lib/auth/mfa';
+import { SignJWT, jwtVerify } from 'jose';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 15;
 
 const TENANT_ROLES = ['TENANT_ADMIN', 'TENANT_USER'];
+
+// ── MFA challenge token helpers ───────────────────────────────────────────────
+// A short-lived (5 min) JWT issued after password success when TOTP is required.
+// Audience 'mfa-challenge' distinguishes it from full session tokens.
+// The client must POST it to /api/auth/mfa-verify with the TOTP code to get a
+// real session cookie. This prevents a session being issued before MFA is passed.
+
+async function createMfaChallengeToken(userId: string): Promise<string> {
+  const secret = new TextEncoder().encode(
+    process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
+  );
+  return new SignJWT({ userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setAudience('mfa-challenge')
+    .setIssuer('dream-discovery')
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(secret);
+}
+
+export async function verifyMfaChallengeToken(token: string): Promise<string | null> {
+  try {
+    const secret = new TextEncoder().encode(
+      process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
+    );
+    const { payload } = await jwtVerify(token, secret, {
+      audience: 'mfa-challenge',
+      issuer: 'dream-discovery',
+    });
+    return typeof payload.userId === 'string' ? payload.userId : null;
+  } catch {
+    return null;
+  }
+}
 
 function getIpAddress(request: NextRequest): string {
   return (
@@ -224,6 +260,39 @@ export async function POST(request: NextRequest) {
       where: { id: user.id },
       data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
     });
+
+    // MFA challenge gate
+    // When MFA_REQUIRED=true and this role requires MFA, we must not issue a full
+    // session until TOTP is verified. Instead issue a short-lived challenge token.
+    if (isMfaRequired() && requiresMfa(user.role)) {
+      if (!user.totpEnabled) {
+        // User must enrol before they can log in.
+        return NextResponse.json(
+          {
+            mfaRequired: true,
+            mfaEnrolmentRequired: true,
+            error: 'MFA is required for your role. Please enrol an authenticator app before logging in.',
+          },
+          { status: 403 }
+        );
+      }
+
+      // Issue a 5-minute challenge token - no session cookie yet.
+      const mfaToken = await createMfaChallengeToken(user.id);
+      logAuditEvent({
+        organizationId: user.organizationId ?? 'unknown',
+        userId: user.id,
+        userEmail: user.email,
+        action: 'MFA_CHALLENGE_ISSUED',
+        resourceType: 'session',
+        metadata: { role: user.role },
+        ipAddress,
+        userAgent,
+        success: true,
+      }).catch(err => console.error('[audit] mfa_challenge:', err));
+
+      return NextResponse.json({ mfaRequired: true, mfaToken });
+    }
 
     // If user must change password, generate a reset token and redirect there instead of logging in
     if (user.mustChangePassword) {
