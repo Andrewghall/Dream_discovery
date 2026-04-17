@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { PatchWorkshopBodySchema, zodError } from '@/lib/validation/schemas';
 import { getDomainPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import { readBlueprintFromJson, WorkshopBlueprintSchema } from '@/lib/workshop/blueprint';
@@ -476,7 +477,10 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json().catch(() => ({}));
+    const rawBody = await request.json().catch(() => null);
+    const parsed = PatchWorkshopBodySchema.safeParse(rawBody ?? {});
+    if (!parsed.success) return zodError(parsed.error);
+    const body = parsed.data;
 
     // Authenticate user
     const user = await getAuthenticatedUser();

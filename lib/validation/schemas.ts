@@ -284,6 +284,85 @@ export const MfaVerifySchema = z.object({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Workshop update (PATCH /api/admin/workshops/[id])
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const PatchWorkshopBodySchema = z.object({
+  name: z.string().min(1).max(200).trim().optional(),
+  description: optStr(2000),
+  businessContext: optStr(10000),
+  includeRegulation: z.boolean().optional(),
+  clientName: optStr(200),
+  industry: optStr(100),
+  companyWebsite: z.string().url().max(500).optional().or(z.literal('')),
+  dreamTrack: optStr(100),
+  targetDomain: optStr(100),
+  status: z.enum(['DRAFT', 'ACTIVE', 'COMPLETED', 'ARCHIVED']).optional(),
+  scheduledDate: z.string().datetime().optional().nullable(),
+  responseDeadline: z.string().datetime().optional().nullable(),
+  engagementType: optStr(50),
+  domainPack: optStr(100),
+  customQuestions: z.record(z.string(), z.unknown()).optional().nullable(),
+  domainPackConfig: z.record(z.string(), z.unknown()).optional().nullable(),
+  discoveryQuestions: z.record(z.string(), z.unknown()).optional().nullable(),
+  // Research / briefing fields written by AI pipelines
+  prepResearch: z.record(z.string(), z.unknown()).optional().nullable(),
+  discoveryBriefing: z.record(z.string(), z.unknown()).optional().nullable(),
+  blueprint: z.record(z.string(), z.unknown()).optional().nullable(),
+  historicalMetrics: z.record(z.string(), z.unknown()).optional().nullable(),
+}).passthrough(); // allow additional unknown fields from pipeline writes without rejecting
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scratchpad update (PATCH /api/admin/workshops/[id]/scratchpad)
+// Free-form rich content - validate structure, not values
+// ─────────────────────────────────────────────────────────────────────────────
+
+const jsonValue: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValue),
+    z.record(z.string(), jsonValue),
+  ])
+);
+
+export const PatchScratchpadSchema = z.object({
+  execSummary: jsonValue.optional(),
+  discoveryOutput: jsonValue.optional(),
+  reimagineContent: jsonValue.optional(),
+  constraintsContent: jsonValue.optional(),
+  potentialSolution: jsonValue.optional(),
+  commercialContent: jsonValue.optional(),
+  customerJourney: jsonValue.optional(),
+  summaryContent: jsonValue.optional(),
+  outputAssessment: jsonValue.optional(),
+  v2Output: jsonValue.optional(),
+  // POST-only field for initial creation
+  commercialPassword: z.string().min(10).max(128).optional(),
+}).passthrough();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live session snapshot
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CreateSnapshotSchema = z.object({
+  name: z.string().max(200).optional(),
+  dialoguePhase: z.string().max(100).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live session version
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CreateSessionVersionSchema = z.object({
+  dialoguePhase: z.string().min(1).max(100),
+  payload: z.record(z.string(), z.unknown()),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Utility: standard Zod error response
 // ─────────────────────────────────────────────────────────────────────────────
 
