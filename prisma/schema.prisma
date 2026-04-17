@@ -198,6 +198,7 @@ model Workshop {
   diagnosticSynthesis DiagnosticSynthesis?
   documentChunks    DocumentChunk[]
   evidenceDocuments EvidenceDocument[]
+  consentRecords    ConsentRecord[]
   createdBy         User                  @relation(fields: [createdById], references: [id])
   organization      Organization          @relation(fields: [organizationId], references: [id])
 
@@ -362,6 +363,7 @@ model WorkshopParticipant {
   sessions              ConversationSession[]
   reports               ConversationReport[]
   dataPoints            DataPoint[]
+  consentRecords        ConsentRecord[]
   workshop              Workshop              @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 
   @@index([workshopId])
@@ -900,4 +902,53 @@ model AnalyticsEvent {
   @@index([sessionId])
   @@index([pagePath])
   @@map("analytics_events")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GDPR Consent Records (Art. 7 + Art. 9 — lawful basis evidence)
+// ═══════════════════════════════════════════════════════════════
+
+enum ConsentPurpose {
+  WORKSHOP_PARTICIPATION    // Participant consents to voice/text capture during a workshop
+  AUDIO_RECORDING           // Explicit consent for audio recording + AI transcription
+  DATA_RETENTION            // Consent to store session data beyond the immediate workshop
+  MARKETING                 // Consent to receive marketing communications (landing page)
+}
+
+enum ConsentChannel {
+  WEB_FORM                  // Discovery participant landing page form
+  CAPTURE_MOBILE            // Mobile capture session consent flag
+  ADMIN_RECORDED            // Admin records offline consent on participant's behalf
+}
+
+model ConsentRecord {
+  id              String          @id @default(cuid())
+  // Participant identifier — may be anonymous before a User account exists
+  participantId   String?         @map("participant_id")
+  email           String?         // Nullable: anonymous participants may not provide email
+  workshopId      String?         @map("workshop_id")   // Which workshop this consent covers
+  purpose         ConsentPurpose
+  channel         ConsentChannel
+  // Consent text exactly as presented to the participant at time of capture
+  consentText     String          @map("consent_text")
+  // Version of the consent form/privacy notice shown (e.g. "v1.2")
+  consentVersion  String          @default("1.0") @map("consent_version")
+  granted         Boolean         // true = consented, false = explicitly declined/withdrawn
+  grantedAt       DateTime?       @map("granted_at")
+  withdrawnAt     DateTime?       @map("withdrawn_at")
+  // IP address and user agent at time of consent (Art.7 evidentiary requirement)
+  ipAddress       String?         @map("ip_address")
+  userAgent       String?         @map("user_agent")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt      @map("updated_at")
+
+  participant     WorkshopParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  workshop        Workshop?            @relation(fields: [workshopId], references: [id], onDelete: SetNull)
+
+  @@index([participantId])
+  @@index([workshopId])
+  @@index([email])
+  @@index([purpose, granted])
+  @@index([createdAt])
+  @@map("consent_records")
 }

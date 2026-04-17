@@ -5,6 +5,7 @@ import { resolveIndustryPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import type { EngagementType } from '@prisma/client';
 import { auditLog, getClientIp } from '@/lib/audit/log-action';
+import { encryptWorkshopData } from '@/lib/workshop-encryption';
 
 export const dynamic = 'force-dynamic';
 
@@ -233,7 +234,7 @@ export async function POST(request: NextRequest) {
       blueprint: blueprint as any,
     };
 
-    const workshop = await prisma.workshop.create({ data: workshopData });
+    const workshop = await prisma.workshop.create({ data: encryptWorkshopData(workshopData) });
 
     auditLog({
       organizationId,

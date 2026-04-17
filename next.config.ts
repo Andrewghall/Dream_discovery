@@ -13,6 +13,27 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
+    // Content-Security-Policy:
+    //   - script-src includes 'unsafe-inline' because Next.js inlines bootstrap scripts
+    //     at build time. Tighten to nonce-based CSP once nonce middleware is wired in.
+    //   - connect-src includes Supabase (storage uploads from browser) and wss:// for
+    //     Supabase Realtime channels. Railway CaptureAPI is server-to-server; not needed here.
+    //   - media-src includes blob: for the TTS audio blob URLs created client-side.
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://*.supabase.co",
+      "font-src 'self' data:",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+      "media-src 'self' blob:",
+      "worker-src 'self' blob:",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "upgrade-insecure-requests",
+    ].join('; ');
+
     return [
       {
         source: '/(.*)',
@@ -22,6 +43,9 @@ const nextConfig: NextConfig = {
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=()' },
+          // HSTS: 1 year, include subdomains. Only effective over HTTPS (Vercel always serves HTTPS).
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
+          { key: 'Content-Security-Policy', value: csp },
         ],
       },
     ];

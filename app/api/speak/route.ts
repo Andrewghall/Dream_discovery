@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { getSession } from '@/lib/auth/session';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -14,12 +15,26 @@ const getTtsSpeed = () => {
 };
 
 export async function POST(request: NextRequest) {
+  // Auth guard — must be an authenticated admin session
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { text } = await request.json();
 
-    if (!text) {
+    if (!text || typeof text !== 'string') {
       return NextResponse.json(
         { error: 'No text provided' },
+        { status: 400 }
+      );
+    }
+
+    // Hard cap to prevent abuse of OpenAI quota
+    if (text.length > 4096) {
+      return NextResponse.json(
+        { error: 'Text exceeds maximum length of 4096 characters' },
         { status: 400 }
       );
     }

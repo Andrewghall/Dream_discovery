@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth/require-auth';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
+import { encryptParticipantData } from '@/lib/workshop-encryption';
 
 export async function POST(
   request: NextRequest,
@@ -22,15 +23,19 @@ export async function POST(
     const body = await request.json();
     const { name, email, role, department } = body;
 
+    // Encrypt participant PII (email) before persisting if encryption is enabled.
+    // encryptParticipantData is a no-op when ENCRYPTION_ENABLED !== 'true'.
+    const participantData = encryptParticipantData({
+      workshopId,
+      name,
+      email,
+      role: role || null,
+      department: department || null,
+    });
+
     // Create participant with unique discovery token
     const participant = await prisma.workshopParticipant.create({
-      data: {
-        workshopId,
-        name,
-        email,
-        role: role || null,
-        department: department || null,
-      },
+      data: participantData,
     });
 
     if (auth.organizationId) {
