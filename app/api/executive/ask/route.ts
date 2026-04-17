@@ -3,8 +3,13 @@ import { requireExecAuth } from '@/lib/auth/require-exec-auth';
 import { prisma } from '@/lib/prisma';
 import { retrieveRelevant } from '@/lib/embeddings/retrieve';
 import OpenAI from 'openai';
+import { z } from 'zod';
 
 const openai = new OpenAI();
+
+const AskSchema = z.object({
+  message: z.string().min(1, 'Message is required').max(2000).trim(),
+});
 
 export async function POST(request: NextRequest) {
   const auth = await requireExecAuth();
@@ -12,10 +17,12 @@ export async function POST(request: NextRequest) {
 
   const { execOrgId } = auth;
 
-  const { message } = await request.json() as { message?: string };
-  if (!message?.trim()) {
-    return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+  const rawBody = await request.json().catch(() => null);
+  const parsed = AskSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
+  const { message } = parsed.data;
 
   // Load workshop data
   const scratchpad = await prisma.workshopScratchpad.findFirst({
