@@ -17,6 +17,12 @@ export interface SessionPayload {
   role: string;
   organizationId: string | null;
   createdAt: number;
+  /**
+   * Set to true when the session was established via the MFA challenge flow.
+   * When MFA_REQUIRED=true, middleware rejects sessions where this is absent/false
+   * for roles in MFA_REQUIRED_ROLES — forcing re-login through the TOTP gate.
+   */
+  mfaVerified?: boolean;
   /** Set when a PLATFORM_ADMIN has entered a tenant workspace via support access. */
   impersonatedBy?: string;
   /**

@@ -6,10 +6,11 @@ import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, ShieldCheck, ScanLine } from 'lucide-react';
 import Image from 'next/image';
+import QRCode from 'react-qr-code';
 
-type LoginStep = 'credentials' | 'totp';
+type LoginStep = 'credentials' | 'totp' | 'enrolment';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,9 +21,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // TOTP step
+  // TOTP challenge step (existing users)
   const [mfaToken, setMfaToken] = useState('');
   const [totpCode, setTotpCode] = useState('');
+
+  // Enrolment step (first-time setup)
+  const [enrolmentToken, setEnrolmentToken] = useState('');
+  const [enrolSecret, setEnrolSecret] = useState('');
+  const [enrolUri, setEnrolUri] = useState('');
+  const [enrolCode, setEnrolCode] = useState('');
+  const [loadingSecret, setLoadingSecret] = useState(false);
 
   // Shared
   const [error, setError] = useState('');
@@ -46,8 +54,33 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
+        if (data.mfaRequired && data.mfaEnrolmentRequired) {
+          // First-time enrolment — fetch TOTP secret and show QR code
+          setEnrolmentToken(data.enrolmentToken || '');
+          setLoadingSecret(true);
+          setLoading(false);
+          try {
+            const secretRes = await fetch('/api/auth/mfa', {
+              headers: { Authorization: `Bearer ${data.enrolmentToken}` },
+            });
+            const secretData = await secretRes.json() as { secret?: string; uri?: string };
+            if (secretRes.ok && secretData.secret) {
+              setEnrolSecret(secretData.secret);
+              setEnrolUri(secretData.uri || '');
+              setStep('enrolment');
+            } else {
+              setError('Failed to initialise MFA setup. Please try again.');
+            }
+          } catch {
+            setError('Failed to initialise MFA setup. Please try again.');
+          } finally {
+            setLoadingSecret(false);
+          }
+          return;
+        }
+
         if (data.mfaRequired) {
-          // Password accepted but TOTP challenge required
+          // Existing user — TOTP challenge
           setMfaToken(data.mfaToken || '');
           setStep('totp');
           setLoading(false);
@@ -84,6 +117,32 @@ export default function LoginPage() {
         showWelcome(data);
       } else {
         setError(data.error || 'Invalid authentication code.');
+        setLoading(false);
+      }
+    } catch {
+      setError('An error occurred. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  const handleEnrolmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/mfa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: enrolCode, secret: enrolSecret, enrolmentToken }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.enrolled) {
+        showWelcome(data);
+      } else {
+        setError(data.error || 'Invalid code. Please try again.');
         setLoading(false);
       }
     } catch {
@@ -160,6 +219,9 @@ export default function LoginPage() {
             )}
             {step === 'totp' && (
               <p className="text-white/50 text-sm">Two-factor authentication</p>
+            )}
+            {step === 'enrolment' && (
+              <p className="text-white/50 text-sm">Set up authenticator app</p>
             )}
           </div>
 
@@ -273,6 +335,80 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => { setStep('credentials'); setError(''); setTotpCode(''); }}
+                className="w-full text-sm text-white/30 hover:text-white/60 transition-colors"
+              >
+                Back to sign in
+              </button>
+            </form>
+          )}
+
+          {step === 'enrolment' && (
+            <form onSubmit={handleEnrolmentSubmit} className="space-y-6">
+              <div className="flex items-center gap-3 bg-[#5cf28e]/5 border border-[#5cf28e]/20 rounded-lg px-4 py-3">
+                <ScanLine className="h-5 w-5 text-[#5cf28e] shrink-0" />
+                <p className="text-white/70 text-sm">
+                  MFA is required for your account. Scan the QR code with your authenticator app to get started.
+                </p>
+              </div>
+
+              {loadingSecret ? (
+                <div className="flex justify-center py-6">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#5cf28e] border-t-transparent" />
+                </div>
+              ) : enrolUri ? (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="bg-white p-3 rounded-xl">
+                    <QRCode value={enrolUri} size={160} />
+                  </div>
+                  <details className="w-full">
+                    <summary className="text-xs text-white/30 cursor-pointer hover:text-white/60 text-center">
+                      Can&apos;t scan? Enter manually
+                    </summary>
+                    <p className="mt-2 text-xs text-white/50 font-mono break-all bg-white/5 rounded px-3 py-2 text-center">
+                      {enrolSecret}
+                    </p>
+                  </details>
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <Label htmlFor="enrolCode" className="text-white/80">Code from your app</Label>
+                <Input
+                  id="enrolCode"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  value={enrolCode}
+                  onChange={(e) => setEnrolCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  required
+                  className={`${inputClasses} text-center text-2xl tracking-[0.5em] font-mono`}
+                  autoComplete="one-time-code"
+                  autoFocus
+                  disabled={loading || loadingSecret}
+                />
+              </div>
+
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+
+              <LoadingButton
+                type="submit"
+                className="w-full bg-[#5cf28e] hover:bg-[#50c878] text-[#0d0d0d] py-6 text-lg font-semibold transition-colors"
+                loading={loading}
+                loadingText="Activating..."
+                disabled={loadingSecret}
+              >
+                Activate &amp; Sign In
+              </LoadingButton>
+
+              <button
+                type="button"
+                onClick={() => { setStep('credentials'); setError(''); setEnrolCode(''); }}
                 className="w-full text-sm text-white/30 hover:text-white/60 transition-colors"
               >
                 Back to sign in

@@ -152,6 +152,23 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
+    // MFA enforcement gate: when MFA_REQUIRED=true, privileged sessions that were
+    // established before the flag was turned on (and therefore lack mfaVerified:true)
+    // are rejected immediately — they cannot coast on the 24h JWT lifetime.
+    if (
+      process.env.MFA_REQUIRED === 'true' &&
+      (session.role === 'PLATFORM_ADMIN' || session.role === 'TENANT_ADMIN') &&
+      !session.mfaVerified
+    ) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { error: 'MFA verification required. Please log in again.' },
+          { status: 401 }
+        );
+      }
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
     // Sliding-window token refresh: if the JWT is close to expiry, reissue it.
     // IMPORTANT: preserve all revocation-critical fields so that revoking a parent
     // PLATFORM_ADMIN session still invalidates an impersonation token after refresh.
@@ -172,6 +189,9 @@ export async function middleware(request: NextRequest) {
           // revocation chain is broken on the first middleware-driven refresh.
           ...(session.impersonatedBy !== undefined && { impersonatedBy: session.impersonatedBy }),
           ...(session.parentSessionId !== undefined && { parentSessionId: session.parentSessionId }),
+          // Preserve MFA verification status — dropping it would force re-login
+          // on the next middleware refresh when MFA enforcement is active.
+          ...(session.mfaVerified !== undefined && { mfaVerified: session.mfaVerified }),
         });
         response.cookies.set('session', freshJwt, {
           httpOnly: true,

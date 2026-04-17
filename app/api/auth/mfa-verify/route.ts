@@ -116,7 +116,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // TOTP valid - create full session
+  // TOTP valid - create full session with mfaVerified marker.
+  // Middleware uses this flag to enforce MFA for privileged sessions when
+  // MFA_REQUIRED=true — sessions without it are rejected on the next request.
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const sessionPayload: SessionPayload = {
     sessionId: nanoid(),
@@ -125,6 +127,7 @@ export async function POST(request: NextRequest) {
     role: user.role,
     organizationId: user.organizationId,
     createdAt: Date.now(),
+    mfaVerified: true,
   };
 
   const jwt = await createSessionToken(sessionPayload);

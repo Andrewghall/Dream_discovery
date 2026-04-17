@@ -48,6 +48,39 @@ export async function verifyMfaChallengeToken(token: string): Promise<string | n
   }
 }
 
+/**
+ * Short-lived token (15 min) issued when MFA is required but the user has not
+ * enrolled yet. Allows GET /api/auth/mfa (generate secret) and POST /api/auth/mfa
+ * (activate + complete login) without a full session cookie.
+ */
+async function createMfaEnrolmentToken(userId: string): Promise<string> {
+  const secret = new TextEncoder().encode(
+    process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
+  );
+  return new SignJWT({ userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setAudience('mfa-enrolment')
+    .setIssuer('dream-discovery')
+    .setIssuedAt()
+    .setExpirationTime('15m')
+    .sign(secret);
+}
+
+export async function verifyMfaEnrolmentToken(token: string): Promise<string | null> {
+  try {
+    const secret = new TextEncoder().encode(
+      process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
+    );
+    const { payload } = await jwtVerify(token, secret, {
+      audience: 'mfa-enrolment',
+      issuer: 'dream-discovery',
+    });
+    return typeof payload.userId === 'string' ? payload.userId : null;
+  } catch {
+    return null;
+  }
+}
+
 function getIpAddress(request: NextRequest): string {
   return (
     request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
@@ -96,6 +129,19 @@ export async function POST(request: NextRequest) {
 
       if (!isAdminValid) {
         return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+      }
+
+      // When MFA enforcement is active, the environment-backed admin has no TOTP capability
+      // and must not bypass the MFA gate. Block this path entirely and require a DB admin
+      // account that can complete TOTP enrolment.
+      if (isMfaRequired()) {
+        return NextResponse.json(
+          {
+            error: 'Environment admin access is disabled while MFA enforcement is active. ' +
+              'Use a database admin account with MFA enrolled.',
+          },
+          { status: 403 }
+        );
       }
 
       // Valid admin - create JWT session backed by DB
@@ -266,15 +312,22 @@ export async function POST(request: NextRequest) {
     // session until TOTP is verified. Instead issue a short-lived challenge token.
     if (isMfaRequired() && requiresMfa(user.role)) {
       if (!user.totpEnabled) {
-        // User must enrol before they can log in.
-        return NextResponse.json(
-          {
-            mfaRequired: true,
-            mfaEnrolmentRequired: true,
-            error: 'MFA is required for your role. Please enrol an authenticator app before logging in.',
-          },
-          { status: 403 }
-        );
+        // User hasn't enrolled TOTP yet. Issue a short-lived enrolment token so they
+        // can complete setup in this same login flow without needing a full session.
+        // The enrolment token is accepted by GET + POST /api/auth/mfa in lieu of a cookie.
+        const enrolmentToken = await createMfaEnrolmentToken(user.id);
+        logAuditEvent({
+          organizationId: user.organizationId ?? 'unknown',
+          userId: user.id,
+          userEmail: user.email,
+          action: 'MFA_CHALLENGE_ISSUED',
+          resourceType: 'session',
+          metadata: { role: user.role, enrolment: true },
+          ipAddress,
+          userAgent,
+          success: true,
+        }).catch(err => console.error('[audit] mfa_enrolment_issued:', err));
+        return NextResponse.json({ mfaRequired: true, mfaEnrolmentRequired: true, enrolmentToken });
       }
 
       // Issue a 5-minute challenge token - no session cookie yet.
