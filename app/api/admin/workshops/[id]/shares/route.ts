@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { CreateShareSchema, DeleteShareSchema, zodError } from '@/lib/validation/schemas';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,12 +62,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { email } = body;
-
-    if (!email || typeof email !== 'string') {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
-    }
+    const rawBody = await request.json().catch(() => null);
+    const parsed = CreateShareSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
+    const { email } = parsed.data;
 
     // Find the workshop to get the organisation
     const workshop = await prisma.workshop.findUnique({
@@ -142,12 +141,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { shareId } = body;
-
-    if (!shareId) {
-      return NextResponse.json({ error: 'shareId is required' }, { status: 400 });
-    }
+    const rawBody = await request.json().catch(() => null);
+    const parsedDelete = DeleteShareSchema.safeParse(rawBody);
+    if (!parsedDelete.success) return zodError(parsedDelete.error);
+    const { shareId } = parsedDelete.data;
 
     await prisma.workshopShare.delete({
       where: { id: shareId, workshopId },

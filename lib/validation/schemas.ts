@@ -194,9 +194,93 @@ export const CreateExecLicenceSchema = z.object({
   title: optStr(200),
 });
 
-export const PatchExecLicenceSchema = z.object({
+// PatchExecLicenceSchema is defined below in the Exec licence management section
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User management
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const PatchUserSchema = z.object({
+  name: z.string().min(1).max(100).trim().optional(),
+  email: email.optional(),
+  role: z.enum(['PLATFORM_ADMIN', 'TENANT_ADMIN', 'TENANT_USER']).optional(),
+  organizationId: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
-  revokedAt: z.string().datetime().optional().or(z.null()).optional(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exec licence management
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const PatchExecLicenceSchema = z.object({
+  action: z.enum(['revoke', 'reactivate']),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Findings
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CreateFindingSchema = z.object({
+  sourceStream: z.string().min(1).max(50),
+  lens: z.string().min(1).max(50),
+  type: z.string().min(1).max(50),
+  title: z.string().min(1).max(500).trim(),
+  description: z.string().min(1).max(5000).trim(),
+  severityScore: z.number().min(0).max(10).optional(),
+  frequencyCount: z.number().int().min(0).optional(),
+  roleCoverage: z.number().min(0).max(1).optional(),
+  supportingQuotes: z.array(z.string().max(2000)).max(20).optional(),
+  confidenceScore: z.number().min(0).max(1).optional(),
+  captureSessionId: z.string().optional(),
+});
+
+export const PatchFindingSchema = z.object({
+  title: z.string().min(1).max(500).trim().optional(),
+  description: z.string().min(1).max(5000).trim().optional(),
+  severityScore: z.number().min(0).max(10).optional(),
+  frequencyCount: z.number().int().min(0).optional(),
+  roleCoverage: z.number().min(0).max(1).optional(),
+  supportingQuotes: z.array(z.string().max(2000)).max(20).optional(),
+  confidenceScore: z.number().min(0).max(1).optional(),
+  isVerified: z.boolean().optional(),
+  isFlagged: z.boolean().optional(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Workshop shares
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CreateShareSchema = z.object({
+  email: email,
+});
+
+export const DeleteShareSchema = z.object({
+  shareId: cuid,
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Platform admin impersonation
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const EnterOrgSchema = z.object({
+  organizationId: cuid,
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Commercial password
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const SetCommercialPasswordSchema = z.object({
+  password: z.string().min(10, 'Password must be at least 10 characters').max(128),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MFA verify (second factor of login)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const MfaVerifySchema = z.object({
+  mfaToken: z.string().min(1),
+  totpCode: z.string().regex(/^\d{6}$/, 'TOTP code must be 6 digits'),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

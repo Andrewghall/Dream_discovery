@@ -2,12 +2,44 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionWithDB, createSessionToken } from '@/lib/auth/session';
 import { verifyExecSessionWithDB } from '@/lib/auth/exec-session';
 import * as jose from 'jose';
+import { apiLimiter } from '@/lib/rate-limit';
 
 // Node.js runtime so Prisma DB session checks work in middleware
 export const runtime = 'nodejs';
 
 const TENANT_ROLES = ['TENANT_ADMIN', 'TENANT_USER'];
 const REFRESH_WINDOW_MS = 2 * 60 * 60 * 1000; // Refresh if within 2 hours of expiry
+
+// ── Admin API rate limiting ────────────────────────────────────────────────────
+// Applied globally to all /api/admin/* requests before route handlers are reached.
+// Limit: 120 requests per minute per IP (generous for normal use; blocks scripted abuse).
+// ISO 27001 A.8.6 / SOC 2 CC6.6 — capacity management and access protection.
+
+const ADMIN_API_RATE_LIMIT = 120; // requests per minute
+
+function getClientIp(request: NextRequest): string {
+  return (
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    request.headers.get('x-real-ip') ||
+    '127.0.0.1'
+  );
+}
+
+async function checkAdminApiRateLimit(request: NextRequest): Promise<NextResponse | null> {
+  if (!request.nextUrl.pathname.startsWith('/api/admin/')) return null;
+  const ip = getClientIp(request);
+  const result = await apiLimiter.check(ADMIN_API_RATE_LIMIT, `admin-api:${ip}`).catch(() => null);
+  if (result && !result.success) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please slow down.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': Math.ceil((result.reset - Date.now()) / 1000).toString() },
+      }
+    );
+  }
+  return null;
+}
 
 async function getSessionFromRequest(request: NextRequest) {
   const cookie = request.cookies.get('session');
@@ -44,6 +76,10 @@ export async function middleware(request: NextRequest) {
   if (pathname === '/login' || pathname === '/tenant/login' || pathname.startsWith('/api/auth')) {
     return NextResponse.next();
   }
+
+  // Global admin API rate limit - checked before any auth or business logic
+  const rateLimitResponse = await checkAdminApiRateLimit(request);
+  if (rateLimitResponse) return rateLimitResponse;
 
   const isAdminPath = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
   const isTenantPath = pathname.startsWith('/tenant') && pathname !== '/tenant/login';

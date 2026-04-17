@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/prisma';
+import { PatchExecLicenceSchema, zodError } from '@/lib/validation/schemas';
 
 export async function PATCH(
   request: NextRequest,
@@ -12,11 +13,10 @@ export async function PATCH(
   }
 
   const { id: orgId, licenceId } = await params;
-  const { action } = await request.json() as { action?: string };
-
-  if (action !== 'revoke' && action !== 'reactivate') {
-    return NextResponse.json({ error: 'action must be "revoke" or "reactivate"' }, { status: 400 });
-  }
+  const rawBody = await request.json().catch(() => null);
+  const parsed = PatchExecLicenceSchema.safeParse(rawBody);
+  if (!parsed.success) return zodError(parsed.error);
+  const { action } = parsed.data;
 
   const licence = await prisma.execLicence.findFirst({
     where: { id: licenceId, organizationId: orgId },

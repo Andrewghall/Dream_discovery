@@ -6,21 +6,32 @@ import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import Image from 'next/image';
+
+type LoginStep = 'credentials' | 'totp';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [step, setStep] = useState<LoginStep>('credentials');
+
+  // Credentials step
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // TOTP step
+  const [mfaToken, setMfaToken] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+
+  // Shared
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
   const [orgPrimaryColor, setOrgPrimaryColor] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
@@ -35,18 +46,16 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // Show welcome message using the name from the response
-        const name = data.user?.name || data.user?.email?.split('@')[0] || 'back';
-        setWelcomeMessage(`Welcome ${name} to DREAM`);
-        setOrgLogoUrl(data.user?.organization?.logoUrl || null);
-        setOrgPrimaryColor(data.user?.organization?.primaryColor || null);
-        setLoading(false);
+        if (data.mfaRequired) {
+          // Password accepted but TOTP challenge required
+          setMfaToken(data.mfaToken || '');
+          setStep('totp');
+          setLoading(false);
+          return;
+        }
 
-        // Redirect after 1.5 seconds
-        setTimeout(() => {
-          router.push(data.redirectTo || '/admin');
-          router.refresh();
-        }, 1500);
+        // Full login success - no MFA required
+        showWelcome(data);
       } else {
         setError(data.error || 'Invalid credentials');
         setLoading(false);
@@ -57,7 +66,47 @@ export default function LoginPage() {
     }
   };
 
-  // Show welcome screen while redirecting
+  const handleTotpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/mfa-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mfaToken, totpCode }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showWelcome(data);
+      } else {
+        setError(data.error || 'Invalid authentication code.');
+        setLoading(false);
+      }
+    } catch {
+      setError('An error occurred. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  const showWelcome = (data: Record<string, unknown>) => {
+    const user = data.user as Record<string, unknown> | undefined;
+    const org = user?.organization as Record<string, unknown> | undefined;
+    const name = (user?.name as string) || (user?.email as string | undefined)?.split('@')[0] || 'back';
+    setWelcomeMessage(`Welcome ${name} to DREAM`);
+    setOrgLogoUrl((org?.logoUrl as string) || null);
+    setOrgPrimaryColor((org?.primaryColor as string) || null);
+    setLoading(false);
+    setTimeout(() => {
+      router.push((data.redirectTo as string) || '/admin');
+      router.refresh();
+    }, 1500);
+  };
+
+  // Welcome screen
   const accentHex = orgPrimaryColor?.replace('#', '') || '5cf28e';
   const accentR = parseInt(accentHex.slice(0, 2), 16) || 92;
   const accentG = parseInt(accentHex.slice(2, 4), 16) || 242;
@@ -86,6 +135,9 @@ export default function LoginPage() {
     );
   }
 
+  const cardClasses = "bg-white/[0.03] border border-white/10 rounded-2xl p-8 backdrop-blur-sm";
+  const inputClasses = "w-full bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 focus:border-[#5cf28e]/50 focus:ring-[#5cf28e]/20";
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0d0d0d] relative overflow-hidden">
       <div
@@ -97,76 +149,136 @@ export default function LoginPage() {
       />
 
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-8 backdrop-blur-sm">
+        <div className={cardClasses}>
           <div className="text-center mb-8">
             <div className="mb-4">
               <Image src="/ethenta-logo.png" alt="Ethenta" width={64} height={64} className="mx-auto" />
             </div>
             <h1 className="text-3xl font-bold text-white mb-2">DREAM Discovery</h1>
-            <p className="text-white/50 text-sm">Sign in to your account</p>
+            {step === 'credentials' && (
+              <p className="text-white/50 text-sm">Sign in to your account</p>
+            )}
+            {step === 'totp' && (
+              <p className="text-white/50 text-sm">Two-factor authentication</p>
+            )}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-white/80">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                required
-                className="w-full bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 focus:border-[#5cf28e]/50 focus:ring-[#5cf28e]/20"
-                autoComplete="email"
-                disabled={loading}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-white/80">Password</Label>
-                <Link href="/forgot-password" className="text-sm text-[#5cf28e]/70 hover:text-[#5cf28e] transition-colors">
-                  Forgot password?
-                </Link>
-              </div>
-              <div className="relative">
+          {step === 'credentials' && (
+            <form onSubmit={handleCredentialsSubmit} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-white/80">Email</Label>
                 <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
                   required
-                  className="w-full pr-10 bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 focus:border-[#5cf28e]/50 focus:ring-[#5cf28e]/20"
-                  autoComplete="current-password"
+                  className={inputClasses}
+                  autoComplete="email"
                   disabled={loading}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
               </div>
-            </div>
 
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
-                {error}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" className="text-white/80">Password</Label>
+                  <Link href="/forgot-password" className="text-sm text-[#5cf28e]/70 hover:text-[#5cf28e] transition-colors">
+                    Forgot password?
+                  </Link>
+                </div>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                    className={`${inputClasses} pr-10`}
+                    autoComplete="current-password"
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
-            )}
 
-            <LoadingButton
-              type="submit"
-              className="w-full bg-[#5cf28e] hover:bg-[#50c878] text-[#0d0d0d] py-6 text-lg font-semibold transition-colors"
-              loading={loading}
-              loadingText="Signing in..."
-            >
-              Sign In
-            </LoadingButton>
-          </form>
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+
+              <LoadingButton
+                type="submit"
+                className="w-full bg-[#5cf28e] hover:bg-[#50c878] text-[#0d0d0d] py-6 text-lg font-semibold transition-colors"
+                loading={loading}
+                loadingText="Signing in..."
+              >
+                Sign In
+              </LoadingButton>
+            </form>
+          )}
+
+          {step === 'totp' && (
+            <form onSubmit={handleTotpSubmit} className="space-y-6">
+              <div className="flex items-center gap-3 bg-[#5cf28e]/5 border border-[#5cf28e]/20 rounded-lg px-4 py-3">
+                <ShieldCheck className="h-5 w-5 text-[#5cf28e] shrink-0" />
+                <p className="text-white/70 text-sm">
+                  Open your authenticator app and enter the 6-digit code.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="totpCode" className="text-white/80">Authentication code</Label>
+                <Input
+                  id="totpCode"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  required
+                  className={`${inputClasses} text-center text-2xl tracking-[0.5em] font-mono`}
+                  autoComplete="one-time-code"
+                  autoFocus
+                  disabled={loading}
+                />
+              </div>
+
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+
+              <LoadingButton
+                type="submit"
+                className="w-full bg-[#5cf28e] hover:bg-[#50c878] text-[#0d0d0d] py-6 text-lg font-semibold transition-colors"
+                loading={loading}
+                loadingText="Verifying..."
+              >
+                Verify
+              </LoadingButton>
+
+              <button
+                type="button"
+                onClick={() => { setStep('credentials'); setError(''); setTotpCode(''); }}
+                className="w-full text-sm text-white/30 hover:text-white/60 transition-colors"
+              >
+                Back to sign in
+              </button>
+            </form>
+          )}
 
           <div className="mt-8 text-center text-sm text-white/30 flex items-center justify-center gap-4">
             <p>&copy; {new Date().getFullYear()} Ethenta Ltd.</p>
