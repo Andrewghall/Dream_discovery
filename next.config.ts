@@ -16,9 +16,13 @@ const nextConfig: NextConfig = {
     // Content-Security-Policy:
     //   - script-src includes 'unsafe-inline' because Next.js inlines bootstrap scripts
     //     at build time. Tighten to nonce-based CSP once nonce middleware is wired in.
-    //   - connect-src includes Supabase (storage uploads from browser) and wss:// for
-    //     Supabase Realtime channels. Railway CaptureAPI is server-to-server; not needed here.
+    //   - connect-src includes Supabase (storage/realtime) AND Railway CaptureAPI.
+    //     The live session page opens a WebSocket directly from the browser to CaptureAPI
+    //     for real-time PCM audio streaming — it is NOT server-to-server.
     //   - media-src includes blob: for the TTS audio blob URLs created client-side.
+    const captureApiUrl = process.env.NEXT_PUBLIC_CAPTUREAPI_URL || 'https://captureapi-production.up.railway.app';
+    const captureApiWss = captureApiUrl.replace(/^https?:\/\//, 'wss://');
+    const captureApiHttps = captureApiUrl.replace(/^https?:\/\//, 'https://');
     const csp = [
       "default-src 'self'",
       // 'unsafe-eval' is NOT included — Next.js production builds don't require it.
@@ -27,7 +31,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.supabase.co",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+      `connect-src 'self' https://*.supabase.co wss://*.supabase.co ${captureApiHttps} ${captureApiWss}`,
       "media-src 'self' blob:",
       "worker-src 'self' blob:",
       "frame-ancestors 'none'",
