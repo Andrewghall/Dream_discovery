@@ -70,8 +70,10 @@ Return:
       reason: typeof parsed.reason === 'string' ? parsed.reason : 'no reason returned',
     };
   } catch (err) {
-    // Fail open — never block a commit due to gate error
-    console.warn('[SemanticGate] Error — failing open:', err instanceof Error ? err.message : err);
-    return { selfContained: true, reason: 'gate error — failing open' };
+    // Fail closed — an unknown state must not create a node.
+    // The fragment will be held in the pending-merge cache and reconsidered
+    // when the next statement from the same speaker arrives.
+    console.warn('[SemanticGate] Error — failing closed:', err instanceof Error ? err.message : err);
+    return { selfContained: false, reason: 'gate error — failing closed' };
   }
 }

@@ -19,6 +19,36 @@ import { isStatementSelfContained } from '@/lib/live/semantic-gate';
 // Without this, Vercel kills the background work before the journey agent completes.
 export const maxDuration = 60;
 
+// ── Pending-merge cache ───────────────────────────────────────────────────────
+// When Stage 2 rejects a fragment (not self-contained), it is held here rather
+// than discarded. The next statement from the same speaker is prepended with the
+// held fragment and re-evaluated as a combined unit. If no continuation arrives
+// within MERGE_HOLD_MS the fragment is silently expired.
+const MERGE_HOLD_MS = 15_000;
+type PendingFragment = { workshopId: string; speakerId: string | null; text: string; heldAt: number };
+const pendingMergeCache = new Map<string, PendingFragment>();
+
+function pendingMergeKey(workshopId: string, speakerId: string | null) {
+  return `${workshopId}::${speakerId ?? 'unknown'}`;
+}
+
+function holdFragment(workshopId: string, speakerId: string | null, text: string) {
+  const key = pendingMergeKey(workshopId, speakerId);
+  pendingMergeCache.set(key, { workshopId, speakerId, text, heldAt: Date.now() });
+}
+
+function consumeHeldFragment(workshopId: string, speakerId: string | null): string | null {
+  const key = pendingMergeKey(workshopId, speakerId);
+  const held = pendingMergeCache.get(key);
+  if (!held) return null;
+  pendingMergeCache.delete(key);
+  if (Date.now() - held.heldAt > MERGE_HOLD_MS) {
+    console.log(`[SemanticGate] Expired held fragment for ${speakerId}: "${held.text.substring(0, 60)}"`);
+    return null;
+  }
+  return held.text;
+}
+
 type IngestTranscriptChunkBody = {
   speakerId: string | null;
   startTime: number;
@@ -140,17 +170,29 @@ async function processCompleteUtterance(
   }
 
   // ── Semantic gate — reject dependent fragments before committing ─
-  // Use the last 3 transcript chunks as context for the evaluation.
+  // If a prior fragment for this speaker is held in the pending-merge cache,
+  // prepend it so the gate evaluates the combined unit.
+  const heldFragment = consumeHeldFragment(workshopId, bodySpeakerId);
+  const textForGate = heldFragment ? `${heldFragment} ${text}` : text;
+
   const gateContext = recentTranscripts.slice(0, 3).reverse().map((t) => ({
     speaker: t.speakerId,
     text: t.text,
   }));
-  const gate = await isStatementSelfContained(text, gateContext);
+  const gate = await isStatementSelfContained(textForGate, gateContext);
+
   if (!gate.selfContained) {
-    console.log(`[SemanticGate]${trace} Rejected fragment: "${text.substring(0, 80)}" — ${gate.reason}`);
-    return { rejected: true, reason: gate.reason };
+    // Hold the combined text — do not discard, wait for continuation.
+    // Only expires after MERGE_HOLD_MS with no follow-up from this speaker.
+    holdFragment(workshopId, bodySpeakerId, textForGate);
+    console.log(`[SemanticGate]${trace} Held for merge: "${textForGate.substring(0, 80)}" — ${gate.reason}`);
+    return { held: true, reason: gate.reason };
   }
-  console.log(`[SemanticGate]${trace} Accepted: "${text.substring(0, 60)}"`)
+
+  console.log(`[SemanticGate]${trace} Accepted: "${textForGate.substring(0, 60)}"`);
+
+  // If a held fragment was merged in, use the combined text as the node text.
+  const committedText = heldFragment ? textForGate : text;
 
   // ── Create merged transcript chunk ────────────────────────
   const transcriptChunk = await prisma.transcriptChunk.create({
@@ -159,14 +201,15 @@ async function processCompleteUtterance(
       speakerId: utterance.speakerId || null,
       startTimeMs: utterance.startTimeMs,
       endTimeMs: utterance.endTimeMs,
-      text,
+      text: committedText,
       confidence: utterance.confidence,
       source: src,
       metadata: (bodySlmMetadata || utterance.rawText
         ? {
             ...(utterance.rawText && { rawText: utterance.rawText }),
             ...(bodySlmMetadata && { slmMetadata: bodySlmMetadata }),
-            buffered: true, // Mark as assembled from multiple fragments
+            buffered: true,
+            ...(heldFragment && { mergedFragment: true }),
           }
         : undefined) as any,
     },
@@ -177,7 +220,7 @@ async function processCompleteUtterance(
     data: {
       workshopId,
       transcriptChunkId: transcriptChunk.id,
-      rawText: text,
+      rawText: committedText,
       source: 'SPEECH',
       speakerId: utterance.speakerId || null,
     },
