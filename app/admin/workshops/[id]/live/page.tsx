@@ -2965,26 +2965,29 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
           const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : 'speaker_unknown';
           const now = Date.now();
-          const interp = interpretLiveUtterance(text);
-
           // ── Accumulate isFinal chunk into per-speaker buffer ──────────────
           // Do NOT commit yet. The node is created only when the speaker stops.
           const buf = utteranceBufferRef.current.get(speakerId) ?? {
             chunks: [],
             startTime: now,
-            domain: interp.domain,
+            domain: 'General',
           };
           buf.chunks.push(text);
-          buf.domain = interp.domain; // update domain as more context arrives
           utteranceBufferRef.current.set(speakerId, buf);
 
-          // Update the gravitating pending dot (visual only)
+          // Reinterpret the FULL accumulated text so the pending dot reflects
+          // the evolving whole thought, not just the last sentence fragment.
+          const fullSoFar = buf.chunks.join(' ').trim();
+          const interp = interpretLiveUtterance(fullSoFar);
+          buf.domain = interp.domain;
+
+          // Update the gravitating pending dot (visual only — never stored)
           setPendingNodes((prev) => ({
             ...prev,
             [speakerId]: { id: speakerId, domain: interp.domain, startedAtMs: buf.startTime },
           }));
 
-          console.log('[DREAM-DIAG] Accumulated chunk for', speakerId, '— buffer size:', buf.chunks.length, text.substring(0, 60));
+          console.log('[DREAM-DIAG] Accumulated chunk for', speakerId, '— buffer size:', buf.chunks.length, '| evolving domain:', interp.domain);
 
           // ── Commit function — called on silence or speechFinal ────────────
           const commitUtterance = async (sid: string) => {
@@ -3075,20 +3078,22 @@ export default function WorkshopLivePage({ params }: PageProps) {
             }
           };
 
-          // ── Reset silence watchdog for this speaker ───────────────────────
+          // ── Reset thought-completion silence watchdog ─────────────────────
+          // The timer fires only after thoughtCommitSilenceMs of uninterrupted
+          // silence. Any new isFinal chunk (including after a speechFinal pause)
+          // resets it, so a speaker continuing their thought stays unresolved.
+          // speechFinal confirms a pause occurred but does NOT trigger immediate
+          // commit — it is a breath boundary, not a thought boundary.
           const existingTimer = silenceTimersRef.current.get(speakerId);
           if (existingTimer != null) clearTimeout(existingTimer);
           const silenceTimer = setTimeout(
             () => { void commitUtterance(speakerId); },
-            LIVE_CAPTURE_CONFIG.silenceCommitThresholdMs,
+            LIVE_CAPTURE_CONFIG.thoughtCommitSilenceMs,
           );
           silenceTimersRef.current.set(speakerId, silenceTimer);
 
-          // ── speechFinal = speaker explicitly stopped ───────────────────────
-          // Override the silence timer — commit immediately.
           if (msg.speechFinal) {
-            console.log('[DREAM-DIAG] speechFinal received for', speakerId, '— committing immediately');
-            void commitUtterance(speakerId);
+            console.log('[DREAM-DIAG] speechFinal (breath pause) for', speakerId, '— silence window still running, not committing');
           }
         },
         onError: (err) => {

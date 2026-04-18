@@ -659,15 +659,17 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
           const radial = R * 0.5; // mid-ring — confidence unknown during accumulation
           const px = cx + radial * Math.cos(theta);
           const py = cy - radial * Math.sin(theta);
+          const transStyle = { transition: 'cx 0.6s ease, cy 0.6s ease' } as React.CSSProperties;
           return (
-            <g key={`pending:${pn.id}`} style={{ transition: 'transform 0.4s ease' }}>
-              {/* Outer sonar ring */}
+            <g key={`pending:${pn.id}`}>
+              {/* Outer sonar ring — drifts with the thought */}
               <circle
                 cx={px} cy={py} r={18}
                 fill="none"
                 stroke="rgba(255,255,255,0.55)"
                 strokeWidth={1.5}
                 className="pending-ring-outer"
+                style={transStyle}
               />
               {/* Inner pulsing ring */}
               <circle
@@ -676,10 +678,11 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
                 stroke="rgba(255,255,255,0.9)"
                 strokeWidth={2}
                 className="pending-ring-inner"
+                style={transStyle}
               />
               {/* Static centre dot */}
-              <circle cx={px} cy={py} r={3} fill="rgba(255,255,255,0.95)" />
-              <title>Accumulating speech…</title>
+              <circle cx={px} cy={py} r={3} fill="rgba(255,255,255,0.95)" style={transStyle} />
+              <title>Resolving thought…</title>
             </g>
           );
         })}
