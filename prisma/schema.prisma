@@ -195,6 +195,7 @@ model Workshop {
   sessionVersions   LiveSessionVersion[]
   eventOutbox       WorkshopEventOutbox[]
   transcriptChunks  TranscriptChunk[]
+  thoughtWindows    ThoughtWindow[]
   participants      WorkshopParticipant[]
   scratchpad        WorkshopScratchpad?
   shares            WorkshopShare[]
@@ -230,51 +231,106 @@ model WorkshopShare {
 }
 
 model TranscriptChunk {
-  id          String           @id @default(cuid())
-  workshopId  String
-  speakerId   String?
-  startTimeMs BigInt
-  endTimeMs   BigInt
-  text        String
-  confidence  Float?
-  source      TranscriptSource
-  metadata    Json?
-  createdAt   DateTime         @default(now())
-  dataPoint   DataPoint?
-  workshop    Workshop         @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  id             String           @id @default(cuid())
+  workshopId     String
+  speakerId      String?
+  startTimeMs    BigInt
+  endTimeMs      BigInt
+  text           String
+  confidence     Float?
+  source         TranscriptSource
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+  // Lineage: set when this spoken record is assigned to a resolved thought window
+  thoughtWindowId String?         @map("thought_window_id")
+  dataPoint      DataPoint?
+  workshop       Workshop         @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  thoughtWindow  ThoughtWindow?   @relation(fields: [thoughtWindowId], references: [id])
 
   @@unique([workshopId, startTimeMs, text], name: "workshopId_startTimeMs_text")
   @@index([workshopId])
   @@index([workshopId, startTimeMs])
   @@index([workshopId, createdAt])
   @@index([workshopId, speakerId, startTimeMs])
+  @@index([thoughtWindowId])
   @@map("transcript_chunks")
 }
 
+// ThoughtWindow — server-side accumulation record.
+// Opens when the first spoken record for a speaker arrives.
+// Resolves when thought_completeness reaches 'complete' and the continuation
+// window expires. A resolved window produces exactly one DataPoint.
+// Expired windows retain their spoken records for audit but produce no DataPoint.
+model ThoughtWindow {
+  id                  String            @id @default(cuid())
+  workshopId          String
+  speakerId           String?
+  state               ThoughtWindowState @default(OPEN)
+  fullText            String            // live concatenation of all spoken records
+  openedAtMs          BigInt
+  lastActivityAtMs    BigInt
+  closedAtMs          BigInt?
+  pausedAtMs          BigInt?           // set when outgoing speaker's window is paused
+  spokenRecordCount   Int               @default(0)
+  resolvedText        String?           // final text passed to dataPoint creation
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  workshop            Workshop          @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  spokenRecords       TranscriptChunk[]
+  dataPoint           DataPoint?
+
+  @@index([workshopId])
+  @@index([workshopId, speakerId, state])
+  @@index([workshopId, state])
+  @@map("thought_windows")
+}
+
+enum ThoughtWindowState {
+  OPEN
+  PAUSED
+  RESOLVING
+  RESOLVED
+  EXPIRED
+}
+
 model DataPoint {
-  id                String                   @id @default(cuid())
-  workshopId        String
-  transcriptChunkId String?                  @unique
-  rawText           String
-  source            DataPointSource
-  speakerId         String?
-  createdAt         DateTime                 @default(now())
-  sessionId         String?
-  participantId     String?
-  questionKey       String?
-  classification    DataPointClassification?
-  annotation        DataPointAnnotation?
-  agenticAnalysis   AgenticAnalysis?
-  participant       WorkshopParticipant?     @relation(fields: [participantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_participantid_fkey")
-  session           ConversationSession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_sessionid_fkey")
-  transcriptChunk   TranscriptChunk?         @relation(fields: [transcriptChunkId], references: [id])
-  workshop          Workshop                 @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  id                  String                   @id @default(cuid())
+  workshopId          String
+  // Lineage — primary: the thought window that resolved into this record
+  thoughtWindowId     String?                  @unique @map("thought_window_id")
+  // Lineage — secondary: ordered IDs of all spoken records that contributed
+  // Kept as a JSON array rather than a join table to avoid query overhead on reads.
+  // The ThoughtWindow.spokenRecords relation is the authoritative join.
+  spokenRecordIds     String[]                 @map("spoken_record_ids")
+  // Legacy 1:1 link — retained for backward compat with existing records only.
+  // New records must not use this field; use thoughtWindowId instead.
+  transcriptChunkId   String?                  @unique @map("transcript_chunk_id")
+  rawText             String
+  source              DataPointSource
+  speakerId           String?
+  startTimeMs         BigInt?                  @map("start_time_ms")
+  endTimeMs           BigInt?                  @map("end_time_ms")
+  spanMs              Int?                     @map("span_ms")
+  spokenRecordCount   Int?                     @default(1) @map("spoken_record_count")
+  createdAt           DateTime                 @default(now())
+  sessionId           String?
+  participantId       String?
+  questionKey         String?
+  classification      DataPointClassification?
+  annotation          DataPointAnnotation?
+  agenticAnalysis     AgenticAnalysis?
+  participant         WorkshopParticipant?     @relation(fields: [participantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_participantid_fkey")
+  session             ConversationSession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_sessionid_fkey")
+  transcriptChunk     TranscriptChunk?         @relation(fields: [transcriptChunkId], references: [id])
+  thoughtWindow       ThoughtWindow?           @relation(fields: [thoughtWindowId], references: [id])
+  workshop            Workshop                 @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, questionKey], map: "data_points_sessionid_questionkey_key")
   @@index([workshopId])
   @@index([sessionId])
   @@index([participantId])
   @@index([workshopId, createdAt])
+  @@index([thoughtWindowId])
   @@map("data_points")
 }
 

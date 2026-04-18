@@ -3094,6 +3094,18 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   '| validity:', attempt.validity?.validity_score?.toFixed(3));
 
                 try {
+                  // Build spoken records from the individual chunks that composed
+                  // this thought — each chunk is one Deepgram isFinal result.
+                  // chunk_times are arrival timestamps; we use them as both start
+                  // and end time (Deepgram final results carry no duration).
+                  const spokenRecords = attempt.chunks.map((chunkText, i) => ({
+                    text: chunkText,
+                    startTimeMs: attempt.chunk_times[i] ?? attempt.start_time_ms,
+                    endTimeMs: attempt.chunk_times[i + 1] ?? commitNow,
+                    confidence: slmMeta?.confidence ?? null,
+                    source: 'deepgram' as const,
+                  }));
+
                   const r = await fetch(ingestUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -3107,8 +3119,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       source: 'deepgram' as const,
                       dialoguePhase: currentPhase,
                       flush: true,
-                      // clientDomainHint: deterministic domain result sent to server so the
-                      // classification agent starts from a strong prior rather than cold.
+                      // Individual spoken records — one per Deepgram isFinal result.
+                      // The server creates one TranscriptChunk per record and links
+                      // them all to one ThoughtWindow before creating the DataPoint.
+                      spokenRecords,
                       clientDomainHint: domainResult ? {
                         primaryDomain: primaryLiveDomain,
                         secondaryDomain: domainResult.secondary_domain

@@ -125,15 +125,17 @@ export class ThoughtStateMachine {
 
   private startNew(text: string): void {
     this.holdCycles = 0;
+    const now = Date.now();
     this.current = {
       id: nextAttemptId(),
       version: 1,
       speaker_id: this.speakerId,
       chunks: [text],
+      chunk_times: [now],
       full_text: text,
       merged_from: [],
-      start_time_ms: Date.now(),
-      last_chunk_time_ms: Date.now(),
+      start_time_ms: now,
+      last_chunk_time_ms: now,
       state: 'capturing',
       features: null,
       validity: null,
@@ -145,9 +147,11 @@ export class ThoughtStateMachine {
 
   private appendChunk(text: string): void {
     if (!this.current) return;
+    const now = Date.now();
     this.current.chunks.push(text);
+    this.current.chunk_times.push(now);
     this.current.full_text = this.current.chunks.join(' ');
-    this.current.last_chunk_time_ms = Date.now();
+    this.current.last_chunk_time_ms = now;
     this.current.version++;
     this.current.state = 'capturing';
   }

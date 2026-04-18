@@ -16,6 +16,8 @@ import { pushUtterance } from '@/lib/cognition/cognitive-state';
 import { extractFeatures } from '@/lib/ethentaflow/thought-feature-extractor';
 import { runCommitGuard, logGuardResult } from '@/lib/ethentaflow/thought-guard';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
+import { commitThoughtWindow } from '@/lib/ethentaflow/thought-window-manager';
+import type { TranscriptSource } from '@prisma/client';
 // Journey agent + cognitive analysis run inside after() — up to 40s per cycle.
 // Without this, Vercel kills the background work before the journey agent completes.
 export const maxDuration = 60;
@@ -27,18 +29,30 @@ type ClientDomainHint = {
   decisionPath: string;
 };
 
+type IncomingSpokenRecord = {
+  text: string;
+  startTimeMs: number;
+  endTimeMs: number;
+  confidence: number | null;
+  source: 'zoom' | 'deepgram' | 'whisper';
+};
+
 type IngestTranscriptChunkBody = {
   speakerId: string | null;
   startTime: number;
   endTime: number;
-  text: string; // Clean text from SLM
+  text: string; // Resolved thought text (full accumulated text from ThoughtStateMachine)
   rawText?: string; // Original from transcription service
   confidence: number | null;
   source: 'zoom' | 'deepgram' | 'whisper';
   dialoguePhase?: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null;
-  flush?: boolean; // When true, force-flush the utterance buffer (e.g. capture stopped)
+  flush?: boolean;
+  // Individual spoken records — one per Deepgram isFinal result.
+  // When present, the server creates one TranscriptChunk per record and links
+  // them through a ThoughtWindow before creating the DataPoint.
+  // When absent (legacy / fallback path), a single TranscriptChunk is created.
+  spokenRecords?: IncomingSpokenRecord[];
   // Deterministic domain result from EthentaFlow client scorer.
-  // Used as a strong prior for the server-side classification agent.
   clientDomainHint?: ClientDomainHint | null;
   // SLM metadata
   slmMetadata?: {
@@ -103,116 +117,120 @@ function applyServerGuard(
 }
 
 // ══════════════════════════════════════════════════════════════
-// processCompleteUtterance — creates DataPoint + agentic analysis
-// for a COMPLETE, buffered utterance (not a raw fragment)
+// processResolvedThought
+//
+// Receives a fully resolved thought (from ThoughtStateMachine commit)
+// and runs the three-layer write sequence:
+//   1. TranscriptChunks  — spoken records, one per Deepgram isFinal result
+//   2. ThoughtWindow     — aggregation record linking all spoken records
+//   3. DataPoint         — resolved meaning artifact; created only after window
+//
+// DREAM and all downstream intelligence reason exclusively over DataPoints.
+// TranscriptChunks are raw audit records and are never passed to DREAM.
 // ══════════════════════════════════════════════════════════════
-async function processCompleteUtterance(
+async function processResolvedThought(
   workshopId: string,
   utterance: FlushedUtterance,
   bodyDialoguePhase: string | null | undefined,
   bodySpeakerId: string | null,
+  incomingSpokenRecords: IncomingSpokenRecord[],
   bodySlmMetadata?: Record<string, unknown>,
   traceId?: string,
   clientDomainHint?: ClientDomainHint | null,
 ) {
   const trace = traceId ? `[trace:${traceId}]` : '';
   const text = utterance.text;
-  const src = utterance.source === 'WHISPER' ? 'WHISPER' : utterance.source === 'ZOOM' ? 'ZOOM' : 'DEEPGRAM';
+  const src: TranscriptSource = utterance.source === 'WHISPER' ? 'WHISPER'
+    : utterance.source === 'ZOOM' ? 'ZOOM' : 'DEEPGRAM';
 
-  // ── Fetch recent transcripts for context ──────────────────
-  const recentTranscripts = await prisma.transcriptChunk.findMany({
-    where: { workshopId },
-    orderBy: { createdAt: 'desc' },
-    take: 20,
-    select: {
-      id: true,
-      text: true,
-      speakerId: true,
-      createdAt: true,
-    },
-  });
-
-  // ── Dedup check ───────────────────────────────────────────
-  const existing = await prisma.transcriptChunk.findFirst({
+  // ── Dedup check — guard against double-commit of the same resolved thought ─
+  const existing = await prisma.thoughtWindow.findFirst({
     where: {
       workshopId,
-      speakerId: utterance.speakerId || null,
-      startTimeMs: utterance.startTimeMs,
-      endTimeMs: utterance.endTimeMs,
-      text,
-      source: src,
+      speakerId: bodySpeakerId ?? null,
+      resolvedText: text,
+      state: 'RESOLVED',
+      // Must have resolved within the last 30 seconds to be a true dupe
+      closedAtMs: { gte: BigInt(Date.now() - 30_000) },
     },
-    include: {
-      dataPoint: {
-        include: {
-          classification: true,
-          annotation: true,
-        },
-      },
-    },
+    include: { dataPoint: true },
   });
 
   if (existing?.dataPoint) {
-    // Already processed — just ensure annotation exists
     const dataPointId = existing.dataPoint.id;
     const requestedPhase = safeDialoguePhase(bodyDialoguePhase);
-    if (requestedPhase && !existing.dataPoint.annotation) {
-      try {
-        await prisma.dataPointAnnotation.create({
-          data: { dataPointId, dialoguePhase: requestedPhase },
-        });
-      } catch {
-        // ignore race
-      }
+    if (requestedPhase) {
+      await prisma.dataPointAnnotation.upsert({
+        where: { dataPointId },
+        create: { dataPointId, dialoguePhase: requestedPhase },
+        update: {},
+      }).catch(() => null);
     }
     return { deduped: true, dataPointId };
   }
 
-  // ── Create transcript chunk ───────────────────────────────
-  // Utterances reaching here have passed the server guard in the POST
-  // handler. No further validity check needed at this point.
-  const transcriptChunk = await prisma.transcriptChunk.create({
-    data: {
-      workshopId,
-      speakerId: utterance.speakerId || null,
-      startTimeMs: utterance.startTimeMs,
-      endTimeMs: utterance.endTimeMs,
-      text,
-      confidence: utterance.confidence,
-      source: src,
-      metadata: (bodySlmMetadata || utterance.rawText || clientDomainHint
-        ? {
-            ...(utterance.rawText && { rawText: utterance.rawText }),
-            ...(bodySlmMetadata && { slmMetadata: bodySlmMetadata }),
-            ...(clientDomainHint && { ethentaflowDomain: clientDomainHint }),
-            buffered: true,
-          }
-        : undefined) as any,
-    },
-  });
+  // ── Map incoming spoken records to the format ThoughtWindowManager expects ─
+  const spokenRecordsForWindow = incomingSpokenRecords.map(r => ({
+    text: r.text,
+    startTimeMs: r.startTimeMs,
+    endTimeMs: r.endTimeMs,
+    confidence: r.confidence,
+    source: src,
+    metadata: {
+      ...(bodySlmMetadata && { slmMetadata: bodySlmMetadata }),
+      ...(clientDomainHint && { ethentaflowDomain: clientDomainHint }),
+    } as Record<string, unknown>,
+  }));
 
-  // ── Create DataPoint ──────────────────────────────────────
+  // ── STEP 1 + 2: Create spoken records → thought window ───────────────────
+  // commitThoughtWindow writes all TranscriptChunks and the ThoughtWindow.
+  // It returns the window result only if the guard passes.
+  const windowOutcome = await commitThoughtWindow(
+    workshopId,
+    bodySpeakerId,
+    text,
+    spokenRecordsForWindow,
+    bodyDialoguePhase,
+    bodySlmMetadata,
+    clientDomainHint as Record<string, unknown> | null,
+  );
+
+  if (windowOutcome.status === 'blocked') {
+    console.log(`[ThoughtWindow${trace}] Blocked by guard:`, windowOutcome.reason);
+    return { blocked: true, reason: windowOutcome.reason };
+  }
+
+  if (windowOutcome.status === 'error') {
+    throw new Error(`ThoughtWindow creation failed: ${windowOutcome.message}`);
+  }
+
+  const window = windowOutcome.window;
+
+  // ── STEP 3: Create DataPoint — the resolved meaning artifact ─────────────
+  // This is the ONLY record DREAM will ever read. Created after window resolves.
   const dataPoint = await prisma.dataPoint.create({
     data: {
       workshopId,
-      transcriptChunkId: transcriptChunk.id,
+      thoughtWindowId: window.windowId,
+      spokenRecordIds: window.spokenRecordIds,
       rawText: text,
       source: 'SPEECH',
-      speakerId: utterance.speakerId || null,
+      speakerId: bodySpeakerId ?? null,
+      startTimeMs: BigInt(window.startTimeMs),
+      endTimeMs: BigInt(window.endTimeMs),
+      spanMs: window.spanMs,
+      spokenRecordCount: window.spokenRecordCount,
     },
   });
 
   const dialoguePhase = safeDialoguePhase(bodyDialoguePhase ?? utterance.dialoguePhase);
   if (dialoguePhase) {
     await prisma.dataPointAnnotation.create({
-      data: {
-        dataPointId: dataPoint.id,
-        dialoguePhase,
-      },
+      data: { dataPointId: dataPoint.id, dialoguePhase },
     });
   }
 
-  // ── Persist + emit: node appears on hemisphere for all sessions ──
+  // ── Persist + emit: node appears on hemisphere ────────────────────────────
   await persistAndEmit(workshopId, {
     type: 'datapoint.created',
     createdAt: Date.now(),
@@ -224,24 +242,34 @@ async function processCompleteUtterance(
         speakerId: dataPoint.speakerId,
         createdAt: dataPoint.createdAt,
         dialoguePhase,
+        spokenRecordCount: window.spokenRecordCount,
+        spanMs: window.spanMs,
       },
-      transcriptChunk: {
-        id: transcriptChunk.id,
-        speakerId: transcriptChunk.speakerId,
-        startTimeMs: Number(transcriptChunk.startTimeMs),
-        endTimeMs: Number(transcriptChunk.endTimeMs),
-        text: transcriptChunk.text,
-        confidence: transcriptChunk.confidence,
-        source: transcriptChunk.source,
-        createdAt: transcriptChunk.createdAt,
-      },
+      // Lineage metadata — not used for reasoning, only for UI/audit
+      thoughtWindowId: window.windowId,
+      spokenRecordIds: window.spokenRecordIds,
+    },
+  });
+
+  // ── STEP 7: Fetch recent resolved DataPoints for DREAM context ────────────
+  // DREAM never sees raw TranscriptChunks. It reasons over resolved thoughts only.
+  const recentDataPoints = await prisma.dataPoint.findMany({
+    where: { workshopId, thoughtWindowId: { not: null } },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    select: {
+      id: true,
+      rawText: true,
+      speakerId: true,
+      createdAt: true,
+      spokenRecordCount: true,
     },
   });
 
   // ── Derive intent (fast, synchronous) ─────────────────────
-  const contextMessages = recentTranscripts.slice(0, 10).reverse().map((t) => ({
-    speaker: t.speakerId,
-    text: t.text,
+  const contextMessages = recentDataPoints.slice(0, 10).reverse().map((dp) => ({
+    speaker: dp.speakerId,
+    text: dp.rawText,
   }));
 
   const intent = await deriveIntent({ text, recentContext: contextMessages }).catch(() => null);
@@ -643,10 +671,9 @@ async function processCompleteUtterance(
 
   return {
     deduped: false,
-    transcriptChunkId: transcriptChunk.id,
+    thoughtWindowId: window.windowId,
+    spokenRecordIds: window.spokenRecordIds,
     dataPointId: dataPoint.id,
-    // Include full payload so the client can render immediately
-    // (SSE may not deliver across Vercel serverless isolates)
     dataPoint: {
       id: dataPoint.id,
       rawText: dataPoint.rawText,
@@ -654,16 +681,8 @@ async function processCompleteUtterance(
       speakerId: dataPoint.speakerId,
       createdAt: dataPoint.createdAt,
       dialoguePhase,
-    },
-    transcriptChunk: {
-      id: transcriptChunk.id,
-      speakerId: transcriptChunk.speakerId,
-      startTimeMs: Number(transcriptChunk.startTimeMs),
-      endTimeMs: Number(transcriptChunk.endTimeMs),
-      text: transcriptChunk.text,
-      confidence: transcriptChunk.confidence,
-      source: transcriptChunk.source,
-      createdAt: transcriptChunk.createdAt,
+      spokenRecordCount: window.spokenRecordCount,
+      spanMs: window.spanMs,
     },
   };
 }
@@ -766,8 +785,8 @@ export async function POST(
       });
     }
 
-    // ── Each chunk from CaptureAPI SLM is already a complete sentence ──
-    // No buffering needed. Process directly.
+    // ── Resolved thought received — run the three-layer write sequence ───────
+    // transcriptChunks → thoughtWindow → dataPoint
     const utterance: FlushedUtterance = {
       text,
       speakerId: body.speakerId || null,
@@ -780,12 +799,32 @@ export async function POST(
       dialoguePhase: body.dialoguePhase || null,
     };
 
+    // Normalise spoken records from the request body.
+    // New clients send an array of individual Deepgram results.
+    // Legacy/fallback clients send no array — we synthesise one record.
+    const incomingSpokenRecords: IncomingSpokenRecord[] = Array.isArray(body.spokenRecords) && body.spokenRecords.length > 0
+      ? body.spokenRecords.map((r: IncomingSpokenRecord) => ({
+          text: r.text || text,
+          startTimeMs: Number(r.startTimeMs) || startTimeMs,
+          endTimeMs: Number(r.endTimeMs) || endTimeMs,
+          confidence: typeof r.confidence === 'number' ? r.confidence : null,
+          source: body.source,
+        }))
+      : [{
+          text,
+          startTimeMs,
+          endTimeMs,
+          confidence: typeof body.confidence === 'number' ? body.confidence : null,
+          source: body.source,
+        }];
+
     try {
-      const result = await processCompleteUtterance(
+      const result = await processResolvedThought(
         workshopId,
         utterance,
         body.dialoguePhase,
         body.speakerId,
+        incomingSpokenRecords,
         body.slmMetadata as Record<string, unknown> | undefined,
         traceId,
         body.clientDomainHint ?? null,

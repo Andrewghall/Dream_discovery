@@ -109,6 +109,7 @@ export interface ThoughtAttempt {
   version: number;
   speaker_id: string;
   chunks: string[];
+  chunk_times: number[];   // arrival time (ms) for each chunk, parallel to chunks[]
   full_text: string;
   merged_from: string[];
   start_time_ms: number;
