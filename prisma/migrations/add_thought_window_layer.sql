@@ -1,22 +1,19 @@
 -- ══════════════════════════════════════════════════════════════════════════════
--- add_thought_window_layer
+-- add_thought_window_layer  (idempotent — safe to re-run)
 --
--- Introduces the ThoughtWindow as the aggregation layer between spoken records
--- (TranscriptChunk) and resolved meaning (DataPoint).
---
--- Key invariant after this migration:
---   transcriptChunk = what was spoken  (written immediately, always)
---   thoughtWindow   = accumulation of spoken records for one speaker thread
---   dataPoint       = resolved thought artifact  (written once, after resolution)
---
--- Run on production Supabase SQL editor after deploying this branch to main.
+-- transcriptChunk = what was spoken  (written immediately, always)
+-- thoughtWindow   = accumulation of spoken records for one speaker thread
+-- dataPoint       = resolved thought artifact  (written once, after resolution)
 -- ══════════════════════════════════════════════════════════════════════════════
 
 -- 1. Enum for window lifecycle state
-CREATE TYPE "ThoughtWindowState" AS ENUM ('OPEN', 'PAUSED', 'RESOLVING', 'RESOLVED', 'EXPIRED');
+DO $$ BEGIN
+    CREATE TYPE "ThoughtWindowState" AS ENUM ('OPEN', 'PAUSED', 'RESOLVING', 'RESOLVED', 'EXPIRED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 2. ThoughtWindow table
-CREATE TABLE "thought_windows" (
+CREATE TABLE IF NOT EXISTS "thought_windows" (
     "id"                TEXT NOT NULL,
     "workshopId"        TEXT NOT NULL,
     "speakerId"         TEXT,
@@ -33,13 +30,19 @@ CREATE TABLE "thought_windows" (
     CONSTRAINT "thought_windows_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "thought_windows_workshopId_idx"                  ON "thought_windows"("workshopId");
-CREATE INDEX "thought_windows_workshopId_speakerId_state_idx"  ON "thought_windows"("workshopId", "speakerId", "state");
-CREATE INDEX "thought_windows_workshopId_state_idx"            ON "thought_windows"("workshopId", "state");
+CREATE INDEX IF NOT EXISTS "thought_windows_workshopId_idx"
+    ON "thought_windows"("workshopId");
+CREATE INDEX IF NOT EXISTS "thought_windows_workshopId_speakerId_state_idx"
+    ON "thought_windows"("workshopId", "speakerId", "state");
+CREATE INDEX IF NOT EXISTS "thought_windows_workshopId_state_idx"
+    ON "thought_windows"("workshopId", "state");
 
-ALTER TABLE "thought_windows"
-    ADD CONSTRAINT "thought_windows_workshopId_fkey"
-    FOREIGN KEY ("workshopId") REFERENCES "workshops"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "thought_windows"
+        ADD CONSTRAINT "thought_windows_workshopId_fkey"
+        FOREIGN KEY ("workshopId") REFERENCES "workshops"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 3. Link TranscriptChunk → ThoughtWindow (nullable — set on resolution)
 ALTER TABLE "transcript_chunks"
@@ -48,13 +51,14 @@ ALTER TABLE "transcript_chunks"
 CREATE INDEX IF NOT EXISTS "transcript_chunks_thought_window_id_idx"
     ON "transcript_chunks"("thought_window_id");
 
-ALTER TABLE "transcript_chunks"
-    ADD CONSTRAINT "transcript_chunks_thought_window_id_fkey"
-    FOREIGN KEY ("thought_window_id") REFERENCES "thought_windows"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "transcript_chunks"
+        ADD CONSTRAINT "transcript_chunks_thought_window_id_fkey"
+        FOREIGN KEY ("thought_window_id") REFERENCES "thought_windows"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 4. Extend DataPoint with thought-window lineage fields
---    Legacy transcriptChunkId renamed to transcript_chunk_id for consistency.
---    New thought_window_id becomes the primary lineage FK for new records.
 ALTER TABLE "data_points"
     ADD COLUMN IF NOT EXISTS "thought_window_id"      TEXT,
     ADD COLUMN IF NOT EXISTS "spoken_record_ids"      TEXT[] NOT NULL DEFAULT '{}',
@@ -78,10 +82,16 @@ END$$;
 ALTER TABLE "data_points"
     ADD COLUMN IF NOT EXISTS "transcript_chunk_id" TEXT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS "data_points_thought_window_id_key"     ON "data_points"("thought_window_id") WHERE "thought_window_id" IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS "data_points_transcript_chunk_id_key"   ON "data_points"("transcript_chunk_id") WHERE "transcript_chunk_id" IS NOT NULL;
-CREATE INDEX IF NOT EXISTS "data_points_thought_window_id_idx"            ON "data_points"("thought_window_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "data_points_thought_window_id_key"
+    ON "data_points"("thought_window_id") WHERE "thought_window_id" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "data_points_transcript_chunk_id_key"
+    ON "data_points"("transcript_chunk_id") WHERE "transcript_chunk_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "data_points_thought_window_id_idx"
+    ON "data_points"("thought_window_id");
 
-ALTER TABLE "data_points"
-    ADD CONSTRAINT "data_points_thought_window_id_fkey"
-    FOREIGN KEY ("thought_window_id") REFERENCES "thought_windows"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "data_points"
+        ADD CONSTRAINT "data_points_thought_window_id_fkey"
+        FOREIGN KEY ("thought_window_id") REFERENCES "thought_windows"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
