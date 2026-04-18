@@ -13,6 +13,7 @@ import { applyCognitiveUpdate } from '@/lib/cognition/reasoning-engine';
 import { getGPT4oMiniEngine } from '@/lib/cognition/engines/gpt4o-mini-engine';
 import { runFacilitationOrchestrator } from '@/lib/cognition/agents/facilitation-orchestrator';
 import { pushUtterance } from '@/lib/cognition/cognitive-state';
+import { isStatementSelfContained } from '@/lib/live/semantic-gate';
 
 // Journey agent + cognitive analysis run inside after() — up to 40s per cycle.
 // Without this, Vercel kills the background work before the journey agent completes.
@@ -137,6 +138,19 @@ async function processCompleteUtterance(
     }
     return { deduped: true, dataPointId };
   }
+
+  // ── Semantic gate — reject dependent fragments before committing ─
+  // Use the last 3 transcript chunks as context for the evaluation.
+  const gateContext = recentTranscripts.slice(0, 3).reverse().map((t) => ({
+    speaker: t.speakerId,
+    text: t.text,
+  }));
+  const gate = await isStatementSelfContained(text, gateContext);
+  if (!gate.selfContained) {
+    console.log(`[SemanticGate]${trace} Rejected fragment: "${text.substring(0, 80)}" — ${gate.reason}`);
+    return { rejected: true, reason: gate.reason };
+  }
+  console.log(`[SemanticGate]${trace} Accepted: "${text.substring(0, 60)}"`)
 
   // ── Create merged transcript chunk ────────────────────────
   const transcriptChunk = await prisma.transcriptChunk.create({

@@ -41,6 +41,7 @@ import { AgenticReasoningPanel, type ReasoningEntry } from '@/components/live/ag
 import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
 import { transcribeAudio, checkCaptureAPIHealth, CaptureAPIStream, type CaptureAPIResponse, type StreamTranscript } from '@/lib/captureapi/client';
 import { LIVE_CAPTURE_CONFIG } from '@/lib/live/capture-config';
+import { isThoughtCoherent } from '@/lib/live/thought-coherence';
 
 // ── Agentic facilitation hooks + components ──────────────────
 import { useLiveEventPipeline } from '@/hooks/use-live-event-pipeline';
@@ -3110,18 +3111,26 @@ export default function WorkshopLivePage({ params }: PageProps) {
           silenceTimersRef.current.set(speakerId, silenceTimer);
 
           if (msg.speechFinal) {
-            // speechFinal = VAD pause detected. Check if meaning is resolved.
+            // speechFinal = VAD pause detected.
+            // Gate 1: terminal punctuation — is the sentence syntactically complete?
             const isResolved = /[.!?]['"]?\s*$/.test(fullSoFar.trimEnd());
-            if (isResolved) {
-              // Thought completed — shorten remaining window
+            // Gate 2: coherence heuristic — is it self-contained or a dependent fragment?
+            const coherence = isThoughtCoherent(fullSoFar);
+
+            if (isResolved && coherence.coherent) {
+              // Thought is syntactically complete and self-contained — shorten window
               clearTimeout(silenceTimer);
               const shortTimer = setTimeout(() => {
                 void commitUtteranceRef.current?.(speakerId, slmMetaForCommit);
               }, LIVE_CAPTURE_CONFIG.speechFinalResolvedMs);
               silenceTimersRef.current.set(speakerId, shortTimer);
-              console.log('[DREAM-DIAG] speechFinal + resolved thought — shortcutting to', LIVE_CAPTURE_CONFIG.speechFinalResolvedMs, 'ms for', speakerId);
+              console.log('[DREAM-DIAG] speechFinal + coherent — shortcutting to', LIVE_CAPTURE_CONFIG.speechFinalResolvedMs, 'ms for', speakerId);
+            } else if (!coherence.coherent) {
+              // Dependent fragment detected — let full window run, log signals
+              console.log('[DREAM-DIAG] speechFinal but incoherent fragment — full window continues for', speakerId, '|', coherence.signals.join('; '));
             } else {
-              console.log('[DREAM-DIAG] speechFinal but thought unresolved — full window continues for', speakerId);
+              // Resolved punctuation but full silence window still running
+              console.log('[DREAM-DIAG] speechFinal but unresolved punctuation — full window continues for', speakerId);
             }
           }
         },
