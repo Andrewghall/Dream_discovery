@@ -50,6 +50,9 @@ export interface ThoughtFeatures {
   vague_intensifiers: string[];
   ambiguity_score: number;
   primary_type_hint: ThoughtTypeHint | null;
+  // Thought integrity signals
+  has_continuation_signal: boolean;
+  has_resolution_signal: boolean;
 }
 
 export interface ValidityResult {
@@ -58,6 +61,7 @@ export interface ValidityResult {
   confidence: number;
   reasons: string[];
   hard_rule_applied: string | null;
+  thought_completeness: 'complete' | 'developing' | 'fragment';
   score_breakdown: {
     self_containment: number;
     structural_completeness: number;
