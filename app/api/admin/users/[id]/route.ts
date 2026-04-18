@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth/session';
 import { nanoid } from 'nanoid';
+import { PatchUserSchema, zodError } from '@/lib/validation/schemas';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +57,10 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const { name, email, role, organizationId, isActive } = await request.json();
+  const rawBody = await request.json().catch(() => null);
+  const parsed = PatchUserSchema.safeParse(rawBody);
+  if (!parsed.success) return zodError(parsed.error);
+  const { name, email, role, organizationId, isActive } = parsed.data;
 
   // Fetch existing user to check org permissions and log changes
   const existing = await prisma.user.findUnique({

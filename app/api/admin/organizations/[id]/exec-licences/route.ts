@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/prisma';
 import * as bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
+import { CreateExecLicenceSchema, zodError } from '@/lib/validation/schemas';
 
 function generateTempPassword(): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -48,13 +49,11 @@ export async function POST(
   }
 
   const { id: orgId } = await params;
-  const { name, email, title } = await request.json() as { name?: string; email?: string; title?: string };
+  const rawBody = await request.json().catch(() => null);
+  const licParsed = CreateExecLicenceSchema.safeParse(rawBody);
+  if (!licParsed.success) return zodError(licParsed.error);
 
-  if (!name?.trim() || !email?.trim()) {
-    return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
-  }
-
-  const normalizedEmail = email.toLowerCase().trim();
+  const { name, email: normalizedEmail, title } = licParsed.data;
 
   // Verify org exists
   const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { id: true } });
@@ -75,8 +74,8 @@ export async function POST(
       organizationId: orgId,
       email: normalizedEmail,
       hashedPassword,
-      name: name.trim(),
-      title: title?.trim() || null,
+      name,
+      title: title || null,
     },
     select: { id: true, email: true, name: true, title: true, createdAt: true },
   });

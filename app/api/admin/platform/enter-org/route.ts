@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, createSessionToken } from '@/lib/auth/session';
 import { prisma } from '@/lib/prisma';
 import { auditLog, getClientIp } from '@/lib/audit/log-action';
+import { EnterOrgSchema, zodError } from '@/lib/validation/schemas';
 import { nanoid } from 'nanoid';
 
 export const dynamic = 'force-dynamic';
@@ -34,12 +35,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only platform administrators can enter tenant workspaces' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { organizationId } = body as { organizationId?: string };
-
-    if (!organizationId || typeof organizationId !== 'string') {
-      return NextResponse.json({ error: 'organizationId is required' }, { status: 400 });
-    }
+    const rawBody = await request.json().catch(() => null);
+    const parsed = EnterOrgSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
+    const { organizationId } = parsed.data;
 
     // Load target org to validate it exists
     const org = await prisma.organization.findUnique({

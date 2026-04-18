@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { SetCommercialPasswordSchema, zodError } from '@/lib/validation/schemas';
 
 export async function POST(
   request: NextRequest,
@@ -18,15 +19,10 @@ export async function POST(
     if (!access.valid) {
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
-    const body = await request.json();
-    const { password } = body;
-
-    if (!password || password.length < 10) {
-      return NextResponse.json(
-        { error: 'Password must be at least 10 characters' },
-        { status: 400 }
-      );
-    }
+    const rawBody = await request.json().catch(() => null);
+    const parsed = SetCommercialPasswordSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
+    const { password } = parsed.data;
 
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);

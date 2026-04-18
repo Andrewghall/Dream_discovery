@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import * as bcrypt from 'bcryptjs';
+import { validatePassword } from '@/lib/auth/password-policy';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,10 +14,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate password strength
-    if (password.length < 8) {
+    // Validate password against RAISE password policy (ISO 27001 A.9.4.3)
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) {
       return NextResponse.json(
-        { error: 'Password must be at least 8 characters long' },
+        { error: pwCheck.error },
         { status: 400 }
       );
     }

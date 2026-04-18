@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { PatchFindingSchema, zodError } from '@/lib/validation/schemas';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,17 +53,20 @@ export async function PATCH(
       return NextResponse.json({ error: 'Finding not found' }, { status: 404 });
     }
 
-    const body = await request.json();
-    const updateData: Record<string, unknown> = {};
+    const rawBody = await request.json().catch(() => null);
+    const parsed = PatchFindingSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
 
-    if (typeof body.title === 'string') updateData.title = body.title;
-    if (typeof body.description === 'string') updateData.description = body.description;
-    if (typeof body.severityScore === 'number') updateData.severityScore = body.severityScore;
-    if (typeof body.confidenceScore === 'number') updateData.confidenceScore = body.confidenceScore;
-    if (typeof body.frequencyCount === 'number') updateData.frequencyCount = body.frequencyCount;
-    if (Array.isArray(body.roleCoverage)) updateData.roleCoverage = body.roleCoverage;
-    if (typeof body.lens === 'string') updateData.lens = body.lens;
-    if (typeof body.type === 'string') updateData.type = body.type;
+    const updateData: Record<string, unknown> = {};
+    const body = parsed.data;
+    if (body.title !== undefined) updateData.title = body.title;
+    if (body.description !== undefined) updateData.description = body.description;
+    if (body.severityScore !== undefined) updateData.severityScore = body.severityScore;
+    if (body.confidenceScore !== undefined) updateData.confidenceScore = body.confidenceScore;
+    if (body.frequencyCount !== undefined) updateData.frequencyCount = body.frequencyCount;
+    if (body.supportingQuotes !== undefined) updateData.supportingQuotes = body.supportingQuotes;
+    if (body.isVerified !== undefined) updateData.isVerified = body.isVerified;
+    if (body.isFlagged !== undefined) updateData.isFlagged = body.isFlagged;
 
     const finding = await prisma.finding.update({
       where: { id: findingId },

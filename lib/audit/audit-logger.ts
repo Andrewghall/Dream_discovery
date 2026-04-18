@@ -39,7 +39,9 @@ export type AuditAction =
   | 'UPDATE_SCRATCHPAD'
   | 'PUBLISH_SCRATCHPAD'
   | 'LOGIN'
-  | 'FAILED_LOGIN';
+  | 'FAILED_LOGIN'
+  | 'MFA_CHALLENGE_ISSUED'
+  | 'MFA_VERIFY_FAILED';
 
 export type AuditResourceType =
   | 'Workshop'

@@ -15,7 +15,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { StickyPad } from '@/lib/cognitive-guidance/pipeline';
 import type { JourneyCompletionState } from '@/lib/cognition/guidance-state';
-import type { JourneyMutationIntent } from '@/lib/cognition/agents/journey-mutation-types';
+// Journey mutation types inlined after journey-mutation-types.ts was removed
+type JourneyMutationIntent = { id: string; type: string; payload: Record<string, unknown>; sourceNodeIds?: string[]; emittedAtMs: number };
 import type { AgentConversationEntry } from '@/components/cognitive-guidance/agent-orchestration-panel';
 
 // -----------------------------------------------------------------------

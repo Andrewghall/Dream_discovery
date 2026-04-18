@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { CreateSessionVersionSchema, zodError } from '@/lib/validation/schemas';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,15 +82,11 @@ export async function POST(
     const access = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
     if (!access.valid) return NextResponse.json({ error: access.error }, { status: 403 });
 
-    const body = await request.json().catch(() => null);
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json({ ok: false, error: 'Invalid body' }, { status: 400 });
-    }
-
-    const { dialoguePhase, payload } = body;
-    if (!dialoguePhase || !payload) {
-      return NextResponse.json({ ok: false, error: 'Missing dialoguePhase or payload' }, { status: 400 });
-    }
+    const parsedVer = CreateSessionVersionSchema.safeParse(
+      await request.json().catch(() => null)
+    );
+    if (!parsedVer.success) return zodError(parsedVer.error);
+    const { dialoguePhase, payload } = parsedVer.data;
 
     // Compute next version number
     const agg = await (prisma as any).liveSessionVersion.aggregate({

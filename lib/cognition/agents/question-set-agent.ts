@@ -35,8 +35,8 @@ import { analyzeMetricTrends } from '@/lib/historical-metrics/summarize';
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 6;
-const LOOP_TIMEOUT_MS = 40_000;
+const MAX_ITERATIONS = 9;
+const LOOP_TIMEOUT_MS = 55_000;
 const MODEL = 'gpt-4o-mini';
 
 /**
@@ -63,11 +63,11 @@ export function getPhaseLensOrder(
 }
 
 const PHASE_GUIDANCE: Record<WorkshopPhase, string> = {
-  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Customer, and Organisation lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
+  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Customer, and Partners lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
 
-  CONSTRAINTS: `CONSTRAINTS maps the real-world limitations, working RIGHT-TO-LEFT through the lenses: Regulation → Customer → Technology → Organisation → People. Start with hard external constraints (regulatory, compliance) and work inward to softer people constraints. The goal is to systematically identify what stands between today and the reimagined vision. This phase references the vision from REIMAGINE to assess each constraint's impact.`,
+  CONSTRAINTS: `CONSTRAINTS maps the real-world limitations, working RIGHT-TO-LEFT through the lenses: Risk/Compliance → Commercial → Technology → Operations → Customer → People → Partners. Start with hard external constraints (regulatory, compliance) and work inward to softer people constraints. The goal is to systematically identify what stands between today and the reimagined vision. This phase references the vision from REIMAGINE to assess each constraint's impact.`,
 
-  DEFINE_APPROACH: `DEFINE APPROACH builds the practical solution LEFT-TO-RIGHT: People → Organisation → Technology → Customer → Regulation. Start with human needs and build outward. The facilitator guides participants to design an approach that bridges today's reality to the reimagined future while respecting the constraints identified. Focus on actionable workstreams, ownership, and measurable outcomes.`,
+  DEFINE_APPROACH: `DEFINE APPROACH builds the practical solution LEFT-TO-RIGHT: People → Operations → Technology → Customer → Commercial → Risk/Compliance → Partners. Start with human needs and build outward. The facilitator guides participants to design an approach that bridges today's reality to the reimagined future while respecting the constraints identified. Focus on actionable workstreams, ownership, and measurable outcomes.`,
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -161,7 +161,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               properties: {
                 lens: {
                   type: 'string',
-                  description: 'The dimension/lens this question addresses. Use the dimension names from get_workshop_phases (these may be research-derived industry dimensions or the default lenses). Use "General" for cross-cutting questions.',
+                  description: 'The dimension/lens this question addresses. CRITICAL: Use EXACTLY the lens names returned by get_workshop_phases — copy them character-for-character. For example, if get_workshop_phases returns "Risk/Compliance", use "Risk/Compliance" NOT "Regulation". If it returns "Operations", use "Operations" NOT "Organisation". Use "General" only for cross-cutting questions that span multiple lenses.',
                 },
                 text: {
                   type: 'string',
@@ -183,7 +183,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                     properties: {
                       lens: {
                         type: 'string',
-                        description: 'The dimension/lens this sub-question explores. Use dimension names from get_workshop_phases or "General".',
+                        description: 'The dimension/lens this sub-question explores. CRITICAL: Use EXACTLY the lens names from get_workshop_phases (e.g. "Risk/Compliance" not "Regulation", "Operations" not "Organisation"). Use "General" for cross-cutting.',
                       },
                       text: {
                         type: 'string',
@@ -468,12 +468,14 @@ function executeQuestionSetTool(
             },
           },
         }),
-        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE APPROACH (${defineApproach.lenses.length} dimensions). Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}. Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
+        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE_APPROACH (${defineApproach.lenses.length} dimensions). Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}. Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
       };
     }
 
     case 'design_phase_questions': {
-      const phase = String(args.phase || '') as WorkshopPhase;
+      // Normalise phase key: LLM may pass 'DEFINE APPROACH' (space) instead of 'DEFINE_APPROACH'
+      const rawPhase = String(args.phase || '').trim().toUpperCase().replace(/\s+/g, '_');
+      const phase = rawPhase as WorkshopPhase;
       const questions = args.questions as Array<Record<string, unknown>>;
 
       if (!phase || !Array.isArray(questions)) {
@@ -483,11 +485,23 @@ function executeQuestionSetTool(
         };
       }
 
+      // Normalise lens names: map legacy names the LLM may still output → canonical universal names
+      const LENS_NORMALISE: Record<string, string> = {
+        'Organisation': 'Operations',
+        'Regulation': 'Risk/Compliance',
+        'Risk & Compliance': 'Risk/Compliance',
+        'Risk and Compliance': 'Risk/Compliance',
+        'Compliance': 'Risk/Compliance',
+      };
+      function normaliseLens(raw: string): string {
+        return LENS_NORMALISE[raw] ?? raw;
+      }
+
       // Build facilitation questions with starter sub-questions
       const facilitation: FacilitationQuestion[] = questions.map((q, i) => ({
         id: nanoid(8),
         phase,
-        lens: String(q.lens || 'General'),
+        lens: normaliseLens(String(q.lens || 'General')),
         text: String(q.text || ''),
         purpose: String(q.purpose || ''),
         grounding: String(q.grounding || ''),
@@ -496,7 +510,7 @@ function executeQuestionSetTool(
         subQuestions: Array.isArray(q.subQuestions)
           ? q.subQuestions.map((sq: Record<string, unknown>) => ({
               id: nanoid(8),
-              lens: String(sq.lens || 'General'),
+              lens: normaliseLens(String(sq.lens || 'General')),
               text: String(sq.text || ''),
               purpose: String(sq.purpose || ''),
             }))
@@ -627,26 +641,26 @@ generic People/Organisation/Customer/Technology/Regulation names.
    Start with hard external constraints and work inward.
    Key: Specific, probing, referencing the vision they just created.
 
-3. DEFINE APPROACH (Build Solution)
+3. DEFINE_APPROACH (Build Solution)
    Dimensions: All (${research.industryDimensions.map(d => d.name).join(', ')})
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
 ` : `THE THREE WORKSHOP PHASES:
 
 1. REIMAGINE (Pure Vision)
-   Lenses: People, Customer, Organisation ONLY
+   Lenses: People, Customer, Partners ONLY
    Goal: Get participants to paint the ideal future WITHOUT any constraints.
    No technology, no budget, no regulation - just what "amazing" looks like.
    Key: Open, aspirational, creative questions. "If you could wave a magic wand..."
 
 2. CONSTRAINTS (Map Limitations - Right-to-Left)
-   Lenses: Regulation, Customer, Technology, Organisation, People
+   Lenses: Risk/Compliance, Commercial, Technology, Operations, Customer, People, Partners
    Goal: Systematically identify what stands between today and the reimagined vision.
    Start with hard external constraints and work inward.
    Key: Specific, probing, referencing the vision they just created.
 
-3. DEFINE APPROACH (Build Solution - Left-to-Right)
-   Lenses: People, Organisation, Technology, Customer, Regulation
+3. DEFINE_APPROACH (Build Solution - Left-to-Right)
+   Lenses: People, Operations, Technology, Customer, Commercial, Risk/Compliance, Partners
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
 `}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}${constraintsBlock}
@@ -656,7 +670,7 @@ YOUR APPROACH:
 3. Get blueprint constraints (required/forbidden topics, focus areas, metrics).
 4. Get historical metrics if available (operational baselines and trends).
 5. Get the workshop phase structure (lens order, purpose).
-6. For each phase in order (REIMAGINE, CONSTRAINTS, DEFINE_APPROACH):
+6. Design questions for ALL THREE phases. You MUST call design_phase_questions three times — once for REIMAGINE, once for CONSTRAINTS, once for DEFINE_APPROACH. You can call all three in a single parallel tool call to save time. DO NOT commit until all three phases have been designed.
    - Design ${bp?.questionPolicy?.questionsPerPhase ?? 5} facilitation questions per phase
    - Each question should follow the lens order for that phase
    - Questions MUST reference specific company context where possible
@@ -746,7 +760,7 @@ export async function runQuestionSetAgent(
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: `Please design a tailored set of workshop facilitation questions for ${context.clientName || 'this client'}. These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE APPROACH. Start by reviewing the research context and Discovery insights, then the phase structure, then design questions for each phase in order.`,
+      content: `Please design a tailored set of workshop facilitation questions for ${context.clientName || 'this client'}. These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE_APPROACH. Start by reviewing the research context and Discovery insights, then the phase structure, then design questions for each phase in order.`,
     },
   ];
 
@@ -809,6 +823,21 @@ export async function runQuestionSetAgent(
         }
 
         if (fnName === 'commit_question_set') {
+          // Guard: all 3 phases must be designed before committing
+          const allPhases: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
+          const missingPhases = allPhases.filter(p => !designedPhases.get(p)?.length);
+          if (missingPhases.length > 0) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({
+                error: `Cannot commit yet. The following phases have no questions: ${missingPhases.join(', ')}. You MUST call design_phase_questions for each missing phase before committing. Do it now.`,
+              }),
+            });
+            console.log(`[Question Set Agent] Commit blocked — missing phases: ${missingPhases.join(', ')}`);
+            continue; // don't set committed = true, keep iterating
+          }
+
           committed = true;
 
           // Build summary of all designed phases
@@ -898,8 +927,27 @@ export async function runQuestionSetAgent(
       }
     }
 
+  // Loop exhausted without explicit commit. If all 3 phases are designed, build from what we have.
+  // This handles the race condition where the LLM commits and designs a phase in the same
+  // parallel call — the commit guard correctly blocked it, but the phase was stored in the
+  // same iteration, and there were no remaining iterations for the retry commit.
+  const REQUIRED_PHASES: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
+  const stillMissing = REQUIRED_PHASES.filter(p => !designedPhases.get(p)?.length);
+  if (stillMissing.length === 0) {
+    console.log('[Question Set Agent] All phases designed — building from phases (no explicit commit)');
+    const commitArgs = fnArgs_extract_full(messages);
+    return buildWorkshopQuestionSet(
+      designedPhases,
+      commitArgs.designRationale || 'Questions designed for workshop facilitation.',
+      research,
+      context.blueprint,
+      (commitArgs.dataConfidence as DataConfidence) || 'moderate',
+      commitArgs.dataSufficiencyNotes || [],
+    );
+  }
+
   throw new Error(
-    '[Question Set Agent] Loop ended without explicit commit — question set is incomplete. ' +
+    `[Question Set Agent] Loop ended without explicit commit — missing phases: ${stillMissing.join(', ')}. ` +
     'Re-run question generation to produce a valid question set.',
   );
 }

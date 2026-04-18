@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import type { FindingType, SourceStream } from '@prisma/client';
+import { CreateFindingSchema, zodError } from '@/lib/validation/schemas';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,32 +64,27 @@ export async function POST(
     const validation = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
     if (!validation.valid) return NextResponse.json({ error: validation.error }, { status: 403 });
 
-    const body = await request.json();
+    const rawBody = await request.json().catch(() => null);
+    const parsed = CreateFindingSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
     const {
       sourceStream, lens, type, title, description,
       severityScore, frequencyCount, roleCoverage,
       supportingQuotes, confidenceScore, captureSessionId,
-    } = body;
-
-    if (!sourceStream || !lens || !type || !title || !description) {
-      return NextResponse.json(
-        { error: 'sourceStream, lens, type, title, and description are required' },
-        { status: 400 }
-      );
-    }
+    } = parsed.data;
 
     const finding = await prisma.finding.create({
       data: {
         workshopId,
         captureSessionId: captureSessionId ?? null,
-        sourceStream,
+        sourceStream: sourceStream as SourceStream,
         lens,
-        type,
+        type: type as FindingType,
         title,
         description,
         severityScore: severityScore ?? null,
         frequencyCount: frequencyCount ?? 1,
-        roleCoverage: roleCoverage ?? [],
+        roleCoverage: (roleCoverage ?? []) as unknown as string[],
         supportingQuotes: supportingQuotes as any ?? undefined,
         confidenceScore: confidenceScore ?? null,
       },

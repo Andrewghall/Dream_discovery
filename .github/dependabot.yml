@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  # npm/yarn dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Europe/London"
+    # Open PRs grouped by type to reduce noise
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      production-dependencies:
+        applies-to: version-updates
+        dependency-type: "production"
+        patterns:
+          - "*"
+      development-dependencies:
+        applies-to: version-updates
+        dependency-type: "development"
+        patterns:
+          - "*"
+    # Limit the number of open PRs
+    open-pull-requests-limit: 5
+    # Auto-assign security PRs for urgent review
+    reviewers:
+      - "Andrewghall"
+    labels:
+      - "dependencies"
+      - "security"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Europe/London"
+    labels:
+      - "dependencies"
+      - "github-actions"

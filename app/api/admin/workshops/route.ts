@@ -5,6 +5,8 @@ import { resolveIndustryPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import type { EngagementType } from '@prisma/client';
 import { auditLog, getClientIp } from '@/lib/audit/log-action';
+import { encryptWorkshopData } from '@/lib/workshop-encryption';
+import { CreateWorkshopSchema, zodError } from '@/lib/validation/schemas';
 
 export const dynamic = 'force-dynamic';
 
@@ -173,13 +175,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    const rawBody = await request.json().catch(() => null);
+    const parsed = CreateWorkshopSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
+
     const {
       name, description, businessContext, workshopType,
       scheduledDate, responseDeadline, includeRegulation,
       clientName, industry, companyWebsite, dreamTrack, targetDomain,
       engagementType,
-    } = body;
+    } = parsed.data;
 
     const organizationId = session.organizationId!;
 
@@ -233,7 +238,7 @@ export async function POST(request: NextRequest) {
       blueprint: blueprint as any,
     };
 
-    const workshop = await prisma.workshop.create({ data: workshopData });
+    const workshop = await prisma.workshop.create({ data: encryptWorkshopData(workshopData) });
 
     auditLog({
       organizationId,

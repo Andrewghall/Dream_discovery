@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { strictLimiter } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,7 +10,22 @@ function safeErrorMessage(error: unknown): string {
   try { return JSON.stringify(error); } catch { return 'Unknown error'; }
 }
 
+function getIp(req: NextRequest): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    req.headers.get('x-real-ip') ||
+    '127.0.0.1';
+}
+
 export async function POST(request: NextRequest) {
+  // 20 transcriptions per minute per IP — generous for real users, blocks abuse
+  const rl = await strictLimiter.check(20, `deepgram:${getIp(request)}`).catch(() => null);
+  if (rl && !rl.success) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait a moment.' },
+      { status: 429, headers: { 'Retry-After': Math.ceil((rl.reset - Date.now()) / 1000).toString() } }
+    );
+  }
+
   try {
     const deepgramKey = process.env.DEEPGRAM_API_KEY;
     if (!deepgramKey) {

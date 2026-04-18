@@ -49,13 +49,25 @@ const LAYER_STYLE: Record<TLMNode['layer'], { dot: string; label: string }> = {
 
 // ── Enriched node ─────────────────────────────────────────────────────────────
 
+interface ENConnection {
+  label:            string;
+  layer:            TLMNode['layer'];
+  relationshipType: string;
+  rationale:        string;
+  score:            number;
+  mentionCount:     number;
+  isChain:          boolean;
+  /** 'outgoing' = this node drives/enables the other; 'incoming' = other drives/enables this */
+  direction:        'outgoing' | 'incoming';
+}
+
 interface EN {
   n:        TLMNode;
   status:   Status;
   score:    number;   // = sig.score (0–100), used for radius + sort
   sig:      NodeSignificance;
   lenses:   number;
-  connects: Array<{ label: string; layer: TLMNode['layer'] }>;
+  connects: ENConnection[];
 }
 
 function enrich(tlm: TransformationLogicMap): EN[] {
@@ -69,16 +81,27 @@ function enrich(tlm: TransformationLogicMap): EN[] {
       const status = calcStatus(n);
       const sig    = weightedSignificance(n, tlmNodes);
       const lenses = new Set((n.quotes ?? []).map(q => q.lens).filter(Boolean)).size;
-      const connects = tlmEdges
+      const connects: ENConnection[] = tlmEdges
         .filter(e => (e.fromNodeId === n.nodeId || e.toNodeId === n.nodeId) && e.score >= 25)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 5)
+        .slice(0, 8)
         .map(e => {
-          const oid = e.fromNodeId === n.nodeId ? e.toNodeId : e.fromNodeId;
+          const isOutgoing = e.fromNodeId === n.nodeId;
+          const oid = isOutgoing ? e.toNodeId : e.fromNodeId;
           const o   = byId.get(oid);
-          return o ? { label: o.displayLabel, layer: o.layer } : null;
+          if (!o) return null;
+          return {
+            label:            o.displayLabel,
+            layer:            o.layer,
+            relationshipType: e.relationshipType ?? '',
+            rationale:        e.rationale ?? '',
+            score:            e.score,
+            mentionCount:     e.evidence?.mentionCount ?? 0,
+            isChain:          e.isChainEdge ?? false,
+            direction:        isOutgoing ? 'outgoing' : 'incoming',
+          } satisfies ENConnection;
         })
-        .filter(Boolean) as Array<{ label: string; layer: TLMNode['layer'] }>;
+        .filter(Boolean) as ENConnection[];
       return { n, status, score: sig.score, sig, lenses, connects };
     })
     .sort((a, b) => b.score - a.score);
@@ -145,7 +168,6 @@ interface VisEdge {
   evidence:   EdgeEvidence;
   fromLabel:  string;
   toLabel:    string;
-  strandCount: number;
 }
 
 function buildVisEdges(
@@ -161,8 +183,9 @@ function buildVisEdges(
   for (const e of bvEdges) {
     if (!featuredIds.has(e.fromNodeId) || !featuredIds.has(e.toNodeId)) continue;
     const mc = e.evidence?.mentionCount ?? 0;
-    if (mc > 0 && mc < 2) continue;
-    if (mc === 0 && e.score < 3) continue;
+    // Gate: chain edges always shown; all others require score >= 25 (evidenced) AND >= 2 mentions
+    if (!e.isChainEdge && e.score < 25) continue;
+    if (!e.isChainEdge && mc < 2) continue;
     const key = [e.fromNodeId, e.toNodeId].sort().join('|');
     const ex  = edgeByKey.get(key);
     if (!ex || e.score > ex.score) edgeByKey.set(key, e);
@@ -175,14 +198,12 @@ function buildVisEdges(
     if (!f || !t) continue;
     const mc = e.evidence?.mentionCount ?? 0;
     const ac = e.evidence?.actorCount   ?? 0;
-    const strandCount = mc < 2 ? 1 : Math.min(Math.max(ac, 1), 4);
     out.push({
       x1: f.x, y1: f.y, x2: t.x, y2: t.y,
       score: e.score,
       isChain: e.isChainEdge,
       fromLabel: byId.get(e.fromNodeId)?.displayLabel ?? e.fromNodeId,
       toLabel:   byId.get(e.toNodeId)?.displayLabel   ?? e.toNodeId,
-      strandCount,
       evidence: {
         mentionCount:     mc,
         actorCount:       ac,
@@ -195,34 +216,28 @@ function buildVisEdges(
   return out.sort((a, b) => a.score - b.score);
 }
 
-// ── Edge bundle renderer ──────────────────────────────────────────────────────
+// ── Edge renderer — single line, thickness encodes corroboration strength ────
 
 function EdgeBundle({
-  x1, y1, x2, y2, score, isChain, dim, evidence, fromLabel, toLabel, strandCount, onClick, selected,
+  x1, y1, x2, y2, score, isChain, dim, evidence, fromLabel, toLabel, onClick, selected,
 }: VisEdge & { dim: boolean; onClick: () => void; selected: boolean }) {
   const mc    = evidence?.mentionCount ?? 0;
   const ac    = evidence?.actorCount   ?? 0;
   const color = selected ? '#0ea5e9' : isChain ? '#f97316' : '#6366f1';
 
-  const CTRL_SPREAD   = 14;
-  const midY          = (y1 + y2) / 2;
-  const midX          = (x1 + x2) / 2;
-  const isHorizontal  = Math.abs(y2 - y1) < Math.abs(x2 - x1) * 0.4;
-  const sw            = dim ? 0.6 : Math.max(0.7, 0.7 + (score / 100) * 2.0);
+  const midY         = (y1 + y2) / 2;
+  const midX         = (x1 + x2) / 2;
+  const isHorizontal = Math.abs(y2 - y1) < Math.abs(x2 - x1) * 0.4;
 
-  const strands = Array.from({ length: strandCount }, (_, i) => {
-    const offset = (i - (strandCount - 1) / 2) * CTRL_SPREAD;
-    const path   = isHorizontal
-      ? `M${x1},${y1} C${midX},${y1 - (35 + offset)} ${midX},${y2 - (35 + offset)} ${x2},${y2}`
-      : `M${x1},${y1} C${x1},${midY + offset} ${x2},${midY + offset} ${x2},${y2}`;
-    const distFromCentre = Math.abs(i - (strandCount - 1) / 2) / Math.max((strandCount - 1) / 2, 1);
-    const op = dim ? 0.04 : (0.30 + (score / 100) * 0.48) * (1 - distFromCentre * 0.35);
-    return { path, op };
-  });
-
-  const centrePath = isHorizontal
+  const path = isHorizontal
     ? `M${x1},${y1} C${midX},${y1 - 35} ${midX},${y2 - 35} ${x2},${y2}`
     : `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`;
+
+  // Stroke width: 0.8 (weak) → 3.0 (high score) — single line, no bundles
+  const sw  = dim ? 0.5 : Math.max(0.8, 0.8 + (score / 100) * 2.2);
+  // Opacity: chain edges are bolder; dim = faded when another edge is selected
+  const op  = dim ? 0.06 : isChain ? 0.75 : Math.max(0.25, 0.25 + (score / 100) * 0.50);
+
   const bx = midX;
   const by = isHorizontal ? midY - 35 : midY;
 
@@ -231,21 +246,22 @@ function EdgeBundle({
   return (
     <g onClick={onClick} style={{ cursor: 'pointer' }}>
       <title>{label}</title>
-      <path d={centrePath} fill="none" stroke="transparent" strokeWidth={20} />
+      {/* Invisible wide hit area */}
+      <path d={path} fill="none" stroke="transparent" strokeWidth={20} />
+      {/* Selection glow */}
       {selected && (
-        <path d={centrePath} fill="none" stroke={color}
-          strokeWidth={(strandCount * CTRL_SPREAD * 0.4) + sw + 4} opacity={0.15} strokeLinecap="round" />
+        <path d={path} fill="none" stroke={color} strokeWidth={sw + 5} opacity={0.15} strokeLinecap="round" />
       )}
-      {strands.map((s, i) => (
-        <path key={i} d={s.path} fill="none" stroke={color}
-          strokeWidth={selected ? sw + 0.4 : sw} opacity={s.op} strokeLinecap="round" />
-      ))}
+      {/* Single line */}
+      <path d={path} fill="none" stroke={color}
+        strokeWidth={selected ? sw + 0.5 : sw} opacity={op} strokeLinecap="round" />
+      {/* Corroboration badge — only when meaningfully evidenced */}
       {!dim && mc >= 2 && (
         <g transform={`translate(${bx},${by})`}>
           <rect x={-16} y={-7} width={32} height={13} rx={3}
             fill="white" stroke={color} strokeWidth={0.5} opacity={0.90} />
           <text fontSize={7} fill={color} textAnchor="middle" dominantBaseline="middle" fontWeight="700">
-            {mc}{ac > 1 ? `×${ac}↑` : `×`}
+            {mc}× · {ac} actor{ac !== 1 ? 's' : ''}
           </text>
         </g>
       )}
@@ -406,19 +422,48 @@ function NodeDetail({
       )}
 
       {en.connects.length > 0 && (
-        <div>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Connects to</p>
-          <div className="flex flex-wrap gap-1.5">
-            {en.connects.map((c, i) => {
-              const cl = LAYER_STYLE[c.layer];
-              return (
-                <span key={i} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/70 border"
-                      style={{ color: cl.dot, borderColor: cl.dot + '44' }}>
-                  {c.label.length > 34 ? c.label.slice(0, 32) + '…' : c.label}
-                </span>
-              );
-            })}
-          </div>
+        <div className="space-y-1.5">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Connections</p>
+          {en.connects.map((c, i) => {
+            const cl = LAYER_STYLE[c.layer];
+            const relLabels: Record<string, string> = {
+              drives: 'Drives', enables: 'Enables', constrains: 'Constrains',
+              compensates_for: 'Workaround for', responds_to: 'Responds to',
+              contradicts: 'Contradicts', blocks: 'Blocks', depends_on: 'Depends on',
+            };
+            const relLabel = relLabels[c.relationshipType] ?? c.relationshipType ?? 'Connected to';
+            const arrow    = c.direction === 'outgoing' ? '→' : '←';
+            return (
+              <div key={i} className="rounded-lg bg-white/70 border border-white/90 p-2.5 space-y-1">
+                {/* Header: direction arrow + relationship type + connected node */}
+                <div className="flex items-start gap-1.5">
+                  <span className="text-[9px] font-bold mt-0.5 shrink-0 text-slate-400">{arrow}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 mr-1.5">
+                      {relLabel}
+                    </span>
+                    <span className="text-[11px] font-bold leading-snug" style={{ color: cl.dot }}>
+                      {formatLabel(c.label)}
+                    </span>
+                    {c.isChain && (
+                      <span className="ml-1.5 text-[8px] font-bold uppercase tracking-widest text-orange-500">chain</span>
+                    )}
+                  </div>
+                  {c.score > 0 && (
+                    <span className="text-[9px] tabular-nums text-slate-300 shrink-0">{c.score}</span>
+                  )}
+                </div>
+                {/* Rationale */}
+                {c.rationale && (
+                  <p className="text-[10px] text-slate-500 leading-snug pl-3">{c.rationale}</p>
+                )}
+                {/* Evidence count */}
+                {c.mentionCount >= 2 && (
+                  <p className="text-[9px] text-slate-400 pl-3">{c.mentionCount} co-occurrences across participants</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -1018,6 +1063,7 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
   const [selected,      setSelected]      = useState<string | null>(null);
   const [activeFilter,  setActiveFilter]  = useState<Status | null>(null);
   const [selectedEdge,  setSelectedEdge]  = useState<VisEdge | null>(null);
+  const [showConnections, setShowConnections] = useState(false);
   // Priority nodes are in the Way Forward by default — user can deselect and re-select
   const [wayForwardIds, setWayForwardIds] = useState<Set<string>>(
     () => new Set(computePriorityNodes(data).map(p => p.nodeId)),
@@ -1030,19 +1076,21 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
     const byId   = new Map(all.map(e => [e.n.nodeId, e]));
     const chosen = new Set<string>();
 
-    // 1. Both endpoints of every TLM edge (prevents chain constraints being excluded)
-    for (const edge of (data.edges ?? [])) {
+    // 1. Both endpoints of CHAIN edges (validated paths always shown regardless of score)
+    for (const edge of (data.edges ?? []).filter(e => e.isChainEdge)) {
       const f = byId.get(edge.fromNodeId);
       const t = byId.get(edge.toNodeId);
       if (f) chosen.add(f.n.nodeId);
       if (t) chosen.add(t.n.nodeId);
     }
-    // 2. All critical nodes
+    // 2. All critical nodes (no score floor — critical = must be seen)
     all.filter(e => e.status === 'critical').forEach(e => chosen.add(e.n.nodeId));
-    // 3. Top partial + extra by layer
-    all.filter(e => e.status === 'partial').slice(0, 6).forEach(e => chosen.add(e.n.nodeId));
-    all.filter(e => e.n.layer === 'ENABLER'       && !chosen.has(e.n.nodeId)).slice(0, 5).forEach(e => chosen.add(e.n.nodeId));
-    all.filter(e => e.n.layer === 'REIMAGINATION' && !chosen.has(e.n.nodeId)).slice(0, 4).forEach(e => chosen.add(e.n.nodeId));
+
+    // 3. Only viable nodes (score >= 20) fill remaining slots
+    const viable = all.filter(e => e.score >= 20);
+    viable.filter(e => e.status === 'partial').slice(0, 6).forEach(e => chosen.add(e.n.nodeId));
+    viable.filter(e => e.n.layer === 'ENABLER'       && !chosen.has(e.n.nodeId)).slice(0, 5).forEach(e => chosen.add(e.n.nodeId));
+    viable.filter(e => e.n.layer === 'REIMAGINATION' && !chosen.has(e.n.nodeId)).slice(0, 4).forEach(e => chosen.add(e.n.nodeId));
 
     return all.filter(e => chosen.has(e.n.nodeId));
   }, [all, data.edges]);
@@ -1069,7 +1117,7 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
     );
   }
 
-  const remaining   = all.filter(e => !featured.some(f => f.n.nodeId === e.n.nodeId));
+  const remaining   = all.filter(e => !featured.some(f => f.n.nodeId === e.n.nodeId) && e.score >= 10);
   const selectedEN  = selected ? featured.find(e => e.n.nodeId === selected) ?? null : null;
 
   const connectedIds = selected
@@ -1119,6 +1167,16 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
             </span>
             <span className="ml-2 text-[10px] text-slate-300">· circle size = seniority × mentions</span>
           </div>
+          <button
+            onClick={() => setShowConnections(c => !c)}
+            className={`text-[10px] font-semibold px-2.5 py-1 rounded-lg border transition-colors ${
+              showConnections
+                ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+            }`}
+          >
+            {showConnections ? '⬡ Hide connections' : '⬡ Show connections'}
+          </button>
           {workshopId && (
             <ReportSectionToggle workshopId={workshopId} sectionId="transformation_priorities" title="Transformation Logic Map" />
           )}
@@ -1158,7 +1216,7 @@ export function TransformationLogicMapPanel({ data: rawData, workshopId }: Props
                 <LaneBands cw={canvasW} />
 
                 {/* Edges — weakest first so strong ones paint on top */}
-                {visibleEdges.map((e, i) => {
+                {showConnections && visibleEdges.map((e, i) => {
                   const nodeDim = selected !== null && connectedIds !== null && (() => {
                     const sp = pos.get(selected)!;
                     return !((e.x1 === sp.x && e.y1 === sp.y) || (e.x2 === sp.x && e.y2 === sp.y));

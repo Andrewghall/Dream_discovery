@@ -15,7 +15,6 @@ import { SampleSizeIndicator } from './SampleSizeIndicator';
 import { ParticipationImbalanceWarning } from './ParticipationImbalanceWarning';
 import { ActorAlignmentMatrix } from './ActorAlignmentMatrix';
 import { AlignmentHeatmap } from '@/components/discover-analysis/alignment-heatmap';
-import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
 import type { LiveJourneyData } from '@/lib/cognitive-guidance/pipeline';
 import type { AlignmentHeatmapData } from '@/lib/types/discover-analysis';
 import type { ActorAlignmentEntry, NormalizationResult } from '@/lib/types/output-dashboard';
@@ -93,13 +92,7 @@ export function JourneyIntelligenceSection({
       {/* Sub-tab content */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         {activeTab === 'journey' && (
-          journeyData ? (
-            <div className="overflow-hidden">
-              <LiveJourneyMap data={journeyData} expanded={true} mode="output" />
-            </div>
-          ) : (
-            <EmptyState message="No journey data available. The customer journey map is populated during the live workshop session." />
-          )
+          <EmptyState message="Journey map display has been removed." />
         )}
 
         {activeTab === 'actors' && (

@@ -76,16 +76,19 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ logs: combined });
 }
 
+/**
+ * DELETE is intentionally not implemented.
+ *
+ * Audit logs are append-only. Deletion would compromise the integrity of the
+ * audit trail required by ISO 27001 A.8.15, SOC 2 CC7, and GDPR Art.5(1)(f).
+ *
+ * If log pruning is required for retention compliance, it must be performed via
+ * the scheduled data-retention cron job (app/api/cron/retention/route.ts) which
+ * applies the approved retention schedule and writes its own audit entry.
+ */
 export async function DELETE() {
-  const session = await getSession();
-  if (!session || session.role !== 'PLATFORM_ADMIN') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  await Promise.all([
-    prisma.auditLog.deleteMany({}),
-    prisma.loginAttempt.deleteMany({}),
-  ]);
-
-  return NextResponse.json({ success: true });
+  return NextResponse.json(
+    { error: 'Audit logs are append-only and cannot be deleted via API.' },
+    { status: 405 }
+  );
 }

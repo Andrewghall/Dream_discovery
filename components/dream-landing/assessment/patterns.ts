@@ -125,7 +125,7 @@ export function detectPattern(domainScores: DomainScore[]): Pattern {
   if (lowest.name === 'Technology' || lowest.name === 'Technology & Data') return PATTERNS.capable_but_constrained
   if (lowest.name === 'Organisation & Partners') return PATTERNS.strategically_misaligned
   if (lowest.name === 'Customer') return PATTERNS.customer_blind_operator
-  if (lowest.name === 'Regulation') return PATTERNS.compliance_locked
+  if (lowest.name === 'Risk/Compliance') return PATTERNS.compliance_locked
 
   // High tech, low everything else
   if (highest.name === 'Technology' && avg < 3.0) return PATTERNS.technically_advanced

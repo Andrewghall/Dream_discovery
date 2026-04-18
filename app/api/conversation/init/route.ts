@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { strictLimiter } from '@/lib/rate-limit';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import {
   getFixedQuestion,
@@ -45,7 +46,23 @@ function resolveSessionConfig(workshop: any, questionSetVersion: string) {
 }
 
 export async function POST(request: NextRequest) {
+  // Rate limit: 10 inits per minute per IP — generous for genuine use, blocks automated abuse
+  const ipAddress =
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    request.headers.get('x-real-ip') ||
+    '127.0.0.1';
+
+  const rl = await strictLimiter.check(10, `conv-init:${ipAddress}`).catch(() => null);
+  if (rl && !rl.success) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait a moment.' },
+      { status: 429, headers: { 'Retry-After': Math.ceil((rl.reset - Date.now()) / 1000).toString() } },
+    );
+  }
+
   try {
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+
     const body = await request.json();
     const { workshopId, token } = body as {
       workshopId: string;
@@ -53,6 +70,9 @@ export async function POST(request: NextRequest) {
       restart?: boolean;
       runType?: 'BASELINE' | 'FOLLOWUP';
       questionSetVersion?: string;
+      consentGranted?: boolean;
+      consentText?: string;
+      consentVersion?: string;
     };
     const restart = body?.restart === true;
     const runType = body?.runType === 'FOLLOWUP' ? 'FOLLOWUP' : 'BASELINE';
@@ -234,6 +254,35 @@ export async function POST(request: NextRequest) {
         await prisma.workshopParticipant.update({
           where: { id: participant.id },
           data: { responseStartedAt: new Date() },
+        });
+
+        // Write consent record for GDPR Art.7 accountability.
+        // The participant must have clicked "I Agree" in the UI before this init
+        // call is made. We record the consent here against the participant record.
+        // consentGranted must be explicitly true — GDPR Art.7 requires affirmative action.
+        // Default is false (deny) so an omitted field does not generate a spurious consent record.
+        const grantedValue = body?.consentGranted === true;
+        await prisma.consentRecord.create({
+          data: {
+            participantId: participant.id,
+            email: participant.email,
+            workshopId,
+            purpose: 'DISCOVERY_CONVERSATION',
+            channel: 'WEB_FORM',
+            consentText: body?.consentText ||
+              'I agree to my responses being recorded and used to prepare workshop insights. ' +
+              'I understand my data will be processed as described in the Privacy Policy.',
+            consentVersion: body?.consentVersion || '1.0',
+            granted: grantedValue,
+            grantedAt: grantedValue ? new Date() : null,
+            ipAddress,
+            userAgent,
+          },
+        }).catch(err => {
+          // Non-fatal: log but do not block the conversation. A missed consent
+          // record is preferable to blocking the participant. Ops team will be
+          // alerted and can backfill from audit logs.
+          console.error('[consent] Failed to write ConsentRecord for participant', participant.id, err);
         });
       }
 

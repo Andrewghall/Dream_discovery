@@ -140,8 +140,8 @@ const PHASE_ALLOWED_SIGNALS: Record<DialoguePhase, Set<SignalType>> = {
 };
 
 // In REIMAGINE, only these lenses should trigger missing_dimension signals
-// (Technology and Regulation are irrelevant in the visionary phase)
-const REIMAGINE_LENSES: Set<Lens> = new Set(['People', 'Customer', 'Organisation']);
+// (Technology, Operations, Commercial, Risk/Compliance are excluded from the visionary phase)
+const REIMAGINE_LENSES: Set<Lens> = new Set(['People', 'Customer', 'Partners']);
 
 // ── Blueprint-aware helpers ────────────────────────────────
 
@@ -431,19 +431,23 @@ export function categoriseNode(
 
 const DEFAULT_DOMAIN_TO_LENS: Record<string, Lens> = {
   People: 'People',
-  Operations: 'Organisation',
+  Operations: 'Operations',
   Customer: 'Customer',
   Technology: 'Technology',
-  Regulation: 'Regulation',
+  Commercial: 'Commercial',
+  'Risk/Compliance': 'Risk/Compliance',
+  Partners: 'Partners',
 };
 
 /** Reverse map: lens name → CaptureAPI domain name (for hemisphere positioning) */
 export const DEFAULT_LENS_TO_DOMAIN: Record<string, string> = {
   People: 'People',
-  Organisation: 'Operations',
+  Operations: 'Operations',
   Customer: 'Customer',
   Technology: 'Technology',
-  Regulation: 'Regulation',
+  Commercial: 'Commercial',
+  'Risk/Compliance': 'Risk/Compliance',
+  Partners: 'Partners',
 };
 
 /** @deprecated Use DEFAULT_LENS_TO_DOMAIN or buildLensToDomain() */
@@ -451,7 +455,7 @@ export const LENS_TO_DOMAIN = DEFAULT_LENS_TO_DOMAIN;
 
 /**
  * Build domain→lens mapping. With research dimensions, it's identity
- * (no Operations↔Organisation mismatch --dimension names are consistent).
+ * (dimension names are consistent with lens names in the universal system).
  */
 export function buildDomainToLens(customDimensionNames?: string[] | null): Record<string, string> {
   if (customDimensionNames?.length) {
@@ -476,9 +480,11 @@ const LENS_RELEVANCE_THRESHOLD = 0.3;
 const DEFAULT_KEYWORD_LENS_MAP: [string, RegExp][] = [
   ['Customer', /\b(customer\w*|client\w*|consumer\w*|buyer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*|user\w*|experience\w*|journey\w*|satisfaction|retention|churn|onboard\w*|loyalt\w*|feedback)\b/i],
   ['Technology', /\b(technolog\w*|AI|machine.?learning|system\w*|platform\w*|software|digital\w*|automat\w*|data\b|cloud|infra\w*|algorithm\w*|API|integrat\w*|cyber\w*|server\w*|database\w*|scal\w*|architect\w*|deploy\w*|devops|pipeline\w*)\b/i],
-  ['Regulation', /\b(regulat\w*|complian\w*|legal\w*|GDPR|FCA|licen[cs]\w*|governance|audit\w*|polic[iy]\w*|legislat\w*|mandate\w*|standard\w*|accredit\w*|certif\w*|oversight|enforce\w*|statute\w*|jurisdict\w*|scrutin\w*)\b/i],
-  ['Organisation', /\b(organi[sz]\w*|department\w*|team\w*|structure\w*|process\w*|workflow\w*|operat\w*|management|staff\w*|employ\w*|HR|budget\w*|resource\w*|efficien\w*|productiv\w*|strategy\w*|decision\w*|cost\w*|revenue\w*|resilien\w*|rigid\w*|agil\w*)\b/i],
+  ['Risk/Compliance', /\b(regulat\w*|complian\w*|legal\w*|GDPR|FCA|licen[cs]\w*|governance|audit\w*|polic[iy]\w*|legislat\w*|mandate\w*|standard\w*|accredit\w*|certif\w*|oversight|enforce\w*|statute\w*|jurisdict\w*|scrutin\w*|risk\b|control\w*)\b/i],
+  ['Operations', /\b(organi[sz]\w*|department\w*|team\w*|structure\w*|process\w*|workflow\w*|operat\w*|management|staff\w*|employ\w*|HR|budget\w*|resource\w*|efficien\w*|productiv\w*|strategy\w*|decision\w*|cost\w*|revenue\w*|resilien\w*|rigid\w*|agil\w*)\b/i],
   ['People', /\b(people|person\w*|human\w*|culture\w*|skill\w*|training|talent\w*|recruit\w*|wellbeing|engagement|stakeholder\w*|leader\w*|stress\w*|burnout|morale|empower\w*|collaborat\w*|mentor\w*|divers\w*|inclusi\w*)\b/i],
+  ['Commercial', /\b(commerci\w*|revenue|pric\w*|profit|margin|growth|market\w*|sales\w*|contract\w*|monetis\w*|competitive|ROI)\b/i],
+  ['Partners', /\b(partner\w*|supplier\w*|vendor\w*|third.party|ecosystem|alliance|outsourc\w*|contractor\w*|supply.chain)\b/i],
 ];
 
 /**

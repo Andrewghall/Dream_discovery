@@ -15,7 +15,6 @@ import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, ConstraintFlag } from '../guidance-state';
 import type { AgentConversationCallback, AgentReview, WorkshopPrepResearch } from './agent-types';
-import { buildJourneyContextString } from '../journey-completion-state';
 import { getDimensionNames } from '../workshop-dimensions';
 
 // ── Constants ───────────────────────────────────────────────
@@ -334,7 +333,7 @@ export async function reviewWithConstraintAgent(
       ? `We are in CONSTRAINTS phase. Your home turf. Do these proposals help map real, specific limitations? Are they grounded in beliefs? Are they missing any known constraint domains?`
       : `We are in DEFINE APPROACH. Do these proposals account for the constraints we've mapped while still being actionable and forward-looking?`;
 
-  const journeyCtx = buildJourneyContextString(guidanceState.journeyCompletionState);
+  const journeyCtx = null;
 
   const systemPrompt = `You are the DREAM Constraint Agent reviewing proposals from a colleague.
 

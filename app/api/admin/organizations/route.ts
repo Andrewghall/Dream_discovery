@@ -5,6 +5,7 @@ import { sendWelcomeEmail } from '@/lib/email/send';
 import * as bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import crypto from 'crypto';
+import { CreateOrganisationSchema, zodError } from '@/lib/validation/schemas';
 
 function generateTemporaryPassword(): string {
   const words = ['Dream', 'Discovery', 'Platform', 'Secure', 'Admin', 'Access'];
@@ -75,24 +76,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { name, logoUrl, primaryColor, secondaryColor, maxSeats, billingEmail, adminName } = await request.json();
+    const rawBody = await request.json().catch(() => null);
+    const orgParsed = CreateOrganisationSchema.safeParse(rawBody);
+    if (!orgParsed.success) return zodError(orgParsed.error);
 
-    if (!name?.trim()) {
-      return NextResponse.json({ error: 'Organization name is required' }, { status: 400 });
-    }
-
-    const seats = maxSeats ? parseInt(maxSeats, 10) : 5;
+    const { name, primaryColor, secondaryColor, maxSeats, billingEmail, adminName } = orgParsed.data;
+    // logoUrl not in schema (it's a URL from a file upload flow, validated separately)
+    const logoUrl = (rawBody as Record<string, unknown>)?.logoUrl as string | undefined;
 
     // Create the organisation
     const organization = await prisma.organization.create({
       data: {
-        name: name.trim(),
+        name,
         logoUrl: logoUrl?.trim() || null,
-        primaryColor: primaryColor?.trim() || null,
-        secondaryColor: secondaryColor?.trim() || null,
-        maxSeats: seats,
-        billingEmail: billingEmail?.trim() || null,
-        adminName: adminName?.trim() || null,
+        primaryColor: primaryColor || null,
+        secondaryColor: secondaryColor || null,
+        maxSeats: maxSeats ?? 5,
+        billingEmail: billingEmail || null,
+        adminName: adminName || null,
       },
     });
 
@@ -102,16 +103,16 @@ export async function POST(request: NextRequest) {
     let adminUser = null;
     let temporaryPassword: string | null = null;
 
-    if (billingEmail?.trim()) {
+    if (billingEmail) {
       try {
-        // Check if user already exists
-        const existing = await prisma.user.findUnique({ where: { email: billingEmail.trim().toLowerCase() } });
+        // Check if user already exists (billingEmail is already lowercase/trimmed by Zod)
+        const existing = await prisma.user.findUnique({ where: { email: billingEmail } });
 
         if (existing) {
           if (existing.organizationId && existing.organizationId !== organization.id) {
             // User already belongs to a different org — do NOT silently reassign
             adminUser = existing;
-            emailError = `User ${billingEmail.trim()} already belongs to another organisation. Reassign them manually via the Users page if needed.`;
+            emailError = `User ${billingEmail} already belongs to another organisation. Reassign them manually via the Users page if needed.`;
           } else if (!existing.organizationId) {
             // Unlinked user — link them to this new org
             await prisma.user.update({
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
             setPasswordUrl,
             role: 'TENANT_ADMIN',
             organizationName: name.trim(),
-            maxSeats: seats,
+            maxSeats: maxSeats ?? 5,
           });
           emailSent = true;
           console.log('[org/create] Welcome email sent OK');

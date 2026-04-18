@@ -5,19 +5,18 @@ import * as bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { authLimiter } from '@/lib/rate-limit';
 import { createExecSessionToken, type ExecSessionPayload } from '@/lib/auth/exec-session';
+import { ExecLoginSchema, zodError } from '@/lib/validation/schemas';
 
 export async function POST(request: NextRequest) {
   const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
   const userAgent = request.headers.get('user-agent') || 'unknown';
 
   try {
-    const { email, password } = await request.json() as { email?: string; password?: string };
+    const rawBody = await request.json().catch(() => null);
+    const parsed = ExecLoginSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
 
-    if (!email?.trim() || !password) {
-      return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
+    const { email: normalizedEmail, password } = parsed.data;
 
     // Rate limit per email
     const rl = await authLimiter.check(5, `exec-login:${normalizedEmail}`);
