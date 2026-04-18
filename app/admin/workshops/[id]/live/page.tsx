@@ -3012,16 +3012,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
               utteranceBufferRef.current.delete(sid);
               setPendingNodes((prev) => { const n = { ...prev }; delete n[sid]; return n; });
 
-              // Drop fragments that are too short to carry meaningful signal.
-              // Garbled Deepgram output ("Out there in the industry. Customer.")
-              // and single-clause noise pass the trivial filter but produce
-              // meaningless nodes. Require at least 8 words before committing.
-              const wordCount = fullText.split(/\s+/).filter(Boolean).length;
-              if (wordCount < 8) {
-                console.log('[DREAM-DIAG] Dropping short fragment for', sid, `(${wordCount} words):`, fullText);
-                return;
-              }
-
               console.log('[DREAM-DIAG] Committing thought for', sid, '—', fullText.substring(0, 80));
 
               const commitNow = Date.now();
@@ -3089,26 +3079,50 @@ export default function WorkshopLivePage({ params }: PageProps) {
           }
 
           // ── Reset thought-completion silence watchdog ─────────────────────
-          // The timer fires only after thoughtCommitSilenceMs of uninterrupted
-          // silence. Any new isFinal chunk (including after a speechFinal pause)
-          // resets it, so a speaker continuing their thought stays unresolved.
-          // speechFinal confirms a pause occurred but does NOT trigger immediate
-          // commit — it is a breath boundary, not a thought boundary.
+          // ── Thought-resolution timer ──────────────────────────────────────
+          // A thought is committed only when the speaker stops AND the meaning
+          // appears resolved. Two-tier approach:
+          //
+          // 1. Full silence window (4000ms): always resets on any new isFinal
+          //    chunk. A speaker continuing their thought resets the clock.
+          //
+          // 2. speechFinal shortcut: if Deepgram's VAD signals a pause AND the
+          //    accumulated text ends with terminal punctuation (meaning resolved),
+          //    the remaining window is trimmed to 800ms. This lets clearly-finished
+          //    thoughts commit quickly without waiting the full 4 seconds.
+          //    If speechFinal arrives but the text is incomplete (no terminal
+          //    punctuation), the full window continues — the speaker likely paused
+          //    mid-thought.
           const existingTimer = silenceTimersRef.current.get(speakerId);
           if (existingTimer != null) clearTimeout(existingTimer);
+
+          const slmMetaForCommit = {
+            confidence: msg.confidence,
+            entities: msg.entities,
+            emotionalTone: msg.emotionalTone,
+            slmConfidence: msg.slmConfidence,
+            slmUsed: msg.slmUsed,
+          };
+
           const silenceTimer = setTimeout(() => {
-            void commitUtteranceRef.current?.(speakerId, {
-              confidence: msg.confidence,
-              entities: msg.entities,
-              emotionalTone: msg.emotionalTone,
-              slmConfidence: msg.slmConfidence,
-              slmUsed: msg.slmUsed,
-            });
+            void commitUtteranceRef.current?.(speakerId, slmMetaForCommit);
           }, LIVE_CAPTURE_CONFIG.thoughtCommitSilenceMs);
           silenceTimersRef.current.set(speakerId, silenceTimer);
 
           if (msg.speechFinal) {
-            console.log('[DREAM-DIAG] speechFinal (breath pause) for', speakerId, '— silence window still running');
+            // speechFinal = VAD pause detected. Check if meaning is resolved.
+            const isResolved = /[.!?]['"]?\s*$/.test(fullSoFar.trimEnd());
+            if (isResolved) {
+              // Thought completed — shorten remaining window
+              clearTimeout(silenceTimer);
+              const shortTimer = setTimeout(() => {
+                void commitUtteranceRef.current?.(speakerId, slmMetaForCommit);
+              }, LIVE_CAPTURE_CONFIG.speechFinalResolvedMs);
+              silenceTimersRef.current.set(speakerId, shortTimer);
+              console.log('[DREAM-DIAG] speechFinal + resolved thought — shortcutting to', LIVE_CAPTURE_CONFIG.speechFinalResolvedMs, 'ms for', speakerId);
+            } else {
+              console.log('[DREAM-DIAG] speechFinal but thought unresolved — full window continues for', speakerId);
+            }
           }
         },
         onError: (err) => {
