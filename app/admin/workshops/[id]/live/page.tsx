@@ -3077,6 +3077,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         dataPointSource: 'SPEECH',
                         speakerId,
                         dialoguePhase: safePhase(currentPhase) ?? null,
+                        // Immutable deterministic confidence — drives radial placement
+                        // until LLM agenticAnalysis arrives and overallConfidence > 0.
+                        ethentaflowConfidence: domainResult?.confidence ?? null,
                         transcriptChunk: {
                           speakerId,
                           startTimeMs: attempt.start_time_ms,
@@ -3087,7 +3090,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         classification: null,
                         agenticAnalysis: {
                           domains: agenticDomains,
-                          themes: [], actors: [], semanticMeaning: '', sentimentTone: '', overallConfidence: domainResult?.confidence ?? 0.5,
+                          themes: [], actors: [], semanticMeaning: '', sentimentTone: '',
+                          // 0 = LLM pending — placement chain falls through to ethentaflowConfidence.
+                          overallConfidence: 0,
                         },
                       };
                       setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });

@@ -24,6 +24,10 @@ export type HemisphereNodeDatum = {
   intent?: string | null;
   themeId?: string | null;
   themeLabel?: string | null;
+  // Deterministic confidence from EthentaFlow domain scorer.
+  // Set once at commit time; never overwritten by LLM updates.
+  // Drives initial radial placement before LLM agenticAnalysis arrives.
+  ethentaflowConfidence?: number | null;
   transcriptChunk: {
     speakerId?: string | null;
     startTimeMs: number;
@@ -53,6 +57,8 @@ export type HemisphereNodeDatum = {
     }>;
     semanticMeaning: string;
     sentimentTone: string;
+    // 0 = LLM pending (placeholder); >0 = LLM has returned a real confidence value.
+    // When >0, supersedes ethentaflowConfidence for radial placement.
     overallConfidence: number;
   } | null;
 };
@@ -293,7 +299,18 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       theta += angularJitter;
 
       const clsType = n.classification?.primaryType ?? null;
-      const clsConf = typeof n.classification?.confidence === 'number' ? n.classification.confidence : null;
+
+      // Placement confidence chain — temporal priority:
+      //   1. agenticAnalysis.overallConfidence > 0  → LLM has returned; use its verdict
+      //   2. ethentaflowConfidence                  → deterministic scorer result (immediate at commit)
+      //   3. classification.confidence              → legacy path (loaded snapshots)
+      //   4. 0.35                                   → neutral fallback
+      const llmConf = typeof n.agenticAnalysis?.overallConfidence === 'number' && n.agenticAnalysis.overallConfidence > 0
+        ? n.agenticAnalysis.overallConfidence
+        : null;
+      const clsConf = llmConf
+        ?? (typeof n.ethentaflowConfidence === 'number' ? n.ethentaflowConfidence : null)
+        ?? (typeof n.classification?.confidence === 'number' ? n.classification.confidence : null);
       const radialConf = clamp01(clsConf ?? 0.35);
 
       // Clamp theta to valid semicircle range [0.05, π-0.05] to prevent dots escaping
