@@ -109,7 +109,12 @@ export const CreateWorkshopSchema = z.object({
   companyWebsite: z.string().url('Invalid URL').max(500).optional().or(z.literal('')).optional(),
   dreamTrack: z.enum(DREAM_TRACKS).optional().or(z.null()).optional(),
   targetDomain: optStr(200),
-  engagementType: z.enum(ENGAGEMENT_TYPES).optional().or(z.null()).optional(),
+  // Accept both lowercase UI keys ('operational_deep_dive') and uppercase Prisma enum values
+  // ('OPERATIONAL_DEEP_DIVE'). Normalisation to the DB enum is handled by toEngagementEnum()
+  // in the route handler. Using a loose string here matches PatchWorkshopSchema's pattern
+  // and avoids the UI→schema mismatch that caused "Invalid input" when an engagement type
+  // was selected (listEngagementTypes() returns lowercase keys, not uppercase enum values).
+  engagementType: optStr(50),
 });
 
 export const PatchWorkshopSchema = z.object({
