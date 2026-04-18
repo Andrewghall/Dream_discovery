@@ -23,6 +23,7 @@ function toEngagementEnum(value: unknown): EngagementType | null {
     'AI_ENABLEMENT',
     'TRANSFORMATION_SPRINT',
     'CULTURAL_ALIGNMENT',
+    'GO_TO_MARKET',
   ];
   if (valid.includes(normalized as EngagementType)) {
     return normalized as EngagementType;

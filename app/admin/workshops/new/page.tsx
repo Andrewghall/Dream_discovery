@@ -69,6 +69,10 @@ export default function NewWorkshopPage() {
     e.preventDefault();
     setLoading(true);
 
+    // Convert datetime-local values (YYYY-MM-DDTHH:mm) to full ISO strings the server expects,
+    // or omit them if empty.
+    const toISO = (v: string) => v ? new Date(v).toISOString() : undefined;
+
     try {
       const response = await fetch('/api/admin/workshops', {
         method: 'POST',
@@ -86,6 +90,9 @@ export default function NewWorkshopPage() {
           // Field Discovery / Diagnostic extension
           // domainPack is resolved server-side from industry + engagementType + dreamTrack
           engagementType: isDream && formData.engagementType ? formData.engagementType : undefined,
+          // Convert datetime-local strings to full ISO 8601 for schema validation
+          scheduledDate: toISO(formData.scheduledDate),
+          responseDeadline: toISO(formData.responseDeadline),
         }),
       });
 
@@ -101,11 +108,13 @@ export default function NewWorkshopPage() {
         }
       } else {
         const data = await response.json().catch(() => null);
-        const detailsMessage =
-          data?.details?.message ||
-          (typeof data?.details === 'string' ? data.details : null) ||
-          data?.error ||
-          'Failed to create workshop';
+        // Show field-level errors when available so the cause is visible
+        const fieldErrors = data?.details && typeof data.details === 'object'
+          ? Object.entries(data.details as Record<string, string[]>)
+              .map(([field, msgs]) => `${field}: ${(msgs as string[]).join(', ')}`)
+              .join('\n')
+          : null;
+        const detailsMessage = fieldErrors || data?.error || 'Failed to create workshop';
         alert(detailsMessage);
       }
     } catch (error) {

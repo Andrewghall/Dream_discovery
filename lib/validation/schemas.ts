@@ -81,6 +81,17 @@ const ENGAGEMENT_TYPES = [
   'GO_TO_MARKET',
 ] as const;
 
+// Lowercase UI keys returned by listEngagementTypes() — accepted by create/patch routes
+// and normalised to the DB enum by toEngagementEnum() in the route handlers.
+const ENGAGEMENT_TYPE_KEYS = [
+  'diagnostic_baseline',
+  'operational_deep_dive',
+  'ai_enablement',
+  'transformation_sprint',
+  'cultural_alignment',
+  'go_to_market',
+] as const;
+
 const DREAM_TRACKS = ['ENTERPRISE', 'DOMAIN'] as const;
 
 const WORKSHOP_TYPES = [
@@ -109,12 +120,9 @@ export const CreateWorkshopSchema = z.object({
   companyWebsite: z.string().url('Invalid URL').max(500).optional().or(z.literal('')).optional(),
   dreamTrack: z.enum(DREAM_TRACKS).optional().or(z.null()).optional(),
   targetDomain: optStr(200),
-  // Accept both lowercase UI keys ('operational_deep_dive') and uppercase Prisma enum values
-  // ('OPERATIONAL_DEEP_DIVE'). Normalisation to the DB enum is handled by toEngagementEnum()
-  // in the route handler. Using a loose string here matches PatchWorkshopSchema's pattern
-  // and avoids the UI→schema mismatch that caused "Invalid input" when an engagement type
-  // was selected (listEngagementTypes() returns lowercase keys, not uppercase enum values).
-  engagementType: optStr(50),
+  // Accept both lowercase UI keys and uppercase Prisma enum values.
+  // Normalisation to the DB enum is handled by toEngagementEnum() in the route handler.
+  engagementType: z.enum([...ENGAGEMENT_TYPES, ...ENGAGEMENT_TYPE_KEYS]).optional().or(z.null()).optional(),
 });
 
 export const PatchWorkshopSchema = z.object({
