@@ -68,7 +68,7 @@ DO $$
 BEGIN
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'data_points' AND column_name = '"transcriptChunkId"'
+        WHERE table_name = 'data_points' AND column_name = 'transcriptChunkId'
     ) THEN
         ALTER TABLE "data_points" RENAME COLUMN "transcriptChunkId" TO "transcript_chunk_id";
     END IF;

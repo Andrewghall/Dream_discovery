@@ -16,7 +16,6 @@ import { pushUtterance } from '@/lib/cognition/cognitive-state';
 import { extractFeatures } from '@/lib/ethentaflow/thought-feature-extractor';
 import { runCommitGuard, logGuardResult } from '@/lib/ethentaflow/thought-guard';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
-import { commitThoughtWindow } from '@/lib/ethentaflow/thought-window-manager';
 import type { TranscriptSource } from '@prisma/client';
 // Journey agent + cognitive analysis run inside after() — up to 40s per cycle.
 // Without this, Vercel kills the background work before the journey agent completes.
@@ -140,88 +139,99 @@ async function processResolvedThought(
 ) {
   const trace = traceId ? `[trace:${traceId}]` : '';
   const text = utterance.text;
+  const now = Date.now();
   const src: TranscriptSource = utterance.source === 'WHISPER' ? 'WHISPER'
     : utterance.source === 'ZOOM' ? 'ZOOM' : 'DEEPGRAM';
 
-  // ── Dedup check — guard against double-commit of the same resolved thought ─
-  const existing = await prisma.thoughtWindow.findFirst({
-    where: {
-      workshopId,
-      speakerId: bodySpeakerId ?? null,
-      resolvedText: text,
-      state: 'RESOLVED',
-      // Must have resolved within the last 30 seconds to be a true dupe
-      closedAtMs: { gte: BigInt(Date.now() - 30_000) },
-    },
-    include: { dataPoint: true },
-  });
+  // ══ STEP 1 — Write spoken records immediately. Unconditional. ════════════
+  // Every spoken record is persisted to transcript_chunks before any validity
+  // check, guard, or DataPoint decision. Blocked, expired, and unresolved
+  // thoughts remain fully visible in the transcript layer.
+  // Natural repeated speech ("yes" said twice) is stored twice — that is correct.
+  // The only skip is a true transport-level duplicate: exact same workshopId +
+  // startTimeMs + text, which hits the DB unique constraint.
+  const chunkIds: string[] = [];
+  const firstStartTimeMs = incomingSpokenRecords[0]?.startTimeMs ?? now;
+  const lastEndTimeMs = incomingSpokenRecords[incomingSpokenRecords.length - 1]?.endTimeMs ?? now;
 
-  if (existing?.dataPoint) {
-    const dataPointId = existing.dataPoint.id;
-    const requestedPhase = safeDialoguePhase(bodyDialoguePhase);
-    if (requestedPhase) {
-      await prisma.dataPointAnnotation.upsert({
-        where: { dataPointId },
-        create: { dataPointId, dialoguePhase: requestedPhase },
-        update: {},
-      }).catch(() => null);
-    }
-    return { deduped: true, dataPointId };
-  }
-
-  // ── Map incoming spoken records to the format ThoughtWindowManager expects ─
-  const spokenRecordsForWindow = incomingSpokenRecords.map(r => ({
-    text: r.text,
-    startTimeMs: r.startTimeMs,
-    endTimeMs: r.endTimeMs,
-    confidence: r.confidence,
-    source: src,
-    metadata: {
+  for (const rec of incomingSpokenRecords) {
+    const chunkMeta = {
       ...(bodySlmMetadata && { slmMetadata: bodySlmMetadata }),
       ...(clientDomainHint && { ethentaflowDomain: clientDomainHint }),
-    } as Record<string, unknown>,
-  }));
-
-  // ── STEP 1 + 2: Create spoken records → thought window ───────────────────
-  // commitThoughtWindow writes all TranscriptChunks and the ThoughtWindow.
-  // It returns the window result only if the guard passes.
-  const windowOutcome = await commitThoughtWindow(
-    workshopId,
-    bodySpeakerId,
-    text,
-    spokenRecordsForWindow,
-    bodyDialoguePhase,
-    bodySlmMetadata,
-    clientDomainHint as Record<string, unknown> | null,
-  );
-
-  if (windowOutcome.status === 'blocked') {
-    console.log(`[ThoughtWindow${trace}] Blocked by guard:`, windowOutcome.reason);
-    return { blocked: true, reason: windowOutcome.reason };
+    };
+    try {
+      const chunk = await prisma.transcriptChunk.create({
+        data: {
+          workshopId,
+          speakerId: bodySpeakerId ?? null,
+          startTimeMs: BigInt(rec.startTimeMs),
+          endTimeMs: BigInt(rec.endTimeMs),
+          text: rec.text,
+          confidence: rec.confidence,
+          source: src,
+          metadata: Object.keys(chunkMeta).length > 0 ? chunkMeta as any : undefined,
+        },
+      });
+      chunkIds.push(chunk.id);
+    } catch {
+      // Unique constraint violation = exact transport retry (identical workshop +
+      // startTimeMs + text). Skip without losing capture.
+    }
   }
 
-  if (windowOutcome.status === 'error') {
-    throw new Error(`ThoughtWindow creation failed: ${windowOutcome.message}`);
+  // ══ STEP 2 — Guard check. Controls DataPoint creation only. ══════════════
+  // Spoken records are already in DB regardless of this result.
+  const guard = applyServerGuard(text, utterance.source ?? 'unknown');
+  if (guard.blocked) {
+    console.log(`[ThoughtWindow${trace}] Guard blocked — spoken records persisted, no DataPoint:`, guard.reason);
+    return { blocked: true, reason: guard.reason, spokenRecordIds: chunkIds };
   }
 
-  const window = windowOutcome.window;
+  // ══ STEP 3 — Create ThoughtWindow linking the already-written records. ════
+  const spanMs = Math.max(0, lastEndTimeMs - firstStartTimeMs);
+  const thoughtWindow = await prisma.thoughtWindow.create({
+    data: {
+      workshopId,
+      speakerId: bodySpeakerId ?? null,
+      state: 'RESOLVED',
+      fullText: text,
+      resolvedText: text,
+      openedAtMs: BigInt(firstStartTimeMs),
+      lastActivityAtMs: BigInt(lastEndTimeMs),
+      closedAtMs: BigInt(now),
+      spokenRecordCount: chunkIds.length,
+      spokenRecords: { connect: chunkIds.map(id => ({ id })) },
+    },
+  });
 
-  // ── STEP 3: Create DataPoint — the resolved meaning artifact ─────────────
-  // This is the ONLY record DREAM will ever read. Created after window resolves.
+  // ══ STEP 4 — Create DataPoint. The resolved meaning artifact. ════════════
+  // This is the only record DREAM will ever read.
   const dataPoint = await prisma.dataPoint.create({
     data: {
       workshopId,
-      thoughtWindowId: window.windowId,
-      spokenRecordIds: window.spokenRecordIds,
+      thoughtWindowId: thoughtWindow.id,
+      spokenRecordIds: chunkIds,
       rawText: text,
       source: 'SPEECH',
       speakerId: bodySpeakerId ?? null,
-      startTimeMs: BigInt(window.startTimeMs),
-      endTimeMs: BigInt(window.endTimeMs),
-      spanMs: window.spanMs,
-      spokenRecordCount: window.spokenRecordCount,
+      startTimeMs: BigInt(firstStartTimeMs),
+      endTimeMs: BigInt(lastEndTimeMs),
+      spanMs,
+      spokenRecordCount: chunkIds.length,
     },
   });
+
+  // Expose window shape under the same name downstream code expects
+  const window = {
+    windowId: thoughtWindow.id,
+    spokenRecordIds: chunkIds,
+    resolvedText: text,
+    speakerId: bodySpeakerId,
+    startTimeMs: firstStartTimeMs,
+    endTimeMs: lastEndTimeMs,
+    spanMs,
+    spokenRecordCount: chunkIds.length,
+  };
 
   const dialoguePhase = safeDialoguePhase(bodyDialoguePhase ?? utterance.dialoguePhase);
   if (dialoguePhase) {
@@ -767,21 +777,6 @@ export async function POST(
         buffered: false,
         skipped: true,
         reason: 'Trivial fragment — stored only',
-      });
-    }
-
-    // ── EthentaFlow server guard ─────────────────────────────────
-    // Hard block before any Supabase write. Catches structural noise
-    // regardless of which client path sent this POST (WebSocket primary
-    // or MediaRecorder fallback). Same rules as client-side final guard.
-    const guard = applyServerGuard(text, body.source ?? 'unknown');
-    if (guard.blocked) {
-      return NextResponse.json({
-        ok: true,
-        buffered: false,
-        skipped: true,
-        reason: guard.reason ?? 'server-guard-blocked',
-        results: [],
       });
     }
 
