@@ -6,15 +6,84 @@ import { nanoid } from 'nanoid';
 import { authLimiter } from '@/lib/rate-limit';
 import { createSessionToken, type SessionPayload } from '@/lib/auth/session';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
+import { isMfaRequired, requiresMfa, decryptTotpSecret, verifyTotp } from '@/lib/auth/mfa';
+import { SignJWT, jwtVerify } from 'jose';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 15;
 
 const TENANT_ROLES = ['TENANT_ADMIN', 'TENANT_USER'];
 
+// ── MFA challenge token helpers ───────────────────────────────────────────────
+// A short-lived (5 min) JWT issued after password success when TOTP is required.
+// Audience 'mfa-challenge' distinguishes it from full session tokens.
+// The client must POST it to /api/auth/mfa-verify with the TOTP code to get a
+// real session cookie. This prevents a session being issued before MFA is passed.
+
+async function createMfaChallengeToken(userId: string): Promise<string> {
+  const secret = new TextEncoder().encode(
+    process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
+  );
+  return new SignJWT({ userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setAudience('mfa-challenge')
+    .setIssuer('dream-discovery')
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(secret);
+}
+
+export async function verifyMfaChallengeToken(token: string): Promise<string | null> {
+  try {
+    const secret = new TextEncoder().encode(
+      process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
+    );
+    const { payload } = await jwtVerify(token, secret, {
+      audience: 'mfa-challenge',
+      issuer: 'dream-discovery',
+    });
+    return typeof payload.userId === 'string' ? payload.userId : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Short-lived token (15 min) issued when MFA is required but the user has not
+ * enrolled yet. Allows GET /api/auth/mfa (generate secret) and POST /api/auth/mfa
+ * (activate + complete login) without a full session cookie.
+ */
+async function createMfaEnrolmentToken(userId: string): Promise<string> {
+  const secret = new TextEncoder().encode(
+    process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
+  );
+  return new SignJWT({ userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setAudience('mfa-enrolment')
+    .setIssuer('dream-discovery')
+    .setIssuedAt()
+    .setExpirationTime('15m')
+    .sign(secret);
+}
+
+export async function verifyMfaEnrolmentToken(token: string): Promise<string | null> {
+  try {
+    const secret = new TextEncoder().encode(
+      process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
+    );
+    const { payload } = await jwtVerify(token, secret, {
+      audience: 'mfa-enrolment',
+      issuer: 'dream-discovery',
+    });
+    return typeof payload.userId === 'string' ? payload.userId : null;
+  } catch {
+    return null;
+  }
+}
+
 function getIpAddress(request: NextRequest): string {
   return (
-    request.headers.get('x-forwarded-for') ||
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
     request.headers.get('x-real-ip') ||
     (request as any).ip ||
     '127.0.0.1'
@@ -60,6 +129,19 @@ export async function POST(request: NextRequest) {
 
       if (!isAdminValid) {
         return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+      }
+
+      // When MFA enforcement is active, the environment-backed admin has no TOTP capability
+      // and must not bypass the MFA gate. Block this path entirely and require a DB admin
+      // account that can complete TOTP enrolment.
+      if (isMfaRequired()) {
+        return NextResponse.json(
+          {
+            error: 'Environment admin access is disabled while MFA enforcement is active. ' +
+              'Use a database admin account with MFA enrolled.',
+          },
+          { status: 403 }
+        );
       }
 
       // Valid admin - create JWT session backed by DB
@@ -224,6 +306,46 @@ export async function POST(request: NextRequest) {
       where: { id: user.id },
       data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
     });
+
+    // MFA challenge gate
+    // When MFA_REQUIRED=true and this role requires MFA, we must not issue a full
+    // session until TOTP is verified. Instead issue a short-lived challenge token.
+    if (isMfaRequired() && requiresMfa(user.role)) {
+      if (!user.totpEnabled) {
+        // User hasn't enrolled TOTP yet. Issue a short-lived enrolment token so they
+        // can complete setup in this same login flow without needing a full session.
+        // The enrolment token is accepted by GET + POST /api/auth/mfa in lieu of a cookie.
+        const enrolmentToken = await createMfaEnrolmentToken(user.id);
+        logAuditEvent({
+          organizationId: user.organizationId ?? 'unknown',
+          userId: user.id,
+          userEmail: user.email,
+          action: 'MFA_CHALLENGE_ISSUED',
+          resourceType: 'session',
+          metadata: { role: user.role, enrolment: true },
+          ipAddress,
+          userAgent,
+          success: true,
+        }).catch(err => console.error('[audit] mfa_enrolment_issued:', err));
+        return NextResponse.json({ mfaRequired: true, mfaEnrolmentRequired: true, enrolmentToken });
+      }
+
+      // Issue a 5-minute challenge token - no session cookie yet.
+      const mfaToken = await createMfaChallengeToken(user.id);
+      logAuditEvent({
+        organizationId: user.organizationId ?? 'unknown',
+        userId: user.id,
+        userEmail: user.email,
+        action: 'MFA_CHALLENGE_ISSUED',
+        resourceType: 'session',
+        metadata: { role: user.role },
+        ipAddress,
+        userAgent,
+        success: true,
+      }).catch(err => console.error('[audit] mfa_challenge:', err));
+
+      return NextResponse.json({ mfaRequired: true, mfaToken });
+    }
 
     // If user must change password, generate a reset token and redirect there instead of logging in
     if (user.mustChangePassword) {

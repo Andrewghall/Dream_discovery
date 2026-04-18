@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { PatchWorkshopBodySchema, zodError } from '@/lib/validation/schemas';
 import { getDomainPack } from '@/lib/domain-packs';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import { readBlueprintFromJson, WorkshopBlueprintSchema } from '@/lib/workshop/blueprint';
@@ -9,6 +10,7 @@ import type { EngagementType } from '@prisma/client';
 import type { WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 import { validateQuestionSet } from '@/lib/cognition/agents/question-set-validator';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
+import { encryptWorkshopData, decryptWorkshopData, decryptParticipantData } from '@/lib/workshop-encryption';
 
 export const dynamic = 'force-dynamic';
 
@@ -392,8 +394,25 @@ export async function GET(
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
     }
 
+    // Decrypt workshop-level fields (businessContext) if encryption is enabled.
+    // decryptWorkshopData is a no-op when ENCRYPTION_ENABLED !== 'true'.
+    const decryptedWorkshop = decryptWorkshopData(workshop);
+
+    // Strip discoveryToken from participant records before returning to admin clients.
+    // discoveryToken is a GDPR participant auth credential — it is only needed by the
+    // participant-facing discovery flow and must not be exposed to admin sessions.
+    // Also decrypt participant email if encryption is enabled.
+    const safeWorkshop = {
+      ...(decryptedWorkshop as Record<string, unknown>),
+      participants: Array.isArray((decryptedWorkshop as Record<string, unknown>).participants)
+        ? ((decryptedWorkshop as Record<string, unknown>).participants as Array<Record<string, unknown>>).map(
+            ({ discoveryToken: _omit, ...p }) => decryptParticipantData(p)
+          )
+        : (decryptedWorkshop as Record<string, unknown>).participants,
+    };
+
     return NextResponse.json(
-      { workshop },
+      { workshop: safeWorkshop },
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (error) {
@@ -458,7 +477,10 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json().catch(() => ({}));
+    const rawBody = await request.json().catch(() => null);
+    const parsed = PatchWorkshopBodySchema.safeParse(rawBody ?? {});
+    if (!parsed.success) return zodError(parsed.error);
+    const body = parsed.data;
 
     // Authenticate user
     const user = await getAuthenticatedUser();
@@ -582,9 +604,11 @@ export async function PATCH(
       }
     }
 
+    // Encrypt sensitive fields (businessContext) before persisting if encryption is enabled.
+    // encryptWorkshopData is a no-op when ENCRYPTION_ENABLED !== 'true'.
     const updated = await prisma.workshop.update({
       where: { id },
-      data: updateData,
+      data: encryptWorkshopData(updateData),
     });
 
     if (user.organizationId) {

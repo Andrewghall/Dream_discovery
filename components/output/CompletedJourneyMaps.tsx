@@ -25,7 +25,6 @@
  */
 
 import { useState, useMemo } from 'react';
-import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
 import { ActorAlignmentMatrix } from './ActorAlignmentMatrix';
 import { AlignmentHeatmap } from '@/components/discover-analysis/alignment-heatmap';
 import { ParticipationImbalanceWarning } from './ParticipationImbalanceWarning';
@@ -321,7 +320,7 @@ export function CompletedJourneyMaps({
                 <p className="text-xs text-slate-400 max-w-sm">{currentPhase.emptyHint}</p>
               </div>
             ) : (
-              <LiveJourneyMap data={filtered} expanded mode="output" />
+              <p className="text-xs text-slate-400 py-4 text-center">Journey map display has been removed.</p>
             )}
           </div>
         )}

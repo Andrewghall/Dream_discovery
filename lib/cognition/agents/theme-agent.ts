@@ -17,7 +17,6 @@ import type { CognitiveState } from '../cognitive-state';
 import type { GuidanceState, GuidedTheme } from '../guidance-state';
 import type { AgentConversationCallback, AgentReview, WorkshopPrepResearch } from './agent-types';
 import type { Lens } from '@/lib/cognitive-guidance/pipeline';
-import { buildJourneyContextString } from '../journey-completion-state';
 import { getDimensionNames } from '../workshop-dimensions';
 
 // ── Constants ───────────────────────────────────────────────
@@ -442,7 +441,7 @@ export async function reviewWithThemeAgent(
   const dims = getDimensionNames(research);
   const reviewTools = buildThemeReviewTools(dims);
 
-  const journeyCtx = buildJourneyContextString(guidanceState.journeyCompletionState);
+  const journeyCtx = null;
 
   const systemPrompt = `${basePrompt}
 

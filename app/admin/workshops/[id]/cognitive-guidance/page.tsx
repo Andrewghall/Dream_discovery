@@ -20,7 +20,6 @@ import {
   type SessionConfidence,
   type DialoguePhase,
   type LiveJourneyData,
-  type LiveJourneyInteraction,
   ALL_PHASES,
   PHASE_LABELS,
   DEFAULT_JOURNEY_STAGES,
@@ -38,7 +37,6 @@ import {
   buildLiveJourney,
   calculateSessionConfidence,
   calculateQuestionCoverage,
-  mergeBackendJourney,
 } from '@/lib/cognitive-guidance/pipeline';
 
 import { StickyPadCanvas } from '@/components/cognitive-guidance/sticky-pad-canvas';
@@ -48,19 +46,15 @@ import GapIndicatorStrip from '@/components/cognitive-guidance/gap-indicator-str
 import DataSufficiencyBar from '@/components/cognitive-guidance/data-sufficiency-bar';
 import MetricContradictionAlert from '@/components/cognitive-guidance/metric-contradiction-alert';
 import SignalClusterPanel from '@/components/cognitive-guidance/signal-cluster-panel';
-import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
 import {
   AgentOrchestrationPanel,
   type AgentConversationEntry,
 } from '@/components/cognitive-guidance/agent-orchestration-panel';
-import type { GuidedTheme, JourneyCompletionState } from '@/lib/cognition/guidance-state';
-import { calculateDeterministicCompletion } from '@/lib/cognition/journey-completion-state';
+import type { GuidedTheme } from '@/lib/cognition/guidance-state';
 import type { WorkshopPhase, FacilitationQuestion, SubQuestion, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 import { getDimensionColors, darkenHex, lightenHex } from '@/lib/cognition/workshop-dimensions';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { useAudioCapture } from '@/hooks/use-audio-capture';
-import { useJourneyMutations } from '@/hooks/use-journey-mutations';
-import type { JourneyMutationIntent } from '@/lib/cognition/agents/journey-mutation-types';
 import type { StreamTranscript } from '@/lib/captureapi/client';
 import { MicSetupDialog } from '@/components/cognitive-guidance/mic-setup-dialog';
 import VersionHistoryPanel from '@/components/cognitive-guidance/version-history-panel';
@@ -161,14 +155,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [lensCoverage, setLensCoverage] = useState<Map<Lens, LensCoverage>>(new Map());
   const [dialoguePhase, setDialoguePhase] = useState<DialoguePhase>('REIMAGINE');
-  const {
-    journey: liveJourney,
-    setJourney: setLiveJourney,
-    applyMutationIntent,
-  } = useJourneyMutations({
-    initialJourney: { stages: DEFAULT_JOURNEY_STAGES.REIMAGINE, actors: [], interactions: [] },
-    dialoguePhase,
-  });
+  const [liveJourney, setLiveJourney] = useState<LiveJourneyData>(
+    { stages: DEFAULT_JOURNEY_STAGES.REIMAGINE, actors: [], interactions: [] },
+  );
   const [sessionConfidence, setSessionConfidence] = useState<SessionConfidence>({
     overallConfidence: 0,
     categorisedRate: 0,
@@ -297,22 +286,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── UI state ───────────────────────────────────────────
   const [selectedPadId, setSelectedPadId] = useState<string | null>(null);
-  const [journeyExpanded, setJourneyExpanded] = useState(true);
-
-  const handleRegenerateJourney = async () => {
-    const res = await fetch(
-      `/api/admin/workshops/${encodeURIComponent(workshopId)}/journey/regenerate`,
-      { method: 'POST' },
-    );
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error('Journey regenerate failed:', err);
-      return;
-    }
-    const { liveJourney: newJourney } = await res.json();
-    if (newJourney) setLiveJourney(newJourney);
-  };
-
   // Keep ref in sync for the audio capture hook (avoids stale closure)
   useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
   const [expandedNode, setExpandedNode] = useState<HemisphereNodeDatum | null>(null);
@@ -340,9 +313,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── Blueprint source indicator (transparency) ──
   const [blueprintSource, setBlueprintSource] = useState<'blueprint' | 'research_override' | 'legacy_fallback'>('legacy_fallback');
-
-  // ── Journey completion tracking ──
-  const [journeyCompletionState, setJourneyCompletionState] = useState<JourneyCompletionState | null>(null);
 
   // ── Client-only: populate seed data after hydration (avoids React #418) ──
   useEffect(() => {
@@ -1204,20 +1174,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       } catch { /* ignore */ }
     });
 
-    // ── Journey completion assessed by Journey Agent ────────
-    es.addEventListener('journey.completion', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        const payload = evt.payload as { journeyCompletionState: JourneyCompletionState; liveJourney?: LiveJourneyData };
-        if (payload?.journeyCompletionState) {
-          setJourneyCompletionState(payload.journeyCompletionState);
-        }
-        if (payload?.liveJourney) {
-          setLiveJourney(prev => mergeBackendJourney(prev, payload.liveJourney!));
-        }
-      } catch { /* ignore */ }
-    });
-
     es.onerror = () => {
       // EventSource auto-reconnects
     };
@@ -1381,7 +1337,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       activeThemeId,
       lensCoverage: Array.from(lensCoverage.entries()),
       agentConversation,
-      journeyCompletionState,
+      journeyCompletionState: null,
       customLensColors,
     };
 
@@ -1408,7 +1364,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   }, [
     hemisphereNodes, cogNodes, stickyPads, completedByQuestion, signals,
     liveJourney, sessionConfidence, themes, activeThemeId, lensCoverage,
-    agentConversation, journeyCompletionState, customLensColors,
+    agentConversation, customLensColors,
     dialoguePhase, mainQuestionIndex, versionUrl, fetchSessionVersions,
   ]);
 
@@ -1445,7 +1401,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       setActiveThemeId(p.activeThemeId);
       setLensCoverage(new Map(p.lensCoverage as Array<[Lens, LensCoverage]>));
       setAgentConversation(p.agentConversation as AgentConversationEntry[]);
-      setJourneyCompletionState(p.journeyCompletionState as JourneyCompletionState | null);
       if (p.customLensColors) setCustomLensColors(p.customLensColors);
 
       setNodeCount(Object.keys(p.hemisphereNodes).length);
@@ -1490,8 +1445,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       'belief.reinforced',
       'belief.stabilised',
       'contradiction.detected',
-      'journey.completion',
-      'journey.mutation',
       'agentic.analyzed',
     ].join(',');
 
@@ -1712,25 +1665,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             break;
           }
 
-          case 'journey.completion': {
-            const jPayload = payload as Record<string, any>;
-            if (jPayload?.journeyCompletionState) {
-              setJourneyCompletionState(jPayload.journeyCompletionState);
-            }
-            if (jPayload?.liveJourney) {
-              setLiveJourney(prev => mergeBackendJourney(prev, jPayload.liveJourney));
-            }
-            break;
-          }
-
-          case 'journey.mutation': {
-            const intent = payload as JourneyMutationIntent;
-            if (intent?.id && intent?.type) {
-              applyMutationIntent(intent);
-            }
-            break;
-          }
-
           // belief.created and belief.reinforced — no UI handler currently
           default:
             break;
@@ -1815,17 +1749,15 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     [stickyPads, mainQuestionIndex],
   );
 
-  // Main question completion percent (blended sub-pad coverage + journey completion)
+  // Main question completion percent (sub-pad coverage)
   const mainQuestionCompletionPercent = useMemo(() => {
     if (activeSubPads.length === 0 && coveredSubPads.length === 0) return 0;
     const allSubPads = [...activeSubPads, ...coveredSubPads];
     const avgSubCoverage = allSubPads.length > 0
       ? allSubPads.reduce((s, p) => s + p.coveragePercent, 0) / allSubPads.length
       : 0;
-    const journeyFactor = journeyCompletionState?.overallCompletionPercent ?? 0;
-    // Blend: 70% sub-question coverage + 30% journey completion
-    return Math.round(journeyFactor > 0 ? avgSubCoverage * 0.7 + journeyFactor * 0.3 : avgSubCoverage);
-  }, [activeSubPads, coveredSubPads, journeyCompletionState]);
+    return Math.round(avgSubCoverage);
+  }, [activeSubPads, coveredSubPads]);
 
   // Signal-generated + seed pads (shown below main question area)
   const signalPads = useMemo(
@@ -2173,17 +2105,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           <SignalClusterPanel
             signals={signals}
             sessionConfidence={sessionConfidence}
-          />
-        </div>
-
-        {/* ═══ LIVE JOURNEY MAP — Full width ═══ */}
-        <div className="mt-4">
-          <LiveJourneyMap
-            data={liveJourney}
-            onChange={setLiveJourney}
-            expanded={journeyExpanded}
-            onToggleExpand={() => setJourneyExpanded(e => !e)}
-            onRegenerate={handleRegenerateJourney}
           />
         </div>
 

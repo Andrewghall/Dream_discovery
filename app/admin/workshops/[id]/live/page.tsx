@@ -539,7 +539,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
         journeyMutations.mergeBackend(payload.liveJourney as import('@/lib/cognitive-guidance/pipeline').LiveJourneyData);
       }
     }, [journeyMutations.mergeBackend]),
-    onJourneyMutation: useCallback((intent: import('@/lib/cognition/agents/journey-mutation-types').JourneyMutationIntent) => {
+    onJourneyMutation: useCallback((intent: { id: string; type: string; payload: Record<string, unknown>; sourceNodeIds?: string[]; emittedAtMs: number }) => {
       journeyMutations.applyMutationIntent(intent);
     }, [journeyMutations.applyMutationIntent]),
     onAgentConversation: useCallback((entry: AgentConversationEntry) => {

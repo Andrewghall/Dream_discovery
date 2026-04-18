@@ -11,9 +11,14 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-const CAPTURE_TOKEN_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || process.env.AUTH_SECRET || 'capture-fallback-secret'
-);
+const _secret = process.env.SESSION_SECRET || process.env.AUTH_SECRET;
+if (!_secret || _secret.length < 32) {
+  throw new Error(
+    '[capture-tokens/verify] SESSION_SECRET is required and must be at least 32 characters. ' +
+    'Refusing to start with a weak or missing secret.'
+  );
+}
+const CAPTURE_TOKEN_SECRET = new TextEncoder().encode(_secret);
 
 export async function GET(
   _request: NextRequest,

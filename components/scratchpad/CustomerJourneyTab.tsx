@@ -3,7 +3,6 @@
 import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { AiInsightCard } from './AiInsightCard';
-import LiveJourneyMap from '@/components/cognitive-guidance/live-journey-map';
 import type { LiveJourneyData, LiveJourneyInteraction } from '@/lib/cognitive-guidance/pipeline';
 
 interface Interaction {
@@ -126,15 +125,6 @@ export function CustomerJourneyTab({ data, onChange }: CustomerJourneyTabProps) 
         </div>
       </div>
 
-      {/* Live Journey Map (output mode) */}
-      {liveJourneyData.interactions.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-black/5 overflow-hidden">
-          <LiveJourneyMap
-            data={liveJourneyData}
-            mode="output"
-          />
-        </div>
-      )}
 
 
       {/* Pain Points Summary */}

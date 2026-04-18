@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import { CreateSnapshotSchema, zodError } from '@/lib/validation/schemas';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,17 +81,14 @@ export async function POST(
     if (!access.valid) {
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
-    const body = (await request.json().catch(() => null)) as
-      | {
-          name?: unknown;
-          dialoguePhase?: unknown;
-          payload?: unknown;
-        }
-      | null;
+    const parsedSnap = CreateSnapshotSchema.safeParse(
+      await request.json().catch(() => null)
+    );
+    if (!parsedSnap.success) return zodError(parsedSnap.error);
 
-    const name = typeof body?.name === 'string' ? body.name.trim() : '';
-    const dialoguePhase = typeof body?.dialoguePhase === 'string' ? body.dialoguePhase.trim() : '';
-    const payload = body?.payload;
+    const name = parsedSnap.data.name?.trim() ?? '';
+    const dialoguePhase = parsedSnap.data.dialoguePhase?.trim() ?? '';
+    const payload = parsedSnap.data.payload;
 
     if (!name) {
       return NextResponse.json({ ok: false, error: 'Missing name' }, { status: 400 });
@@ -98,7 +96,7 @@ export async function POST(
     if (!dialoguePhase) {
       return NextResponse.json({ ok: false, error: 'Missing dialoguePhase' }, { status: 400 });
     }
-    if (payload == null || typeof payload !== 'object') {
+    if (payload == null) {
       return NextResponse.json({ ok: false, error: 'Missing payload' }, { status: 400 });
     }
 

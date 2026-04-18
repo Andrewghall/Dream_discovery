@@ -102,24 +102,6 @@ const DOMAIN_JOURNEY_TEMPLATES: Record<string, JourneyStageEntry[]> = {
 // Research-derived lenses still take highest priority.
 // ================================================================
 
-const CONTACT_CENTRE_AIRLINE_LENSES: LensPolicyEntry[] = [
-  { name: 'Customer Experience', description: 'Passenger journey quality, effort, and satisfaction across all touchpoints', color: '#ddd6fe', keywords: ['customer', 'passenger', 'experience', 'satisfaction', 'effort', 'journey', 'NPS', 'CSAT'] },
-  { name: 'People & Workforce', description: 'Agent capability, wellbeing, attrition, scheduling, and career paths', color: '#bfdbfe', keywords: ['people', 'agent', 'staff', 'team', 'attrition', 'recruit', 'wellbeing', 'morale', 'burnout', 'roster'] },
-  { name: 'Operations', description: 'Queue management, routing, handle time, SLA delivery, and BPO coordination', color: '#a7f3d0', keywords: ['operation', 'process', 'queue', 'routing', 'handle time', 'SLA', 'BPO', 'workflow', 'efficiency'] },
-  { name: 'Technology', description: 'Contact platform, IVR, CRM, automation, and digital channel enablement', color: '#fed7aa', keywords: ['technology', 'system', 'platform', 'IVR', 'CRM', 'digital', 'automation', 'AI', 'chatbot', 'self-service'] },
-  { name: 'Training & Capability', description: 'Onboarding, upskilling, knowledge management, and coaching effectiveness', color: '#fef08a', keywords: ['training', 'coach', 'onboard', 'knowledge', 'capability', 'skill', 'development', 'QA'] },
-  { name: 'Regulation & Compliance', description: 'Aviation consumer rights (EU261), data protection, accessibility, and complaint obligations', color: '#fecaca', keywords: ['regulation', 'compliance', 'EU261', 'GDPR', 'accessibility', 'complaint', 'legal', 'audit'] },
-  { name: 'Organisation & Leadership', description: 'Governance, decision speed, cross-site alignment, and strategic direction', color: '#c4b5fd', keywords: ['organisation', 'leadership', 'governance', 'decision', 'strategy', 'alignment', 'structure'] },
-  { name: 'Culture', description: 'Values in practice, psychological safety, service ethic, and continuous improvement mindset', color: '#fbcfe8', keywords: ['culture', 'values', 'mindset', 'safety', 'improvement', 'innovation', 'engagement'] },
-];
-
-const ENTERPRISE_LENSES: LensPolicyEntry[] = [
-  { name: 'People', description: 'Human capability, culture, leadership, and organisational behaviour', color: '#bfdbfe', keywords: ['people', 'culture', 'leadership', 'capability', 'talent', 'workforce', 'engagement', 'behaviour'] },
-  { name: 'Organisation', description: 'Structure, governance, processes, operating model, and strategic alignment', color: '#a7f3d0', keywords: ['organisation', 'structure', 'governance', 'process', 'operating model', 'alignment', 'strategy', 'function'] },
-  { name: 'Customer', description: 'Customer experience, needs, journeys, and value delivery', color: '#ddd6fe', keywords: ['customer', 'client', 'experience', 'journey', 'NPS', 'satisfaction', 'value', 'retention'] },
-  { name: 'Technology', description: 'Digital enablement, systems, data, platforms, and automation', color: '#fed7aa', keywords: ['technology', 'digital', 'system', 'data', 'platform', 'automation', 'AI', 'infrastructure'] },
-  { name: 'Regulation', description: 'Compliance obligations, risk, legal constraints, and governance frameworks', color: '#fecaca', keywords: ['regulation', 'compliance', 'risk', 'legal', 'GDPR', 'audit', 'governance', 'policy'] },
-];
 
 const CONTACT_CENTRE_AIRLINE_JOURNEY_TEMPLATE: JourneyStageEntry[] = [
   { name: 'Inspiration & Planning', description: 'Customer searches destinations, compares prices, explores schedules' },
@@ -160,8 +142,6 @@ const CONTACT_CENTRE_AIRLINE_ACTORS: ActorEntry[] = [
 /**
  * Returns true when the user explicitly selected the airline contact centre pack.
  * Detection is based solely on the domain pack key — never on company name or context text.
- * Users who want the airline-specific blueprint must select "Contact Centre — Airline"
- * from the domain pack dropdown.
  */
 function isAirlineContactCentreContext(input: GeneratorInput): boolean {
   return (input.domainPack ?? '').toLowerCase() === 'contact_centre_airline';
@@ -169,28 +149,12 @@ function isAirlineContactCentreContext(input: GeneratorInput): boolean {
 
 /**
  * Resolve industry-specific lens overrides.
- * First tries the new INDUSTRY_PACKS system (resolveIndustryPack), then falls
- * back to legacy curated overrides (airline contact centre, enterprise).
- * Returns null when no industry-specific override applies.
+ * Universal 7-lens system — always returns null so all workshops use
+ * DEFAULT_DIMENSIONS (People, Operations, Technology, Customer,
+ * Commercial, Risk/Compliance, Partners) from the blueprint composition layer.
  */
-function resolveIndustryLenses(input: GeneratorInput): LensPolicyEntry[] | null {
-  // Legacy curated overrides — highest priority
-  if (isAirlineContactCentreContext(input)) return CONTACT_CENTRE_AIRLINE_LENSES;
-  if ((input.dreamTrack ?? '').toUpperCase() === 'ENTERPRISE') return ENTERPRISE_LENSES;
-  // Industry auto-resolve only when no legacy explicit pack key is set.
-  // domainPack is null for all industry-pack workshops (creation route no longer
-  // writes industry keys there), so this guard is clean and unambiguous.
-  if (!input.domainPack) {
-    const industryPack = resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack);
-    if (industryPack && industryPack.lenses.length > 0) {
-      return industryPack.lenses.map((lensName) => ({
-        name: lensName,
-        description: '',
-        color: '#e2e8f0',
-        keywords: [],
-      }));
-    }
-  }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function resolveIndustryLenses(_input: GeneratorInput): LensPolicyEntry[] | null {
   return null;
 }
 

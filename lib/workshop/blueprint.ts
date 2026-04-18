@@ -331,13 +331,13 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
   lenses: buildDefaultLenses(),
 
   // Phase lens policy
-  // REIMAGINE is aspirational — restricted to 3 human-centric lenses (no Technology/Regulation)
-  // REIMAGINE is aspirational — restricted to human-centric lenses only
-  // CONSTRAINTS and DEFINE_APPROACH use all dimension names
+  // REIMAGINE is aspirational — restricted to human-centric lenses (People, Customer, Partners)
+  // CONSTRAINTS works right-to-left: hard external constraints → soft internal
+  // DEFINE_APPROACH works left-to-right: human → structural → technical → commercial
   phaseLensPolicy: {
-    REIMAGINE: ['People', 'Customer', 'Organisation'],
-    CONSTRAINTS: DEFAULT_DIMENSIONS.map((d) => d.name),
-    DEFINE_APPROACH: DEFAULT_DIMENSIONS.map((d) => d.name),
+    REIMAGINE: ['People', 'Customer', 'Partners'],
+    CONSTRAINTS: ['Risk/Compliance', 'Commercial', 'Technology', 'Operations', 'Customer', 'People', 'Partners'],
+    DEFINE_APPROACH: ['People', 'Operations', 'Technology', 'Customer', 'Commercial', 'Risk/Compliance', 'Partners'],
   },
 
   // Journey stages from workshop-dimensions.ts DEFAULT_JOURNEY_STAGES
@@ -528,7 +528,7 @@ export function composeBlueprint(input: ComposeInput): WorkshopBlueprint {
       // Update phase lens policy to match available lenses
       // REIMAGINE is aspirational — exclude Technology and Regulation
       const lensNames = bp.lenses.map((l) => l.name);
-      const REIMAGINE_EXCLUDED = ['Technology', 'Regulation'];
+      const REIMAGINE_EXCLUDED = ['Technology', 'Operations', 'Commercial', 'Risk/Compliance'];
       bp.phaseLensPolicy = {
         REIMAGINE: lensNames.filter((n) => !REIMAGINE_EXCLUDED.includes(n)),
         CONSTRAINTS: [...lensNames],

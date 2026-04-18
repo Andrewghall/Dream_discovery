@@ -80,10 +80,19 @@ export function formatLabel(raw: string): string {
 export function seniorityWeight(role: string | null | undefined): number {
   if (!role) return 1.0;
   const r = role.toLowerCase();
-  if (r.includes('chief') || r.includes('exec') || r.includes('director') ||
-      r.includes('ceo') || r.includes('coo') || r.includes('cto')) return 2.0;
-  if (r.includes('head of') || r.includes('senior manager') ||
-      r.includes('vp') || r.includes('vice president')) return 1.5;
+  // C-level: full titles + common abbreviations (word-boundary safe)
+  const C_LEVEL_ABBREVS = new Set([
+    'ceo','coo','cto','cro','cco','cmo','cfo','cpo','ciso','chro','ccxo','cxo',
+  ]);
+  const roleWords = r.split(/[\s,/]+/);
+  if (
+    r.includes('chief') || r.includes('exec') || r.includes('director') ||
+    roleWords.some(w => C_LEVEL_ABBREVS.has(w))
+  ) return 2.0;
+  if (
+    r.includes('head of') || r.includes('senior manager') ||
+    r.includes('vp') || r.includes('vice president') || r.includes('managing director')
+  ) return 1.5;
   if (r.includes('manager') || r.includes('lead') || r.includes('supervisor')) return 1.2;
   return 1.0;
 }

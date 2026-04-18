@@ -3,6 +3,8 @@ import { requireAuth } from '@/lib/auth/require-auth';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
+import { encryptParticipantData } from '@/lib/workshop-encryption';
+import { CreateParticipantSchema, PatchParticipantSchema, DeleteParticipantSchema, zodError } from '@/lib/validation/schemas';
 
 export async function POST(
   request: NextRequest,
@@ -19,18 +21,25 @@ export async function POST(
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { name, email, role, department } = body;
+    const rawBody = await request.json().catch(() => null);
+    const parsed = CreateParticipantSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
+
+    const { name, email, role, department } = parsed.data;
+
+    // Encrypt participant PII (email) before persisting if encryption is enabled.
+    // encryptParticipantData is a no-op when ENCRYPTION_ENABLED !== 'true'.
+    const participantData = encryptParticipantData({
+      workshopId,
+      name,
+      email,
+      role: role || null,
+      department: department || null,
+    });
 
     // Create participant with unique discovery token
     const participant = await prisma.workshopParticipant.create({
-      data: {
-        workshopId,
-        name,
-        email,
-        role: role || null,
-        department: department || null,
-      },
+      data: participantData,
     });
 
     if (auth.organizationId) {
@@ -62,12 +71,11 @@ export async function DELETE(
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const participantId = body?.participantId as string | undefined;
+    const rawBody = await request.json().catch(() => null);
+    const parsed = DeleteParticipantSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
 
-    if (!participantId) {
-      return NextResponse.json({ error: 'participantId is required' }, { status: 400 });
-    }
+    const { participantId } = parsed.data;
 
     const participant = await prisma.workshopParticipant.findUnique({
       where: { id: participantId },
@@ -111,20 +119,11 @@ export async function PATCH(
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
 
-    const body = (await request.json().catch(() => null)) as
-      | { participantId?: unknown; doNotSendAgain?: unknown }
-      | null;
+    const rawBody = await request.json().catch(() => null);
+    const patchParsed = PatchParticipantSchema.safeParse(rawBody);
+    if (!patchParsed.success) return zodError(patchParsed.error);
 
-    const participantId = typeof body?.participantId === 'string' ? body.participantId : '';
-    const doNotSendAgain = typeof body?.doNotSendAgain === 'boolean' ? body.doNotSendAgain : null;
-
-    if (!participantId) {
-      return NextResponse.json({ error: 'participantId is required' }, { status: 400 });
-    }
-
-    if (doNotSendAgain === null) {
-      return NextResponse.json({ error: 'doNotSendAgain must be a boolean' }, { status: 400 });
-    }
+    const { participantId, doNotSendAgain } = patchParsed.data;
 
     const participant = await prisma.workshopParticipant.findUnique({
       where: { id: participantId },

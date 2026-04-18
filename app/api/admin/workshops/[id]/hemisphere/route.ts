@@ -397,7 +397,9 @@ export async function GET(
 
         const speakerId = typeof datum.speakerId === 'string' ? datum.speakerId : null;
 
-        // Derive weight from richness of the node data
+        // Derive weight from richness of the node data.
+        // Seeded/synthetic nodes may lack agenticAnalysis — rawText length provides
+        // a fallback signal so they aren't penalised for missing live-session metadata.
         const domainCount = Array.isArray(agenticAnalysis?.domains) ? (agenticAnalysis.domains as unknown[]).length : 0;
         const actorCount = Array.isArray(agenticAnalysis?.actors) ? (agenticAnalysis.actors as unknown[]).length : 0;
         const interactionCount = Array.isArray(agenticAnalysis?.actors)
@@ -405,7 +407,15 @@ export async function GET(
               (sum: number, a) => sum + (Array.isArray(a?.interactions) ? (a.interactions as unknown[]).length : 0), 0)
           : 0;
         const keywordCount = Array.isArray(classification?.keywords) ? (classification.keywords as unknown[]).length : 0;
-        const computedWeight = 1 + domainCount + actorCount + Math.floor(interactionCount / 2) + Math.floor(keywordCount / 3);
+        // textBonus: +1 for substantive text (≥40 chars), +1 for longer signal (≥100 chars)
+        const textBonus = (rawText.length >= 40 ? 1 : 0) + (rawText.length >= 100 ? 1 : 0);
+        const computedWeight = 1 + domainCount + actorCount + Math.floor(interactionCount / 2) + Math.floor(keywordCount / 3) + textBonus;
+
+        // ── Viability gates ──────────────────────────────────────────────────
+        // 1. Minimum weight — filter truly empty signals (no content, no metadata)
+        if (computedWeight < 2) continue;
+        // 2. Confidence gate — only apply if confidence is scored AND very low
+        if (confidence !== undefined && confidence < 0.35) continue;
 
         const nodeId = `${mappedType}:live:${dataPointId}`;
         nodesById.set(nodeId, {
@@ -426,7 +436,7 @@ export async function GET(
       // Cap to top 300 nodes by weight for visualization — this keeps the graph readable
       // and prevents timeouts when corpora are large (1000+ signals).
       // Nodes are already richness-ranked; the top 300 carry the dominant patterns.
-      const MAX_NODES_FOR_GRAPH = 300;
+      const MAX_NODES_FOR_GRAPH = 150;
       const allNodesSorted = [...nodesById.values()].sort((a, b) => b.weight - a.weight);
       const allNodes: HemisphereNode[] = allNodesSorted.slice(0, MAX_NODES_FOR_GRAPH);
       const totalSignalCount = nodesById.size; // report full corpus size for UI display
@@ -481,9 +491,15 @@ export async function GET(
           const sim = jaccard(ta, tb);
 
           const involvesH1 = a.layer === 'H1' || b.layer === 'H1';
-          const eqThresh = involvesH1 ? 0.22 : 0.28;
-          const derivThresh = involvesH1 ? 0.17 : 0.20;
-          const reinfThresh = involvesH1 ? 0.13 : 0.16;
+          // Both nodes must have corroborated evidence (≥ 2 sources) before any
+          // edge is drawn — single-source connections are not defensible.
+          const aCorroborated = (a.sources?.length ?? 0) >= 2;
+          const bCorroborated = (b.sources?.length ?? 0) >= 2;
+          if (!aCorroborated || !bCorroborated) continue;
+          // Minimum Jaccard similarity raised to 0.50 across all edge types.
+          const eqThresh    = involvesH1 ? 0.50 : 0.50;
+          const derivThresh = involvesH1 ? 0.45 : 0.45;
+          const reinfThresh = involvesH1 ? 0.40 : 0.40;
 
           if (sim >= eqThresh) {
             const src = a.id;
@@ -1259,9 +1275,15 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
         const sim = jaccard(ta, tb);
 
         const involvesH1 = a.layer === 'H1' || b.layer === 'H1';
-        const eqThresh = involvesH1 ? 0.22 : 0.28;
-        const derivThresh = involvesH1 ? 0.17 : 0.20;
-        const reinfThresh = involvesH1 ? 0.13 : 0.16;
+        // Both nodes must have corroborated evidence (≥ 2 sources) before any
+        // edge is drawn — single-source connections are not defensible.
+        const aCorroborated = (a.sources?.length ?? 0) >= 2;
+        const bCorroborated = (b.sources?.length ?? 0) >= 2;
+        if (!aCorroborated || !bCorroborated) continue;
+        // Minimum Jaccard similarity raised to 0.50 across all edge types.
+        const eqThresh    = involvesH1 ? 0.50 : 0.50;
+        const derivThresh = involvesH1 ? 0.45 : 0.45;
+        const reinfThresh = involvesH1 ? 0.40 : 0.40;
 
         if (sim >= eqThresh) {
           const source = a.id;

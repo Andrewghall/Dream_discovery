@@ -4,6 +4,7 @@ import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-acces
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
+import { PatchScratchpadSchema, zodError } from '@/lib/validation/schemas';
 
 export async function GET(
   _request: NextRequest,
@@ -59,20 +60,25 @@ export async function PATCH(
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
 
-    const body = await request.json();
+    const rawBody = await request.json().catch(() => null);
+    const parsed = PatchScratchpadSchema.safeParse(rawBody);
+    if (!parsed.success) return zodError(parsed.error);
+    const body = parsed.data;
 
+    // Cast to any for Prisma JSON fields — Zod validates structure, Prisma handles storage
+    const b = body as Record<string, any>;
     const scratchpad = await prisma.workshopScratchpad.update({
       where: { workshopId },
       data: {
-        execSummary: body.execSummary,
-        discoveryOutput: body.discoveryOutput,
-        reimagineContent: body.reimagineContent,
-        constraintsContent: body.constraintsContent,
-        potentialSolution: body.potentialSolution,
-        commercialContent: body.commercialContent,
-        customerJourney: body.customerJourney,
-        summaryContent: body.summaryContent,
-        ...(body.outputAssessment !== undefined ? { outputAssessment: body.outputAssessment } : {}),
+        execSummary: b.execSummary,
+        discoveryOutput: b.discoveryOutput,
+        reimagineContent: b.reimagineContent,
+        constraintsContent: b.constraintsContent,
+        potentialSolution: b.potentialSolution,
+        commercialContent: b.commercialContent,
+        customerJourney: b.customerJourney,
+        summaryContent: b.summaryContent,
+        ...(b.outputAssessment !== undefined ? { outputAssessment: b.outputAssessment } : {}),
         updatedAt: new Date(),
       },
     });
@@ -107,7 +113,10 @@ export async function POST(
       return NextResponse.json({ error: access.error }, { status: 403 });
     }
 
-    const body = await request.json();
+    const rawBodyPost = await request.json().catch(() => null);
+    const parsedPost = PatchScratchpadSchema.safeParse(rawBodyPost);
+    if (!parsedPost.success) return zodError(parsedPost.error);
+    const body = parsedPost.data;
 
     // Check if scratchpad already exists
     const existing = await prisma.workshopScratchpad.findUnique({
@@ -122,25 +131,26 @@ export async function POST(
     }
 
     // Hash commercial password if provided
+    const bp = body as Record<string, any>;
     let hashedPassword = null;
-    if (body.commercialPassword) {
-      hashedPassword = await bcrypt.hash(body.commercialPassword, 10);
+    if (bp.commercialPassword) {
+      hashedPassword = await bcrypt.hash(bp.commercialPassword, 10);
     }
 
     // Create new scratchpad
     const scratchpad = await prisma.workshopScratchpad.create({
       data: {
         workshopId,
-        execSummary: body.execSummary || null,
-        discoveryOutput: body.discoveryOutput || null,
-        reimagineContent: body.reimagineContent || null,
-        constraintsContent: body.constraintsContent || null,
-        potentialSolution: body.potentialSolution || null,
-        commercialContent: body.commercialContent || null,
+        execSummary: bp.execSummary || null,
+        discoveryOutput: bp.discoveryOutput || null,
+        reimagineContent: bp.reimagineContent || null,
+        constraintsContent: bp.constraintsContent || null,
+        potentialSolution: bp.potentialSolution || null,
+        commercialContent: bp.commercialContent || null,
         commercialPassword: hashedPassword,
-        customerJourney: body.customerJourney || null,
-        summaryContent: body.summaryContent || null,
-        generatedFromSnapshot: body.generatedFromSnapshot || null,
+        customerJourney: bp.customerJourney || null,
+        summaryContent: bp.summaryContent || null,
+        generatedFromSnapshot: bp.generatedFromSnapshot || null,
         status: 'DRAFT',
       },
     });

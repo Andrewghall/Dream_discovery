@@ -20,7 +20,7 @@ import type { WorkshopPrepResearch, IndustryDimension, JourneyStageResearch } fr
 export const DEFAULT_DIMENSIONS: IndustryDimension[] = [
   {
     name: 'People',
-    description: 'Human capability, culture, skills, team dynamics',
+    description: 'Human capability, culture, skills, leadership, and team dynamics',
     keywords: [
       'people', 'person', 'human', 'culture', 'skill', 'training', 'talent',
       'recruit', 'wellbeing', 'engagement', 'stakeholder', 'leader', 'stress',
@@ -29,29 +29,19 @@ export const DEFAULT_DIMENSIONS: IndustryDimension[] = [
     color: '#bfdbfe',
   },
   {
-    name: 'Organisation',
+    name: 'Operations',
     description: 'Structure, governance, processes, operating model, and strategic alignment',
     keywords: [
-      'organi', 'department', 'team', 'structure', 'process', 'workflow',
-      'operat', 'management', 'staff', 'employ', 'HR', 'budget', 'resource',
+      'operat', 'organi', 'department', 'team', 'structure', 'process', 'workflow',
+      'management', 'staff', 'employ', 'HR', 'budget', 'resource',
       'efficien', 'productiv', 'strategy', 'decision', 'cost', 'revenue',
       'resilien', 'agil',
     ],
     color: '#a7f3d0',
   },
   {
-    name: 'Customer',
-    description: 'Experience, needs, journeys, value delivery',
-    keywords: [
-      'customer', 'client', 'consumer', 'buyer', 'shopper', 'subscriber',
-      'patient', 'end-user', 'member', 'user', 'experience', 'journey',
-      'satisfaction', 'retention', 'churn', 'onboard', 'loyalt', 'feedback',
-    ],
-    color: '#ddd6fe',
-  },
-  {
     name: 'Technology',
-    description: 'Systems, data, platforms, automation, tools',
+    description: 'Systems, data, platforms, automation, tools, and digital enablement',
     keywords: [
       'technolog', 'AI', 'machine learning', 'system', 'platform', 'software',
       'digital', 'automat', 'data', 'cloud', 'infra', 'algorithm', 'API',
@@ -61,14 +51,44 @@ export const DEFAULT_DIMENSIONS: IndustryDimension[] = [
     color: '#fed7aa',
   },
   {
-    name: 'Regulation',
-    description: 'Compliance, risk management, controls, legal',
+    name: 'Customer',
+    description: 'Experience, needs, journeys, value delivery, and retention',
+    keywords: [
+      'customer', 'client', 'consumer', 'buyer', 'shopper', 'subscriber',
+      'patient', 'end-user', 'member', 'user', 'experience', 'journey',
+      'satisfaction', 'retention', 'churn', 'onboard', 'loyalt', 'feedback',
+    ],
+    color: '#ddd6fe',
+  },
+  {
+    name: 'Commercial',
+    description: 'Revenue, pricing, growth strategy, market positioning, and commercial performance',
+    keywords: [
+      'commerci', 'revenue', 'pricing', 'profit', 'margin', 'growth', 'market',
+      'sales', 'contract', 'monetis', 'business model', 'proposition', 'competitive',
+      'forecast', 'pipeline', 'acquisition cost', 'ROI', 'P&L',
+    ],
+    color: '#fef9c3',
+  },
+  {
+    name: 'Risk/Compliance',
+    description: 'Compliance, risk management, controls, legal obligations, and governance frameworks',
     keywords: [
       'regulat', 'complian', 'legal', 'GDPR', 'FCA', 'licen', 'governance',
       'audit', 'polic', 'legislat', 'mandate', 'standard', 'accredit',
-      'certif', 'oversight', 'enforce', 'statute', 'jurisdict', 'scrutin',
+      'certif', 'oversight', 'enforce', 'statute', 'jurisdict', 'scrutin', 'risk', 'control',
     ],
     color: '#fecaca',
+  },
+  {
+    name: 'Partners',
+    description: 'Ecosystem partners, suppliers, vendors, third parties, and strategic alliances',
+    keywords: [
+      'partner', 'supplier', 'vendor', 'third.party', 'ecosystem', 'alliance',
+      'outsourc', 'contractor', 'integrat', 'channel', 'reseller', 'distribut',
+      'joint venture', 'collaborat', 'supply chain',
+    ],
+    color: '#e0e7ff',
   },
 ];
 

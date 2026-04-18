@@ -19,7 +19,7 @@ export default function PrivacyPolicyPage() {
 
         <div className="prose prose-blue max-w-none space-y-6">
           <p className="text-sm text-gray-600">
-            <strong>Last Updated:</strong> February 13, 2026
+            <strong>Last Updated:</strong> April 17, 2026
           </p>
 
           <section>
@@ -27,16 +27,16 @@ export default function PrivacyPolicyPage() {
               1. Who We Are
             </h2>
             <p className="text-gray-700">
-              DREAM Discovery Platform is operated by [YOUR COMPANY NAME]. We
+              DREAM Discovery Platform is operated by RAISE. We
               facilitate pre-workshop discovery conversations to gather insights
               from workshop participants.
             </p>
             <p className="text-gray-700 mt-2">
-              <strong>Data Controller:</strong> [YOUR COMPANY NAME]
+              <strong>Data Controller:</strong> RAISE (operated by Ethenta Ltd)
               <br />
-              <strong>Contact:</strong> [CONTACT EMAIL]
+              <strong>Contact:</strong> privacy@raisegtm.com
               <br />
-              <strong>Address:</strong> [YOUR ADDRESS]
+              <strong>Address:</strong> United Kingdom
             </p>
           </section>
 
@@ -119,7 +119,7 @@ export default function PrivacyPolicyPage() {
               </li>
               <li>
                 <strong>Supabase (Infrastructure):</strong> Our database provider,
-                with servers located in [REGION]
+                with servers located in the European Economic Area (EEA) and United Kingdom, primarily on infrastructure provided by Supabase (EU region) and Vercel (EU edge network)
               </li>
             </ul>
             <p className="text-gray-700 mt-2">
@@ -206,10 +206,10 @@ export default function PrivacyPolicyPage() {
             <p className="text-gray-700 mt-4">
               To exercise any of these rights, contact us at:{' '}
               <a
-                href="mailto:[CONTACT EMAIL]"
+                href="mailto:privacy@raisegtm.com"
                 className="text-blue-600 hover:underline"
               >
-                [CONTACT EMAIL]
+                privacy@raisegtm.com
               </a>
             </p>
           </section>
@@ -225,10 +225,10 @@ export default function PrivacyPolicyPage() {
               <li>
                 Email us at{' '}
                 <a
-                  href="mailto:[CONTACT EMAIL]"
+                  href="mailto:privacy@raisegtm.com"
                   className="text-blue-600 hover:underline"
                 >
-                  [CONTACT EMAIL]
+                  privacy@raisegtm.com
                 </a>{' '}
                 with "Data Subject Request" in the subject line
               </li>
@@ -258,12 +258,29 @@ export default function PrivacyPolicyPage() {
               11. International Data Transfers
             </h2>
             <p className="text-gray-700">
-              Your data is stored in [REGION]. If data is transferred outside the
+              Your data is stored in the European Economic Area (EEA) and United Kingdom, primarily on infrastructure provided by Supabase (EU region) and Vercel (EU edge network). If data is transferred outside the
               EU/EEA, we ensure appropriate safeguards are in place through:
             </p>
             <ul className="list-disc pl-6 mt-2 space-y-2 text-gray-700">
               <li>Standard Contractual Clauses (SCCs)</li>
               <li>Adequacy decisions by the European Commission</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">
+              11b. Sub-Processors (GDPR Article 28)
+            </h2>
+            <p className="text-gray-700">
+              We share your data with the following third-party sub-processors who process data on our behalf, each governed by a Data Processing Agreement:
+            </p>
+            <ul className="list-disc pl-6 mt-2 space-y-2 text-gray-700">
+              <li><strong>Supabase, Inc.</strong> — database hosting and authentication (EU region). <a href="https://supabase.com/privacy" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Privacy Policy</a></li>
+              <li><strong>Vercel, Inc.</strong> — application hosting and edge delivery (EU region available). <a href="https://vercel.com/legal/privacy-policy" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Privacy Policy</a></li>
+              <li><strong>OpenAI, LLC</strong> — AI synthesis and transcription (processed under zero data retention agreement where available). <a href="https://openai.com/policies/privacy-policy" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Privacy Policy</a></li>
+              <li><strong>Railway Technologies, Inc.</strong> — voice capture processing (transient; audio deleted after transcription). <a href="https://railway.app/legal/privacy" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Privacy Policy</a></li>
+              <li><strong>GitHub, Inc.</strong> — source code hosting; does not process personal data of participants.</li>
+              <li><strong>Upstash, Inc.</strong> — rate limiting cache; processes only anonymised IP-derived keys, no personal data.</li>
             </ul>
           </section>
 
@@ -346,14 +363,14 @@ export default function PrivacyPolicyPage() {
               <p className="text-gray-900">
                 <strong>Data Protection Officer</strong>
                 <br />
-                [YOUR COMPANY NAME]
+                RAISE
                 <br />
                 Email:{' '}
                 <a
-                  href="mailto:[CONTACT EMAIL]"
+                  href="mailto:privacy@raisegtm.com"
                   className="text-blue-600 hover:underline"
                 >
-                  [CONTACT EMAIL]
+                  privacy@raisegtm.com
                 </a>
                 <br />
                 Phone: [PHONE NUMBER]
