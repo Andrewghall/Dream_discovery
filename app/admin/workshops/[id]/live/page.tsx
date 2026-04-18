@@ -211,7 +211,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const [consent, setConsent] = useState(false);
 
-  const [status, setStatus] = useState<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'capturing' | 'paused' | 'stopped' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [forwardedCount, setForwardedCount] = useState(0);
   const [debugTrace, setDebugTrace] = useState<string[]>([]);
@@ -243,6 +243,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
   // Keep a ref to dialoguePhase so commitUtterance closure sees the latest value.
   const dialoguePhaseRef = useRef(dialoguePhase);
   useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
+
+  // Hoisted so pauseCapture and onTranscript can both call it.
+  // SLM metadata is optional — not available when committing on pause.
+  const commitUtteranceRef = useRef<((sid: string, slmMeta?: {
+    confidence?: number | null;
+    entities?: unknown;
+    emotionalTone?: unknown;
+    slmConfidence?: unknown;
+    slmUsed?: unknown;
+  }) => Promise<void>) | undefined>(undefined);
 
   type LiveTheme = {
     id: string;
@@ -288,7 +298,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const lastDefaultSnapshotNameRef = useRef<string>('');
   const [liveReportDownloading, setLiveReportDownloading] = useState(false);
 
-  const statusRef = useRef<'idle' | 'capturing' | 'stopped' | 'error'>('idle');
+  const statusRef = useRef<'idle' | 'capturing' | 'paused' | 'stopped' | 'error'>('idle');
 
   const [micDialogOpen, setMicDialogOpen] = useState(false);
   const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
@@ -2931,9 +2941,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
   // Old startSse code removed -- all event handling now via hook callbacks above.
   // (Old startSse body removed -- event handling now via useLiveEventPipeline hook)
 
-  const startCapture = async () => {
+  const startCapture = async (isResume = false) => {
     setError(null);
-    setDebugTrace([]);
+    if (!isResume) setDebugTrace([]);
 
     if (!consent) {
       setError('Consent is required to start/join the live session.');
@@ -2989,94 +2999,85 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
           console.log('[DREAM-DIAG] Accumulated chunk for', speakerId, '— buffer size:', buf.chunks.length, '| evolving domain:', interp.domain);
 
-          // ── Commit function — called on silence or speechFinal ────────────
-          const commitUtterance = async (sid: string) => {
-            // Cancel any pending silence timer for this speaker
-            const timer = silenceTimersRef.current.get(sid);
-            if (timer != null) { clearTimeout(timer); silenceTimersRef.current.delete(sid); }
+          // Wire the hoisted commit function on first call (stable closure over refs/setters)
+          if (!commitUtteranceRef.current) {
+            commitUtteranceRef.current = async (sid, slmMeta) => {
+              const timer = silenceTimersRef.current.get(sid);
+              if (timer != null) { clearTimeout(timer); silenceTimersRef.current.delete(sid); }
 
-            const entry = utteranceBufferRef.current.get(sid);
-            if (!entry || entry.chunks.length === 0) return;
+              const entry = utteranceBufferRef.current.get(sid);
+              if (!entry || entry.chunks.length === 0) return;
 
-            const fullText = entry.chunks.join(' ').trim();
-            utteranceBufferRef.current.delete(sid);
+              const fullText = entry.chunks.join(' ').trim();
+              utteranceBufferRef.current.delete(sid);
 
-            // Remove pending dot — this speaker's utterance is now being committed
-            setPendingNodes((prev) => {
-              const next = { ...prev };
-              delete next[sid];
-              return next;
-            });
+              setPendingNodes((prev) => { const n = { ...prev }; delete n[sid]; return n; });
 
-            console.log('[DREAM-DIAG] Committing utterance for', sid, '—', fullText.substring(0, 80));
+              console.log('[DREAM-DIAG] Committing thought for', sid, '—', fullText.substring(0, 80));
 
-            const commitNow = Date.now();
-            const commitInterp = interpretLiveUtterance(fullText);
-            const currentPhase = dialoguePhaseRef.current;
+              const commitNow = Date.now();
+              const commitInterp = interpretLiveUtterance(fullText);
+              const currentPhase = dialoguePhaseRef.current;
 
-            try {
-              const r = await fetch(ingestUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  speakerId: sid,
-                  startTime: entry.startTime,
-                  endTime: commitNow,
-                  text: fullText,
-                  rawText: fullText,
-                  confidence: msg.confidence,
-                  source: 'deepgram' as const,
-                  dialoguePhase: currentPhase,
-                  flush: true,
-                  slmMetadata: {
-                    entities: msg.entities,
-                    emotionalTone: msg.emotionalTone,
-                    slmConfidence: msg.slmConfidence,
-                    slmUsed: msg.slmUsed,
-                  },
-                }),
-              });
-
-              if (r.ok) {
-                const respBody = await r.json().catch(() => null);
-                setForwardedCount((n) => n + 1);
-                const result = respBody?.results?.[0];
-                const dpId = result?.dataPointId || result?.dataPoint?.id;
-                if (dpId) {
-                  const node: HemisphereNodeDatum = {
-                    dataPointId: dpId,
-                    createdAtMs: commitNow,
-                    rawText: fullText,
-                    dataPointSource: 'SPEECH',
+              try {
+                const r = await fetch(ingestUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
                     speakerId: sid,
-                    dialoguePhase: safePhase(currentPhase) ?? null,
-                    transcriptChunk: {
+                    startTime: entry.startTime,
+                    endTime: commitNow,
+                    text: fullText,
+                    rawText: fullText,
+                    confidence: slmMeta?.confidence ?? null,
+                    source: 'deepgram' as const,
+                    dialoguePhase: currentPhase,
+                    flush: true,
+                    slmMetadata: {
+                      entities: slmMeta?.entities,
+                      emotionalTone: slmMeta?.emotionalTone,
+                      slmConfidence: slmMeta?.slmConfidence,
+                      slmUsed: slmMeta?.slmUsed,
+                    },
+                  }),
+                });
+                if (r.ok) {
+                  const respBody = await r.json().catch(() => null);
+                  setForwardedCount((n) => n + 1);
+                  const result = respBody?.results?.[0];
+                  const dpId = result?.dataPointId || result?.dataPoint?.id;
+                  if (dpId) {
+                    const node: HemisphereNodeDatum = {
+                      dataPointId: dpId,
+                      createdAtMs: commitNow,
+                      rawText: fullText,
+                      dataPointSource: 'SPEECH',
                       speakerId: sid,
-                      startTimeMs: entry.startTime,
-                      endTimeMs: commitNow,
-                      confidence: msg.confidence ?? null,
-                      source: 'DEEPGRAM',
-                    },
-                    classification: null,
-                    agenticAnalysis: {
-                      domains: [{ domain: commitInterp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
-                      themes: [],
-                      actors: [],
-                      semanticMeaning: '',
-                      sentimentTone: '',
-                      overallConfidence: 0.5,
-                    },
-                  };
-                  setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
-                  console.log('[DREAM-DIAG] Node committed to hemisphere:', dpId, fullText.substring(0, 60));
+                      dialoguePhase: safePhase(currentPhase) ?? null,
+                      transcriptChunk: {
+                        speakerId: sid,
+                        startTimeMs: entry.startTime,
+                        endTimeMs: commitNow,
+                        confidence: slmMeta?.confidence ?? null,
+                        source: 'DEEPGRAM',
+                      },
+                      classification: null,
+                      agenticAnalysis: {
+                        domains: [{ domain: commitInterp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
+                        themes: [], actors: [], semanticMeaning: '', sentimentTone: '', overallConfidence: 0.5,
+                      },
+                    };
+                    setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
+                    console.log('[DREAM-DIAG] Node committed:', dpId, fullText.substring(0, 60));
+                  }
+                } else {
+                  console.error('[DREAM-DIAG] Commit POST failed:', r.status);
                 }
-              } else {
-                console.error('[DREAM-DIAG] Commit POST failed:', r.status, await r.text().catch(() => ''));
+              } catch (err) {
+                console.error('[DREAM-DIAG] Commit POST error:', err);
               }
-            } catch (err) {
-              console.error('[DREAM-DIAG] Commit POST network error:', err);
-            }
-          };
+            };
+          }
 
           // ── Reset thought-completion silence watchdog ─────────────────────
           // The timer fires only after thoughtCommitSilenceMs of uninterrupted
@@ -3086,14 +3087,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
           // commit — it is a breath boundary, not a thought boundary.
           const existingTimer = silenceTimersRef.current.get(speakerId);
           if (existingTimer != null) clearTimeout(existingTimer);
-          const silenceTimer = setTimeout(
-            () => { void commitUtterance(speakerId); },
-            LIVE_CAPTURE_CONFIG.thoughtCommitSilenceMs,
-          );
+          const silenceTimer = setTimeout(() => {
+            void commitUtteranceRef.current?.(speakerId, {
+              confidence: msg.confidence,
+              entities: msg.entities,
+              emotionalTone: msg.emotionalTone,
+              slmConfidence: msg.slmConfidence,
+              slmUsed: msg.slmUsed,
+            });
+          }, LIVE_CAPTURE_CONFIG.thoughtCommitSilenceMs);
           silenceTimersRef.current.set(speakerId, silenceTimer);
 
           if (msg.speechFinal) {
-            console.log('[DREAM-DIAG] speechFinal (breath pause) for', speakerId, '— silence window still running, not committing');
+            console.log('[DREAM-DIAG] speechFinal (breath pause) for', speakerId, '— silence window still running');
           }
         },
         onError: (err) => {
@@ -3196,6 +3202,36 @@ export default function WorkshopLivePage({ params }: PageProps) {
       setError(errorMessage(e));
     }
   };
+
+  const pauseCapture = async () => {
+    stopProcessingRef.current = true;
+
+    // Commit any in-progress thoughts before going silent
+    const pendingSpeakers = Array.from(utteranceBufferRef.current.keys());
+    await Promise.all(pendingSpeakers.map((sid) => commitUtteranceRef.current?.(sid)));
+    for (const t of silenceTimersRef.current.values()) clearTimeout(t);
+    silenceTimersRef.current.clear();
+    setPendingNodes({});
+
+    // Stop audio pipeline — same teardown as stopCapture but WITHOUT clearing nodes/state
+    try { if (watchdogIntervalRef.current) window.clearInterval(watchdogIntervalRef.current); } catch { /* ignore */ }
+    watchdogIntervalRef.current = null;
+    try { if (chunkIntervalRef.current) window.clearInterval(chunkIntervalRef.current); } catch { /* ignore */ }
+    chunkIntervalRef.current = null;
+    try { recorderRef.current?.stop(); } catch { /* ignore */ }
+    recorderRef.current = null;
+    try { captureStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+    captureStreamRef.current = null;
+    try { captureWSRef.current?.close(); } catch { /* ignore */ }
+    captureWSRef.current = null;
+    // Keep ESE / SSE pipeline alive — themes and agentic analysis still arrive
+
+    setStatus('paused');
+    setAudioLevel(0);
+  };
+
+  // Resume reconnects audio via startCapture(true) — no state reset.
+  const resumeCapture = () => startCapture(true);
 
   const stopCapture = async () => {
     stopProcessingRef.current = true;
@@ -3634,12 +3670,32 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   />
 
                   <div className="flex flex-wrap gap-2 items-center">
-                    <Button onClick={startCapture} disabled={status === 'capturing'}>
-                      {status === 'capturing' ? 'Capturing…' : 'Start Capture'}
-                    </Button>
-                    <Button variant="outline" onClick={stopCapture} disabled={status !== 'capturing'}>
-                      Stop
-                    </Button>
+                    {/* Start — only when idle or stopped */}
+                    {(status === 'idle' || status === 'stopped' || status === 'error') && (
+                      <Button onClick={() => void startCapture()}>Start Capture</Button>
+                    )}
+
+                    {/* Pause — while capturing */}
+                    {status === 'capturing' && (
+                      <Button variant="outline" onClick={() => void pauseCapture()}>
+                        ⏸ Pause
+                      </Button>
+                    )}
+
+                    {/* Resume + End Session — while paused */}
+                    {status === 'paused' && (
+                      <>
+                        <Button onClick={() => void resumeCapture()}>▶ Resume</Button>
+                        <Button variant="outline" onClick={() => void stopCapture()}>End Session</Button>
+                      </>
+                    )}
+
+                    {/* End Session — while capturing (renamed from Stop) */}
+                    {status === 'capturing' && (
+                      <Button variant="ghost" onClick={() => void stopCapture()} className="text-muted-foreground text-xs">
+                        End Session
+                      </Button>
+                    )}
 
                     {status === 'stopped' && lastSavedSnapshotId && utteranceNodes.length > 0 && (
                       <Link href={`/admin/workshops/${workshopId}/hemisphere?snapshotId=${lastSavedSnapshotId}`}>
