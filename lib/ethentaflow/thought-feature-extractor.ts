@@ -77,9 +77,9 @@ const DECISION_PATTERNS = [
   /\b(decided|decision|agreed|chosen|selected|approved|rejected|going with|not going with|opted for|ruled out|committing to|we will not)\b/i,
 ];
 
-// Target state signals
+// Target state signals — "to be" deliberately excluded (infinitive, not a target state)
 const TARGET_STATE_PATTERNS = [
-  /\b(goal is|objective is|aim is|target is|vision is|want to achieve|need to get to|by end of|within \d|ideally|should look like|future state|to be|end state)\b/i,
+  /\b(goal is|objective is|aim is|target is|vision is|want to achieve|need to get to|by end of|within \d|ideally|should look like|future state|end state|the target|our goal|our objective|our aim)\b/i,
 ];
 
 // Specificity: named entities, numbers, percentages
@@ -138,7 +138,11 @@ export function extractFeatures(text: string, lensPack: LensPack): ThoughtFeatur
       ...domain.business_objects,
     ];
     for (const term of allTerms) {
-      if (t.toLowerCase().includes(term.toLowerCase())) hits++;
+      // Word-boundary matching — prevents short terms like "IT" or "AI"
+      // matching inside unrelated words (e.g. "everything", "wait")
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
+      if (pattern.test(t)) hits++;
     }
     domain_term_hits[domain.id] = hits;
     total_domain_hits += hits;

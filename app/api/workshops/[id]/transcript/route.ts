@@ -14,7 +14,7 @@ import { getGPT4oMiniEngine } from '@/lib/cognition/engines/gpt4o-mini-engine';
 import { runFacilitationOrchestrator } from '@/lib/cognition/agents/facilitation-orchestrator';
 import { pushUtterance } from '@/lib/cognition/cognitive-state';
 import { extractFeatures } from '@/lib/ethentaflow/thought-feature-extractor';
-import { CLEAN_IMPERATIVE } from '@/lib/ethentaflow/thought-validity-engine';
+import { runCommitGuard, logGuardResult } from '@/lib/ethentaflow/thought-guard';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
 // Journey agent + cognitive analysis run inside after() — up to 40s per cycle.
 // Without this, Vercel kills the background work before the journey agent completes.
@@ -86,56 +86,20 @@ function isTextTrivial(text: string): boolean {
 }
 
 // ══════════════════════════════════════════════════════════════
-// serverGuard — EthentaFlow validity enforcement
-//
-// Runs on EVERY inbound text path (WebSocket primary + MediaRecorder
-// fallback + any future POST path) before any Supabase write.
-// Same absolute block conditions as ThoughtStateMachine.commit().
-// Using DEFAULT_LENS_PACK: the guard targets structural noise, not
-// domain precision — generic vocabulary is sufficient for that purpose.
+// applyServerGuard — delegates to the single shared runCommitGuard.
+// Covers all POST paths: WebSocket primary, MediaRecorder fallback,
+// cognitive-guidance, and any future server-to-server ingest.
+// Uses DEFAULT_LENS_PACK: structural noise filtering doesn't require
+// workshop-specific vocabulary.
 // ══════════════════════════════════════════════════════════════
-function serverGuard(
+function applyServerGuard(
   text: string,
   requestSource: string,
-  hasClientHint: boolean,
 ): { blocked: boolean; reason: string | null } {
-  const f = extractFeatures(text, DEFAULT_LENS_PACK);
-  const sigStrength = Math.max(
-    f.causal_signal_score,
-    f.action_signal_score,
-    f.constraint_signal_score,
-    f.problem_signal_score,
-    f.decision_signal_score,
-    f.target_state_signal_score,
-  );
-
-  let blocked = false;
-  let reason: string | null = null;
-
-  if (f.has_dangling_end) {
-    blocked = true;
-    reason = 'SERVER_GUARD:DANGLING_END';
-  } else if (!f.has_predicate && !CLEAN_IMPERATIVE.test(text)) {
-    blocked = true;
-    reason = 'SERVER_GUARD:NO_PREDICATE';
-  } else if (f.business_anchor_score < 0.15 && sigStrength === 0) {
-    blocked = true;
-    reason = 'SERVER_GUARD:NO_ANCHOR_NO_SIGNAL';
-  }
-
-  console.log('[EthentaFlow:ServerGuard]', JSON.stringify({
-    text: text.substring(0, 80),
-    source: requestSource,
-    client_hint_present: hasClientHint,
-    has_dangling_end: f.has_dangling_end,
-    has_predicate: f.has_predicate,
-    business_anchor_score: +f.business_anchor_score.toFixed(3),
-    signal_strength: +sigStrength.toFixed(3),
-    blocked_by_server_guard: blocked,
-    reason,
-  }));
-
-  return { blocked, reason };
+  const features = extractFeatures(text, DEFAULT_LENS_PACK);
+  const result = runCommitGuard(text, features);
+  logGuardResult(`ServerGuard:${requestSource}`, text, features, result);
+  return result;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -791,7 +755,7 @@ export async function POST(
     // Hard block before any Supabase write. Catches structural noise
     // regardless of which client path sent this POST (WebSocket primary
     // or MediaRecorder fallback). Same rules as client-side final guard.
-    const guard = serverGuard(text, body.source ?? 'unknown', !!body.clientDomainHint);
+    const guard = applyServerGuard(text, body.source ?? 'unknown');
     if (guard.blocked) {
       return NextResponse.json({
         ok: true,
