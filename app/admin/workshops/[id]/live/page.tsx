@@ -40,8 +40,9 @@ import { LiveDomainRadar } from '@/components/live/live-domain-radar';
 import { AgenticReasoningPanel, type ReasoningEntry } from '@/components/live/agentic-reasoning-panel';
 import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
 import { transcribeAudio, checkCaptureAPIHealth, CaptureAPIStream, type CaptureAPIResponse, type StreamTranscript } from '@/lib/captureapi/client';
-import { LIVE_CAPTURE_CONFIG } from '@/lib/live/capture-config';
-import { isThoughtCoherent } from '@/lib/live/thought-coherence';
+import { ThoughtStateMachine } from '@/lib/ethentaflow/thought-state-machine';
+import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
+import type { CommitCandidate, ThoughtAttempt } from '@/lib/ethentaflow/types';
 
 // ── Agentic facilitation hooks + components ──────────────────
 import { useLiveEventPipeline } from '@/hooks/use-live-event-pipeline';
@@ -235,35 +236,15 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [viewMode, setViewMode] = useState<'room' | 'facilitator' | 'split'>('split');
   const [dialoguePhase, setDialoguePhase] = useState<HemisphereDialoguePhase>('REIMAGINE');
 
-  // ── EthentaFlow utterance accumulation ─────────────────────────────────────
-  // Buffer of isFinal=true chunks per speaker — committed only on stop (speechFinal or silence).
-  type UtteranceBuffer = { chunks: string[]; startTime: number; domain: string };
-  const utteranceBufferRef = useRef<Map<string, UtteranceBuffer>>(new Map());
-  const silenceTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // ── EthentaFlow state machines — one per speaker ──────────────────────────
+  const stateMachinesRef = useRef<Map<string, ThoughtStateMachine>>(new Map());
   const [pendingNodes, setPendingNodes] = useState<Record<string, PendingHemisphereNode>>({});
-  // Keep a ref to dialoguePhase so commitUtterance closure sees the latest value.
+  // Keep a ref to dialoguePhase so commit callback sees the latest value.
   const dialoguePhaseRef = useRef(dialoguePhase);
   useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
-
-  // ── Semantic gate pre-evaluation (runs during buffering, before commit) ───
-  // Keyed by speakerId. Holds the in-flight gate promise and its resolved result.
-  // The gate call is debounced — only the latest evolving text is evaluated.
-  type GateState = { promise: Promise<{ selfContained: boolean; reason: string }>; result: { selfContained: boolean; reason: string } | null; text: string };
-  const semanticGateCacheRef = useRef<Map<string, GateState>>(new Map());
-  // Debounce timers for gate calls — reset on each new chunk
-  const gateDebounceTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  // Fragments held from gate rejections — prepended to next commit
-  const heldFragmentsRef = useRef<Map<string, string>>(new Map());
-
-  // Hoisted so pauseCapture and onTranscript can both call it.
-  // SLM metadata is optional — not available when committing on pause.
-  const commitUtteranceRef = useRef<((sid: string, slmMeta?: {
-    confidence?: number | null;
-    entities?: unknown;
-    emotionalTone?: unknown;
-    slmConfidence?: unknown;
-    slmUsed?: unknown;
-  }) => Promise<void>) | undefined>(undefined);
+  // SLM metadata per speaker — captured from CaptureAPI, attached to commit
+  type SlmMeta = { confidence?: number | null; entities?: unknown; emotionalTone?: unknown; slmConfidence?: unknown; slmUsed?: unknown };
+  const slmMetaRef = useRef<Map<string, SlmMeta>>(new Map());
 
   type LiveTheme = {
     id: string;
@@ -1504,15 +1485,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
     setSelectedNodeId(null);
     setThemesById({});
     themesRef.current = {};
-    // Clear utterance accumulation state on reset
-    for (const t of silenceTimersRef.current.values()) clearTimeout(t);
-    silenceTimersRef.current.clear();
-    utteranceBufferRef.current.clear();
+    // Clear EthentaFlow state machines
+    stateMachinesRef.current.forEach((m) => m.destroy());
+    stateMachinesRef.current.clear();
+    slmMetaRef.current.clear();
     setPendingNodes({});
-    for (const t of gateDebounceTimersRef.current.values()) clearTimeout(t);
-    gateDebounceTimersRef.current.clear();
-    semanticGateCacheRef.current.clear();
-    heldFragmentsRef.current.clear();
     setNodeThemeById({});
     nodeThemeRef.current = {};
     embeddingCacheRef.current = new Map();
@@ -2382,8 +2359,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const eventUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/events`, [workshopId]);
   const ingestUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/transcript`, [workshopId]);
-  const gateUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/semantic-gate`, [workshopId]);
-
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
@@ -2977,12 +2952,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const stream = new CaptureAPIStream({
         onTranscript: (msg: StreamTranscript) => {
           const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
-          if (!text) return;
+          if (!text || msg.isFinal === false) return;
 
-          // Skip interim (partial) results — they are display-only, not for accumulation.
-          if (msg.isFinal === false) return;
-
-          // Clear error on successful transcript
           if (lastTranscriptionErrorRef.current) {
             lastTranscriptionErrorRef.current = '';
             setError(null);
@@ -2990,263 +2961,107 @@ export default function WorkshopLivePage({ params }: PageProps) {
           lastHealthyAtRef.current = Date.now();
 
           const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : 'speaker_unknown';
-          const now = Date.now();
-          // ── Accumulate isFinal chunk into per-speaker buffer ──────────────
-          // Do NOT commit yet. The node is created only when the speaker stops.
-          const buf = utteranceBufferRef.current.get(speakerId) ?? {
-            chunks: [],
-            startTime: now,
-            domain: 'General',
-          };
-          buf.chunks.push(text);
-          utteranceBufferRef.current.set(speakerId, buf);
 
-          // Reinterpret the FULL accumulated text so the pending dot reflects
-          // the evolving whole thought, not just the last sentence fragment.
-          const fullSoFar = buf.chunks.join(' ').trim();
-          const interp = interpretLiveUtterance(fullSoFar);
-          buf.domain = interp.domain;
-
-          // Update the gravitating pending dot (visual only — never stored)
-          setPendingNodes((prev) => ({
-            ...prev,
-            [speakerId]: { id: speakerId, domain: interp.domain, startedAtMs: buf.startTime },
-          }));
-
-          console.log('[DREAM-DIAG] Accumulated chunk for', speakerId, '— buffer size:', buf.chunks.length, '| evolving domain:', interp.domain);
-
-          // ── Debounced semantic gate pre-evaluation ───────────────────────────
-          // Fire 600ms after the last chunk so we evaluate the full evolving thought.
-          // On speechFinal this timer is cancelled and the gate fires immediately.
-          // By the time silence fires (4000ms), the result is almost always ready.
-          const triggerGateFor = (sid: string, evalText: string) => {
-            const heldFrag = heldFragmentsRef.current.get(sid);
-            const textForGate = heldFrag ? `${heldFrag} ${evalText}` : evalText;
-            const gatePromise = fetch(gateUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: textForGate }),
-            }).then(async r => {
-              if (!r.ok) return { selfContained: true as const, reason: `gate HTTP ${r.status} — defaulting open` };
-              const data = await r.json() as { selfContained?: boolean; reason?: string };
-              return typeof data.selfContained === 'boolean'
-                ? { selfContained: data.selfContained, reason: data.reason ?? '' }
-                : { selfContained: true as const, reason: 'gate invalid response — defaulting open' };
-            }).catch(() => ({ selfContained: true as const, reason: 'gate fetch failed — defaulting open' }));
-            const state: GateState = { promise: gatePromise, result: null, text: textForGate };
-            semanticGateCacheRef.current.set(sid, state);
-            void gatePromise.then(result => {
-              const cached = semanticGateCacheRef.current.get(sid);
-              if (cached && cached.text === textForGate) {
-                semanticGateCacheRef.current.set(sid, { ...cached, result });
-                console.log('[DREAM-DIAG] Gate result for', sid, '—', result.selfContained ? 'PASS' : 'HOLD', '|', result.reason);
-              }
-            });
-          };
-          {
-            const existingGateTimer = gateDebounceTimersRef.current.get(speakerId);
-            if (existingGateTimer) clearTimeout(existingGateTimer);
-            const gateTimer = setTimeout(() => {
-              gateDebounceTimersRef.current.delete(speakerId);
-              const bufNow = utteranceBufferRef.current.get(speakerId);
-              const evalText = bufNow?.chunks.join(' ').trim() ?? '';
-              if (!evalText) return;
-              triggerGateFor(speakerId, evalText);
-            }, 600);
-            gateDebounceTimersRef.current.set(speakerId, gateTimer);
-          }
-
-          // Wire the hoisted commit function on first call (stable closure over refs/setters)
-          if (!commitUtteranceRef.current) {
-            commitUtteranceRef.current = async (sid, slmMeta) => {
-              const timer = silenceTimersRef.current.get(sid);
-              if (timer != null) { clearTimeout(timer); silenceTimersRef.current.delete(sid); }
-
-              const entry = utteranceBufferRef.current.get(sid);
-              if (!entry || entry.chunks.length === 0) return;
-
-              const bufferedText = entry.chunks.join(' ').trim();
-              utteranceBufferRef.current.delete(sid);
-              setPendingNodes((prev) => { const n = { ...prev }; delete n[sid]; return n; });
-
-              // Prepend any held fragment from a prior gate rejection
-              const heldFrag = heldFragmentsRef.current.get(sid);
-              const fullText = heldFrag ? `${heldFrag} ${bufferedText}` : bufferedText;
-
-              // ── Semantic gate check ──────────────────────────────────────────
-              // The gate was pre-evaluated during buffering. Read the cached result
-              // or wait up to 250ms for an in-flight call. Fall back to Stage 1
-              // heuristics only if the gate is completely unavailable.
-              let gateResult = semanticGateCacheRef.current.get(sid)?.result ?? null;
-              if (!gateResult) {
-                const inFlight = semanticGateCacheRef.current.get(sid);
-                if (inFlight) {
-                  // Wait up to 1500ms — on speechFinal path the gate was fired ~800ms ago
-                  // so it typically resolves within this window (gpt-4o-mini: 800–1500ms).
-                  gateResult = await Promise.race([
-                    inFlight.promise,
-                    new Promise<null>(resolve => setTimeout(() => resolve(null), 1500)),
-                  ]);
-                }
-              }
-              semanticGateCacheRef.current.delete(sid);
-              // Cancel any pending debounce timer — thought is being committed
-              const pendingGateTimer = gateDebounceTimersRef.current.get(sid);
-              if (pendingGateTimer) { clearTimeout(pendingGateTimer); gateDebounceTimersRef.current.delete(sid); }
-
-              if (gateResult !== null && !gateResult.selfContained) {
-                // LLM says fragment is not self-contained — hold for merge with next utterance
-                heldFragmentsRef.current.set(sid, fullText);
-                console.log('[DREAM-DIAG] Gate rejected — holding for merge:', sid, '|', gateResult.reason, '| text:', fullText.substring(0, 80));
-                return;
-              }
-
-              if (gateResult === null) {
-                // Gate timed out — fall back to Stage 1 heuristics
-                const coherence = isThoughtCoherent(fullText);
-                if (!coherence.coherent) {
-                  heldFragmentsRef.current.set(sid, fullText);
-                  console.log('[DREAM-DIAG] Gate timed out — Stage 1 fallback rejected:', sid, '|', coherence.signals.join('; '));
-                  return;
-                }
-                console.log('[DREAM-DIAG] Gate timed out — Stage 1 fallback accepted:', sid);
-              } else {
-                console.log('[DREAM-DIAG] Gate accepted:', sid, '| text:', fullText.substring(0, 60));
-              }
-
-              // Gate passed — clear held fragment and commit
-              heldFragmentsRef.current.delete(sid);
-
-              console.log('[DREAM-DIAG] Committing thought for', sid, '—', fullText.substring(0, 80));
-
-              const commitNow = Date.now();
-              const commitInterp = interpretLiveUtterance(fullText);
-              const currentPhase = dialoguePhaseRef.current;
-
-              try {
-                const r = await fetch(ingestUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    speakerId: sid,
-                    startTime: entry.startTime,
-                    endTime: commitNow,
-                    text: fullText,
-                    rawText: fullText,
-                    confidence: slmMeta?.confidence ?? null,
-                    source: 'deepgram' as const,
-                    dialoguePhase: currentPhase,
-                    flush: true,
-                    slmMetadata: {
-                      entities: slmMeta?.entities,
-                      emotionalTone: slmMeta?.emotionalTone,
-                      slmConfidence: slmMeta?.slmConfidence,
-                      slmUsed: slmMeta?.slmUsed,
-                    },
-                  }),
-                });
-                if (r.ok) {
-                  const respBody = await r.json().catch(() => null);
-                  setForwardedCount((n) => n + 1);
-                  const result = respBody?.results?.[0];
-                  const dpId = result?.dataPointId || result?.dataPoint?.id;
-                  if (dpId) {
-                    const node: HemisphereNodeDatum = {
-                      dataPointId: dpId,
-                      createdAtMs: commitNow,
-                      rawText: fullText,
-                      dataPointSource: 'SPEECH',
-                      speakerId: sid,
-                      dialoguePhase: safePhase(currentPhase) ?? null,
-                      transcriptChunk: {
-                        speakerId: sid,
-                        startTimeMs: entry.startTime,
-                        endTimeMs: commitNow,
-                        confidence: slmMeta?.confidence ?? null,
-                        source: 'DEEPGRAM',
-                      },
-                      classification: null,
-                      agenticAnalysis: {
-                        domains: [{ domain: commitInterp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
-                        themes: [], actors: [], semanticMeaning: '', sentimentTone: '', overallConfidence: 0.5,
-                      },
-                    };
-                    setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
-                    console.log('[DREAM-DIAG] Node committed:', dpId, fullText.substring(0, 60));
-                  }
-                } else {
-                  console.error('[DREAM-DIAG] Commit POST failed:', r.status);
-                }
-              } catch (err) {
-                console.error('[DREAM-DIAG] Commit POST error:', err);
-              }
-            };
-          }
-
-          // ── Reset thought-completion silence watchdog ─────────────────────
-          // ── Thought-resolution timer ──────────────────────────────────────
-          // A thought is committed only when the speaker stops AND the meaning
-          // appears resolved. Two-tier approach:
-          //
-          // 1. Full silence window (4000ms): always resets on any new isFinal
-          //    chunk. A speaker continuing their thought resets the clock.
-          //
-          // 2. speechFinal shortcut: if Deepgram's VAD signals a pause AND the
-          //    accumulated text ends with terminal punctuation (meaning resolved),
-          //    the remaining window is trimmed to 800ms. This lets clearly-finished
-          //    thoughts commit quickly without waiting the full 4 seconds.
-          //    If speechFinal arrives but the text is incomplete (no terminal
-          //    punctuation), the full window continues — the speaker likely paused
-          //    mid-thought.
-          const existingTimer = silenceTimersRef.current.get(speakerId);
-          if (existingTimer != null) clearTimeout(existingTimer);
-
-          const slmMetaForCommit = {
+          // Store latest SLM metadata so the commit callback can attach it
+          slmMetaRef.current.set(speakerId, {
             confidence: msg.confidence,
             entities: msg.entities,
             emotionalTone: msg.emotionalTone,
             slmConfidence: msg.slmConfidence,
             slmUsed: msg.slmUsed,
-          };
+          });
 
-          const silenceTimer = setTimeout(() => {
-            void commitUtteranceRef.current?.(speakerId, slmMetaForCommit);
-          }, LIVE_CAPTURE_CONFIG.thoughtCommitSilenceMs);
-          silenceTimersRef.current.set(speakerId, silenceTimer);
+          // Create state machine for this speaker if not yet present
+          if (!stateMachinesRef.current.has(speakerId)) {
+            const machine = new ThoughtStateMachine(speakerId, DEFAULT_LENS_PACK, {
+              onPendingUpdate: (attempt: ThoughtAttempt) => {
+                const domainHint = attempt.features
+                  ? (Object.entries(attempt.features.domain_term_hits).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'General')
+                  : 'General';
+                setPendingNodes((prev) => ({
+                  ...prev,
+                  [speakerId]: { id: speakerId, domain: domainHint, startedAtMs: attempt.start_time_ms },
+                }));
+              },
+              onCommitCandidate: async (candidate: CommitCandidate) => {
+                const attempt = candidate.attempt;
+                const fullText = attempt.full_text;
+                const slmMeta = slmMetaRef.current.get(speakerId);
+                const commitNow = Date.now();
+                const commitInterp = interpretLiveUtterance(fullText);
+                const currentPhase = dialoguePhaseRef.current;
 
-          if (msg.speechFinal) {
-            // speechFinal = VAD pause detected.
-            // Always fire the semantic gate immediately (cancel any pending debounce).
-            // This gives the gate maximum time before the silence window fires.
-            const pendingDebounce = gateDebounceTimersRef.current.get(speakerId);
-            if (pendingDebounce) {
-              clearTimeout(pendingDebounce);
-              gateDebounceTimersRef.current.delete(speakerId);
-            }
-            triggerGateFor(speakerId, fullSoFar);
+                setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
 
-            // Gate 1: terminal punctuation — is the sentence syntactically complete?
-            const isResolved = /[.!?]['"]?\s*$/.test(fullSoFar.trimEnd());
-            // Gate 2: coherence heuristic — is it self-contained or a dependent fragment?
-            const coherence = isThoughtCoherent(fullSoFar);
+                console.log('[EthentaFlow] Committing resolved thought for', speakerId, '—', fullText.substring(0, 80), '| validity:', attempt.validity?.validity_score?.toFixed(3), '| decision:', attempt.validity?.decision);
 
-            if (isResolved && coherence.coherent) {
-              // Thought looks syntactically complete — shorten window.
-              // The LLM gate will have the full silence window + wait to confirm.
-              clearTimeout(silenceTimer);
-              const shortTimer = setTimeout(() => {
-                void commitUtteranceRef.current?.(speakerId, slmMetaForCommit);
-              }, LIVE_CAPTURE_CONFIG.speechFinalResolvedMs);
-              silenceTimersRef.current.set(speakerId, shortTimer);
-              console.log('[DREAM-DIAG] speechFinal + coherent — shortcutting to', LIVE_CAPTURE_CONFIG.speechFinalResolvedMs, 'ms for', speakerId);
-            } else if (!coherence.coherent) {
-              // Dependent fragment detected — let full window run, log signals
-              console.log('[DREAM-DIAG] speechFinal but incoherent fragment — full window continues for', speakerId, '|', coherence.signals.join('; '));
-            } else {
-              // Resolved punctuation but full silence window still running
-              console.log('[DREAM-DIAG] speechFinal but unresolved punctuation — full window continues for', speakerId);
-            }
+                try {
+                  const r = await fetch(ingestUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      speakerId,
+                      startTime: attempt.start_time_ms,
+                      endTime: commitNow,
+                      text: fullText,
+                      rawText: fullText,
+                      confidence: slmMeta?.confidence ?? null,
+                      source: 'deepgram' as const,
+                      dialoguePhase: currentPhase,
+                      flush: true,
+                      slmMetadata: {
+                        entities: slmMeta?.entities,
+                        emotionalTone: slmMeta?.emotionalTone,
+                        slmConfidence: slmMeta?.slmConfidence,
+                        slmUsed: slmMeta?.slmUsed,
+                      },
+                    }),
+                  });
+                  if (r.ok) {
+                    const respBody = await r.json().catch(() => null);
+                    setForwardedCount((n) => n + 1);
+                    const result = respBody?.results?.[0];
+                    const dpId = result?.dataPointId || result?.dataPoint?.id;
+                    if (dpId) {
+                      const node: HemisphereNodeDatum = {
+                        dataPointId: dpId,
+                        createdAtMs: commitNow,
+                        rawText: fullText,
+                        dataPointSource: 'SPEECH',
+                        speakerId,
+                        dialoguePhase: safePhase(currentPhase) ?? null,
+                        transcriptChunk: {
+                          speakerId,
+                          startTimeMs: attempt.start_time_ms,
+                          endTimeMs: commitNow,
+                          confidence: slmMeta?.confidence ?? null,
+                          source: 'DEEPGRAM',
+                        },
+                        classification: null,
+                        agenticAnalysis: {
+                          domains: [{ domain: commitInterp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
+                          themes: [], actors: [], semanticMeaning: '', sentimentTone: '', overallConfidence: 0.5,
+                        },
+                      };
+                      setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
+                      console.log('[EthentaFlow] Node committed:', dpId, fullText.substring(0, 60));
+                    }
+                  } else {
+                    console.error('[EthentaFlow] Commit POST failed:', r.status);
+                  }
+                } catch (err) {
+                  console.error('[EthentaFlow] Commit POST error:', err);
+                }
+              },
+              onDiscard: (attempt: ThoughtAttempt) => {
+                setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
+                console.log('[EthentaFlow] Discarded fragment for', speakerId, '—', attempt.full_text.substring(0, 60), '| reasons:', attempt.validity?.reasons?.slice(0, 2).join('; '));
+              },
+            });
+            stateMachinesRef.current.set(speakerId, machine);
           }
+
+          stateMachinesRef.current.get(speakerId)!.chunkArrived(text, msg.speechFinal ?? false);
         },
         onError: (err) => {
           console.error('[CaptureAPIStream] Error:', err);
@@ -3352,16 +3167,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const pauseCapture = async () => {
     stopProcessingRef.current = true;
 
-    // Commit any in-progress thoughts before going silent
-    const pendingSpeakers = Array.from(utteranceBufferRef.current.keys());
-    await Promise.all(pendingSpeakers.map((sid) => commitUtteranceRef.current?.(sid)));
-    for (const t of silenceTimersRef.current.values()) clearTimeout(t);
-    silenceTimersRef.current.clear();
+    // Flush any in-progress thoughts before going silent
+    stateMachinesRef.current.forEach((m) => m.forceFlush());
+    // Give async commit callbacks a tick to fire
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    stateMachinesRef.current.forEach((m) => m.destroy());
+    stateMachinesRef.current.clear();
+    slmMetaRef.current.clear();
     setPendingNodes({});
-    for (const t of gateDebounceTimersRef.current.values()) clearTimeout(t);
-    gateDebounceTimersRef.current.clear();
-    semanticGateCacheRef.current.clear();
-    heldFragmentsRef.current.clear();
 
     // Stop audio pipeline — same teardown as stopCapture but WITHOUT clearing nodes/state
     try { if (watchdogIntervalRef.current) window.clearInterval(watchdogIntervalRef.current); } catch { /* ignore */ }
