@@ -34,6 +34,9 @@ A valid thought must:
 - contain a clear idea, problem, or action
 - not rely on unresolved references (this, that, those, he, they, etc.)
 - not be a partial clause or continuation
+- contain a business-relevant signal: a problem, constraint, cause, or actionable intent
+
+If the statement is self-contained but carries no business-relevant signal — for example, it is social filler, a transition phrase, an affirmation, a greeting, or a generic observation with no operational meaning — return selfContained: false.
 
 Given:
 Recent context:
@@ -43,7 +46,7 @@ Statement:
 "${statement}"
 
 Question:
-Can this statement stand alone as a meaningful, self-contained thought?
+Can this statement stand alone as a meaningful, self-contained business thought with a relevant signal?
 
 Return:
 {
