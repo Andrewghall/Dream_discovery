@@ -245,6 +245,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const dialoguePhaseRef = useRef(dialoguePhase);
   useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
 
+  // ── Semantic gate pre-evaluation (runs during buffering, before commit) ───
+  // Keyed by speakerId. Holds the in-flight gate promise and its resolved result.
+  // The gate call is debounced — only the latest evolving text is evaluated.
+  type GateState = { promise: Promise<{ selfContained: boolean; reason: string }>; result: { selfContained: boolean; reason: string } | null; text: string };
+  const semanticGateCacheRef = useRef<Map<string, GateState>>(new Map());
+  // Debounce timers for gate calls — reset on each new chunk
+  const gateDebounceTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Fragments held from gate rejections — prepended to next commit
+  const heldFragmentsRef = useRef<Map<string, string>>(new Map());
+
   // Hoisted so pauseCapture and onTranscript can both call it.
   // SLM metadata is optional — not available when committing on pause.
   const commitUtteranceRef = useRef<((sid: string, slmMeta?: {
@@ -1499,6 +1509,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
     silenceTimersRef.current.clear();
     utteranceBufferRef.current.clear();
     setPendingNodes({});
+    for (const t of gateDebounceTimersRef.current.values()) clearTimeout(t);
+    gateDebounceTimersRef.current.clear();
+    semanticGateCacheRef.current.clear();
+    heldFragmentsRef.current.clear();
     setNodeThemeById({});
     nodeThemeRef.current = {};
     embeddingCacheRef.current = new Map();
@@ -2368,6 +2382,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   const eventUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/events`, [workshopId]);
   const ingestUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/transcript`, [workshopId]);
+  const gateUrl = useMemo(() => `/api/workshops/${encodeURIComponent(workshopId)}/semantic-gate`, [workshopId]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -3000,6 +3015,38 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
           console.log('[DREAM-DIAG] Accumulated chunk for', speakerId, '— buffer size:', buf.chunks.length, '| evolving domain:', interp.domain);
 
+          // ── Debounced semantic gate pre-evaluation ───────────────────────────
+          // Fire 600ms after the last chunk so we evaluate the full evolving thought.
+          // By the time silence fires (4000ms), the result is almost always ready.
+          {
+            const existingGateTimer = gateDebounceTimersRef.current.get(speakerId);
+            if (existingGateTimer) clearTimeout(existingGateTimer);
+            const gateTimer = setTimeout(() => {
+              gateDebounceTimersRef.current.delete(speakerId);
+              const bufNow = utteranceBufferRef.current.get(speakerId);
+              const evalText = bufNow?.chunks.join(' ').trim() ?? '';
+              if (!evalText) return;
+              const heldFrag = heldFragmentsRef.current.get(speakerId);
+              const textForGate = heldFrag ? `${heldFrag} ${evalText}` : evalText;
+              const gatePromise = fetch(gateUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: textForGate }),
+              }).then(r => r.json() as Promise<{ selfContained: boolean; reason: string }>)
+                .catch(() => ({ selfContained: true, reason: 'gate fetch failed — defaulting open' }));
+              const state: GateState = { promise: gatePromise, result: null, text: textForGate };
+              semanticGateCacheRef.current.set(speakerId, state);
+              void gatePromise.then(result => {
+                const cached = semanticGateCacheRef.current.get(speakerId);
+                if (cached && cached.text === textForGate) {
+                  semanticGateCacheRef.current.set(speakerId, { ...cached, result });
+                  console.log('[DREAM-DIAG] Gate pre-result for', speakerId, '—', result.selfContained ? 'PASS' : 'HOLD', '|', result.reason);
+                }
+              });
+            }, 600);
+            gateDebounceTimersRef.current.set(speakerId, gateTimer);
+          }
+
           // Wire the hoisted commit function on first call (stable closure over refs/setters)
           if (!commitUtteranceRef.current) {
             commitUtteranceRef.current = async (sid, slmMeta) => {
@@ -3009,9 +3056,55 @@ export default function WorkshopLivePage({ params }: PageProps) {
               const entry = utteranceBufferRef.current.get(sid);
               if (!entry || entry.chunks.length === 0) return;
 
-              const fullText = entry.chunks.join(' ').trim();
+              const bufferedText = entry.chunks.join(' ').trim();
               utteranceBufferRef.current.delete(sid);
               setPendingNodes((prev) => { const n = { ...prev }; delete n[sid]; return n; });
+
+              // Prepend any held fragment from a prior gate rejection
+              const heldFrag = heldFragmentsRef.current.get(sid);
+              const fullText = heldFrag ? `${heldFrag} ${bufferedText}` : bufferedText;
+
+              // ── Semantic gate check ──────────────────────────────────────────
+              // The gate was pre-evaluated during buffering. Read the cached result
+              // or wait up to 250ms for an in-flight call. Fall back to Stage 1
+              // heuristics only if the gate is completely unavailable.
+              let gateResult = semanticGateCacheRef.current.get(sid)?.result ?? null;
+              if (!gateResult) {
+                const inFlight = semanticGateCacheRef.current.get(sid);
+                if (inFlight) {
+                  gateResult = await Promise.race([
+                    inFlight.promise,
+                    new Promise<null>(resolve => setTimeout(() => resolve(null), 250)),
+                  ]);
+                }
+              }
+              semanticGateCacheRef.current.delete(sid);
+              // Cancel any pending debounce timer — thought is being committed
+              const pendingGateTimer = gateDebounceTimersRef.current.get(sid);
+              if (pendingGateTimer) { clearTimeout(pendingGateTimer); gateDebounceTimersRef.current.delete(sid); }
+
+              if (gateResult !== null && !gateResult.selfContained) {
+                // LLM says fragment is not self-contained — hold for merge with next utterance
+                heldFragmentsRef.current.set(sid, fullText);
+                console.log('[DREAM-DIAG] Gate rejected — holding for merge:', sid, '|', gateResult.reason, '| text:', fullText.substring(0, 80));
+                return;
+              }
+
+              if (gateResult === null) {
+                // Gate timed out — fall back to Stage 1 heuristics
+                const coherence = isThoughtCoherent(fullText);
+                if (!coherence.coherent) {
+                  heldFragmentsRef.current.set(sid, fullText);
+                  console.log('[DREAM-DIAG] Gate timed out — Stage 1 fallback rejected:', sid, '|', coherence.signals.join('; '));
+                  return;
+                }
+                console.log('[DREAM-DIAG] Gate timed out — Stage 1 fallback accepted:', sid);
+              } else {
+                console.log('[DREAM-DIAG] Gate accepted:', sid, '| text:', fullText.substring(0, 60));
+              }
+
+              // Gate passed — clear held fragment and commit
+              heldFragmentsRef.current.delete(sid);
 
               console.log('[DREAM-DIAG] Committing thought for', sid, '—', fullText.substring(0, 80));
 
@@ -3244,6 +3337,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
     for (const t of silenceTimersRef.current.values()) clearTimeout(t);
     silenceTimersRef.current.clear();
     setPendingNodes({});
+    for (const t of gateDebounceTimersRef.current.values()) clearTimeout(t);
+    gateDebounceTimersRef.current.clear();
+    semanticGateCacheRef.current.clear();
+    heldFragmentsRef.current.clear();
 
     // Stop audio pipeline — same teardown as stopCapture but WITHOUT clearing nodes/state
     try { if (watchdogIntervalRef.current) window.clearInterval(watchdogIntervalRef.current); } catch { /* ignore */ }
