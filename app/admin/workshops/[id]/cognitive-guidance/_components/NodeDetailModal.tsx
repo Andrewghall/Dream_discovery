@@ -36,11 +36,11 @@ export function NodeDetailModal({ node, onClose }: { node: HemisphereNodeDatum; 
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="relative w-[90vw] max-w-lg rounded-xl shadow-2xl overflow-hidden"
+        className="relative w-[95vw] max-w-3xl rounded-xl shadow-2xl overflow-hidden"
         style={{ backgroundColor: colors.bg, border: `2px solid ${colors.border}` }}
       >
         {/* Header */}
@@ -69,126 +69,135 @@ export function NodeDetailModal({ node, onClose }: { node: HemisphereNodeDatum; 
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-5 py-4 space-y-4">
-          {/* Raw text — the main quote */}
-          <p className="text-base font-medium leading-relaxed" style={{ color: colors.text }}>
-            &ldquo;{node.rawText}&rdquo;
-          </p>
+        {/* Two-column body */}
+        <div className="flex divide-x" style={{ borderColor: `${colors.border}22` }}>
 
-          {/* Semantic meaning */}
-          {meaning && meaning !== node.rawText && (
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wide mb-1 opacity-60" style={{ color: colors.text }}>
-                Interpretation
-              </h4>
-              <p className="text-sm" style={{ color: colors.text }}>
-                {meaning}
-              </p>
-            </div>
-          )}
+          {/* LEFT — full quote + interpretation */}
+          <div className="flex-1 px-5 py-4 space-y-3 min-w-0">
+            <h4 className="text-xs font-semibold uppercase tracking-wide opacity-50" style={{ color: colors.text }}>
+              Captured Statement
+            </h4>
+            <p
+              className="text-base font-medium leading-relaxed"
+              style={{ color: colors.text }}
+            >
+              &ldquo;{node.rawText}&rdquo;
+            </p>
 
-          {/* Keywords */}
-          {keywords.length > 0 && (
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-60" style={{ color: colors.text }}>
-                Keywords
-              </h4>
-              <div className="flex flex-wrap gap-1.5">
-                {keywords.map((kw) => (
-                  <span
-                    key={kw}
-                    className="px-2 py-0.5 rounded-full text-xs font-medium"
-                    style={{ backgroundColor: `${colors.border}20`, color: colors.text, border: `1px solid ${colors.border}40` }}
-                  >
-                    {kw}
-                  </span>
-                ))}
+            {meaning && meaning !== node.rawText && (
+              <div className="pt-1">
+                <h4 className="text-xs font-semibold uppercase tracking-wide mb-1 opacity-50" style={{ color: colors.text }}>
+                  Interpretation
+                </h4>
+                <p className="text-sm leading-relaxed" style={{ color: colors.text }}>
+                  {meaning}
+                </p>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Domains */}
-          {domains.length > 0 && (
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-60" style={{ color: colors.text }}>
-                Domains
-              </h4>
-              <div className="space-y-1.5">
+            {/* Themes */}
+            {themes.length > 0 && (
+              <div className="pt-1">
+                <h4 className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-50" style={{ color: colors.text }}>
+                  Themes
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {themes.map((t) => (
+                    <span
+                      key={t.label}
+                      className="px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{ backgroundColor: `${colors.border}20`, color: colors.text, border: `1px solid ${colors.border}40` }}
+                    >
+                      {t.label} ({(t.confidence * 100).toFixed(0)}%)
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Keywords */}
+            {keywords.length > 0 && (
+              <div className="pt-1">
+                <h4 className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-50" style={{ color: colors.text }}>
+                  Keywords
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {keywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{ backgroundColor: `${colors.border}20`, color: colors.text, border: `1px solid ${colors.border}40` }}
+                    >
+                      {kw}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT — domain breakdown */}
+          <div className="w-72 flex-shrink-0 px-5 py-4 space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide opacity-50" style={{ color: colors.text }}>
+              Domain Breakdown
+            </h4>
+
+            {domains.length > 0 ? (
+              <div className="space-y-2.5">
                 {domains.map((d) => (
-                  <div key={d.domain} className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between text-xs mb-0.5">
-                        <span className="font-medium" style={{ color: colors.text }}>{d.domain}</span>
-                        <span className="opacity-60" style={{ color: colors.text }}>{(d.relevance * 100).toFixed(0)}%</span>
-                      </div>
-                      <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: `${colors.border}20` }}>
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{ width: `${d.relevance * 100}%`, backgroundColor: colors.border }}
-                        />
-                      </div>
+                  <div key={d.domain}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium leading-tight" style={{ color: colors.text }}>{d.domain}</span>
+                      <span className="ml-2 flex-shrink-0 tabular-nums opacity-60" style={{ color: colors.text }}>
+                        {(d.relevance * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: `${colors.border}20` }}>
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${d.relevance * 100}%`, backgroundColor: colors.border }}
+                      />
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-xs opacity-40" style={{ color: colors.text }}>No domain data</p>
+            )}
 
-          {/* Themes */}
-          {themes.length > 0 && (
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-60" style={{ color: colors.text }}>
-                Themes
-              </h4>
-              <div className="flex flex-wrap gap-1.5">
-                {themes.map((t) => (
-                  <span
-                    key={t.label}
-                    className="px-2 py-0.5 rounded-full text-xs font-medium"
-                    style={{ backgroundColor: `${colors.border}20`, color: colors.text, border: `1px solid ${colors.border}40` }}
-                  >
-                    {t.label} ({(t.confidence * 100).toFixed(0)}%)
-                  </span>
-                ))}
+            {/* Actors */}
+            {actors.length > 0 && (
+              <div className="pt-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-50" style={{ color: colors.text }}>
+                  Actors
+                </h4>
+                <div className="space-y-1">
+                  {actors.map((a) => (
+                    <div key={a.name} className="text-xs" style={{ color: colors.text }}>
+                      <span className="font-semibold">{a.name}</span>
+                      {a.role ? <span className="opacity-60"> — {a.role}</span> : null}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* Actors */}
-          {actors.length > 0 && (
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-60" style={{ color: colors.text }}>
-                Actors
-              </h4>
-              <div className="space-y-1">
-                {actors.map((a) => (
-                  <div key={a.name} className="text-xs" style={{ color: colors.text }}>
-                    <span className="font-semibold">{a.name}</span>
-                    {a.role ? <span className="opacity-60"> — {a.role}</span> : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Footer: sentiment + speaker + time */}
-          <div
-            className="flex items-center justify-between pt-3 text-xs opacity-60"
-            style={{ borderTop: `1px solid ${colors.border}22`, color: colors.text }}
-          >
-            <div className="flex items-center gap-3">
-              {sentiment && (
-                <span className="capitalize">{sentiment}</span>
-              )}
-              {node.speakerId && (
-                <span>Speaker: {node.speakerId.replace('speaker-', '#')}</span>
-              )}
-            </div>
-            {node.transcriptChunk?.startTimeMs != null && (
-              <span>{formatTimeMs(node.transcriptChunk.startTimeMs)}</span>
             )}
           </div>
+        </div>
+
+        {/* Footer: sentiment + speaker + time */}
+        <div
+          className="flex items-center justify-between px-5 py-2.5 text-xs opacity-60"
+          style={{ borderTop: `1px solid ${colors.border}22`, color: colors.text }}
+        >
+          <div className="flex items-center gap-3">
+            {sentiment && <span className="capitalize">{sentiment}</span>}
+            {node.speakerId && (
+              <span>Speaker: {node.speakerId.replace('speaker-', '#')}</span>
+            )}
+          </div>
+          {node.transcriptChunk?.startTimeMs != null && (
+            <span>{formatTimeMs(node.transcriptChunk.startTimeMs)}</span>
+          )}
         </div>
       </div>
     </div>
