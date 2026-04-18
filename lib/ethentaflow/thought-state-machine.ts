@@ -5,10 +5,13 @@ import { runCommitGuard, logGuardResult } from './thought-guard';
 import { scoreDomains, createDomainCluster, updateDomainCluster, type DomainCluster } from './domain-scoring-engine';
 
 // Timing constants
-const SILENCE_WINDOW_MS = 4000;
-const SPEECH_FINAL_WINDOW_MS = 800;
-const MERGE_WAIT_MS = 12000;
-const CONTINUATION_WINDOW_MS = 2500;
+// SPEECH_FINAL_WINDOW_MS: how long to wait after a Deepgram isFinal before treating it as
+// silence. 3 s is long enough that the next chunk in continuous speech (avg ~1.5–2 s) cancels
+// the timer, so all chunks from one continuous utterance accumulate into a single thought.
+const SILENCE_WINDOW_MS = 6000;
+const SPEECH_FINAL_WINDOW_MS = 3000;
+const MERGE_WAIT_MS = 15000;
+const CONTINUATION_WINDOW_MS = 5000;
 
 // Max hold cycles before forcing a validity decision
 const MAX_HOLD_CYCLES = 3;
@@ -52,9 +55,22 @@ export class ThoughtStateMachine {
 
   static isContinuationChunk(text: string): boolean {
     const t = text.trim().toLowerCase();
-    return /^(and|but|so|because|which|that|then|also|however|although|or|if|when|where|while|since|as|though|yet|nor|either|neither|plus|even|still|besides|furthermore|moreover|additionally|therefore|thus|hence|consequently|meanwhile|afterwards|later|next|finally|eventually|after|before|once|until|unless|whereas)\b/.test(t) ||
+    return (
+      // Explicit continuation connectives
+      /^(and|but|so|because|which|then|also|however|although|or|if|when|where|while|since|as|though|yet|nor|either|neither|plus|even|still|besides|furthermore|moreover|additionally|therefore|thus|hence|consequently|meanwhile|afterwards|later|next|finally|eventually|after|before|once|until|unless|whereas)\b/.test(t) ||
+      // Pronoun + verb continuation
       /^(it|this|that|those|these|he|she|they|we)\s+(is|are|was|were|will|would|could|should|has|have|had|does|do|did|means|meant|shows|showed|leads|led)\b/.test(t) ||
-      /^(the (result|reason|issue|problem|point|question|goal|idea|plan|challenge|risk|solution|answer|outcome|impact|effect|cause|driver|factor))\b/.test(t);
+      // Thematic noun continuations
+      /^(the (result|reason|issue|problem|point|question|goal|idea|plan|challenge|risk|solution|answer|outcome|impact|effect|cause|driver|factor))\b/.test(t) ||
+      // Subordinate clause: "that the/a/this/these..." — completing a prior "is that X" construction
+      /^that\s+(the|a|an|this|these|those|my|our|their|its|no|every)\b/.test(t) ||
+      // Comparative / modifier fragments — no standalone subject
+      /^(less|more|fewer|further|very|quite|rather|especially|particularly|specifically|even more|even less)\b/.test(t) ||
+      // Prepositional phrase fragments — clearly mid-thought when at utterance start
+      /^(in the|in a|in this|in that|of the|of a|at the|for the|for a|with the|with a|to the|to a|from the|by the|on the|under the|within the|across the|through the|into the)\b/.test(t) ||
+      // Filler / continuation markers
+      /^(etcetera|etc\.?|and so on|and so forth|you know,|i mean,)\b/.test(t)
+    );
   }
 
   chunkArrived(text: string, speechFinal: boolean): void {
@@ -75,12 +91,31 @@ export class ThoughtStateMachine {
       this.startNew(trimmed);
       this.evaluateCurrent();
     } else if (this.current.state === 'resolved_candidate') {
-      // New speech that isn't a continuation — commit the resolved thought first, then start fresh
       this.clearContinuationTimer();
-      this.commit(this.current, false);
-      this.startNew(trimmed);
-      this.evaluateCurrent();
+      // Before committing and starting fresh, check if this chunk is topically
+      // continuous with the resolved candidate — fragments and referential chunks
+      // are mid-argument, not new thoughts.
+      const newFeatures = extractFeatures(trimmed, this.lensPack);
+      const isFragment = !newFeatures.has_subject || !newFeatures.has_predicate;
+      const isReferential = newFeatures.referential_dependency_score > 0.45;
+      if (isFragment || isReferential) {
+        // Still developing the same argument — fold in and keep accumulating
+        this.appendChunk(trimmed);
+        this.current.state = 'capturing';
+        this.evaluateCurrent();
+      } else {
+        // Clear topic shift — commit resolved candidate and start fresh
+        this.commit(this.current, false);
+        this.startNew(trimmed);
+        this.evaluateCurrent();
+      }
     } else {
+      // New chunk during capturing / merge_wait / possible_pause.
+      // If we were in merge_wait, cancel the existing timer — new speech has
+      // arrived, so the window resets from now rather than from first-hold time.
+      if (this.current.state === 'merge_wait') {
+        this.clearMergeTimer();
+      }
       this.appendChunk(trimmed);
       this.evaluateCurrent();
     }
@@ -173,7 +208,7 @@ export class ThoughtStateMachine {
     this.callbacks.onPendingUpdate({ ...this.current });
   }
 
-  private onSilence(wasSpeechFinal: boolean): void {
+  private onSilence(_wasSpeechFinal: boolean): void {
     if (!this.current || this.destroyed) return;
     this.silenceTimer = null;
 
@@ -181,7 +216,9 @@ export class ThoughtStateMachine {
     if (this.current.state === 'resolved_candidate') return; // continuation timer handles this
 
     this.current.state = 'possible_pause';
-    this.attemptCommit(wasSpeechFinal);
+    // Deepgram's isFinal is an utterance boundary, not a thought boundary.
+    // Never force-commit on silence — let thought_completeness routing decide.
+    this.attemptCommit(false);
   }
 
   private attemptCommit(forceDecide: boolean, fromMergeTimer = false): void {
