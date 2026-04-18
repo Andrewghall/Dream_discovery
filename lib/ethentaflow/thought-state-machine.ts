@@ -20,6 +20,9 @@ export interface StateMachineCallbacks {
   onPendingUpdate: (attempt: ThoughtAttempt) => void;
   onCommitCandidate: (candidate: CommitCandidate) => void;
   onDiscard: (attempt: ThoughtAttempt) => void;
+  // Optional — fires when the machine enters merge_wait (held for more speech).
+  // Provides visibility into borderline decisions without requiring a commit.
+  onHold?: (attempt: ThoughtAttempt, holdCycle: number) => void;
 }
 
 export class ThoughtStateMachine {
@@ -190,6 +193,8 @@ export class ThoughtStateMachine {
       attempt.state = 'merge_wait';
       attempt.hold_started_ms = Date.now();
       this.holdCycles++;
+
+      this.callbacks.onHold?.({ ...attempt }, this.holdCycles);
 
       this.mergeTimer = setTimeout(() => {
         if (!this.current || this.current.id !== attempt.id || this.destroyed) return;
