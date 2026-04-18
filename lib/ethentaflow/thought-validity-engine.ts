@@ -52,18 +52,6 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
     };
   }
 
-  if (features.opening_pronoun && features.business_anchor_score < 0.25) {
-    return {
-      validity_score: 0,
-      decision: 'hold',
-      confidence: 0.9,
-      reasons: [`starts with external pronoun "${features.opening_pronoun}" with no business anchor`],
-      hard_rule_applied: 'EXTERNAL_PRONOUN_NO_ANCHOR',
-      score_breakdown: zeroBreakdown(),
-      thought_completeness: 'fragment' as const,
-    };
-  }
-
   if (features.referential_dependency_score > 0.75) {
     return {
       validity_score: 0,
@@ -162,9 +150,9 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
     (features.has_subject ? 0.4 : 0) +
     (features.has_predicate ? 0.4 : 0) +
     (features.has_business_object ? 0.2 : 0);
-  const signal_resolved_score =
-    sig_strength_c > 0 && (features.business_anchor_score > 0 || features.has_business_object)
-      ? sig_strength_c : 0;
+  // Signal strength alone is sufficient — don't require business anchor.
+  // Workshop speech without domain-matched terms still carries real signal.
+  const signal_resolved_score = sig_strength_c;
 
   const resolution_confidence =
     0.25 * structural_c +
@@ -176,8 +164,8 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
     0.30 * (features.has_continuation_signal ? 1.0 : 0);
 
   const thought_completeness: ValidityResult['thought_completeness'] =
-    resolution_confidence >= 0.60 ? 'complete' :
-    resolution_confidence >= 0.35 ? 'developing' :
+    resolution_confidence >= 0.45 ? 'complete' :
+    resolution_confidence >= 0.25 ? 'developing' :
     'fragment';
 
   // No-predicate hard rule (deferred — needs context about clean imperative)

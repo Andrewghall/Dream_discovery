@@ -271,9 +271,29 @@ export class ThoughtStateMachine {
     // Re-extract from current full_text — cached features may lag behind the
     // latest appended material. runCommitGuard is the single enforcement point:
     // no score, continuity bonus, force-decide, or expiry can bypass it.
-    const gf = extractFeatures(attempt.full_text, this.lensPack);
-    const guard = runCommitGuard(attempt.full_text, gf);
-    logGuardResult('FinalGate', attempt.full_text, gf, guard);
+    let commitText = attempt.full_text;
+    let gf = extractFeatures(commitText, this.lensPack);
+    let guard = runCommitGuard(commitText, gf);
+    logGuardResult('FinalGate', commitText, gf, guard);
+
+    // Deepgram frequently sends mid-sentence isFinals ending with a dangling
+    // conjunction (e.g. "we tried so hard and."). Strip it and retry once so
+    // the meaningful content before the cut can still commit.
+    if (guard.blocked && guard.reason === 'GUARD:DANGLING_END') {
+      const stripped = commitText
+        .replace(/\s*\b(but|and|because|which|to|or|so|if|when|that|for|as|although|however|yet|whereas|since|unless|until)\s*[,.]?\s*$/i, '')
+        .trim();
+      if (stripped && stripped !== commitText && stripped.split(/\s+/).length >= 4) {
+        const strippedFeatures = extractFeatures(stripped, this.lensPack);
+        const strippedGuard = runCommitGuard(stripped, strippedFeatures);
+        logGuardResult('FinalGate:DanglingStripped', stripped, strippedFeatures, strippedGuard);
+        if (!strippedGuard.blocked) {
+          commitText = stripped;
+          gf = strippedFeatures;
+          guard = strippedGuard;
+        }
+      }
+    }
 
     if (guard.blocked) {
       attempt.state = 'discarded';
@@ -283,6 +303,7 @@ export class ThoughtStateMachine {
       return;
     }
     // ─────────────────────────────────────────────────────────────────────────
+    attempt.full_text = commitText;
 
     attempt.state = 'committed';
     this.continuityScore = Math.min(this.continuityScore + 0.15, 1.0);
