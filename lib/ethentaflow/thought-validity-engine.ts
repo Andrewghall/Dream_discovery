@@ -36,6 +36,7 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
       reasons: ['too short — fewer than 4 words'],
       hard_rule_applied: 'MIN_WORD_COUNT',
       score_breakdown: zeroBreakdown(),
+      thought_completeness: 'fragment' as const,
     };
   }
 
@@ -47,6 +48,7 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
       reasons: ['ends with dangling conjunction — incomplete thought'],
       hard_rule_applied: 'DANGLING_END',
       score_breakdown: zeroBreakdown(),
+      thought_completeness: 'fragment' as const,
     };
   }
 
@@ -58,6 +60,7 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
       reasons: [`starts with external pronoun "${features.opening_pronoun}" with no business anchor`],
       hard_rule_applied: 'EXTERNAL_PRONOUN_NO_ANCHOR',
       score_breakdown: zeroBreakdown(),
+      thought_completeness: 'fragment' as const,
     };
   }
 
@@ -69,6 +72,7 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
       reasons: ['high referential dependency — depends on prior context'],
       hard_rule_applied: 'HIGH_REFERENTIAL_DEPENDENCY',
       score_breakdown: zeroBreakdown(),
+      thought_completeness: 'fragment' as const,
     };
   }
 
@@ -148,6 +152,34 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
   if (specificity > 0.3) reasons.push(`specificity present (score: ${specificity.toFixed(2)})`);
   if (signal_strength > 0) reasons.push(`signal: ${features.primary_type_hint ?? 'observation'}`);
 
+  // Resolution confidence — weighted structural integrity score
+  const sig_strength_c = Math.max(
+    features.causal_signal_score, features.action_signal_score,
+    features.constraint_signal_score, features.problem_signal_score,
+    features.decision_signal_score, features.target_state_signal_score,
+  );
+  const structural_c =
+    (features.has_subject ? 0.4 : 0) +
+    (features.has_predicate ? 0.4 : 0) +
+    (features.has_business_object ? 0.2 : 0);
+  const signal_resolved_score =
+    sig_strength_c > 0 && (features.business_anchor_score > 0 || features.has_business_object)
+      ? sig_strength_c : 0;
+
+  const resolution_confidence =
+    0.25 * structural_c +
+    0.20 * (features.business_anchor_score > 0 ? 1.0 : 0) +
+    0.20 * signal_resolved_score +
+    0.15 * (1.0 - Math.min(features.referential_dependency_score, 1.0)) +
+    0.10 * ((features.specificity_score > 0 || features.has_numeric_reference || features.has_proper_nouns) ? 1.0 : 0) +
+    0.10 * (features.has_resolution_signal ? 1.0 : 0) -
+    0.30 * (features.has_continuation_signal ? 1.0 : 0);
+
+  const thought_completeness: ValidityResult['thought_completeness'] =
+    resolution_confidence >= 0.60 ? 'complete' :
+    resolution_confidence >= 0.35 ? 'developing' :
+    'fragment';
+
   // No-predicate hard rule (deferred — needs context about clean imperative)
   if (!features.has_predicate && validity_score < COMMIT_THRESHOLD) {
     return {
@@ -157,6 +189,7 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
       reasons: [...reasons, 'no predicate — not a complete statement'],
       hard_rule_applied: 'NO_PREDICATE',
       score_breakdown,
+      thought_completeness,
     };
   }
 
@@ -190,6 +223,7 @@ export function scoreValidity(features: ThoughtFeatures, continuity: number): Va
     reasons,
     hard_rule_applied: null,
     score_breakdown,
+    thought_completeness,
   };
 }
 

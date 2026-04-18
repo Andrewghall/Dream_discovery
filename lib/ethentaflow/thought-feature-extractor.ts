@@ -6,6 +6,19 @@ const EXTERNAL_PRONOUN_OPENER = /^(it|this|that|those|these|he|she|they)\b/i;
 // Dangling conjunction at end — speaker was mid-thought
 const DANGLING_END = /\b(but|and|because|which|to|or|so|if|when|that|for|as|although|however|yet|whereas|since|unless|until)\s*[,.]?\s*$/i;
 
+// Narrative bridges — mid-thought phrases that signal the idea is still unfolding
+const NARRATIVE_BRIDGE = /\b(and then|after that|from there|at that point|that's when|which led|which caused|which meant|it didn't take long|so then|but then|throughout this|during this period|following this|at the same time|and at the same time)\b/i;
+
+// Soft trailing connectors — ends with a multi-word phrase implying continuation
+// (single-word cases are covered by DANGLING_END above)
+const SOFT_TRAILING_CONNECTOR = /\b(and so|and because|but because|meaning that|leading to|which means|and we|and they|and it|and this|and that|so we|so they|so that|which then|and also|but also)\s*[,.]?\s*$/i;
+
+// Open comparison — likening started but not resolved
+const OPEN_COMPARISON = /\b(it('s| is| was) (like|similar to|comparable to)|kind of like|sort of like|in the same way|similar to what)\b/i;
+
+// Open recommendation — recommendation opened without landing a conclusion
+const OPEN_RECOMMENDATION = /\b(we should (probably|maybe|consider|think about|look at)|we might (want to|need to)|it (might|could|would) be worth|it would be good to|we could (probably|try to|think about))\b/i;
+
 // External reference phrases — anchors outside this utterance
 const EXTERNAL_REFERENCE_PHRASES = [
   /\b(after those|after the|after that|after he|after she|after they)\b/i,
@@ -191,6 +204,29 @@ export function extractFeatures(text: string, lensPack: LensPack): ThoughtFeatur
   // fallback: if domain anchor but no signal, it's an observation
   if (!primary_type_hint && business_anchor_score > 0.2) primary_type_hint = 'observation';
 
+  // Thought integrity signals
+  const has_continuation_signal =
+    NARRATIVE_BRIDGE.test(t) ||
+    SOFT_TRAILING_CONNECTOR.test(t) ||
+    OPEN_COMPARISON.test(t) ||
+    OPEN_RECOMMENDATION.test(t);
+
+  const sig_strength_local = Math.max(
+    causal_signal_score, action_signal_score, constraint_signal_score,
+    problem_signal_score, decision_signal_score, target_state_signal_score,
+  );
+  const is_structurally_complete = has_subject && has_predicate && has_business_object;
+  const is_self_contained = referential_dependency_score < 0.4;
+
+  const has_resolution_signal =
+    !has_continuation_signal &&
+    is_self_contained &&
+    (business_anchor_score > 0 || has_business_object) &&
+    (
+      (is_structurally_complete && sig_strength_local > 0) ||
+      (sig_strength_local > 0 && (specificity_score > 0 || has_proper_nouns || has_numeric_reference) && business_anchor_score > 0.2)
+    );
+
   return {
     word_count,
     sentence_count,
@@ -216,5 +252,7 @@ export function extractFeatures(text: string, lensPack: LensPack): ThoughtFeatur
     vague_intensifiers,
     ambiguity_score,
     primary_type_hint,
+    has_continuation_signal,
+    has_resolution_signal,
   };
 }
