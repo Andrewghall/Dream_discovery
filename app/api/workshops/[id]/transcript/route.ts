@@ -14,7 +14,7 @@ import { getGPT4oMiniEngine } from '@/lib/cognition/engines/gpt4o-mini-engine';
 import { runFacilitationOrchestrator } from '@/lib/cognition/agents/facilitation-orchestrator';
 import { pushUtterance } from '@/lib/cognition/cognitive-state';
 import { extractFeatures } from '@/lib/ethentaflow/thought-feature-extractor';
-import { runCommitGuard, logGuardResult } from '@/lib/ethentaflow/thought-guard';
+import { runStructuralGuard, logGuardResult } from '@/lib/ethentaflow/thought-guard';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
 import type { TranscriptSource } from '@prisma/client';
 // Journey agent + cognitive analysis run inside after() — up to 40s per cycle.
@@ -114,7 +114,7 @@ function applyServerGuard(
   requestSource: string,
 ): { blocked: boolean; reason: string | null } {
   const features = extractFeatures(text, DEFAULT_LENS_PACK);
-  const result = runCommitGuard(text, features);
+  const result = runStructuralGuard(text, features);
   logGuardResult(`ServerGuard:${requestSource}`, text, features, result);
   return result;
 }

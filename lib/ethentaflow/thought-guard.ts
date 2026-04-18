@@ -31,8 +31,33 @@ function computeSigStrength(f: ThoughtFeatures): number {
 }
 
 /**
- * Single authoritative commit guard.
- * Used identically by ThoughtStateMachine.commit() and the /transcript POST route.
+ * Structural-only guard — enforces syntactic completeness, not semantic relevance.
+ *
+ * Used by the server-side ingest route, which does not have the workshop's
+ * lens pack and therefore cannot reliably score business_anchor_score or
+ * signal strength. Rules 1–4 only: orphan token, dangling end, no finite
+ * predicate, high referential dependency.
+ *
+ * The client already ran the full guard (rules 1–5) with the workshop lens
+ * pack before calling onCommitCandidate. The server trusts that decision for
+ * semantic relevance and only re-checks structural integrity.
+ */
+export function runStructuralGuard(text: string, features: ThoughtFeatures): GuardResult {
+  const t = text.trim();
+  if (ORPHAN_TRAILING_TOKEN.test(t)) return { blocked: true, reason: 'GUARD:ORPHAN_TRAILING_TOKEN' };
+  if (features.has_dangling_end) return { blocked: true, reason: 'GUARD:DANGLING_END' };
+  const withoutInfinitiveBe = t.replace(INFINITIVE_BE, '');
+  const hasFinitePredicate =
+    features.has_predicate &&
+    /\b(is|are|was|were|been|have|has|had|do|does|did|will|would|could|should|can|need|want|think|know|see|say|said|mean|means|get|got|make|makes|take|takes|keep|kept|run|runs|goes|went|come|comes|work|works|use|uses|feel|feels|bring|brings|show|shows|tell|tells|build|built|create|creates|find|found|give|gives|move|moves|stop|stops|start|starts|help|helps|change|changes|allow|allows|require|requires|prevent|prevents|cause|causes|need|needs|fail|fails|break|breaks|lack|lacks|drive|drives|block|blocks|limit|limits|increase|increases|decrease|decreases|reduce|reduces|improve|improves|affect|affects|impact|impacts|depend|depends|scale|scales|support|supports|enable|enables|integrate|integrates|eat|eats|ate)\b/i.test(withoutInfinitiveBe);
+  if (!hasFinitePredicate && !CLEAN_IMPERATIVE.test(t)) return { blocked: true, reason: 'GUARD:NO_FINITE_PREDICATE' };
+  if (features.referential_dependency_score > REFERENTIAL_BLOCK_THRESHOLD) return { blocked: true, reason: 'GUARD:REFERENTIAL_DEPENDENCY' };
+  return { blocked: false, reason: null };
+}
+
+/**
+ * Full commit guard — structural + semantic relevance.
+ * Used by ThoughtStateMachine.commit() (client-side, has the workshop lens pack).
  * No score, continuity bonus, force-decide, or silence expiry can bypass this.
  */
 export function runCommitGuard(text: string, features: ThoughtFeatures): GuardResult {
