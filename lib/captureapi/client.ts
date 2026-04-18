@@ -67,6 +67,27 @@ function getCaptureAPIURL(): string {
 }
 
 /**
+ * Get the CaptureAPI authentication key.
+ *
+ * Server-side Next.js routes: prefers the non-public `CAPTUREAPI_API_KEY`
+ * (never sent to the browser).
+ *
+ * Browser-side code (WebSocket streaming, client-side fetch): falls back to
+ * `NEXT_PUBLIC_CAPTUREAPI_API_KEY`, which is intentionally public — it restricts
+ * access to authorised clients without hiding the key from JS.
+ *
+ * Returns an empty string when neither variable is set, which is the correct
+ * behaviour for local dev where CaptureAPI runs without auth.
+ */
+function getCaptureAPIKey(): string {
+  return (
+    process.env.CAPTUREAPI_API_KEY ||
+    process.env.NEXT_PUBLIC_CAPTUREAPI_API_KEY ||
+    ''
+  )
+}
+
+/**
  * Transcribe audio blob using CaptureAPI with SLM processing.
  *
  * @param audioBlob - Audio data as Blob
@@ -109,6 +130,12 @@ export async function transcribeAudio(
     formData.append('mode', mode)
     formData.append('enable_slm', String(enableSLM))
 
+    // Attach API key when configured (skipped in local dev when key is empty)
+    const captureKey = getCaptureAPIKey()
+    const authHeaders: Record<string, string> = captureKey
+      ? { 'X-Capture-Key': captureKey }
+      : {}
+
     // Call CaptureAPI via circuit breaker + 30s timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30_000);
@@ -118,6 +145,7 @@ export async function transcribeAudio(
         fetch(endpoint, {
           method: 'POST',
           body: formData,
+          headers: authHeaders,
           signal: controller.signal,
         })
       );
@@ -255,6 +283,10 @@ export class CaptureAPIStream {
     const params = new URLSearchParams()
     if (opts.workshopId) params.set('workshop_id', opts.workshopId)
     if (opts.dialoguePhase) params.set('dialogue_phase', opts.dialoguePhase)
+    // WebSocket upgrades cannot carry custom headers — the auth key travels
+    // as a query param instead.  Empty key = no param (dev / unconfigured).
+    const captureKey = getCaptureAPIKey()
+    if (captureKey) params.set('key', captureKey)
     const qs = params.toString()
     this.url = qs ? `${wsBase}?${qs}` : wsBase
     this.onTranscript = opts.onTranscript
