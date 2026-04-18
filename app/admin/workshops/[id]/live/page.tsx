@@ -3010,8 +3010,17 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
               const fullText = entry.chunks.join(' ').trim();
               utteranceBufferRef.current.delete(sid);
-
               setPendingNodes((prev) => { const n = { ...prev }; delete n[sid]; return n; });
+
+              // Drop fragments that are too short to carry meaningful signal.
+              // Garbled Deepgram output ("Out there in the industry. Customer.")
+              // and single-clause noise pass the trivial filter but produce
+              // meaningless nodes. Require at least 8 words before committing.
+              const wordCount = fullText.split(/\s+/).filter(Boolean).length;
+              if (wordCount < 8) {
+                console.log('[DREAM-DIAG] Dropping short fragment for', sid, `(${wordCount} words):`, fullText);
+                return;
+              }
 
               console.log('[DREAM-DIAG] Committing thought for', sid, '—', fullText.substring(0, 80));
 

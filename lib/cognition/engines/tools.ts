@@ -153,7 +153,7 @@ export function buildCognitiveTools(dimensions?: string[]): OpenAI.Chat.Completi
               properties: {
                 action: { type: 'string', enum: ['create', 'reinforce', 'revise', 'weaken'] },
                 beliefId: { type: 'string', description: 'Existing belief ID (for reinforce/revise/weaken)' },
-                label: { type: 'string' },
+                label: { type: 'string', description: '2–5 word noun phrase only. Never a full sentence. Good: "agent cognitive overload". Bad: "Efficiency is a key focus in the context of Google\'s premise."' },
                 category: { type: 'string', enum: ['aspiration', 'constraint', 'enabler', 'opportunity', 'risk', 'insight', 'action'] },
                 primaryType: { type: 'string', enum: ['VISIONARY', 'OPPORTUNITY', 'CONSTRAINT', 'RISK', 'ENABLER', 'ACTION', 'QUESTION', 'INSIGHT'] },
                 domains: {

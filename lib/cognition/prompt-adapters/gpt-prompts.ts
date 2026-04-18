@@ -109,6 +109,12 @@ You MUST choose a dominant primary domain (relevance 0.65–0.85). Flat distribu
 - Good: ["on-site visits", "field team", "blockers", "direct contact"]
 - Bad: ["communication pathways", "stakeholder alignment", "operational efficiency"]
 
+## Belief Label Rules
+- Labels must be 2–5 words maximum. Short noun phrases only.
+- Good: "agent cognitive overload", "workforce dehumanisation", "efficiency vs humanity"
+- Bad: "Efficiency is a key focus in the context of Google's premise."
+- Never write a full sentence as a belief label.
+
 ## Efficiency
 Be efficient. You should typically need 1-2 query rounds before committing. Don't over-query — if the utterance is straightforward, query_beliefs once and commit.`;
 }
