@@ -43,7 +43,7 @@ import { transcribeAudio, checkCaptureAPIHealth, CaptureAPIStream, type CaptureA
 import { ThoughtStateMachine } from '@/lib/ethentaflow/thought-state-machine';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
 import { domainIdToLiveDomain } from '@/lib/ethentaflow/domain-scoring-engine';
-import type { CommitCandidate, ThoughtAttempt } from '@/lib/ethentaflow/types';
+import type { CommitCandidate, LensPack, ThoughtAttempt } from '@/lib/ethentaflow/types';
 
 // ── Agentic facilitation hooks + components ──────────────────
 import { useLiveEventPipeline } from '@/hooks/use-live-event-pipeline';
@@ -239,6 +239,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
   // ── EthentaFlow state machines — one per speaker ──────────────────────────
   const stateMachinesRef = useRef<Map<string, ThoughtStateMachine>>(new Map());
+  // Workshop-specific lens pack — loaded async on mount from prep research.
+  // Defaults to the generic pack; updated before capture can start.
+  const workshopLensPackRef = useRef<LensPack>(DEFAULT_LENS_PACK);
   const [pendingNodes, setPendingNodes] = useState<Record<string, PendingHemisphereNode>>({});
   // Keep a ref to dialoguePhase so commit callback sees the latest value.
   const dialoguePhaseRef = useRef(dialoguePhase);
@@ -568,35 +571,70 @@ export default function WorkshopLivePage({ params }: PageProps) {
     guidanceLoadedRef.current = true;
 
     (async () => {
+      // Both fetches run in parallel — lens pack is independent of guidance state
+      const [guidanceRes, lensPackRes] = await Promise.allSettled([
+        fetch(`/api/workshops/${encodeURIComponent(workshopId)}/guidance-state?init=true`),
+        fetch(`/api/workshops/${encodeURIComponent(workshopId)}/lens-pack`),
+      ]);
+
+      // ── Guidance state ───────────────────────────────────────
       try {
-        const res = await fetch(
-          `/api/workshops/${encodeURIComponent(workshopId)}/guidance-state?init=true`,
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data?.guidanceState) {
-          if (data.guidanceState.coverageThreshold) {
-            setCoverageThreshold(data.guidanceState.coverageThreshold);
+        if (guidanceRes.status === 'fulfilled' && guidanceRes.value.ok) {
+          const data = await guidanceRes.value.json();
+          if (data?.guidanceState) {
+            if (data.guidanceState.coverageThreshold) {
+              setCoverageThreshold(data.guidanceState.coverageThreshold);
+            }
+            if (data.guidanceState.journeyCompletionState) {
+              setJourneyCompletionState(data.guidanceState.journeyCompletionState);
+            }
+            if (data.guidanceState.dialoguePhase) {
+              setDialoguePhase(data.guidanceState.dialoguePhase);
+            }
+            if (data.guidanceState.currentMainQuestion) {
+              initialMainQuestionRef.current = data.guidanceState.currentMainQuestion;
+            }
           }
-          if (data.guidanceState.journeyCompletionState) {
-            setJourneyCompletionState(data.guidanceState.journeyCompletionState);
+          if (data?.blueprint) {
+            setBlueprint(data.blueprint as WorkshopBlueprint);
           }
-          if (data.guidanceState.dialoguePhase) {
-            setDialoguePhase(data.guidanceState.dialoguePhase);
+          if (data?.customQuestions) {
+            setPrepQuestions(data.customQuestions as PrepQuestionSet);
           }
-          // Capture existing currentMainQuestion so the hook can restore it
-          if (data.guidanceState.currentMainQuestion) {
-            initialMainQuestionRef.current = data.guidanceState.currentMainQuestion;
-          }
-        }
-        if (data?.blueprint) {
-          setBlueprint(data.blueprint as WorkshopBlueprint);
-        }
-        if (data?.customQuestions) {
-          setPrepQuestions(data.customQuestions as PrepQuestionSet);
         }
       } catch (err) {
         console.warn('[Live] Failed to load guidance state:', err);
+      }
+
+      // ── Workshop lens pack ───────────────────────────────────
+      // Loaded before capture starts — updates workshopLensPackRef so every
+      // ThoughtStateMachine created during this session uses the correct vocabulary.
+      try {
+        if (lensPackRes.status === 'fulfilled' && lensPackRes.value.ok) {
+          const lpData = await lensPackRes.value.json() as {
+            ok: boolean;
+            lensPack: LensPack | null;
+            source: 'prep_research' | 'default' | 'missing' | 'default_fallback';
+            dimensionCount?: number;
+            reason?: string;
+          };
+          if (lpData.ok && lpData.lensPack && lpData.source === 'prep_research') {
+            workshopLensPackRef.current = lpData.lensPack;
+            console.log(
+              `[EthentaFlow] Loaded workshop lens pack: ${lpData.lensPack.name}`,
+              `(${lpData.dimensionCount} domains: ${lpData.lensPack.domains.map(d => d.name).join(', ')})`,
+            );
+          } else if (lpData.source === 'missing') {
+            console.warn(
+              `[EthentaFlow] No prep research for this workshop — using DEFAULT_LENS_PACK. ` +
+              `Domain scoring will use generic business vocabulary. Reason: ${lpData.reason}`,
+            );
+          } else if (lpData.source === 'default_fallback') {
+            console.warn(`[EthentaFlow] Lens pack build error — fallback to default. Reason: ${lpData.reason}`);
+          }
+        }
+      } catch (err) {
+        console.warn('[EthentaFlow] Failed to load workshop lens pack — using default:', err);
       }
     })();
   }, [workshopId]);
@@ -2972,9 +3010,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
             slmUsed: msg.slmUsed,
           });
 
-          // Create state machine for this speaker if not yet present
+          // Create state machine for this speaker if not yet present.
+          // workshopLensPackRef.current is the prep-research lens pack if loaded,
+          // or DEFAULT_LENS_PACK if prep data was missing — either way it's set.
           if (!stateMachinesRef.current.has(speakerId)) {
-            const machine = new ThoughtStateMachine(speakerId, DEFAULT_LENS_PACK, {
+            const machine = new ThoughtStateMachine(speakerId, workshopLensPackRef.current, {
               onPendingUpdate: (attempt: ThoughtAttempt) => {
                 // Use deterministic domain result if available, fall back to raw hit counts
                 const domainHint = attempt.domain?.primary_domain

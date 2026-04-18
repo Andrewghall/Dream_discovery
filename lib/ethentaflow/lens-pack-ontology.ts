@@ -237,6 +237,146 @@ export const DEFAULT_LENS_PACK: LensPack = {
   ],
 };
 
+// ── Workshop-specific lens pack builder ─────────────────────────────────────
+//
+// Maps IndustryDimension[] from prepResearch into the full DomainDefinition
+// shape required by the domain scorer. The research agent provides flat keywords;
+// this function derives the richer fields (causal_markers, action_targets,
+// business_objects, impact_surfaces) via linguistic heuristics so the scorer
+// gets the causal ownership signals it needs.
+//
+// IndustryDimension shape (from lib/cognition/agents/agent-types.ts):
+//   { name: string; description: string; keywords: string[]; color: string }
+
+export type PrepIndustryDimension = {
+  name: string;
+  description: string;
+  keywords: string[];
+  color?: string;
+};
+
+// Known action verbs — keywords matching these are classified as action_targets
+const ACTION_VERB_PATTERNS = [
+  /^(hire|fire|recruit|train|develop|coach|promote|retain|onboard|reskill|upskill|restructure|reorganise|reorganize|realign|reassign|redeploy)$/i,
+  /^(build|deploy|implement|migrate|integrate|automate|configure|rollout|roll out|refactor|rewrite|upgrade|replace|consolidate|modernise|modernize)$/i,
+  /^(fix|resolve|remediate|address|escalate|investigate|audit|review|assess|monitor|measure|report|track|document|standardise|standardize)$/i,
+  /^(reduce|increase|improve|optimise|optimize|streamline|simplify|eliminate|remove|add|expand|scale|accelerate|transform|redesign)$/i,
+  /^(define|create|design|plan|prioritise|prioritize|align|approve|mandate|govern|set|establish|clarify|communicate|enforce)$/i,
+  /(ise|ize|ate|ify)$/i,  // verb endings
+];
+
+function isActionVerb(word: string): boolean {
+  const clean = word.trim().split(/\s+/)[0]; // first word only for multi-word phrases
+  return ACTION_VERB_PATTERNS.some(p => p.test(clean));
+}
+
+// Noun/object heuristic — multi-word terms and non-verb nouns
+function isBusinessObject(term: string): boolean {
+  if (term.includes(' ')) return true; // multi-word = likely noun phrase
+  if (isActionVerb(term)) return false;
+  return term.length >= 4; // single nouns
+}
+
+function toSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
+function extractSynonyms(name: string, description: string): string[] {
+  const syns: string[] = [name.toLowerCase()];
+  // Pull short (1-2 word) phrases from description as synonyms
+  const words = description.split(/\s+/);
+  for (let i = 0; i < words.length - 1; i++) {
+    const w1 = words[i].replace(/[^a-z]/gi, '').toLowerCase();
+    const w2 = words[i + 1].replace(/[^a-z]/gi, '').toLowerCase();
+    if (w1.length >= 4 && w2.length >= 4 && !['that', 'this', 'with', 'from', 'into', 'their', 'have', 'been', 'will', 'when', 'what'].includes(w1)) {
+      const phrase = `${w1} ${w2}`;
+      if (!syns.includes(phrase)) syns.push(phrase);
+    }
+  }
+  return syns.slice(0, 8);
+}
+
+function buildCausalMarkers(name: string, slug: string, keywords: string[]): string[] {
+  const nameL = name.toLowerCase();
+  const markers = [
+    `because of ${nameL}`,
+    `due to ${nameL}`,
+    `${nameL} issue`,
+    `${nameL} problem`,
+    `caused by ${nameL}`,
+    `root cause is ${slug.replace(/_/g, ' ')}`,
+    `${nameL} constraint`,
+    `${nameL} gap`,
+  ];
+  // Add keyword-derived causal phrases for the strongest signals
+  const causalKeywords = keywords.filter(k =>
+    /\b(lack|missing|absent|broken|failed|poor|inadequate|insufficient|no |without )\b/i.test(k)
+  );
+  for (const kw of causalKeywords.slice(0, 4)) {
+    markers.push(`because ${kw.toLowerCase()}`);
+  }
+  return markers;
+}
+
+function buildImpactSurfaces(description: string, keywords: string[]): string[] {
+  const surfaces: string[] = [];
+  // Common impact surface terms that appear in descriptions
+  const IMPACT_PATTERNS = /\b(satisfaction|revenue|retention|productivity|performance|quality|efficiency|cost|risk|trust|reputation|compliance|reliability|experience|engagement|morale)\b/gi;
+  let m: RegExpExecArray | null;
+  const re = new RegExp(IMPACT_PATTERNS.source, 'gi');
+  while ((m = re.exec(description)) !== null) {
+    const s = m[1].toLowerCase();
+    if (!surfaces.includes(s)) surfaces.push(s);
+  }
+  // Also scan keywords for impact-like terms
+  for (const kw of keywords) {
+    const kwL = kw.toLowerCase();
+    if (/\b(satisfaction|experience|performance|quality|retention|compliance)\b/.test(kwL) && !surfaces.includes(kwL)) {
+      surfaces.push(kwL);
+    }
+  }
+  return surfaces.slice(0, 8);
+}
+
+export function buildLensPackFromPrepResearch(
+  workshopId: string,
+  workshopName: string,
+  dimensions: PrepIndustryDimension[],
+): LensPack {
+  if (!dimensions.length) {
+    throw new Error(`[LensPack] No dimensions provided for workshop ${workshopId}`);
+  }
+
+  const builtDomains: DomainDefinition[] = dimensions.map((dim) => {
+    const slug = toSlug(dim.name);
+    const keywords = dim.keywords.filter(Boolean).map(k => k.trim());
+
+    const action_targets = keywords.filter(isActionVerb);
+    const business_objects = keywords.filter(k => !isActionVerb(k) && isBusinessObject(k));
+    const ontology_terms = keywords; // full vocabulary always in ontology_terms
+
+    return {
+      id: slug,
+      name: dim.name,
+      synonyms: extractSynonyms(dim.name, dim.description),
+      ontology_terms,
+      causal_markers: buildCausalMarkers(dim.name, slug, keywords),
+      action_targets,
+      business_objects,
+      impact_surfaces: buildImpactSurfaces(dim.description, keywords),
+    };
+  });
+
+  return {
+    id: `workshop:${workshopId}`,
+    name: `${workshopName} Lens Pack`,
+    context: `Workshop-specific lens pack derived from prep research for ${workshopName}`,
+    domains: builtDomains,
+  };
+}
+
 export function getLensPackForWorkshop(_workshopType?: string): LensPack {
+  // This stub is superseded by the /api/workshops/[id]/lens-pack endpoint.
+  // It remains for server-side callers that don't have async context.
   return DEFAULT_LENS_PACK;
 }
