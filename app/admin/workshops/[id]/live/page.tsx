@@ -15,6 +15,11 @@ import { LiveSynthesisCard } from './_components/LiveSynthesisCard';
 import { LiveLensCard } from './_components/LiveLensCard';
 import { LiveSnapshotsCard } from './_components/LiveSnapshotsCard';
 import { LiveRevealCard } from './_components/LiveRevealCard';
+import {
+  EthentaFlowDiagnosticsPanel,
+  type EthentaFlowDiagEvent,
+  type LensPackDiagInfo,
+} from './_components/EthentaFlowDiagnosticsPanel';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -242,6 +247,25 @@ export default function WorkshopLivePage({ params }: PageProps) {
   // Workshop-specific lens pack — loaded async on mount from prep research.
   // Defaults to the generic pack; updated before capture can start.
   const workshopLensPackRef = useRef<LensPack>(DEFAULT_LENS_PACK);
+
+  // ── EthentaFlow diagnostics ──────────────────────────────────────────────
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [diagEvents, setDiagEvents] = useState<EthentaFlowDiagEvent[]>([]);
+  const [lensPackDiagInfo, setLensPackDiagInfo] = useState<LensPackDiagInfo>({
+    source: 'default',
+    packId: DEFAULT_LENS_PACK.id,
+    packName: DEFAULT_LENS_PACK.name,
+    domainCount: DEFAULT_LENS_PACK.domains.length,
+  });
+  const diagEventCounter = useRef(0);
+  const pushDiagEvent = (event: Omit<EthentaFlowDiagEvent, 'id'>) => {
+    const id = `diag_${Date.now()}_${++diagEventCounter.current}`;
+    setDiagEvents(prev => {
+      const next = [...prev, { ...event, id }];
+      // Cap at 200 events — oldest drop off
+      return next.length > 200 ? next.slice(next.length - 200) : next;
+    });
+  };
   const [pendingNodes, setPendingNodes] = useState<Record<string, PendingHemisphereNode>>({});
   // Keep a ref to dialoguePhase so commit callback sees the latest value.
   const dialoguePhaseRef = useRef(dialoguePhase);
@@ -620,16 +644,36 @@ export default function WorkshopLivePage({ params }: PageProps) {
           };
           if (lpData.ok && lpData.lensPack && lpData.source === 'prep_research') {
             workshopLensPackRef.current = lpData.lensPack;
+            setLensPackDiagInfo({
+              source: 'prep_research',
+              packId: lpData.lensPack.id,
+              packName: lpData.lensPack.name,
+              domainCount: lpData.dimensionCount ?? lpData.lensPack.domains.length,
+            });
             console.log(
               `[EthentaFlow] Loaded workshop lens pack: ${lpData.lensPack.name}`,
               `(${lpData.dimensionCount} domains: ${lpData.lensPack.domains.map(d => d.name).join(', ')})`,
             );
           } else if (lpData.source === 'missing') {
+            setLensPackDiagInfo({
+              source: 'missing',
+              packId: DEFAULT_LENS_PACK.id,
+              packName: DEFAULT_LENS_PACK.name,
+              domainCount: DEFAULT_LENS_PACK.domains.length,
+              reason: lpData.reason,
+            });
             console.warn(
               `[EthentaFlow] No prep research for this workshop — using DEFAULT_LENS_PACK. ` +
               `Domain scoring will use generic business vocabulary. Reason: ${lpData.reason}`,
             );
           } else if (lpData.source === 'default_fallback') {
+            setLensPackDiagInfo({
+              source: 'default_fallback',
+              packId: DEFAULT_LENS_PACK.id,
+              packName: DEFAULT_LENS_PACK.name,
+              domainCount: DEFAULT_LENS_PACK.domains.length,
+              reason: lpData.reason,
+            });
             console.warn(`[EthentaFlow] Lens pack build error — fallback to default. Reason: ${lpData.reason}`);
           }
         }
@@ -3138,6 +3182,21 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
                       console.log('[EthentaFlow] Node committed:', dpId, fullText.substring(0, 60));
                     }
+                    pushDiagEvent({
+                      ts: commitNow,
+                      speakerId,
+                      text: fullText,
+                      decision: 'commit',
+                      validityScore: attempt.validity?.validity_score ?? null,
+                      hardRuleApplied: attempt.validity?.hard_rule_applied ?? null,
+                      reasons: attempt.validity?.reasons ?? [],
+                      primaryDomain: domainResult?.primary_domain ? domainIdToLiveDomain(domainResult.primary_domain) : null,
+                      secondaryDomain: domainResult?.secondary_domain ? domainIdToLiveDomain(domainResult.secondary_domain) : null,
+                      domainConfidence: domainResult?.confidence ?? null,
+                      decisionPath: domainResult?.decision_path ?? null,
+                      lensPackId: workshopLensPackRef.current.id,
+                      scoreBreakdown: attempt.validity?.score_breakdown ?? null,
+                    });
                   } else {
                     console.error('[EthentaFlow] Commit POST failed:', r.status);
                   }
@@ -3148,6 +3207,39 @@ export default function WorkshopLivePage({ params }: PageProps) {
               onDiscard: (attempt: ThoughtAttempt) => {
                 setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
                 console.log('[EthentaFlow] Discarded fragment for', speakerId, '—', attempt.full_text.substring(0, 60), '| reasons:', attempt.validity?.reasons?.slice(0, 2).join('; '));
+                pushDiagEvent({
+                  ts: Date.now(),
+                  speakerId,
+                  text: attempt.full_text,
+                  decision: 'discard',
+                  validityScore: attempt.validity?.validity_score ?? null,
+                  hardRuleApplied: attempt.validity?.hard_rule_applied ?? null,
+                  reasons: attempt.validity?.reasons ?? [],
+                  primaryDomain: attempt.domain?.primary_domain ? domainIdToLiveDomain(attempt.domain.primary_domain) : null,
+                  secondaryDomain: attempt.domain?.secondary_domain ? domainIdToLiveDomain(attempt.domain.secondary_domain) : null,
+                  domainConfidence: attempt.domain?.confidence ?? null,
+                  decisionPath: attempt.domain?.decision_path ?? null,
+                  lensPackId: workshopLensPackRef.current.id,
+                  scoreBreakdown: attempt.validity?.score_breakdown ?? null,
+                });
+              },
+              onHold: (attempt: ThoughtAttempt, holdCycle: number) => {
+                pushDiagEvent({
+                  ts: Date.now(),
+                  speakerId,
+                  text: attempt.full_text,
+                  decision: 'hold',
+                  holdCycle,
+                  validityScore: attempt.validity?.validity_score ?? null,
+                  hardRuleApplied: attempt.validity?.hard_rule_applied ?? null,
+                  reasons: attempt.validity?.reasons ?? [],
+                  primaryDomain: attempt.domain?.primary_domain ? domainIdToLiveDomain(attempt.domain.primary_domain) : null,
+                  secondaryDomain: attempt.domain?.secondary_domain ? domainIdToLiveDomain(attempt.domain.secondary_domain) : null,
+                  domainConfidence: attempt.domain?.confidence ?? null,
+                  decisionPath: attempt.domain?.decision_path ?? null,
+                  lensPackId: workshopLensPackRef.current.id,
+                  scoreBreakdown: attempt.validity?.score_breakdown ?? null,
+                });
               },
             });
             stateMachinesRef.current.set(speakerId, machine);
@@ -3822,6 +3914,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   <div className="text-xs text-muted-foreground">
                     <div>Status: {status}</div>
                     <div>Forwarded transcript chunks: {forwardedCount}</div>
+                    <button
+                      onClick={() => setDiagOpen(v => !v)}
+                      className="mt-1 text-[10px] text-zinc-500 hover:text-zinc-300 underline underline-offset-2 transition-colors"
+                    >
+                      {diagOpen ? 'Hide' : 'Show'} EthentaFlow diagnostics {diagEvents.length > 0 ? `(${diagEvents.length})` : ''}
+                    </button>
                   </div>
 
                   {error && <div className="text-sm text-red-600">{error}</div>}
@@ -3968,6 +4066,22 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   </CardContent>
                 </Card>
               ) : null}
+
+              {diagOpen && (
+                <Card className="bg-zinc-950 border-zinc-800">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-zinc-200 text-sm">EthentaFlow Diagnostics</CardTitle>
+                    <CardDescription className="text-zinc-500 text-xs">Per-decision validity scores, domain scoring, and lens-pack source</CardDescription>
+                  </CardHeader>
+                  <CardContent className="h-[480px] min-h-0">
+                    <EthentaFlowDiagnosticsPanel
+                      events={diagEvents}
+                      lensPackInfo={lensPackDiagInfo}
+                      onClear={() => setDiagEvents([])}
+                    />
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
         <NodeDetailDialog
