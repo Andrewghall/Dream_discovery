@@ -21,7 +21,7 @@ const DISCARD_THRESHOLD = 0.25;
 
 // Clean business imperatives: clear action + subject implied
 // e.g. "Hire a second engineer", "Fix the onboarding process", "Remove that approval step"
-const CLEAN_IMPERATIVE = /^(hire|fire|fix|remove|add|build|stop|start|change|replace|reduce|increase|improve|automate|migrate|review|audit|define|create|deploy|eliminate|consolidate|integrate|streamline|restructure|realign|address|resolve|escalate|investigate|prioritise|prioritize|implement|roll out|sign off|sign-off|shut down|wind down)\b/i;
+export const CLEAN_IMPERATIVE = /^(hire|fire|fix|remove|add|build|stop|start|change|replace|reduce|increase|improve|automate|migrate|review|audit|define|create|deploy|eliminate|consolidate|integrate|streamline|restructure|realign|address|resolve|escalate|investigate|prioritise|prioritize|implement|roll out|sign off|sign-off|shut down|wind down)\b/i;
 
 export function scoreValidity(features: ThoughtFeatures, continuity: number): ValidityResult {
   const reasons: string[] = [];

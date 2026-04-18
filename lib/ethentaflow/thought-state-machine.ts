@@ -1,6 +1,6 @@
 import type { CommitCandidate, LensPack, ThoughtAttempt, ThoughtState, ValidityResult } from './types';
 import { extractFeatures } from './thought-feature-extractor';
-import { scoreValidity } from './thought-validity-engine';
+import { scoreValidity, CLEAN_IMPERATIVE } from './thought-validity-engine';
 import { scoreDomains, createDomainCluster, updateDomainCluster, type DomainCluster } from './domain-scoring-engine';
 
 // Timing constants
@@ -206,6 +206,54 @@ export class ThoughtStateMachine {
 
   private commit(attempt: ThoughtAttempt, mergeExpired: boolean): void {
     this.clearMergeTimer();
+
+    // ─── Final pre-commit guard ───────────────────────────────────────────────
+    // Re-extract features from current full_text — cached validity on the attempt
+    // may have been evaluated against an earlier chunk version (before the text
+    // that triggered the final silence/merge timer was appended). This guard is
+    // the absolute last gate: no score, force-decide, silence expiry, or
+    // continuity bonus can bypass it.
+    const gf = extractFeatures(attempt.full_text, this.lensPack);
+    const sigStrength = Math.max(
+      gf.causal_signal_score, gf.action_signal_score, gf.constraint_signal_score,
+      gf.problem_signal_score, gf.decision_signal_score, gf.target_state_signal_score,
+    );
+
+    let guardBlocked = false;
+    let guardReason: string | null = null;
+
+    if (gf.has_dangling_end) {
+      guardBlocked = true;
+      guardReason = 'FINAL_GUARD:DANGLING_END';
+    } else if (!gf.has_predicate && !CLEAN_IMPERATIVE.test(attempt.full_text)) {
+      guardBlocked = true;
+      guardReason = 'FINAL_GUARD:NO_PREDICATE';
+    } else if (gf.business_anchor_score < 0.15 && sigStrength === 0) {
+      guardBlocked = true;
+      guardReason = 'FINAL_GUARD:NO_ANCHOR_NO_SIGNAL';
+    }
+
+    console.log('[EthentaFlow:FinalGate]', JSON.stringify({
+      text: attempt.full_text.substring(0, 80),
+      has_dangling_end: gf.has_dangling_end,
+      has_predicate: gf.has_predicate,
+      business_anchor_score: +gf.business_anchor_score.toFixed(3),
+      signal_strength: +sigStrength.toFixed(3),
+      validity_score: attempt.validity?.validity_score != null ? +attempt.validity.validity_score.toFixed(3) : null,
+      final_decision: guardBlocked ? 'BLOCKED' : 'COMMIT',
+      blocked_by_final_guard: guardBlocked,
+      reason: guardReason,
+    }));
+
+    if (guardBlocked) {
+      attempt.state = 'discarded';
+      this.continuityScore = Math.max(this.continuityScore - 0.05, 0);
+      this.callbacks.onDiscard({ ...attempt });
+      this.current = null;
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     attempt.state = 'committed';
     this.continuityScore = Math.min(this.continuityScore + 0.15, 1.0);
 
