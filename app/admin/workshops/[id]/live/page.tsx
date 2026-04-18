@@ -3017,7 +3017,32 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
           // ── Debounced semantic gate pre-evaluation ───────────────────────────
           // Fire 600ms after the last chunk so we evaluate the full evolving thought.
+          // On speechFinal this timer is cancelled and the gate fires immediately.
           // By the time silence fires (4000ms), the result is almost always ready.
+          const triggerGateFor = (sid: string, evalText: string) => {
+            const heldFrag = heldFragmentsRef.current.get(sid);
+            const textForGate = heldFrag ? `${heldFrag} ${evalText}` : evalText;
+            const gatePromise = fetch(gateUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: textForGate }),
+            }).then(async r => {
+              if (!r.ok) return { selfContained: true as const, reason: `gate HTTP ${r.status} — defaulting open` };
+              const data = await r.json() as { selfContained?: boolean; reason?: string };
+              return typeof data.selfContained === 'boolean'
+                ? { selfContained: data.selfContained, reason: data.reason ?? '' }
+                : { selfContained: true as const, reason: 'gate invalid response — defaulting open' };
+            }).catch(() => ({ selfContained: true as const, reason: 'gate fetch failed — defaulting open' }));
+            const state: GateState = { promise: gatePromise, result: null, text: textForGate };
+            semanticGateCacheRef.current.set(sid, state);
+            void gatePromise.then(result => {
+              const cached = semanticGateCacheRef.current.get(sid);
+              if (cached && cached.text === textForGate) {
+                semanticGateCacheRef.current.set(sid, { ...cached, result });
+                console.log('[DREAM-DIAG] Gate result for', sid, '—', result.selfContained ? 'PASS' : 'HOLD', '|', result.reason);
+              }
+            });
+          };
           {
             const existingGateTimer = gateDebounceTimersRef.current.get(speakerId);
             if (existingGateTimer) clearTimeout(existingGateTimer);
@@ -3026,23 +3051,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
               const bufNow = utteranceBufferRef.current.get(speakerId);
               const evalText = bufNow?.chunks.join(' ').trim() ?? '';
               if (!evalText) return;
-              const heldFrag = heldFragmentsRef.current.get(speakerId);
-              const textForGate = heldFrag ? `${heldFrag} ${evalText}` : evalText;
-              const gatePromise = fetch(gateUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: textForGate }),
-              }).then(r => r.json() as Promise<{ selfContained: boolean; reason: string }>)
-                .catch(() => ({ selfContained: true, reason: 'gate fetch failed — defaulting open' }));
-              const state: GateState = { promise: gatePromise, result: null, text: textForGate };
-              semanticGateCacheRef.current.set(speakerId, state);
-              void gatePromise.then(result => {
-                const cached = semanticGateCacheRef.current.get(speakerId);
-                if (cached && cached.text === textForGate) {
-                  semanticGateCacheRef.current.set(speakerId, { ...cached, result });
-                  console.log('[DREAM-DIAG] Gate pre-result for', speakerId, '—', result.selfContained ? 'PASS' : 'HOLD', '|', result.reason);
-                }
-              });
+              triggerGateFor(speakerId, evalText);
             }, 600);
             gateDebounceTimersRef.current.set(speakerId, gateTimer);
           }
@@ -3072,9 +3081,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
               if (!gateResult) {
                 const inFlight = semanticGateCacheRef.current.get(sid);
                 if (inFlight) {
+                  // Wait up to 1500ms — on speechFinal path the gate was fired ~800ms ago
+                  // so it typically resolves within this window (gpt-4o-mini: 800–1500ms).
                   gateResult = await Promise.race([
                     inFlight.promise,
-                    new Promise<null>(resolve => setTimeout(() => resolve(null), 250)),
+                    new Promise<null>(resolve => setTimeout(() => resolve(null), 1500)),
                   ]);
                 }
               }
@@ -3205,13 +3216,23 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
           if (msg.speechFinal) {
             // speechFinal = VAD pause detected.
+            // Always fire the semantic gate immediately (cancel any pending debounce).
+            // This gives the gate maximum time before the silence window fires.
+            const pendingDebounce = gateDebounceTimersRef.current.get(speakerId);
+            if (pendingDebounce) {
+              clearTimeout(pendingDebounce);
+              gateDebounceTimersRef.current.delete(speakerId);
+            }
+            triggerGateFor(speakerId, fullSoFar);
+
             // Gate 1: terminal punctuation — is the sentence syntactically complete?
             const isResolved = /[.!?]['"]?\s*$/.test(fullSoFar.trimEnd());
             // Gate 2: coherence heuristic — is it self-contained or a dependent fragment?
             const coherence = isThoughtCoherent(fullSoFar);
 
             if (isResolved && coherence.coherent) {
-              // Thought is syntactically complete and self-contained — shorten window
+              // Thought looks syntactically complete — shorten window.
+              // The LLM gate will have the full silence window + wait to confirm.
               clearTimeout(silenceTimer);
               const shortTimer = setTimeout(() => {
                 void commitUtteranceRef.current?.(speakerId, slmMetaForCommit);
