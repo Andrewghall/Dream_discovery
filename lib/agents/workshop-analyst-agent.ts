@@ -124,12 +124,18 @@ ${context.emergingThemes.length > 0 ? `\nEmerging Themes You've Detected:\n${con
 
 ## Your Analysis Framework:
 
-**Domains** (assign based on what's ACTUALLY discussed, not keywords):
-- People: Human capability, culture, skills, team dynamics, organizational behavior
-- Operations: Processes, workflows, decision-making, governance, coordination
-- Customer: Experience, needs, journeys, value delivery, service quality
-- Technology: Systems, data, platforms, automation, integration, tools
-- Regulation: Compliance, risk management, controls, legal requirements, standards
+**Domain Assignment (EthentaFlow rule)**:
+Assign the PRIMARY domain based on WHERE AN INTERVENTION WOULD NEED TO OCCUR to resolve the issue — not where the problem is observed or felt.
+
+- People: The fix requires changing human capability, culture, skills, behaviour, or team dynamics
+- Operations: The fix requires changing processes, workflows, governance, or decision structures
+- Customer: The fix requires redesigning the customer experience or journey itself (NOT just "customers are affected")
+- Technology: The fix requires changing systems, data, platforms, automation, or tooling
+- Regulation: The fix requires addressing compliance, risk controls, or legal requirements
+
+Outcome surfaces (Customer, Revenue) CANNOT be primary unless the statement is explicitly about designing or managing that domain. A customer complaint is not a Customer domain issue — it is a symptom. Find where the fix lives.
+
+Secondary domains (max 2): only direct causal contributors to the root issue, not surfaces where effects are felt.
 
 **Theme Categories**:
 - Aspiration: Desired future state, vision, goals, outcomes sought

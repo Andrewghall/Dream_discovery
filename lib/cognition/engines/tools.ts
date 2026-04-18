@@ -158,12 +158,12 @@ export function buildCognitiveTools(dimensions?: string[]): OpenAI.Chat.Completi
                 primaryType: { type: 'string', enum: ['VISIONARY', 'OPPORTUNITY', 'CONSTRAINT', 'RISK', 'ENABLER', 'ACTION', 'QUESTION', 'INSIGHT'] },
                 domains: {
                   type: 'array',
-                  description: 'STRICT: 1 primary domain (relevance 0.65–0.85) + optionally 1 secondary (relevance 0.25–0.45). Maximum 2 per beliefUpdate. NEVER assign 0.5 to multiple domains — one must clearly lead. If unsure, pick the closest at 0.65.',
+                  description: 'EthentaFlow rule: assign PRIMARY domain as where an INTERVENTION would need to occur to resolve the issue — not where the problem is observed. Outcome surfaces (Customer, Revenue) cannot be primary unless the statement is explicitly about managing that domain. 1 primary (relevance 0.65–0.85) + up to 2 secondaries that are direct causal contributors (relevance 0.25–0.45). Flat distributions forbidden — one domain must clearly lead.',
                   items: {
                     type: 'object',
                     properties: {
                       domain: { type: 'string', enum: domainEnum },
-                      relevance: { type: 'number', description: 'Primary: 0.65–0.85. Secondary: 0.25–0.45. Never equal scores across domains.' },
+                      relevance: { type: 'number', description: 'Primary: 0.65–0.85. Secondary causal contributor: 0.25–0.45. Never equal scores.' },
                     },
                     required: ['domain', 'relevance'],
                   },

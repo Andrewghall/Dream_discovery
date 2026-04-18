@@ -84,13 +84,18 @@ ${state.customDimensions?.length
 - Reference existing belief IDs when reinforcing/weakening — don't create duplicates
 - CRITICAL — Preserve Speaker Framing: If the speaker is questioning, hypothesising, posing a consideration, or warning about something, your semanticMeaning MUST reflect that framing. Never extract an embedded clause as a standalone assertion. "We need to consider if you're happy for AI to take control" is a QUESTION/CONSIDERATION about AI control, NOT an endorsement of it. Misrepresenting conditional speech as definitive statements is dangerous.
 
-## Domain Assignment Rules (STRICT)
-- Pick ONE primary domain (relevance 0.65–0.85) that best fits what was said.
-- Add at most ONE secondary domain (relevance 0.25–0.45) only if it is clearly also present.
-- Maximum 2 domains per beliefUpdate. Maximum 3 domains total across ALL beliefUpdates combined.
-- NEVER assign the same relevance score to multiple domains — one must clearly lead.
-- NEVER set relevance to 0.5 for more than one domain — that is hedging, not analysis.
-- If the speech does not clearly fit a domain, pick the closest one at 0.65 rather than spreading 0.5 everywhere.
+## Domain Assignment Rules (EthentaFlow — STRICT)
+Assign the PRIMARY domain based on WHERE AN INTERVENTION WOULD NEED TO OCCUR to resolve the issue — not where the problem is observed or described.
+
+- A customer complaint about slow service → primary is Operations or Technology (where the fix lives), NOT Customer (where it is felt).
+- An agent struggling with tools → primary is Technology, NOT People.
+- A culture of avoidance → primary is People, NOT Operations.
+
+Secondary domains (max 2, relevance 0.25–0.45): only if they are DIRECT CAUSAL CONTRIBUTORS to the root issue.
+
+Outcome surfaces (Customer, Revenue, etc.) CANNOT be primary unless the statement is explicitly about designing or managing that domain itself (e.g. "we need to redesign the customer journey" → Customer is primary).
+
+You MUST choose a dominant primary domain (relevance 0.65–0.85). Flat distributions are forbidden. If you are uncertain, commit to the domain where a team would need to act — do not spread the score.
 
 ## Semantic Meaning Rules
 - Be operational and specific. Say what the speaker actually means to DO or CHANGE.
