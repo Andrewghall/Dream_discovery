@@ -3221,6 +3221,32 @@ export default function WorkshopLivePage({ params }: PageProps) {
               onDiscard: (attempt: ThoughtAttempt) => {
                 setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
                 console.log('[EthentaFlow] Discarded fragment for', speakerId, '—', attempt.full_text.substring(0, 60), '| reasons:', attempt.validity?.reasons?.slice(0, 2).join('; '));
+
+                // Fire-and-forget: store the raw spoken records even though this
+                // thought was discarded. Every spoken word must reach Supabase
+                // regardless of ThoughtStateMachine decisions.
+                const discardNow = Date.now();
+                fetch(ingestUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    speakerId,
+                    startTime: attempt.start_time_ms,
+                    endTime: attempt.last_chunk_time_ms,
+                    text: attempt.full_text,
+                    confidence: null,
+                    source: 'deepgram' as const,
+                    rawCaptureOnly: true,
+                    spokenRecords: attempt.chunks.map((chunkText, i) => ({
+                      text: chunkText,
+                      startTimeMs: attempt.chunk_times[i] ?? attempt.start_time_ms,
+                      endTimeMs: attempt.chunk_times[i + 1] ?? discardNow,
+                      confidence: null,
+                      source: 'deepgram' as const,
+                    })),
+                  }),
+                }).catch(() => { /* best-effort — discard path must not throw */ });
+
                 pushDiagEvent({
                   ts: Date.now(),
                   speakerId,

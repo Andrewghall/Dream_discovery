@@ -51,6 +51,10 @@ type IngestTranscriptChunkBody = {
   // them through a ThoughtWindow before creating the DataPoint.
   // When absent (legacy / fallback path), a single TranscriptChunk is created.
   spokenRecords?: IncomingSpokenRecord[];
+  // When true: write spoken records to transcript_chunks and return immediately.
+  // No ThoughtWindow, no DataPoint, no guard. Used by the client discard path
+  // to ensure every spoken word is stored regardless of ThoughtStateMachine decisions.
+  rawCaptureOnly?: boolean;
   // Deterministic domain result from EthentaFlow client scorer.
   clientDomainHint?: ClientDomainHint | null;
   // SLM metadata
@@ -778,6 +782,33 @@ export async function POST(
         skipped: true,
         reason: 'Trivial fragment — stored only',
       });
+    }
+
+    // ── rawCaptureOnly — store spoken records with no ThoughtWindow or DataPoint ──
+    // Used by the client discard path: every spoken word is stored regardless
+    // of ThoughtStateMachine decisions. No guard, no analysis, no DataPoint.
+    if (body.rawCaptureOnly) {
+      const records: IncomingSpokenRecord[] = Array.isArray(body.spokenRecords) && body.spokenRecords.length > 0
+        ? body.spokenRecords
+        : [{ text, startTimeMs, endTimeMs, confidence: typeof body.confidence === 'number' ? body.confidence : null, source: body.source }];
+      const ids: string[] = [];
+      for (const rec of records) {
+        try {
+          const chunk = await prisma.transcriptChunk.create({
+            data: {
+              workshopId,
+              speakerId: body.speakerId || null,
+              startTimeMs: BigInt(rec.startTimeMs ?? startTimeMs),
+              endTimeMs: BigInt(rec.endTimeMs ?? endTimeMs),
+              text: rec.text || text,
+              confidence: typeof rec.confidence === 'number' ? rec.confidence : null,
+              source: src,
+            },
+          });
+          ids.push(chunk.id);
+        } catch { /* transport retry — unique constraint violation */ }
+      }
+      return NextResponse.json({ ok: true, rawCaptureOnly: true, spokenRecordIds: ids });
     }
 
     // ── Resolved thought received — run the three-layer write sequence ───────
