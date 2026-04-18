@@ -34,11 +34,13 @@ import {
   type HemisphereDialoguePhase,
   type HemisphereNodeDatum,
   type HemispherePrimaryType,
+  type PendingHemisphereNode,
 } from '@/components/live/hemisphere-nodes';
 import { LiveDomainRadar } from '@/components/live/live-domain-radar';
 import { AgenticReasoningPanel, type ReasoningEntry } from '@/components/live/agentic-reasoning-panel';
 import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
 import { transcribeAudio, checkCaptureAPIHealth, CaptureAPIStream, type CaptureAPIResponse, type StreamTranscript } from '@/lib/captureapi/client';
+import { LIVE_CAPTURE_CONFIG } from '@/lib/live/capture-config';
 
 // ── Agentic facilitation hooks + components ──────────────────
 import { useLiveEventPipeline } from '@/hooks/use-live-event-pipeline';
@@ -231,6 +233,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'room' | 'facilitator' | 'split'>('split');
   const [dialoguePhase, setDialoguePhase] = useState<HemisphereDialoguePhase>('REIMAGINE');
+
+  // ── EthentaFlow utterance accumulation ─────────────────────────────────────
+  // Buffer of isFinal=true chunks per speaker — committed only on stop (speechFinal or silence).
+  type UtteranceBuffer = { chunks: string[]; startTime: number; domain: string };
+  const utteranceBufferRef = useRef<Map<string, UtteranceBuffer>>(new Map());
+  const silenceTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [pendingNodes, setPendingNodes] = useState<Record<string, PendingHemisphereNode>>({});
+  // Keep a ref to dialoguePhase so commitUtterance closure sees the latest value.
+  const dialoguePhaseRef = useRef(dialoguePhase);
+  useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
 
   type LiveTheme = {
     id: string;
@@ -1471,6 +1483,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
     setSelectedNodeId(null);
     setThemesById({});
     themesRef.current = {};
+    // Clear utterance accumulation state on reset
+    for (const t of silenceTimersRef.current.values()) clearTimeout(t);
+    silenceTimersRef.current.clear();
+    utteranceBufferRef.current.clear();
+    setPendingNodes({});
     setNodeThemeById({});
     nodeThemeRef.current = {};
     embeddingCacheRef.current = new Map();
@@ -2932,20 +2949,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
     // Connect CaptureAPI WebSocket stream for real-time transcription
     try {
       const stream = new CaptureAPIStream({
-        onTranscript: async (msg: StreamTranscript) => {
+        onTranscript: (msg: StreamTranscript) => {
           const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
           if (!text) return;
 
-          // Only ingest FINAL transcripts — interim results are partial duplicates
-          // that confuse the utterance buffer. Deepgram sends isFinal=true when
-          // the result is finalized with punctuation and smart formatting.
-          // Use === false (not !) so undefined passes through (backwards-compatible).
-          if (msg.isFinal === false) {
-            console.log('[DREAM-DIAG] Skipping interim transcript:', text.substring(0, 60));
-            return;
-          }
-
-          console.log('[DREAM-DIAG] Final transcript received:', text.substring(0, 80), '| speaker:', msg.speaker);
+          // Skip interim (partial) results — they are display-only, not for accumulation.
+          if (msg.isFinal === false) return;
 
           // Clear error on successful transcript
           if (lastTranscriptionErrorRef.current) {
@@ -2954,133 +2963,132 @@ export default function WorkshopLivePage({ params }: PageProps) {
           }
           lastHealthyAtRef.current = Date.now();
 
-          const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : null;
+          const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : 'speaker_unknown';
           const now = Date.now();
+          const interp = interpretLiveUtterance(text);
 
-          try {
-            const r = await fetch(ingestUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                speakerId,
-                startTime: now - 5000,
-                endTime: now,
-                text,
-                rawText: msg.rawText,
-                confidence: msg.confidence,
-                source: 'deepgram' as const,
-                dialoguePhase,
-                flush: true, // WebSocket path: each isFinal=true is already a complete Deepgram utterance — flush immediately so serverless isolate boundary doesn't swallow it
-                slmMetadata: {
-                  entities: msg.entities,
-                  emotionalTone: msg.emotionalTone,
-                  slmConfidence: msg.slmConfidence,
-                  slmUsed: msg.slmUsed,
-                },
-              }),
+          // ── Accumulate isFinal chunk into per-speaker buffer ──────────────
+          // Do NOT commit yet. The node is created only when the speaker stops.
+          const buf = utteranceBufferRef.current.get(speakerId) ?? {
+            chunks: [],
+            startTime: now,
+            domain: interp.domain,
+          };
+          buf.chunks.push(text);
+          buf.domain = interp.domain; // update domain as more context arrives
+          utteranceBufferRef.current.set(speakerId, buf);
+
+          // Update the gravitating pending dot (visual only)
+          setPendingNodes((prev) => ({
+            ...prev,
+            [speakerId]: { id: speakerId, domain: interp.domain, startedAtMs: buf.startTime },
+          }));
+
+          console.log('[DREAM-DIAG] Accumulated chunk for', speakerId, '— buffer size:', buf.chunks.length, text.substring(0, 60));
+
+          // ── Commit function — called on silence or speechFinal ────────────
+          const commitUtterance = async (sid: string) => {
+            // Cancel any pending silence timer for this speaker
+            const timer = silenceTimersRef.current.get(sid);
+            if (timer != null) { clearTimeout(timer); silenceTimersRef.current.delete(sid); }
+
+            const entry = utteranceBufferRef.current.get(sid);
+            if (!entry || entry.chunks.length === 0) return;
+
+            const fullText = entry.chunks.join(' ').trim();
+            utteranceBufferRef.current.delete(sid);
+
+            // Remove pending dot — this speaker's utterance is now being committed
+            setPendingNodes((prev) => {
+              const next = { ...prev };
+              delete next[sid];
+              return next;
             });
-            if (r.ok) {
-              const respBody = await r.json().catch(() => null);
-              console.log('[DREAM-DIAG] Ingest POST OK:', r.status, respBody);
-              setForwardedCount((n) => n + 1);
 
-              // Directly add DataPoint to hemisphere — SSE doesn't work across
-              // Vercel serverless isolates, so we render from the POST response.
-              // Use dataPointId from response + data from the onTranscript closure
-              // (more robust than depending on server returning the full payload).
-              const result = respBody?.results?.[0];
-              console.log('[DREAM-DIAG] RESULT ENTRY:', JSON.stringify(result));
-              const dpId = result?.dataPointId || result?.dataPoint?.id;
-              if (dpId) {
-                // Keyword-based domain detection — gives immediate positioning
-                // while the async agentic analysis (LLM) may overwrite later via SSE
-                const interp = interpretLiveUtterance(text);
-                const node: HemisphereNodeDatum = {
-                  dataPointId: dpId,
-                  createdAtMs: Date.now(),
-                  rawText: text,
-                  dataPointSource: 'SPEECH',
-                  speakerId: speakerId || null,
-                  dialoguePhase: safePhase(dialoguePhase) ?? null,
-                  transcriptChunk: {
-                    speakerId: speakerId || null,
-                    startTimeMs: now - 5000,
-                    endTimeMs: now,
-                    confidence: msg.confidence,
-                    source: 'DEEPGRAM',
-                  },
-                  classification: null, // Arrives asynchronously
-                  agenticAnalysis: {
-                    domains: [{ domain: interp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
-                    themes: [],
-                    actors: [],
-                    semanticMeaning: '',
-                    sentimentTone: '',
-                    overallConfidence: 0.5,
-                  },
-                };
-                setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
-                console.log('[DREAM-DIAG] Node added to hemisphere:', dpId, text.substring(0, 60));
-              } else {
-                console.warn('[DREAM-DIAG] No dataPointId in response:', respBody);
-              }
-            } else {
-              const errText = await r.text().catch(() => '');
-              console.error('[DREAM-DIAG] Ingest POST FAILED:', r.status, errText);
-            }
-          } catch (fetchErr) {
-            console.error('[DREAM-DIAG] Ingest POST network error:', fetchErr);
-          }
+            console.log('[DREAM-DIAG] Committing utterance for', sid, '—', fullText.substring(0, 80));
 
-          // When Deepgram signals a real utterance boundary (speaker finished),
-          // flush the server-side buffer so accumulated fragments become a DataPoint.
-          if (msg.speechFinal) {
-            console.log('[DREAM-DIAG] speechFinal — flushing buffer for speaker:', speakerId);
-            fetch(ingestUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ flush: true, text: '__flush__', speakerId, dialoguePhase }),
-            }).then(async (flushR) => {
-              if (flushR.ok) {
-                const flushBody = await flushR.json().catch(() => null);
-                console.log('[DREAM-DIAG] Flush response:', flushBody);
-                // Process any flushed results (same logic as above)
-                const flushedResults = flushBody?.results || [];
-                for (const fr of flushedResults) {
-                  const fDpId = fr?.dataPointId || fr?.dataPoint?.id;
-                  if (fDpId) {
-                    const flushText = fr?.dataPoint?.rawText || text;
-                    const fInterp = interpretLiveUtterance(flushText);
-                    const fNode: HemisphereNodeDatum = {
-                      dataPointId: fDpId,
-                      createdAtMs: Date.now(),
-                      rawText: flushText,
-                      dataPointSource: 'SPEECH',
-                      speakerId: speakerId || null,
-                      dialoguePhase: safePhase(dialoguePhase) ?? null,
-                      transcriptChunk: fr?.transcriptChunk ? {
-                        speakerId: fr.transcriptChunk.speakerId || null,
-                        startTimeMs: Number(fr.transcriptChunk.startTimeMs ?? 0),
-                        endTimeMs: Number(fr.transcriptChunk.endTimeMs ?? 0),
-                        confidence: typeof fr.transcriptChunk.confidence === 'number' ? fr.transcriptChunk.confidence : null,
-                        source: String(fr.transcriptChunk.source || 'DEEPGRAM'),
-                      } : null,
-                      classification: null,
-                      agenticAnalysis: {
-                        domains: [{ domain: fInterp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
-                        themes: [],
-                        actors: [],
-                        semanticMeaning: '',
-                        sentimentTone: '',
-                        overallConfidence: 0.5,
-                      },
-                    };
-                    setNodesById((prev) => prev[fDpId] ? prev : { ...prev, [fDpId]: fNode });
-                    console.log('[DREAM-DIAG] Flush node added:', fDpId, (fr?.dataPoint?.rawText || '').substring(0, 60));
-                  }
+            const commitNow = Date.now();
+            const commitInterp = interpretLiveUtterance(fullText);
+            const currentPhase = dialoguePhaseRef.current;
+
+            try {
+              const r = await fetch(ingestUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  speakerId: sid,
+                  startTime: entry.startTime,
+                  endTime: commitNow,
+                  text: fullText,
+                  rawText: fullText,
+                  confidence: msg.confidence,
+                  source: 'deepgram' as const,
+                  dialoguePhase: currentPhase,
+                  flush: true,
+                  slmMetadata: {
+                    entities: msg.entities,
+                    emotionalTone: msg.emotionalTone,
+                    slmConfidence: msg.slmConfidence,
+                    slmUsed: msg.slmUsed,
+                  },
+                }),
+              });
+
+              if (r.ok) {
+                const respBody = await r.json().catch(() => null);
+                setForwardedCount((n) => n + 1);
+                const result = respBody?.results?.[0];
+                const dpId = result?.dataPointId || result?.dataPoint?.id;
+                if (dpId) {
+                  const node: HemisphereNodeDatum = {
+                    dataPointId: dpId,
+                    createdAtMs: commitNow,
+                    rawText: fullText,
+                    dataPointSource: 'SPEECH',
+                    speakerId: sid,
+                    dialoguePhase: safePhase(currentPhase) ?? null,
+                    transcriptChunk: {
+                      speakerId: sid,
+                      startTimeMs: entry.startTime,
+                      endTimeMs: commitNow,
+                      confidence: msg.confidence ?? null,
+                      source: 'DEEPGRAM',
+                    },
+                    classification: null,
+                    agenticAnalysis: {
+                      domains: [{ domain: commitInterp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
+                      themes: [],
+                      actors: [],
+                      semanticMeaning: '',
+                      sentimentTone: '',
+                      overallConfidence: 0.5,
+                    },
+                  };
+                  setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
+                  console.log('[DREAM-DIAG] Node committed to hemisphere:', dpId, fullText.substring(0, 60));
                 }
+              } else {
+                console.error('[DREAM-DIAG] Commit POST failed:', r.status, await r.text().catch(() => ''));
               }
-            }).catch(() => {});
+            } catch (err) {
+              console.error('[DREAM-DIAG] Commit POST network error:', err);
+            }
+          };
+
+          // ── Reset silence watchdog for this speaker ───────────────────────
+          const existingTimer = silenceTimersRef.current.get(speakerId);
+          if (existingTimer != null) clearTimeout(existingTimer);
+          const silenceTimer = setTimeout(
+            () => { void commitUtterance(speakerId); },
+            LIVE_CAPTURE_CONFIG.silenceCommitThresholdMs,
+          );
+          silenceTimersRef.current.set(speakerId, silenceTimer);
+
+          // ── speechFinal = speaker explicitly stopped ───────────────────────
+          // Override the silence timer — commit immediately.
+          if (msg.speechFinal) {
+            console.log('[DREAM-DIAG] speechFinal received for', speakerId, '— committing immediately');
+            void commitUtterance(speakerId);
           }
         },
         onError: (err) => {
@@ -3379,6 +3387,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         onNodeClick={(n) => setSelectedNodeId(n.dataPointId)}
                         themeAttractors={themeAttractors}
                         links={dependencyLinks}
+                        pendingNodes={Object.values(pendingNodes)}
                         className="h-full w-full"
                       />
                     )}

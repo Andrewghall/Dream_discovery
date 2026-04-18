@@ -167,6 +167,15 @@ function findAngleForDomain(domain: string | null | undefined, domainAngles: Rec
   return bestScore > 0 ? bestAngle : undefined;
 }
 
+export type PendingHemisphereNode = {
+  /** Unique key — typically speakerId or a synthetic id. */
+  id: string;
+  /** Domain string from interpretLiveUtterance — drives angular position. */
+  domain: string;
+  /** Timestamp when accumulation started — drives radial/time-axis position. */
+  startedAtMs: number;
+};
+
 export const HemisphereNodes = memo(function HemisphereNodes(props: {
   nodes: HemisphereNodeDatum[];
   originTimeMs: number | null;
@@ -185,8 +194,10 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   }>;
   lensNames?: string[];
   className?: string;
+  /** Live in-progress utterances — displayed as pulsing rings, never stored as nodes. */
+  pendingNodes?: PendingHemisphereNode[];
 }) {
-  const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, themeAttractors, links, lensNames, className } = props;
+  const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, themeAttractors, links, lensNames, className, pendingNodes } = props;
   const activeLenses = lensNames ?? [];
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -446,6 +457,18 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
               50% { opacity: 0.5; r: 12; }
             }
             .hemisphere-live-dot { animation: hemispherePulse 1.5s ease-in-out infinite; }
+            @keyframes pendingRingPulse {
+              0%   { r: 10; opacity: 0.9; }
+              50%  { r: 16; opacity: 0.4; }
+              100% { r: 10; opacity: 0.9; }
+            }
+            @keyframes pendingRingOuter {
+              0%   { r: 18; opacity: 0.35; }
+              50%  { r: 26; opacity: 0.1; }
+              100% { r: 18; opacity: 0.35; }
+            }
+            .pending-ring-inner { animation: pendingRingPulse 1.2s ease-in-out infinite; }
+            .pending-ring-outer { animation: pendingRingOuter 1.2s ease-in-out infinite; }
           `}</style>
         </defs>
         <path d={backdrop.arc} fill="none" stroke="rgba(148,163,184,0.6)" strokeWidth={2} />
@@ -623,6 +646,41 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
             className={isLive ? 'hemisphere-live-dot' : undefined}
             style={{ cursor: isLive ? 'default' : 'pointer', transition: 'cx 0.3s ease, cy 0.3s ease' }}
           />
+          );
+        })}
+
+        {/* Pending nodes — live accumulating utterances, visual only, never committed */}
+        {(pendingNodes ?? []).map((pn) => {
+          const W = 1200; const H = 530; const pad = 32;
+          const cx = W / 2; const cy = H - pad;
+          const R = Math.min(cx - pad, cy - pad);
+          const domainAngles = buildDomainAngles(activeLenses);
+          const theta = findAngleForDomain(pn.domain, domainAngles) ?? Math.PI / 2;
+          const radial = R * 0.5; // mid-ring — confidence unknown during accumulation
+          const px = cx + radial * Math.cos(theta);
+          const py = cy - radial * Math.sin(theta);
+          return (
+            <g key={`pending:${pn.id}`} style={{ transition: 'transform 0.4s ease' }}>
+              {/* Outer sonar ring */}
+              <circle
+                cx={px} cy={py} r={18}
+                fill="none"
+                stroke="rgba(255,255,255,0.55)"
+                strokeWidth={1.5}
+                className="pending-ring-outer"
+              />
+              {/* Inner pulsing ring */}
+              <circle
+                cx={px} cy={py} r={10}
+                fill="rgba(255,255,255,0.08)"
+                stroke="rgba(255,255,255,0.9)"
+                strokeWidth={2}
+                className="pending-ring-inner"
+              />
+              {/* Static centre dot */}
+              <circle cx={px} cy={py} r={3} fill="rgba(255,255,255,0.95)" />
+              <title>Accumulating speech…</title>
+            </g>
           );
         })}
       </svg>
