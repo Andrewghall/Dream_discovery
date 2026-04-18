@@ -3085,6 +3085,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   ? domainIdToLiveDomain(domainResult.primary_domain)
                   : interpretLiveUtterance(fullText).domain;
 
+                // Clear pending immediately — the thought is resolved, accumulation is done.
+                // The committed node lands within ~300ms when the POST returns a dataPointId.
+                setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
+
                 console.log('[EthentaFlow] Committing resolved thought for', speakerId,
                   '— domain:', primaryLiveDomain,
                   '| conf:', domainResult?.confidence?.toFixed(2),
@@ -3192,13 +3196,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         },
                       };
                       setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
-                      // Pending removed only after the final node is in place.
-                      setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
                       console.log('[EthentaFlow] Node committed:', dpId, fullText.substring(0, 60));
                     } else {
-                      // Server blocked or returned no dataPointId — clear pending,
-                      // spoken records are already stored via rawCaptureOnly.
-                      setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
                       console.warn('[EthentaFlow] Commit POST returned no dataPointId — server blocked?', result);
                     }
                     pushDiagEvent({
@@ -3217,12 +3216,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       scoreBreakdown: attempt.validity?.score_breakdown ?? null,
                     });
                   } else {
-                    // HTTP error — clear pending, log status
-                    setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
                     console.error('[EthentaFlow] Commit POST failed:', r.status);
                   }
                 } catch (err) {
-                  setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
                   console.error('[EthentaFlow] Commit POST error:', err);
                 }
               },
