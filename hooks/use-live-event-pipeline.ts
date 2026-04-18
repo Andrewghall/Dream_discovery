@@ -279,14 +279,19 @@ export function useLiveEventPipeline(
           const data = JSON.parse(e.data);
           if (!data) return;
 
+          const payload =
+            data && typeof data === 'object' && 'payload' in data
+              ? data.payload
+              : data;
+
           // Extract event id for dedup
           const eventId =
             data.id ||
-            data.dataPoint?.id ||
-            data.dataPointId ||
+            payload?.dataPoint?.id ||
+            payload?.dataPointId ||
             `sse:${eventType}:${Date.now()}:${Math.random()}`;
 
-          dispatchEvent(eventId, eventType, data);
+          dispatchEvent(eventId, eventType, payload);
         } catch {
           // Malformed SSE data -- skip
         }

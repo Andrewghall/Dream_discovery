@@ -3568,7 +3568,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         : 'h-[420px] border rounded-md p-3 bg-muted/20'
                     }
                   >
-                    {utteranceNodes.length === 0 ? (
+                    {utteranceNodes.length === 0 && Object.keys(pendingNodes).length === 0 ? (
                       <div className="text-sm text-muted-foreground">No datapoints yet.</div>
                     ) : (
                       <HemisphereNodes
