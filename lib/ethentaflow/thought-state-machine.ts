@@ -1,6 +1,7 @@
 import type { CommitCandidate, LensPack, ThoughtAttempt, ThoughtState, ValidityResult } from './types';
 import { extractFeatures } from './thought-feature-extractor';
 import { scoreValidity } from './thought-validity-engine';
+import { scoreDomains, createDomainCluster, updateDomainCluster, type DomainCluster } from './domain-scoring-engine';
 
 // Timing constants
 const SILENCE_WINDOW_MS = 4000;
@@ -31,6 +32,10 @@ export class ThoughtStateMachine {
   private mergeTimer: ReturnType<typeof setTimeout> | null = null;
   private holdCycles = 0;
   private continuityScore = 0;
+  // Per-speaker domain cluster — decays on each commit, boosts toward the committed domain.
+  // Provides the cluster_continuity signal so a speaker discussing Technology for 5 minutes
+  // gets Technology continuity credit on ambiguous utterances.
+  private domainCluster: DomainCluster = createDomainCluster();
   private destroyed = false;
 
   constructor(speakerId: string, lensPack: LensPack, callbacks: StateMachineCallbacks) {
@@ -53,11 +58,9 @@ export class ThoughtStateMachine {
       this.appendChunk(trimmed);
     }
 
-    // Re-evaluate features on each chunk
     this.evaluateCurrent();
 
     if (speechFinal) {
-      // Short window — terminal punctuation detected, speaker likely done
       this.silenceTimer = setTimeout(() => this.onSilence(true), SPEECH_FINAL_WINDOW_MS);
     } else {
       this.silenceTimer = setTimeout(() => this.onSilence(false), SILENCE_WINDOW_MS);
@@ -81,6 +84,10 @@ export class ThoughtStateMachine {
 
   getState(): ThoughtState {
     return this.current?.state ?? 'idle';
+  }
+
+  getDomainCluster(): DomainCluster {
+    return this.domainCluster;
   }
 
   // ─── Private ──────────────────────────────────────────────────────────────
@@ -120,11 +127,14 @@ export class ThoughtStateMachine {
     const features = extractFeatures(this.current.full_text, this.lensPack);
     this.current.features = features;
 
-    // Compute validity (domain scoring is Phase 2 — for now pass null domain)
     const validity = scoreValidity(features, this.continuityScore);
     this.current.validity = validity;
 
-    // Notify UI with latest domain hint (even during capturing)
+    // Domain scoring runs on every chunk — cheap, pure, <1ms.
+    // Cluster continuity gives the speaker's conversational history weight.
+    const domain = scoreDomains(features, this.lensPack, this.domainCluster);
+    this.current.domain = domain;
+
     this.callbacks.onPendingUpdate({ ...this.current });
   }
 
@@ -143,12 +153,14 @@ export class ThoughtStateMachine {
 
     const attempt = this.current;
 
-    // Ensure features are current
     if (!attempt.features) {
       attempt.features = extractFeatures(attempt.full_text, this.lensPack);
     }
     if (!attempt.validity) {
       attempt.validity = scoreValidity(attempt.features, this.continuityScore);
+    }
+    if (!attempt.domain) {
+      attempt.domain = scoreDomains(attempt.features, this.lensPack, this.domainCluster);
     }
 
     const validity = attempt.validity as ValidityResult;
@@ -165,9 +177,7 @@ export class ThoughtStateMachine {
 
     // hold or escalate
     if (forceDecide || this.holdCycles >= MAX_HOLD_CYCLES) {
-      // After max hold cycles, make a final call
       if (validity.validity_score >= 0.38) {
-        // Close enough — commit with lower confidence
         this.commit(attempt, true);
       } else {
         this.discard(attempt);
@@ -184,7 +194,6 @@ export class ThoughtStateMachine {
       this.mergeTimer = setTimeout(() => {
         if (!this.current || this.current.id !== attempt.id || this.destroyed) return;
         this.clearMergeTimer();
-        // No new speech arrived — force decide
         this.attemptCommit(true);
       }, MERGE_WAIT_MS);
     }
@@ -194,6 +203,10 @@ export class ThoughtStateMachine {
     this.clearMergeTimer();
     attempt.state = 'committed';
     this.continuityScore = Math.min(this.continuityScore + 0.15, 1.0);
+
+    // Update the domain cluster so future utterances from this speaker
+    // inherit continuity toward the domain that just committed.
+    this.domainCluster = updateDomainCluster(this.domainCluster, attempt.domain?.primary_domain ?? null);
 
     this.callbacks.onCommitCandidate({
       attempt: { ...attempt },

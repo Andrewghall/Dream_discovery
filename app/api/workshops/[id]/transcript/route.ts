@@ -17,6 +17,13 @@ import { pushUtterance } from '@/lib/cognition/cognitive-state';
 // Without this, Vercel kills the background work before the journey agent completes.
 export const maxDuration = 60;
 
+type ClientDomainHint = {
+  primaryDomain: string;
+  secondaryDomain: string | null;
+  confidence: number;
+  decisionPath: string;
+};
+
 type IngestTranscriptChunkBody = {
   speakerId: string | null;
   startTime: number;
@@ -27,6 +34,9 @@ type IngestTranscriptChunkBody = {
   source: 'zoom' | 'deepgram' | 'whisper';
   dialoguePhase?: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null;
   flush?: boolean; // When true, force-flush the utterance buffer (e.g. capture stopped)
+  // Deterministic domain result from EthentaFlow client scorer.
+  // Used as a strong prior for the server-side classification agent.
+  clientDomainHint?: ClientDomainHint | null;
   // SLM metadata
   slmMetadata?: {
     entities: Array<{ type: string; value: string }>;
@@ -83,6 +93,7 @@ async function processCompleteUtterance(
   bodySpeakerId: string | null,
   bodySlmMetadata?: Record<string, unknown>,
   traceId?: string,
+  clientDomainHint?: ClientDomainHint | null,
 ) {
   const trace = traceId ? `[trace:${traceId}]` : '';
   const text = utterance.text;
@@ -150,10 +161,11 @@ async function processCompleteUtterance(
       text,
       confidence: utterance.confidence,
       source: src,
-      metadata: (bodySlmMetadata || utterance.rawText
+      metadata: (bodySlmMetadata || utterance.rawText || clientDomainHint
         ? {
             ...(utterance.rawText && { rawText: utterance.rawText }),
             ...(bodySlmMetadata && { slmMetadata: bodySlmMetadata }),
+            ...(clientDomainHint && { ethentaflowDomain: clientDomainHint }),
             buffered: true,
           }
         : undefined) as any,
@@ -338,9 +350,62 @@ async function processCompleteUtterance(
       }
       // Drop secondaries that are within 0.1 of each other and top (all tied = flat distribution)
       const primaryRelevance = sortedDomains[0]?.relevance ?? 0;
-      const finalDomains = sortedDomains.filter((d, i) =>
+      let finalDomains = sortedDomains.filter((d, i) =>
         i === 0 || (primaryRelevance - d.relevance) >= 0.15
       );
+
+      // ── Apply EthentaFlow client domain prior ──────────────────────────────
+      // The deterministic scorer runs before the LLM and produces a causally-grounded
+      // domain attribution. We use it as a Bayesian prior to correct the LLM's tendency
+      // to assign flat distributions or attribute to symptom domains.
+      //
+      // Contract:
+      //   hint.confidence ≥ 0.65 → override: ensure hint primary is at top with ≥ 0.80 relevance
+      //   hint.confidence 0.40–0.65 → blend: boost matching domain, soft-demote mismatches
+      //   hint.confidence < 0.40 → defer: LLM result stands (deterministic scorer was uncertain)
+      if (clientDomainHint && clientDomainHint.confidence >= 0.40) {
+        const hint = clientDomainHint;
+        const hintDomain = hint.primaryDomain;
+        const hintConf = hint.confidence;
+
+        if (hintConf >= 0.65) {
+          // Strong prior — force hint domain to primary position
+          const existingHint = finalDomains.find(d => d.domain === hintDomain);
+          const boostedRelevance = Math.max(0.80, existingHint?.relevance ?? 0);
+          const hintEntry = {
+            domain: hintDomain,
+            relevance: boostedRelevance,
+            reasoning: `EthentaFlow deterministic prior (conf=${hintConf.toFixed(2)}): ${hint.decisionPath}`,
+          };
+          // Rebuild: hint first, then LLM secondaries that don't contradict it
+          finalDomains = [
+            hintEntry,
+            ...finalDomains
+              .filter(d => d.domain !== hintDomain)
+              .map(d => ({ ...d, relevance: d.relevance * 0.75 })) // demote non-primary
+              .filter(d => (boostedRelevance - d.relevance) >= 0.15)
+              .slice(0, 2),
+          ];
+          console.log(`[DomainPrior]${trace} OVERRIDE → ${hintDomain} (hint conf=${hintConf.toFixed(2)})`);
+        } else {
+          // Moderate prior — blend
+          const matchIdx = finalDomains.findIndex(d => d.domain === hintDomain);
+          if (matchIdx > 0) {
+            // Domain is present but not primary — promote it
+            const matched = finalDomains[matchIdx];
+            const promoted = { ...matched, relevance: Math.min(matched.relevance + 0.20, 0.90) };
+            finalDomains = [promoted, ...finalDomains.filter((_, i) => i !== matchIdx)];
+            console.log(`[DomainPrior]${trace} BLEND promote → ${hintDomain} (hint conf=${hintConf.toFixed(2)})`);
+          } else if (matchIdx === -1 && hintConf >= 0.50) {
+            // Domain not in LLM result at all — insert it at moderate relevance
+            finalDomains = [
+              { domain: hintDomain, relevance: 0.60, reasoning: `EthentaFlow moderate prior (conf=${hintConf.toFixed(2)})` },
+              ...finalDomains.map(d => ({ ...d, relevance: d.relevance * 0.85 })).slice(0, 2),
+            ];
+            console.log(`[DomainPrior]${trace} BLEND insert → ${hintDomain} (hint conf=${hintConf.toFixed(2)})`);
+          }
+        }
+      }
 
       // Store agentic analysis (backwards-compatible with existing schema)
       await prisma.agenticAnalysis.create({
@@ -689,6 +754,7 @@ export async function POST(
         body.speakerId,
         body.slmMetadata as Record<string, unknown> | undefined,
         traceId,
+        body.clientDomainHint ?? null,
       );
       return NextResponse.json({
         ok: true,

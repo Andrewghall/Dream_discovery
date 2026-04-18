@@ -42,6 +42,7 @@ import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-inter
 import { transcribeAudio, checkCaptureAPIHealth, CaptureAPIStream, type CaptureAPIResponse, type StreamTranscript } from '@/lib/captureapi/client';
 import { ThoughtStateMachine } from '@/lib/ethentaflow/thought-state-machine';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
+import { domainIdToLiveDomain } from '@/lib/ethentaflow/domain-scoring-engine';
 import type { CommitCandidate, ThoughtAttempt } from '@/lib/ethentaflow/types';
 
 // ── Agentic facilitation hooks + components ──────────────────
@@ -2975,9 +2976,12 @@ export default function WorkshopLivePage({ params }: PageProps) {
           if (!stateMachinesRef.current.has(speakerId)) {
             const machine = new ThoughtStateMachine(speakerId, DEFAULT_LENS_PACK, {
               onPendingUpdate: (attempt: ThoughtAttempt) => {
-                const domainHint = attempt.features
-                  ? (Object.entries(attempt.features.domain_term_hits).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'General')
-                  : 'General';
+                // Use deterministic domain result if available, fall back to raw hit counts
+                const domainHint = attempt.domain?.primary_domain
+                  ? domainIdToLiveDomain(attempt.domain.primary_domain)
+                  : attempt.features
+                    ? (Object.entries(attempt.features.domain_term_hits).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'General')
+                    : 'General';
                 setPendingNodes((prev) => ({
                   ...prev,
                   [speakerId]: { id: speakerId, domain: domainHint, startedAtMs: attempt.start_time_ms },
@@ -2988,12 +2992,22 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 const fullText = attempt.full_text;
                 const slmMeta = slmMetaRef.current.get(speakerId);
                 const commitNow = Date.now();
-                const commitInterp = interpretLiveUtterance(fullText);
                 const currentPhase = dialoguePhaseRef.current;
+
+                // Domain from deterministic scorer — primary source of truth.
+                // Falls back to keyword interpretation only if domain scoring produced nothing.
+                const domainResult = attempt.domain;
+                const primaryLiveDomain = domainResult?.primary_domain
+                  ? domainIdToLiveDomain(domainResult.primary_domain)
+                  : interpretLiveUtterance(fullText).domain;
 
                 setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
 
-                console.log('[EthentaFlow] Committing resolved thought for', speakerId, '—', fullText.substring(0, 80), '| validity:', attempt.validity?.validity_score?.toFixed(3), '| decision:', attempt.validity?.decision);
+                console.log('[EthentaFlow] Committing resolved thought for', speakerId,
+                  '— domain:', primaryLiveDomain,
+                  '| conf:', domainResult?.confidence?.toFixed(2),
+                  '| path:', domainResult?.decision_path?.substring(0, 60),
+                  '| validity:', attempt.validity?.validity_score?.toFixed(3));
 
                 try {
                   const r = await fetch(ingestUrl, {
@@ -3009,6 +3023,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       source: 'deepgram' as const,
                       dialoguePhase: currentPhase,
                       flush: true,
+                      // clientDomainHint: deterministic domain result sent to server so the
+                      // classification agent starts from a strong prior rather than cold.
+                      clientDomainHint: domainResult ? {
+                        primaryDomain: primaryLiveDomain,
+                        secondaryDomain: domainResult.secondary_domain
+                          ? domainIdToLiveDomain(domainResult.secondary_domain)
+                          : null,
+                        confidence: domainResult.confidence,
+                        decisionPath: domainResult.decision_path,
+                      } : null,
                       slmMetadata: {
                         entities: slmMeta?.entities,
                         emotionalTone: slmMeta?.emotionalTone,
@@ -3023,6 +3047,29 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     const result = respBody?.results?.[0];
                     const dpId = result?.dataPointId || result?.dataPoint?.id;
                     if (dpId) {
+                      // Build the domain list for the hemisphere node.
+                      // Primary domain from deterministic scorer gets high relevance.
+                      // Secondary (if any) gets lower relevance. This replaces the
+                      // previous single keyword-based domain entry.
+                      const agenticDomains: Array<{ domain: string; relevance: number; reasoning: string }> = [];
+                      if (domainResult?.primary_domain) {
+                        agenticDomains.push({
+                          domain: primaryLiveDomain,
+                          relevance: domainResult.confidence,
+                          reasoning: domainResult.decision_path,
+                        });
+                        if (domainResult.secondary_domain) {
+                          const secScore = domainResult.domain_scores[domainResult.secondary_domain] ?? 0.4;
+                          agenticDomains.push({
+                            domain: domainIdToLiveDomain(domainResult.secondary_domain),
+                            relevance: secScore * 0.7,
+                            reasoning: 'secondary domain',
+                          });
+                        }
+                      } else {
+                        agenticDomains.push({ domain: primaryLiveDomain, relevance: 0.5, reasoning: 'keyword fallback' });
+                      }
+
                       const node: HemisphereNodeDatum = {
                         dataPointId: dpId,
                         createdAtMs: commitNow,
@@ -3039,8 +3086,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         },
                         classification: null,
                         agenticAnalysis: {
-                          domains: [{ domain: commitInterp.domain, relevance: 0.7, reasoning: 'keyword-based' }],
-                          themes: [], actors: [], semanticMeaning: '', sentimentTone: '', overallConfidence: 0.5,
+                          domains: agenticDomains,
+                          themes: [], actors: [], semanticMeaning: '', sentimentTone: '', overallConfidence: domainResult?.confidence ?? 0.5,
                         },
                       };
                       setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
