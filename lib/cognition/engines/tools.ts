@@ -142,8 +142,8 @@ export function buildCognitiveTools(dimensions?: string[]): OpenAI.Chat.Completi
             type: 'string',
             enum: ['VISIONARY', 'OPPORTUNITY', 'CONSTRAINT', 'RISK', 'ENABLER', 'ACTION', 'QUESTION', 'INSIGHT'],
           },
-          semanticMeaning: { type: 'string', description: 'What the speaker means (1-2 sentences). CRITICAL: Preserve the speaker\'s framing — if they are questioning, hypothesising, warning, or suggesting consideration of something, reflect that in the meaning. Never extract an embedded clause as a standalone assertion. E.g. "we should consider if AI takes control" → "Speaker raises the question of whether AI taking control is acceptable", NOT "AI should take control".' },
-          speakerIntent: { type: 'string', description: 'Why they are saying this' },
+          semanticMeaning: { type: 'string', description: 'What the speaker means in 1-2 sentences. Be operational and specific — say what they mean to DO or CHANGE. AVOID: "emphasizing the importance of", "facilitating alignment", abstract consultancy language. GOOD: "Speaker says the team needs to visit field sites to identify where delays occur." CRITICAL: Preserve framing — never extract an embedded clause as a standalone assertion.' },
+          speakerIntent: { type: 'string', description: 'Why they are saying this — operational, not abstract' },
           temporalFocus: { type: 'string', enum: ['past', 'present', 'future', 'timeless'] },
           sentimentTone: { type: 'string', enum: ['positive', 'neutral', 'concerned', 'critical'] },
           beliefUpdates: {
@@ -158,11 +158,12 @@ export function buildCognitiveTools(dimensions?: string[]): OpenAI.Chat.Completi
                 primaryType: { type: 'string', enum: ['VISIONARY', 'OPPORTUNITY', 'CONSTRAINT', 'RISK', 'ENABLER', 'ACTION', 'QUESTION', 'INSIGHT'] },
                 domains: {
                   type: 'array',
+                  description: 'STRICT: 1 primary domain (relevance 0.65–0.85) + optionally 1 secondary (relevance 0.25–0.45). Maximum 2 per beliefUpdate. NEVER assign 0.5 to multiple domains — one must clearly lead. If unsure, pick the closest at 0.65.',
                   items: {
                     type: 'object',
                     properties: {
                       domain: { type: 'string', enum: domainEnum },
-                      relevance: { type: 'number' },
+                      relevance: { type: 'number', description: 'Primary: 0.65–0.85. Secondary: 0.25–0.45. Never equal scores across domains.' },
                     },
                     required: ['domain', 'relevance'],
                   },

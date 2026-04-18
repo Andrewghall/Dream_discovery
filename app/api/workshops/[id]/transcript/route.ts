@@ -313,6 +313,33 @@ async function processCompleteUtterance(
         totalBeliefs: cognitiveState.beliefs.size,
       });
 
+      // ── Domain post-processing: enforce dominant domain, cap at 3 ──
+      // The model sometimes hedges with flat 0.5 distributions across all
+      // dimensions. Deduplicate, sort by relevance, take top 3, and ensure
+      // the primary domain has a clear lead (≥ 0.6). If it doesn't, boost it.
+      const rawDomains = stateUpdate.beliefUpdates.flatMap(b => b.domains.map(d => ({
+        domain: d.domain,
+        relevance: d.relevance,
+        reasoning: b.reasoning,
+      })));
+      // Deduplicate: keep highest relevance per domain
+      const domainMap = new Map<string, typeof rawDomains[number]>();
+      for (const d of rawDomains) {
+        const existing = domainMap.get(d.domain);
+        if (!existing || d.relevance > existing.relevance) domainMap.set(d.domain, d);
+      }
+      // Sort descending, cap at 3
+      const sortedDomains = [...domainMap.values()].sort((a, b) => b.relevance - a.relevance).slice(0, 3);
+      // Enforce dominant: if top domain is not clearly leading (< 0.6), boost it to 0.75
+      if (sortedDomains.length > 0 && sortedDomains[0].relevance < 0.6) {
+        sortedDomains[0] = { ...sortedDomains[0], relevance: 0.75 };
+      }
+      // Drop secondaries that are within 0.1 of each other and top (all tied = flat distribution)
+      const primaryRelevance = sortedDomains[0]?.relevance ?? 0;
+      const finalDomains = sortedDomains.filter((d, i) =>
+        i === 0 || (primaryRelevance - d.relevance) >= 0.15
+      );
+
       // Store agentic analysis (backwards-compatible with existing schema)
       await prisma.agenticAnalysis.create({
         data: {
@@ -321,11 +348,7 @@ async function processCompleteUtterance(
           speakerIntent: stateUpdate.classification.speakerIntent,
           temporalFocus: stateUpdate.classification.temporalFocus,
           sentimentTone: stateUpdate.classification.sentimentTone,
-          domains: stateUpdate.beliefUpdates.flatMap(b => b.domains.map(d => ({
-            domain: d.domain,
-            relevance: d.relevance,
-            reasoning: b.reasoning,
-          }))),
+          domains: finalDomains,
           themes: stateUpdate.beliefUpdates.map(b => ({
             label: b.label,
             category: b.category,
@@ -356,11 +379,7 @@ async function processCompleteUtterance(
               semanticMeaning: stateUpdate.classification.semanticMeaning,
               sentimentTone: stateUpdate.classification.sentimentTone,
             },
-            domains: stateUpdate.beliefUpdates.flatMap(b => b.domains.map(d => ({
-              domain: d.domain,
-              relevance: d.relevance,
-              reasoning: b.reasoning,
-            }))),
+            domains: finalDomains,
             themes: stateUpdate.beliefUpdates.map(b => ({
               label: b.label,
               category: b.category,
@@ -378,8 +397,18 @@ async function processCompleteUtterance(
       });
 
       // Create classification from cognitive analysis
-      const primaryDomain = stateUpdate.beliefUpdates[0]?.domains[0]?.domain || null;
-      const keywords = stateUpdate.beliefUpdates.map(b => b.label).slice(0, 8);
+      const primaryDomain = finalDomains[0]?.domain || stateUpdate.beliefUpdates[0]?.domains[0]?.domain || null;
+      // Extract keywords from actual speech rather than abstract belief labels.
+      // Pull noun-like tokens (3+ chars, not stop words) from the committed utterance text.
+      const STOP = new Set(['the','and','that','this','with','have','from','they','will','been','were','what','when','which','who','how','can','could','should','would','their','there','here','some','then','than','just','also','into','about','more','these','those','your','our','its','has','are','for','not','but','was','you','all','any','may','her','him','his','its','get','got','had','him','her']);
+      const speechKeywords = text
+        .toLowerCase()
+        .replace(/[^a-z\s'-]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length >= 4 && !STOP.has(w))
+        .reduce((acc: string[], w) => (acc.includes(w) ? acc : [...acc, w]), [])
+        .slice(0, 6);
+      const keywords = speechKeywords.length >= 3 ? speechKeywords : stateUpdate.beliefUpdates.map(b => b.label).slice(0, 6);
 
       const classification = await prisma.dataPointClassification.create({
         data: {
