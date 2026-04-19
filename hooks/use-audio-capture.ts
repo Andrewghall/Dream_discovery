@@ -257,6 +257,9 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
                 });
               },
               onDiscard: (attempt: ThoughtAttempt) => {
+                console.log('[EthentaFlow] Discarded —', speakerId,
+                  '| text:', attempt.full_text.substring(0, 80),
+                  '| guard:', attempt.validity?.reasons?.slice(0, 2).join('; '));
                 // Store raw spoken records even for discarded thoughts.
                 // Every spoken word reaches the DB regardless of machine decisions.
                 const discardNow = Date.now();
