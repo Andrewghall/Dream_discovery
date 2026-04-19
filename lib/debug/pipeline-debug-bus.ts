@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 
-export type DebugStage = 'tsm' | 'ingest' | 'split' | 'sse' | 'hemisphere';
+export type DebugStage = 'tsm' | 'ingest' | 'split' | 'sse' | 'hemisphere' | 'quality';
 
 export interface DebugLogEntry {
   id: string;

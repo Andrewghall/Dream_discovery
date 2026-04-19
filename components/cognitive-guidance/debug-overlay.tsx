@@ -11,6 +11,7 @@ const STAGE_BG: Record<DebugStage, string> = {
   split:      'bg-orange-600',
   sse:        'bg-green-700',
   hemisphere: 'bg-amber-600',
+  quality:    'bg-rose-700',
 };
 
 const STAGE_LABEL: Record<DebugStage, string> = {
@@ -19,6 +20,7 @@ const STAGE_LABEL: Record<DebugStage, string> = {
   split:      'SPLIT',
   sse:        'SSE',
   hemisphere: 'HEMI',
+  quality:    'QUAL',
 };
 
 function shortId(id?: string): string {
@@ -82,6 +84,12 @@ function EntryRow({ entry }: { entry: DebugLogEntry }) {
 
   if (entry.stage === 'sse') {
     if (entry.dataPointId)  details.push(`dp: ${shortId(entry.dataPointId)}`);
+  }
+
+  if (entry.stage === 'quality') {
+    if (entry.text) details.push(`passage: "${entry.text.substring(0, 70)}"`);
+    if (entry.guardReason) details.push(`reason: ${entry.guardReason}`);
+    if (entry.chunks !== undefined) details.push(`score: ${entry.chunks}`);
   }
 
   if (entry.stage === 'hemisphere') {

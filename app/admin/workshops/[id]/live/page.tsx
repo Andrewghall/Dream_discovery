@@ -61,6 +61,7 @@ import type { StickyPad as StickyPadType } from '@/lib/cognitive-guidance/pipeli
 import type { DialoguePhase } from '@/lib/cognitive-guidance/pipeline';
 import { DebugOverlay } from '@/components/cognitive-guidance/debug-overlay';
 import { emitDebug } from '@/lib/debug/pipeline-debug-bus';
+import { checkPassageQuality } from '@/lib/ethentaflow/passage-quality-gate';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -3118,6 +3119,18 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   chunks: attempt.chunks.length,
                 });
 
+                // ── Passage quality gate ────────────────────────────────────
+                const passageQuality = checkPassageQuality(fullText);
+                emitDebug({
+                  stage: 'quality',
+                  event: 'RESOLVED_PASSAGE_QUALITY',
+                  status: passageQuality.pass ? 'pass' : 'blocked',
+                  thoughtWindowId: attempt.id,
+                  text: fullText.substring(0, 80),
+                  guardReason: passageQuality.reason ?? undefined,
+                  chunks: parseFloat(passageQuality.score.toFixed(2)),
+                });
+
                 try {
                   // Build spoken records from the individual chunks that composed
                   // this thought — each chunk is one Deepgram isFinal result.
@@ -3130,6 +3143,28 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     confidence: slmMeta?.confidence ?? null,
                     source: 'deepgram' as const,
                   }));
+
+                  if (!passageQuality.pass) {
+                    // Passage is ASR-damaged — store the raw capture only, skip DataPoint creation.
+                    await fetch(ingestUrl, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        speakerId,
+                        startTime: attempt.start_time_ms,
+                        endTime: commitNow,
+                        text: fullText,
+                        rawText: fullText,
+                        confidence: slmMeta?.confidence ?? null,
+                        source: 'deepgram' as const,
+                        dialoguePhase: currentPhase,
+                        flush: true,
+                        spokenRecords,
+                        rawCaptureOnly: true,
+                      }),
+                    }).catch(() => { /* best-effort raw capture */ });
+                    return;
+                  }
 
                   emitDebug({
                     stage: 'ingest',
