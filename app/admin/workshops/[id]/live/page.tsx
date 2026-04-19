@@ -3345,7 +3345,8 @@ export default function WorkshopLivePage({ params }: PageProps) {
               },
               onDiscard: (attempt: ThoughtAttempt) => {
                 setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
-                console.log('[EthentaFlow] Discarded fragment for', speakerId, '—', attempt.full_text.substring(0, 60), '| reasons:', attempt.validity?.reasons?.slice(0, 2).join('; '));
+                const discardReason = attempt.guardBlockReason ?? attempt.validity?.reasons?.slice(0, 2).join('; ') ?? 'unknown';
+                console.log('[EthentaFlow] Discarded —', speakerId, '| text:', attempt.full_text.substring(0, 60), '| guard:', discardReason);
                 emitDebug({
                   stage: 'tsm',
                   event: 'DISCARD',
@@ -3353,7 +3354,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   thoughtWindowId: attempt.id,
                   text: attempt.full_text.substring(0, 80),
                   chunks: attempt.chunks.length,
-                  guardReason: attempt.validity?.reasons?.slice(0, 2).join('; ') ?? 'unknown',
+                  guardReason: discardReason,
                 });
 
                 // Fire-and-forget: store the raw spoken records even though this

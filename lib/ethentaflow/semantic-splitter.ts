@@ -72,16 +72,29 @@ Rules:
     const raw = result.choices[0]?.message?.content ?? '{}';
     const parsed = JSON.parse(raw) as { units?: unknown };
 
-    if (!Array.isArray(parsed.units) || parsed.units.length === 0) return [text];
+    if (!Array.isArray(parsed.units) || parsed.units.length === 0) {
+      console.log('[SemanticSplitter] GPT returned empty/invalid units — no split');
+      return [text];
+    }
 
-    const units = (parsed.units as unknown[])
-      .map(u => String(u).trim())
-      .filter(u => u.split(/\s+/).filter(Boolean).length >= 6);
+    const raw_units = (parsed.units as unknown[]).map(u => String(u).trim());
+    const units = raw_units.filter(u => u.split(/\s+/).filter(Boolean).length >= 6);
 
-    if (units.length <= 1) return [text];
+    console.log(`[SemanticSplitter] GPT returned ${raw_units.length} unit(s), ${units.length} passed ≥6-word filter`);
+    raw_units.forEach((u, i) => {
+      const wc = u.split(/\s+/).filter(Boolean).length;
+      const pass = wc >= 6;
+      console.log(`  [${pass ? '✓' : '✗'}] (${wc}w) "${u.substring(0, 80)}"`);
+    });
+
+    if (units.length <= 1) {
+      console.log('[SemanticSplitter] ≤1 unit after filter — returning original text');
+      return [text];
+    }
 
     return units.slice(0, 8);
-  } catch {
+  } catch (err) {
+    console.error('[SemanticSplitter] Error calling OpenAI:', err instanceof Error ? err.message : String(err));
     return [text];
   }
 }

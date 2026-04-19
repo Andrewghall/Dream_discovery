@@ -120,6 +120,7 @@ export interface ThoughtAttempt {
   domain: DomainResult | null;
   hold_started_ms: number | null;
   flagged_for_escalation: boolean;
+  guardBlockReason?: string | null;
 }
 
 export interface CommitCandidate {

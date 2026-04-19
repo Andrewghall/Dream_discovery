@@ -324,6 +324,7 @@ export class ThoughtStateMachine {
 
     if (guard.blocked) {
       attempt.state = 'discarded';
+      attempt.guardBlockReason = guard.reason;
       this.continuityScore = Math.max(this.continuityScore - 0.05, 0);
       this.callbacks.onDiscard({ ...attempt });
       this.current = null;
