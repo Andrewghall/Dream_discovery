@@ -19,6 +19,8 @@ const CONTINUATION_WINDOW_MS = 5000;
 // This hold reuses the merge_wait mechanism so any new speech within
 // SPEECH_FINAL_WINDOW_MS + COMPLETE_THOUGHT_HOLD_MS reuses the same window.
 const COMPLETE_THOUGHT_HOLD_MS = 9_000;
+// Minimum pending words before a progressive (mid-window) partial commit fires.
+const PARTIAL_COMMIT_MIN_WORDS = 20;
 
 // holdCycles is an internal counter only — it is NOT a commit trigger.
 // Pause count must not force a commit; a thought may contain unlimited pauses.
@@ -34,9 +36,9 @@ export interface StateMachineCallbacks {
   onPendingUpdate: (attempt: ThoughtAttempt) => void;
   onCommitCandidate: (candidate: CommitCandidate) => void;
   onDiscard: (attempt: ThoughtAttempt) => void;
-  // Optional — fires when the machine enters merge_wait (held for more speech).
-  // Provides visibility into borderline decisions without requiring a commit.
   onHold?: (attempt: ThoughtAttempt, holdCycle: number) => void;
+  /** Fires mid-window when a sufficient chunk of speech is ready to extract. */
+  onPartialCommit?: (partialText: string, chunks: string[], chunkTimes: number[], startTimeMs: number, endTimeMs: number) => void;
 }
 
 export class ThoughtStateMachine {
@@ -56,6 +58,9 @@ export class ThoughtStateMachine {
   private domainCluster: DomainCluster = createDomainCluster();
   private destroyed = false;
   private _commitReason = 'unknown';
+  // Index into current.chunks[] of the first chunk not yet partial-committed.
+  // Advances each time onPartialCommit fires; reset to 0 on new window.
+  private _partialChunkOffset = 0;
 
   constructor(speakerId: string, lensPack: LensPack, callbacks: StateMachineCallbacks) {
     this.speakerId = speakerId;
@@ -122,9 +127,82 @@ export class ThoughtStateMachine {
 
     if (speechFinal) {
       this.silenceTimer = setTimeout(() => this.onSilence(true), SPEECH_FINAL_WINDOW_MS);
+      // Progressive commit: if enough pending words have accumulated since the last
+      // partial commit, fire now. The speaker is still talking — window stays open.
+      this.maybePartialCommit();
     } else {
       this.silenceTimer = setTimeout(() => this.onSilence(false), SILENCE_WINDOW_MS);
     }
+  }
+
+  private maybePartialCommit(): void {
+    if (!this.callbacks.onPartialCommit || !this.current) return;
+    if (this.current.state === 'committed' || this.current.state === 'discarded') return;
+
+    const pendingChunks = this.current.chunks.slice(this._partialChunkOffset);
+    const pendingText = pendingChunks.join(' ').trim();
+
+    // Gate 1 — word floor
+    const pendingWordCount = pendingText.split(/\s+/).filter(Boolean).length;
+    if (pendingWordCount < PARTIAL_COMMIT_MIN_WORDS) return;
+
+    // Gate 2 — commit guard must not block
+    const features = extractFeatures(pendingText, this.lensPack);
+    const guard = runCommitGuard(pendingText, features);
+    if (guard.blocked) {
+      console.log('PARTIAL_COMMIT_GATE2_BLOCKED', {
+        speakerId: this.speakerId,
+        windowId: this.current.id,
+        guardReason: guard.reason,
+        text: pendingText.substring(0, 80),
+      });
+      return;
+    }
+
+    // Gate 3 — thought must be complete, not developing
+    const validity = scoreValidity(features, this.continuityScore);
+    if (validity.thought_completeness !== 'complete') {
+      console.log('PARTIAL_COMMIT_GATE3_BLOCKED', {
+        speakerId: this.speakerId,
+        windowId: this.current.id,
+        thought_completeness: validity.thought_completeness,
+        validity_score: validity.validity_score,
+        text: pendingText.substring(0, 80),
+      });
+      return;
+    }
+
+    // Caution log: guard passed but validity is borderline — inspect for weak material
+    if (validity.validity_score < 0.55) {
+      console.warn('PARTIAL_COMMIT_BORDERLINE', {
+        speakerId: this.speakerId,
+        windowId: this.current.id,
+        validity_score: validity.validity_score,
+        thought_completeness: validity.thought_completeness,
+        guardReason: guard.reason,
+        text: pendingText.substring(0, 120),
+      });
+    }
+
+    const pendingChunkTimes = this.current.chunk_times.slice(this._partialChunkOffset);
+    const startTimeMs = pendingChunkTimes[0] ?? this.current.start_time_ms;
+    const endTimeMs = pendingChunkTimes[pendingChunkTimes.length - 1] ?? this.current.last_chunk_time_ms;
+
+    const prevOffset = this._partialChunkOffset;
+    this._partialChunkOffset = this.current.chunks.length;
+
+    console.log('PARTIAL_COMMIT', {
+      speakerId: this.speakerId,
+      windowId: this.current.id,
+      pendingWordCount,
+      validity_score: validity.validity_score,
+      chunkOffset: prevOffset,
+      newOffset: this._partialChunkOffset,
+      ts: Date.now(),
+      text: pendingText.substring(0, 80),
+    });
+
+    this.callbacks.onPartialCommit(pendingText, pendingChunks, pendingChunkTimes, startTimeMs, endTimeMs);
   }
 
   forceFlush(): void {
@@ -161,6 +239,7 @@ export class ThoughtStateMachine {
 
   private startNew(text: string): void {
     this.holdCycles = 0;
+    this._partialChunkOffset = 0;
     const now = Date.now();
     const windowId = nextAttemptId();
     console.log('WINDOW_START', { speakerId: this.speakerId, windowId, time: now });
@@ -402,14 +481,21 @@ export class ThoughtStateMachine {
     attempt.state = 'committed';
     this.continuityScore = Math.min(this.continuityScore + 0.15, 1.0);
 
-    // Update the domain cluster so future utterances from this speaker
-    // inherit continuity toward the domain that just committed.
+    // Remaining = chunks not already sent via onPartialCommit
+    const remainingChunks = attempt.chunks.slice(this._partialChunkOffset);
+    const remainingChunkTimes = attempt.chunk_times.slice(this._partialChunkOffset);
+    const remainingText = remainingChunks.join(' ').trim();
+    this._partialChunkOffset = 0;
+
     this.domainCluster = updateDomainCluster(this.domainCluster, attempt.domain?.primary_domain ?? null);
 
     this.callbacks.onCommitCandidate({
       attempt: { ...attempt },
       merge_expired: mergeExpired,
       flagged_for_escalation: attempt.flagged_for_escalation,
+      remaining_text: remainingText,
+      remaining_chunks: remainingChunks,
+      remaining_chunk_times: remainingChunkTimes,
     });
 
     this.current = null;
@@ -417,6 +503,7 @@ export class ThoughtStateMachine {
 
   private discard(attempt: ThoughtAttempt): void {
     this.clearMergeTimer();
+    this._partialChunkOffset = 0;
     attempt.state = 'discarded';
     this.continuityScore = Math.max(this.continuityScore - 0.05, 0);
 

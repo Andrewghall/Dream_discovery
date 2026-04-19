@@ -128,4 +128,8 @@ export interface CommitCandidate {
   attempt: ThoughtAttempt;
   merge_expired: boolean;
   flagged_for_escalation: boolean;
+  /** Chunks not yet partial-committed. Empty if the entire passage was already sent via onPartialCommit. */
+  remaining_text: string;
+  remaining_chunks: string[];
+  remaining_chunk_times: number[];
 }

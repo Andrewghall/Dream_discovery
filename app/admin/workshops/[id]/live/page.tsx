@@ -3116,7 +3116,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
               },
               onCommitCandidate: async (candidate: CommitCandidate) => {
                 const attempt = candidate.attempt;
-                const fullText = attempt.full_text;
+                // Use only the tail not already sent via progressive (partial) commits.
+                const fullText = candidate.remaining_text;
+                const spokenRecordsChunks = candidate.remaining_chunks;
+                const spokenRecordsChunkTimes = candidate.remaining_chunk_times;
                 const slmMeta = slmMetaRef.current.get(speakerId);
                 const commitNow = Date.now();
                 const currentPhase = dialoguePhaseRef.current;
@@ -3160,14 +3163,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 });
 
                 try {
-                  // Build spoken records from the individual chunks that composed
-                  // this thought — each chunk is one Deepgram isFinal result.
-                  // chunk_times are arrival timestamps; we use them as both start
-                  // and end time (Deepgram final results carry no duration).
-                  const spokenRecords = attempt.chunks.map((chunkText, i) => ({
+                  // If all text was already sent via progressive partial commits, nothing left to send.
+                  if (!fullText) return;
+
+                  // Build spoken records from remaining (un-partial-committed) chunks only.
+                  const spokenRecords = spokenRecordsChunks.map((chunkText, i) => ({
                     text: chunkText,
-                    startTimeMs: attempt.chunk_times[i] ?? attempt.start_time_ms,
-                    endTimeMs: attempt.chunk_times[i + 1] ?? commitNow,
+                    startTimeMs: spokenRecordsChunkTimes[i] ?? attempt.start_time_ms,
+                    endTimeMs: spokenRecordsChunkTimes[i + 1] ?? commitNow,
                     confidence: slmMeta?.confidence ?? null,
                     source: 'deepgram' as const,
                   }));
@@ -3347,6 +3350,92 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   }
                 } catch (err) {
                   console.error('[EthentaFlow] Commit POST error:', err);
+                }
+              },
+              onPartialCommit: async (partialText: string, chunks: string[], chunkTimes: number[], startTimeMs: number, endTimeMs: number) => {
+                const slmMeta = slmMetaRef.current.get(speakerId);
+                const commitNow = Date.now();
+                const currentPhase = dialoguePhaseRef.current;
+
+                const domainResult = null; // No attempt domain available mid-window; LLM will fill in.
+                const primaryLiveDomain = interpretLiveUtterance(partialText).domain;
+
+                const passageQuality = checkPassageQuality(partialText);
+                if (!passageQuality.pass) return;
+
+                const spokenRecords = chunks.map((chunkText, i) => ({
+                  text: chunkText,
+                  startTimeMs: chunkTimes[i] ?? startTimeMs,
+                  endTimeMs: chunkTimes[i + 1] ?? commitNow,
+                  confidence: slmMeta?.confidence ?? null,
+                  source: 'deepgram' as const,
+                }));
+
+                try {
+                  const r = await fetch(ingestUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      speakerId,
+                      startTime: startTimeMs,
+                      endTime: endTimeMs,
+                      text: partialText,
+                      rawText: partialText,
+                      confidence: slmMeta?.confidence ?? null,
+                      source: 'deepgram' as const,
+                      dialoguePhase: currentPhase,
+                      flush: false,
+                      spokenRecords,
+                      clientDomainHint: null,
+                      slmMetadata: {
+                        entities: slmMeta?.entities,
+                        emotionalTone: slmMeta?.emotionalTone,
+                        slmConfidence: slmMeta?.slmConfidence,
+                        slmUsed: slmMeta?.slmUsed,
+                      },
+                    }),
+                  });
+                  if (r.ok) {
+                    const respBody = await r.json().catch(() => null);
+                    setForwardedCount((n) => n + 1);
+                    const allResults: Array<{ dataPointId?: string; dataPoint?: { id: string; rawText?: string }; thoughtWindowId?: string; blocked?: boolean }> =
+                      Array.isArray(respBody?.results) ? respBody.results : [];
+
+                    for (const result of allResults) {
+                      const dpId = result?.dataPointId || result?.dataPoint?.id;
+                      if (!dpId) continue;
+                      const node: HemisphereNodeDatum = {
+                        dataPointId: dpId,
+                        createdAtMs: commitNow,
+                        rawText: (result as { rawText?: string })?.rawText ?? partialText,
+                        dataPointSource: 'SPEECH',
+                        speakerId,
+                        dialoguePhase: safePhase(currentPhase) ?? null,
+                        ethentaflowConfidence: null,
+                        transcriptChunk: {
+                          speakerId,
+                          startTimeMs,
+                          endTimeMs,
+                          confidence: slmMeta?.confidence ?? null,
+                          source: 'DEEPGRAM',
+                        },
+                        classification: null,
+                        agenticAnalysis: {
+                          domains: [{ domain: primaryLiveDomain, relevance: 0.5, reasoning: 'keyword fallback — LLM pending' }],
+                          themes: [], actors: [], semanticMeaning: '', sentimentTone: '',
+                          overallConfidence: 0,
+                        },
+                      };
+                      setNodesById((prev) => {
+                        if (prev[dpId]) return prev;
+                        return { ...prev, [dpId]: node };
+                      });
+                      console.log('[EthentaFlow] Progressive node committed:', dpId, (node.rawText as string).substring(0, 60));
+                    }
+                    void domainResult; // referenced to satisfy closure; real domain comes from LLM
+                  }
+                } catch (err) {
+                  console.error('[EthentaFlow] Progressive commit POST error:', err);
                 }
               },
               onDiscard: (attempt: ThoughtAttempt) => {
