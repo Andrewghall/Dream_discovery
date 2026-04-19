@@ -78,7 +78,10 @@ function EntryRow({ entry }: { entry: DebugLogEntry }) {
     entry.units?.forEach((u, i) => {
       const intent = entry.unitIntents?.[i];
       const badge = intent ? `[${intent}] ` : '';
-      details.push(`  [${i + 1}] ${badge}"${u.substring(0, 60)}"`);
+      details.push(`  [✓] ${badge}"${u.substring(0, 60)}"`);
+    });
+    entry.filteredUnits?.forEach(fu => {
+      details.push(`  [✗] "${fu.text.substring(0, 55)}" — ${fu.reason}`);
     });
   }
 

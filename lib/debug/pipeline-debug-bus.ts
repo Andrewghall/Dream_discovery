@@ -24,6 +24,7 @@ export interface DebugLogEntry {
   units?: string[];
   unitIntents?: string[];
   originalText?: string;
+  filteredUnits?: Array<{ text: string; reason: string }>;
   // SSE
   dataPointId?: string;
   // Hemisphere

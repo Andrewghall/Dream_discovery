@@ -241,8 +241,10 @@ export class ThoughtStateMachine {
       // Fall through to standard hold/merge_wait logic
     }
 
-    // fragment or developing with low validity
-    if (validity.decision === 'discard') {
+    // Only discard truly unrecoverable content (< 4 words).
+    // Ambiguous, vague, or low-anchor passages pass through for semantic splitting
+    // and per-unit quality evaluation downstream.
+    if (validity.hard_rule_applied === 'MIN_WORD_COUNT') {
       this.discard(attempt);
       return;
     }

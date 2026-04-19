@@ -14,8 +14,7 @@ const ORPHAN_TRAILING_TOKEN = /\b(I|we|they|he|she|it|you|the|a|an|our|their|his
 // Infinitive "to be" — not a finite predicate
 const INFINITIVE_BE = /\bto be\b/gi;
 
-const REFERENTIAL_BLOCK_THRESHOLD = 0.6;
-const ANCHOR_FLOOR = 0.15;
+const REFERENTIAL_BLOCK_THRESHOLD = 0.80;
 
 // ── Semantic closure ──────────────────────────────────────────────────────────
 //
@@ -152,31 +151,16 @@ export function runCommitGuard(text: string, features: ThoughtFeatures): GuardRe
     return { blocked: true, reason: 'GUARD:NO_FINITE_PREDICATE', is_semantically_closed: false, closure_reason: 'no-predicate' };
   }
 
-  // 4. High referential dependency
+  // 4. Extreme referential dependency — pure anaphora with no recoverable meaning
   if (features.referential_dependency_score > REFERENTIAL_BLOCK_THRESHOLD) {
     return { blocked: true, reason: 'GUARD:REFERENTIAL_DEPENDENCY', is_semantically_closed: false, closure_reason: 'referential' };
   }
 
-  // 5. No business anchor and no signal — structurally complete noise
-  const sigStrength = computeSigStrength(features);
-  if (features.business_anchor_score < ANCHOR_FLOOR && sigStrength === 0) {
-    return { blocked: true, reason: 'GUARD:NO_ANCHOR_NO_SIGNAL', is_semantically_closed: false, closure_reason: 'no-anchor-no-signal' };
-  }
-
-  // 6. Semantic closure — the thought must be a complete, human-readable unit.
-  // Signal strength and business anchor are NOT indicators of completion.
-  // This gate runs last so structural checks (which are cheap) fire first.
+  // Rules 5 (no anchor/signal) and 6 (semantic closure) removed.
+  // Ambiguous, vague, and partially-closed passages are passed to the semantic
+  // splitter and per-unit quality gate for downstream evaluation.
   const closure = isSemanticallyClosed(t);
-  if (!closure.closed) {
-    return {
-      blocked: true,
-      reason: `GUARD:SEMANTIC_INCOMPLETE`,
-      is_semantically_closed: false,
-      closure_reason: closure.reason,
-    };
-  }
-
-  return { blocked: false, reason: null, is_semantically_closed: true, closure_reason: closure.reason };
+  return { blocked: false, reason: null, is_semantically_closed: closure.closed, closure_reason: closure.reason };
 }
 
 export function logGuardResult(

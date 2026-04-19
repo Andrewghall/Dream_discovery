@@ -3221,6 +3221,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     const wasSplit = allResults.length > 1;
                     const units = allResults.map(res => res.dataPoint?.rawText).filter((t): t is string => !!t);
                     const unitIntents = allResults.map(res => (res as { unitIntent?: string }).unitIntent).filter((t): t is string => !!t);
+                    const filteredUnits = (respBody?.filteredUnits ?? []) as Array<{ text: string; reason: string }>;
 
                     emitDebug({
                       stage: 'ingest',
@@ -3241,6 +3242,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       originalText: fullText.substring(0, 70),
                       units: units.map(u => u.substring(0, 70)),
                       unitIntents,
+                      filteredUnits,
                     });
                     allResults.forEach((res, i) => {
                       if (res.blocked) {

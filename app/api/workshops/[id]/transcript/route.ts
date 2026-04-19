@@ -3,6 +3,7 @@ import { after } from 'next/server';
 import { splitIntoSemanticUnits } from '@/lib/ethentaflow/semantic-splitter';
 import { splitDeterministicSemanticUnits } from '@/lib/ethentaflow/deterministic-splitter';
 import { classifyUnitIntent } from '@/lib/ethentaflow/unit-intent';
+import { evaluateUnitQuality } from '@/lib/ethentaflow/unit-quality-gate';
 import { env } from '@/lib/env';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
@@ -889,36 +890,51 @@ export async function POST(
         }
       }
 
+      // Rule-based intent classification — applied to every unit regardless of split path
+      const unitIntents = semanticUnits.map(u => classifyUnitIntent(u));
+
+      // Per-unit quality gate — business anchor + signal strength check.
+      // Runs after splitting so individual units are evaluated on their own merit.
+      // Units that fail are stored as raw transcript records only (no DataPoint).
+      const unitQualities = semanticUnits.map(u => evaluateUnitQuality(u));
+      const filteredUnits: Array<{ text: string; reason: string }> = [];
+      semanticUnits.forEach((u, i) => {
+        if (!unitQualities[i].pass) {
+          filteredUnits.push({ text: u.substring(0, 80), reason: unitQualities[i].reason ?? 'unknown' });
+          console.log(`[UnitQuality][trace:${traceId}] Filtered unit ${i}: "${u.substring(0, 60)}" → ${unitQualities[i].reason}`);
+        }
+      });
+
       // When the full passage was split, all units inherit the client-side guard
       // validation that already passed (runCommitGuard on the full text).
       // Skip the server structural guard for split units — individual units may
       // contain only contractions (That's, We've) which trigger NO_FINITE_PREDICATE
       // even though the full passage is semantically complete.
       const wasSplit = semanticUnits.length > 1;
-      // Rule-based intent classification — applied to every unit regardless of split path
-      const unitIntents = semanticUnits.map(u => classifyUnitIntent(u));
 
       const results = [];
+      let firstGoodUnit = true;
       for (let i = 0; i < semanticUnits.length; i++) {
+        if (!unitQualities[i].pass) continue;
+
         const unitText = semanticUnits[i];
         const unitUtterance: FlushedUtterance = { ...utterance, text: unitText };
-        // Only the first unit writes spoken records. Subsequent units are semantic
-        // derivatives — their TranscriptChunks are owned by unit 1's ThoughtWindow.
-        // Passing empty records here prevents synthetic LLM text from polluting
-        // the transcript_chunks table (and the /transcript view).
-        const unitSpokenRecords: IncomingSpokenRecord[] = i === 0 ? incomingSpokenRecords : [];
+        // Only the first passing unit writes spoken records. Subsequent units are
+        // semantic derivatives — their TranscriptChunks are owned by unit 1's ThoughtWindow.
+        const unitSpokenRecords: IncomingSpokenRecord[] = firstGoodUnit ? incomingSpokenRecords : [];
         const result = await processResolvedThought(
           workshopId,
           unitUtterance,
           body.dialoguePhase,
           body.speakerId,
           unitSpokenRecords,
-          i === 0 ? body.slmMetadata as Record<string, unknown> | undefined : undefined,
+          firstGoodUnit ? body.slmMetadata as Record<string, unknown> | undefined : undefined,
           `${traceId}:u${i}`,
-          i === 0 ? body.clientDomainHint ?? null : null,
+          firstGoodUnit ? body.clientDomainHint ?? null : null,
           wasSplit,
         );
         results.push({ ...result, unitIntent: unitIntents[i] });
+        firstGoodUnit = false;
       }
 
       return NextResponse.json({
@@ -926,6 +942,7 @@ export async function POST(
         buffered: false,
         flushedCount: results.length,
         results,
+        filteredUnits,
         classificationId: null,
       });
     } catch (error) {
