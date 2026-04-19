@@ -156,8 +156,10 @@ async function processResolvedThought(
   // The only skip is a true transport-level duplicate: exact same workshopId +
   // startTimeMs + text, which hits the DB unique constraint.
   const chunkIds: string[] = [];
-  const firstStartTimeMs = incomingSpokenRecords[0]?.startTimeMs ?? now;
-  const lastEndTimeMs = incomingSpokenRecords[incomingSpokenRecords.length - 1]?.endTimeMs ?? now;
+  // Fallback to utterance timing when spoken records are empty (e.g. semantic
+  // split units 2..N which share timing with unit 1 but write no chunks).
+  const firstStartTimeMs = incomingSpokenRecords[0]?.startTimeMs ?? utterance.startTimeMs ?? now;
+  const lastEndTimeMs = incomingSpokenRecords[incomingSpokenRecords.length - 1]?.endTimeMs ?? utterance.endTimeMs ?? now;
 
   for (const rec of incomingSpokenRecords) {
     const chunkMeta = {
@@ -861,11 +863,11 @@ export async function POST(
       for (let i = 0; i < semanticUnits.length; i++) {
         const unitText = semanticUnits[i];
         const unitUtterance: FlushedUtterance = { ...utterance, text: unitText };
-        // Only the first unit writes spoken records; subsequent units are semantic
-        // derivatives that share the same timing window but no duplicate chunks.
-        const unitSpokenRecords: IncomingSpokenRecord[] = i === 0
-          ? incomingSpokenRecords
-          : [{ text: unitText, startTimeMs, endTimeMs, confidence: null, source: body.source }];
+        // Only the first unit writes spoken records. Subsequent units are semantic
+        // derivatives — their TranscriptChunks are owned by unit 1's ThoughtWindow.
+        // Passing empty records here prevents synthetic LLM text from polluting
+        // the transcript_chunks table (and the /transcript view).
+        const unitSpokenRecords: IncomingSpokenRecord[] = i === 0 ? incomingSpokenRecords : [];
         const result = await processResolvedThought(
           workshopId,
           unitUtterance,

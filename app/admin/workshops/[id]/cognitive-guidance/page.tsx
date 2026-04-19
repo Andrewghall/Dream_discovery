@@ -1420,37 +1420,43 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 reasoning: kw.evidence,
               })).filter(d => !!d.domain);
 
-              setHemisphereNodes(prev => ({
-                ...prev,
-                [dataPointId]: {
-                  dataPointId,
-                  createdAtMs,
-                  rawText: nodeRawText,
-                  dataPointSource: String(p.dataPoint.source ?? ''),
-                  speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
-                  dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
-                    ? (dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
-                    : null,
-                  transcriptChunk: p.transcriptChunk
-                    ? {
-                        speakerId: p.transcriptChunk.speakerId || null,
-                        startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
-                        endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
-                        confidence: typeof p.transcriptChunk.confidence === 'number' ? p.transcriptChunk.confidence : null,
-                        source: String(p.transcriptChunk.source ?? ''),
-                      }
-                    : null,
-                  classification: null,
-                  agenticAnalysis: kwDomains.length > 0 ? {
-                    domains: kwDomains,
-                    themes: [],
-                    actors: [],
-                    semanticMeaning: '',
-                    sentimentTone: 'neutral',
-                    overallConfidence: 0.5,
-                  } : null,
-                },
-              }));
+              setHemisphereNodes(prev => {
+                // Guard: once a node exists (created by SSE or a prior poll), never
+                // overwrite it. Overwriting resets classification/agenticAnalysis to
+                // null and causes the node to jump position.
+                if (prev[dataPointId]) return prev;
+                return {
+                  ...prev,
+                  [dataPointId]: {
+                    dataPointId,
+                    createdAtMs,
+                    rawText: nodeRawText,
+                    dataPointSource: String(p.dataPoint.source ?? ''),
+                    speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
+                    dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
+                      ? (dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
+                      : null,
+                    transcriptChunk: p.transcriptChunk
+                      ? {
+                          speakerId: p.transcriptChunk.speakerId || null,
+                          startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
+                          endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
+                          confidence: typeof p.transcriptChunk.confidence === 'number' ? p.transcriptChunk.confidence : null,
+                          source: String(p.transcriptChunk.source ?? ''),
+                        }
+                      : null,
+                    classification: null,
+                    agenticAnalysis: kwDomains.length > 0 ? {
+                      domains: kwDomains,
+                      themes: [],
+                      actors: [],
+                      semanticMeaning: '',
+                      sentimentTone: 'neutral',
+                      overallConfidence: 0.5,
+                    } : null,
+                  },
+                };
+              });
             }
             nodeCountSinceLastRunRef.current++;
             break;
