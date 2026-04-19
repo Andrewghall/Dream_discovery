@@ -141,6 +141,7 @@ async function processResolvedThought(
   bodySlmMetadata?: Record<string, unknown>,
   traceId?: string,
   clientDomainHint?: ClientDomainHint | null,
+  skipServerGuard = false,
 ) {
   const trace = traceId ? `[trace:${traceId}]` : '';
   const text = utterance.text;
@@ -188,10 +189,16 @@ async function processResolvedThought(
 
   // ══ STEP 2 — Guard check. Controls DataPoint creation only. ══════════════
   // Spoken records are already in DB regardless of this result.
-  const guard = applyServerGuard(text, utterance.source ?? 'unknown');
-  if (guard.blocked) {
-    console.log(`[ThoughtWindow${trace}] Guard blocked — spoken records persisted, no DataPoint:`, guard.reason);
-    return { blocked: true, reason: guard.reason, spokenRecordIds: chunkIds };
+  // skipServerGuard=true when the full passage was already validated by the
+  // stricter client-side runCommitGuard before semantic splitting. Individual
+  // split units often contain only contractions (That's, We've) rather than
+  // explicit finite verbs, which would cause NO_FINITE_PREDICATE false-positives.
+  if (!skipServerGuard) {
+    const guard = applyServerGuard(text, utterance.source ?? 'unknown');
+    if (guard.blocked) {
+      console.log(`[ThoughtWindow${trace}] Guard blocked — spoken records persisted, no DataPoint:`, guard.reason);
+      return { blocked: true, reason: guard.reason, spokenRecordIds: chunkIds };
+    }
   }
 
   // ══ STEP 3 — Create ThoughtWindow linking the already-written records. ════
@@ -859,6 +866,12 @@ export async function POST(
           semanticUnits.map(u => u.substring(0, 60)));
       }
 
+      // When the full passage was split, all units inherit the client-side guard
+      // validation that already passed (runCommitGuard on the full text).
+      // Skip the server structural guard for split units — individual units may
+      // contain only contractions (That's, We've) which trigger NO_FINITE_PREDICATE
+      // even though the full passage is semantically complete.
+      const wasSplit = semanticUnits.length > 1;
       const results = [];
       for (let i = 0; i < semanticUnits.length; i++) {
         const unitText = semanticUnits[i];
@@ -877,6 +890,7 @@ export async function POST(
           i === 0 ? body.slmMetadata as Record<string, unknown> | undefined : undefined,
           `${traceId}:u${i}`,
           i === 0 ? body.clientDomainHint ?? null : null,
+          wasSplit,
         );
         results.push(result);
       }

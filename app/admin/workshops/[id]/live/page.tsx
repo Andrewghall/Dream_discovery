@@ -3144,9 +3144,19 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   if (r.ok) {
                     const respBody = await r.json().catch(() => null);
                     setForwardedCount((n) => n + 1);
-                    const result = respBody?.results?.[0];
-                    const dpId = result?.dataPointId || result?.dataPoint?.id;
-                    if (dpId) {
+                    // Iterate ALL results — semantic splitting may produce 2–4 DataPoints
+                    // from a single passage. Only results[0] carries the primary domain
+                    // context; subsequent units reuse the same domain attribution.
+                    const allResults: Array<{ dataPointId?: string; dataPoint?: { id: string }; blocked?: boolean }> =
+                      Array.isArray(respBody?.results) ? respBody.results : [];
+                    const firstDpId = allResults[0]?.dataPointId || allResults[0]?.dataPoint?.id;
+                    if (!firstDpId && allResults[0]?.blocked !== true) {
+                      console.warn('[EthentaFlow] Commit POST returned no dataPointId — server blocked?', allResults[0]);
+                    }
+                    for (let ri = 0; ri < allResults.length; ri++) {
+                      const result = allResults[ri];
+                      const dpId = result?.dataPointId || result?.dataPoint?.id;
+                      if (!dpId) continue;
                       // Build the domain list for the hemisphere node.
                       // Primary domain from deterministic scorer gets high relevance.
                       // Secondary (if any) gets lower relevance. This replaces the
@@ -3173,7 +3183,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       const node: HemisphereNodeDatum = {
                         dataPointId: dpId,
                         createdAtMs: commitNow,
-                        rawText: fullText,
+                        // Use the unit's own text when available (split units carry their text
+                        // via the DataPoint rawText in the response), else fallback to fullText.
+                        rawText: (result as { rawText?: string })?.rawText ?? fullText,
                         dataPointSource: 'SPEECH',
                         speakerId,
                         dialoguePhase: safePhase(currentPhase) ?? null,
@@ -3196,9 +3208,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         },
                       };
                       setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
-                      console.log('[EthentaFlow] Node committed:', dpId, fullText.substring(0, 60));
-                    } else {
-                      console.warn('[EthentaFlow] Commit POST returned no dataPointId — server blocked?', result);
+                      console.log('[EthentaFlow] Node committed:', dpId, `(unit ${ri + 1}/${allResults.length})`, (node.rawText as string).substring(0, 60));
                     }
                     pushDiagEvent({
                       ts: commitNow,
