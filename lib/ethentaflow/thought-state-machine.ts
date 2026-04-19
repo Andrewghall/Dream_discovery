@@ -5,16 +5,19 @@ import { runCommitGuard, logGuardResult } from './thought-guard';
 import { scoreDomains, createDomainCluster, updateDomainCluster, type DomainCluster } from './domain-scoring-engine';
 
 // Timing constants
-// SPEECH_FINAL_WINDOW_MS: how long to wait after a Deepgram isFinal before treating it as
-// silence. 3 s is long enough that the next chunk in continuous speech (avg ~1.5–2 s) cancels
-// the timer, so all chunks from one continuous utterance accumulate into a single thought.
+// CONTINUATION_WINDOW_MS is the single boundary for thought segmentation.
+// Any speech arriving within this window from the same speaker is part of the
+// same ThoughtWindow — regardless of syntax, clause structure, or connectors.
+// Only silence exceeding this window (or forceFlush) closes a thought.
 const SILENCE_WINDOW_MS = 6000;
 const SPEECH_FINAL_WINDOW_MS = 3000;
 const MERGE_WAIT_MS = 15000;
 const CONTINUATION_WINDOW_MS = 5000;
 
-// Max hold cycles before forcing a validity decision
-const MAX_HOLD_CYCLES = 3;
+// holdCycles is an internal counter only — it is NOT a commit trigger.
+// Pause count must not force a commit; a thought may contain unlimited pauses.
+let _holdCyclesWarningIssued = false;
+const _MAX_HOLD_CYCLES_UNUSED = 3; void _MAX_HOLD_CYCLES_UNUSED; void _holdCyclesWarningIssued;
 
 let _attemptCounter = 0;
 function nextAttemptId(): string {
@@ -81,8 +84,9 @@ export class ThoughtStateMachine {
 
     this.clearSilenceTimer();
 
-    if (this.current?.state === 'resolved_candidate' && ThoughtStateMachine.isContinuationChunk(trimmed)) {
-      // Speaker continued — re-open the emerging thought and keep accumulating
+    if (this.current?.state === 'resolved_candidate') {
+      // Same speaker, continuation window still open → same ThoughtWindow, always.
+      // Time + speaker identity is the signal. Syntax is irrelevant here.
       this.clearContinuationTimer();
       this.appendChunk(trimmed);
       this.current.state = 'capturing';
@@ -90,31 +94,13 @@ export class ThoughtStateMachine {
     } else if (!this.current || this.current.state === 'committed' || this.current.state === 'discarded') {
       this.startNew(trimmed);
       this.evaluateCurrent();
-    } else if (this.current.state === 'resolved_candidate') {
-      this.clearContinuationTimer();
-      // Before committing and starting fresh, check if this chunk is topically
-      // continuous with the resolved candidate — fragments and referential chunks
-      // are mid-argument, not new thoughts.
-      const newFeatures = extractFeatures(trimmed, this.lensPack);
-      const isFragment = !newFeatures.has_subject || !newFeatures.has_predicate;
-      const isReferential = newFeatures.referential_dependency_score > 0.45;
-      if (isFragment || isReferential) {
-        // Still developing the same argument — fold in and keep accumulating
-        this.appendChunk(trimmed);
-        this.current.state = 'capturing';
-        this.evaluateCurrent();
-      } else {
-        // Clear topic shift — commit resolved candidate and start fresh
-        this.commit(this.current, false);
-        this.startNew(trimmed);
-        this.evaluateCurrent();
-      }
     } else {
       // New chunk during capturing / merge_wait / possible_pause.
-      // If we were in merge_wait, cancel the existing timer — new speech has
-      // arrived, so the window resets from now rather than from first-hold time.
+      // Speech resuming from merge_wait is active continuation — reset all hold
+      // state so accumulated pauses do not degrade the thought or trigger a commit.
       if (this.current.state === 'merge_wait') {
         this.clearMergeTimer();
+        this.holdCycles = 0;
       }
       this.appendChunk(trimmed);
       this.evaluateCurrent();
@@ -259,14 +245,14 @@ export class ThoughtStateMachine {
       return;
     }
 
-    // hold or escalate — no score-based promotion; held material must pass the guard
-    if (forceDecide || this.holdCycles >= MAX_HOLD_CYCLES) {
-      // Let commit() run the shared guard; it will discard if blocked
+    // hold or escalate — only forceDecide (from forceFlush or merge timer expiry) commits here.
+    // Pause count (holdCycles) is never a commit trigger — a thought may contain unlimited pauses.
+    if (forceDecide) {
       this.commit(attempt, fromMergeTimer);
       return;
     }
 
-    // Enter merge_wait — give speaker a chance to continue
+    // Enter merge_wait — keep the window open for continuation
     if (attempt.state !== 'merge_wait') {
       attempt.state = 'merge_wait';
       attempt.hold_started_ms = Date.now();
