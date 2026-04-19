@@ -3035,6 +3035,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const stream = new CaptureAPIStream({
         onTranscript: (msg: StreamTranscript) => {
           const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
+          console.log('[EthentaFlow:onTranscript] raw=', msg.rawText?.substring(0, 50), 'isFinal=', msg.isFinal, 'speechFinal=', msg.speechFinal, 'textEmpty=', !text);
           if (!text || msg.isFinal === false) return;
 
           if (lastTranscriptionErrorRef.current) {
