@@ -9,11 +9,7 @@
  *   - ≥ 5 words
  *   - a finite predicate (or is a clean imperative)
  *   - referential dependency < 0.85
- *
- * Business-anchor and signal-strength checks have been removed.
- * When the LLM splitter identified the unit, it already judged it meaningful.
- * Human-centred insights ("most people come to work to do their best") carry
- * no business vocabulary but are valid and must not be silently dropped.
+ *   - at least one signal type OR a business anchor
  */
 
 import { extractFeatures } from './thought-feature-extractor';
@@ -56,12 +52,16 @@ export function evaluateUnitQuality(text: string): UnitQualityResult {
     features.target_state_signal_score,
   );
 
+  if (features.business_anchor_score === 0 && signalStrength === 0) {
+    return { pass: false, reason: 'no signal and no business anchor', score: 0.15 };
+  }
+
   const score = Math.min(
-    0.40 +
-    features.business_anchor_score * 0.25 +
+    0.30 +
+    features.business_anchor_score * 0.30 +
     signalStrength * 0.20 +
     (features.has_subject ? 0.10 : 0) +
-    features.specificity_score * 0.05,
+    features.specificity_score * 0.10,
     1.0,
   );
 
