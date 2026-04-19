@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
-import { splitIntoSemanticUnits } from '@/lib/ethentaflow/semantic-splitter';
-import { splitDeterministicSemanticUnits } from '@/lib/ethentaflow/deterministic-splitter';
-import { classifyUnitIntent } from '@/lib/ethentaflow/unit-intent';
-import { evaluateUnitQuality } from '@/lib/ethentaflow/unit-quality-gate';
 import { classifyReasoningRole } from '@/lib/ethentaflow/reasoning-role';
 import { env } from '@/lib/env';
 import { nanoid } from 'nanoid';
@@ -791,117 +787,31 @@ export async function POST(
         }];
 
     try {
-      // ── Semantic splitting: one resolved passage → 1–4 distinct meaning units ──
-      // Runs synchronously so all DataPoints are created before responding.
-      // Units 2..N reuse the same timing window as unit 1.
-      //
-      // Feature flag: ENABLE_SEMANTIC_SPLIT_V2
-      //   false (default) — v1: current splitting behaviour
-      //   true            — v2: new splitting logic (placeholder; slot changes here)
-      let semanticUnits: string[];
-      if (env.ENABLE_SEMANTIC_SPLIT_V2) {
-        // v2: deterministic sentence-level segmentation — no LLM, no rewriting
-        const v2Result = splitDeterministicSemanticUnits(text);
-        semanticUnits = v2Result.units;
-        if (v2Result.discarded.length > 0) {
-          console.log(`[SemanticSplit][trace:${traceId}][v2] Discarded ${v2Result.discarded.length} fragment(s):`,
-            v2Result.discarded.map(d => `"${d.originalText.substring(0, 50)}" → ${d.reason}`));
-        }
-        if (semanticUnits.length > 1) {
-          console.log(`[SemanticSplit][trace:${traceId}][v2] Split into ${semanticUnits.length} units:`,
-            semanticUnits.map(u => u.substring(0, 60)));
-        }
-      } else {
-        // v1: LLM-based splitter — do not modify
-        semanticUnits = await splitIntoSemanticUnits(text);
-        if (semanticUnits.length > 1) {
-          console.log(`[SemanticSplit][trace:${traceId}][v1] Split into ${semanticUnits.length} units:`,
-            semanticUnits.map(u => u.substring(0, 60)));
-        }
-      }
-
-      // Rule-based classification — intent and reasoning role per unit
-      const unitIntents = semanticUnits.map(u => classifyUnitIntent(u));
-      const unitReasoningRoles = semanticUnits.map(u => classifyReasoningRole(u));
-
-      // Per-unit quality gate — business anchor + signal strength check.
-      // Runs after splitting so individual units are evaluated on their own merit.
-      // Units that fail are stored as raw transcript records only (no DataPoint).
-      const unitQualities = semanticUnits.map(u => evaluateUnitQuality(u));
-      const filteredUnits: Array<{ text: string; reason: string }> = [];
-      semanticUnits.forEach((u, i) => {
-        if (!unitQualities[i].pass) {
-          filteredUnits.push({ text: u.substring(0, 80), reason: unitQualities[i].reason ?? 'unknown' });
-          console.log(`[UnitQuality][trace:${traceId}] Filtered unit ${i}: "${u.substring(0, 60)}" → ${unitQualities[i].reason}`);
-        }
-      });
-
-      // When the full passage was split, all units inherit the client-side guard
-      // validation that already passed (runCommitGuard on the full text).
-      // Skip the server structural guard for split units — individual units may
-      // contain only contractions (That's, We've) which trigger NO_FINITE_PREDICATE
-      // even though the full passage is semantically complete.
-      const wasSplit = semanticUnits.length > 1;
-
-      const results = [];
-      let goodIndex = 0;
-      let sourceWindowId: string | undefined; // set after first unit is created
-      for (let i = 0; i < semanticUnits.length; i++) {
-        if (!unitQualities[i].pass) continue;
-
-        const isFirst = goodIndex === 0;
-        const unitText = semanticUnits[i];
-        const unitUtterance: FlushedUtterance = { ...utterance, text: unitText };
-        // Only the first passing unit writes spoken records. Subsequent units are
-        // semantic derivatives — their TranscriptChunks are owned by unit 1's ThoughtWindow.
-        const unitSpokenRecords: IncomingSpokenRecord[] = isFirst ? incomingSpokenRecords : [];
-        const result = await processResolvedThought(
-          workshopId,
-          unitUtterance,
-          body.dialoguePhase,
-          body.speakerId,
-          unitSpokenRecords,
-          isFirst ? body.slmMetadata as Record<string, unknown> | undefined : undefined,
-          `${traceId}:u${i}`,
-          isFirst ? body.clientDomainHint ?? null : null,
-          wasSplit,
-          {
-            sourceWindowId,          // undefined for first unit → defaults to own thoughtWindowId
-            sequenceIndex: goodIndex,
-            reasoningRole: unitReasoningRoles[i],
-          },
-        );
-
-        // After first unit created, record its thoughtWindowId as the shared sourceWindowId
-        if (isFirst && result.thoughtWindowId) {
-          sourceWindowId = result.thoughtWindowId;
-        }
-
-        results.push({ ...result, unitIntent: unitIntents[i], unitReasoningRole: unitReasoningRoles[i] });
-        goodIndex++;
-      }
-
-      // Batch-update relatedDataPointIds on all sibling DataPoints
-      if (results.length > 1) {
-        const allDpIds = results
-          .map(r => r.dataPointId)
-          .filter((id): id is string => typeof id === 'string');
-        await Promise.all(
-          allDpIds.map(dpId =>
-            prisma.dataPoint.update({
-              where: { id: dpId },
-              data: { relatedDataPointIds: allDpIds.filter(id => id !== dpId) },
-            })
-          )
-        );
-      }
+      // One committed passage = one DataPoint. No splitting.
+      // The TSM commit is the unit of meaning — the full passage is passed through verbatim.
+      const result = await processResolvedThought(
+        workshopId,
+        utterance,
+        body.dialoguePhase,
+        body.speakerId,
+        incomingSpokenRecords,
+        body.slmMetadata as Record<string, unknown> | undefined,
+        traceId,
+        body.clientDomainHint ?? null,
+        false,
+        {
+          sourceWindowId: undefined,
+          sequenceIndex: 0,
+          reasoningRole: classifyReasoningRole(text),
+        },
+      );
 
       return NextResponse.json({
         ok: true,
         buffered: false,
-        flushedCount: results.length,
-        results,
-        filteredUnits,
+        flushedCount: 1,
+        results: [{ ...result, unitIntent: null, unitReasoningRole: classifyReasoningRole(text) }],
+        filteredUnits: [],
         classificationId: null,
       });
     } catch (error) {
