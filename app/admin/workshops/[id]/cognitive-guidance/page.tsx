@@ -55,7 +55,6 @@ import type { WorkshopPhase, FacilitationQuestion, SubQuestion, WorkshopPrepRese
 import { getDimensionColors, darkenHex, lightenHex } from '@/lib/cognition/workshop-dimensions';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { useAudioCapture } from '@/hooks/use-audio-capture';
-import type { StreamTranscript } from '@/lib/captureapi/client';
 import { MicSetupDialog } from '@/components/cognitive-guidance/mic-setup-dialog';
 import VersionHistoryPanel from '@/components/cognitive-guidance/version-history-panel';
 import type { LiveSessionVersionPayload } from '@/lib/cognitive-guidance/pipeline';
@@ -214,73 +213,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const customKeywordMapRef = useRef<[string, RegExp][] | null>(null);
   const customLensToDomainRef = useRef<Record<string, string> | null>(null);
 
-  // Live hemisphere nodes — updated in real-time from CaptureAPI token stream.
-  // One "live" node per speaker that updates as words stream in, then removed
-  // when speechFinal fires (permanent node arrives from backend SSE/polling).
-  const liveNodesBySpeaker = useRef<Map<string, string>>(new Map()); // speakerId → liveId
-
-  const handleTranscriptStream = useCallback((msg: StreamTranscript) => {
-    const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
-    if (!text) return;
-    const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : 'speaker_0';
-    const liveId = `live:${speakerId}`;
-
-    if (msg.speechFinal) {
-      // Utterance complete — remove live node.
-      // The permanent node will arrive via datapoint.created SSE from the backend POST.
-      liveNodesBySpeaker.current.delete(speakerId);
-      setHemisphereNodes(prev => {
-        if (!prev[liveId]) return prev;
-        const next = { ...prev };
-        delete next[liveId];
-        return next;
-      });
-      return;
-    }
-
-    // Only show on hemisphere if 4+ words (filter noise fragments)
-    const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
-    if (wordCount < 4) return;
-
-    // Run keyword inference on the growing text
-    const kwLensResults = text.length >= 3 ? inferKeywordLenses(text, customKeywordMapRef.current) : [];
-    const kwDomains = kwLensResults.map(kw => ({
-      domain: (customLensToDomainRef.current ?? LENS_TO_DOMAIN)[kw.lens] ?? kw.lens,
-      relevance: Math.min(0.95, kw.relevance + 0.4),
-      reasoning: kw.evidence,
-    })).filter(d => !!d.domain);
-
-    const hNode: HemisphereNodeDatum = {
-      dataPointId: liveId,
-      createdAtMs: Date.now(),
-      rawText: text,
-      dataPointSource: 'SPEECH',
-      speakerId,
-      dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(
-        dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH'
-      )
-        ? (dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
-        : null,
-      transcriptChunk: null,
-      classification: null,
-      agenticAnalysis: kwDomains.length > 0 ? {
-        domains: kwDomains,
-        themes: [],
-        actors: [],
-        semanticMeaning: '',
-        sentimentTone: 'neutral',
-        overallConfidence: 0.5,
-      } : null,
-    };
-
-    liveNodesBySpeaker.current.set(speakerId, liveId);
-    setHemisphereNodes(prev => ({ ...prev, [liveId]: hNode }));
-  }, []);
-
   const audio = useAudioCapture({
     workshopId,
     getDialoguePhase: () => dialoguePhaseRef.current,
-    onTranscriptStream: handleTranscriptStream,
   });
   const [micDialogOpen, setMicDialogOpen] = useState(false);
 
