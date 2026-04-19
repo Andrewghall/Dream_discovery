@@ -13,6 +13,12 @@ const SILENCE_WINDOW_MS = 6000;
 const SPEECH_FINAL_WINDOW_MS = 3000;
 const MERGE_WAIT_MS = 15000;
 const CONTINUATION_WINDOW_MS = 5000;
+// How long to hold a "complete" thought before entering resolved_candidate.
+// Without this, a complete sentence commits 8s after Deepgram's utterance
+// boundary — too short for natural intra-thought pauses in workshop speech.
+// This hold reuses the merge_wait mechanism so any new speech within
+// SPEECH_FINAL_WINDOW_MS + COMPLETE_THOUGHT_HOLD_MS reuses the same window.
+const COMPLETE_THOUGHT_HOLD_MS = 9_000;
 
 // holdCycles is an internal counter only — it is NOT a commit trigger.
 // Pause count must not force a commit; a thought may contain unlimited pauses.
@@ -228,6 +234,23 @@ export class ThoughtStateMachine {
 
     // Route via thought_completeness for the thought integrity layer
     if (validity.thought_completeness === 'complete') {
+      // Complete thoughts still need a continuation hold before resolvedCandidate.
+      // Without it, a single grammatically-complete sentence (S+P+O + domain term)
+      // commits 8s after the utterance boundary — too short for workshop pauses.
+      // Hold for COMPLETE_THOUGHT_HOLD_MS first; new speech clears the timer and
+      // continues accumulating in the same window (merge_wait handles this already).
+      if (!forceDecide && attempt.state !== 'merge_wait') {
+        attempt.state = 'merge_wait';
+        attempt.hold_started_ms = Date.now();
+        this.holdCycles++;
+        this.callbacks.onHold?.({ ...attempt }, this.holdCycles);
+        this.mergeTimer = setTimeout(() => {
+          if (!this.current || this.current.id !== attempt.id || this.destroyed) return;
+          this.clearMergeTimer();
+          this.enterResolvedCandidate(this.current, false);
+        }, COMPLETE_THOUGHT_HOLD_MS);
+        return;
+      }
       this.enterResolvedCandidate(attempt, forceDecide);
       return;
     }
