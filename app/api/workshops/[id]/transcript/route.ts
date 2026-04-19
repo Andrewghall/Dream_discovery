@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { splitIntoSemanticUnits } from '@/lib/ethentaflow/semantic-splitter';
 import { splitDeterministicSemanticUnits } from '@/lib/ethentaflow/deterministic-splitter';
+import { classifyUnitIntent } from '@/lib/ethentaflow/unit-intent';
 import { env } from '@/lib/env';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
@@ -894,6 +895,9 @@ export async function POST(
       // contain only contractions (That's, We've) which trigger NO_FINITE_PREDICATE
       // even though the full passage is semantically complete.
       const wasSplit = semanticUnits.length > 1;
+      // Rule-based intent classification — applied to every unit regardless of split path
+      const unitIntents = semanticUnits.map(u => classifyUnitIntent(u));
+
       const results = [];
       for (let i = 0; i < semanticUnits.length; i++) {
         const unitText = semanticUnits[i];
@@ -914,7 +918,7 @@ export async function POST(
           i === 0 ? body.clientDomainHint ?? null : null,
           wasSplit,
         );
-        results.push(result);
+        results.push({ ...result, unitIntent: unitIntents[i] });
       }
 
       return NextResponse.json({

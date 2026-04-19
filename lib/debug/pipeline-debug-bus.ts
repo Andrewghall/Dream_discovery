@@ -22,6 +22,7 @@ export interface DebugLogEntry {
   wasSplit?: boolean;
   unitCount?: number;
   units?: string[];
+  unitIntents?: string[];
   originalText?: string;
   // SSE
   dataPointId?: string;

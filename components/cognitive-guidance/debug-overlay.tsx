@@ -73,9 +73,11 @@ function EntryRow({ entry }: { entry: DebugLogEntry }) {
       details.push(`src: "${entry.originalText.substring(0, 60)}"`);
     if (entry.wasSplit !== undefined)
       details.push(`split: ${entry.wasSplit ? `YES → ${entry.unitCount} units` : 'NO'}`);
-    entry.units?.forEach((u, i) =>
-      details.push(`  [${i + 1}] "${u.substring(0, 60)}"`)
-    );
+    entry.units?.forEach((u, i) => {
+      const intent = entry.unitIntents?.[i];
+      const badge = intent ? `[${intent}] ` : '';
+      details.push(`  [${i + 1}] ${badge}"${u.substring(0, 60)}"`);
+    });
   }
 
   if (entry.stage === 'sse') {

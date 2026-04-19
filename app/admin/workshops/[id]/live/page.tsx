@@ -3185,6 +3185,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     const dpIds = allResults.map(res => res.dataPointId ?? res.dataPoint?.id).filter((id): id is string => !!id);
                     const wasSplit = allResults.length > 1;
                     const units = allResults.map(res => res.dataPoint?.rawText).filter((t): t is string => !!t);
+                    const unitIntents = allResults.map(res => (res as { unitIntent?: string }).unitIntent).filter((t): t is string => !!t);
 
                     emitDebug({
                       stage: 'ingest',
@@ -3204,6 +3205,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       unitCount: allResults.length,
                       originalText: fullText.substring(0, 70),
                       units: units.map(u => u.substring(0, 70)),
+                      unitIntents,
                     });
                     allResults.forEach((res, i) => {
                       if (res.blocked) {
