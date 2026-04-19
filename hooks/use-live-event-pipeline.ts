@@ -126,7 +126,7 @@ export interface LiveEventPipelineReturn {
 // Constants
 // -----------------------------------------------------------------------
 
-const POLL_INTERVAL_MS = 3_000;
+const POLL_INTERVAL_MS = 1_000;
 
 const POLL_TYPES = [
   'datapoint.created',
