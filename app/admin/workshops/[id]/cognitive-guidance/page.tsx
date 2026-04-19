@@ -71,6 +71,8 @@ import {
   type PrepQuestionSet,
 } from './_utils/guidance-helpers';
 import { NodeDetailModal } from './_components/NodeDetailModal';
+import { DebugOverlay } from '@/components/cognitive-guidance/debug-overlay';
+import { emitDebug } from '@/lib/debug/pipeline-debug-bus';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -810,6 +812,15 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         const dataPointId = p?.dataPoint?.id;
         if (!dataPointId) return;
 
+        // ── Debug: SSE received ─────────────────────────
+        emitDebug({
+          stage: 'sse',
+          event: 'DATAPOINT.CREATED',
+          status: 'pass',
+          dataPointId,
+          thoughtWindowId: (evt.payload as Record<string, unknown>)?.thoughtWindowId as string | undefined,
+        });
+
         const createdAtMs =
           typeof p.dataPoint.createdAt === 'string'
             ? Date.parse(p.dataPoint.createdAt)
@@ -877,7 +888,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             } : null,
           };
           setHemisphereNodes(prev => {
-            if (prev[dataPointId]) return prev;
+            if (prev[dataPointId]) {
+              emitDebug({ stage: 'hemisphere', event: 'OVERWRITE_PREVENTED', status: 'info', nodeId: dataPointId, nodeCount: Object.keys(prev).length, hemisphereAction: 'overwrite-prevented' });
+              return prev;
+            }
+            const newCount = Object.keys(prev).length + 1;
+            emitDebug({ stage: 'hemisphere', event: 'NODE_ADDED', status: 'pass', nodeId: dataPointId, nodeCount: newCount, text: nodeRawText.substring(0, 70), hemisphereAction: 'added', thoughtWindowId: (evt.payload as Record<string, unknown>)?.thoughtWindowId as string | undefined });
             return { ...prev, [dataPointId]: hNode };
           });
 
@@ -1390,6 +1406,15 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             const p = payload as DataPointCreatedPayload;
             const dataPointId = p?.dataPoint?.id;
             if (!dataPointId) return;
+
+            // ── Debug: polling SSE ─────────────────────────
+            emitDebug({
+              stage: 'sse',
+              event: 'DATAPOINT.CREATED (poll)',
+              status: 'info',
+              dataPointId,
+              thoughtWindowId: (payload as Record<string, unknown>)?.thoughtWindowId as string | undefined,
+            });
             const createdAtMs =
               typeof p.dataPoint.createdAt === 'string'
                 ? Date.parse(p.dataPoint.createdAt)
@@ -1424,7 +1449,12 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 // Guard: once a node exists (created by SSE or a prior poll), never
                 // overwrite it. Overwriting resets classification/agenticAnalysis to
                 // null and causes the node to jump position.
-                if (prev[dataPointId]) return prev;
+                if (prev[dataPointId]) {
+                  emitDebug({ stage: 'hemisphere', event: 'OVERWRITE_PREVENTED', status: 'info', nodeId: dataPointId, nodeCount: Object.keys(prev).length, hemisphereAction: 'overwrite-prevented' });
+                  return prev;
+                }
+                const newCount = Object.keys(prev).length + 1;
+                emitDebug({ stage: 'hemisphere', event: 'NODE_ADDED (poll)', status: 'pass', nodeId: dataPointId, nodeCount: newCount, text: nodeRawText.substring(0, 70), hemisphereAction: 'added', thoughtWindowId: (payload as Record<string, unknown>)?.thoughtWindowId as string | undefined });
                 return {
                   ...prev,
                   [dataPointId]: {
@@ -2105,6 +2135,9 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           onRestore={restoreFromVersion}
           onLabel={handleVersionLabel}
         />
+
+        {/* ═══ PIPELINE DEBUG OVERLAY (Ctrl+Shift+D) ═══ */}
+        <DebugOverlay />
       </div>
     </div>
   );

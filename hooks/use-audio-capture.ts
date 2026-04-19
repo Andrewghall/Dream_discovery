@@ -13,6 +13,7 @@ import { CaptureAPIStream, type StreamTranscript } from '@/lib/captureapi/client
 import { ThoughtStateMachine } from '@/lib/ethentaflow/thought-state-machine';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
 import type { CommitCandidate, LensPack, ThoughtAttempt } from '@/lib/ethentaflow/types';
+import { emitDebug } from '@/lib/debug/pipeline-debug-bus';
 
 // ── Types ────────────────────────────────────────────────
 export interface AudioCaptureOptions {
@@ -231,35 +232,131 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
                   text: attempt.full_text.substring(0, 80),
                 });
 
+                // ── Debug: TSM COMMIT ──────────────────────────
+                emitDebug({
+                  stage: 'tsm',
+                  event: 'COMMIT',
+                  status: 'pass',
+                  thoughtWindowId: attempt.id,
+                  text: attempt.full_text.substring(0, 80),
+                  chunks: attempt.chunks.length,
+                });
+
+                const requestBody = JSON.stringify({
+                  speakerId,
+                  startTime: attempt.start_time_ms,
+                  endTime: commitNow,
+                  text: attempt.full_text,
+                  rawText: attempt.full_text,
+                  confidence: null,
+                  source: 'deepgram' as const,
+                  dialoguePhase: getDialoguePhase(),
+                  flush: candidate.merge_expired,
+                  spokenRecords,
+                  clientDomainHint: attempt.domain ? {
+                    primaryDomain: attempt.domain.primary_domain ?? 'General',
+                    secondaryDomain: attempt.domain.secondary_domain ?? null,
+                    confidence: attempt.domain.confidence ?? 0,
+                    decisionPath: attempt.domain.decision_path ?? '',
+                  } : null,
+                });
+
+                // ── Debug: INGEST sent ─────────────────────────
+                emitDebug({
+                  stage: 'ingest',
+                  event: 'SENT',
+                  status: 'info',
+                  thoughtWindowId: attempt.id,
+                  requestText: attempt.full_text.substring(0, 60),
+                });
+
                 fetch(ingestUrl, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    speakerId,
-                    startTime: attempt.start_time_ms,
-                    endTime: commitNow,
-                    text: attempt.full_text,
-                    rawText: attempt.full_text,
-                    confidence: null,
-                    source: 'deepgram' as const,
-                    dialoguePhase: getDialoguePhase(),
-                    flush: candidate.merge_expired,
-                    spokenRecords,
-                    clientDomainHint: attempt.domain ? {
-                      primaryDomain: attempt.domain.primary_domain ?? 'General',
-                      secondaryDomain: attempt.domain.secondary_domain ?? null,
-                      confidence: attempt.domain.confidence ?? 0,
-                      decisionPath: attempt.domain.decision_path ?? '',
-                    } : null,
-                  }),
-                }).catch(() => {
-                  // Non-fatal
+                  body: requestBody,
+                })
+                .then(async r => {
+                  const body = await r.json().catch(() => null) as {
+                    results?: Array<{
+                      dataPointId?: string;
+                      dataPoint?: { id: string; rawText?: string };
+                      thoughtWindowId?: string;
+                      blocked?: boolean;
+                      reason?: string;
+                    }>;
+                  } | null;
+
+                  const results = body?.results ?? [];
+                  const serverWinId = results[0]?.thoughtWindowId;
+                  const dpIds = results
+                    .map(res => res.dataPointId ?? res.dataPoint?.id)
+                    .filter((id): id is string => !!id);
+                  const wasSplit = results.length > 1;
+                  const units = results
+                    .map(res => res.dataPoint?.rawText)
+                    .filter((t): t is string => !!t);
+
+                  // ── Debug: INGEST response ─────────────────────
+                  emitDebug({
+                    stage: 'ingest',
+                    event: r.ok ? 'RESPONSE' : 'RESPONSE_ERROR',
+                    status: r.ok ? 'pass' : 'error',
+                    thoughtWindowId: serverWinId,
+                    httpStatus: r.status,
+                    dataPointIds: dpIds,
+                    requestText: attempt.full_text.substring(0, 60),
+                  });
+
+                  // ── Debug: SPLIT ───────────────────────────────
+                  emitDebug({
+                    stage: 'split',
+                    event: wasSplit ? 'SEMANTIC_SPLIT' : 'NO_SPLIT',
+                    status: 'info',
+                    thoughtWindowId: serverWinId,
+                    wasSplit,
+                    unitCount: results.length,
+                    originalText: attempt.full_text.substring(0, 70),
+                    units: units.map(u => u.substring(0, 70)),
+                  });
+
+                  // ── Debug: blocked units ───────────────────────
+                  results.forEach((res, i) => {
+                    if (res.blocked) {
+                      emitDebug({
+                        stage: 'ingest',
+                        event: `UNIT_${i}_BLOCKED`,
+                        status: 'blocked',
+                        thoughtWindowId: serverWinId,
+                        guardReason: res.reason ?? 'unknown',
+                      });
+                    }
+                  });
+                })
+                .catch(err => {
+                  emitDebug({
+                    stage: 'ingest',
+                    event: 'FETCH_ERROR',
+                    status: 'error',
+                    thoughtWindowId: attempt.id,
+                    guardReason: err instanceof Error ? err.message : String(err),
+                  });
                 });
               },
               onDiscard: (attempt: ThoughtAttempt) => {
                 console.log('[EthentaFlow] Discarded —', speakerId,
                   '| text:', attempt.full_text.substring(0, 80),
                   '| guard:', attempt.validity?.reasons?.slice(0, 2).join('; '));
+
+                // ── Debug: TSM DISCARD ─────────────────────────
+                emitDebug({
+                  stage: 'tsm',
+                  event: 'DISCARD',
+                  status: 'blocked',
+                  thoughtWindowId: attempt.id,
+                  text: attempt.full_text.substring(0, 80),
+                  chunks: attempt.chunks.length,
+                  guardReason: attempt.validity?.reasons?.slice(0, 2).join('; ') ?? 'unknown',
+                });
                 // Store raw spoken records even for discarded thoughts.
                 // Every spoken word reaches the DB regardless of machine decisions.
                 const discardNow = Date.now();
