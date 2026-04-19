@@ -4,11 +4,15 @@
  * useAudioCapture — mic test, CaptureAPI WebSocket streaming, live audio level.
  *
  * Extracted from live/page.tsx for reuse on the cognitive-guidance page.
- * Handles: getUserMedia → PCM resampling (16kHz) → CaptureAPIStream WS → ingest POST.
+ * Handles: getUserMedia → PCM resampling (16kHz) → CaptureAPIStream WS →
+ * ThoughtStateMachine accumulation → ingest POST (one post per resolved thought).
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { CaptureAPIStream, type StreamTranscript } from '@/lib/captureapi/client';
+import { ThoughtStateMachine } from '@/lib/ethentaflow/thought-state-machine';
+import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
+import type { CommitCandidate, LensPack, ThoughtAttempt } from '@/lib/ethentaflow/types';
 
 // ── Types ────────────────────────────────────────────────
 export interface AudioCaptureOptions {
@@ -19,6 +23,9 @@ export interface AudioCaptureOptions {
    *  Enables the page to create/update live hemisphere nodes in real-time
    *  as CaptureAPI streams growing text. */
   onTranscriptStream?: (msg: StreamTranscript) => void;
+  /** Workshop-specific lens pack for ThoughtStateMachine domain scoring.
+   *  Defaults to DEFAULT_LENS_PACK when not provided. */
+  lensPack?: LensPack;
 }
 
 export interface AudioCaptureReturn {
@@ -42,7 +49,7 @@ export interface AudioCaptureReturn {
 }
 
 // ── Hook ─────────────────────────────────────────────────
-export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStream }: AudioCaptureOptions): AudioCaptureReturn {
+export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStream, lensPack }: AudioCaptureOptions): AudioCaptureReturn {
   // ── State ──
   const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [micDevices, setMicDevices] = useState<{ deviceId: string; label: string }[]>([]);
@@ -62,10 +69,17 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
   const captureStreamRef = useRef<MediaStream | null>(null);
   const captureAudioCtxRef = useRef<AudioContext | null>(null);
   const captureRafRef = useRef<number | null>(null);
+  // Per-speaker ThoughtStateMachines — persist across WebSocket reconnects within a session.
+  // Flushed and destroyed on stopCapture so each capture session starts clean.
+  const stateMachinesRef = useRef<Map<string, ThoughtStateMachine>>(new Map());
+  // Lens pack ref — updated when lensPack prop changes; read inside startCapture closure.
+  const lensPackRef = useRef<LensPack>(lensPack ?? DEFAULT_LENS_PACK);
 
-  // Browser-relay ingest URL — used as fallback when Railway server-to-server is not configured.
-  // Railway handles persistence when DREAM_API_URL + DREAM_CAPTURE_SECRET are set on the Railway service.
-  // When both paths are active, the transcript route deduplicates by (workshopId, text, source).
+  useEffect(() => {
+    lensPackRef.current = lensPack ?? DEFAULT_LENS_PACK;
+  }, [lensPack]);
+
+  // Browser-relay ingest URL
   const ingestUrl = `/api/workshops/${encodeURIComponent(workshopId)}/transcript`;
 
   // ── refreshMicDevices ──
@@ -99,6 +113,24 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
     try { await audioContextRef.current?.close(); } catch { /* ignore */ }
     audioContextRef.current = null;
     analyserRef.current = null;
+  }, []);
+
+  // ── stopCapture ──
+  const stopCapture = useCallback(() => {
+    // Flush any in-progress thoughts before tearing down
+    stateMachinesRef.current.forEach((m) => { m.forceFlush(); m.destroy(); });
+    stateMachinesRef.current.clear();
+
+    try { if (captureRafRef.current) cancelAnimationFrame(captureRafRef.current); } catch { /* ignore */ }
+    captureRafRef.current = null;
+    try { captureStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+    captureStreamRef.current = null;
+    try { captureAudioCtxRef.current?.close(); } catch { /* ignore */ }
+    captureAudioCtxRef.current = null;
+    try { captureWSRef.current?.close(); } catch { /* ignore */ }
+    captureWSRef.current = null;
+    setCapturing(false);
+    setAudioLevel(0);
   }, []);
 
   // ── startMicTest ──
@@ -151,28 +183,12 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
     }
   }, [selectedMicId, stopMicTest, refreshMicDevices]);
 
-  // ── stopCapture ──
-  const stopCapture = useCallback(() => {
-    try { if (captureRafRef.current) cancelAnimationFrame(captureRafRef.current); } catch { /* ignore */ }
-    captureRafRef.current = null;
-    try { captureStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
-    captureStreamRef.current = null;
-    try { captureAudioCtxRef.current?.close(); } catch { /* ignore */ }
-    captureAudioCtxRef.current = null;
-    try { captureWSRef.current?.close(); } catch { /* ignore */ }
-    captureWSRef.current = null;
-    setCapturing(false);
-    setAudioLevel(0);
-  }, []);
-
   // ── startCapture ──
   const startCapture = useCallback(async () => {
     setCaptureError(null);
     await stopMicTest(); // Stop any running mic test
 
     // 1. Connect CaptureAPI WebSocket
-    // Pass workshopId so Railway POSTs transcripts directly to DREAM
-    // server-to-server — browser is no longer the relay for persistence.
     try {
       const stream = new CaptureAPIStream({
         workshopId,
@@ -184,38 +200,95 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
           // Stream ALL updates to the page for live hemisphere positioning.
           onTranscriptStream?.(msg);
 
-          // Browser-relay fallback: POST final transcripts directly to DREAM.
-          // Railway handles this server-to-server when DREAM_API_URL is configured.
-          // If Railway is not configured, the browser relay ensures nothing is lost.
-          // The transcript route deduplicates on (workshopId, text, source) so
-          // double-posting when both paths are active is safe.
+          // Only isFinal messages feed into the ThoughtStateMachine.
+          // Partials are used only for the streaming preview above.
           if (msg.isFinal === false) return;
 
-          const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : null;
-          const now = Date.now();
-          fetch(ingestUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              speakerId,
-              startTime: msg.startTimeMs ?? now - 5000,
-              endTime: msg.endTimeMs ?? now,
-              text,
-              rawText: msg.rawText,
-              confidence: msg.confidence,
-              source: 'deepgram' as const,
-              dialoguePhase: getDialoguePhase(),
-              flush: false,
-              slmMetadata: {
-                entities: msg.entities,
-                emotionalTone: msg.emotionalTone,
-                slmConfidence: msg.slmConfidence,
-                slmUsed: msg.slmUsed,
+          const speakerId = msg.speaker !== null ? `speaker_${msg.speaker}` : 'speaker_unknown';
+
+          // Create state machine for this speaker if not yet present.
+          if (!stateMachinesRef.current.has(speakerId)) {
+            const machine = new ThoughtStateMachine(speakerId, lensPackRef.current, {
+              onPendingUpdate: (_attempt: ThoughtAttempt) => {
+                // Streaming node is already driven by onTranscriptStream above.
+                // No additional action needed here.
               },
-            }),
-          }).catch(() => {
-            // Non-fatal — Railway server-to-server may have already handled it
-          });
+              onCommitCandidate: (candidate: CommitCandidate) => {
+                const attempt = candidate.attempt;
+                const commitNow = Date.now();
+                const spokenRecords = attempt.chunks.map((chunkText, i) => ({
+                  text: chunkText,
+                  startTimeMs: attempt.chunk_times[i] ?? attempt.start_time_ms,
+                  endTimeMs: attempt.chunk_times[i + 1] ?? commitNow,
+                  confidence: null as number | null,
+                  source: 'deepgram' as const,
+                }));
+
+                console.log('WINDOW_START→COMMIT', {
+                  speakerId,
+                  windowId: attempt.id,
+                  chunks: attempt.chunks.length,
+                  text: attempt.full_text.substring(0, 80),
+                });
+
+                fetch(ingestUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    speakerId,
+                    startTime: attempt.start_time_ms,
+                    endTime: commitNow,
+                    text: attempt.full_text,
+                    rawText: attempt.full_text,
+                    confidence: null,
+                    source: 'deepgram' as const,
+                    dialoguePhase: getDialoguePhase(),
+                    flush: candidate.merge_expired,
+                    spokenRecords,
+                    clientDomainHint: attempt.domain ? {
+                      primaryDomain: attempt.domain.primary_domain ?? 'General',
+                      secondaryDomain: attempt.domain.secondary_domain ?? null,
+                      confidence: attempt.domain.confidence ?? 0,
+                      decisionPath: attempt.domain.decision_path ?? '',
+                    } : null,
+                  }),
+                }).catch(() => {
+                  // Non-fatal
+                });
+              },
+              onDiscard: (attempt: ThoughtAttempt) => {
+                // Store raw spoken records even for discarded thoughts.
+                // Every spoken word reaches the DB regardless of machine decisions.
+                const discardNow = Date.now();
+                const spokenRecords = attempt.chunks.map((chunkText, i) => ({
+                  text: chunkText,
+                  startTimeMs: attempt.chunk_times[i] ?? attempt.start_time_ms,
+                  endTimeMs: attempt.chunk_times[i + 1] ?? discardNow,
+                  confidence: null as number | null,
+                  source: 'deepgram' as const,
+                }));
+                fetch(ingestUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    speakerId,
+                    startTime: attempt.start_time_ms,
+                    endTime: discardNow,
+                    text: attempt.full_text,
+                    rawText: attempt.full_text,
+                    confidence: null,
+                    source: 'deepgram' as const,
+                    dialoguePhase: getDialoguePhase(),
+                    spokenRecords,
+                    rawCaptureOnly: true,
+                  }),
+                }).catch(() => {});
+              },
+            });
+            stateMachinesRef.current.set(speakerId, machine);
+          }
+
+          stateMachinesRef.current.get(speakerId)!.chunkArrived(text, msg.speechFinal ?? false);
         },
         onError: (err) => {
           setCaptureError(`CaptureAPI stream error — ${err}`);
@@ -303,7 +376,7 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
       setCaptureError(`Audio capture failed: ${e instanceof Error ? e.message : String(e)}`);
       stopCapture();
     }
-  }, [selectedMicId, stopMicTest, stopCapture, workshopId, getDialoguePhase, ingestUrl]);
+  }, [selectedMicId, stopMicTest, stopCapture, workshopId, getDialoguePhase, ingestUrl, onTranscriptStream]);
 
   // ── Cleanup on unmount ──
   useEffect(() => {
