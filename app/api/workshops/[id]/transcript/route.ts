@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { classifyReasoningRole } from '@/lib/ethentaflow/reasoning-role';
+import { extractMeaningUnits } from '@/lib/ethentaflow/meaning-extractor';
 import { env } from '@/lib/env';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
@@ -786,44 +787,83 @@ export async function POST(
           source: body.source,
         }];
 
+    // ── Meaning extraction ───────────────────────────────────────────────────
+    // Extract 0–N meaning units from the committed passage.
+    // Each unit becomes one DataPoint. Rapport, filler, meta commentary, and
+    // incomplete phrases are discarded here — never written to the hemisphere.
+    // If extraction fails, falls back to treating the full passage as one unit.
+    let extraction;
     try {
-      // One committed passage = one DataPoint. No splitting.
-      // The TSM commit is the unit of meaning — the full passage is passed through verbatim.
-      const result = await processResolvedThought(
-        workshopId,
-        utterance,
-        body.dialoguePhase,
-        body.speakerId,
-        incomingSpokenRecords,
-        body.slmMetadata as Record<string, unknown> | undefined,
-        traceId,
-        body.clientDomainHint ?? null,
-        false,
-        {
-          sourceWindowId: undefined,
-          sequenceIndex: 0,
-          reasoningRole: classifyReasoningRole(text),
-        },
-      );
+      extraction = await extractMeaningUnits(text);
+    } catch (err) {
+      console.error(`[Transcript][trace:${traceId}] extractMeaningUnits threw — falling back to full passage:`, err);
+      extraction = {
+        units: [{ extractedText: text, sourceStart: 0, sourceEnd: text.length, confidence: 1.0 }],
+        discarded: [],
+        fallback: true,
+      };
+    }
 
-      return NextResponse.json({
-        ok: true,
-        buffered: false,
-        flushedCount: 1,
-        results: [{ ...result, unitIntent: null, unitReasoningRole: classifyReasoningRole(text) }],
-        filteredUnits: [],
-        classificationId: null,
+    if (extraction.units.length === 0) {
+      console.log(`[Transcript][trace:${traceId}] Extractor found no meaning units — passage discarded`, {
+        discarded: extraction.discarded,
       });
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[Transcript][trace:${traceId}] Error processing utterance:`, error);
       return NextResponse.json({
         ok: true,
         buffered: false,
         flushedCount: 0,
-        results: [{ error: errMsg }],
+        results: [],
+        filteredUnits: extraction.discarded,
+        classificationId: null,
+        reason: 'no_meaning_units',
       });
     }
+
+    // Shared sourceWindowId groups sibling units that came from the same passage.
+    // Only used when N > 1 — single units get their own thoughtWindowId as sourceWindowId.
+    const extractionGroupId = extraction.units.length > 1 ? nanoid() : undefined;
+
+    const results = [];
+    for (let i = 0; i < extraction.units.length; i++) {
+      const unit = extraction.units[i];
+      const unitUtterance: FlushedUtterance = {
+        ...utterance,
+        text: unit.extractedText,
+      };
+
+      try {
+        const result = await processResolvedThought(
+          workshopId,
+          unitUtterance,
+          body.dialoguePhase,
+          body.speakerId,
+          incomingSpokenRecords,
+          body.slmMetadata as Record<string, unknown> | undefined,
+          traceId,
+          body.clientDomainHint ?? null,
+          false,
+          {
+            sourceWindowId: extractionGroupId,
+            sequenceIndex: i,
+            reasoningRole: classifyReasoningRole(unit.extractedText),
+          },
+        );
+        results.push({ ...result, unitIntent: null, unitReasoningRole: classifyReasoningRole(unit.extractedText), sourceSpan: { start: unit.sourceStart, end: unit.sourceEnd } });
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        console.error(`[Transcript][trace:${traceId}] Error processing unit ${i}:`, error);
+        results.push({ error: errMsg });
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      buffered: false,
+      flushedCount: results.filter(r => !('error' in r)).length,
+      results,
+      filteredUnits: extraction.discarded,
+      classificationId: null,
+    });
   } catch (error) {
     console.error('[Transcript] Error ingesting transcript chunk:', error);
     return NextResponse.json({ error: 'Failed to ingest transcript chunk' }, { status: 500 });
