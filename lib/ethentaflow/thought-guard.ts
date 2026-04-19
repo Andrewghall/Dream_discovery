@@ -128,20 +128,49 @@ export function runStructuralGuard(text: string, features: ThoughtFeatures): Gua
  * Used by ThoughtStateMachine.commit() (client-side, has the workshop lens pack).
  * A thought must be both structurally sound AND semantically closed to commit.
  */
+// ── Multi-clause detection ────────────────────────────────────────────────────
+//
+// A passage with multiple clauses must reach the semantic splitter before any
+// discard decision. Ideas appear inside messy, conversational speech — the
+// splitter and per-unit quality gate evaluate child units independently.
+
+function isMultiClause(text: string): boolean {
+  // Multiple sentence-ending punctuation marks
+  if ((text.match(/[.!?]/g) ?? []).length >= 2) return true;
+  // Semicolons and em-dashes are explicit clause separators
+  if (/[;—–]/.test(text)) return true;
+  // Long passage with 2+ coordinating/subordinating conjunctions
+  // — almost certainly contains more than one independent clause
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const conjunctions = (text.match(/\b(and|but|so|because|while|though|although|whereas|however|yet)\b/gi) ?? []).length;
+  if (words >= 20 && conjunctions >= 2) return true;
+  return false;
+}
+
+/**
+ * Full commit guard — structural checks for single-clause fragments.
+ * Multi-clause passages bypass all checks and are forwarded to the splitter.
+ */
 export function runCommitGuard(text: string, features: ThoughtFeatures): GuardResult {
   const t = text.trim();
 
-  // 1. Orphan trailing token
+  // ── Multi-clause bypass ───────────────────────────────────────────────────
+  // If the passage contains multiple clauses, never discard at this stage.
+  // The semantic splitter will extract child units; the unit quality gate
+  // will evaluate each independently.
+  if (isMultiClause(t)) {
+    const closure = isSemanticallyClosed(t);
+    return { blocked: false, reason: null, is_semantically_closed: closure.closed, closure_reason: 'multi-clause-bypass' };
+  }
+
+  // ── Single-clause structural checks ──────────────────────────────────────
+
+  // 1. Orphan trailing token — speaker cut off mid-thought
   if (ORPHAN_TRAILING_TOKEN.test(t)) {
     return { blocked: true, reason: 'GUARD:ORPHAN_TRAILING_TOKEN', is_semantically_closed: false, closure_reason: 'orphan-token' };
   }
 
-  // 2. Dangling conjunction at end
-  if (features.has_dangling_end) {
-    return { blocked: true, reason: 'GUARD:DANGLING_END', is_semantically_closed: false, closure_reason: 'dangling-end' };
-  }
-
-  // 3. No finite predicate
+  // 2. No finite predicate — structural noise, not worth splitting
   const withoutInfinitiveBe = t.replace(INFINITIVE_BE, '');
   const hasFinitePredicate =
     features.has_predicate &&
@@ -151,14 +180,14 @@ export function runCommitGuard(text: string, features: ThoughtFeatures): GuardRe
     return { blocked: true, reason: 'GUARD:NO_FINITE_PREDICATE', is_semantically_closed: false, closure_reason: 'no-predicate' };
   }
 
-  // 4. Extreme referential dependency — pure anaphora with no recoverable meaning
+  // 3. Extreme referential dependency — pure anaphora, unrecoverable without context
   if (features.referential_dependency_score > REFERENTIAL_BLOCK_THRESHOLD) {
     return { blocked: true, reason: 'GUARD:REFERENTIAL_DEPENDENCY', is_semantically_closed: false, closure_reason: 'referential' };
   }
 
-  // Rules 5 (no anchor/signal) and 6 (semantic closure) removed.
-  // Ambiguous, vague, and partially-closed passages are passed to the semantic
-  // splitter and per-unit quality gate for downstream evaluation.
+  // Dangling end removed — handled by unit quality gate after splitting.
+  // No-anchor/signal and semantic closure removed — handled by unit quality gate.
+
   const closure = isSemanticallyClosed(t);
   return { blocked: false, reason: null, is_semantically_closed: closure.closed, closure_reason: closure.reason };
 }

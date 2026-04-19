@@ -18,7 +18,7 @@ export async function splitIntoSemanticUnits(text: string): Promise<string[]> {
   const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
 
   // Too short to split — skip LLM call
-  if (wordCount < 25) return [text];
+  if (wordCount < 15) return [text];
 
   if (!env.OPENAI_API_KEY) return [text];
 
@@ -50,9 +50,10 @@ Return JSON: {"units": ["<unit1>", "<unit2>", ...]}
 Rules:
 - 1 unit = not split (return the original text, preserving the speaker's words)
 - 2–4 units = split (each a complete standalone thought)
-- Each unit must be at least 15 words
+- Each unit must be at least 10 words
 - Preserve the speaker's exact words within each unit
-- Strip trailing disfluencies ("um", "uh", trailing "and") from unit boundaries only`,
+- Strip trailing disfluencies ("um", "uh", trailing "and") from unit boundaries only
+- BIAS TOWARD SPLITTING: if in doubt, split — multiple weak units are better than one lost passage`,
           },
           {
             role: 'user',
@@ -69,7 +70,7 @@ Rules:
 
     const units = (parsed.units as unknown[])
       .map(u => String(u).trim())
-      .filter(u => u.split(/\s+/).filter(Boolean).length >= 15);
+      .filter(u => u.split(/\s+/).filter(Boolean).length >= 10);
 
     if (units.length <= 1) return [text];
 

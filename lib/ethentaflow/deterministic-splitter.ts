@@ -70,12 +70,42 @@ function trimLeadingJoiner(text: string): string {
   return text.replace(LEADING_JOINER_RE, '').trim();
 }
 
+// ── Clause boundary normaliser ──────────────────────────────────────────────
+// Spoken workshop transcripts rarely have explicit sentence punctuation.
+// This pre-pass converts common clause separators into sentence boundaries
+// so the sentence tokeniser can find them.
+//
+// Rules applied (in order):
+//   1. Semicolons → period + space
+//   2. Em-dashes and double-hyphens → period + space
+//   3. Conjunction + new-clause subject → insert period before the conjunction
+//      e.g. "…industry and we need tools…" → "…industry. And we need tools…"
+//      The subject pattern covers pronouns (I/we/they/he/she) and article openers
+//      (the/a/an/our/their/this/that) that reliably introduce new independent clauses.
+//      NOT triggered before "and culture" / "and metrics" (no subject after "and").
+function normalizeClauseBoundaries(text: string): string {
+  return (
+    text
+      // 1. Semicolons
+      .replace(/;\s*/g, '. ')
+      // 2. Em-dash and double-hyphen
+      .replace(/\s*[—–]\s*/g, '. ')
+      .replace(/\s+--\s+/g, '. ')
+      // 3. Conjunction + new-clause subject
+      //    Capture: any word character before the conjunction (to insert period after it)
+      //    then capitalise the first letter of the conjunction so the sentence tokeniser
+      //    sees "Word. And We…" or "Word. But The…"
+      .replace(
+        /(\w)\s+(and|but|so|because|while|though|although|whereas)\s+(?=(I |we |they |he |she |the |a |an |our |their |this |that ))/gi,
+        (_match, prevChar, conj) =>
+          `${prevChar}. ${conj.charAt(0).toUpperCase()}${conj.slice(1)} `,
+      )
+  );
+}
+
 // ── Sentence tokeniser ──────────────────────────────────────────────────────
 // Splits on sentence-ending punctuation (. ? !) followed by whitespace +
-// an uppercase letter, digit, or opening quote. Does NOT split on mid-sentence
-// abbreviations because those don't precede a capital + space pattern
-// (e.g. "Mr. Smith" — the tokeniser would see "." + " S" and WOULD split there;
-// this is acceptable for workshop transcripts where abbreviations are rare).
+// an uppercase letter, digit, or opening quote.
 function tokenizeSentences(text: string): string[] {
   const parts = text.split(/(?<=[.?!])\s+(?=[A-Z0-9"'])/);
   return parts.map(s => s.trim()).filter(s => s.length > 0);
@@ -128,9 +158,12 @@ export interface DeterministicSplitResult {
  * when fewer than 2 valid units are found — a failed split never drops content.
  */
 export function splitDeterministicSemanticUnits(text: string): DeterministicSplitResult {
-  const sentences = tokenizeSentences(text);
+  // Normalise clause boundaries so the tokeniser finds intra-sentence splits.
+  // The original text is preserved in originalText; units are from the normalised form.
+  const normalized = normalizeClauseBoundaries(text);
+  const sentences = tokenizeSentences(normalized);
 
-  // Single sentence — nothing to split
+  // Single clause — nothing to split
   if (sentences.length <= 1) {
     return { units: [text], discarded: [], originalText: text };
   }
