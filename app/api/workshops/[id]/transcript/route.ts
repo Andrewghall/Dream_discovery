@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
+import { splitIntoSemanticUnits } from '@/lib/ethentaflow/semantic-splitter';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
@@ -846,21 +847,43 @@ export async function POST(
         }];
 
     try {
-      const result = await processResolvedThought(
-        workshopId,
-        utterance,
-        body.dialoguePhase,
-        body.speakerId,
-        incomingSpokenRecords,
-        body.slmMetadata as Record<string, unknown> | undefined,
-        traceId,
-        body.clientDomainHint ?? null,
-      );
+      // ── Semantic splitting: one resolved passage → 1–4 distinct meaning units ──
+      // Runs synchronously so all DataPoints are created before responding.
+      // Units 2..N reuse the same timing window but carry no spoken records —
+      // the TranscriptChunks are owned by unit 1's ThoughtWindow.
+      const semanticUnits = await splitIntoSemanticUnits(text);
+      if (semanticUnits.length > 1) {
+        console.log(`[SemanticSplit][trace:${traceId}] Split into ${semanticUnits.length} units:`,
+          semanticUnits.map(u => u.substring(0, 60)));
+      }
+
+      const results = [];
+      for (let i = 0; i < semanticUnits.length; i++) {
+        const unitText = semanticUnits[i];
+        const unitUtterance: FlushedUtterance = { ...utterance, text: unitText };
+        // Only the first unit writes spoken records; subsequent units are semantic
+        // derivatives that share the same timing window but no duplicate chunks.
+        const unitSpokenRecords: IncomingSpokenRecord[] = i === 0
+          ? incomingSpokenRecords
+          : [{ text: unitText, startTimeMs, endTimeMs, confidence: null, source: body.source }];
+        const result = await processResolvedThought(
+          workshopId,
+          unitUtterance,
+          body.dialoguePhase,
+          body.speakerId,
+          unitSpokenRecords,
+          i === 0 ? body.slmMetadata as Record<string, unknown> | undefined : undefined,
+          `${traceId}:u${i}`,
+          i === 0 ? body.clientDomainHint ?? null : null,
+        );
+        results.push(result);
+      }
+
       return NextResponse.json({
         ok: true,
         buffered: false,
-        flushedCount: 1,
-        results: [result],
+        flushedCount: results.length,
+        results,
         classificationId: null,
       });
     } catch (error) {
