@@ -27,6 +27,9 @@ export interface DebugLogEntry {
   filteredUnits?: Array<{ text: string; reason: string }>;
   // SSE
   dataPointId?: string;
+  reasoningRole?: string;
+  sequenceIndex?: number;
+  sourceWindowId?: string;
   // Hemisphere
   nodeCount?: number;
   nodeId?: string;

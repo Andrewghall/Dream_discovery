@@ -86,7 +86,10 @@ function EntryRow({ entry }: { entry: DebugLogEntry }) {
   }
 
   if (entry.stage === 'sse') {
-    if (entry.dataPointId)  details.push(`dp: ${shortId(entry.dataPointId)}`);
+    if (entry.dataPointId)    details.push(`dp: ${shortId(entry.dataPointId)}`);
+    if (entry.reasoningRole)  details.push(`role: ${entry.reasoningRole}`);
+    if (entry.sequenceIndex !== undefined) details.push(`seq: ${entry.sequenceIndex}`);
+    if (entry.sourceWindowId) details.push(`src-win: ${shortId(entry.sourceWindowId)}`);
   }
 
   if (entry.stage === 'quality') {

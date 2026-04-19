@@ -429,12 +429,16 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const dataPointId = p?.dataPoint?.id;
       if (!dataPointId) return;
 
+      const dp = p?.dataPoint as Record<string, unknown> | undefined;
       emitDebug({
         stage: 'sse',
         event: 'DATAPOINT.CREATED',
         status: 'pass',
         dataPointId,
         thoughtWindowId: (payload as Record<string, unknown>)?.thoughtWindowId as string | undefined,
+        reasoningRole: dp?.reasoningRole as string | undefined,
+        sequenceIndex: typeof dp?.sequenceIndex === 'number' ? dp.sequenceIndex : undefined,
+        sourceWindowId: dp?.sourceWindowId as string | undefined,
       });
       const createdAtMs =
         typeof p.dataPoint.createdAt === 'string'

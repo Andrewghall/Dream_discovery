@@ -4,6 +4,7 @@ import { splitIntoSemanticUnits } from '@/lib/ethentaflow/semantic-splitter';
 import { splitDeterministicSemanticUnits } from '@/lib/ethentaflow/deterministic-splitter';
 import { classifyUnitIntent } from '@/lib/ethentaflow/unit-intent';
 import { evaluateUnitQuality } from '@/lib/ethentaflow/unit-quality-gate';
+import { classifyReasoningRole } from '@/lib/ethentaflow/reasoning-role';
 import { env } from '@/lib/env';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
@@ -136,6 +137,15 @@ function applyServerGuard(
 // DREAM and all downstream intelligence reason exclusively over DataPoints.
 // TranscriptChunks are raw audit records and are never passed to DREAM.
 // ══════════════════════════════════════════════════════════════
+type PassageMeta = {
+  /** ThoughtWindow ID of the first unit in the split passage (shared by all siblings). */
+  sourceWindowId?: string;
+  /** 0-based position of this unit within the split passage. */
+  sequenceIndex?: number;
+  /** Structural role of this unit in the speaker's argument. */
+  reasoningRole?: string;
+};
+
 async function processResolvedThought(
   workshopId: string,
   utterance: FlushedUtterance,
@@ -146,6 +156,7 @@ async function processResolvedThought(
   traceId?: string,
   clientDomainHint?: ClientDomainHint | null,
   skipServerGuard = false,
+  passageMeta?: PassageMeta,
 ) {
   const trace = traceId ? `[trace:${traceId}]` : '';
   const text = utterance.text;
@@ -237,6 +248,11 @@ async function processResolvedThought(
       endTimeMs: BigInt(lastEndTimeMs),
       spanMs,
       spokenRecordCount: chunkIds.length,
+      // Passage linkage metadata
+      sourceWindowId: passageMeta?.sourceWindowId ?? thoughtWindow.id,
+      sequenceIndex: passageMeta?.sequenceIndex ?? 0,
+      reasoningRole: passageMeta?.reasoningRole ?? null,
+      // relatedDataPointIds populated in a batch update after all sibling units are created
     },
   });
 
@@ -273,6 +289,10 @@ async function processResolvedThought(
         dialoguePhase,
         spokenRecordCount: window.spokenRecordCount,
         spanMs: window.spanMs,
+        // Passage linkage
+        sourceWindowId: dataPoint.sourceWindowId,
+        sequenceIndex: dataPoint.sequenceIndex,
+        reasoningRole: dataPoint.reasoningRole,
       },
       // Lineage metadata — not used for reasoning, only for UI/audit
       thoughtWindowId: window.windowId,
@@ -712,6 +732,9 @@ async function processResolvedThought(
       dialoguePhase,
       spokenRecordCount: window.spokenRecordCount,
       spanMs: window.spanMs,
+      sourceWindowId: dataPoint.sourceWindowId,
+      sequenceIndex: dataPoint.sequenceIndex,
+      reasoningRole: dataPoint.reasoningRole,
     },
   };
 }
@@ -890,8 +913,9 @@ export async function POST(
         }
       }
 
-      // Rule-based intent classification — applied to every unit regardless of split path
+      // Rule-based classification — intent and reasoning role per unit
       const unitIntents = semanticUnits.map(u => classifyUnitIntent(u));
+      const unitReasoningRoles = semanticUnits.map(u => classifyReasoningRole(u));
 
       // Per-unit quality gate — business anchor + signal strength check.
       // Runs after splitting so individual units are evaluated on their own merit.
@@ -913,28 +937,56 @@ export async function POST(
       const wasSplit = semanticUnits.length > 1;
 
       const results = [];
-      let firstGoodUnit = true;
+      let goodIndex = 0;
+      let sourceWindowId: string | undefined; // set after first unit is created
       for (let i = 0; i < semanticUnits.length; i++) {
         if (!unitQualities[i].pass) continue;
 
+        const isFirst = goodIndex === 0;
         const unitText = semanticUnits[i];
         const unitUtterance: FlushedUtterance = { ...utterance, text: unitText };
         // Only the first passing unit writes spoken records. Subsequent units are
         // semantic derivatives — their TranscriptChunks are owned by unit 1's ThoughtWindow.
-        const unitSpokenRecords: IncomingSpokenRecord[] = firstGoodUnit ? incomingSpokenRecords : [];
+        const unitSpokenRecords: IncomingSpokenRecord[] = isFirst ? incomingSpokenRecords : [];
         const result = await processResolvedThought(
           workshopId,
           unitUtterance,
           body.dialoguePhase,
           body.speakerId,
           unitSpokenRecords,
-          firstGoodUnit ? body.slmMetadata as Record<string, unknown> | undefined : undefined,
+          isFirst ? body.slmMetadata as Record<string, unknown> | undefined : undefined,
           `${traceId}:u${i}`,
-          firstGoodUnit ? body.clientDomainHint ?? null : null,
+          isFirst ? body.clientDomainHint ?? null : null,
           wasSplit,
+          {
+            sourceWindowId,          // undefined for first unit → defaults to own thoughtWindowId
+            sequenceIndex: goodIndex,
+            reasoningRole: unitReasoningRoles[i],
+          },
         );
-        results.push({ ...result, unitIntent: unitIntents[i] });
-        firstGoodUnit = false;
+
+        // After first unit created, record its thoughtWindowId as the shared sourceWindowId
+        if (isFirst && result.thoughtWindowId) {
+          sourceWindowId = result.thoughtWindowId;
+        }
+
+        results.push({ ...result, unitIntent: unitIntents[i], unitReasoningRole: unitReasoningRoles[i] });
+        goodIndex++;
+      }
+
+      // Batch-update relatedDataPointIds on all sibling DataPoints
+      if (results.length > 1) {
+        const allDpIds = results
+          .map(r => r.dataPointId)
+          .filter((id): id is string => typeof id === 'string');
+        await Promise.all(
+          allDpIds.map(dpId =>
+            prisma.dataPoint.update({
+              where: { id: dpId },
+              data: { relatedDataPointIds: allDpIds.filter(id => id !== dpId) },
+            })
+          )
+        );
       }
 
       return NextResponse.json({

@@ -321,6 +321,16 @@ model DataPoint {
   agenticAnalysis     AgenticAnalysis?
   participant         WorkshopParticipant?     @relation(fields: [participantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_participantid_fkey")
   session             ConversationSession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "data_points_sessionid_fkey")
+  // Passage linkage — set when a resolved passage splits into multiple units.
+  // sourceWindowId: the ThoughtWindow of the first extracted unit (shared by all siblings).
+  // sequenceIndex:  0-based position of this unit within the split passage.
+  // relatedDataPointIds: IDs of sibling DataPoints from the same passage.
+  // reasoningRole:  structural role of this unit in the speaker's argument.
+  sourceWindowId      String?   @map("source_window_id")
+  sequenceIndex       Int?      @map("sequence_index")
+  relatedDataPointIds String[]  @default([]) @map("related_data_point_ids")
+  reasoningRole       String?   @map("reasoning_role")
+
   transcriptChunk     TranscriptChunk?         @relation(fields: [transcriptChunkId], references: [id])
   thoughtWindow       ThoughtWindow?           @relation(fields: [thoughtWindowId], references: [id])
   workshop            Workshop                 @relation(fields: [workshopId], references: [id], onDelete: Cascade)
@@ -331,6 +341,7 @@ model DataPoint {
   @@index([participantId])
   @@index([workshopId, createdAt])
   @@index([thoughtWindowId])
+  @@index([sourceWindowId])
   @@map("data_points")
 }
 
