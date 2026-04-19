@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { splitIntoSemanticUnits } from '@/lib/ethentaflow/semantic-splitter';
+import { env } from '@/lib/env';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
@@ -860,9 +861,15 @@ export async function POST(
       // Runs synchronously so all DataPoints are created before responding.
       // Units 2..N reuse the same timing window but carry no spoken records —
       // the TranscriptChunks are owned by unit 1's ThoughtWindow.
-      const semanticUnits = await splitIntoSemanticUnits(text);
+      //
+      // Feature flag: ENABLE_SEMANTIC_SPLIT_V2
+      //   false (default) — v1: current splitting behaviour
+      //   true            — v2: new splitting logic (placeholder; slot changes here)
+      const semanticUnits = env.ENABLE_SEMANTIC_SPLIT_V2
+        ? await splitIntoSemanticUnits(text)   // v2 path — replace this call with new logic
+        : await splitIntoSemanticUnits(text);  // v1 path — do not modify
       if (semanticUnits.length > 1) {
-        console.log(`[SemanticSplit][trace:${traceId}] Split into ${semanticUnits.length} units:`,
+        console.log(`[SemanticSplit][trace:${traceId}][v${env.ENABLE_SEMANTIC_SPLIT_V2 ? '2' : '1'}] Split into ${semanticUnits.length} units:`,
           semanticUnits.map(u => u.substring(0, 60)));
       }
 

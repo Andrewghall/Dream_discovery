@@ -22,6 +22,9 @@ const envSchema = z.object({
   ZOOM_VIDEO_SDK_KEY: z.string().optional(),
   ZOOM_VIDEO_SDK_SECRET: z.string().optional(),
   TAVILY_API_KEY: z.string().optional(),
+  // Feature flag: semantic splitting v2 (new splitting logic under development).
+  // false (default) = current v1 behaviour. true = v2 path.
+  ENABLE_SEMANTIC_SPLIT_V2: z.coerce.boolean().default(false),
 });
 
 type Env = z.infer<typeof envSchema>;
