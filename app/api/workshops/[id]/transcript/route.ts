@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { splitIntoSemanticUnits } from '@/lib/ethentaflow/semantic-splitter';
+import { splitDeterministicSemanticUnits } from '@/lib/ethentaflow/deterministic-splitter';
 import { env } from '@/lib/env';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
@@ -865,12 +866,26 @@ export async function POST(
       // Feature flag: ENABLE_SEMANTIC_SPLIT_V2
       //   false (default) — v1: current splitting behaviour
       //   true            — v2: new splitting logic (placeholder; slot changes here)
-      const semanticUnits = env.ENABLE_SEMANTIC_SPLIT_V2
-        ? await splitIntoSemanticUnits(text)   // v2 path — replace this call with new logic
-        : await splitIntoSemanticUnits(text);  // v1 path — do not modify
-      if (semanticUnits.length > 1) {
-        console.log(`[SemanticSplit][trace:${traceId}][v${env.ENABLE_SEMANTIC_SPLIT_V2 ? '2' : '1'}] Split into ${semanticUnits.length} units:`,
-          semanticUnits.map(u => u.substring(0, 60)));
+      let semanticUnits: string[];
+      if (env.ENABLE_SEMANTIC_SPLIT_V2) {
+        // v2: deterministic sentence-level segmentation — no LLM, no rewriting
+        const v2Result = splitDeterministicSemanticUnits(text);
+        semanticUnits = v2Result.units;
+        if (v2Result.discarded.length > 0) {
+          console.log(`[SemanticSplit][trace:${traceId}][v2] Discarded ${v2Result.discarded.length} fragment(s):`,
+            v2Result.discarded.map(d => `"${d.originalText.substring(0, 50)}" → ${d.reason}`));
+        }
+        if (semanticUnits.length > 1) {
+          console.log(`[SemanticSplit][trace:${traceId}][v2] Split into ${semanticUnits.length} units:`,
+            semanticUnits.map(u => u.substring(0, 60)));
+        }
+      } else {
+        // v1: LLM-based splitter — do not modify
+        semanticUnits = await splitIntoSemanticUnits(text);
+        if (semanticUnits.length > 1) {
+          console.log(`[SemanticSplit][trace:${traceId}][v1] Split into ${semanticUnits.length} units:`,
+            semanticUnits.map(u => u.substring(0, 60)));
+        }
       }
 
       // When the full passage was split, all units inherit the client-side guard
