@@ -92,13 +92,19 @@ function normalizeClauseBoundaries(text: string): string {
       .replace(/\s*[—–]\s*/g, '. ')
       .replace(/\s+--\s+/g, '. ')
       // 3. Conjunction + new-clause subject
-      //    Capture: any word character before the conjunction (to insert period after it)
-      //    then capitalise the first letter of the conjunction so the sentence tokeniser
-      //    sees "Word. And We…" or "Word. But The…"
+      //    Insert a sentence boundary before the conjunction when it is followed
+      //    by a pronoun or article that introduces a new independent clause.
       .replace(
         /(\w)\s+(and|but|so|because|while|though|although|whereas)\s+(?=(I |we |they |he |she |the |a |an |our |their |this |that ))/gi,
         (_match, prevChar, conj) =>
           `${prevChar}. ${conj.charAt(0).toUpperCase()}${conj.slice(1)} `,
+      )
+      // 4. Parallel structure markers — each introduces a new independent idea
+      //    "and also", "another thing", "on top of that", "at the same time" etc.
+      .replace(
+        /(\w)\s+(and also|also importantly|another thing is|on top of that|at the same time|equally|similarly|in addition|what's more|beyond that|more importantly|crucially|critically|the other thing|the key thing|the real issue|what I'd say is|what matters is|I would add|I'd also say)\s+/gi,
+        (_match, prevChar, marker) =>
+          `${prevChar}. ${marker.charAt(0).toUpperCase()}${marker.slice(1)} `,
       )
   );
 }
