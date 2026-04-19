@@ -148,29 +148,46 @@ function isMultiClause(text: string): boolean {
 }
 
 /**
- * Full commit guard — structural checks for single-clause fragments.
- * Multi-clause passages bypass all checks and are forwarded to the splitter.
+ * Full commit guard.
+ *
+ * Hard structural blocks (dangling end, orphan token) are checked FIRST —
+ * before any multi-clause bypass. These indicate the speaker has not finished
+ * the current clause and no amount of prior complete sentences can override that.
+ *
+ * Multi-clause bypass only fires after confirming the passage tail is clean.
+ * This prevents truncated mid-sentence commits from reaching ingest.
  */
 export function runCommitGuard(text: string, features: ThoughtFeatures): GuardResult {
   const t = text.trim();
 
-  // ── Multi-clause bypass ───────────────────────────────────────────────────
-  // If the passage contains multiple clauses, never discard at this stage.
-  // The semantic splitter will extract child units; the unit quality gate
-  // will evaluate each independently.
+  // ── Hard blocks — precede every bypass ────────────────────────────────────
+  // These mean the speech is structurally incomplete at its current endpoint.
+  // A multi-clause passage is NOT a sufficient override: the speaker may have
+  // said several complete sentences and then trailed off mid-clause.
+
+  // 1. Orphan trailing token — bare pronoun/article cut off at end
+  if (ORPHAN_TRAILING_TOKEN.test(t)) {
+    return { blocked: true, reason: 'GUARD:ORPHAN_TRAILING_TOKEN', is_semantically_closed: false, closure_reason: 'orphan-token' };
+  }
+
+  // 2. Dangling conjunction / preposition at end — speaker was mid-thought.
+  //    Terminal punctuation elsewhere in the text does NOT override this.
+  //    Multi-clause structure does NOT override this.
+  if (features.has_dangling_end) {
+    return { blocked: true, reason: 'GUARD:DANGLING_END', is_semantically_closed: false, closure_reason: 'dangling-end' };
+  }
+
+  // ── Multi-clause bypass ────────────────────────────────────────────────────
+  // Reached only when neither hard block fired above, i.e. the passage ends
+  // on a structurally sound word. Forward to splitter without scoring.
   if (isMultiClause(t)) {
     const closure = isSemanticallyClosed(t);
     return { blocked: false, reason: null, is_semantically_closed: closure.closed, closure_reason: 'multi-clause-bypass' };
   }
 
-  // ── Single-clause structural checks ──────────────────────────────────────
+  // ── Single-clause structural checks ───────────────────────────────────────
 
-  // 1. Orphan trailing token — speaker cut off mid-thought
-  if (ORPHAN_TRAILING_TOKEN.test(t)) {
-    return { blocked: true, reason: 'GUARD:ORPHAN_TRAILING_TOKEN', is_semantically_closed: false, closure_reason: 'orphan-token' };
-  }
-
-  // 2. No finite predicate — structural noise, not worth splitting
+  // 3. No finite predicate — structural noise, not worth splitting
   const withoutInfinitiveBe = t.replace(INFINITIVE_BE, '');
   const hasFinitePredicate =
     features.has_predicate &&
@@ -180,13 +197,10 @@ export function runCommitGuard(text: string, features: ThoughtFeatures): GuardRe
     return { blocked: true, reason: 'GUARD:NO_FINITE_PREDICATE', is_semantically_closed: false, closure_reason: 'no-predicate' };
   }
 
-  // 3. Extreme referential dependency — pure anaphora, unrecoverable without context
+  // 4. Extreme referential dependency — pure anaphora, unrecoverable without context
   if (features.referential_dependency_score > REFERENTIAL_BLOCK_THRESHOLD) {
     return { blocked: true, reason: 'GUARD:REFERENTIAL_DEPENDENCY', is_semantically_closed: false, closure_reason: 'referential' };
   }
-
-  // Dangling end removed — handled by unit quality gate after splitting.
-  // No-anchor/signal and semantic closure removed — handled by unit quality gate.
 
   const closure = isSemanticallyClosed(t);
   return { blocked: false, reason: null, is_semantically_closed: closure.closed, closure_reason: closure.reason };
