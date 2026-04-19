@@ -48,12 +48,18 @@ DO NOT SPLIT when:
 
 Return JSON: {"units": ["<unit1>", "<unit2>", ...]}
 Rules:
-- 1 unit = not split (return the original text, preserving the speaker's words)
+- 1 unit = not split (return the original text unchanged)
 - 2–4 units = split (each a complete standalone thought)
 - Each unit must be at least 10 words
-- Preserve the speaker's exact words within each unit
 - Strip trailing disfluencies ("um", "uh", trailing "and") from unit boundaries only
-- BIAS TOWARD SPLITTING: if in doubt, split — multiple weak units are better than one lost passage`,
+- BIAS TOWARD SPLITTING: if in doubt, split — multiple weak units are better than one lost passage
+
+CRITICAL — DATA INTEGRITY:
+You are a SEGMENTER, not a summarizer or paraphraser.
+You MUST NOT add, infer, rephrase, or rewrite ANY content.
+Copy sentences verbatim from the input — do not substitute synonyms, add connecting words, or infer meaning.
+Every non-trivial word in every unit MUST appear in the input text.
+If you cannot split without rewriting, return the original text as a single unit.`,
           },
           {
             role: 'user',
@@ -68,9 +74,28 @@ Rules:
 
     if (!Array.isArray(parsed.units) || parsed.units.length === 0) return [text];
 
-    const units = (parsed.units as unknown[])
+    const rawUnits = (parsed.units as unknown[])
       .map(u => String(u).trim())
       .filter(u => u.split(/\s+/).filter(Boolean).length >= 10);
+
+    // Reject any unit where the LLM introduced words not present in the source.
+    // gpt-4o-mini rewrites ASR-fragmented text instead of segmenting it, which
+    // produces plausible-sounding but fabricated content. Require ≥70% of the
+    // unit's words to appear in the original text; fall back to [text] if any
+    // unit fails — it's safer to keep the raw passage than emit hallucinated nodes.
+    const sourceWords = new Set(
+      text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)
+    );
+    const allUnitsGrounded = rawUnits.every(unit => {
+      const unitWords = unit.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+      if (unitWords.length === 0) return false;
+      const overlap = unitWords.filter(w => sourceWords.has(w)).length;
+      return overlap / unitWords.length >= 0.70;
+    });
+
+    if (!allUnitsGrounded) return [text];
+
+    const units = rawUnits;
 
     if (units.length <= 1) return [text];
 
