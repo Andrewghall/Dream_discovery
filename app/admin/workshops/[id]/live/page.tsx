@@ -59,6 +59,8 @@ import type { JourneyCompletionState } from '@/lib/cognition/guidance-state';
 import type { AgentConversationEntry } from '@/components/cognitive-guidance/agent-orchestration-panel';
 import type { StickyPad as StickyPadType } from '@/lib/cognitive-guidance/pipeline';
 import type { DialoguePhase } from '@/lib/cognitive-guidance/pipeline';
+import { DebugOverlay } from '@/components/cognitive-guidance/debug-overlay';
+import { emitDebug } from '@/lib/debug/pipeline-debug-bus';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -425,6 +427,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
       const p = payload as DataPointCreatedPayload;
       const dataPointId = p?.dataPoint?.id;
       if (!dataPointId) return;
+
+      emitDebug({
+        stage: 'sse',
+        event: 'DATAPOINT.CREATED',
+        status: 'pass',
+        dataPointId,
+        thoughtWindowId: (payload as Record<string, unknown>)?.thoughtWindowId as string | undefined,
+      });
       const createdAtMs =
         typeof p.dataPoint.createdAt === 'string'
           ? Date.parse(p.dataPoint.createdAt)
@@ -476,7 +486,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
         );
       }
       setNodesById((prev) => {
-        if (prev[dataPointId]) return prev;
+        if (prev[dataPointId]) {
+          emitDebug({ stage: 'hemisphere', event: 'OVERWRITE_PREVENTED', status: 'info', nodeId: dataPointId, nodeCount: Object.keys(prev).length, hemisphereAction: 'overwrite-prevented' });
+          return prev;
+        }
+        emitDebug({ stage: 'hemisphere', event: 'NODE_ADDED', status: 'pass', nodeId: dataPointId, nodeCount: Object.keys(prev).length + 1, text: String(p.dataPoint.rawText ?? '').substring(0, 70), hemisphereAction: 'added', thoughtWindowId: (payload as Record<string, unknown>)?.thoughtWindowId as string | undefined });
         return { ...prev, [dataPointId]: node };
       });
     }, []),
@@ -3095,6 +3109,15 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   '| path:', domainResult?.decision_path?.substring(0, 60),
                   '| validity:', attempt.validity?.validity_score?.toFixed(3));
 
+                emitDebug({
+                  stage: 'tsm',
+                  event: 'COMMIT',
+                  status: 'pass',
+                  thoughtWindowId: attempt.id,
+                  text: fullText.substring(0, 80),
+                  chunks: attempt.chunks.length,
+                });
+
                 try {
                   // Build spoken records from the individual chunks that composed
                   // this thought — each chunk is one Deepgram isFinal result.
@@ -3107,6 +3130,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     confidence: slmMeta?.confidence ?? null,
                     source: 'deepgram' as const,
                   }));
+
+                  emitDebug({
+                    stage: 'ingest',
+                    event: 'SENT',
+                    status: 'info',
+                    thoughtWindowId: attempt.id,
+                    requestText: fullText.substring(0, 60),
+                  });
 
                   const r = await fetch(ingestUrl, {
                     method: 'POST',
@@ -3147,8 +3178,38 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     // Iterate ALL results — semantic splitting may produce 2–4 DataPoints
                     // from a single passage. Only results[0] carries the primary domain
                     // context; subsequent units reuse the same domain attribution.
-                    const allResults: Array<{ dataPointId?: string; dataPoint?: { id: string }; blocked?: boolean }> =
+                    const allResults: Array<{ dataPointId?: string; dataPoint?: { id: string; rawText?: string }; thoughtWindowId?: string; blocked?: boolean; reason?: string }> =
                       Array.isArray(respBody?.results) ? respBody.results : [];
+
+                    const serverWinId = allResults[0]?.thoughtWindowId;
+                    const dpIds = allResults.map(res => res.dataPointId ?? res.dataPoint?.id).filter((id): id is string => !!id);
+                    const wasSplit = allResults.length > 1;
+                    const units = allResults.map(res => res.dataPoint?.rawText).filter((t): t is string => !!t);
+
+                    emitDebug({
+                      stage: 'ingest',
+                      event: 'RESPONSE',
+                      status: dpIds.length > 0 ? 'pass' : 'blocked',
+                      thoughtWindowId: serverWinId,
+                      httpStatus: r.status,
+                      dataPointIds: dpIds,
+                      requestText: fullText.substring(0, 60),
+                    });
+                    emitDebug({
+                      stage: 'split',
+                      event: wasSplit ? 'SEMANTIC_SPLIT' : 'NO_SPLIT',
+                      status: 'info',
+                      thoughtWindowId: serverWinId,
+                      wasSplit,
+                      unitCount: allResults.length,
+                      originalText: fullText.substring(0, 70),
+                      units: units.map(u => u.substring(0, 70)),
+                    });
+                    allResults.forEach((res, i) => {
+                      if (res.blocked) {
+                        emitDebug({ stage: 'ingest', event: `UNIT_${i}_BLOCKED`, status: 'blocked', thoughtWindowId: serverWinId, guardReason: res.reason ?? 'unknown' });
+                      }
+                    });
                     const firstDpId = allResults[0]?.dataPointId || allResults[0]?.dataPoint?.id;
                     if (!firstDpId && allResults[0]?.blocked !== true) {
                       console.warn('[EthentaFlow] Commit POST returned no dataPointId — server blocked?', allResults[0]);
@@ -3207,7 +3268,14 @@ export default function WorkshopLivePage({ params }: PageProps) {
                           overallConfidence: 0,
                         },
                       };
-                      setNodesById((prev) => prev[dpId] ? prev : { ...prev, [dpId]: node });
+                      setNodesById((prev) => {
+                        if (prev[dpId]) {
+                          emitDebug({ stage: 'hemisphere', event: 'OVERWRITE_PREVENTED (direct)', status: 'info', nodeId: dpId, nodeCount: Object.keys(prev).length, hemisphereAction: 'overwrite-prevented' });
+                          return prev;
+                        }
+                        emitDebug({ stage: 'hemisphere', event: 'NODE_ADDED (direct)', status: 'pass', nodeId: dpId, nodeCount: Object.keys(prev).length + 1, text: String(node.rawText ?? '').substring(0, 70), hemisphereAction: 'added' });
+                        return { ...prev, [dpId]: node };
+                      });
                       console.log('[EthentaFlow] Node committed:', dpId, `(unit ${ri + 1}/${allResults.length})`, (node.rawText as string).substring(0, 60));
                     }
                     pushDiagEvent({
@@ -3235,6 +3303,15 @@ export default function WorkshopLivePage({ params }: PageProps) {
               onDiscard: (attempt: ThoughtAttempt) => {
                 setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
                 console.log('[EthentaFlow] Discarded fragment for', speakerId, '—', attempt.full_text.substring(0, 60), '| reasons:', attempt.validity?.reasons?.slice(0, 2).join('; '));
+                emitDebug({
+                  stage: 'tsm',
+                  event: 'DISCARD',
+                  status: 'blocked',
+                  thoughtWindowId: attempt.id,
+                  text: attempt.full_text.substring(0, 80),
+                  chunks: attempt.chunks.length,
+                  guardReason: attempt.validity?.reasons?.slice(0, 2).join('; ') ?? 'unknown',
+                });
 
                 // Fire-and-forget: store the raw spoken records even though this
                 // thought was discarded. Every spoken word must reach Supabase
@@ -4143,6 +4220,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
           onClose={() => setSelectedNodeId(null)}
           node={selectedNode}
         />
+
+        {/* ═══ PIPELINE DEBUG OVERLAY (Ctrl+Shift+D) ═══ */}
+        <DebugOverlay />
       </div>
     </div>
   );
