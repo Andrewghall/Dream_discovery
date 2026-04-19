@@ -377,6 +377,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const stopProcessingRef = useRef(false);
   const lastTranscriptionErrorRef = useRef<string>('');
   const lastEmptyDeepgramRef = useRef<string>('');
+  const rawTranscriptSeqRef = useRef<number>(0);
   const chunkIntervalRef = useRef<number | null>(null);
   const lastChunkEndRef = useRef<number>(0);
   const whisperDisabledRef = useRef(false);
@@ -3053,6 +3054,29 @@ export default function WorkshopLivePage({ params }: PageProps) {
     try {
       const stream = new CaptureAPIStream({
         onTranscript: (msg: StreamTranscript) => {
+          // ── Raw transcript: source of truth ─────────────────────────────
+          // Write verbatim Deepgram output immediately on every isFinal result,
+          // before any TSM processing. Fire-and-forget — never blocks capture.
+          // All downstream processing (windowing, splitting, classification)
+          // operates on derived copies; this record is never modified.
+          if (msg.isFinal !== false && msg.rawText) {
+            const rawSeq = rawTranscriptSeqRef.current++;
+            void fetch(`/api/workshops/${encodeURIComponent(workshopId)}/raw-transcript`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify([{
+                speakerId: msg.speaker !== null ? `speaker_${msg.speaker}` : null,
+                text: msg.rawText,
+                startTimeMs: msg.startTimeMs ?? Date.now(),
+                endTimeMs: msg.endTimeMs ?? Date.now(),
+                confidence: msg.confidence ?? null,
+                speechFinal: msg.speechFinal ?? false,
+                sequence: rawSeq,
+              }]),
+            }).catch(() => { /* best-effort — capture continues if write fails */ });
+          }
+          // ────────────────────────────────────────────────────────────────
+
           const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
           if (!text || msg.isFinal === false) return;
 

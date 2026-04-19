@@ -196,6 +196,7 @@ model Workshop {
   eventOutbox       WorkshopEventOutbox[]
   transcriptChunks  TranscriptChunk[]
   thoughtWindows    ThoughtWindow[]
+  rawTranscript     RawTranscriptEntry[]
   participants      WorkshopParticipant[]
   scratchpad        WorkshopScratchpad?
   shares            WorkshopShare[]
@@ -974,6 +975,33 @@ model AnalyticsEvent {
   @@index([sessionId])
   @@index([pagePath])
   @@map("analytics_events")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Raw Transcript — verbatim Deepgram output, source of truth.
+// Written at receipt time for every isFinal result.
+// NEVER modified by any downstream processing.
+// TranscriptChunk / ThoughtWindow / DataPoint are derived layers.
+// ═══════════════════════════════════════════════════════════════
+
+model RawTranscriptEntry {
+  id          String   @id @default(cuid())
+  workshopId  String
+  speakerId   String?
+  text        String   // verbatim Deepgram text — not trimmed, not cleaned, not rewritten
+  startTimeMs BigInt
+  endTimeMs   BigInt
+  confidence  Float?
+  speechFinal Boolean  @default(false)
+  sequence    Int      // arrival order within the workshop session (0-based)
+  createdAt   DateTime @default(now())
+
+  workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId])
+  @@index([workshopId, startTimeMs])
+  @@index([workshopId, speakerId, startTimeMs])
+  @@map("raw_transcript_entries")
 }
 
 // ═══════════════════════════════════════════════════════════════
