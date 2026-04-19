@@ -14,24 +14,15 @@ export default async function TranscriptPage({
   });
   if (!workshop) notFound();
 
-  const chunks = await prisma.transcriptChunk.findMany({
+  const deduped = await prisma.rawTranscriptEntry.findMany({
     where: { workshopId: id },
-    orderBy: { startTimeMs: 'asc' },
+    orderBy: [{ sequence: 'asc' }, { startTimeMs: 'asc' }],
     select: {
       id: true,
       text: true,
       startTimeMs: true,
       speakerId: true,
     },
-  });
-
-  // Deduplicate by startTimeMs + text (belt-and-braces until migration runs)
-  const seen = new Set<string>();
-  const deduped = chunks.filter((c) => {
-    const key = `${c.startTimeMs}|${c.text}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
   });
 
   // Work out session start so we can show relative timestamps
@@ -71,7 +62,7 @@ export default async function TranscriptPage({
       </div>
 
       {deduped.length === 0 ? (
-        <div className="text-slate-400 text-sm">No transcript chunks found for this workshop.</div>
+        <div className="text-slate-400 text-sm">No transcript entries found for this workshop.</div>
       ) : (
         <div className="space-y-4">
           {runs.map((run, ri) => (

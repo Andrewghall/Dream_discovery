@@ -26,7 +26,7 @@ export type EmbeddableTable =
   | 'conversation_insights'
   | 'conversation_messages'
   | 'discovery_themes'
-  | 'transcript_chunks'
+  | 'raw_transcript_entries'
   | 'data_points'
   | 'workshop_scratchpads'
   | 'capture_segments'
@@ -36,7 +36,7 @@ const ALLOWED_TABLES = new Set<EmbeddableTable>([
   'conversation_insights',
   'conversation_messages',
   'discovery_themes',
-  'transcript_chunks',
+  'raw_transcript_entries',
   'data_points',
   'workshop_scratchpads',
   'capture_segments',

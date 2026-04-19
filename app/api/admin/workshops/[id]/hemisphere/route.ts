@@ -1003,7 +1003,7 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
             questionKey: { not: null },
           },
           orderBy: { createdAt: 'asc' },
-          select: { id: true, sessionId: true, participantId: true, questionKey: true, rawText: true, createdAt: true, transcriptChunkId: true },
+          select: { id: true, sessionId: true, participantId: true, questionKey: true, rawText: true, createdAt: true },
         })
       : [];
 
@@ -1055,7 +1055,7 @@ ${evidenceQuotes.length ? evidenceQuotes.map((q) => `- ${q}`).join('\n') : '- (n
             quote: item.answer,
             qaTag: item.tag || undefined,
             createdAt: item.dp.createdAt ? new Date(item.dp.createdAt).toISOString() : undefined,
-            chunkId: item.dp.transcriptChunkId ? String(item.dp.transcriptChunkId) : undefined,
+            chunkId: undefined,
           },
         ],
       });

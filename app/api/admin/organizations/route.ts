@@ -293,7 +293,7 @@ export async function DELETE(request: NextRequest) {
       await prisma.conversationSession.deleteMany({ where: { workshopId: { in: workshopIds } } });
       await prisma.workshopParticipant.deleteMany({ where: { workshopId: { in: workshopIds } } });
       await prisma.dataPoint.deleteMany({ where: { workshopId: { in: workshopIds } } });
-      await prisma.transcriptChunk.deleteMany({ where: { workshopId: { in: workshopIds } } });
+      await prisma.rawTranscriptEntry.deleteMany({ where: { workshopId: { in: workshopIds } } });
       await prisma.workshop.deleteMany({ where: { id: { in: workshopIds } } });
     }
 

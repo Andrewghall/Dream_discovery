@@ -30,27 +30,28 @@ export async function GET(
   });
   if (!workshop) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
-  // Load all ThoughtWindows with their linked chunks and DataPoint
   const rawWindows = await prisma.thoughtWindow.findMany({
     where: { workshopId },
     orderBy: { openedAtMs: 'asc' },
   });
 
-  // Load chunks linked to these windows
   const windowIds = rawWindows.map((w) => w.id);
 
-  const [chunks, dataPoints] = await Promise.all([
-    prisma.transcriptChunk.findMany({
-      where: { thoughtWindowId: { in: windowIds } },
+  // Raw transcript entries matched to windows by speaker + time range.
+  // raw_transcript_entries is the source of truth — never modified.
+  const [rawEntries, dataPoints] = await Promise.all([
+    prisma.rawTranscriptEntry.findMany({
+      where: { workshopId },
       select: {
         id: true,
         text: true,
         startTimeMs: true,
+        endTimeMs: true,
         speakerId: true,
-        source: true,
-        thoughtWindowId: true,
+        speechFinal: true,
+        sequence: true,
       },
-      orderBy: { startTimeMs: 'asc' },
+      orderBy: [{ sequence: 'asc' }, { startTimeMs: 'asc' }],
     }),
     prisma.dataPoint.findMany({
       where: { thoughtWindowId: { in: windowIds } },
@@ -88,9 +89,20 @@ export async function GET(
       })
     : [];
 
-  // Build lookup maps
-  const chunksByWindow = chunks.reduce<Record<string, typeof chunks>>((acc, c) => {
-    if (c.thoughtWindowId) (acc[c.thoughtWindowId] ??= []).push(c);
+  // Match raw entries to windows by speaker + time range.
+  // Windows have openedAtMs/lastActivityAtMs; entries have startTimeMs.
+  // Allow ±2s tolerance for clock jitter between client write and window open.
+  const TOLERANCE_MS = BigInt(2_000);
+  const chunksByWindow = rawWindows.reduce<Record<string, typeof rawEntries>>((acc, w) => {
+    const low = w.openedAtMs - TOLERANCE_MS;
+    const high = w.lastActivityAtMs + TOLERANCE_MS;
+    const matches = rawEntries.filter(
+      (e) =>
+        e.speakerId === w.speakerId &&
+        e.startTimeMs >= low &&
+        e.startTimeMs <= high,
+    );
+    if (matches.length > 0) acc[w.id] = matches;
     return acc;
   }, {});
 
@@ -125,7 +137,8 @@ export async function GET(
         text: c.text,
         startTimeMs: c.startTimeMs.toString(),
         speakerId: c.speakerId,
-        source: c.source,
+        speechFinal: c.speechFinal,
+        sequence: c.sequence,
       })),
       dataPoint: dp ? {
         id: dp.id,

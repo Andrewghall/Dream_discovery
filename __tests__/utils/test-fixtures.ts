@@ -101,7 +101,6 @@ export const mockConversationSession = {
 export const mockDataPoint = {
   id: 'test-datapoint-id',
   workshopId: 'test-workshop-id',
-  transcriptChunkId: 'test-transcript-id',
   rawText: 'This is a test utterance from the workshop',
   source: 'SPEECH' as const,
   speakerId: '0',

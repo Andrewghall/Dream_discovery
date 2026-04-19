@@ -73,14 +73,11 @@ export async function generateSalesReport(workshopId: string): Promise<SalesRepo
       orderBy: { createdAt: 'asc' },
       include: {
         agenticAnalysis: true,
-        transcriptChunk: {
-          select: { startTimeMs: true, endTimeMs: true },
-        },
       },
     }),
-    prisma.transcriptChunk.findMany({
+    prisma.rawTranscriptEntry.findMany({
       where: { workshopId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ sequence: 'asc' }, { startTimeMs: 'asc' }],
       select: { text: true, speakerId: true, startTimeMs: true, endTimeMs: true },
     }),
   ]);

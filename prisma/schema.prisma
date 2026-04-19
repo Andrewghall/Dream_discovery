@@ -194,7 +194,6 @@ model Workshop {
   liveSnapshots     LiveWorkshopSnapshot[]
   sessionVersions   LiveSessionVersion[]
   eventOutbox       WorkshopEventOutbox[]
-  transcriptChunks  TranscriptChunk[]
   thoughtWindows    ThoughtWindow[]
   rawTranscript     RawTranscriptEntry[]
   participants      WorkshopParticipant[]
@@ -231,32 +230,6 @@ model WorkshopShare {
   @@map("workshop_shares")
 }
 
-model TranscriptChunk {
-  id             String           @id @default(cuid())
-  workshopId     String
-  speakerId      String?
-  startTimeMs    BigInt
-  endTimeMs      BigInt
-  text           String
-  confidence     Float?
-  source         TranscriptSource
-  metadata       Json?
-  createdAt      DateTime         @default(now())
-  // Lineage: set when this spoken record is assigned to a resolved thought window
-  thoughtWindowId String?         @map("thought_window_id")
-  dataPoint      DataPoint?
-  workshop       Workshop         @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  thoughtWindow  ThoughtWindow?   @relation(fields: [thoughtWindowId], references: [id])
-
-  @@unique([workshopId, startTimeMs, text], name: "workshopId_startTimeMs_text")
-  @@index([workshopId])
-  @@index([workshopId, startTimeMs])
-  @@index([workshopId, createdAt])
-  @@index([workshopId, speakerId, startTimeMs])
-  @@index([thoughtWindowId])
-  @@map("transcript_chunks")
-}
-
 // ThoughtWindow — server-side accumulation record.
 // Opens when the first spoken record for a speaker arrives.
 // Resolves when thought_completeness reaches 'complete' and the continuation
@@ -277,7 +250,6 @@ model ThoughtWindow {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   workshop            Workshop          @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  spokenRecords       TranscriptChunk[]
   dataPoint           DataPoint?
 
   @@index([workshopId])
@@ -299,13 +271,8 @@ model DataPoint {
   workshopId          String
   // Lineage — primary: the thought window that resolved into this record
   thoughtWindowId     String?                  @unique @map("thought_window_id")
-  // Lineage — secondary: ordered IDs of all spoken records that contributed
-  // Kept as a JSON array rather than a join table to avoid query overhead on reads.
-  // The ThoughtWindow.spokenRecords relation is the authoritative join.
+  // Lineage — ordered IDs of raw_transcript_entries that contributed to this window.
   spokenRecordIds     String[]                 @map("spoken_record_ids")
-  // Legacy 1:1 link — retained for backward compat with existing records only.
-  // New records must not use this field; use thoughtWindowId instead.
-  transcriptChunkId   String?                  @unique @map("transcript_chunk_id")
   rawText             String
   source              DataPointSource
   speakerId           String?
@@ -332,7 +299,6 @@ model DataPoint {
   relatedDataPointIds String[]  @default([]) @map("related_data_point_ids")
   reasoningRole       String?   @map("reasoning_role")
 
-  transcriptChunk     TranscriptChunk?         @relation(fields: [transcriptChunkId], references: [id])
   thoughtWindow       ThoughtWindow?           @relation(fields: [thoughtWindowId], references: [id])
   workshop            Workshop                 @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 

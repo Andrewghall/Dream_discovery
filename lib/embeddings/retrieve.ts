@@ -131,8 +131,8 @@ async function querySource(
         return queryConversationMessages(vectorLiteral, opts);
       case 'discovery_themes':
         return queryDiscoveryThemes(vectorLiteral, opts);
-      case 'transcript_chunks':
-        return queryTranscriptChunks(vectorLiteral, opts);
+      case 'raw_transcript_entries':
+        return queryRawTranscriptEntries(vectorLiteral, opts);
       case 'data_points':
         return queryDataPoints(vectorLiteral, opts);
       case 'workshop_scratchpads':
@@ -267,14 +267,14 @@ async function queryDiscoveryThemes(v: string, opts: QueryOpts): Promise<Retriev
   return mapRows('discovery_themes', rows);
 }
 
-async function queryTranscriptChunks(v: string, opts: QueryOpts): Promise<RetrievedChunk[]> {
+async function queryRawTranscriptEntries(v: string, opts: QueryOpts): Promise<RetrievedChunk[]> {
   const { wFilter, exFilter } = buildWorkshopFilters('tc', opts);
   const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
     SELECT tc.id,
            tc.text,
            tc."workshopId"                                        AS "workshopId",
            (1 - (tc.embedding <=> ${v}::vector))::float8         AS similarity
-    FROM   transcript_chunks tc
+    FROM   raw_transcript_entries tc
     JOIN   workshops w ON w.id = tc."workshopId"
     WHERE  w."organizationId" = ${opts.organizationId}
       AND  tc.embedding IS NOT NULL
@@ -284,7 +284,7 @@ async function queryTranscriptChunks(v: string, opts: QueryOpts): Promise<Retrie
     ORDER  BY tc.embedding <=> ${v}::vector
     LIMIT  ${opts.topK}
   `);
-  return mapRows('transcript_chunks', rows);
+  return mapRows('raw_transcript_entries', rows);
 }
 
 async function queryDataPoints(v: string, opts: QueryOpts): Promise<RetrievedChunk[]> {

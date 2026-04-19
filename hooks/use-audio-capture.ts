@@ -357,32 +357,7 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
                   chunks: attempt.chunks.length,
                   guardReason: attempt.validity?.reasons?.slice(0, 2).join('; ') ?? 'unknown',
                 });
-                // Store raw spoken records even for discarded thoughts.
-                // Every spoken word reaches the DB regardless of machine decisions.
-                const discardNow = Date.now();
-                const spokenRecords = attempt.chunks.map((chunkText, i) => ({
-                  text: chunkText,
-                  startTimeMs: attempt.chunk_times[i] ?? attempt.start_time_ms,
-                  endTimeMs: attempt.chunk_times[i + 1] ?? discardNow,
-                  confidence: null as number | null,
-                  source: 'deepgram' as const,
-                }));
-                fetch(ingestUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    speakerId,
-                    startTime: attempt.start_time_ms,
-                    endTime: discardNow,
-                    text: attempt.full_text,
-                    rawText: attempt.full_text,
-                    confidence: null,
-                    source: 'deepgram' as const,
-                    dialoguePhase: getDialoguePhase(),
-                    spokenRecords,
-                    rawCaptureOnly: true,
-                  }),
-                }).catch(() => {});
+                // Raw transcript already stored at receipt — nothing to do on discard.
               },
             });
             stateMachinesRef.current.set(speakerId, machine);

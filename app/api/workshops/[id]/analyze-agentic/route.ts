@@ -61,22 +61,16 @@ export async function POST(
       return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
     }
 
-    // Build agent context from recent transcripts
-    const recentTranscripts = await prisma.transcriptChunk.findMany({
+    // Build agent context from recent raw transcript entries
+    const recentTranscripts = await prisma.rawTranscriptEntry.findMany({
       where: { workshopId },
-      orderBy: { createdAt: 'desc' },
-      take: 20, // Agent needs more context than simple classification
+      orderBy: [{ sequence: 'desc' }],
+      take: 20,
       select: {
         id: true,
         text: true,
         speakerId: true,
         createdAt: true,
-        dataPoint: {
-          select: {
-            id: true,
-            // We'll store agentic analysis in a new field later
-          },
-        },
       },
     });
 

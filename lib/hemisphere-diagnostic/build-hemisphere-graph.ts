@@ -504,7 +504,7 @@ export async function buildGraphFromSessions(
     ? await prisma.dataPoint.findMany({
         where: { sessionId: { in: sessionIds }, questionKey: { not: null } },
         orderBy: { createdAt: 'asc' },
-        select: { id: true, sessionId: true, participantId: true, questionKey: true, rawText: true, createdAt: true, transcriptChunkId: true },
+        select: { id: true, sessionId: true, participantId: true, questionKey: true, rawText: true, createdAt: true },
       })
     : [];
 
@@ -536,7 +536,7 @@ export async function buildGraphFromSessions(
       weight: Math.max(1, Math.round(item.wordCount / 10)),
       severity: undefined, confidence: undefined,
       sources: [{ sessionId: String(item.dp.sessionId), participantName: item.participantName }],
-      evidence: [{ quote: item.answer, qaTag: item.tag || undefined, createdAt: item.dp.createdAt ? new Date(item.dp.createdAt).toISOString() : undefined, chunkId: item.dp.transcriptChunkId ? String(item.dp.transcriptChunkId) : undefined }],
+      evidence: [{ quote: item.answer, qaTag: item.tag || undefined, createdAt: item.dp.createdAt ? new Date(item.dp.createdAt).toISOString() : undefined }],
     });
   }
 

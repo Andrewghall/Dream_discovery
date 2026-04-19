@@ -10,7 +10,8 @@ interface RawChunk {
   text: string;
   startTimeMs: string;
   speakerId: string | null;
-  source: string;
+  speechFinal: boolean;
+  sequence: number;
 }
 
 interface SplitSibling {

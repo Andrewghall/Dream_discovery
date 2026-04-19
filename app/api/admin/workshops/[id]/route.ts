@@ -746,8 +746,8 @@ export async function DELETE(
     await runDeleteStep('dataPoint', () =>
       prisma.dataPoint.deleteMany({ where: { workshopId: id } })
     );
-    await runDeleteStep('transcriptChunk', () =>
-      prisma.transcriptChunk.deleteMany({ where: { workshopId: id } })
+    await runDeleteStep('rawTranscriptEntry', () =>
+      prisma.rawTranscriptEntry.deleteMany({ where: { workshopId: id } })
     );
     await runDeleteStep('workshopEventOutbox', () =>
       prisma.workshopEventOutbox.deleteMany({ where: { workshopId: id } })

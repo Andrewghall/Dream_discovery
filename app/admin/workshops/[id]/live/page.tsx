@@ -3173,24 +3173,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   }));
 
                   if (!passageQuality.pass) {
-                    // Passage is ASR-damaged — store the raw capture only, skip DataPoint creation.
-                    await fetch(ingestUrl, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        speakerId,
-                        startTime: attempt.start_time_ms,
-                        endTime: commitNow,
-                        text: fullText,
-                        rawText: fullText,
-                        confidence: slmMeta?.confidence ?? null,
-                        source: 'deepgram' as const,
-                        dialoguePhase: currentPhase,
-                        flush: true,
-                        spokenRecords,
-                        rawCaptureOnly: true,
-                      }),
-                    }).catch(() => { /* best-effort raw capture */ });
+                    // Passage is ASR-damaged — raw transcript already stored at receipt; skip DataPoint creation.
                     return;
                   }
 
@@ -3216,8 +3199,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       dialoguePhase: currentPhase,
                       flush: true,
                       // Individual spoken records — one per Deepgram isFinal result.
-                      // The server creates one TranscriptChunk per record and links
-                      // them all to one ThoughtWindow before creating the DataPoint.
+                      // The server links spoken records to the ThoughtWindow before creating the DataPoint.
                       spokenRecords,
                       clientDomainHint: domainResult ? {
                         primaryDomain: primaryLiveDomain,
@@ -3381,30 +3363,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   guardReason: discardReason,
                 });
 
-                // Fire-and-forget: store the raw spoken records even though this
-                // thought was discarded. Every spoken word must reach Supabase
-                // regardless of ThoughtStateMachine decisions.
-                const discardNow = Date.now();
-                fetch(ingestUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    speakerId,
-                    startTime: attempt.start_time_ms,
-                    endTime: attempt.last_chunk_time_ms,
-                    text: attempt.full_text,
-                    confidence: null,
-                    source: 'deepgram' as const,
-                    rawCaptureOnly: true,
-                    spokenRecords: attempt.chunks.map((chunkText, i) => ({
-                      text: chunkText,
-                      startTimeMs: attempt.chunk_times[i] ?? attempt.start_time_ms,
-                      endTimeMs: attempt.chunk_times[i + 1] ?? discardNow,
-                      confidence: null,
-                      source: 'deepgram' as const,
-                    })),
-                  }),
-                }).catch(() => { /* best-effort — discard path must not throw */ });
+                // Raw transcript already stored at receipt — nothing to do on discard.
 
                 pushDiagEvent({
                   ts: Date.now(),

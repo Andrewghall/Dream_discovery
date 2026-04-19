@@ -57,7 +57,6 @@ export async function POST(
       },
       include: {
         agenticAnalysis: true,
-        transcriptChunk: true,
         annotation: true,
       },
       orderBy: {

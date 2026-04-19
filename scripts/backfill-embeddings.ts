@@ -31,7 +31,7 @@
  *
  * Process order (smallest/fastest tables first):
  *   discovery_themes → conversation_insights → data_points →
- *   workshop_scratchpads → conversation_messages → transcript_chunks
+ *   workshop_scratchpads → conversation_messages → raw_transcript_entries
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -59,7 +59,7 @@ type SourceName =
   | 'data_points'
   | 'workshop_scratchpads'
   | 'conversation_messages'
-  | 'transcript_chunks';
+  | 'raw_transcript_entries';
 
 const ALL_SOURCES: SourceName[] = [
   'discovery_themes',
@@ -67,7 +67,7 @@ const ALL_SOURCES: SourceName[] = [
   'data_points',
   'workshop_scratchpads',
   'conversation_messages',
-  'transcript_chunks',
+  'raw_transcript_entries',
 ];
 
 // ─── Cohort text enrichment ───────────────────────────────────────────────────
@@ -250,11 +250,11 @@ async function backfillSource(source: SourceName): Promise<void> {
         ORDER  BY cm.id
         LIMIT  ${BATCH}
       `;
-    } else if (source === 'transcript_chunks') {
+    } else if (source === 'raw_transcript_entries') {
       // No participant attribution — transcript chunks are not per-participant
       rows = await prisma.$queryRaw<RawRow[]>`
         SELECT id, text
-        FROM   transcript_chunks
+        FROM   raw_transcript_entries
         WHERE  embedding IS NULL
           AND  LENGTH(text) >= 20
           AND  id > ${cursor}
@@ -330,9 +330,9 @@ async function countPending(source: SourceName): Promise<number> {
     `;
     return Number(r[0].count);
   }
-  if (source === 'transcript_chunks') {
+  if (source === 'raw_transcript_entries') {
     const r = await prisma.$queryRaw<[{ count: bigint }]>`
-      SELECT COUNT(*) FROM transcript_chunks WHERE embedding IS NULL AND LENGTH(text) >= 20
+      SELECT COUNT(*) FROM raw_transcript_entries WHERE embedding IS NULL AND LENGTH(text) >= 20
     `;
     return Number(r[0].count);
   }

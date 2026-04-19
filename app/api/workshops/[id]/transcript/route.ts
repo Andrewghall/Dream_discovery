@@ -22,7 +22,6 @@ import { pushUtterance } from '@/lib/cognition/cognitive-state';
 import { extractFeatures } from '@/lib/ethentaflow/thought-feature-extractor';
 import { runStructuralGuard, logGuardResult } from '@/lib/ethentaflow/thought-guard';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
-import type { TranscriptSource } from '@prisma/client';
 // Journey agent + cognitive analysis run inside after() — up to 40s per cycle.
 // Without this, Vercel kills the background work before the journey agent completes.
 export const maxDuration = 60;
@@ -53,13 +52,9 @@ type IngestTranscriptChunkBody = {
   dialoguePhase?: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null;
   flush?: boolean;
   // Individual spoken records — one per Deepgram isFinal result.
-  // When present, the server creates one TranscriptChunk per record and links
-  // them through a ThoughtWindow before creating the DataPoint.
-  // When absent (legacy / fallback path), a single TranscriptChunk is created.
+  // Linked to the ThoughtWindow before DataPoint creation.
   spokenRecords?: IncomingSpokenRecord[];
-  // When true: write spoken records to transcript_chunks and return immediately.
-  // No ThoughtWindow, no DataPoint, no guard. Used by the client discard path
-  // to ensure every spoken word is stored regardless of ThoughtStateMachine decisions.
+  // Legacy field — no-op. Raw transcript is now stored at receipt via raw_transcript_entries.
   rawCaptureOnly?: boolean;
   // Deterministic domain result from EthentaFlow client scorer.
   clientDomainHint?: ClientDomainHint | null;
@@ -129,13 +124,13 @@ function applyServerGuard(
 // processResolvedThought
 //
 // Receives a fully resolved thought (from ThoughtStateMachine commit)
-// and runs the three-layer write sequence:
-//   1. TranscriptChunks  — spoken records, one per Deepgram isFinal result
-//   2. ThoughtWindow     — aggregation record linking all spoken records
-//   3. DataPoint         — resolved meaning artifact; created only after window
+// and runs the two-layer write sequence:
+//   1. ThoughtWindow — aggregation record (timing, speaker, text)
+//   2. DataPoint     — resolved meaning artifact
 //
-// DREAM and all downstream intelligence reason exclusively over DataPoints.
-// TranscriptChunks are raw audit records and are never passed to DREAM.
+// Raw transcript is stored verbatim in raw_transcript_entries at receipt
+// time (before TSM) and is never modified. ThoughtWindow and DataPoint
+// are derived artifacts only.
 // ══════════════════════════════════════════════════════════════
 type PassageMeta = {
   /** ThoughtWindow ID of the first unit in the split passage (shared by all siblings). */
@@ -161,62 +156,24 @@ async function processResolvedThought(
   const trace = traceId ? `[trace:${traceId}]` : '';
   const text = utterance.text;
   const now = Date.now();
-  const src: TranscriptSource = utterance.source === 'WHISPER' ? 'WHISPER'
-    : utterance.source === 'ZOOM' ? 'ZOOM' : 'DEEPGRAM';
 
-  // ══ STEP 1 — Write spoken records immediately. Unconditional. ════════════
-  // Every spoken record is persisted to transcript_chunks before any validity
-  // check, guard, or DataPoint decision. Blocked, expired, and unresolved
-  // thoughts remain fully visible in the transcript layer.
-  // Natural repeated speech ("yes" said twice) is stored twice — that is correct.
-  // The only skip is a true transport-level duplicate: exact same workshopId +
-  // startTimeMs + text, which hits the DB unique constraint.
-  const chunkIds: string[] = [];
-  // Fallback to utterance timing when spoken records are empty (e.g. semantic
-  // split units 2..N which share timing with unit 1 but write no chunks).
+  // Timing: use the span of the incoming spoken records. Fallback to utterance
+  // timing for semantic split units 2..N (which share timing with unit 1).
   const firstStartTimeMs = incomingSpokenRecords[0]?.startTimeMs ?? utterance.startTimeMs ?? now;
   const lastEndTimeMs = incomingSpokenRecords[incomingSpokenRecords.length - 1]?.endTimeMs ?? utterance.endTimeMs ?? now;
 
-  for (const rec of incomingSpokenRecords) {
-    const chunkMeta = {
-      ...(bodySlmMetadata && { slmMetadata: bodySlmMetadata }),
-      ...(clientDomainHint && { ethentaflowDomain: clientDomainHint }),
-    };
-    try {
-      const chunk = await prisma.transcriptChunk.create({
-        data: {
-          workshopId,
-          speakerId: bodySpeakerId ?? null,
-          startTimeMs: BigInt(rec.startTimeMs),
-          endTimeMs: BigInt(rec.endTimeMs),
-          text: rec.text,
-          confidence: rec.confidence,
-          source: src,
-          metadata: Object.keys(chunkMeta).length > 0 ? chunkMeta as any : undefined,
-        },
-      });
-      chunkIds.push(chunk.id);
-    } catch {
-      // Unique constraint violation = exact transport retry (identical workshop +
-      // startTimeMs + text). Skip without losing capture.
-    }
-  }
-
-  // ══ STEP 2 — Guard check. Controls DataPoint creation only. ══════════════
-  // Spoken records are already in DB regardless of this result.
+  // ══ STEP 1 — Guard check. Controls DataPoint creation. ═══════════════════
   // skipServerGuard=true when the full passage was already validated by the
-  // stricter client-side runCommitGuard before semantic splitting. Individual
-  // split units often contain only contractions (That's, We've) rather than
-  // explicit finite verbs, which would cause NO_FINITE_PREDICATE false-positives.
+  // stricter client-side runCommitGuard before semantic splitting.
   if (!skipServerGuard) {
     const guard = applyServerGuard(text, utterance.source ?? 'unknown');
     if (guard.blocked) {
-      console.log(`[ThoughtWindow${trace}] Guard blocked — spoken records persisted, no DataPoint:`, guard.reason);
-      return { blocked: true, reason: guard.reason, spokenRecordIds: chunkIds };
+      console.log(`[ThoughtWindow${trace}] Guard blocked — no DataPoint:`, guard.reason);
+      return { blocked: true, reason: guard.reason, spokenRecordIds: [] };
     }
   }
 
-  // ══ STEP 3 — Create ThoughtWindow linking the already-written records. ════
+  // ══ STEP 2 — Create ThoughtWindow (processing artifact, not transcript). ═
   const spanMs = Math.max(0, lastEndTimeMs - firstStartTimeMs);
   const thoughtWindow = await prisma.thoughtWindow.create({
     data: {
@@ -228,26 +185,24 @@ async function processResolvedThought(
       openedAtMs: BigInt(firstStartTimeMs),
       lastActivityAtMs: BigInt(lastEndTimeMs),
       closedAtMs: BigInt(now),
-      spokenRecordCount: chunkIds.length,
-      spokenRecords: { connect: chunkIds.map(id => ({ id })) },
+      spokenRecordCount: incomingSpokenRecords.length,
     },
   });
 
-  // ══ STEP 4 — Create DataPoint. The resolved meaning artifact. ════════════
-  // This is the only record DREAM will ever read.
+  // ══ STEP 3 — Create DataPoint. The resolved meaning artifact. ════════════
   console.log('DATAPOINT_CREATED', { speakerId: bodySpeakerId ?? null, thoughtWindowId: thoughtWindow.id, time: Date.now() });
   const dataPoint = await prisma.dataPoint.create({
     data: {
       workshopId,
       thoughtWindowId: thoughtWindow.id,
-      spokenRecordIds: chunkIds,
+      spokenRecordIds: [],
       rawText: text,
       source: 'SPEECH',
       speakerId: bodySpeakerId ?? null,
       startTimeMs: BigInt(firstStartTimeMs),
       endTimeMs: BigInt(lastEndTimeMs),
       spanMs,
-      spokenRecordCount: chunkIds.length,
+      spokenRecordCount: incomingSpokenRecords.length,
       // Passage linkage metadata
       sourceWindowId: passageMeta?.sourceWindowId ?? thoughtWindow.id,
       sequenceIndex: passageMeta?.sequenceIndex ?? 0,
@@ -256,16 +211,15 @@ async function processResolvedThought(
     },
   });
 
-  // Expose window shape under the same name downstream code expects
   const window = {
     windowId: thoughtWindow.id,
-    spokenRecordIds: chunkIds,
+    spokenRecordIds: [] as string[],
     resolvedText: text,
     speakerId: bodySpeakerId,
     startTimeMs: firstStartTimeMs,
     endTimeMs: lastEndTimeMs,
     spanMs,
-    spokenRecordCount: chunkIds.length,
+    spokenRecordCount: incomingSpokenRecords.length,
   };
 
   const dialoguePhase = safeDialoguePhase(bodyDialoguePhase ?? utterance.dialoguePhase);
@@ -791,73 +745,27 @@ export async function POST(
 
     const startTimeMs = Number.isFinite(body.startTime) ? Math.max(0, Math.round(body.startTime)) : 0;
     const endTimeMs = Number.isFinite(body.endTime) ? Math.max(startTimeMs, Math.round(body.endTime)) : startTimeMs;
-    const src =
-      body.source === 'deepgram' ? 'DEEPGRAM' : body.source === 'whisper' ? 'WHISPER' : 'ZOOM';
 
-    // ── Filter trivial text — store raw chunk only, skip analysis ─
+    // ── Trivial fragments — raw transcript already stored at receipt time ────
+    // No ThoughtWindow or DataPoint created for noise.
     if (isTextTrivial(text)) {
-      await prisma.transcriptChunk.create({
-        data: {
-          workshopId,
-          speakerId: body.speakerId || null,
-          startTimeMs,
-          endTimeMs,
-          text,
-          confidence: typeof body.confidence === 'number' ? body.confidence : null,
-          source: src,
-          metadata: body.slmMetadata || body.rawText
-            ? {
-                ...(body.rawText && { rawText: body.rawText }),
-                ...(body.slmMetadata && { slmMetadata: body.slmMetadata }),
-              }
-            : undefined,
-        },
-      }).catch(() => null);
-
-      return NextResponse.json({
-        ok: true,
-        buffered: false,
-        skipped: true,
-        reason: 'Trivial fragment — stored only',
-      });
+      return NextResponse.json({ ok: true, skipped: true, reason: 'Trivial fragment' });
     }
 
-    // ── rawCaptureOnly — store spoken records with no ThoughtWindow or DataPoint ──
-    // Used by the client discard path: every spoken word is stored regardless
-    // of ThoughtStateMachine decisions. No guard, no analysis, no DataPoint.
+    // ── rawCaptureOnly — raw transcript already stored at receipt time ────────
+    // No further storage needed. Return immediately.
     if (body.rawCaptureOnly) {
-      const records: IncomingSpokenRecord[] = Array.isArray(body.spokenRecords) && body.spokenRecords.length > 0
-        ? body.spokenRecords
-        : [{ text, startTimeMs, endTimeMs, confidence: typeof body.confidence === 'number' ? body.confidence : null, source: body.source }];
-      const ids: string[] = [];
-      for (const rec of records) {
-        try {
-          const chunk = await prisma.transcriptChunk.create({
-            data: {
-              workshopId,
-              speakerId: body.speakerId || null,
-              startTimeMs: BigInt(rec.startTimeMs ?? startTimeMs),
-              endTimeMs: BigInt(rec.endTimeMs ?? endTimeMs),
-              text: rec.text || text,
-              confidence: typeof rec.confidence === 'number' ? rec.confidence : null,
-              source: src,
-            },
-          });
-          ids.push(chunk.id);
-        } catch { /* transport retry — unique constraint violation */ }
-      }
-      return NextResponse.json({ ok: true, rawCaptureOnly: true, spokenRecordIds: ids });
+      return NextResponse.json({ ok: true, rawCaptureOnly: true });
     }
 
-    // ── Resolved thought received — run the three-layer write sequence ───────
-    // transcriptChunks → thoughtWindow → dataPoint
+    // ── Resolved thought — create ThoughtWindow + DataPoint ─────────────────
     const utterance: FlushedUtterance = {
       text,
       speakerId: body.speakerId || null,
       startTimeMs,
       endTimeMs,
       confidence: typeof body.confidence === 'number' ? body.confidence : null,
-      source: src,
+      source: body.source === 'deepgram' ? 'DEEPGRAM' : body.source === 'whisper' ? 'WHISPER' : 'ZOOM',
       rawText: body.rawText,
       slmMetadata: body.slmMetadata as Record<string, unknown> | undefined,
       dialoguePhase: body.dialoguePhase || null,
@@ -885,8 +793,7 @@ export async function POST(
     try {
       // ── Semantic splitting: one resolved passage → 1–4 distinct meaning units ──
       // Runs synchronously so all DataPoints are created before responding.
-      // Units 2..N reuse the same timing window but carry no spoken records —
-      // the TranscriptChunks are owned by unit 1's ThoughtWindow.
+      // Units 2..N reuse the same timing window as unit 1.
       //
       // Feature flag: ENABLE_SEMANTIC_SPLIT_V2
       //   false (default) — v1: current splitting behaviour

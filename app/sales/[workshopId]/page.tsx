@@ -25,7 +25,7 @@ export default async function SalesOverviewPage({ params }: { params: Promise<{ 
       salesActions: true,
       organizationId: true,
       createdAt: true,
-      _count: { select: { transcriptChunks: true } },
+      _count: { select: { rawTranscript: true } },
     },
   });
 
@@ -39,7 +39,7 @@ export default async function SalesOverviewPage({ params }: { params: Promise<{ 
   const actions = (workshop.salesActions as Array<Record<string, unknown>>) || [];
   const hasPlan = Object.keys(plan).length > 0;
   const hasReport = !!report;
-  const hasTranscript = workshop._count.transcriptChunks > 0;
+  const hasTranscript = workshop._count.rawTranscript > 0;
 
   const meetingSummary = report?.meetingSummary as Record<string, string> | undefined;
 
@@ -89,7 +89,7 @@ export default async function SalesOverviewPage({ params }: { params: Promise<{ 
           <Card>
             <CardContent className="pt-6 text-center">
               <Mic className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
-              <div className="text-sm font-medium">{workshop._count.transcriptChunks} segments</div>
+              <div className="text-sm font-medium">{workshop._count.rawTranscript} segments</div>
               <p className="text-xs text-muted-foreground">Transcript</p>
             </CardContent>
           </Card>
@@ -147,7 +147,7 @@ export default async function SalesOverviewPage({ params }: { params: Promise<{ 
                 </CardTitle>
                 <CardDescription>
                   {hasTranscript
-                    ? `${workshop._count.transcriptChunks} transcript segments captured`
+                    ? `${workshop._count.rawTranscript} transcript segments captured`
                     : 'Start or resume a live call recording'}
                 </CardDescription>
               </CardHeader>

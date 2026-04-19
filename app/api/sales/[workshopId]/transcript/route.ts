@@ -49,50 +49,18 @@ export async function POST(
       return NextResponse.json({ success: true, skipped: true });
     }
 
-    // Dedup check
-    const existing = await prisma.transcriptChunk.findFirst({
-      where: { workshopId, speakerId, startTimeMs: startTime, endTimeMs: endTime, text },
-      include: { dataPoint: true },
-    });
-
-    if (existing?.dataPoint) {
-      return NextResponse.json({
-        success: true,
-        duplicate: true,
-        transcriptChunkId: existing.id,
-        dataPointId: existing.dataPoint.id,
-      });
-    }
-
-    // Create transcript chunk + data point (sync — must complete before response)
-    const chunkId = nanoid();
+    // Create data point (sync — must complete before response)
     const dpId = nanoid();
 
-    await prisma.$transaction([
-      prisma.transcriptChunk.create({
-        data: {
-          id: chunkId,
-          workshopId,
-          speakerId: speakerId || null,
-          startTimeMs: startTime || 0,
-          endTimeMs: endTime || 0,
-          text: text.trim(),
-          confidence: confidence ?? null,
-          source: source === 'whisper' ? 'WHISPER' : 'DEEPGRAM',
-          metadata: { rawText, slmMetadata },
-        },
-      }),
-      prisma.dataPoint.create({
-        data: {
-          id: dpId,
-          workshopId,
-          transcriptChunkId: chunkId,
-          rawText: text.trim(),
-          source: 'SPEECH',
-          speakerId: speakerId || null,
-        },
-      }),
-    ]);
+    await prisma.dataPoint.create({
+      data: {
+        id: dpId,
+        workshopId,
+        rawText: text.trim(),
+        source: 'SPEECH',
+        speakerId: speakerId || null,
+      },
+    });
 
     const t_dbWriteComplete = Date.now();
 
@@ -101,7 +69,7 @@ export async function POST(
     emitSalesEvent(workshopId, {
       type: 'transcript.new',
       payload: {
-        id: chunkId,
+        id: dpId,
         dataPointId: dpId,
         speakerId: speakerId || null,
         text: text.trim(),
@@ -307,7 +275,6 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      transcriptChunkId: chunkId,
       dataPointId: dpId,
     });
   } catch (error) {
