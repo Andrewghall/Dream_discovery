@@ -333,6 +333,7 @@ export class CaptureAPIStream {
           } else if (msg.type === 'transcript') {
             console.log('[CaptureAPIStream] TRANSCRIPT received:', (msg as any).rawText?.substring(0, 60))
             this.onTranscript(msg as StreamTranscript)
+            console.log('[CaptureAPIStream] onTranscript returned ok')
           } else if (msg.type === 'error') {
             console.log('[CaptureAPIStream] ERROR received:', msg)
             this.onError(msg.message)
