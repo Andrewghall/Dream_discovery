@@ -322,6 +322,24 @@ export class ThoughtStateMachine {
       }
     }
 
+    // ASR occasionally cuts a noun phrase mid-article/pronoun (e.g. "exciting to see a.").
+    // Strip the orphan trailing token and retry once — same pattern as the dangling strip.
+    if (guard.blocked && guard.reason === 'GUARD:ORPHAN_TRAILING_TOKEN') {
+      const stripped = commitText
+        .replace(/\s*\b(I|we|they|he|she|it|you|the|a|an|our|their|his|her|its)\s*[.,!?]?\s*$/i, '')
+        .trim();
+      if (stripped && stripped !== commitText && stripped.split(/\s+/).length >= 4) {
+        const strippedFeatures = extractFeatures(stripped, this.lensPack);
+        const strippedGuard = runCommitGuard(stripped, strippedFeatures);
+        logGuardResult('FinalGate:OrphanStripped', stripped, strippedFeatures, strippedGuard);
+        if (!strippedGuard.blocked) {
+          commitText = stripped;
+          gf = strippedFeatures;
+          guard = strippedGuard;
+        }
+      }
+    }
+
     if (guard.blocked) {
       attempt.state = 'discarded';
       this.continuityScore = Math.max(this.continuityScore - 0.05, 0);
