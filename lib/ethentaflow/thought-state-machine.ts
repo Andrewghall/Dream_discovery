@@ -147,8 +147,10 @@ export class ThoughtStateMachine {
   private startNew(text: string): void {
     this.holdCycles = 0;
     const now = Date.now();
+    const windowId = nextAttemptId();
+    console.log('WINDOW_START', { speakerId: this.speakerId, windowId, time: now });
     this.current = {
-      id: nextAttemptId(),
+      id: windowId,
       version: 1,
       speaker_id: this.speakerId,
       chunks: [text],
@@ -328,6 +330,7 @@ export class ThoughtStateMachine {
     // ─────────────────────────────────────────────────────────────────────────
     attempt.full_text = commitText;
 
+    console.log('WINDOW_RESOLVE', { speakerId: this.speakerId, windowId: attempt.id, time: Date.now() });
     attempt.state = 'committed';
     this.continuityScore = Math.min(this.continuityScore + 0.15, 1.0);
 

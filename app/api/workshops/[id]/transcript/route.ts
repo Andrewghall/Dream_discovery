@@ -210,6 +210,7 @@ async function processResolvedThought(
 
   // ══ STEP 4 — Create DataPoint. The resolved meaning artifact. ════════════
   // This is the only record DREAM will ever read.
+  console.log('DATAPOINT_CREATED', { speakerId: bodySpeakerId ?? null, thoughtWindowId: thoughtWindow.id, time: Date.now() });
   const dataPoint = await prisma.dataPoint.create({
     data: {
       workshopId,
