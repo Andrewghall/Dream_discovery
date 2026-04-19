@@ -55,6 +55,7 @@ export class ThoughtStateMachine {
   // gets Technology continuity credit on ambiguous utterances.
   private domainCluster: DomainCluster = createDomainCluster();
   private destroyed = false;
+  private _commitReason = 'unknown';
 
   constructor(speakerId: string, lensPack: LensPack, callbacks: StateMachineCallbacks) {
     this.speakerId = speakerId;
@@ -87,6 +88,13 @@ export class ThoughtStateMachine {
 
     const trimmed = text.trim();
     if (!trimmed) return;
+
+    const chunkTs = Date.now();
+    const windowId = this.current?.id ?? 'none';
+    console.log('CHUNK_ARRIVED', { speakerId: this.speakerId, windowId, ts: chunkTs, speechFinal, text: trimmed.substring(0, 80) });
+    if (this.current && speechFinal) {
+      this.current._anySpeechFinal = true;
+    }
 
     this.clearSilenceTimer();
 
@@ -125,6 +133,7 @@ export class ThoughtStateMachine {
     this.clearMergeTimer();
     this.clearContinuationTimer();
     if (this.current && this.current.state !== 'committed' && this.current.state !== 'discarded') {
+      this._commitReason = 'force_flush';
       if (this.current.state === 'resolved_candidate') {
         this.commit(this.current, false);
       } else {
@@ -171,6 +180,7 @@ export class ThoughtStateMachine {
       domain: null,
       hold_started_ms: null,
       flagged_for_escalation: false,
+      _anySpeechFinal: false,
     };
   }
 
@@ -202,7 +212,7 @@ export class ThoughtStateMachine {
     this.callbacks.onPendingUpdate({ ...this.current });
   }
 
-  private onSilence(_wasSpeechFinal: boolean): void {
+  private onSilence(wasSpeechFinal: boolean): void {
     if (!this.current || this.destroyed) return;
     this.silenceTimer = null;
 
@@ -210,8 +220,7 @@ export class ThoughtStateMachine {
     if (this.current.state === 'resolved_candidate') return; // continuation timer handles this
 
     this.current.state = 'possible_pause';
-    // Deepgram's isFinal is an utterance boundary, not a thought boundary.
-    // Never force-commit on silence — let thought_completeness routing decide.
+    this._commitReason = wasSpeechFinal ? 'silence_after_speech_final' : 'silence_threshold';
     this.attemptCommit(false);
   }
 
@@ -247,6 +256,7 @@ export class ThoughtStateMachine {
         this.mergeTimer = setTimeout(() => {
           if (!this.current || this.current.id !== attempt.id || this.destroyed) return;
           this.clearMergeTimer();
+          this._commitReason = 'complete_thought_hold_expiry';
           this.enterResolvedCandidate(this.current, false);
         }, COMPLETE_THOUGHT_HOLD_MS);
         return;
@@ -290,6 +300,7 @@ export class ThoughtStateMachine {
       this.mergeTimer = setTimeout(() => {
         if (!this.current || this.current.id !== attempt.id || this.destroyed) return;
         this.clearMergeTimer();
+        this._commitReason = 'merge_timer_expiry';
         this.attemptCommit(true, true);
       }, MERGE_WAIT_MS);
     }
@@ -309,6 +320,7 @@ export class ThoughtStateMachine {
       if (!this.current || this.current.id !== attempt.id || this.destroyed) return;
       this.clearContinuationTimer();
       if (this.current.state === 'resolved_candidate') {
+        this._commitReason = 'continuation_timer_expiry';
         this.commit(this.current, false);
       }
     }, CONTINUATION_WINDOW_MS);
@@ -373,7 +385,20 @@ export class ThoughtStateMachine {
     // ─────────────────────────────────────────────────────────────────────────
     attempt.full_text = commitText;
 
-    console.log('WINDOW_RESOLVE', { speakerId: this.speakerId, windowId: attempt.id, time: Date.now() });
+    const resolveTs = Date.now();
+    console.log('WINDOW_RESOLVE', {
+      speakerId: this.speakerId,
+      windowId: attempt.id,
+      resolveTs,
+      commitReason: this._commitReason,
+      firstChunkTs: attempt.chunk_times[0] ?? null,
+      lastChunkTs: attempt.chunk_times[attempt.chunk_times.length - 1] ?? null,
+      chunkCount: attempt.chunks.length,
+      chunkTimestamps: attempt.chunk_times,
+      anySpeechFinal: attempt._anySpeechFinal ?? false,
+      windowDurationMs: resolveTs - (attempt.start_time_ms ?? resolveTs),
+      textLength: attempt.full_text.length,
+    });
     attempt.state = 'committed';
     this.continuityScore = Math.min(this.continuityScore + 0.15, 1.0);
 

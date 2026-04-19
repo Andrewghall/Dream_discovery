@@ -121,6 +121,7 @@ export interface ThoughtAttempt {
   hold_started_ms: number | null;
   flagged_for_escalation: boolean;
   guardBlockReason?: string | null;
+  _anySpeechFinal?: boolean;
 }
 
 export interface CommitCandidate {
