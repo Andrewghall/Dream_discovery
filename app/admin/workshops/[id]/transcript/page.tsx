@@ -1,91 +1,163 @@
-import { prisma } from '@/lib/prisma';
-import { notFound } from 'next/navigation';
+'use client';
 
-export default async function TranscriptPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
+import { useEffect, useRef, useState } from 'react';
+import { useParams } from 'next/navigation';
 
-  const workshop = await prisma.workshop.findUnique({
-    where: { id },
-    select: { name: true, clientName: true },
-  });
-  if (!workshop) notFound();
+type RawEntry = {
+  id: string;
+  sequence: number;
+  speakerId: string | null;
+  text: string;
+  startTimeMs: string;
+  endTimeMs: string;
+  speechFinal: boolean;
+  confidence: number | null;
+};
 
-  const deduped = await prisma.rawTranscriptEntry.findMany({
-    where: { workshopId: id },
-    orderBy: [{ sequence: 'asc' }, { startTimeMs: 'asc' }],
-    select: {
-      id: true,
-      text: true,
-      startTimeMs: true,
-      speakerId: true,
-    },
-  });
+function relTime(startMs: string, sessionStartMs: string): string {
+  const elapsed = Number(startMs) - Number(sessionStartMs);
+  if (elapsed < 0) return '0:00';
+  const m = Math.floor(elapsed / 60000);
+  const s = Math.floor((elapsed % 60000) / 1000);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
-  // Work out session start so we can show relative timestamps
-  const sessionStart = deduped[0]?.startTimeMs ?? BigInt(0);
-  const durationMs = deduped.length > 0
-    ? Number(deduped[deduped.length - 1].startTimeMs) - Number(sessionStart)
-    : 0;
-  const durationMins = Math.round(durationMs / 60000);
-
-  function relTime(ms: bigint): string {
-    const elapsed = Number(ms) - Number(sessionStart);
-    const m = Math.floor(elapsed / 60000);
-    const s = Math.floor((elapsed % 60000) / 1000);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+const SPEAKER_COLOURS: Record<string, string> = {};
+const PALETTE = [
+  'text-blue-600',
+  'text-emerald-600',
+  'text-violet-600',
+  'text-orange-600',
+  'text-rose-600',
+  'text-cyan-600',
+];
+function speakerColour(id: string): string {
+  if (!SPEAKER_COLOURS[id]) {
+    const idx = Object.keys(SPEAKER_COLOURS).length % PALETTE.length;
+    SPEAKER_COLOURS[id] = PALETTE[idx];
   }
+  return SPEAKER_COLOURS[id];
+}
 
-  // Group consecutive chunks by speaker into runs for readability
-  type Run = { speakerId: string | null; chunks: typeof deduped };
-  const runs: Run[] = [];
-  for (const c of deduped) {
-    const last = runs[runs.length - 1];
-    if (last && last.speakerId === c.speakerId) {
-      last.chunks.push(c);
-    } else {
-      runs.push({ speakerId: c.speakerId, chunks: [c] });
+export default function RawTranscriptPage() {
+  const params = useParams<{ id: string }>();
+  const workshopId = params.id;
+
+  const [entries, setEntries] = useState<RawEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [live, setLive] = useState(true);
+  const maxSequenceRef = useRef(-1);
+  const sessionStartRef = useRef<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      if (cancelled) return;
+      try {
+        const url = `/api/admin/workshops/${workshopId}/raw-transcript?since=${maxSequenceRef.current}`;
+        const res = await fetch(url);
+        if (!res.ok) { setError(`API error ${res.status}`); return; }
+        const data = await res.json() as { entries: RawEntry[] };
+        if (cancelled) return;
+        if (data.entries.length > 0) {
+          setEntries((prev) => {
+            const next = [...prev, ...data.entries];
+            if (!sessionStartRef.current && next.length > 0) {
+              sessionStartRef.current = next[0].startTimeMs;
+            }
+            return next;
+          });
+          maxSequenceRef.current = data.entries[data.entries.length - 1].sequence;
+        }
+      } catch (e) {
+        if (!cancelled) setError(String(e));
+      }
     }
-  }
+
+    poll();
+    const interval = setInterval(poll, 2000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [workshopId]);
+
+  useEffect(() => {
+    if (live) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [entries, live]);
+
+  const sessionStart = sessionStartRef.current ?? '0';
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-mono text-sm">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Full Transcript</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          {workshop.clientName || workshop.name} — {deduped.length} segments · {durationMins} mins recorded
-        </p>
+      <div className="sticky top-0 z-10 bg-slate-950 border-b border-slate-800 px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-slate-400 text-xs uppercase tracking-widest">Raw Transcript</span>
+          <span className="text-slate-600">·</span>
+          <span className="text-slate-400 text-xs">{entries.length} entries</span>
+          {error && <span className="text-red-400 text-xs ml-2">{error}</span>}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center gap-1.5 text-xs ${live ? 'text-emerald-400' : 'text-slate-500'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+            {live ? 'Live' : 'Paused'}
+          </span>
+          <button
+            onClick={() => setLive((v) => !v)}
+            className="text-xs text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-2 py-0.5"
+          >
+            {live ? 'Pause scroll' : 'Resume scroll'}
+          </button>
+        </div>
       </div>
 
-      {deduped.length === 0 ? (
-        <div className="text-slate-400 text-sm">No transcript entries found for this workshop.</div>
-      ) : (
-        <div className="space-y-4">
-          {runs.map((run, ri) => (
-            <div key={ri} className="flex gap-4">
-              {/* Speaker + timestamp */}
-              <div className="w-24 shrink-0 pt-0.5 text-right">
-                <span className="text-xs font-mono text-slate-400">
-                  {relTime(run.chunks[0].startTimeMs)}
-                </span>
-                {run.speakerId && (
-                  <div className="text-xs text-slate-500 font-medium mt-0.5 truncate">
-                    {run.speakerId}
-                  </div>
-                )}
-              </div>
-              {/* Text */}
-              <div className="flex-1 bg-white border border-slate-100 rounded-lg px-4 py-3 text-sm text-slate-700 leading-relaxed shadow-sm">
-                {run.chunks.map((c) => c.text).join(' ')}
-              </div>
+      {/* Entries */}
+      <div className="px-6 py-4 space-y-0">
+        {entries.length === 0 && (
+          <div className="text-slate-600 text-xs pt-8 text-center">Waiting for transcript entries…</div>
+        )}
+        {entries.map((e) => (
+          <div
+            key={e.id}
+            className="flex gap-4 py-1.5 border-b border-slate-900 hover:bg-slate-900/40 group"
+          >
+            {/* Sequence + time */}
+            <div className="w-28 shrink-0 text-right text-slate-600 group-hover:text-slate-500 leading-snug pt-0.5">
+              <div className="text-xs">{relTime(e.startTimeMs, sessionStart)}</div>
+              <div className="text-xs opacity-50">#{e.sequence}</div>
             </div>
-          ))}
-        </div>
-      )}
+
+            {/* Speaker */}
+            <div className="w-24 shrink-0 pt-0.5">
+              {e.speakerId ? (
+                <span className={`text-xs font-semibold ${speakerColour(e.speakerId)}`}>
+                  {e.speakerId}
+                </span>
+              ) : (
+                <span className="text-xs text-slate-700">—</span>
+              )}
+            </div>
+
+            {/* Text */}
+            <div className="flex-1 leading-snug text-slate-200">
+              {e.text}
+            </div>
+
+            {/* Flags */}
+            <div className="w-20 shrink-0 text-right pt-0.5 space-x-1">
+              {e.speechFinal && (
+                <span className="text-xs text-emerald-500 font-semibold">FINAL</span>
+              )}
+              {e.confidence !== null && (
+                <span className="text-xs text-slate-600">
+                  {Math.round(e.confidence * 100)}%
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
     </div>
   );
 }
