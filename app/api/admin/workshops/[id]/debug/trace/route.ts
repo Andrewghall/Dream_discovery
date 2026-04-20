@@ -3,16 +3,16 @@ import { requireAuth } from '@/lib/auth/require-auth';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
 
-/**
- * GET /api/admin/workshops/[id]/debug/trace
- *
- * Returns the full ingest trace for a workshop:
- *   ThoughtWindows → linked TranscriptChunks → DataPoint (if created)
- *
- * Used by the replay debugger at /admin/workshops/[id]/debug/trace
- * to show exactly where each spoken passage became a hemisphere node,
- * was blocked, or was stored as raw capture only.
- */
+import type { TraceOutcome, TraceEntry, TraceResponse, TraceEmitEvent, TraceDataPointUnit, TraceTiming } from '@/lib/debug/trace-types';
+
+export const dynamic = 'force-dynamic';
+
+const TOLERANCE_MS = BigInt(2_000);
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Route handler
+// ──────────────────────────────────────────────────────────────────────────────
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -30,69 +30,62 @@ export async function GET(
   });
   if (!workshop) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
-  const rawWindows = await prisma.thoughtWindow.findMany({
-    where: { workshopId },
-    orderBy: { openedAtMs: 'asc' },
-  });
+  // ── Fetch all data in parallel ──────────────────────────────────────────────
+  const [rawWindows, rawEntries, allDataPoints, outboxEvents] = await Promise.all([
+    prisma.thoughtWindow.findMany({
+      where: { workshopId },
+      orderBy: { openedAtMs: 'asc' },
+    }),
 
-  const windowIds = rawWindows.map((w) => w.id);
-
-  // Raw transcript entries matched to windows by speaker + time range.
-  // raw_transcript_entries is the source of truth — never modified.
-  const [rawEntries, dataPoints] = await Promise.all([
     prisma.rawTranscriptEntry.findMany({
       where: { workshopId },
+      orderBy: [{ sequence: 'asc' }, { startTimeMs: 'asc' }],
       select: {
         id: true,
+        sequence: true,
+        speakerId: true,
         text: true,
         startTimeMs: true,
         endTimeMs: true,
-        speakerId: true,
         speechFinal: true,
-        sequence: true,
+        confidence: true,
       },
-      orderBy: [{ sequence: 'asc' }, { startTimeMs: 'asc' }],
     }),
+
     prisma.dataPoint.findMany({
-      where: { thoughtWindowId: { in: windowIds } },
-      select: {
-        id: true,
-        rawText: true,
-        sequenceIndex: true,
-        reasoningRole: true,
-        sourceWindowId: true,
-        thoughtWindowId: true,
-        classification: {
-          select: { primaryType: true, confidence: true },
-        },
+      where: { workshopId },
+      include: {
+        classification: { select: { primaryType: true, confidence: true, suggestedArea: true } },
       },
+      orderBy: { createdAt: 'asc' },
+    }),
+
+    prisma.workshopEventOutbox.findMany({
+      where: { workshopId, type: 'datapoint.created' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, type: true, payload: true, createdAt: true },
     }),
   ]);
 
-  // Load split siblings
-  const sourceWindowIds = dataPoints
-    .map((d) => d.sourceWindowId)
-    .filter((id): id is string => !!id);
+  // ── Index DataPoints by thoughtWindowId ────────────────────────────────────
+  const dpByWindowId = new Map<string, typeof allDataPoints>();
+  for (const dp of allDataPoints) {
+    if (!dp.thoughtWindowId) continue;
+    if (!dpByWindowId.has(dp.thoughtWindowId)) dpByWindowId.set(dp.thoughtWindowId, []);
+    dpByWindowId.get(dp.thoughtWindowId)!.push(dp);
+  }
 
-  const siblings = sourceWindowIds.length > 0
-    ? await prisma.dataPoint.findMany({
-        where: { workshopId, sourceWindowId: { in: sourceWindowIds } },
-        select: {
-          id: true,
-          rawText: true,
-          sequenceIndex: true,
-          reasoningRole: true,
-          sourceWindowId: true,
-          thoughtWindowId: true,
-        },
-        orderBy: [{ sourceWindowId: 'asc' }, { sequenceIndex: 'asc' }],
-      })
-    : [];
+  // ── Index outbox events by dataPointId ─────────────────────────────────────
+  type OutboxRow = (typeof outboxEvents)[number];
+  const outboxByDpId = new Map<string, OutboxRow>();
+  for (const ev of outboxEvents) {
+    const p = ev.payload as Record<string, unknown>;
+    const dpNode = p?.dataPoint as Record<string, unknown> | undefined;
+    const dpId = typeof dpNode?.id === 'string' ? dpNode.id : null;
+    if (dpId && !outboxByDpId.has(dpId)) outboxByDpId.set(dpId, ev);
+  }
 
-  // Match raw entries to windows by speaker + time range.
-  // Windows have openedAtMs/lastActivityAtMs; entries have startTimeMs.
-  // Allow ±2s tolerance for clock jitter between client write and window open.
-  const TOLERANCE_MS = BigInt(2_000);
+  // ── Match raw entries → windows ────────────────────────────────────────────
   const chunksByWindow = rawWindows.reduce<Record<string, typeof rawEntries>>((acc, w) => {
     const low = w.openedAtMs - TOLERANCE_MS;
     const high = w.lastActivityAtMs + TOLERANCE_MS;
@@ -106,65 +99,166 @@ export async function GET(
     return acc;
   }, {});
 
-  const dpByWindow = dataPoints.reduce<Record<string, (typeof dataPoints)[number]>>((acc, d) => {
-    if (d.thoughtWindowId) acc[d.thoughtWindowId] = d;
-    return acc;
-  }, {});
+  const sessionStartMs = rawEntries[0]?.startTimeMs ?? rawWindows[0]?.openedAtMs ?? null;
 
-  const siblingsBySource = siblings.reduce<Record<string, typeof siblings>>((acc, s) => {
-    if (s.sourceWindowId) (acc[s.sourceWindowId] ??= []).push(s);
-    return acc;
-  }, {});
+  // ── Build trace entries ────────────────────────────────────────────────────
+  const traces: TraceEntry[] = rawWindows.map((w) => {
+    const chunks = chunksByWindow[w.id] ?? [];
+    const dps = dpByWindowId.get(w.id) ?? [];
+    const isResolved = w.state === 'RESOLVED';
+    const isExpired = w.state === 'EXPIRED';
+    const hasDataPoints = dps.length > 0;
 
-  // Shape response
-  const shaped = rawWindows.map((w) => {
-    const dp = dpByWindow[w.id];
-    const windowChunks = chunksByWindow[w.id] ?? [];
-    const dpSiblings = dp?.sourceWindowId
-      ? (siblingsBySource[dp.sourceWindowId] ?? []).filter((s) => s.thoughtWindowId !== dp.thoughtWindowId)
-      : [];
+    // Timing
+    const firstChunkTs = chunks.length > 0 ? chunks[0].startTimeMs.toString() : null;
+    const lastChunkTs = chunks.length > 0 ? chunks[chunks.length - 1].startTimeMs.toString() : null;
+    const windowOpenTs = w.openedAtMs.toString();
+    const windowCloseTs = w.closedAtMs ? w.closedAtMs.toString() : null;
+    const dpCreateTs = hasDataPoints ? dps[0].createdAt.toISOString() : null;
+
+    // Earliest emit event for this window's DataPoints
+    const emitEvents: TraceEmitEvent[] = dps
+      .map((dp) => {
+        const ev = outboxByDpId.get(dp.id);
+        if (!ev) return null;
+        return { id: ev.id, type: ev.type, dataPointId: dp.id, createdAt: ev.createdAt.toISOString() };
+      })
+      .filter((x): x is TraceEmitEvent => x !== null);
+
+    const earliestEmitTs = emitEvents.length > 0 ? emitEvents[0].createdAt : null;
+
+    const timing: TraceTiming = {
+      firstChunkTs,
+      lastChunkTs,
+      windowOpenTs,
+      windowCloseTs,
+      dataPointCreateTs: dpCreateTs,
+      eventEmitTs: earliestEmitTs,
+      firstChunkToCommitMs: firstChunkTs && windowCloseTs
+        ? Number(windowCloseTs) - Number(firstChunkTs) : null,
+      lastChunkToCommitMs: lastChunkTs && windowCloseTs
+        ? Number(windowCloseTs) - Number(lastChunkTs) : null,
+      commitToDataPointMs: windowCloseTs && dpCreateTs
+        ? new Date(dpCreateTs).getTime() - Number(windowCloseTs) : null,
+      dataPointToEmitMs: dpCreateTs && earliestEmitTs
+        ? new Date(earliestEmitTs).getTime() - new Date(dpCreateTs).getTime() : null,
+      totalEndToEndMs: firstChunkTs && earliestEmitTs
+        ? new Date(earliestEmitTs).getTime() - Number(firstChunkTs) : null,
+    };
+
+    // Commit evaluation
+    const commitPass = isResolved;
+    const commitBlockReason = isExpired ? 'window expired without DataPoint' : null;
+    const committedText = w.resolvedText ?? (isResolved ? w.fullText : null);
+    const commitWordCount = committedText ? committedText.split(/\s+/).filter(Boolean).length : 0;
+
+    // Extraction
+    const extractionInputText = committedText;
+    const extractionUnits: TraceDataPointUnit[] = dps.map((dp) => ({
+      id: dp.id,
+      rawText: dp.rawText,
+      sequenceIndex: dp.sequenceIndex ?? null,
+      reasoningRole: dp.reasoningRole ?? null,
+      sourceWindowId: dp.sourceWindowId ?? null,
+      createdAt: dp.createdAt.toISOString(),
+      primaryType: dp.classification?.primaryType ?? null,
+      primaryDomain: dp.classification?.suggestedArea ?? null,
+      confidence: dp.classification?.confidence ?? null,
+    }));
+
+    const persistenceSkipped = isResolved && !hasDataPoints;
+    const persistenceSkippedReason = persistenceSkipped
+      ? 'extractor returned 0 meaning units' : null;
+
+    // Hemisphere
+    const emitted = emitEvents.length > 0;
+    const hemisphereNodeIds = dps.map((dp) => dp.id);
+    const hemisphereRendered = emitted;
+    const hemisphereNote = !hasDataPoints ? 'No DataPoint created' :
+      !emitted ? 'DataPoint created but no outbox event found' : null;
+
+    // Outcome
+    let outcome: TraceOutcome;
+    if (!commitPass) outcome = 'blocked_at_commit';
+    else if (!hasDataPoints) outcome = 'rejected_in_extraction';
+    else if (!emitted) outcome = 'persisted_not_emitted';
+    else outcome = 'rendered';
+
+    // Summary
+    let summary: string;
+    if (outcome === 'blocked_at_commit') {
+      summary = `${chunks.length} raw chunks → blocked at commit: ${commitBlockReason ?? 'window expired'}`;
+    } else if (outcome === 'rejected_in_extraction') {
+      summary = `${chunks.length} raw chunks → committed → extracted 0 units → no DataPoint`;
+    } else if (outcome === 'persisted_not_emitted') {
+      summary = `${chunks.length} raw chunks → committed → extracted ${dps.length} → created ${dps.length} DataPoints → not emitted`;
+    } else {
+      summary = `${chunks.length} raw chunks → committed → extracted ${dps.length} → created ${dps.length} DataPoints → rendered ${hemisphereNodeIds.length} nodes`;
+    }
 
     return {
-      id: w.id,
+      windowId: w.id,
       speakerId: w.speakerId,
-      state: w.state,
-      fullText: w.fullText,
-      resolvedText: w.resolvedText,
-      openedAtMs: w.openedAtMs.toString(),
-      spokenRecordCount: w.spokenRecordCount,
-      chunks: windowChunks.map((c) => ({
+      windowState: w.state,
+
+      rawChunks: chunks.map((c) => ({
         id: c.id,
+        sequence: c.sequence,
+        speakerId: c.speakerId,
         text: c.text,
         startTimeMs: c.startTimeMs.toString(),
-        speakerId: c.speakerId,
+        endTimeMs: c.endTimeMs.toString(),
         speechFinal: c.speechFinal,
-        sequence: c.sequence,
+        confidence: c.confidence,
       })),
-      dataPoint: dp ? {
-        id: dp.id,
-        rawText: dp.rawText,
-        sequenceIndex: dp.sequenceIndex,
-        reasoningRole: dp.reasoningRole,
-        sourceWindowId: dp.sourceWindowId,
-        primaryType: dp.classification?.primaryType ?? null,
-        confidence: dp.classification?.confidence ?? null,
-        siblings: dpSiblings.map((s) => ({
-          id: s.id,
-          rawText: s.rawText,
-          sequenceIndex: s.sequenceIndex,
-          reasoningRole: s.reasoningRole,
-        })),
-      } : null,
-      blocked: w.state === 'EXPIRED' && !dp,
-      blockReason: (w.state === 'EXPIRED' && !dp) ? 'window expired without DataPoint' : null,
+
+      windowOpenTs,
+      windowCloseTs,
+      windowFullText: w.fullText,
+      windowResolvedText: w.resolvedText ?? null,
+      windowChunkCount: w.spokenRecordCount,
+
+      commitPass,
+      commitBlockReason,
+      commitWordCount,
+      commitTrigger: isExpired ? 'expired' : isResolved ? 'resolved' : 'open',
+
+      committedText,
+      commitTs: windowCloseTs,
+
+      extractionInputText,
+      extractionUnitsProduced: dps.length,
+      extractionUnits,
+      extractionNote: w.extractionNote ?? null,
+
+      dataPoints: extractionUnits,
+      persistenceSkipped,
+      persistenceSkippedReason,
+
+      emitEvents,
+      emitted,
+
+      hemisphereNodeIds,
+      hemisphereRendered,
+      hemisphereNote,
+
+      timing,
+      summary,
+      outcome,
     };
   });
 
+  const totalRendered = traces.filter((t) => t.outcome === 'rendered').length;
+  const totalBlocked = traces.filter((t) => t.outcome === 'blocked_at_commit').length;
+  const totalRejected = traces.filter((t) => t.outcome === 'rejected_in_extraction').length;
+
   return NextResponse.json({
     workshopName: workshop.name,
-    windows: shaped,
-    totalWindows: shaped.length,
-    totalDataPoints: shaped.filter((w) => w.dataPoint).length,
-    totalBlocked: shaped.filter((w) => w.blocked).length,
-  });
+    traces,
+    totalTraces: traces.length,
+    totalRendered,
+    totalBlocked,
+    totalRejected,
+    sessionStartMs: sessionStartMs?.toString() ?? null,
+  } satisfies TraceResponse);
 }

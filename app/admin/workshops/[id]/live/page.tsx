@@ -3059,21 +3059,24 @@ export default function WorkshopLivePage({ params }: PageProps) {
           // before any TSM processing. Fire-and-forget — never blocks capture.
           // All downstream processing (windowing, splitting, classification)
           // operates on derived copies; this record is never modified.
-          if (msg.isFinal !== false && msg.rawText) {
+          const rawWriteText = msg.rawText?.trim() || msg.cleanText?.trim();
+          console.log('[RawTranscript] onTranscript', { isFinal: msg.isFinal, speechFinal: msg.speechFinal, rawWriteText: rawWriteText?.substring(0, 40) });
+          if (rawWriteText) {
             const rawSeq = rawTranscriptSeqRef.current++;
             void fetch(`/api/workshops/${encodeURIComponent(workshopId)}/raw-transcript`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify([{
                 speakerId: msg.speaker !== null ? `speaker_${msg.speaker}` : null,
-                text: msg.rawText,
+                text: rawWriteText,
                 startTimeMs: msg.startTimeMs ?? Date.now(),
                 endTimeMs: msg.endTimeMs ?? Date.now(),
                 confidence: msg.confidence ?? null,
                 speechFinal: msg.speechFinal ?? false,
                 sequence: rawSeq,
               }]),
-            }).catch(() => { /* best-effort — capture continues if write fails */ });
+            }).then(r => { if (!r.ok) console.error('[RawTranscript] write failed', r.status); })
+              .catch(e => console.error('[RawTranscript] write error', e));
           }
           // ────────────────────────────────────────────────────────────────
 
@@ -3223,57 +3226,28 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   if (r.ok) {
                     const respBody = await r.json().catch(() => null);
                     setForwardedCount((n) => n + 1);
-                    // Iterate ALL results — semantic splitting may produce 2–4 DataPoints
-                    // from a single passage. Only results[0] carries the primary domain
-                    // context; subsequent units reuse the same domain attribution.
-                    const allResults: Array<{ dataPointId?: string; dataPoint?: { id: string; rawText?: string }; thoughtWindowId?: string; blocked?: boolean; reason?: string }> =
-                      Array.isArray(respBody?.results) ? respBody.results : [];
-
-                    const serverWinId = allResults[0]?.thoughtWindowId;
-                    const dpIds = allResults.map(res => res.dataPointId ?? res.dataPoint?.id).filter((id): id is string => !!id);
-                    const wasSplit = allResults.length > 1;
-                    const units = allResults.map(res => res.dataPoint?.rawText).filter((t): t is string => !!t);
-                    const unitIntents = allResults.map(res => (res as { unitIntent?: string }).unitIntent).filter((t): t is string => !!t);
+                    const singleResult: { dataPointId?: string; dataPoint?: { id: string; rawText?: string }; thoughtWindowId?: string; blocked?: boolean; reason?: string } | null =
+                      respBody?.result ?? null;
                     const filteredUnits = (respBody?.filteredUnits ?? []) as Array<{ text: string; reason: string }>;
+                    const serverWinId = singleResult?.thoughtWindowId;
+                    const dpId = singleResult?.dataPointId ?? singleResult?.dataPoint?.id ?? null;
 
                     emitDebug({
                       stage: 'ingest',
                       event: 'RESPONSE',
-                      status: dpIds.length > 0 ? 'pass' : 'blocked',
+                      status: dpId ? 'pass' : 'blocked',
                       thoughtWindowId: serverWinId,
                       httpStatus: r.status,
-                      dataPointIds: dpIds,
+                      dataPointIds: dpId ? [dpId] : [],
                       requestText: fullText.substring(0, 60),
                     });
-                    emitDebug({
-                      stage: 'split',
-                      event: wasSplit ? 'SEMANTIC_SPLIT' : 'NO_SPLIT',
-                      status: 'info',
-                      thoughtWindowId: serverWinId,
-                      wasSplit,
-                      unitCount: allResults.length,
-                      originalText: fullText.substring(0, 70),
-                      units: units.map(u => u.substring(0, 70)),
-                      unitIntents,
-                      filteredUnits,
-                    });
-                    allResults.forEach((res, i) => {
-                      if (res.blocked) {
-                        emitDebug({ stage: 'ingest', event: `UNIT_${i}_BLOCKED`, status: 'blocked', thoughtWindowId: serverWinId, guardReason: res.reason ?? 'unknown' });
-                      }
-                    });
-                    const firstDpId = allResults[0]?.dataPointId || allResults[0]?.dataPoint?.id;
-                    if (!firstDpId && allResults[0]?.blocked !== true) {
-                      console.warn('[EthentaFlow] Commit POST returned no dataPointId — server blocked?', allResults[0]);
+                    if (singleResult?.blocked) {
+                      emitDebug({ stage: 'ingest', event: 'UNIT_BLOCKED', status: 'blocked', thoughtWindowId: serverWinId, guardReason: singleResult.reason ?? 'unknown' });
                     }
-                    for (let ri = 0; ri < allResults.length; ri++) {
-                      const result = allResults[ri];
-                      const dpId = result?.dataPointId || result?.dataPoint?.id;
-                      if (!dpId) continue;
-                      // Build the domain list for the hemisphere node.
-                      // Primary domain from deterministic scorer gets high relevance.
-                      // Secondary (if any) gets lower relevance. This replaces the
-                      // previous single keyword-based domain entry.
+                    if (!dpId && singleResult?.blocked !== true) {
+                      console.warn('[EthentaFlow] Commit POST returned no dataPointId — server blocked?', singleResult);
+                    }
+                    if (dpId) {
                       const agenticDomains: Array<{ domain: string; relevance: number; reasoning: string }> = [];
                       if (domainResult?.primary_domain) {
                         agenticDomains.push({
@@ -3296,14 +3270,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       const node: HemisphereNodeDatum = {
                         dataPointId: dpId,
                         createdAtMs: commitNow,
-                        // Use the unit's own text when available (split units carry their text
-                        // via the DataPoint rawText in the response), else fallback to fullText.
-                        rawText: (result as { rawText?: string })?.rawText ?? fullText,
+                        rawText: fullText,
                         dataPointSource: 'SPEECH',
                         speakerId,
                         dialoguePhase: safePhase(currentPhase) ?? null,
-                        // Immutable deterministic confidence — drives radial placement
-                        // until LLM agenticAnalysis arrives and overallConfidence > 0.
                         ethentaflowConfidence: domainResult?.confidence ?? null,
                         transcriptChunk: {
                           speakerId,
@@ -3316,19 +3286,18 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         agenticAnalysis: {
                           domains: agenticDomains,
                           themes: [], actors: [], semanticMeaning: '', sentimentTone: '',
-                          // 0 = LLM pending — placement chain falls through to ethentaflowConfidence.
                           overallConfidence: 0,
                         },
                       };
                       setNodesById((prev) => {
                         if (prev[dpId]) {
-                          emitDebug({ stage: 'hemisphere', event: 'OVERWRITE_PREVENTED (direct)', status: 'info', nodeId: dpId, nodeCount: Object.keys(prev).length, hemisphereAction: 'overwrite-prevented' });
+                          emitDebug({ stage: 'hemisphere', event: 'OVERWRITE_PREVENTED', status: 'info', nodeId: dpId, nodeCount: Object.keys(prev).length, hemisphereAction: 'overwrite-prevented' });
                           return prev;
                         }
-                        emitDebug({ stage: 'hemisphere', event: 'NODE_ADDED (direct)', status: 'pass', nodeId: dpId, nodeCount: Object.keys(prev).length + 1, text: String(node.rawText ?? '').substring(0, 70), hemisphereAction: 'added' });
+                        emitDebug({ stage: 'hemisphere', event: 'NODE_ADDED', status: 'pass', nodeId: dpId, nodeCount: Object.keys(prev).length + 1, text: String(node.rawText ?? '').substring(0, 70), hemisphereAction: 'added' });
                         return { ...prev, [dpId]: node };
                       });
-                      console.log('[EthentaFlow] Node committed:', dpId, `(unit ${ri + 1}/${allResults.length})`, (node.rawText as string).substring(0, 60));
+                      console.log('[EthentaFlow] Node committed:', dpId, (node.rawText as string).substring(0, 60));
                     }
                     pushDiagEvent({
                       ts: commitNow,
@@ -3398,16 +3367,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   if (r.ok) {
                     const respBody = await r.json().catch(() => null);
                     setForwardedCount((n) => n + 1);
-                    const allResults: Array<{ dataPointId?: string; dataPoint?: { id: string; rawText?: string }; thoughtWindowId?: string; blocked?: boolean }> =
-                      Array.isArray(respBody?.results) ? respBody.results : [];
-
-                    for (const result of allResults) {
-                      const dpId = result?.dataPointId || result?.dataPoint?.id;
-                      if (!dpId) continue;
+                    const singleResult: { dataPointId?: string; dataPoint?: { id: string }; blocked?: boolean } | null = respBody?.result ?? null;
+                    const dpId = singleResult?.dataPointId ?? singleResult?.dataPoint?.id ?? null;
+                    if (dpId) {
                       const node: HemisphereNodeDatum = {
                         dataPointId: dpId,
                         createdAtMs: commitNow,
-                        rawText: (result as { rawText?: string })?.rawText ?? partialText,
+                        rawText: partialText,
                         dataPointSource: 'SPEECH',
                         speakerId,
                         dialoguePhase: safePhase(currentPhase) ?? null,
@@ -3432,7 +3398,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                       });
                       console.log('[EthentaFlow] Progressive node committed:', dpId, (node.rawText as string).substring(0, 60));
                     }
-                    void domainResult; // referenced to satisfy closure; real domain comes from LLM
+                    void domainResult;
                   }
                 } catch (err) {
                   console.error('[EthentaFlow] Progressive commit POST error:', err);

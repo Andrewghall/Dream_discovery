@@ -733,7 +733,7 @@ export async function POST(
     // ── Flush-only requests (capture stopped) — no buffer to drain ──
     // CaptureAPI SLM produces complete sentences; no in-memory accumulation.
     if (body.flush && (!text || text === '__flush__')) {
-      return NextResponse.json({ ok: true, flushed: true, flushedCount: 0, results: [] });
+      return NextResponse.json({ ok: true, flushed: true, result: null });
     }
 
     if (!text) {
@@ -805,64 +805,65 @@ export async function POST(
     }
 
     if (extraction.units.length === 0) {
+      const discardNote = extraction.discarded.length > 0
+        ? extraction.discarded.map((d) => `${d.reason}: "${d.text.slice(0, 60)}"`).join(' | ')
+        : 'no valid units found';
       console.log(`[Transcript][trace:${traceId}] Extractor found no meaning units — passage discarded`, {
         discarded: extraction.discarded,
       });
+      // Persist a ThoughtWindow so the debug trace can show the rejection reason.
+      await prisma.thoughtWindow.create({
+        data: {
+          workshopId,
+          speakerId: body.speakerId || null,
+          state: 'RESOLVED',
+          fullText: text,
+          resolvedText: text,
+          openedAtMs: BigInt(startTimeMs),
+          lastActivityAtMs: BigInt(endTimeMs),
+          closedAtMs: BigInt(Date.now()),
+          spokenRecordCount: incomingSpokenRecords.length,
+          extractionNote: discardNote,
+        },
+      });
       return NextResponse.json({
         ok: true,
-        buffered: false,
-        flushedCount: 0,
-        results: [],
+        result: null,
         filteredUnits: extraction.discarded,
-        classificationId: null,
         reason: 'no_meaning_units',
       });
     }
 
-    // Shared sourceWindowId groups sibling units that came from the same passage.
-    // Only used when N > 1 — single units get their own thoughtWindowId as sourceWindowId.
-    const extractionGroupId = extraction.units.length > 1 ? nanoid() : undefined;
-
-    const results = [];
-    for (let i = 0; i < extraction.units.length; i++) {
-      const unit = extraction.units[i];
-      const unitUtterance: FlushedUtterance = {
-        ...utterance,
-        text: unit.extractedText,
-      };
-
-      try {
-        const result = await processResolvedThought(
-          workshopId,
-          unitUtterance,
-          body.dialoguePhase,
-          body.speakerId,
-          incomingSpokenRecords,
-          body.slmMetadata as Record<string, unknown> | undefined,
-          traceId,
-          body.clientDomainHint ?? null,
-          false,
-          {
-            sourceWindowId: extractionGroupId,
-            sequenceIndex: i,
-            reasoningRole: classifyReasoningRole(unit.extractedText),
-          },
-        );
-        results.push({ ...result, unitIntent: null, unitReasoningRole: classifyReasoningRole(unit.extractedText), sourceSpan: { start: unit.sourceStart, end: unit.sourceEnd } });
-      } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error);
-        console.error(`[Transcript][trace:${traceId}] Error processing unit ${i}:`, error);
-        results.push({ error: errMsg });
-      }
+    // One passage = one DataPoint. The extractor is a discard gate only.
+    // If any valid unit was found the full original passage is committed as one DataPoint.
+    let result;
+    try {
+      result = await processResolvedThought(
+        workshopId,
+        utterance,
+        body.dialoguePhase,
+        body.speakerId,
+        incomingSpokenRecords,
+        body.slmMetadata as Record<string, unknown> | undefined,
+        traceId,
+        body.clientDomainHint ?? null,
+        false,
+        {
+          sourceWindowId: undefined,
+          sequenceIndex: 0,
+          reasoningRole: classifyReasoningRole(text),
+        },
+      );
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Transcript][trace:${traceId}] Error processing resolved thought:`, error);
+      return NextResponse.json({ error: errMsg }, { status: 500 });
     }
 
     return NextResponse.json({
       ok: true,
-      buffered: false,
-      flushedCount: results.filter(r => !('error' in r)).length,
-      results,
+      result,
       filteredUnits: extraction.discarded,
-      classificationId: null,
     });
   } catch (error) {
     console.error('[Transcript] Error ingesting transcript chunk:', error);

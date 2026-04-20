@@ -247,6 +247,7 @@ model ThoughtWindow {
   pausedAtMs          BigInt?           // set when outgoing speaker's window is paused
   spokenRecordCount   Int               @default(0)
   resolvedText        String?           // final text passed to dataPoint creation
+  extractionNote      String?           // set when extraction runs: discard reasons or 'ok'
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   workshop            Workshop          @relation(fields: [workshopId], references: [id], onDelete: Cascade)

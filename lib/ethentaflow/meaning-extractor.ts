@@ -29,7 +29,8 @@ export type DiscardReason =
   | 'hesitation'
   | 'meta_commentary'
   | 'incomplete'
-  | 'moderator_handoff';
+  | 'moderator_handoff'
+  | 'unresolved_reference';
 
 export interface DiscardedSpan {
   reason: DiscardReason;
@@ -57,6 +58,11 @@ ALWAYS DISCARD the following (never include in any unit):
 - Incomplete phrases that don't form a coherent, standalone thought
 - Moderator handoffs, transitions, and procedural statements
 - Personal compliments and non-generalisable asides
+- Phrases with unresolved references: if "it", "this", "that", "they", "them", "those", "the thing"
+  refer to something NOT named within the unit itself, discard it. A unit must be fully
+  self-contained — a reader with zero context must know exactly what is being talked about.
+  Example DISCARD: "I really see it becoming the intelligence hub of the organization." (what is "it"?)
+  Example KEEP: "I really see AI becoming the intelligence hub of the organization." (subject named)
 
 EXTRACTION RULES:
 1. Near-verbatim. Do NOT paraphrase, summarise, or improve the language.
@@ -83,7 +89,7 @@ OUTPUT: valid JSON only, no prose.
   ]
 }
 
-Valid discard reasons: rapport | filler | hesitation | meta_commentary | incomplete | moderator_handoff`;
+Valid discard reasons: rapport | filler | hesitation | meta_commentary | incomplete | moderator_handoff | unresolved_reference`;
 
 type RawExtraction = {
   units?: Array<{ extractedText?: unknown; sourceStart?: unknown; sourceEnd?: unknown; confidence?: unknown }>;
@@ -180,7 +186,7 @@ export async function extractMeaningUnits(passage: string): Promise<ExtractionRe
     for (const d of raw.discarded) {
       const text = typeof d.text === 'string' ? d.text.trim() : null;
       if (!text) continue;
-      const validReasons: DiscardReason[] = ['rapport', 'filler', 'hesitation', 'meta_commentary', 'incomplete', 'moderator_handoff'];
+      const validReasons: DiscardReason[] = ['rapport', 'filler', 'hesitation', 'meta_commentary', 'incomplete', 'moderator_handoff', 'unresolved_reference'];
       const reason = validReasons.includes(d.reason as DiscardReason) ? (d.reason as DiscardReason) : 'filler';
       discarded.push({ reason, text });
     }
