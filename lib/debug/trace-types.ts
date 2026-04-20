@@ -52,6 +52,8 @@ export interface TraceTiming {
   totalEndToEndMs: number | null;
 }
 
+export type CommitStatus = 'pass' | 'blocked' | 'pending';
+
 export interface TraceEntry {
   windowId: string;
   speakerId: string | null;
@@ -62,7 +64,9 @@ export interface TraceEntry {
   windowFullText: string;
   windowResolvedText: string | null;
   windowChunkCount: number;
-  commitPass: boolean;
+  /** 'pass' = RESOLVED, 'blocked' = EXPIRED, 'pending' = OPEN/PAUSED/RESOLVING */
+  commitStatus: CommitStatus;
+  commitPass: boolean; // kept for backwards compat — true iff commitStatus === 'pass'
   commitBlockReason: string | null;
   commitWordCount: number;
   commitTrigger: string;

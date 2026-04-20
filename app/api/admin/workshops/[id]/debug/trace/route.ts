@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth/require-auth';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
 
-import type { TraceOutcome, TraceEntry, TraceResponse, TraceEmitEvent, TraceDataPointUnit, TraceTiming } from '@/lib/debug/trace-types';
+import type { TraceOutcome, TraceEntry, TraceResponse, TraceEmitEvent, TraceDataPointUnit, TraceTiming, CommitStatus } from '@/lib/debug/trace-types';
 
 export const dynamic = 'force-dynamic';
 
@@ -148,8 +148,8 @@ export async function GET(
     };
 
     // Commit evaluation
-    // in-flight windows (OPEN/PAUSED/RESOLVING) have not committed yet — not blocked
-    const commitPass = isResolved;
+    const commitStatus: CommitStatus = isInFlight ? 'pending' : isResolved ? 'pass' : 'blocked';
+    const commitPass = commitStatus === 'pass';  // backwards compat
     const commitBlockReason = isExpired ? 'window expired without DataPoint' : null;
     const committedText = w.resolvedText ?? (isResolved ? w.fullText : null);
     const commitWordCount = committedText ? committedText.split(/\s+/).filter(Boolean).length : 0;
@@ -223,6 +223,7 @@ export async function GET(
       windowResolvedText: w.resolvedText ?? null,
       windowChunkCount: w.spokenRecordCount,
 
+      commitStatus,
       commitPass,
       commitBlockReason,
       commitWordCount,

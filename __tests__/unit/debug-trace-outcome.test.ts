@@ -10,10 +10,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { TraceOutcome } from '@/lib/debug/trace-types';
+import type { TraceOutcome, CommitStatus } from '@/lib/debug/trace-types';
 
-// Pure outcome-classification logic extracted from the route for unit testing.
+// Pure classification logic extracted from the route for unit testing.
 // Keep in sync with app/api/admin/workshops/[id]/debug/trace/route.ts.
+function classifyCommitStatus(state: string): CommitStatus {
+  const isResolved = state === 'RESOLVED';
+  const isInFlight = state === 'OPEN' || state === 'PAUSED' || state === 'RESOLVING';
+  if (isInFlight)   return 'pending';
+  if (isResolved)   return 'pass';
+  return 'blocked';
+}
+
 function classifyOutcome(
   state: string,
   hasDataPoints: boolean,
@@ -30,6 +38,20 @@ function classifyOutcome(
   if (!emitted)             return 'persisted_not_emitted';
   return 'rendered';
 }
+
+describe('classifyCommitStatus', () => {
+  it('OPEN → pending', () => expect(classifyCommitStatus('OPEN')).toBe('pending'));
+  it('PAUSED → pending', () => expect(classifyCommitStatus('PAUSED')).toBe('pending'));
+  it('RESOLVING → pending', () => expect(classifyCommitStatus('RESOLVING')).toBe('pending'));
+  it('RESOLVED → pass', () => expect(classifyCommitStatus('RESOLVED')).toBe('pass'));
+  it('EXPIRED → blocked', () => expect(classifyCommitStatus('EXPIRED')).toBe('blocked'));
+
+  it('commitPass is true only for pass', () => {
+    expect(classifyCommitStatus('RESOLVED') === 'pass').toBe(true);
+    expect(classifyCommitStatus('OPEN') === 'pass').toBe(false);
+    expect(classifyCommitStatus('EXPIRED') === 'pass').toBe(false);
+  });
+});
 
 describe('classifyOutcome', () => {
   it('OPEN → in_flight', () => {

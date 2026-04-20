@@ -219,12 +219,16 @@ function TraceCard({ trace, sessionStartMs }: { trace: TraceEntry; sessionStartM
             <StageCard
               index={3}
               label="Commit Evaluation"
-              status={trace.commitPass ? 'pass' : 'blocked'}
+              status={trace.commitStatus === 'pass' ? 'pass' : trace.commitStatus === 'pending' ? 'partial' : 'blocked'}
             >
               <div className="flex gap-4">
                 <span className="text-zinc-500">result</span>
-                <span className={trace.commitPass ? 'text-emerald-400' : 'text-red-400'}>
-                  {trace.commitPass ? 'PASS' : 'BLOCKED'}
+                <span className={
+                  trace.commitStatus === 'pass' ? 'text-emerald-400' :
+                  trace.commitStatus === 'pending' ? 'text-blue-400' :
+                  'text-red-400'
+                }>
+                  {trace.commitStatus === 'pass' ? 'PASS' : trace.commitStatus === 'pending' ? 'PENDING' : 'BLOCKED'}
                 </span>
               </div>
               {trace.commitBlockReason && (
