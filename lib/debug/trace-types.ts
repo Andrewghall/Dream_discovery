@@ -3,7 +3,8 @@ export type TraceOutcome =
   | 'blocked_at_commit'
   | 'rejected_in_extraction'
   | 'persisted_not_emitted'
-  | 'emitted_not_rendered';
+  | 'emitted_not_rendered'
+  | 'in_flight';
 
 export type TraceStageStatus = 'pass' | 'blocked' | 'partial' | 'unknown';
 
@@ -91,5 +92,6 @@ export interface TraceResponse {
   totalRendered: number;
   totalBlocked: number;
   totalRejected: number;
+  totalInFlight: number;
   sessionStartMs: string | null;
 }

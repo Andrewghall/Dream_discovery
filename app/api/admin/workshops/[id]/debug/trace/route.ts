@@ -107,6 +107,7 @@ export async function GET(
     const dps = dpByWindowId.get(w.id) ?? [];
     const isResolved = w.state === 'RESOLVED';
     const isExpired = w.state === 'EXPIRED';
+    const isInFlight = w.state === 'OPEN' || w.state === 'PAUSED' || w.state === 'RESOLVING';
     const hasDataPoints = dps.length > 0;
 
     // Timing
@@ -147,6 +148,7 @@ export async function GET(
     };
 
     // Commit evaluation
+    // in-flight windows (OPEN/PAUSED/RESOLVING) have not committed yet — not blocked
     const commitPass = isResolved;
     const commitBlockReason = isExpired ? 'window expired without DataPoint' : null;
     const committedText = w.resolvedText ?? (isResolved ? w.fullText : null);
@@ -179,14 +181,17 @@ export async function GET(
 
     // Outcome
     let outcome: TraceOutcome;
-    if (!commitPass) outcome = 'blocked_at_commit';
+    if (isInFlight) outcome = 'in_flight';
+    else if (!commitPass) outcome = 'blocked_at_commit';  // EXPIRED only
     else if (!hasDataPoints) outcome = 'rejected_in_extraction';
     else if (!emitted) outcome = 'persisted_not_emitted';
     else outcome = 'rendered';
 
     // Summary
     let summary: string;
-    if (outcome === 'blocked_at_commit') {
+    if (outcome === 'in_flight') {
+      summary = `${chunks.length} raw chunks → ${w.state.toLowerCase()} (in progress)`;
+    } else if (outcome === 'blocked_at_commit') {
       summary = `${chunks.length} raw chunks → blocked at commit: ${commitBlockReason ?? 'window expired'}`;
     } else if (outcome === 'rejected_in_extraction') {
       summary = `${chunks.length} raw chunks → committed → extracted 0 units → no DataPoint`;
@@ -251,6 +256,7 @@ export async function GET(
   const totalRendered = traces.filter((t) => t.outcome === 'rendered').length;
   const totalBlocked = traces.filter((t) => t.outcome === 'blocked_at_commit').length;
   const totalRejected = traces.filter((t) => t.outcome === 'rejected_in_extraction').length;
+  const totalInFlight = traces.filter((t) => t.outcome === 'in_flight').length;
 
   return NextResponse.json({
     workshopName: workshop.name,
@@ -259,6 +265,7 @@ export async function GET(
     totalRendered,
     totalBlocked,
     totalRejected,
+    totalInFlight,
     sessionStartMs: sessionStartMs?.toString() ?? null,
   } satisfies TraceResponse);
 }

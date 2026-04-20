@@ -8,6 +8,7 @@ import type { TraceEntry, TraceResponse, TraceOutcome } from '@/lib/debug/trace-
 
 const OUTCOME_CONFIG: Record<TraceOutcome, { label: string; dot: string; badge: string }> = {
   rendered:               { label: 'Rendered',              dot: 'bg-emerald-500', badge: 'bg-emerald-900 text-emerald-300' },
+  in_flight:              { label: 'In flight',             dot: 'bg-blue-400 animate-pulse', badge: 'bg-blue-900 text-blue-300' },
   blocked_at_commit:      { label: 'Blocked at commit',     dot: 'bg-red-500',     badge: 'bg-red-900 text-red-300' },
   rejected_in_extraction: { label: 'Rejected in extractor', dot: 'bg-amber-500',   badge: 'bg-amber-900 text-amber-300' },
   persisted_not_emitted:  { label: 'Persisted, not emitted',dot: 'bg-amber-500',   badge: 'bg-amber-900 text-amber-300' },
@@ -399,7 +400,7 @@ function TraceCard({ trace, sessionStartMs }: { trace: TraceEntry; sessionStartM
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-type Filter = 'all' | 'rendered' | 'blocked' | 'rejected' | 'missing';
+type Filter = 'all' | 'rendered' | 'in_flight' | 'blocked' | 'rejected' | 'missing';
 
 export default function DebugTracePage() {
   const params = useParams<{ id: string }>();
@@ -430,10 +431,11 @@ export default function DebugTracePage() {
   const filtered = useMemo(() => {
     if (!data) return [];
     let list = data.traces;
-    if (filter === 'rendered') list = list.filter((t) => t.outcome === 'rendered');
-    if (filter === 'blocked')  list = list.filter((t) => t.outcome === 'blocked_at_commit');
-    if (filter === 'rejected') list = list.filter((t) => t.outcome === 'rejected_in_extraction');
-    if (filter === 'missing')  list = list.filter((t) => t.outcome !== 'rendered');
+    if (filter === 'rendered')   list = list.filter((t) => t.outcome === 'rendered');
+    if (filter === 'in_flight')  list = list.filter((t) => t.outcome === 'in_flight');
+    if (filter === 'blocked')    list = list.filter((t) => t.outcome === 'blocked_at_commit');
+    if (filter === 'rejected')   list = list.filter((t) => t.outcome === 'rejected_in_extraction');
+    if (filter === 'missing')    list = list.filter((t) => t.outcome !== 'rendered' && t.outcome !== 'in_flight');
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -460,11 +462,12 @@ export default function DebugTracePage() {
   if (!data) return null;
 
   const FILTERS: [Filter, string, number | string][] = [
-    ['all',      'All',      data.totalTraces],
-    ['rendered', 'Rendered', data.totalRendered],
-    ['blocked',  'Blocked',  data.totalBlocked],
-    ['rejected', 'Rejected', data.totalRejected],
-    ['missing',  'Missing',  data.totalTraces - data.totalRendered],
+    ['all',       'All',       data.totalTraces],
+    ['rendered',  'Rendered',  data.totalRendered],
+    ['in_flight', 'In flight', data.totalInFlight],
+    ['blocked',   'Blocked',   data.totalBlocked],
+    ['rejected',  'Rejected',  data.totalRejected],
+    ['missing',   'Missing',   data.totalTraces - data.totalRendered - data.totalInFlight],
   ];
 
   return (
@@ -480,6 +483,7 @@ export default function DebugTracePage() {
         <div className="flex items-center gap-3 text-xs">
           <span className="text-zinc-600">{data.totalTraces} windows</span>
           <span className="text-emerald-400">{data.totalRendered} rendered</span>
+          {data.totalInFlight > 0 && <span className="text-blue-400">{data.totalInFlight} in flight</span>}
           <span className="text-red-400">{data.totalBlocked} blocked</span>
           <span className="text-amber-400">{data.totalRejected} rejected</span>
         </div>
