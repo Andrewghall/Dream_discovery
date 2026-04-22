@@ -32,13 +32,18 @@ import type {
 } from './agent-types';
 import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
 import { analyzeMetricTrends } from '@/lib/historical-metrics/summarize';
+import {
+  validateFacilitationQuestionText,
+  validateQuestionSet,
+} from './question-set-validator';
+import { inferCanonicalWorkshopType } from '@/lib/workshop/workshop-definition';
+import { buildLiveWorkshopContractBlock } from '@/lib/workshop/live-stage-contracts';
 
 // ── Constants ───────────────────────────────────────────────
 
 const MAX_ITERATIONS = 9;
 const LOOP_TIMEOUT_MS = 55_000;
 const MODEL = 'gpt-4o-mini';
-
 /**
  * Get lens order for a phase.
  * Priority: blueprint phaseLensPolicy > research dimensions.
@@ -63,11 +68,11 @@ export function getPhaseLensOrder(
 }
 
 const PHASE_GUIDANCE: Record<WorkshopPhase, string> = {
-  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no budget concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Customer, and Partners lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like.`,
+  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no funding concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Commercial, and Partners lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like while staying grounded in real work and customer reality.`,
 
-  CONSTRAINTS: `CONSTRAINTS maps the real-world limitations, working RIGHT-TO-LEFT through the lenses: Risk/Compliance → Commercial → Technology → Operations → Customer → People → Partners. Start with hard external constraints (regulatory, compliance) and work inward to softer people constraints. The goal is to systematically identify what stands between today and the reimagined vision. This phase references the vision from REIMAGINE to assess each constraint's impact.`,
+  CONSTRAINTS: `CONSTRAINTS maps the real-world limitations, working RIGHT-TO-LEFT through the lenses: Risk/Compliance → Commercial → Technology → Operations → People → Partners. Start with hard external constraints (regulatory, compliance) and work inward to softer operating and people constraints. The goal is to systematically identify what stands between today and the reimagined vision. This phase references the vision from REIMAGINE to assess each constraint's impact.`,
 
-  DEFINE_APPROACH: `DEFINE APPROACH builds the practical solution LEFT-TO-RIGHT: People → Operations → Technology → Customer → Commercial → Risk/Compliance → Partners. Start with human needs and build outward. The facilitator guides participants to design an approach that bridges today's reality to the reimagined future while respecting the constraints identified. Focus on actionable workstreams, ownership, and measurable outcomes.`,
+  DEFINE_APPROACH: `DEFINE APPROACH builds the practical solution LEFT-TO-RIGHT: People → Operations → Technology → Commercial → Risk/Compliance → Partners. Start with human needs and build outward. The facilitator guides participants to design an approach that bridges today's reality to the reimagined future while respecting the constraints identified. Focus on practical changes, sequence, proof points, and what would need to happen in real work for the approach to succeed.`,
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -165,7 +170,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                 },
                 text: {
                   type: 'string',
-                  description: 'The facilitation question text - what the facilitator would ask the room.',
+                  description: 'The facilitation question text - what the facilitator would ask the room. MUST start with an observable starter such as "What happens", "Where do you see", "What makes it difficult", "What works well", "Where does", "What slows", "What helps", "What gets in the way", "Which parts", or "When". Do NOT start with "How", "Why", "Who owns", or abstract strategy wording.',
                 },
                 purpose: {
                   type: 'string',
@@ -187,7 +192,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                       },
                       text: {
                         type: 'string',
-                        description: 'The sub-question text - a specific angle or probe.',
+                        description: 'The sub-question text - a specific angle or probe. MUST start with one of: "What happens", "Where do you see", "What makes it difficult", "What works well", "Where does", "What slows", "What helps", "What gets in the way", "Which parts", "When", "How does", "How do", "How would", "How many", "How often". Do NOT start with "Why", "Who owns", or abstract strategy wording.',
                       },
                       purpose: {
                         type: 'string',
@@ -517,6 +522,56 @@ function executeQuestionSetTool(
           : [],
       }));
 
+      // Enforce minimum question count before running per-question validation
+      const minQuestionsRequired = context.blueprint?.questionPolicy?.questionsPerPhase ?? 5;
+      if (facilitation.length < minQuestionsRequired) {
+        const countRemediation = `You submitted ${facilitation.length} question(s) but this phase requires ${minQuestionsRequired}. Design ALL ${minQuestionsRequired} questions (one per lens in the phase order) and resubmit in a single call.`;
+        return {
+          result: JSON.stringify({
+            error: `Too few questions — ${facilitation.length} submitted, ${minQuestionsRequired} required`,
+            phase,
+            remediation: countRemediation,
+          }),
+          summary: `**${phase} rejected** — only ${facilitation.length}/${minQuestionsRequired} questions provided.\n- ${countRemediation}`,
+        };
+      }
+
+      const validationIssues = facilitation.flatMap((question, index) => {
+        const issues: string[] = [];
+        const mainErr = validateFacilitationQuestionText(question.text, question.lens, false);
+        if (mainErr) {
+          issues.push(`Q${index + 1}: ${mainErr} [MAIN: "${question.text.slice(0, 70)}"]`);
+        }
+        for (const [si, sq] of question.subQuestions.entries()) {
+          const sqErr = validateFacilitationQuestionText(sq.text, sq.lens ?? question.lens, true);
+          if (sqErr) {
+            issues.push(`Q${index + 1}: sub-question ${si + 1}: ${sqErr} [SQ: "${sq.text.slice(0, 70)}"]`);
+          }
+        }
+        return issues;
+      });
+      if (validationIssues.length > 0) {
+        const remediation =
+          'Rewrite every failing question. Rules: ' +
+          '(1) NEVER start with these instructional openers: "Consider", "Imagine", "Describe", "Think about", ' +
+          '"Reflect on", "Tell me", "Please", "Let\'s", "Focus on", "Note that", "Building on", "Leveraging", ' +
+          '"Driving", "Delivering", "Ensuring", "Achieving", "You should", "They should". ' +
+          '(2) Any standard English question form is valid: "What...", "Where...", "Which...", "When...", ' +
+          '"How...", "Who...", "In what...", "Across...", "At what...", "For most...", "Looking at...", etc. ' +
+          '(3) Remove financial terms (ROI, budget, revenue, profit, margin, investment). ' +
+          '(4) Remove role-specific terms (board, C-suite, executive committee, shareholder, investor). ' +
+          '(5) Remove abstract language (strategic alignment, organisational structure, operational strategy).';
+        return {
+          result: JSON.stringify({
+            error: 'Phase questions failed validation',
+            phase,
+            issues: validationIssues,
+            remediation,
+          }),
+          summary: `**${phase} rejected**\n${validationIssues.map((issue) => `- ${issue}`).join('\n')}\n- ${remediation}`,
+        };
+      }
+
       designedPhases.set(phase, facilitation);
 
       // Build summary with full question listing
@@ -554,6 +609,9 @@ export function buildQuestionSetSystemPrompt(context: PrepContext, research?: Wo
   const trackDesc = context.dreamTrack === 'DOMAIN'
     ? `The DREAM track is **Domain**, focused on **${context.targetDomain || 'a specific area'}**. Weight questions toward this domain while still covering all relevant lenses in each phase.`
     : 'The DREAM track is **Enterprise** -- a full end-to-end assessment across the entire business.';
+  const liveContractBlock = buildLiveWorkshopContractBlock(
+    inferCanonicalWorkshopType({ workshopType: context.workshopType }),
+  );
 
   // Build blueprint constraints block if available and meaningful
   const bp = context.blueprint;
@@ -600,6 +658,7 @@ ${trackDesc}
 ${context.workshopPurpose ? `\nWORKSHOP PURPOSE (WHY WE ARE HERE):\n${context.workshopPurpose}` : ''}
 ${context.desiredOutcomes ? `\nDESIRED OUTCOMES (WHAT WE MUST WALK AWAY WITH):\n${context.desiredOutcomes}` : ''}
 ${context.workshopPurpose || context.desiredOutcomes ? `\nTHIS IS THE MOST IMPORTANT INPUT. Every facilitation question you design MUST serve this purpose and drive toward these outcomes. If a question does not ladder up to WHY we are here and WHAT we need to achieve, do not include it. The workshop exists for this reason and no other.\n` : ''}
+${liveContractBlock ? `\nWORKSHOP-TYPE LIVE CONTRACT:\n${liveContractBlock}\n` : ''}
 CRITICAL CONTEXT:
 ${hasDiscoveryData(discoveryBriefing)
     ? `- Discovery interviews have ALREADY been completed. Participants have already
@@ -648,21 +707,21 @@ generic People/Organisation/Customer/Technology/Regulation names.
 ` : `THE THREE WORKSHOP PHASES:
 
 1. REIMAGINE (Pure Vision)
-   Lenses: People, Customer, Partners ONLY
+   Lenses: People, Commercial, Partners ONLY
    Goal: Get participants to paint the ideal future WITHOUT any constraints.
-   No technology, no budget, no regulation - just what "amazing" looks like.
-   Key: Open, aspirational, creative questions. "If you could wave a magic wand..."
+   No technology, no funding, no regulation - just what "amazing" looks like.
+   Key: Open, aspirational, creative questions grounded in lived work and customer reality.
 
 2. CONSTRAINTS (Map Limitations - Right-to-Left)
-   Lenses: Risk/Compliance, Commercial, Technology, Operations, Customer, People, Partners
+   Lenses: Risk/Compliance, Commercial, Technology, Operations, People, Partners
    Goal: Systematically identify what stands between today and the reimagined vision.
    Start with hard external constraints and work inward.
    Key: Specific, probing, referencing the vision they just created.
 
 3. DEFINE_APPROACH (Build Solution - Left-to-Right)
-   Lenses: People, Operations, Technology, Customer, Commercial, Risk/Compliance, Partners
+   Lenses: People, Operations, Technology, Commercial, Risk/Compliance, Partners
    Goal: Design the practical path forward that bridges reality to vision.
-   Key: Actionable, ownership-focused, measurable. "Who owns this? What's step one?"
+   Key: Actionable, sequence-focused, measurable. Ask what would need to happen in practice, where the first move is, and how the room would know it is working.
 `}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}${constraintsBlock}
 YOUR APPROACH:
 1. First, get the research context (company, industry, challenges).
@@ -677,6 +736,7 @@ YOUR APPROACH:
    - Questions should BUILD ON Discovery insights, not repeat them
    - If Discovery revealed a pain point, ask "how does this play into the
      constraints?" - don't ask "what are your pain points?" again
+   - If the workshop type is GO-TO-MARKET / Strategy, every phase question must stay tied to win/loss, ICP fit, proposition credibility, delivery-against-promise, buyer trust, or deal viability. Do NOT fall back to generic transformation or operations workshop questions.
    - For EACH main question, generate ${bp?.questionPolicy?.subQuestionsPerMain ?? 3} starter sub-questions. These are
      specific angles or probes that immediately trigger dialogue when the
      facilitator activates the main question. Sub-questions should:
@@ -684,21 +744,29 @@ YOUR APPROACH:
      * Be directly scoped to the parent main question's topic
      * Reference concrete research/Discovery findings where possible
      * Give the room something tangible to discuss immediately
+     * MUST be genuine questions — any standard English question form is valid:
+       "What happens...", "Where do you see...", "How does...", "How might...",
+       "Which teams...", "When does...", "In what ways...", "Across the...", etc.
+     * Do NOT start with instructional openers: "Consider", "Imagine", "Describe",
+       "Think about", "Let's", "Focus on", "Building on", "Leveraging", "Driving",
+       "Ensuring", "Achieving", "You should", "They should"
+     * Do NOT use financial terms (ROI, budget, revenue, profit, margin, investment)
+     * Do NOT name specific senior roles (board, C-suite, shareholder, executive committee)
      * CRITICAL - sub-questions must NOT repeat the main question's framing.
        The main question already sets the aspirational/constraint/action frame.
        Sub-questions drill into SPECIFIC angles:
-       REIMAGINE subs: The main question handles the "imagine the ideal" framing.
+       REIMAGINE subs: The main question handles the aspiration framing.
          Subs must probe SPECIFIC aspects - name a real finding from Discovery
-         or research and ask about it. NEVER use generic patterns like
-         "In your ideal...", "Describe the perfect...", "Paint the picture...",
-         "What does the ideal future look like...", "Imagine a world where...".
-         Instead: "Discovery flagged X as a pain point - in this reimagined
-         future, how does that change?", "8 participants mentioned Y - what
-         does Y look like when it's working brilliantly?"
+         or research and ask about it through lived experience. NEVER use
+         generic patterns like "In your ideal...", "Describe the perfect...",
+         "Paint the picture...", "What does the ideal future look like...",
+         "Imagine a world where...". Instead use observable forms like:
+         "Where do you see that friction today, and what would be different if it worked brilliantly?"
+         "What happens for customers when that part of the journey works really well?"
        CONSTRAINTS subs should be specific, probing, grounded in the vision.
-         Ask "what stands in the way?", "what limitations exist?"
-       DEFINE_APPROACH subs should be actionable and ownership-focused.
-         Ask "who owns this?", "what's step one?", "how do we prove it?"
+         Ask observable versions such as "Where do you see this getting blocked?" or "What makes this difficult in practice?"
+       DEFINE_APPROACH subs should be actionable and practical.
+         Ask observable versions such as "What happens first if we try to do this in practice?", "Where does this approach depend on cleaner handoffs?", "What helps this work reliably day to day?"
 7. Commit the final question set with a design rationale and data confidence assessment.
 
 QUESTION DESIGN PRINCIPLES:
@@ -706,25 +774,55 @@ QUESTION DESIGN PRINCIPLES:
 - CRITICAL: Every question MUST be deeply specific to ${context.clientName || 'the client'}.
   Do NOT write generic template questions with a company name inserted.
   Instead, reference actual challenges, industry dynamics, and Discovery insights.
+- HARD VALIDITY RULE: if a junior agent could not answer from lived experience,
+  the question is invalid and must not be included.
+- Every question must be answerable by agent, team leader, manager, and executive.
+- EVERY main question and EVERY sub-question must be a genuine question in standard English.
+  Any question form is valid: "What happens...", "Where do you see...", "How does...",
+  "Which areas...", "When does...", "In what ways...", "Across the team...", "At what point..."
+- Ask only about what people experience, what they see happening, where work gets
+  stuck, what slows things down, what works well, and what gets repeated.
+- Do NOT ask about financial performance, investment discipline, ROI, margin,
+  cash flow, strategy effectiveness, or leadership decisions.
+- For GO-TO-MARKET / Strategy workshops, the live questions must help the facilitator move the room from commercial truth to practical GTM choices. Do not write generic workshop prompts that could fit any company.
+- NEVER open a question with instructional openers: "Consider", "Imagine", "Describe",
+  "Think about", "Reflect on", "Let's", "Focus on", "Building on", "Leveraging",
+  "Driving", "Ensuring", "Achieving", "You should", "They should".
+- NEVER open with: "Who owns", "What is leadership doing", "Why don't they..."
+- Keep each question to a single concept. Avoid combined abstractions like
+  "effective and efficient" or "systemic inefficiencies".
 - For REIMAGINE: Open-ended, aspirational, no mention of limitations
 - For CONSTRAINTS: Specific, grounded in the vision they just created
 - For DEFINE_APPROACH: Actionable, ownership-focused, outcome-oriented
 - Include a mix of lens-specific and cross-cutting questions
 - Each question should have a clear purpose and connection to known data
 
+LENS-SPECIFIC RULES:
+- Operations: ask about flow, bottlenecks, delays, queueing, handoffs, and where work breaks down.
+- People: ask about clarity, workload, capability, behaviour, and how work feels in practice.
+- Technology: ask about tools, usability, friction, data gaps, and failure points.
+- Commercial: treat this as customer experience and customer pain. Ask what customers experience or what teams see customers struggling with.
+- Partners: ask about external dependencies, outsourced delivery, cross-team handoffs, and accountability gaps.
+- Risk/Compliance: ask about rules, approvals, controls, and where they help or slow the work down.
+
 EXAMPLES OF GOOD vs BAD QUESTIONS:
 
 BAD (generic shell):
   "What does the ideal customer experience look like?"
   "What technology constraints exist?"
+  "How strong is financial performance?"
+  "What is leadership doing about this?"
+  "Who owns this?"
+  "How do we prove it?"
 
 GOOD (context-specific, grounded in research/Discovery):
   "In Discovery, 8 of 12 participants flagged Clubcard integration as a pain
-   point. In the reimagined future, what does the perfect Clubcard experience
-   look like for a customer walking into a Tesco Extra?"
-  "Your industry is seeing rapid adoption of checkout-free retail - Sainsbury's
-   and Amazon Fresh are investing heavily. What technology constraints prevent
-   Tesco from moving in this direction?"
+   point. Where do customers seem to feel that friction most clearly today?"
+  "Where do you see work getting stuck or handed around when this issue appears?"
+  "What makes this harder than it should be for the people doing the work?"
+  "Where do you see time or effort being wasted without creating a useful outcome?"
+  "What happens first if we try to make this work in practice?"
+  "What helps this work reliably day to day?"
 
 The key difference: GOOD questions reference specific findings, name real
 industry dynamics, and mention actual pain points from Discovery. They give
@@ -744,6 +842,7 @@ export async function runQuestionSetAgent(
   research: WorkshopPrepResearch | null,
   onConversation?: AgentConversationCallback,
   discoveryBriefing?: Record<string, unknown> | null,
+  options?: { timeoutMs?: number; maxIterations?: number },
 ): Promise<WorkshopQuestionSet> {
   if (!env.OPENAI_API_KEY) {
     throw new Error('OpenAI API key not configured \u2014 cannot run Question Set Agent');
@@ -751,6 +850,8 @@ export async function runQuestionSetAgent(
 
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const systemPrompt = buildQuestionSetSystemPrompt(context, research, discoveryBriefing);
+  const timeoutMs = options?.timeoutMs ?? LOOP_TIMEOUT_MS;
+  const maxIterations = options?.maxIterations ?? MAX_ITERATIONS;
   const startMs = Date.now();
 
   // Track designed phases as they come in
@@ -764,13 +865,15 @@ export async function runQuestionSetAgent(
     },
   ];
 
-  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-      if (Date.now() - startMs > LOOP_TIMEOUT_MS) {
+  const ALL_PHASES: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
+
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+      if (Date.now() - startMs > timeoutMs) {
         console.log(`[Question Set Agent] Timeout after ${iteration} iterations`);
         break;
       }
 
-      const isLastIteration = iteration === MAX_ITERATIONS - 1;
+      const isLastIteration = iteration === maxIterations - 1;
       const toolChoice: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption = isLastIteration
         ? { type: 'function', function: { name: 'commit_question_set' } }
         : 'auto';
@@ -803,9 +906,21 @@ export async function runQuestionSetAgent(
         }
       }
 
-      // No tool calls - done
+      // No tool calls — model wrote text instead of calling tools.
+      // If phases are still missing, inject a direct instruction and continue.
       if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
-        break;
+        const missingPhases = ALL_PHASES.filter(p => !designedPhases.get(p)?.length);
+        if (missingPhases.length > 0 && !isLastIteration) {
+          messages.push({
+            role: 'user',
+            content:
+              `You must now call design_phase_questions for the missing phase(s): ${missingPhases.join(', ')}. ` +
+              `Do NOT write a summary or explanation — call the tool directly for EACH missing phase, one call per phase. ` +
+              `After all phases are designed, call commit_question_set.`,
+          });
+          continue;
+        }
+        break; // All phases done or last iteration — exit loop
       }
 
       // Process tool calls
@@ -824,8 +939,7 @@ export async function runQuestionSetAgent(
 
         if (fnName === 'commit_question_set') {
           // Guard: all 3 phases must be designed before committing
-          const allPhases: WorkshopPhase[] = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
-          const missingPhases = allPhases.filter(p => !designedPhases.get(p)?.length);
+          const missingPhases = ALL_PHASES.filter(p => !designedPhases.get(p)?.length);
           if (missingPhases.length > 0) {
             messages.push({
               role: 'tool',
@@ -916,7 +1030,7 @@ export async function runQuestionSetAgent(
         const elapsed = Date.now() - startMs;
         console.log(`[Question Set Agent] Committed after ${iteration + 1} iterations, ${elapsed}ms`);
         const commitArgs = fnArgs_extract_full(messages);
-        return buildWorkshopQuestionSet(
+        const questionSet = buildWorkshopQuestionSet(
           designedPhases,
           commitArgs.designRationale || 'Questions designed for workshop facilitation.',
           research,
@@ -924,6 +1038,11 @@ export async function runQuestionSetAgent(
           (commitArgs.dataConfidence as DataConfidence) || 'moderate',
           commitArgs.dataSufficiencyNotes || [],
         );
+        const validationError = validateQuestionSet(questionSet);
+        if (validationError) {
+          throw new Error(validationError);
+        }
+        return questionSet;
       }
     }
 
@@ -936,7 +1055,7 @@ export async function runQuestionSetAgent(
   if (stillMissing.length === 0) {
     console.log('[Question Set Agent] All phases designed — building from phases (no explicit commit)');
     const commitArgs = fnArgs_extract_full(messages);
-    return buildWorkshopQuestionSet(
+    const questionSet = buildWorkshopQuestionSet(
       designedPhases,
       commitArgs.designRationale || 'Questions designed for workshop facilitation.',
       research,
@@ -944,6 +1063,11 @@ export async function runQuestionSetAgent(
       (commitArgs.dataConfidence as DataConfidence) || 'moderate',
       commitArgs.dataSufficiencyNotes || [],
     );
+    const validationError = validateQuestionSet(questionSet);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+    return questionSet;
   }
 
   throw new Error(
@@ -1023,4 +1147,25 @@ export function buildWorkshopQuestionSet(
     dataConfidence: dataConfidence ?? 'low',
     dataSufficiencyNotes: dataSufficiencyNotes ?? ['No data confidence assessment available'],
   };
+}
+
+function validateFacilitationQuestion(question: FacilitationQuestion): string[] {
+  const issues: string[] = [];
+  const mainValidationError = validateFacilitationQuestionText(question.text, question.lens);
+  if (mainValidationError) {
+    issues.push(mainValidationError);
+  }
+
+  for (const [index, subQuestion] of question.subQuestions.entries()) {
+    const subValidationError = validateFacilitationQuestionText(subQuestion.text, subQuestion.lens ?? question.lens, true);
+    if (subValidationError) {
+      issues.push(`sub-question ${index + 1}: ${subValidationError}`);
+    }
+  }
+
+  const texts = [
+    question.text,
+    ...question.subQuestions.map((subQuestion) => subQuestion.text),
+  ].join(' ');
+  return issues;
 }

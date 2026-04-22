@@ -101,8 +101,10 @@ describe('buildWorkshopQuestionSet — incomplete phase rejection', () => {
 
 function validQuestionSet() {
   const phases: Record<string, unknown> = {};
+  // Text must pass validateFacilitationQuestionText — uses an observable starter, no banned terms
+  const validText = 'What happens when the team cannot move work forward cleanly?';
   for (const phase of ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH']) {
-    phases[phase] = { questions: [{ id: 'q1', text: 'Test question' }], lensOrder: ['TestLens'] };
+    phases[phase] = { questions: [{ id: 'q1', text: validText }], lensOrder: ['TestLens'] };
   }
   return { phases, designRationale: 'Test', generatedAtMs: Date.now(), dataConfidence: 'high', dataSufficiencyNotes: [] };
 }
