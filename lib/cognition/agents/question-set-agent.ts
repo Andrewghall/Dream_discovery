@@ -682,55 +682,76 @@ function executeQuestionSetTool(
         }
         ordered.forEach((q, i) => { q.order = i + 1; });
 
-        // ── Opener duplication guard ─────────────────────────────────────────
-        // Enforce the NO REPEATED OPENERS rule programmatically.
-        // Normalise each question to its first 4 words (lowercase, punctuation stripped).
-        // If any opener appears more than once across the phase, reject and require rewrite.
+        // ── Opener duplication guard (per depth level) ───────────────────────
+        // Within each depth level (surface / depth / edge), every question across
+        // all lenses must open with a distinct first-5-word sequence.
+        // Checking per-depth (6 questions each) rather than across all 18 keeps
+        // the constraint achievable while still eliminating the main failure mode:
+        // identical openers used for every lens at the same depth level.
         const extractOpener = (text: string): string =>
           text
             .toLowerCase()
             .replace(/[^a-z0-9\s]/g, '')
             .trim()
             .split(/\s+/)
-            .slice(0, 4)
+            .slice(0, 5)
             .join(' ');
 
-        const openerMap = new Map<string, string[]>();
-        for (const q of ordered) {
-          const opener = extractOpener(q.text);
-          if (!openerMap.has(opener)) openerMap.set(opener, []);
-          openerMap.get(opener)!.push(`[${q.lens}][${q.depth ?? '?'}] "${q.text.slice(0, 80)}"`);
+        const DEPTH_LEVELS = ['surface', 'depth', 'edge'] as const;
+        const allDuplicates: Array<{ depthLevel: string; opener: string; questions: string[] }> = [];
+
+        for (const depthLevel of DEPTH_LEVELS) {
+          const questionsAtDepth = ordered.filter(q => q.depth === depthLevel);
+          const depthOpenerMap = new Map<string, string[]>();
+          for (const q of questionsAtDepth) {
+            const opener = extractOpener(q.text);
+            if (!depthOpenerMap.has(opener)) depthOpenerMap.set(opener, []);
+            depthOpenerMap.get(opener)!.push(`[${q.lens}] "${q.text.slice(0, 80)}"`);
+          }
+          for (const [opener, qs] of depthOpenerMap.entries()) {
+            if (qs.length > 1) {
+              allDuplicates.push({ depthLevel, opener, questions: qs });
+            }
+          }
         }
 
-        const duplicates = [...openerMap.entries()].filter(([, qs]) => qs.length > 1);
-        if (duplicates.length > 0) {
-          // Do NOT clear phaseSlots — the model only needs to resubmit the specific
-          // duplicate questions. Slots use "latest wins", so resubmitting a fixed
-          // question for a lens+depth slot overwrites the old one. Phase re-validates
+        if (allDuplicates.length > 0) {
+          // Do NOT clear phaseSlots — model only needs to resubmit the specific
+          // duplicate questions (latest-wins slot overwrite). Phase re-validates
           // on the next call once all lenses are still complete.
-          const dupeDetail = duplicates
-            .map(([opener, qs]) =>
-              `Opener "${opener}..." repeated ${qs.length}x:\n${qs.map(q => `    ${q}`).join('\n')}`,
+          const dupeDetail = allDuplicates
+            .map(({ depthLevel, opener, questions }) =>
+              `[${depthLevel.toUpperCase()}] Opener "${opener}..." repeated ${questions.length}x:\n${questions.map(q => `    ${q}`).join('\n')}`,
             )
             .join('\n\n');
+
+          // Build per-depth taken-opener lists so model knows what's already in use
+          const takenByDepth = DEPTH_LEVELS.map(dl => {
+            const qs = ordered.filter(q => q.depth === dl);
+            const openers = qs.map(q => `  "${extractOpener(q.text)}..." [${q.lens}]`).join('\n');
+            return `${dl.toUpperCase()} openers already taken:\n${openers}`;
+          }).join('\n\n');
+
           return {
             result: JSON.stringify({
               error: 'opener_duplication',
               phase,
-              duplicateCount: duplicates.length,
-              duplicates: duplicates.map(([opener, qs]) => ({ opener, questions: qs })),
+              duplicateCount: allDuplicates.length,
+              duplicates: allDuplicates,
               remediation:
-                'Every main question in this phase must start with a DIFFERENT word or phrase. ' +
-                'Rewrite ONLY the duplicate questions listed above using distinct openers from the shape library ' +
-                '(Observational, Behavioural, Consequence, Grounding, Comparative, Pressure, Prioritising, Temporal, Diagnostic, Exposure). ' +
-                'Resubmit just the rewritten questions — your other questions are already stored. ' +
-                'The phase will re-validate automatically once all duplicates are resolved.',
+                'Within each depth level (surface / depth / edge), every question must open with a DIFFERENT first-5-word sequence. ' +
+                'Rewrite ONLY the duplicate questions listed above. The taken-openers list shows what is already in use at each depth. ' +
+                'Use a different shape for each rewrite: Walk me through... / Where do you see... / Which part of... / ' +
+                'Who ends up dealing with... / How does that compare... / Why has this not... / When was the last... / ' +
+                'What breaks first if... / If you removed that... / How long has... / Which X creates the most... ' +
+                'Resubmit just the rewritten questions — your other questions are already stored.',
             }),
             summary:
-              `**${phase} REJECTED — ${duplicates.length} repeated opener(s) detected**\n\n` +
-              `Every question in this phase must begin with a different word/phrase. Rewrite ONLY the duplicates listed below — your other questions are already stored.\n\n` +
-              `${dupeDetail}\n\n` +
-              `Fix: pick a different shape from the library for each duplicate and resubmit just those questions. The phase will re-validate automatically.`,
+              `**${phase} REJECTED — ${allDuplicates.length} repeated opener(s) at depth level**\n\n` +
+              `Within each depth level, all questions must open differently. Rewrite ONLY the duplicates below.\n\n` +
+              `${takenByDepth}\n\n` +
+              `DUPLICATES TO REWRITE:\n${dupeDetail}\n\n` +
+              `Fix: use a different opening shape for each duplicate. Resubmit just those questions — phase re-validates automatically.`,
           };
         }
         // ── End opener guard ─────────────────────────────────────────────────
