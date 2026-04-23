@@ -140,7 +140,7 @@ export default function AdminDashboard() {
 
   const fetchWorkshops = async () => {
     try {
-      const response = await fetch(`/api/admin/workshops?bust=${Date.now()}`, { cache: 'no-store' });
+      const response = await fetch(`/api/admin/workshops?limit=100&bust=${Date.now()}`, { cache: 'no-store' });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
         const details = data && typeof data === 'object' ? (data as Record<string, unknown>).details : null;
