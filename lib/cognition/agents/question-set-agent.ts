@@ -174,7 +174,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                 depth: {
                   type: 'string',
                   enum: ['surface', 'depth', 'edge'],
-                  description: 'The depth level of this question within its lens. Each lens MUST have exactly one question at each depth: surface (opens the space — observable, grounded in lived experience), depth (makes it concrete — structural, company-specific), edge (surfaces the most ambitious, unspoken version — what nobody in the room has fully committed to yet). See contractsByPhase in get_workshop_phases for what each depth must achieve per lens.',
+                  description: 'The depth level of this question within its lens. Each lens MUST have exactly one question at each depth: surface (opens the space — observable, grounded in lived experience), depth (makes it concrete — structural, company-specific), edge (surfaces what is privately doubted, quietly avoided, or carries real trade-off or consequence — NOT "most ambitious" or "boldest". HARD RULE: your edge question text MUST contain at least one of these words: privately, quietly, doubt, trade-off, sacrifice, worse, nobody, hasn\'t/haven\'t, stopped, blocking, abandoned, unrecognisable, walk away, give up, first to go, stop doing, liability, contradict, undermine, unsolved, disappeared. Do not write the edge question until you have chosen which tension word it will contain.). See contractsByPhase in get_workshop_phases for what each depth must achieve per lens.',
                 },
                 text: {
                   type: 'string',
@@ -1037,10 +1037,16 @@ For each lens in each phase, generate exactly 3 questions at increasing depth le
            (CONSTRAINTS), or beneath aspiration to daily reality (REIMAGINE), or beneath first
            step to what conditions must hold (DEFINE_APPROACH).
 
-  edge:    Surfaces the most ambitious, challenging, or unspoken version. The question nobody
-           in the room has fully committed to yet. In REIMAGINE: the transformative possibility.
-           In CONSTRAINTS: what the constraint is actually protecting. In DEFINE_APPROACH: where
-           this approach will quietly fail and what nobody is saying about it.
+  edge:    Surfaces what the room privately doubts, quietly avoids, or has not said aloud.
+           Always carries trade-off, consequence, or discomfort. NEVER aspirational or "most
+           ambitious". In REIMAGINE: what people privately doubt about this vision, or what it
+           would require them to stop doing. In CONSTRAINTS: what the constraint is protecting,
+           or what has stopped it being resolved. In DEFINE_APPROACH: where this approach will
+           quietly fail, or what gets deprioritised first under pressure.
+           GENERATION RULE: Before writing any edge question, name the tension word you will use.
+           Then write the question so that word appears naturally in the text. If you cannot
+           identify a specific tension or trade-off, you do not yet understand the lens well
+           enough to write the edge question — re-read the research and try again.
 
 The get_workshop_phases tool returns contractsByPhase -- read it carefully. It specifies exactly
 what each depth level must achieve for each specific lens. Follow the contract, not your intuition.
@@ -1049,10 +1055,16 @@ QUESTION COUNT: 3 questions per lens (surface, depth, edge) for every phase. For
 with 6 lenses: 18 questions total (6 x 3). Tag each question with its "depth" field.
 Group by lens when designing: do all 3 depths for one lens before moving on.
 
-REIMAGINE HARD RULE: Zero constraint language at any depth level. Not even at edge depth.
-No mention of barriers, gaps, what needs to change, limitations, or what stands in the way.
-Pure vision -- what becomes possible. Customer is the north star. Sub-actors (operational and
-commercial roles) appear in seed prompts to ground the vision in real working experience.
+REIMAGINE RULE — surface and depth: Zero constraint language. No mention of barriers, gaps,
+limitations, or what needs to change from today. Pure vision — what becomes possible.
+Customer is the north star.
+
+REIMAGINE edge: Different rule. Edge must surface what is privately doubted or unspoken about
+the vision itself — not constraints, but the tension inside the aspiration. Examples:
+"What part of this vision do people in this room privately doubt?",
+"What would this version of Capita require its people to stop doing entirely?",
+"Which part of this proposition would become unrecognisable if it succeeded?".
+Edge for REIMAGINE is NOT "most ambitious" — it is the thing people believe but haven't said.
 
 YOUR APPROACH:
 1. Get the research context (company, industry, challenges).
@@ -1176,20 +1188,30 @@ Draw from this library - rotate through it, do not default to "What does X look 
   Diagnostic:      "What does [X] actually look like in practice here?", "How often does this come up?"
   Exposure:        "What would a new joiner notice about this in week one?", "What do customers never say out loud but always feel?"
 
-PHASE-SPECIFIC EDGE GUIDANCE:
-Edge questions must NOT be aspirational superlatives. They must create discomfort and surface what is unspoken.
-  REIMAGINE edge: The thing the room hasn't said yet. Not "most transformative" - instead: "What would we have to stop doing entirely?", "What would make this version of [company] unrecognisable from today?", "What part of this vision do people in this room privately doubt?"
-  CONSTRAINTS edge: What the constraint is protecting. The politics or habits that keep it alive. "Who benefits from this staying unsolved?", "What would change for someone in this room if this constraint disappeared?", "What has stopped this from being fixed every time it's been raised?"
-  DEFINE_APPROACH edge: Where this approach will quietly fail. What nobody is saying. "What does the half-implemented version of this look like - and why would that be worse?", "Which part of this will be the first to get deprioritised when pressure hits?", "What does the room know about this plan that they haven't said yet?"
+EDGE QUESTION GENERATION PROTOCOL — MANDATORY, NO EXCEPTIONS:
+Do not write an edge question until you have completed these steps in order:
 
-EDGE QUESTIONS — TENSION SIGNAL REQUIRED:
-Every edge question you submit must contain at least one explicit tension signal. The question will be rejected if it reads like a surface or depth question re-labelled as edge.
-Required: at least one of these signals must appear in the question text:
-  privately, quietly, doubt, liability, contradict, undermine, trade-off, sacrifice, deprioritised,
-  worse, unsolved, nobody, hasn't/haven't [been said/fixed/resolved], stopped, blocking, abandoned,
-  unrecognisable, would say, give up, walk away, first to go, disappeared, stop doing.
+  Step 1. Identify the specific tension, doubt, trade-off, or consequence for this lens.
+          Write it out as a plain sentence: e.g. "People privately doubt this will change."
+  Step 2. Choose the tension word you will place in the question text. It must be one of:
+          privately, quietly, doubt, trade-off, sacrifice, worse, nobody, hasn't/haven't,
+          stopped, blocking, abandoned, unrecognisable, walk away, give up, first to go,
+          stop doing, liability, contradict, undermine, unsolved, disappeared.
+  Step 3. Write the question so that tension word appears in the question text naturally.
+  Step 4. Read the question back. If the tension word could be removed and the question
+          still makes sense as a surface or depth question — it is not an edge question.
+          Rewrite until removing the tension word would fundamentally change the meaning.
 
-Test: Could this edge question have been the surface question for this lens? If yes — it is NOT an edge question. Rewrite until it creates genuine discomfort.
+PHASE-SPECIFIC EDGE TARGETS (what to look for):
+  REIMAGINE edge: The private doubt about the vision. What the room believes but hasn't said.
+    What this vision would require people to stop doing. What would become unrecognisable.
+    BANNED: "most ambitious", "boldest", "transformative possibility" — these are NOT edge.
+  CONSTRAINTS edge: What the constraint is protecting. Why it hasn't been fixed. What benefits
+    from it staying unsolved. What disappears if the constraint is removed.
+  DEFINE_APPROACH edge: Where the approach quietly fails. What gets deprioritised first.
+    What the half-implemented version looks like and why it would be worse.
+
+Test: Could this edge question have been the surface question for this lens? If yes — rewrite it.
 
 GROUNDING REQUIREMENT:
 At least ONE question per lens must anchor to something observable and real:
@@ -1197,11 +1219,16 @@ a specific place, a person who deals with it, or a moment when it shows up.
 Not "what is the impact of X" - but "where does X show up", "who feels it first", "what does it look like when X happens".
 
 MANDATORY QUALITY SELF-CHECK:
-Before submitting each phase, run all four checks:
+Before submitting each phase, run all five checks in order:
+  0. For every edge question: does the question text contain one of the required tension words?
+     (privately, quietly, doubt, trade-off, sacrifice, worse, nobody, hasn't/haven't, stopped,
+     blocking, abandoned, unrecognisable, walk away, give up, first to go, stop doing,
+     liability, contradict, undermine, unsolved, disappeared)
+     → If NO for any edge question, DO NOT submit. Go back to the Edge Protocol and rewrite.
   1. Could a participant answer this with a safe, generic corporate response? → If yes, rewrite it.
   2. Does it sound like something a real facilitator would ask in a live room? → If no, rewrite it.
   3. Does it add a genuinely different angle from the other two questions for this lens? → If no, rewrite it.
-  4. List all 18 question openers in this phase. Are any two identical or near-identical? → If yes, rewrite the duplicates before submitting.
+  4. List all question openers in this phase. Are any two identical or near-identical? → If yes, rewrite the duplicates before submitting.
   5. (GO-TO-MARKET workshops only) Does this question move the room from commercial truth to a practical GTM choice? If it could fit any company or any workshop type, rewrite it.
 
 LENS-SPECIFIC RULES:
