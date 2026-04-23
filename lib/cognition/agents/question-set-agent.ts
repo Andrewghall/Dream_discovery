@@ -681,6 +681,57 @@ function executeQuestionSetTool(
           }
         }
         ordered.forEach((q, i) => { q.order = i + 1; });
+
+        // ── Opener duplication guard ─────────────────────────────────────────
+        // Enforce the NO REPEATED OPENERS rule programmatically.
+        // Normalise each question to its first 4 words (lowercase, punctuation stripped).
+        // If any opener appears more than once across the phase, reject and require rewrite.
+        const extractOpener = (text: string): string =>
+          text
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, '')
+            .trim()
+            .split(/\s+/)
+            .slice(0, 4)
+            .join(' ');
+
+        const openerMap = new Map<string, string[]>();
+        for (const q of ordered) {
+          const opener = extractOpener(q.text);
+          if (!openerMap.has(opener)) openerMap.set(opener, []);
+          openerMap.get(opener)!.push(`[${q.lens}][${q.depth ?? '?'}] "${q.text.slice(0, 80)}"`);
+        }
+
+        const duplicates = [...openerMap.entries()].filter(([, qs]) => qs.length > 1);
+        if (duplicates.length > 0) {
+          // Clear the accumulated phase so the model must resubmit everything
+          phaseSlots.clear();
+          const dupeDetail = duplicates
+            .map(([opener, qs]) =>
+              `Opener "${opener}..." repeated ${qs.length}x:\n${qs.map(q => `    ${q}`).join('\n')}`,
+            )
+            .join('\n\n');
+          return {
+            result: JSON.stringify({
+              error: 'opener_duplication',
+              phase,
+              duplicateCount: duplicates.length,
+              duplicates: duplicates.map(([opener, qs]) => ({ opener, questions: qs })),
+              remediation:
+                'Every main question in this phase must start with a DIFFERENT word or phrase. ' +
+                'Rewrite all questions for this phase using distinct openers drawn from the shape library ' +
+                '(Observational, Behavioural, Consequence, Grounding, Comparative, Pressure, Prioritising, Temporal, Diagnostic, Exposure). ' +
+                'Resubmit all 18 questions in a single call once rewritten.',
+            }),
+            summary:
+              `**${phase} REJECTED — ${duplicates.length} repeated opener(s) detected**\n\n` +
+              `Every question in this phase must begin with a different word/phrase. Rewrite the duplicates.\n\n` +
+              `${dupeDetail}\n\n` +
+              `Fix: use a different shape from the library for each question. Resubmit all ${ordered.length} questions once rewritten.`,
+          };
+        }
+        // ── End opener guard ─────────────────────────────────────────────────
+
         designedPhases.set(phase, ordered);
 
         const phaseLabel = phase === 'DEFINE_APPROACH' ? 'Define Approach' : phase.charAt(0) + phase.slice(1).toLowerCase();
