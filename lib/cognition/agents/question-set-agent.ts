@@ -719,45 +719,25 @@ function executeQuestionSetTool(
           }
         }
 
-        if (allDuplicates.length > 0) {
-          // Do NOT clear phaseSlots — model only needs to resubmit the specific
-          // duplicate questions (latest-wins slot overwrite). Phase re-validates
-          // on the next call once all lenses are still complete.
-          const dupeDetail = allDuplicates
-            .map(({ depthLevel, opener, questions }) =>
-              `[${depthLevel.toUpperCase()}] Opener "${opener}..." repeated ${questions.length}x:\n${questions.map(q => `    ${q}`).join('\n')}`,
-            )
-            .join('\n\n');
-
-          // Build per-depth taken-opener lists so model knows what's already in use
-          const takenByDepth = DEPTH_LEVELS.map(dl => {
-            const qs = ordered.filter(q => q.depth === dl);
-            const openers = qs.map(q => `  "${extractOpener(q.text)}..." [${q.lens}]`).join('\n');
-            return `${dl.toUpperCase()} openers already taken:\n${openers}`;
-          }).join('\n\n');
-
-          return {
-            result: JSON.stringify({
-              error: 'opener_duplication',
-              phase,
-              duplicateCount: allDuplicates.length,
-              duplicates: allDuplicates,
-              remediation:
-                'Within each depth level (surface / depth / edge), every question must open with a DIFFERENT first-5-word sequence. ' +
-                'Rewrite ONLY the duplicate questions listed above. The taken-openers list shows what is already in use at each depth. ' +
-                'Use a different shape for each rewrite: Walk me through... / Where do you see... / Which part of... / ' +
-                'Who ends up dealing with... / How does that compare... / Why has this not... / When was the last... / ' +
-                'What breaks first if... / If you removed that... / How long has... / Which X creates the most... ' +
-                'Resubmit just the rewritten questions — your other questions are already stored.',
-            }),
-            summary:
-              `**${phase} REJECTED — ${allDuplicates.length} repeated opener(s) at depth level**\n\n` +
-              `Within each depth level, all questions must open differently. Rewrite ONLY the duplicates below.\n\n` +
-              `${takenByDepth}\n\n` +
-              `DUPLICATES TO REWRITE:\n${dupeDetail}\n\n` +
-              `Fix: use a different opening shape for each duplicate. Resubmit just those questions — phase re-validates automatically.`,
-          };
-        }
+        // Phase accepted whether or not there are opener duplicates.
+        // If duplicates are found, they are reported as a quality warning in the
+        // summary — the model can optionally improve them on the next call, but
+        // the phase is NOT rejected. Hard rejection caused the model to loop
+        // indefinitely oscillating between different duplicate pairs.
+        const qualityWarning = allDuplicates.length > 0
+          ? (() => {
+              const dupeDetail = allDuplicates
+                .map(({ depthLevel, opener, questions }) =>
+                  `[${depthLevel.toUpperCase()}] "${opener}..." used by ${questions.length} lenses:\n${questions.map(q => `    ${q}`).join('\n')}`,
+                )
+                .join('\n\n');
+              return (
+                `\n\n⚠ QUALITY NOTE — ${allDuplicates.length} repeated opener(s) at depth level (phase accepted, but consider improving):\n` +
+                `${dupeDetail}\n` +
+                `If you have iterations remaining, resubmit just the flagged questions with distinct openers from the shape library.`
+              );
+            })()
+          : '';
         // ── End opener guard ─────────────────────────────────────────────────
 
         designedPhases.set(phase, ordered);
@@ -778,7 +758,7 @@ function executeQuestionSetTool(
               return acc;
             }, {} as Record<string, number>),
           }),
-          summary: `**Designed ${phaseLabel} phase** - ${ordered.length} facilitation questions\n\n${qLines}`,
+          summary: `**Designed ${phaseLabel} phase** - ${ordered.length} facilitation questions\n\n${qLines}${qualityWarning}`,
         };
       }
 
