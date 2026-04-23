@@ -198,7 +198,10 @@ export function decryptFields<T extends Record<string, any>>(
         }
       } catch (error) {
         console.error(`Failed to decrypt field ${String(field)}:`, error);
-        // Leave field as-is if decryption fails
+        // Null out the field rather than exposing raw ciphertext to the UI.
+        // This happens when data was encrypted with a different key (e.g. after
+        // key rotation). The user will need to re-enter the value.
+        decrypted[field] = null as T[keyof T];
       }
     }
   }
