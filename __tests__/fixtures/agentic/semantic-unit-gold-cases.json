@@ -1,0 +1,89 @@
+[
+  {
+    "id": "customer-understanding-contact-centre",
+    "input": "The customer should really understand. Exactly what they require without the need to have to talk to a contact centre. By the time they get to a contact centre, often it's too late for them to be able to. Get what the answer that they want. A way that is decent and good for the person.",
+    "expectedUnits": [
+      "Customers should understand what they need without having to contact a contact centre.",
+      "By the time a customer reaches a contact centre, it is often already too late to get the right answer."
+    ],
+    "expectedDiscarded": [
+      {
+        "text": "A way that is decent and good for the person.",
+        "reason": "trailing_residue_not_self_contained"
+      }
+    ],
+    "note": "Adjacent clauses 1+2 merge into one business meaning. Clauses 3+4 merge into a second. Clause 5 is discarded."
+  },
+  {
+    "id": "upstream-fixing-not-downstream",
+    "input": "I think that things can be resolved without even a conversation with customers and actually be the direction we go. It's really fixing issues upstream rather than downstream.",
+    "expectedUnits": [
+      "Issues should be resolved upstream without requiring a customer conversation."
+    ],
+    "expectedDiscarded": [],
+    "note": "The second sentence reinforces and completes the first; they should form one unit."
+  },
+  {
+    "id": "vulnerability-escalation",
+    "input": "Agents need help spotting vulnerability in a customer. AI could identify that vulnerability and guide the agent on how to handle it, including escalating the call when needed.",
+    "expectedUnits": [
+      "AI could help agents identify customer vulnerability and guide the right response, including escalation when needed."
+    ],
+    "expectedDiscarded": [],
+    "note": "One coherent claim; should not be split into detection and escalation separately."
+  },
+  {
+    "id": "legacy-tech-failure",
+    "input": "Technology tends to fail a lot. And if the technology keeps failing in a contact centre, then operations are gonna fail.",
+    "expectedUnits": [
+      "When technology repeatedly fails in a contact centre, operations fail as a result."
+    ],
+    "expectedDiscarded": [],
+    "note": "Two clauses form one causal unit."
+  },
+  {
+    "id": "filler-only",
+    "input": "Um, yeah, I mean, you know, kind of.",
+    "expectedUnits": [],
+    "expectedDiscarded": [
+      {
+        "text": "Um, yeah, I mean, you know, kind of.",
+        "reason": "mostly_filler"
+      }
+    ],
+    "note": "Must produce zero units."
+  },
+  {
+    "id": "dangling-reference",
+    "input": "I can see it becoming the intelligence hub of the organisation.",
+    "expectedUnits": [],
+    "expectedDiscarded": [
+      {
+        "text": "I can see it becoming the intelligence hub of the organisation.",
+        "reason": "unresolved_reference"
+      }
+    ],
+    "note": "The subject of 'it' is unresolved, so no unit may be emitted."
+  },
+  {
+    "id": "customer-outcome-late-contact",
+    "input": "By the time they reach an agent, the problem has got sufficiently big that they can't fix it without the help of a person.",
+    "expectedUnits": [
+      "By the time a customer reaches an agent, the problem is often too significant to be resolved without human help."
+    ],
+    "expectedDiscarded": [],
+    "note": "Standalone causal observation."
+  },
+  {
+    "id": "mini-massage",
+    "input": "It was like a mini massage.",
+    "expectedUnits": [],
+    "expectedDiscarded": [
+      {
+        "text": "It was like a mini massage.",
+        "reason": "not_business_meaningful"
+      }
+    ],
+    "note": "Should not become a hemisphere node."
+  }
+]

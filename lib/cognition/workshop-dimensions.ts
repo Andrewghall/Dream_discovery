@@ -12,85 +12,21 @@
  */
 
 import type { WorkshopPrepResearch, IndustryDimension, JourneyStageResearch } from './agents/agent-types';
+import {
+  CANONICAL_LENSES,
+  canonicalizeLensName,
+} from '@/lib/workshop/canonical-lenses';
 
 // ══════════════════════════════════════════════════════════════
 // DEFAULT FALLBACKS — current hardcoded values
 // ══════════════════════════════════════════════════════════════
 
-export const DEFAULT_DIMENSIONS: IndustryDimension[] = [
-  {
-    name: 'People',
-    description: 'Human capability, culture, skills, leadership, and team dynamics',
-    keywords: [
-      'people', 'person', 'human', 'culture', 'skill', 'training', 'talent',
-      'recruit', 'wellbeing', 'engagement', 'stakeholder', 'leader', 'stress',
-      'burnout', 'morale', 'empower', 'collaborat', 'mentor', 'divers', 'inclusi',
-    ],
-    color: '#bfdbfe',
-  },
-  {
-    name: 'Operations',
-    description: 'Structure, governance, processes, operating model, and strategic alignment',
-    keywords: [
-      'operat', 'organi', 'department', 'team', 'structure', 'process', 'workflow',
-      'management', 'staff', 'employ', 'HR', 'budget', 'resource',
-      'efficien', 'productiv', 'strategy', 'decision', 'cost', 'revenue',
-      'resilien', 'agil',
-    ],
-    color: '#a7f3d0',
-  },
-  {
-    name: 'Technology',
-    description: 'Systems, data, platforms, automation, tools, and digital enablement',
-    keywords: [
-      'technolog', 'AI', 'machine learning', 'system', 'platform', 'software',
-      'digital', 'automat', 'data', 'cloud', 'infra', 'algorithm', 'API',
-      'integrat', 'cyber', 'server', 'database', 'scal', 'architect', 'deploy',
-      'devops', 'pipeline',
-    ],
-    color: '#fed7aa',
-  },
-  {
-    name: 'Customer',
-    description: 'Experience, needs, journeys, value delivery, and retention',
-    keywords: [
-      'customer', 'client', 'consumer', 'buyer', 'shopper', 'subscriber',
-      'patient', 'end-user', 'member', 'user', 'experience', 'journey',
-      'satisfaction', 'retention', 'churn', 'onboard', 'loyalt', 'feedback',
-    ],
-    color: '#ddd6fe',
-  },
-  {
-    name: 'Commercial',
-    description: 'Revenue, pricing, growth strategy, market positioning, and commercial performance',
-    keywords: [
-      'commerci', 'revenue', 'pricing', 'profit', 'margin', 'growth', 'market',
-      'sales', 'contract', 'monetis', 'business model', 'proposition', 'competitive',
-      'forecast', 'pipeline', 'acquisition cost', 'ROI', 'P&L',
-    ],
-    color: '#fef9c3',
-  },
-  {
-    name: 'Risk/Compliance',
-    description: 'Compliance, risk management, controls, legal obligations, and governance frameworks',
-    keywords: [
-      'regulat', 'complian', 'legal', 'GDPR', 'FCA', 'licen', 'governance',
-      'audit', 'polic', 'legislat', 'mandate', 'standard', 'accredit',
-      'certif', 'oversight', 'enforce', 'statute', 'jurisdict', 'scrutin', 'risk', 'control',
-    ],
-    color: '#fecaca',
-  },
-  {
-    name: 'Partners',
-    description: 'Ecosystem partners, suppliers, vendors, third parties, and strategic alliances',
-    keywords: [
-      'partner', 'supplier', 'vendor', 'third.party', 'ecosystem', 'alliance',
-      'outsourc', 'contractor', 'integrat', 'channel', 'reseller', 'distribut',
-      'joint venture', 'collaborat', 'supply chain',
-    ],
-    color: '#e0e7ff',
-  },
-];
+export const DEFAULT_DIMENSIONS: IndustryDimension[] = CANONICAL_LENSES.map((lens) => ({
+  name: lens.name,
+  description: lens.description,
+  keywords: [...lens.keywords],
+  color: lens.color,
+}));
 
 export const DEFAULT_JOURNEY_STAGES: string[] = [
   'Discovery', 'Engagement', 'Commitment', 'Fulfilment', 'Support', 'Growth',
@@ -102,13 +38,35 @@ export const DEFAULT_JOURNEY_STAGES: string[] = [
 
 /**
  * Get the full dimension objects for a workshop.
- * Research-driven if available, otherwise the 5 defaults.
+ * The lens structure is always canonical.
+ * Research may enrich descriptions and keywords, but it may not add, remove,
+ * rename, or substitute workshop lenses.
  */
 export function getWorkshopDimensions(
   research: WorkshopPrepResearch | null | undefined,
 ): IndustryDimension[] {
-  if (research?.industryDimensions?.length) return research.industryDimensions;
-  return DEFAULT_DIMENSIONS;
+  const researchByLens = new Map<string, IndustryDimension>();
+  for (const dimension of research?.industryDimensions ?? []) {
+    const canonicalName = canonicalizeLensName(dimension.name);
+    if (!canonicalName) continue;
+    researchByLens.set(canonicalName, dimension);
+  }
+
+  return DEFAULT_DIMENSIONS.map((dimension) => {
+    const researchDimension = researchByLens.get(dimension.name);
+    if (!researchDimension) return dimension;
+
+    const mergedKeywords = new Set([
+      ...dimension.keywords,
+      ...(Array.isArray(researchDimension.keywords) ? researchDimension.keywords : []),
+    ]);
+
+    return {
+      ...dimension,
+      description: researchDimension.description?.trim() || dimension.description,
+      keywords: Array.from(mergedKeywords).filter(Boolean),
+    };
+  });
 }
 
 /**

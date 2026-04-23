@@ -1,6 +1,7 @@
 'use client';
 
 import type { V2Truth } from '@/lib/output/v2-synthesis-agent';
+import { canonicalizeLensName } from '@/lib/workshop/canonical-lenses';
 
 const EVIDENCE_COLOURS = {
   strong:   'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -10,14 +11,17 @@ const EVIDENCE_COLOURS = {
 
 const LENS_COLOURS: Record<string, string> = {
   People:       'bg-blue-100 text-blue-700',
-  Organisation: 'bg-emerald-100 text-emerald-700',
-  Customer:     'bg-purple-100 text-purple-700',
+  Operations:   'bg-emerald-100 text-emerald-700',
   Technology:   'bg-orange-100 text-orange-700',
-  Regulation:   'bg-red-100 text-red-700',
+  Commercial:   'bg-yellow-100 text-yellow-700',
+  'Risk/Compliance': 'bg-red-100 text-red-700',
+  Finance:      'bg-green-100 text-green-700',
+  Partners:     'bg-indigo-100 text-indigo-700',
 };
 
 function lensColour(lens: string) {
-  return LENS_COLOURS[lens] || 'bg-slate-100 text-slate-600';
+  const canonicalLens = canonicalizeLensName(lens);
+  return (canonicalLens ? LENS_COLOURS[canonicalLens] : undefined) || LENS_COLOURS[lens] || 'bg-slate-100 text-slate-600';
 }
 
 interface TruthCardProps {

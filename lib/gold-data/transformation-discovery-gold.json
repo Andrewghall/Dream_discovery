@@ -1,0 +1,180 @@
+{
+  "workshop_type": "TRANSFORMATION",
+  "purpose": "Define how the business moves from current state to target state by exposing capability gaps, sequencing constraints, and failure patterns across all lenses, ensuring change is executable, not theoretical.",
+  "generation_sequence": ["workshop", "context", "gtm_intent", "signal", "question"],
+  "rules": {
+    "must_anchor_to": ["current_state", "target_state", "real_attempts", "failed_initiatives", "live_programmes"],
+    "single_signal_only": true,
+    "force_decision": ["start", "stop", "sequence", "invest"],
+    "must_force_evidence": true,
+    "must_link": ["current_state", "constraint", "change_action", "outcome", "consequence"],
+    "prohibit_context_leakage": true,
+    "invalid_if_generic": true
+  },
+  "signals": [
+    "capability_gap",
+    "transformation_constraint",
+    "sequencing_dependency",
+    "execution_failure_pattern",
+    "change_fragility",
+    "operating_model_misalignment",
+    "cross_lens_dependency",
+    "change_resistance",
+    "leadership_alignment_gap",
+    "process_breakpoint",
+    "technology_dependency",
+    "commercial_misalignment",
+    "risk_constraint",
+    "partner_dependency",
+    "scalability_barrier",
+    "transformation_anti_pattern"
+  ],
+  "question_archetypes": [
+    {
+      "signal": "capability_gap",
+      "examples": [
+        "Where does the current capability fall short of what is required to reach the target state?",
+        "Which capabilities must be built before transformation can progress?",
+        "Where is the gap between ambition and execution most visible?"
+      ]
+    },
+    {
+      "signal": "transformation_constraint",
+      "examples": [
+        "What is currently preventing meaningful change from happening?",
+        "Where does the organisation repeatedly fail to move forward despite intent?",
+        "Which constraints block progress regardless of effort?"
+      ]
+    },
+    {
+      "signal": "sequencing_dependency",
+      "examples": [
+        "What must change first before any other transformation step becomes viable?",
+        "Which dependencies dictate the order of transformation?",
+        "Where does attempting change out of sequence lead to failure?"
+      ]
+    },
+    {
+      "signal": "execution_failure_pattern",
+      "examples": [
+        "Which transformation initiatives have already failed and why?",
+        "Where does change repeatedly break during execution?",
+        "What patterns exist in failed transformation efforts?"
+      ]
+    },
+    {
+      "signal": "change_fragility",
+      "examples": [
+        "Where does change appear successful initially but fail to sustain?",
+        "Which initiatives collapse after initial rollout?",
+        "Where is transformation too fragile to scale?"
+      ]
+    },
+    {
+      "signal": "operating_model_misalignment",
+      "examples": [
+        "Where does the current operating model conflict with the target state?",
+        "Which parts of the business structure prevent transformation from embedding?",
+        "Where is the way work is organised incompatible with the desired future?"
+      ]
+    },
+    {
+      "signal": "cross_lens_dependency",
+      "examples": [
+        "Where does change in one area depend on progress in another?",
+        "Which transformations fail because supporting functions are not aligned?",
+        "Where do dependencies across people, process, and technology block progress?"
+      ]
+    },
+    {
+      "signal": "change_resistance",
+      "examples": [
+        "Where is the organisation resisting change strongly enough to slow or stop progress?",
+        "Which teams or roles block transformation behaviourally or culturally?",
+        "Where does resistance undermine execution?"
+      ]
+    },
+    {
+      "signal": "leadership_alignment_gap",
+      "examples": [
+        "Where are leaders not aligned on what transformation means in practice?",
+        "Which initiatives stall because leadership direction is inconsistent?",
+        "Where does lack of alignment at the top slow execution?"
+      ]
+    },
+    {
+      "signal": "process_breakpoint",
+      "examples": [
+        "Where do existing processes break when transformation is introduced?",
+        "Which workflows cannot support the new way of working?",
+        "Where do legacy processes limit change?"
+      ]
+    },
+    {
+      "signal": "technology_dependency",
+      "examples": [
+        "Where does transformation depend on technology that is not yet ready?",
+        "Which changes fail because supporting systems are not in place?",
+        "Where is technology a gating factor for progress?"
+      ]
+    },
+    {
+      "signal": "commercial_misalignment",
+      "examples": [
+        "Where does the commercial model conflict with the transformation ambition?",
+        "Which revenue or pricing structures prevent change from being viable?",
+        "Where does selling behaviour undermine transformation?"
+      ]
+    },
+    {
+      "signal": "risk_constraint",
+      "examples": [
+        "Where do risk, compliance, or governance constraints block transformation?",
+        "Which changes cannot proceed due to regulatory or approval barriers?",
+        "Where does risk management slow or prevent progress?"
+      ]
+    },
+    {
+      "signal": "partner_dependency",
+      "examples": [
+        "Where does transformation depend on external partners to succeed?",
+        "Which initiatives fail because partner capability is not aligned?",
+        "Where do third-party dependencies create fragility?"
+      ]
+    },
+    {
+      "signal": "scalability_barrier",
+      "examples": [
+        "Which changes work in isolation but fail at scale?",
+        "Where does transformation break when extended across the business?",
+        "Which initiatives cannot scale due to structural limitations?"
+      ]
+    },
+    {
+      "signal": "transformation_anti_pattern",
+      "examples": [
+        "Which initiatives should be stopped because they look correct but repeatedly fail in practice?",
+        "Where is effort being invested in change that will not deliver value?",
+        "Which transformation activities should be avoided even if they appear strategically aligned?"
+      ]
+    }
+  ],
+  "anti_patterns": [
+    "vision_without_execution",
+    "no_reference_to_real_attempts",
+    "generic_change_language",
+    "multi_signal_questions",
+    "no_sequencing_logic",
+    "no_cross_lens_view",
+    "questions_answerable_without_evidence"
+  ],
+  "validation": [
+    "each_question_requires_real_evidence_from_attempts",
+    "each_question_forces_clear_transformation_decision",
+    "each_question_exposes_dependency_or_constraint",
+    "each_question_links_current_state_to_target_state",
+    "each_question_tests_execution_not_intent",
+    "each_question_is_context_dependent",
+    "no_question_reusable_without_change"
+  ]
+}

@@ -12,8 +12,11 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { CaptureAPIStream, type StreamTranscript } from '@/lib/captureapi/client';
 import { ThoughtStateMachine } from '@/lib/ethentaflow/thought-state-machine';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
+import { domainIdToLiveDomain } from '@/lib/ethentaflow/domain-scoring-engine';
 import type { CommitCandidate, LensPack, ThoughtAttempt } from '@/lib/ethentaflow/types';
 import { emitDebug } from '@/lib/debug/pipeline-debug-bus';
+import { cleanLiveWorkingChunk } from '@/lib/live/transcript-cleaning';
+import { interpretLiveUtterance } from '@/lib/live/intent-interpretation';
 
 // ── Types ────────────────────────────────────────────────
 export interface AudioCaptureOptions {
@@ -24,6 +27,20 @@ export interface AudioCaptureOptions {
    *  Enables the page to create/update live hemisphere nodes in real-time
    *  as CaptureAPI streams growing text. */
   onTranscriptStream?: (msg: StreamTranscript) => void;
+  /** Called whenever the current in-memory utterance evolves for a speaker. */
+  onPendingUtteranceUpdate?: (pending: {
+    id: string;
+    speakerId: string;
+    domain: string;
+    startedAtMs: number;
+    workingText: string;
+    domainConfidence: number | null;
+    dialoguePhase: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH' | null;
+    intent: string | null;
+    semanticConfidence: number | null;
+  }) => void;
+  /** Called when a pending utterance is resolved or discarded. */
+  onUtteranceResolved?: (utteranceId: string) => void;
   /** Workshop-specific lens pack for ThoughtStateMachine domain scoring.
    *  Defaults to DEFAULT_LENS_PACK when not provided. */
   lensPack?: LensPack;
@@ -50,7 +67,14 @@ export interface AudioCaptureReturn {
 }
 
 // ── Hook ─────────────────────────────────────────────────
-export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStream, lensPack }: AudioCaptureOptions): AudioCaptureReturn {
+export function useAudioCapture({
+  workshopId,
+  getDialoguePhase,
+  onTranscriptStream,
+  onPendingUtteranceUpdate,
+  onUtteranceResolved,
+  lensPack,
+}: AudioCaptureOptions): AudioCaptureReturn {
   // ── State ──
   const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [micDevices, setMicDevices] = useState<{ deviceId: string; label: string }[]>([]);
@@ -73,6 +97,7 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
   // Per-speaker ThoughtStateMachines — persist across WebSocket reconnects within a session.
   // Flushed and destroyed on stopCapture so each capture session starts clean.
   const stateMachinesRef = useRef<Map<string, ThoughtStateMachine>>(new Map());
+  const rawTranscriptSeqRef = useRef(0);
   // Lens pack ref — updated when lensPack prop changes; read inside startCapture closure.
   const lensPackRef = useRef<LensPack>(lensPack ?? DEFAULT_LENS_PACK);
 
@@ -195,7 +220,33 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
         workshopId,
         dialoguePhase: getDialoguePhase(),
         onTranscript: (msg: StreamTranscript) => {
-          const text = (msg.text?.trim() || msg.rawText?.trim() || msg.cleanText?.trim() || '');
+          const sourceChunkId = msg.sourceChunkId || crypto.randomUUID();
+          if (typeof msg.rawText === 'string' && msg.rawText.length > 0) {
+            const rawSeq = rawTranscriptSeqRef.current++;
+            void fetch(`/api/workshops/${encodeURIComponent(workshopId)}/raw-transcript`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                speakerId: msg.speaker !== null ? `speaker_${msg.speaker}` : null,
+                sourceChunkId,
+                capturedAt: new Date().toISOString(),
+                text: msg.rawText,
+                startTimeMs: msg.startTimeMs ?? Date.now(),
+                endTimeMs: msg.endTimeMs ?? Date.now(),
+                confidence: msg.confidence ?? null,
+                speechFinal: msg.speechFinal ?? false,
+                sequence: rawSeq,
+              }),
+            }).catch(() => {
+              // Raw transcript persistence is intentionally independent from processing.
+            });
+          }
+
+          const rawWorkingText =
+            (typeof msg.rawText === 'string' && msg.rawText.trim()) ||
+            (typeof msg.text === 'string' && msg.text.trim()) ||
+            '';
+          const text = cleanLiveWorkingChunk(rawWorkingText);
           if (!text) return;
 
           // Stream ALL updates to the page for live hemisphere positioning.
@@ -210,9 +261,29 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
           // Create state machine for this speaker if not yet present.
           if (!stateMachinesRef.current.has(speakerId)) {
             const machine = new ThoughtStateMachine(speakerId, lensPackRef.current, {
-              onPendingUpdate: (_attempt: ThoughtAttempt) => {
-                // Streaming node is already driven by onTranscriptStream above.
-                // No additional action needed here.
+              onPendingUpdate: (attempt: ThoughtAttempt) => {
+                const workingText = cleanLiveWorkingChunk(attempt.full_text);
+                if (!workingText) return;
+                const liveInterpretation = interpretLiveUtterance(workingText);
+                const deterministicDomain =
+                  attempt.domain?.primary_domain
+                    ? domainIdToLiveDomain(attempt.domain.primary_domain)
+                    : null;
+                const domain = liveInterpretation.domain || deterministicDomain || 'General';
+                onPendingUtteranceUpdate?.({
+                  id: attempt.id,
+                  speakerId,
+                  domain,
+                  startedAtMs: attempt.start_time_ms,
+                  workingText,
+                  domainConfidence: Math.max(
+                    attempt.domain?.confidence ?? 0,
+                    liveInterpretation.confidence ?? 0,
+                  ),
+                  dialoguePhase: liveInterpretation.hemispherePhase,
+                  intent: `${liveInterpretation.temporalIntent} / ${liveInterpretation.intentType} / ${liveInterpretation.domain}`,
+                  semanticConfidence: liveInterpretation.confidence,
+                });
               },
               onCommitCandidate: (candidate: CommitCandidate) => {
                 const attempt = candidate.attempt;
@@ -277,6 +348,13 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
                 })
                 .then(async r => {
                   const body = await r.json().catch(() => null) as {
+                    result?: {
+                      dataPointId?: string;
+                      dataPoint?: { id: string; rawText?: string };
+                      thoughtWindowId?: string;
+                      blocked?: boolean;
+                      reason?: string;
+                    } | null;
                     results?: Array<{
                       dataPointId?: string;
                       dataPoint?: { id: string; rawText?: string };
@@ -286,7 +364,7 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
                     }>;
                   } | null;
 
-                  const results = body?.results ?? [];
+                  const results = body?.results ?? (body?.result ? [body.result] : []);
                   const serverWinId = results[0]?.thoughtWindowId;
                   const dpIds = results
                     .map(res => res.dataPointId ?? res.dataPoint?.id)
@@ -331,6 +409,9 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
                       });
                     }
                   });
+                  if (dpIds.length > 0 || results.some((res) => res.blocked)) {
+                    onUtteranceResolved?.(attempt.id);
+                  }
                 })
                 .catch(err => {
                   emitDebug({
@@ -346,6 +427,7 @@ export function useAudioCapture({ workshopId, getDialoguePhase, onTranscriptStre
                 console.log('[EthentaFlow] Discarded —', speakerId,
                   '| text:', attempt.full_text.substring(0, 80),
                   '| guard:', attempt.validity?.reasons?.slice(0, 2).join('; '));
+                onUtteranceResolved?.(attempt.id);
 
                 // ── Debug: TSM DISCARD ─────────────────────────
                 emitDebug({

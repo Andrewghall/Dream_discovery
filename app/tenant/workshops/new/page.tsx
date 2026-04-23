@@ -10,6 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import {
+  getWorkshopTypeProfile,
+  listCanonicalWorkshopTypes,
+} from '@/lib/workshop/workshop-definition';
+
+const WORKSHOP_TYPE_OPTIONS = listCanonicalWorkshopTypes();
 
 export default function NewWorkshopPage() {
   const router = useRouter();
@@ -18,11 +24,20 @@ export default function NewWorkshopPage() {
     name: '',
     description: '',
     businessContext: '',
-    workshopType: 'CUSTOM',
+    workshopType: 'TRANSFORMATION',
     scheduledDate: '',
     responseDeadline: '',
     includeRegulation: true,
   });
+  const selectedWorkshopType = getWorkshopTypeProfile(formData.workshopType);
+
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLElement | null;
+    const tagName = target?.tagName?.toLowerCase();
+    if (tagName === 'textarea' || target instanceof HTMLButtonElement) return;
+    e.preventDefault();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,7 +92,7 @@ export default function NewWorkshopPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="name">Workshop Name *</Label>
                 <Input
@@ -99,10 +114,19 @@ export default function NewWorkshopPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CUSTOM">DREAM</SelectItem>
+                    {WORKSHOP_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.key} value={option.key} title={option.tooltip}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                     <SelectItem value="SALES">Sales Call</SelectItem>
                   </SelectContent>
                 </Select>
+                {formData.workshopType !== 'SALES' && (
+                  <p className="text-sm text-muted-foreground">
+                    {selectedWorkshopType.deliverables}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

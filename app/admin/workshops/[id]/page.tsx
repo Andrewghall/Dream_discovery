@@ -395,17 +395,9 @@ const handleBackfillReports = async () => {
                 <CardDescription>Configure which sections are included in participant discovery</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  <Label>Optional Sections</Label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={includeRegulation}
-                      onChange={(e) => handleUpdateIncludeRegulation(e.target.checked)}
-                    />
-                    Include Regulation / Risk questions
-                  </label>
-                </div>
+                <p className="text-sm text-muted-foreground">
+                  Canonical workshop lenses are fixed platform-wide. Optional per-workshop lens toggles are no longer supported.
+                </p>
               </CardContent>
             </Card>
 

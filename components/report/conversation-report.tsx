@@ -6,12 +6,15 @@ import { RadarChart } from '@/components/report/radar-chart';
 import { WordCloud, WordCloudItem } from '@/components/report/word-cloud';
 import { Button } from '@/components/ui/button';
 import { fixedQuestionsForVersion } from '@/lib/conversation/fixed-questions';
+import { canonicalizeConversationPhase } from '@/lib/workshop/canonical-lenses';
 
 export interface PhaseInsight {
   phase: string;
   currentScore: number | null;
   targetScore: number | null;
   projectedScore: number | null;
+  overrideQuestion?: string;
+  overrideMaturityScale?: string[];
   strengths: string[];
   working: string[];
   gaps: string[];
@@ -24,20 +27,30 @@ export interface PhaseInsight {
 }
 
 function phaseLabel(phase: string): string {
-  if (phase === 'people') return 'D1 — People';
-  if (phase === 'corporate') return 'D2 — Corporate / Organisational';
-  if (phase === 'customer') return 'D3 — Customer';
-  if (phase === 'technology') return 'D4 — Technology';
-  if (phase === 'regulation') return 'D5 — Regulation';
+  const canonicalPhase = canonicalizeConversationPhase(phase);
+  if (canonicalPhase) {
+    const labels = {
+      people: 'D1 — People',
+      operations: 'D2 — Operations',
+      technology: 'D3 — Technology',
+      commercial: 'D4 — Commercial',
+      risk_compliance: 'D5 — Risk / Compliance',
+      finance: 'D6 — Finance',
+      partners: 'D7 — Partners',
+    } as const;
+    return labels[canonicalPhase];
+  }
   return phase;
 }
 
 function phaseRatingPrompt(phase: string): string {
-  if (phase === 'people') return 'Rate how well-equipped you and your colleagues are to do your jobs effectively.';
-  if (phase === 'corporate') return "Rate how well the organisation's processes and decision-making help you do your job.";
-  if (phase === 'customer') return 'Rate how well the organisation meets customer needs and expectations.';
-  if (phase === 'technology') return 'Rate the technology, systems, and tools you use in terms of reliability and ease of use.';
-  if (phase === 'regulation') return 'Rate how well the organisation handles regulatory and compliance requirements.';
+  const canonicalPhase = canonicalizeConversationPhase(phase);
+  if (canonicalPhase === 'people') return 'Rate how well-equipped you and your colleagues are to do your jobs effectively.';
+  if (canonicalPhase === 'operations') return "Rate how well the organisation's operating model, processes, and decision flow help you do your job.";
+  if (canonicalPhase === 'technology') return 'Rate the technology, systems, and tools you use in terms of reliability and ease of use.';
+  if (canonicalPhase === 'commercial') return 'Rate how well the organisation converts customer need into value, growth, and commercial performance.';
+  if (canonicalPhase === 'risk_compliance') return 'Rate how well the organisation manages compliance obligations, controls, and material risk.';
+  if (canonicalPhase === 'partners') return 'Rate how well external partners and suppliers support delivery and outcomes.';
   return 'Rate this area on a 1–10 scale.';
 }
 
@@ -90,6 +103,8 @@ export function ConversationReport({
   keyInsights,
   phaseInsights,
   wordCloudThemes,
+  participant,
+  aboutYou,
   onDownloadPdf,
   pdfMode,
   questionSetVersion,
@@ -112,6 +127,16 @@ export function ConversationReport({
   }>;
   phaseInsights: PhaseInsight[];
   wordCloudThemes: WordCloudItem[];
+  participant?: {
+    name?: string | null;
+    role?: string | null;
+    department?: string | null;
+  };
+  aboutYou?: {
+    roleContext?: string | null;
+    bestThing?: string | null;
+    frustration?: string | null;
+  };
   onDownloadPdf?: () => void | Promise<void>;
   pdfMode?: boolean;
   questionSetVersion?: string | null;
@@ -214,6 +239,54 @@ export function ConversationReport({
         </CardContent>
       </Card>
 
+      {(participant?.role || participant?.department || aboutYou?.roleContext || aboutYou?.bestThing || aboutYou?.frustration) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>About You</CardTitle>
+            <CardDescription>The participant profile and opening context from the discovery interview</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            {(participant?.role || participant?.department) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {participant?.role && (
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs font-semibold text-muted-foreground mb-1">Role</div>
+                    <div className="whitespace-pre-wrap">{participant.role}</div>
+                  </div>
+                )}
+                {participant?.department && (
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs font-semibold text-muted-foreground mb-1">Department</div>
+                    <div className="whitespace-pre-wrap">{participant.department}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {aboutYou?.roleContext && (
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-1">Role, tenure, and day-to-day focus</div>
+                <div className="whitespace-pre-wrap">{aboutYou.roleContext}</div>
+              </div>
+            )}
+
+            {aboutYou?.bestThing && (
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-1">Best thing about working here</div>
+                <div className="whitespace-pre-wrap">{aboutYou.bestThing}</div>
+              </div>
+            )}
+
+            {aboutYou?.frustration && (
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-1">Most frustrating thing</div>
+                <div className="whitespace-pre-wrap">{aboutYou.frustration}</div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {(inputQuality || (Array.isArray(keyInsights) && keyInsights.length > 0)) && (
         <div className="grid grid-cols-1 gap-4">
           {inputQuality && (
@@ -297,14 +370,14 @@ export function ConversationReport({
               <CardTitle>{phaseLabel(p.phase)}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              {questionTextForPhase(p.phase, questionSetVersion) && (
+              {(p.overrideQuestion || questionTextForPhase(p.phase, questionSetVersion)) && (
                 <div className="text-sm font-medium whitespace-pre-wrap leading-snug">
-                  {questionTextForPhase(p.phase, questionSetVersion)}
+                  {p.overrideQuestion || questionTextForPhase(p.phase, questionSetVersion)}
                 </div>
               )}
 
               {(() => {
-                const scale = maturityScaleForPhase(p.phase, questionSetVersion);
+                const scale = p.overrideMaturityScale || maturityScaleForPhase(p.phase, questionSetVersion);
                 if (!scale) return null;
                 return (
                   <div className="space-y-2">

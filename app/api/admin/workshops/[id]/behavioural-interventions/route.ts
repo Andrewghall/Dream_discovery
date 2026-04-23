@@ -176,5 +176,5 @@ function deriveDefaultLenses(oi: Record<string, any>): string[] {
 
   return seen.size > 0
     ? Array.from(seen)
-    : ['People', 'Process', 'Technology', 'Organisation'];
+    : ['People', 'Operations', 'Technology', 'Commercial', 'Risk/Compliance', 'Partners'];
 }

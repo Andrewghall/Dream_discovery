@@ -1696,6 +1696,40 @@ type GtmResearchAnchors = {
   riskFocus: string;
 };
 
+function buildGtmRiskFocus(industry: string, normalizedResearch: string): string {
+  const ind = industry.toLowerCase();
+  // Public sector always takes priority regardless of client industry
+  if (/public sector|government|civil service|local authority/i.test(industry) || /public sector procurement|government procurement/.test(normalizedResearch)) {
+    return 'public-sector procurement, government security, and compliance requirements';
+  }
+  if (/financial services|banking|insurance|investment|asset management/i.test(ind)) {
+    return 'FCA, PRA, and financial conduct compliance requirements';
+  }
+  if (/healthcare|pharma|life sciences|medical|nhs/i.test(ind)) {
+    return 'MHRA, NHS procurement, and clinical compliance requirements';
+  }
+  if (/energy|utilities|oil|gas|power|water/i.test(ind)) {
+    return 'Ofgem, energy regulation, and environmental compliance requirements';
+  }
+  if (/retail|consumer|fmcg/i.test(ind)) {
+    return 'consumer protection, data privacy, and supply chain compliance requirements';
+  }
+  if (/technology|software|saas|tech/i.test(ind)) {
+    return 'software procurement, data residency, and AI governance requirements';
+  }
+  if (/media|entertainment|broadcast|publishing/i.test(ind)) {
+    return 'Ofcom, data privacy, and content licensing compliance requirements';
+  }
+  if (/transport|logistics|supply chain|freight/i.test(ind)) {
+    return 'transport regulation, safety compliance, and procurement requirements';
+  }
+  if (/professional services|consulting|advisory|legal/i.test(ind)) {
+    return 'professional indemnity, data protection, and procurement compliance requirements';
+  }
+  // Fallback: generic but not public-sector-biased
+  return 'risk, procurement, and regulatory compliance requirements';
+}
+
 function buildGtmResearchAnchors(
   context: PrepContext,
   research: WorkshopPrepResearch | null,
@@ -1713,23 +1747,35 @@ function buildGtmResearchAnchors(
   const normalized = joined.toLowerCase();
 
   return {
-    offerFocus: /ai-led bpo|ai led bpo/.test(normalized) ? `${company}'s AI-led BPO proposition` : buildGtmOfferAnchor(context),
-    dealFocus: /contact centre|contact center/.test(normalized) ? `${company}'s Contact Centre and BPO deals` : buildGtmContextAnchor(context),
+    offerFocus: /ai-led bpo|ai led bpo/.test(normalized)
+      ? `${company}'s AI-led BPO proposition`
+      : /embedded payments|payments infrastructure/.test(normalized)
+        ? `${company}'s embedded payments proposition`
+        : buildGtmOfferAnchor(context),
+    dealFocus: /contact centre|contact center/.test(normalized)
+      ? `${company}'s Contact Centre and BPO deals`
+      : /embedded payments|payments infrastructure/.test(normalized)
+        ? `${company}'s embedded payments deals`
+        : buildGtmContextAnchor(context),
     segmentFocus: /public sector|pensions/.test(normalized) ? 'public sector and pensions opportunities' : `${company}'s highest-fit opportunities`,
     competitorFocus: /teleperformance|concentrix|genpact/.test(normalized) ? 'global BPO competitors such as Teleperformance, Concentrix, and Genpact' : 'credible competitors in live deals',
     partnerFocus: /salesforce|snowflake/.test(normalized) ? 'partnerships such as Salesforce and Snowflake' : 'key delivery and technology partners',
-    riskFocus: /regulatory|ethical|procurement|public sector/.test(normalized) ? 'public-sector procurement, AI governance, and compliance requirements' : 'risk, procurement, and compliance requirements',
+    riskFocus: buildGtmRiskFocus(context.industry ?? '', normalized),
   };
 }
 
 function splitCommercialPhrases(input: string | null | undefined): string[] {
   if (!input) return [];
   return input
-    .split(/[\n.;•\-]+/)
+    .split(/[\n.;•,]|(?:--|\u2014|\u2013)/)
     .map((part) => part.trim())
+    // Strip markdown bold/italic markers and heading hashes before any other processing
+    .map((part) => part.replace(/\*\*/g, '').replace(/\*/g, '').replace(/^#+\s*/, '').trim())
     .map((part) => part.replace(/\s+/g, ' '))
-    .filter((part) => part.length >= 12 && part.length <= 140)
-    .filter((part) => !/^(purpose|desired outcomes?|outcomes?)[:]?$/i.test(part))
+    .filter((part) => part.length >= 12 && part.length <= 100)
+    .filter((part) => !/^(and|or|but|the|to|in|of|for|a|an)\s+/i.test(part))
+    // Exclude label-only lines such as "Purpose:", "**Purpose:**", "Desired outcomes:"
+    .filter((part) => !/^(purpose|desired outcomes?|outcomes?)\s*[:]?/i.test(part))
     .filter((part) => /[a-z]/i.test(part));
 }
 
@@ -1737,8 +1783,12 @@ function pickContextPhrase(
   phrases: string[],
   pattern: RegExp,
   fallback: string,
+  maxWords = 6,
 ): string {
-  const match = phrases.find((phrase) => pattern.test(phrase.toLowerCase()));
+  const match = phrases.find((phrase) => {
+    if (!pattern.test(phrase.toLowerCase())) return false;
+    return phrase.trim().split(/\s+/).length <= maxWords;
+  });
   return match ?? fallback;
 }
 
@@ -1792,7 +1842,10 @@ function buildGtmContextProfile(
     /\b(convert|conversion|win|growth|position|package|sell|delivery|differentiat|opportunit|credib|fit|avoid)\b/i,
     `${company}'s ability to win the right work`,
   );
-  const outcomePrompt = cleanOutcomePrompt(outcomeFocus);
+  // Strip leading gerund so "to support ${outcomePrompt}" never doubles to "to support supporting X"
+  const outcomePrompt = cleanOutcomePrompt(outcomeFocus)
+    .replace(/^(supporting|growing|improving|enabling|strengthening|delivering|building|achieving|winning|driving|generating|capturing)\s+/i, '')
+    .trim() || `${company}'s ability to win the right work`;
 
   return {
     company,
@@ -1841,6 +1894,21 @@ function buildTransformationContextProfile(
   const futureStateFocus = (() => {
     const cleaned = cleanOutcomePrompt(rawFutureStateFocus);
     const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
+    // Imperative task descriptions (Define X, Redesign X) are directives, not context anchors
+    if (/^(define|redesign|build|create|develop|establish|align|reduce|identify|implement|assess|map|enable|surface)\b/i.test(cleaned)) {
+      return `${company}'s future-state operating model`;
+    }
+    // Company-as-subject statements (e.g. "HSBC is investing in digital transformation") are
+    // descriptions of current activity, not target-state anchors — use fallback to avoid
+    // producing grammatically broken question strings when the phrase is interpolated.
+    if (new RegExp(`^${company.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+(is|was|has|are|will|would|can|could)\\b`, 'i').test(cleaned)) {
+      return `${company}'s future-state operating model`;
+    }
+    // Present-state descriptions (e.g. "£8bn programme is underway", "system is live") are
+    // current-state statements that break question grammar when used as target-state anchors.
+    if (/\b(is underway|are underway|is live|is in place|is ongoing|is happening|has begun|has started)\b/i.test(cleaned)) {
+      return `${company}'s future-state operating model`;
+    }
     if (/\bfuture state\b|\btarget state\b/i.test(cleaned)) return cleaned;
     if (/\boperating model\b/i.test(cleaned)) return `${company}'s future-state operating model`;
     if (wordCount > 8) return `${company}'s future-state operating model`;
@@ -2236,7 +2304,7 @@ function buildAiLensPlan(lens: string): AiLensPlan {
           signal: 'trust_gap',
           tag: 'gaps',
           purpose: 'Reveal where people would not trust AI output yet.',
-          buildQuestion: (profile) => `Where do you see people doubting that AI could be trusted to help in ${profile.aiFocus}?`,
+          buildQuestion: (profile) => `Where do you see people most reluctant to trust AI in their work at ${profile.company}?`,
         },
         {
           signal: 'capability_gap',
@@ -2487,11 +2555,19 @@ function buildFinanceContextProfile(
     ...splitCommercialPhrases(research?.strategicTensions?.join('. ')),
     ...splitCommercialPhrases(research?.workshopHypotheses?.join('. ')),
   ];
-  const valueFocus = pickContextPhrase(
-    phrases,
-    /\b(value|cost|margin|economics|leakage|waste|rework|efficiency|return|cost-to-serve|pricing)\b/i,
-    `${company}'s value leakage and cost-to-serve`,
-  );
+  // Prefer a phrase that explicitly names "leakage" — strip imperative verb prefix if present
+  const rawLeakageFocus = pickContextPhrase(phrases, /\bleakage\b/i, '', 6);
+  const strippedLeakageFocus = rawLeakageFocus
+    ? rawLeakageFocus
+        .replace(/^(reduce|remove|identify|eliminate|stop|fix|address|avoid|cut|improve|decrease|minimise|minimize)\s+/i, '')
+        .trim()
+    : '';
+  const valueFocus = strippedLeakageFocus ||
+    pickContextPhrase(
+      phrases,
+      /\b(value|cost|margin|economics|leakage|waste|rework|efficiency|return|cost-to-serve|pricing)\b/i,
+      `${company}'s value leakage and cost-to-serve`,
+    );
   const joined = [
     research?.companyOverview,
     research?.industryContext,
@@ -3177,7 +3253,7 @@ function buildOperationsLensPlan(lens: string): OperationsLensPlan {
           signal: 'handoff_behaviour',
           tag: 'constraint',
           purpose: 'Surface behaviours that weaken handoff quality.',
-          buildQuestion: (profile) => `Where do you see day-to-day handoff behaviour making work harder to move cleanly through ${profile.serviceFlowFocus}?`,
+          buildQuestion: (profile) => `Where do you see handoff behaviour making work harder to move cleanly through ${profile.serviceFlowFocus}?`,
         },
         {
           signal: 'support_strength',
@@ -3207,13 +3283,13 @@ function buildOperationsLensPlan(lens: string): OperationsLensPlan {
           signal: 'rework',
           tag: 'pain_points',
           purpose: 'Surface where effort is being repeated unnecessarily.',
-          buildQuestion: (profile) => `Where do you see work being repeated because it did not move through ${profile.serviceFlowFocus} cleanly the first time?`,
+          buildQuestion: (profile) => `Where do you see work coming back because it did not clear ${profile.serviceFlowFocus} cleanly?`,
         },
         {
           signal: 'decision_delay',
           tag: 'working',
           purpose: 'Show where cleaner decisions already improve flow.',
-          buildQuestion: (profile) => `What happens in the areas where decisions are made quickly enough to keep ${profile.serviceFlowFocus} moving well?`,
+          buildQuestion: (profile) => `What happens in the areas where quick decisions keep ${profile.serviceFlowFocus} moving well?`,
         },
       ],
     },
@@ -3255,7 +3331,7 @@ function buildOperationsLensPlan(lens: string): OperationsLensPlan {
           signal: 'expectation_gap',
           tag: 'gaps',
           purpose: 'Reveal where promises and delivery reality diverge.',
-          buildQuestion: (profile) => `Where do you see customer expectations being missed because ${profile.serviceFlowFocus} cannot deliver as cleanly as it should?`,
+          buildQuestion: (profile) => `Where do customers notice when ${profile.serviceFlowFocus} fails to deliver as expected?`,
         },
         {
           signal: 'customer_delay',
@@ -3267,7 +3343,7 @@ function buildOperationsLensPlan(lens: string): OperationsLensPlan {
           signal: 'value_breakdown',
           tag: 'pain_points',
           purpose: 'Surface where operational friction weakens value delivery.',
-          buildQuestion: (profile) => `Where do you see operational friction getting in the way of the value customers expect from ${profile.customerImpactFocus}?`,
+          buildQuestion: (profile) => `Where does operational friction affect the value customers expect from ${profile.customerImpactFocus}?`,
         },
         {
           signal: 'confidence_signal',
@@ -3605,7 +3681,7 @@ function buildTransformationLensPlan(lens: string): TransformationLensPlan {
           signal: 'credibility_gap',
           tag: 'gaps',
           purpose: 'Reveal where the change story is not credible in lived reality.',
-          buildQuestion: (profile) => `Where do you see credibility concerns making teams doubt that ${profile.futureStateFocus} can really happen from where things stand today?`,
+          buildQuestion: (profile) => `Where do you see credibility concerns making teams doubt the move to ${profile.futureStateFocus} is real?`,
         },
         {
           signal: 'behavioural_friction',
@@ -3623,7 +3699,7 @@ function buildTransformationLensPlan(lens: string): TransformationLensPlan {
           signal: 'fatigue_risk',
           tag: 'working',
           purpose: 'Surface whether energy and trust are strong enough to absorb change.',
-          buildQuestion: (profile) => `What happens in teams that are still able to absorb change well, and where do you see fatigue starting to weaken the move toward ${profile.futureStateFocus}?`,
+          buildQuestion: (profile) => `Where do you see fatigue starting to weaken the move toward ${profile.futureStateFocus}?`,
         },
       ],
     },
@@ -3641,19 +3717,19 @@ function buildTransformationLensPlan(lens: string): TransformationLensPlan {
           signal: 'decision_delay',
           tag: 'constraint',
           purpose: 'Surface where decision flow slows the transformation path.',
-          buildQuestion: (profile) => `Where do you see decisions taking too long for ${profile.futureStateFocus} to move at the pace it needs?`,
+          buildQuestion: (profile) => `Where do you see decision flow slowing the move toward ${profile.futureStateFocus}?`,
         },
         {
           signal: 'execution_dependency',
           tag: 'pain_points',
           purpose: 'Identify fragile dependencies in the current model.',
-          buildQuestion: (profile) => `Where do you see the current model depending on too many fragile steps for ${profile.futureStateFocus} to work reliably?`,
+          buildQuestion: (profile) => `Where do you see execution dependencies and fragile handoffs making the path to ${profile.futureStateFocus} unreliable?`,
         },
         {
           signal: 'scaling_blocker',
           tag: 'working',
           purpose: 'Show where operating conditions already support the target state.',
-          buildQuestion: (profile) => `What happens in the parts of the operation that already look closest to ${profile.futureStateFocus}, and where do they still stop short?`,
+          buildQuestion: (profile) => `What happens in the parts of the operating model that already work the way ${profile.futureStateFocus} requires?`,
         },
       ],
     },
@@ -3683,7 +3759,7 @@ function buildTransformationLensPlan(lens: string): TransformationLensPlan {
           signal: 'technology_enabler',
           tag: 'working',
           purpose: 'Identify where the technology base already supports transformation.',
-          buildQuestion: (profile) => `What happens in the parts of ${profile.technologyAnchor} that already make ${profile.futureStateFocus} feel more achievable?`,
+          buildQuestion: (profile) => `What happens in the technology areas that already make ${profile.futureStateFocus} feel more realistic?`,
         },
       ],
     },
@@ -3743,7 +3819,7 @@ function buildTransformationLensPlan(lens: string): TransformationLensPlan {
           signal: 'risk_constraint',
           tag: 'working',
           purpose: 'Surface where control and pace are already balanced well.',
-          buildQuestion: (profile) => `What happens in the areas where risk and control are helping the business change without stalling the move toward ${profile.futureStateFocus}?`,
+          buildQuestion: (profile) => `What happens where risk and control are already helping the path toward ${profile.futureStateFocus}?`,
         },
       ],
     },
@@ -3773,7 +3849,7 @@ function buildTransformationLensPlan(lens: string): TransformationLensPlan {
           signal: 'acceleration_opportunity',
           tag: 'working',
           purpose: 'Surface where partners could accelerate the change path.',
-          buildQuestion: (profile) => `What happens in the areas where external partners are already helping the business move faster toward ${profile.futureStateFocus}?`,
+          buildQuestion: (profile) => `What happens where external partners are already helping the move toward ${profile.futureStateFocus}?`,
         },
       ],
     },
@@ -4039,7 +4115,7 @@ function buildSignalFirstGtmLensPlan(lens: string): GtmLensPlan {
           signal: 'differentiation',
           tag: 'working',
           purpose: 'Identify where buyer-facing behaviour strengthens the offer in real opportunities.',
-          buildQuestion: (profile) => `In recent wins within ${profile.targetReference}, where did one person or team make ${profile.propositionFocus} feel more credible than competing offers?`,
+          buildQuestion: (profile) => `In recent wins, where did one person or team make ${profile.propositionFocus} feel more credible than competing offers?`,
         },
         {
           signal: 'misalignment',
@@ -4099,7 +4175,7 @@ function buildSignalFirstGtmLensPlan(lens: string): GtmLensPlan {
           signal: 'win_pattern',
           tag: 'working',
           purpose: 'Identify when technology directly helps the business win.',
-          buildQuestion: (profile) => `In recent wins within ${profile.targetReference}, where did the technical story make ${profile.company} easier to choose?`,
+          buildQuestion: (profile) => `In recent wins, where did the technical story make ${profile.company} easier to choose?`,
         },
         {
           signal: 'loss_pattern',
@@ -4165,19 +4241,19 @@ function buildSignalFirstGtmLensPlan(lens: string): GtmLensPlan {
           signal: 'fragility',
           tag: 'constraint',
           purpose: 'Show where risk is discovered too late in the pursuit.',
-          buildQuestion: (profile) => `Which live deals are most exposed because ${profile.riskFocus} are still being surfaced after the offer shape is already set?`,
+          buildQuestion: (profile) => `Which live deals are most exposed because ${profile.riskFocus} are surfacing too late?`,
         },
         {
           signal: 'misalignment',
           tag: 'pain_points',
           purpose: 'Reveal where approval requirements reshape the offer after it is sold.',
-          buildQuestion: (profile) => `In won or near-won deals, where did approvals force ${profile.company} to reshape the offer after the client had already bought a different expectation?`,
+          buildQuestion: (profile) => `In near-won deals, where did approvals force a reshape after the client had already bought a different expectation?`,
         },
         {
           signal: 'win_pattern',
           tag: 'working',
           purpose: 'Identify when early risk clarity helps deals stay viable.',
-          buildQuestion: (profile) => `In recent wins, where did early clarity on ${profile.riskFocus} help the deal stay viable and move faster?`,
+          buildQuestion: (profile) => `In recent wins, where did early clarity on ${profile.riskFocus} help deals move faster?`,
         },
       ],
     },
@@ -4457,7 +4533,7 @@ export function validateDiscoveryQuestion(
       invalidMessage: 'for Transformation workshops, People must ask about readiness, credibility, fatigue, behaviour, confidence, or capability for the future state',
     },
     Operations: {
-      allowed: /\b(operating model|future state|target state|handoff|handoffs|decision|flow|workflow|service model|dependency|dependencies|execution)\b/i,
+      allowed: /\b(operating model|future state|target state|handoff|handoffs|decisions?|flow|workflow|service model|dependency|dependencies|execution)\b/i,
       invalidMessage: 'for Transformation workshops, Operations must ask how the current operating model, flow, or dependencies help or block the target state',
     },
     Technology: {

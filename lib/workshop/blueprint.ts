@@ -19,11 +19,21 @@
 import { z } from 'zod';
 import { getDomainPack } from '@/lib/domain-packs/registry';
 import { resolveIndustryPack } from '@/lib/domain-packs/resolution';
-import { getEngagementType } from '@/lib/domain-packs/engagement-types';
 import {
-  DEFAULT_DIMENSIONS,
   DEFAULT_JOURNEY_STAGES,
 } from '@/lib/cognition/workshop-dimensions';
+import {
+  CANONICAL_LENS_NAMES,
+  canonicalizeLensName,
+  getCanonicalLensDefinition,
+  type CanonicalLensName,
+} from '@/lib/workshop/canonical-lenses';
+import {
+  getEngagementTypeProfile,
+  getWorkshopTypeProfile,
+  inferCanonicalEngagementType,
+  inferCanonicalWorkshopType,
+} from '@/lib/workshop/workshop-definition';
 
 // ================================================================
 // Sub-types
@@ -118,6 +128,7 @@ export type WorkshopBlueprint = {
   // Identity
   industry: string | null;
   dreamTrack: 'ENTERPRISE' | 'DOMAIN' | null;
+  workshopType: string | null;
   engagementType: string | null;
   domainPack: string | null;
   purpose: string | null;
@@ -260,6 +271,7 @@ export const WorkshopBlueprintSchema = z.object({
 
   industry: z.string().nullable(),
   dreamTrack: z.enum(['ENTERPRISE', 'DOMAIN']).nullable(),
+  workshopType: z.string().nullable(),
   engagementType: z.string().nullable(),
   domainPack: z.string().nullable(),
   purpose: z.string().nullable(),
@@ -298,12 +310,15 @@ export const WorkshopBlueprintSchema = z.object({
  * DEFAULT_DIMENSIONS carries name, description, keywords, and color.
  */
 function buildDefaultLenses(): LensPolicyEntry[] {
-  return DEFAULT_DIMENSIONS.map((d) => ({
-    name: d.name,
-    description: d.description,
-    color: d.color,
-    keywords: [...d.keywords],
-  }));
+  return CANONICAL_LENS_NAMES.map((name) => {
+    const lens = getCanonicalLensDefinition(name);
+    return {
+      name: lens.name,
+      description: lens.description,
+      color: lens.color,
+      keywords: [...lens.keywords],
+    };
+  });
 }
 
 /**
@@ -322,6 +337,7 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
   // Identity -- null defaults, composed from workshop fields
   industry: null,
   dreamTrack: null,
+  workshopType: null,
   engagementType: null,
   domainPack: null,
   purpose: null,
@@ -331,13 +347,13 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
   lenses: buildDefaultLenses(),
 
   // Phase lens policy
-  // REIMAGINE is aspirational — restricted to human-centric lenses (People, Customer, Partners)
+  // REIMAGINE is aspirational — restricted to human/external outcome lenses.
   // CONSTRAINTS works right-to-left: hard external constraints → soft internal
   // DEFINE_APPROACH works left-to-right: human → structural → technical → commercial
   phaseLensPolicy: {
-    REIMAGINE: ['People', 'Customer', 'Partners'],
-    CONSTRAINTS: ['Risk/Compliance', 'Commercial', 'Technology', 'Operations', 'Customer', 'People', 'Partners'],
-    DEFINE_APPROACH: ['People', 'Operations', 'Technology', 'Customer', 'Commercial', 'Risk/Compliance', 'Partners'],
+    REIMAGINE: ['People', 'Commercial', 'Partners'],
+    CONSTRAINTS: ['Risk/Compliance', 'Partners', 'Technology', 'Operations', 'Commercial', 'People'],
+    DEFINE_APPROACH: ['People', 'Operations', 'Technology', 'Commercial', 'Risk/Compliance', 'Partners'],
   },
 
   // Journey stages from workshop-dimensions.ts DEFAULT_JOURNEY_STAGES
@@ -443,6 +459,7 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
 export type ComposeInput = {
   industry: string | null;
   dreamTrack: 'ENTERPRISE' | 'DOMAIN' | null;
+  workshopType: string | null;
   engagementType: string | null;
   domainPack: string | null;
   purpose: string | null;
@@ -464,31 +481,36 @@ export function composeBlueprint(input: ComposeInput): WorkshopBlueprint {
   // Layer 1: Workshop identity scalars
   bp.industry = input.industry;
   bp.dreamTrack = input.dreamTrack;
-  bp.engagementType = input.engagementType;
+  bp.workshopType = inferCanonicalWorkshopType({
+    workshopType: input.workshopType,
+    engagementType: input.engagementType,
+  });
+  bp.engagementType = inferCanonicalEngagementType({
+    engagementType: input.engagementType,
+  });
   bp.domainPack = input.domainPack;
   bp.purpose = input.purpose;
   bp.outcomes = input.outcomes;
 
-  // Layer 2: Engagement type overrides
-  if (input.engagementType) {
-    // Registry uses lowercase keys; Prisma stores uppercase enums
-    const etKey = input.engagementType.toLowerCase();
-    const etConfig = getEngagementType(etKey);
-    if (etConfig) {
-      bp.diagnosticFocus = etConfig.diagnosticFocus;
-      bp.outputEmphasis = [...etConfig.outputEmphasis];
-      bp.dataRequirements = {
-        typicalDurationDays: etConfig.typicalDurationDays,
-        typicalInterviewCount: etConfig.typicalInterviewCount,
-        sessionMix: etConfig.suggestedSessionMix.map((s) => ({
-          captureType: s.captureType,
-          minSessions: s.minSessions,
-          idealSessions: s.idealSessions,
-          description: s.description,
-        })),
-      };
-    }
-  }
+  // Layer 2: Workshop type defines structure; engagement type modifies depth only.
+  const workshopProfile = getWorkshopTypeProfile(bp.workshopType);
+  const engagementProfile = getEngagementTypeProfile(bp.engagementType);
+
+  bp.diagnosticFocus = `${workshopProfile.structuralFocus} ${engagementProfile.depthModifier}`;
+  bp.outputEmphasis = [
+    ...workshopProfile.outputEmphasis,
+    ...engagementProfile.outputEmphasis.filter((item) => !workshopProfile.outputEmphasis.includes(item)),
+  ];
+  bp.dataRequirements = {
+    typicalDurationDays: engagementProfile.typicalDurationDays,
+    typicalInterviewCount: engagementProfile.typicalInterviewCount,
+    sessionMix: engagementProfile.suggestedSessionMix.map((s) => ({
+      captureType: s.captureType,
+      minSessions: s.minSessions,
+      idealSessions: s.idealSessions,
+      description: s.description,
+    })),
+  };
 
   // Layer 3: Domain pack overrides
   // Explicit domainPack key is authoritative; industry auto-resolve only when no explicit key set.
@@ -496,45 +518,6 @@ export function composeBlueprint(input: ComposeInput): WorkshopBlueprint {
     const pack = (input.domainPack ? getDomainPack(input.domainPack) : null)
       ?? (input.industry ? resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack) : null);
     if (pack) {
-      // Map domain pack lenses to LensPolicyEntry, reusing DEFAULT_DIMENSIONS
-      // data (keywords, color, description) when the name matches.
-      const defaultLookup = new Map(
-        DEFAULT_DIMENSIONS.map((d) => [d.name, d]),
-      );
-
-      bp.lenses = pack.lenses.map((lensName) => {
-        // Look up DEFAULT_DIMENSIONS for colour/keywords/description fallbacks.
-        // IMPORTANT: always use lensName (from the domain pack) as the lens name —
-        // never return match.name (which came from DEFAULT_DIMENSIONS and would
-        // silently rename 'Organisation' → 'Operations').
-        const match = defaultLookup.get(lensName);
-        if (match) {
-          return {
-            name: lensName,          // preserve the pack's name, not the dimensions key
-            description: match.description,
-            color: match.color,
-            keywords: [...match.keywords],
-          };
-        }
-        // Unknown lens from pack — create a minimal entry
-        return {
-          name: lensName,
-          description: '',
-          color: '#e2e8f0',
-          keywords: [],
-        };
-      });
-
-      // Update phase lens policy to match available lenses
-      // REIMAGINE is aspirational — exclude Technology and Regulation
-      const lensNames = bp.lenses.map((l) => l.name);
-      const REIMAGINE_EXCLUDED = ['Technology', 'Operations', 'Commercial', 'Risk/Compliance'];
-      bp.phaseLensPolicy = {
-        REIMAGINE: lensNames.filter((n) => !REIMAGINE_EXCLUDED.includes(n)),
-        CONSTRAINTS: [...lensNames],
-        DEFINE_APPROACH: [...lensNames],
-      };
-
       // Actor taxonomy from domain pack
       bp.actorTaxonomy = pack.actorTaxonomy.map((a) => ({
         key: a.key,
@@ -557,7 +540,7 @@ export function composeBlueprint(input: ComposeInput): WorkshopBlueprint {
     return { ...structuredClone(DEFAULT_BLUEPRINT), composedAtMs: Date.now() };
   }
 
-  return result.data as WorkshopBlueprint;
+  return normalizeBlueprint(result.data as WorkshopBlueprint);
 }
 
 // ================================================================
@@ -580,7 +563,7 @@ export function readBlueprintFromJson(
     );
     return null;
   }
-  return result.data as WorkshopBlueprint;
+  return normalizeBlueprint(result.data as WorkshopBlueprint);
 }
 
 /**
@@ -594,4 +577,40 @@ export function getBlueprint(json: unknown): WorkshopBlueprint {
       composedAtMs: Date.now(),
     }
   );
+}
+
+function normalizeBlueprint(blueprint: WorkshopBlueprint): WorkshopBlueprint {
+  return {
+    ...blueprint,
+    lenses: normalizeBlueprintLenses(blueprint.lenses),
+    phaseLensPolicy: {
+      ...DEFAULT_BLUEPRINT.phaseLensPolicy,
+    },
+  };
+}
+
+function normalizeBlueprintLenses(
+  lenses: LensPolicyEntry[],
+): LensPolicyEntry[] {
+  const incoming = new Map<CanonicalLensName, LensPolicyEntry>();
+
+  for (const lens of lenses) {
+    const canonicalName = canonicalizeLensName(lens.name);
+    if (!canonicalName) continue;
+    incoming.set(canonicalName, lens);
+  }
+
+  return CANONICAL_LENS_NAMES.map((canonicalName) => {
+    const base = getCanonicalLensDefinition(canonicalName);
+    const existing = incoming.get(canonicalName);
+    return {
+      name: base.name,
+      description: existing?.description?.trim() || base.description,
+      color: existing?.color?.trim() || base.color,
+      keywords: Array.from(new Set([
+        ...base.keywords,
+        ...(Array.isArray(existing?.keywords) ? existing!.keywords : []),
+      ])).filter(Boolean),
+    };
+  });
 }

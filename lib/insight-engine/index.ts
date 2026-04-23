@@ -1,6 +1,6 @@
 export type DimensionKey = string;
 
-export type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
+export type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6';
 
 export type DimensionMedians = {
   key: DimensionKey;
@@ -27,9 +27,9 @@ export type InsightFeatures = {
   highest_gap: { key: DimensionKey; value: number };
   strongest_current: { key: DimensionKey; value: number };
   chain: {
-    weakest_enabler_for_customer: { key: string; value: number };
+    weakest_enabler_for_commercial: { key: string; value: number };
     weakest_enabler_for_technology: { key: string; value: number };
-    weakest_enabler_for_organisation: { key: string; value: number };
+    weakest_enabler_for_operations: { key: string; value: number };
   };
   dependency_gaps: Array<{ from: DimensionKey; to: DimensionKey; delta: number }>;
 };
@@ -98,9 +98,9 @@ export function computeInsightFeatures(input: DimensionMedians[]): InsightFeatur
     return candidates.reduce((acc, x) => (x.value < acc.value ? x : acc), candidates[0]);
   };
 
-  const weakest_enabler_for_customer = minAmong('Customer');
+  const weakest_enabler_for_commercial = minAmong('Commercial');
   const weakest_enabler_for_technology = minAmong('Technology');
-  const weakest_enabler_for_organisation = minAmong('Organisation');
+  const weakest_enabler_for_operations = minAmong('Operations');
 
   const dependency_gaps: InsightFeatures['dependency_gaps'] = [];
   const depThreshold = 1.5;
@@ -126,16 +126,16 @@ export function computeInsightFeatures(input: DimensionMedians[]): InsightFeatur
     strongest_current: { key: strongestKey, value: byDimension[strongestKey].current },
     highest_gap: { key: highestGapKey, value: byDimension[highestGapKey].gap_to_target },
     chain: {
-      weakest_enabler_for_customer,
+      weakest_enabler_for_commercial,
       weakest_enabler_for_technology,
-      weakest_enabler_for_organisation,
+      weakest_enabler_for_operations,
     },
     dependency_gaps,
   };
 }
 
 export function buildRuleBackedBullets(params: {
-  focus: 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
+  focus: Focus;
   dimensions: DimensionMedians[];
   features: InsightFeatures;
 }): RuleBullet[] {
@@ -218,11 +218,12 @@ export function buildRuleBackedBullets(params: {
 
 function primaryDimensionForFocus(focus: Focus): string {
   if (focus === 'D1') return 'People';
-  if (focus === 'D2') return 'Organisation';
-  if (focus === 'D3') return 'Customer';
-  if (focus === 'D4') return 'Technology';
-  if (focus === 'D5') return 'Regulation';
-  return 'Customer';
+  if (focus === 'D2') return 'Operations';
+  if (focus === 'D3') return 'Technology';
+  if (focus === 'D4') return 'Commercial';
+  if (focus === 'D5') return 'Risk/Compliance';
+  if (focus === 'D6') return 'Partners';
+  return 'Commercial';
 }
 
 function joinList(xs: string[]): string {
@@ -242,16 +243,15 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
 
   const focusDim = primaryDimensionForFocus(params.focus);
 
-  const ENABLERS_FOR_OUTCOME: Record<string, string[]> = {
-    Customer: ['Organisation', 'Technology', 'People', 'Regulation'],
-    Technology: ['Organisation', 'People', 'Regulation'],
-    Organisation: ['People', 'Technology', 'Regulation'],
-    People: ['Organisation', 'Technology', 'Regulation'],
-    Regulation: ['Organisation', 'Technology', 'People'],
-  };
+  const ENABLERS_FOR_OUTCOME = Object.fromEntries(
+    Object.keys(d).map((outcomeKey) => [
+      outcomeKey,
+      Object.keys(d).filter((candidateKey) => candidateKey !== outcomeKey),
+    ]),
+  ) as Record<string, string[]>;
 
   const outcomeIsMaster = params.focus === 'MASTER';
-  const outcome: DimensionKey = outcomeIsMaster ? 'Customer' : focusDim;
+  const outcome: DimensionKey = outcomeIsMaster ? 'Commercial' : focusDim;
   const outcomeTarget = d[outcome].target;
 
   const enablers = outcomeIsMaster
@@ -270,21 +270,25 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
   const weakestEnabler = gaps.length ? gaps[gaps.length - 1] : null;
 
   if (outcomeIsMaster) {
-    primary.push(`To achieve the stated ambition, delivery requires balanced enablement across People, Organisation and Technology to realise Customer outcomes.`);
-    primary.push(`The current delivery chain is only as strong as its weakest enabler; ${features.chain.weakest_enabler_for_customer.key} is most likely to constrain execution.`);
+    primary.push('To achieve the stated ambition, delivery requires balanced enablement across the canonical lenses to realise commercial outcomes.');
+    primary.push(`The current delivery chain is only as strong as its weakest enabler; ${features.chain.weakest_enabler_for_commercial.key} is most likely to constrain execution.`);
   } else {
     const topText = joinList(chosenEnablers);
 
-    if (outcome === 'Customer') {
-      primary.push(`To achieve the stated Customer ambition, it requires enablement in ${topText} because Customer outcomes are delivered through upstream capabilities.`);
+    if (outcome === 'Commercial') {
+      primary.push(`To achieve the stated Commercial ambition, it requires enablement in ${topText} because commercial outcomes depend on upstream capability, delivery flow, and market execution.`);
     } else if (outcome === 'Technology') {
       primary.push(`To achieve the stated Technology ambition, it requires enablement in ${topText} so the organisation can adopt, govern and sustain change.`);
-    } else if (outcome === 'Organisation') {
-      primary.push(`To achieve the stated Organisation ambition, it requires enablement in ${topText} so decision-making and delivery can operate at the intended level.`);
+    } else if (outcome === 'Operations') {
+      primary.push(`To achieve the stated Operations ambition, it requires enablement in ${topText} so decision-making and delivery can operate at the intended level.`);
     } else if (outcome === 'People') {
       primary.push(`To achieve the stated People ambition, it requires enablement in ${topText} because People capability depends on organisational design and tools.`);
+    } else if (outcome === 'Risk/Compliance') {
+      primary.push(`To achieve the stated Risk/Compliance ambition, it requires enablement in ${topText} because controls are embedded through operating model, technology, and governance.`);
+    } else if (outcome === 'Partners') {
+      primary.push(`To achieve the stated Partners ambition, it requires enablement in ${topText} because external dependencies are managed through strong internal capability and governance.`);
     } else {
-      primary.push(`To achieve the stated Regulation ambition, it requires enablement in ${topText} because compliance is embedded through operating model and systems.`);
+      primary.push(`To achieve the stated ${outcome} ambition, it requires enablement in ${topText}.`);
     }
 
     if (chosenEnablers.length) {
@@ -316,8 +320,8 @@ export function buildDependencySynthesis(params: { focus: Focus; dimensions: Dim
 
   const focusEvidencePairs: Array<{ a: string; aLabel: 'target' | 'projected' | 'current'; b: string; bLabel: 'current' | 'target' | 'projected' }> = [];
   if (outcomeIsMaster) {
-    focusEvidencePairs.push({ a: 'Customer', aLabel: 'target', b: 'Organisation', bLabel: 'current' });
-    focusEvidencePairs.push({ a: 'Customer', aLabel: 'target', b: 'Technology', bLabel: 'current' });
+    focusEvidencePairs.push({ a: 'Commercial', aLabel: 'target', b: 'Operations', bLabel: 'current' });
+    focusEvidencePairs.push({ a: 'Commercial', aLabel: 'target', b: 'Technology', bLabel: 'current' });
   } else {
     for (const en of chosenEnablers.slice(0, 3)) {
       focusEvidencePairs.push({ a: outcome, aLabel: 'target', b: en, bLabel: 'current' });

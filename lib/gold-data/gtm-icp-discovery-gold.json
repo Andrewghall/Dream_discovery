@@ -1,0 +1,100 @@
+{
+  "lens_pack": "GTM_ICP_DISCOVERY_GOLD",
+  "purpose": "Generate deep, commercially-focused discovery questions that surface how the business wins, loses, and delivers value",
+  "rules": {
+    "core_principle": "Every question must reveal commercial truth, not operational maturity",
+    "must_do": [
+      "force comparison (win vs loss, strong vs weak, best vs rest)",
+      "require real examples or patterns",
+      "expose misalignment between sales, proposition, and delivery",
+      "link directly to revenue, value, or deal outcomes"
+    ],
+    "must_not_do": [
+      "ask maturity questions",
+      "ask generic capability or process questions",
+      "ask opinion-based or comfortable questions",
+      "focus only on internal efficiency"
+    ],
+    "anchor": "The system must ask how the business wins, not how it operates"
+  },
+  "lenses": [
+    {
+      "name": "People",
+      "questions": [
+        "Where do your strongest individuals outperform the rest in how they position and close deals, and what is missing elsewhere?",
+        "Where does internal misalignment between sales, solution, and delivery create a different story for the client?",
+        "Where does your team’s capability limit the type or quality of work you can win?"
+      ],
+      "scale_1_5": {
+        "1": "Teams cannot consistently articulate value; deals rely on individuals and are unpredictable",
+        "3": "Core value can be explained, but inconsistently across teams and deal types",
+        "5": "Clear, consistent, and compelling value articulation across all roles and client segments"
+      }
+    },
+    {
+      "name": "Operations",
+      "questions": [
+        "Where does your delivery model constrain what you can confidently sell?",
+        "Where have recent deals exposed a gap between what was sold and what could actually be delivered?",
+        "What types of work consistently create friction once they move into delivery?"
+      ],
+      "scale_1_5": {
+        "1": "Delivery frequently breaks what is sold; high friction and rework",
+        "3": "Most work is delivered, but with inconsistencies or hidden inefficiencies",
+        "5": "Delivery model fully supports what is sold, with predictable and scalable outcomes"
+      }
+    },
+    {
+      "name": "Technology",
+      "questions": [
+        "Where does your technology genuinely differentiate you in a deal, and where is it overstated?",
+        "Where would a competitor most easily expose a weakness in your technical capability?",
+        "What capabilities do clients assume you have that you don’t fully deliver today?"
+      ],
+      "scale_1_5": {
+        "1": "Technology is unclear, inconsistent, or overpromised",
+        "3": "Technology supports most deals but is not a strong differentiator",
+        "5": "Technology is a clear, credible differentiator that consistently helps win work"
+      }
+    },
+    {
+      "name": "Commercial",
+      "questions": [
+        "Across recent wins and losses, what patterns explain why clients choose or reject you?",
+        "What are clients actually buying from you at the point of sale?",
+        "Where are you winning work that you should not be winning?"
+      ],
+      "scale_1_5": {
+        "1": "Win/loss outcomes are unclear or inconsistent; weak understanding of why deals succeed or fail",
+        "3": "Some patterns are understood, but not consistently applied",
+        "5": "Clear, repeatable understanding of win/loss drivers and strong alignment to ICP"
+      }
+    },
+    {
+      "name": "Risk/Compliance",
+      "questions": [
+        "Where has risk or compliance directly limited your ability to pursue or close deals?",
+        "Where does risk sit implicitly in deals rather than being explicitly understood?",
+        "Where do compliance requirements shape or distort your proposition?"
+      ],
+      "scale_1_5": {
+        "1": "Risk is reactive, unclear, and regularly impacts deals negatively",
+        "3": "Risk is managed, but not consistently embedded into decision-making",
+        "5": "Risk is clearly understood, proactively managed, and supports confident deal execution"
+      }
+    },
+    {
+      "name": "Partners",
+      "questions": [
+        "Where do partners strengthen your ability to win, and where do they introduce risk?",
+        "Where have partner capabilities directly influenced deal success or failure?",
+        "How aligned are your partners to your value proposition in live deals?"
+      ],
+      "scale_1_5": {
+        "1": "Partners create inconsistency, risk, or weaken deals",
+        "3": "Partners support delivery but are not a strong differentiator",
+        "5": "Partners are fully aligned and actively strengthen your ability to win and deliver"
+      }
+    }
+  ]
+}

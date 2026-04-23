@@ -10,10 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Building2, Globe, Target, Compass, Briefcase } from 'lucide-react';
 import Link from 'next/link';
-import { listEngagementTypes } from '@/lib/domain-packs';
 import { INDUSTRY_OPTIONS } from '@/lib/cognition/industry-actor-model';
+import {
+  getWorkshopTypeProfile,
+  listCanonicalWorkshopTypes,
+} from '@/lib/workshop/workshop-definition';
 
-const ENGAGEMENT_TYPE_OPTIONS = listEngagementTypes();
+const WORKSHOP_TYPE_OPTIONS = listCanonicalWorkshopTypes();
 
 type OrgOption = { id: string; name: string };
 
@@ -27,7 +30,7 @@ export default function NewWorkshopPage() {
     name: '',
     description: '',
     businessContext: '',
-    workshopType: 'CUSTOM',
+    workshopType: 'TRANSFORMATION',
     scheduledDate: '',
     responseDeadline: '',
     includeRegulation: true,
@@ -37,12 +40,19 @@ export default function NewWorkshopPage() {
     companyWebsite: '',
     dreamTrack: 'ENTERPRISE' as 'ENTERPRISE' | 'DOMAIN',
     targetDomain: '',
-    // Field Discovery / Diagnostic extension
-    engagementType: '',
   });
 
   const isDream = formData.workshopType !== 'SALES';
   const isPlatformAdmin = userRole === 'PLATFORM_ADMIN';
+  const selectedWorkshopType = getWorkshopTypeProfile(formData.workshopType);
+
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLElement | null;
+    const tagName = target?.tagName?.toLowerCase();
+    if (tagName === 'textarea' || target instanceof HTMLButtonElement) return;
+    e.preventDefault();
+  };
 
   // Fetch user role + available orgs for PLATFORM_ADMIN
   useEffect(() => {
@@ -87,9 +97,6 @@ export default function NewWorkshopPage() {
           companyWebsite: isDream ? formData.companyWebsite || undefined : undefined,
           dreamTrack: isDream ? formData.dreamTrack : undefined,
           targetDomain: isDream && formData.dreamTrack === 'DOMAIN' ? formData.targetDomain || undefined : undefined,
-          // Field Discovery / Diagnostic extension
-          // domainPack is resolved server-side from industry + engagementType + dreamTrack
-          engagementType: isDream && formData.engagementType ? formData.engagementType : undefined,
           // Convert datetime-local strings to full ISO 8601 for schema validation
           scheduledDate: toISO(formData.scheduledDate),
           responseDeadline: toISO(formData.responseDeadline),
@@ -143,7 +150,7 @@ export default function NewWorkshopPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="name">Workshop Name *</Label>
                 <Input
@@ -260,7 +267,7 @@ export default function NewWorkshopPage() {
                       >
                         <div className="text-sm font-semibold">Enterprise</div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Full end-to-end assessment across all 5 lenses. Rethink the entire business operation.
+                          Full end-to-end assessment across all 7 canonical lenses. Rethink the entire business operation.
                         </p>
                       </button>
                       <button
@@ -303,38 +310,46 @@ export default function NewWorkshopPage() {
                 <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/30 dark:border-blue-900 dark:bg-blue-950/20 p-5">
                   <div className="flex items-center gap-2 mb-1">
                     <Compass className="h-4 w-4 text-blue-600" />
-                    <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-400">Diagnostic Configuration</h3>
+                    <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-400">Workshop Configuration</h3>
                   </div>
                   <p className="text-xs text-muted-foreground -mt-2 mb-3">
-                    Optional: configure for structured diagnostic mode with field discovery capture
+                    Workshop type defines the output structure and what the session will produce.
                   </p>
 
                   <div className="space-y-2">
-                    <Label htmlFor="engagementType">
+                    <Label htmlFor="workshopType">
                       <span className="flex items-center gap-1.5">
                         <Briefcase className="h-3.5 w-3.5" />
-                        Engagement Type
+                        Workshop Type
                       </span>
                     </Label>
                     <Select
-                      value={formData.engagementType}
-                      onValueChange={(value) => setFormData({ ...formData, engagementType: value })}
+                      value={formData.workshopType}
+                      onValueChange={(value) => setFormData({ ...formData, workshopType: value })}
                     >
-                      <SelectTrigger id="engagementType">
-                        <SelectValue placeholder="Select engagement type..." />
+                      <SelectTrigger id="workshopType">
+                        <SelectValue placeholder="Select workshop type..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {ENGAGEMENT_TYPE_OPTIONS.map((et) => (
-                          <SelectItem key={et.key} value={et.key}>
-                            {et.label}
+                        {WORKSHOP_TYPE_OPTIONS.map((wt) => (
+                          <SelectItem key={wt.key} value={wt.key} title={wt.tooltip}>
+                            {wt.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Domain pack is resolved automatically from the selected industry and engagement type
+                    This controls the workshop narrative shape and output structure.
                   </p>
+                  <div className="rounded-md border border-blue-200 bg-white/80 p-3 dark:border-blue-900 dark:bg-slate-950/40">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                      What This Workshop Will Deliver
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                      {selectedWorkshopType.deliverables}
+                    </p>
+                  </div>
                 </div>
               )}
 

@@ -181,6 +181,7 @@ export async function POST(
             where: { id: workshopId },
             select: {
               id: true,
+              workshopType: true,
               description: true,
               businessContext: true,
               clientName: true,
@@ -212,8 +213,11 @@ export async function POST(
         if (!hasDiscoveryData(existingBriefing)) {
           sendEvent('progress', { step: 'agent', message: 'Running discovery intelligence agent…' });
 
+          const blueprint = readBlueprintFromJson(workshop.blueprint);
+
           const context: PrepContext = {
             workshopId,
+            workshopType: blueprint?.workshopType ?? workshop.workshopType,
             workshopPurpose: workshop.description,
             desiredOutcomes: workshop.businessContext,
             clientName: workshop.clientName,
@@ -221,7 +225,9 @@ export async function POST(
             companyWebsite: workshop.companyWebsite,
             dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
             targetDomain: workshop.targetDomain,
-            blueprint: readBlueprintFromJson(workshop.blueprint),
+            engagementType: blueprint?.engagementType ?? null,
+            domainPack: blueprint?.domainPack ?? null,
+            blueprint,
           };
 
           const research = workshop.prepResearch as WorkshopPrepResearch | null;

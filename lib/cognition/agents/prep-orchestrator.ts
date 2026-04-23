@@ -17,6 +17,7 @@ import { Prisma } from '@prisma/client';
 import { runResearchAgent } from './research-agent';
 import { runQuestionSetAgent } from './question-set-agent';
 import { validateQuestionSet } from './question-set-validator';
+import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import type {
   PrepContext,
   AgentConversationCallback,
@@ -77,10 +78,29 @@ export async function runPrepOrchestrator(
   try {
     research = await runResearchAgent(context, onConversation);
 
-    // Store research
+    const updatedBlueprint = generateBlueprint({
+      industry: context.industry ?? null,
+      dreamTrack: context.dreamTrack ?? null,
+      workshopType: context.workshopType ?? null,
+      engagementType: context.engagementType ?? null,
+      domainPack: context.domainPack ?? null,
+      purpose: context.workshopPurpose ?? null,
+      outcomes: context.desiredOutcomes ?? null,
+      clientName: context.clientName ?? null,
+      researchJourneyStages: research.journeyStages ?? null,
+      researchDimensions: research.industryDimensions ?? null,
+      researchActors: research.actorTaxonomy ?? null,
+      previousVersion: context.blueprint?.blueprintVersion ?? 0,
+    });
+    context.blueprint = updatedBlueprint;
+
+    // Store research and refreshed blueprint
     await prisma.workshop.update({
       where: { id: context.workshopId },
-      data: { prepResearch: JSON.parse(JSON.stringify(research)) },
+      data: {
+        prepResearch: JSON.parse(JSON.stringify(research)),
+        blueprint: updatedBlueprint as any,
+      },
     });
 
     const dimensionsNote = research.industryDimensions?.length

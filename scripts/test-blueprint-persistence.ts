@@ -18,6 +18,7 @@ async function main() {
   const bp = generateBlueprint({
     industry: 'Aviation',
     dreamTrack: 'DOMAIN',
+    workshopType: 'OPERATIONS',
     engagementType: 'operational_deep_dive',
     domainPack: 'contact_centre',
     purpose: 'Map the airline contact centre',

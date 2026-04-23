@@ -1,12 +1,23 @@
-export type ConversationPhase = 
-  | 'intro' 
-  | 'people' 
-  | 'corporate' 
-  | 'customer' 
-  | 'technology' 
-  | 'regulation' 
-  | 'prioritization' 
+import {
+  canonicalizeConversationPhase,
+  type CanonicalConversationPhase,
+} from '@/lib/workshop/canonical-lenses';
+
+export type ConversationPhase =
+  | 'intro'
+  | CanonicalConversationPhase
+  | 'prioritization'
   | 'summary';
+
+export function normalizeConversationPhase(
+  phase: unknown,
+): ConversationPhase {
+  const raw = typeof phase === 'string' ? phase.trim().toLowerCase() : '';
+  if (raw === 'intro' || raw === 'prioritization' || raw === 'summary') {
+    return raw;
+  }
+  return canonicalizeConversationPhase(raw) ?? 'intro';
+}
 
 export interface ConversationState {
   sessionId: string;
@@ -73,17 +84,10 @@ export const PHASE_CONFIGS: Record<ConversationPhase, PhaseConfig> = {
     minimumInsights: 3,
     estimatedDuration: '3 min',
   },
-  corporate: {
-    name: 'corporate',
-    displayName: 'Corporate / Organisational',
-    objective: 'Understand policies, governance, structure, and decision-making',
-    minimumInsights: 3,
-    estimatedDuration: '3 min',
-  },
-  customer: {
-    name: 'customer',
-    displayName: 'Customer',
-    objective: 'Explore customer expectations, needs, and experience',
+  operations: {
+    name: 'operations',
+    displayName: 'Operations',
+    objective: 'Understand process flow, governance, delivery execution, and operating discipline',
     minimumInsights: 3,
     estimatedDuration: '3 min',
   },
@@ -94,10 +98,24 @@ export const PHASE_CONFIGS: Record<ConversationPhase, PhaseConfig> = {
     minimumInsights: 3,
     estimatedDuration: '3 min',
   },
-  regulation: {
-    name: 'regulation',
-    displayName: 'Regulation / Risk',
-    objective: 'Understand compliance, regulatory, and risk constraints',
+  commercial: {
+    name: 'commercial',
+    displayName: 'Commercial',
+    objective: 'Explore value delivery, market demand, customer outcomes, and growth logic',
+    minimumInsights: 3,
+    estimatedDuration: '3 min',
+  },
+  risk_compliance: {
+    name: 'risk_compliance',
+    displayName: 'Risk / Compliance',
+    objective: 'Understand compliance obligations, control requirements, and risk exposure',
+    minimumInsights: 3,
+    estimatedDuration: '3 min',
+  },
+  partners: {
+    name: 'partners',
+    displayName: 'Partners',
+    objective: 'Explore external dependencies, partner performance, and ecosystem constraints',
     minimumInsights: 3,
     estimatedDuration: '3 min',
   },

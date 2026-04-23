@@ -146,10 +146,12 @@ function dialoguePhaseToWorkshopPhase(phase: DialoguePhase): WorkshopPhase | nul
 function lensToStickyPadType(lens: string | null): StickyPadType {
   switch (lens) {
     case 'People': return 'GAP_PROBE';
-    case 'Organisation': return 'ENABLER_PROBE';
-    case 'Customer': return 'CUSTOMER_IMPACT';
+    case 'Operations': return 'ENABLER_PROBE';
     case 'Technology': return 'RISK_PROBE';
-    case 'Regulation': return 'RISK_PROBE';
+    case 'Commercial': return 'CUSTOMER_IMPACT';
+    case 'Risk/Compliance': return 'RISK_PROBE';
+    case 'Finance': return 'OWNERSHIP_ACTION';
+    case 'Partners': return 'ENABLER_PROBE';
     case 'General': return 'CLARIFICATION';
     default: return 'CLARIFICATION';
   }
@@ -158,26 +160,32 @@ function lensToStickyPadType(lens: string | null): StickyPadType {
 const PHASE_PROMPTS: Record<string, Record<string, string>> = {
   REIMAGINE: {
     People: 'In the ideal world, how would people experience this? Describe the perfect day.',
-    Organisation: 'What would the ideal points of engagement look like -- with no friction at all?',
-    Customer: 'Describe the perfect experience from the customer\'s perspective -- what does amazing look like?',
+    Operations: 'What would the ideal operating model look like if work flowed with no friction at all?',
     Technology: 'If technology were limitless, what would this look like?',
-    Regulation: 'Imagine a world with no regulatory barriers -- what becomes possible?',
+    Commercial: 'If the value proposition and commercial model worked brilliantly, what would be different?',
+    'Risk/Compliance': 'If risk and compliance were built in cleanly rather than acting as drag, what becomes possible?',
+    Finance: 'If funding and investment were fully aligned to the vision, what would that unlock?',
+    Partners: 'What would the ideal partner ecosystem look like in this future state?',
     General: 'Paint the picture -- what does the ideal future state look like here?',
   },
   CONSTRAINTS: {
     People: 'What people-related limitations stand between today and that vision?',
-    Organisation: 'What organisational constraints -- structure, budget, politics -- block progress here?',
-    Customer: 'What customer-side barriers exist? Adoption, behaviour, access?',
+    Operations: 'What operational constraints -- structure, process, governance, handoffs -- block progress here?',
     Technology: 'What technology constraints are we dealing with -- legacy systems, integration, data?',
-    Regulation: 'What regulatory or compliance requirements must we work within here?',
+    Commercial: 'What commercial realities constrain this -- demand, proposition, pricing, retention, or growth pressure?',
+    'Risk/Compliance': 'What compliance or risk requirements must we work within here?',
+    Finance: 'What financial constraints do we need to work within -- budget, funding, payback, or investment pressure?',
+    Partners: 'What partner, supplier, or ecosystem constraints stand in the way here?',
     General: 'What\'s the biggest blocker standing in the way?',
   },
   DEFINE_APPROACH: {
     People: 'What do the people need to make this work? Skills, roles, ways of working?',
-    Organisation: 'How does the organisation need to change to deliver this?',
-    Customer: 'How do we prove the customer outcome? What does the journey look like in practice?',
+    Operations: 'How does the operating model need to change to deliver this?',
     Technology: 'What technology enables this approach? Build, buy, or integrate?',
-    Regulation: 'How do we satisfy the regulatory requirements while still delivering the vision?',
+    Commercial: 'How do we prove the commercial outcome? What does value delivery look like in practice?',
+    'Risk/Compliance': 'How do we satisfy the risk and compliance requirements while still delivering the vision?',
+    Finance: 'How do we fund this, measure value, and sequence investment responsibly?',
+    Partners: 'What role should partners play in delivery and how do we align them to the outcome?',
     General: 'Who owns this and what\'s the first step?',
   },
 };

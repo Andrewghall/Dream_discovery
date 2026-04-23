@@ -44,6 +44,7 @@ import {
 import { LiveDomainRadar } from '@/components/live/live-domain-radar';
 import { AgenticReasoningPanel, type ReasoningEntry } from '@/components/live/agentic-reasoning-panel';
 import { interpretLiveUtterance, type LiveDomain } from '@/lib/live/intent-interpretation';
+import { cleanLiveWorkingChunk } from '@/lib/live/transcript-cleaning';
 import { transcribeAudio, checkCaptureAPIHealth, CaptureAPIStream, type CaptureAPIResponse, type StreamTranscript } from '@/lib/captureapi/client';
 import { ThoughtStateMachine } from '@/lib/ethentaflow/thought-state-machine';
 import { DEFAULT_LENS_PACK } from '@/lib/ethentaflow/lens-pack-ontology';
@@ -377,13 +378,13 @@ export default function WorkshopLivePage({ params }: PageProps) {
   const stopProcessingRef = useRef(false);
   const lastTranscriptionErrorRef = useRef<string>('');
   const lastEmptyDeepgramRef = useRef<string>('');
-  const rawTranscriptSeqRef = useRef<number>(0);
   const chunkIntervalRef = useRef<number | null>(null);
   const lastChunkEndRef = useRef<number>(0);
   const whisperDisabledRef = useRef(false);
   const watchdogIntervalRef = useRef<number | null>(null);
   const lastChunkAtRef = useRef<number>(0);
   const lastHealthyAtRef = useRef<number>(0);
+  const rawTranscriptSeqRef = useRef<number>(0);
   const wakeLockRef = useRef<null | { release?: () => Promise<void> }>(null);
 
   const esRef = useRef<EventSource | null>(null);
@@ -1149,9 +1150,9 @@ export default function WorkshopLivePage({ params }: PageProps) {
     const out: HemisphereNodeDatum[] = [];
 
     for (const n of nodes) {
+      out.push(n);
       const parts = splitIntoUtterances(n.rawText);
       if (parts.length <= 1) {
-        out.push(n);
         continue;
       }
 
@@ -3054,34 +3055,31 @@ export default function WorkshopLivePage({ params }: PageProps) {
     try {
       const stream = new CaptureAPIStream({
         onTranscript: (msg: StreamTranscript) => {
-          // ── Raw transcript: source of truth ─────────────────────────────
-          // Write verbatim Deepgram output immediately on every isFinal result,
-          // before any TSM processing. Fire-and-forget — never blocks capture.
-          // All downstream processing (windowing, splitting, classification)
-          // operates on derived copies; this record is never modified.
-          const rawWriteText = msg.rawText?.trim() || msg.cleanText?.trim();
-          console.log('[RawTranscript] onTranscript', { isFinal: msg.isFinal, speechFinal: msg.speechFinal, rawWriteText: rawWriteText?.substring(0, 40) });
-          if (rawWriteText) {
+          const sourceChunkId = msg.sourceChunkId || crypto.randomUUID();
+          if (typeof msg.rawText === 'string' && msg.rawText.length > 0) {
             const rawSeq = rawTranscriptSeqRef.current++;
             void fetch(`/api/workshops/${encodeURIComponent(workshopId)}/raw-transcript`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify([{
+              body: JSON.stringify({
                 speakerId: msg.speaker !== null ? `speaker_${msg.speaker}` : null,
-                text: rawWriteText,
+                sourceChunkId,
+                capturedAt: new Date().toISOString(),
+                text: msg.rawText,
                 startTimeMs: msg.startTimeMs ?? Date.now(),
                 endTimeMs: msg.endTimeMs ?? Date.now(),
                 confidence: msg.confidence ?? null,
                 speechFinal: msg.speechFinal ?? false,
                 sequence: rawSeq,
-              }]),
-            }).then(r => { if (!r.ok) console.error('[RawTranscript] write failed', r.status); })
-              .catch(e => console.error('[RawTranscript] write error', e));
+              }),
+            }).catch(() => {
+              // Raw transcript persistence is independent from downstream processing.
+            });
           }
-          // ────────────────────────────────────────────────────────────────
 
-          const text = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
-          if (!text || msg.isFinal === false) return;
+          const transcriptText = (msg.rawText?.trim() || msg.cleanText?.trim() || '');
+          const workingChunk = cleanLiveWorkingChunk(transcriptText);
+          if (!workingChunk || msg.isFinal === false) return;
 
           if (lastTranscriptionErrorRef.current) {
             lastTranscriptionErrorRef.current = '';
@@ -3112,10 +3110,23 @@ export default function WorkshopLivePage({ params }: PageProps) {
                   : attempt.features
                     ? (Object.entries(attempt.features.domain_term_hits).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'General')
                     : 'General';
-                setPendingNodes((prev) => ({
-                  ...prev,
-                  [speakerId]: { id: speakerId, domain: domainHint, startedAtMs: attempt.start_time_ms },
-                }));
+                setPendingNodes((prev) => {
+                  const next = { ...prev };
+                  for (const [pendingId, pendingNode] of Object.entries(next)) {
+                    if (pendingNode.speakerId === speakerId && pendingId !== attempt.id) {
+                      delete next[pendingId];
+                    }
+                  }
+                  next[attempt.id] = {
+                    id: attempt.id,
+                    speakerId,
+                    domain: domainHint,
+                    startedAtMs: attempt.start_time_ms,
+                    workingText: attempt.full_text,
+                    domainConfidence: attempt.domain?.confidence ?? null,
+                  };
+                  return next;
+                });
               },
               onCommitCandidate: async (candidate: CommitCandidate) => {
                 const attempt = candidate.attempt;
@@ -3133,10 +3144,6 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 const primaryLiveDomain = domainResult?.primary_domain
                   ? domainIdToLiveDomain(domainResult.primary_domain)
                   : interpretLiveUtterance(fullText).domain;
-
-                // Clear pending immediately — the thought is resolved, accumulation is done.
-                // The committed node lands within ~300ms when the POST returns a dataPointId.
-                setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
 
                 console.log('[EthentaFlow] Committing resolved thought for', speakerId,
                   '— domain:', primaryLiveDomain,
@@ -3167,7 +3174,10 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
                 try {
                   // If all text was already sent via progressive partial commits, nothing left to send.
-                  if (!fullText) return;
+                  if (!fullText) {
+                    setPendingNodes((prev) => { const n = { ...prev }; delete n[attempt.id]; return n; });
+                    return;
+                  }
 
                   // Build spoken records from remaining (un-partial-committed) chunks only.
                   const spokenRecords = spokenRecordsChunks.map((chunkText, i) => ({
@@ -3180,6 +3190,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
 
                   if (!passageQuality.pass) {
                     // Passage is ASR-damaged — raw transcript already stored at receipt; skip DataPoint creation.
+                    setPendingNodes((prev) => { const n = { ...prev }; delete n[attempt.id]; return n; });
                     return;
                   }
 
@@ -3243,6 +3254,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     });
                     if (singleResult?.blocked) {
                       emitDebug({ stage: 'ingest', event: 'UNIT_BLOCKED', status: 'blocked', thoughtWindowId: serverWinId, guardReason: singleResult.reason ?? 'unknown' });
+                      setPendingNodes((prev) => { const n = { ...prev }; delete n[attempt.id]; return n; });
                     }
                     if (!dpId && singleResult?.blocked !== true) {
                       console.warn('[EthentaFlow] Commit POST returned no dataPointId — server blocked?', singleResult);
@@ -3297,6 +3309,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                         emitDebug({ stage: 'hemisphere', event: 'NODE_ADDED', status: 'pass', nodeId: dpId, nodeCount: Object.keys(prev).length + 1, text: String(node.rawText ?? '').substring(0, 70), hemisphereAction: 'added' });
                         return { ...prev, [dpId]: node };
                       });
+                      setPendingNodes((prev) => { const n = { ...prev }; delete n[attempt.id]; return n; });
                       console.log('[EthentaFlow] Node committed:', dpId, (node.rawText as string).substring(0, 60));
                     }
                     pushDiagEvent({
@@ -3316,9 +3329,11 @@ export default function WorkshopLivePage({ params }: PageProps) {
                     });
                   } else {
                     console.error('[EthentaFlow] Commit POST failed:', r.status);
+                    setPendingNodes((prev) => { const n = { ...prev }; delete n[attempt.id]; return n; });
                   }
                 } catch (err) {
                   console.error('[EthentaFlow] Commit POST error:', err);
+                  setPendingNodes((prev) => { const n = { ...prev }; delete n[attempt.id]; return n; });
                 }
               },
               onPartialCommit: async (partialText: string, chunks: string[], chunkTimes: number[], startTimeMs: number, endTimeMs: number) => {
@@ -3405,7 +3420,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
                 }
               },
               onDiscard: (attempt: ThoughtAttempt) => {
-                setPendingNodes((prev) => { const n = { ...prev }; delete n[speakerId]; return n; });
+                setPendingNodes((prev) => { const n = { ...prev }; delete n[attempt.id]; return n; });
                 const discardReason = attempt.guardBlockReason ?? attempt.validity?.reasons?.slice(0, 2).join('; ') ?? 'unknown';
                 console.log('[EthentaFlow] Discarded —', speakerId, '| text:', attempt.full_text.substring(0, 60), '| guard:', discardReason);
                 emitDebug({
@@ -3458,7 +3473,7 @@ export default function WorkshopLivePage({ params }: PageProps) {
             stateMachinesRef.current.set(speakerId, machine);
           }
 
-          stateMachinesRef.current.get(speakerId)!.chunkArrived(text, msg.speechFinal ?? false);
+          stateMachinesRef.current.get(speakerId)!.chunkArrived(workingChunk, msg.speechFinal ?? false);
         },
         onError: (err) => {
           console.error('[CaptureAPIStream] Error:', err);

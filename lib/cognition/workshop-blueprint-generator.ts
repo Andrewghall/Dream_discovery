@@ -21,6 +21,7 @@ import {
   type ActorEntry,
   type QuestionConstraints,
 } from '@/lib/workshop/blueprint';
+import { getDomainPack } from '@/lib/domain-packs/registry';
 import { resolveIndustryPack } from '@/lib/domain-packs/resolution';
 import { getIndustryActors } from '@/lib/cognition/industry-actor-model';
 import type {
@@ -28,6 +29,7 @@ import type {
   IndustryDimension,
   ActorResearch,
 } from '@/lib/cognition/agents/agent-types';
+import { inferCanonicalEngagementType } from '@/lib/workshop/workshop-definition';
 
 // ================================================================
 // Re-export input type for consumers
@@ -44,6 +46,8 @@ export type GeneratorInput = ComposeInput & {
   previousVersion?: number;
   /** Client name -- used for industry context detection (e.g. "Aer Lingus" => airline) */
   clientName?: string | null;
+  /** Target domain for DOMAIN-track workshops (e.g. "Contact Centre") */
+  targetDomain?: string | null;
 };
 
 // ================================================================
@@ -174,6 +178,27 @@ function resolveJourneyTemplate(input: GeneratorInput): JourneyStageEntry[] | nu
       }));
     }
   }
+  return null;
+}
+
+function normalizeDomainHint(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function resolveTargetDomainActorTaxonomy(input: GeneratorInput): ActorEntry[] | null {
+  const targetDomain = normalizeDomainHint(input.targetDomain);
+
+  // When the workshop is structurally focused on a contact-centre domain,
+  // prefer the curated contact-centre actor model over generic industry actors.
+  if (targetDomain.includes('contact centre') || targetDomain.includes('contact center')) {
+    const pack = getDomainPack('contact_centre');
+    return pack?.actorTaxonomy.map((actor) => ({
+      key: actor.key,
+      label: actor.label,
+      description: actor.description,
+    })) ?? null;
+  }
+
   return null;
 }
 
@@ -321,7 +346,7 @@ type EngagementModifier = {
 };
 
 const ENGAGEMENT_QUESTION_MODIFIERS: Record<string, EngagementModifier> = {
-  diagnostic_baseline: {
+  DIAGNOSTIC_BASELINE: {
     additionalRequired: [
       'Current state maturity per dimension',
       'Evidence-based severity scoring',
@@ -331,7 +356,7 @@ const ENGAGEMENT_QUESTION_MODIFIERS: Record<string, EngagementModifier> = {
       'Quick win identification with low effort',
     ],
   },
-  operational_deep_dive: {
+  DEEP_DIVE: {
     additionalRequired: [
       'Root cause analysis of key pain points',
       'Process friction mapping across workflows',
@@ -341,17 +366,7 @@ const ENGAGEMENT_QUESTION_MODIFIERS: Record<string, EngagementModifier> = {
       'Impact quantification and cost of inaction',
     ],
   },
-  ai_enablement: {
-    additionalRequired: [
-      'AI readiness per function and team',
-      'Data quality and availability assessment',
-    ],
-    additionalFocus: [
-      'Use case identification with feasibility scoring',
-      'Change readiness and cultural barriers to AI adoption',
-    ],
-  },
-  transformation_sprint: {
+  SPRINT: {
     additionalRequired: [
       '30/60/90 day priority identification',
       'Stakeholder alignment and sponsorship',
@@ -361,14 +376,14 @@ const ENGAGEMENT_QUESTION_MODIFIERS: Record<string, EngagementModifier> = {
       'Risk mitigation and contingency planning',
     ],
   },
-  cultural_alignment: {
+  ALIGNMENT: {
     additionalRequired: [
-      'Values-in-practice assessment across levels',
-      'Psychological safety and speak-up culture',
+      'Stakeholder alignment and interpretation gaps',
+      'Decision-right clarity across the operating model',
     ],
     additionalFocus: [
       'Leadership-frontline perception gaps',
-      'Cultural enablers and systemic blockers',
+      'Commitment and ownership ambiguity',
     ],
   },
 };
@@ -402,8 +417,7 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   // Industry-specific data is higher confidence than research output and wins.
   // domainPack is null for all industry-pack workshops, so !input.domainPack is a
   // clean discriminator — no heuristics needed.
-  const hasIndustryOverride = isAirlineContactCentreContext(input)
-    || (!input.domainPack && !!resolveIndustryPack(input.industry, input.engagementType, input.dreamTrack)?.journeyStages?.length);
+  const hasIndustryOverride = isAirlineContactCentreContext(input);
 
   // Layer 2: Domain-specific journey stages (baseline for the domain pack)
   const journeyTemplate = resolveJourneyTemplate(input);
@@ -419,15 +433,6 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
       bp.journeyStages = input.researchJourneyStages.map((s) => ({
         name: s.name,
         description: s.description,
-      }));
-    }
-
-    if (input.researchDimensions && input.researchDimensions.length > 0) {
-      bp.lenses = input.researchDimensions.map((d): LensPolicyEntry => ({
-        name: d.name,
-        description: d.description,
-        keywords: [...d.keywords],
-        color: d.color,
       }));
     }
 
@@ -450,44 +455,32 @@ export function generateBlueprint(input: GeneratorInput): WorkshopBlueprint {
   }
 
   // Layer 4b: Industry-specific actor taxonomy override
-  // Priority: airline contact centre (curated) → industry actor model (no domain pack only) → GPT fallback (Layer 3)
+  // Priority: airline contact centre (curated) → target-domain actor model → industry actor model (no domain pack only) → GPT fallback (Layer 3)
   // Domain-pack actors (set in Layer 1 via composeBlueprint) are authoritative — never overwrite them here.
-  if (hasIndustryOverride) {
+  if (isAirlineContactCentreContext(input)) {
     bp.actorTaxonomy = CONTACT_CENTRE_AIRLINE_ACTORS.map((a) => ({ ...a }));
   } else if (!input.domainPack) {
+    const targetDomainActors = resolveTargetDomainActorTaxonomy(input);
+    if (targetDomainActors?.length) {
+      bp.actorTaxonomy = targetDomainActors.map((actor) => ({ ...actor }));
+    } else {
     // Only apply industry model when no domain pack is configured.
     // If a domain pack is set, its actorTaxonomy is already applied in composeBlueprint (Layer 1).
-    const industryActorSet = getIndustryActors(input.industry ?? '');
-    if (industryActorSet) {
-      bp.actorTaxonomy = industryActorSet.actors.map((a) => ({
-        key: a.name.toLowerCase().replace(/[\s/]+/g, '_').replace(/[^a-z0-9_]/g, ''),
-        label: a.name,
-        description: a.tier,
-      }));
-    }
-  }
-
-  // Rebuild phase lens policy from whatever lenses ended up winning
-  {
-    const lensNames = bp.lenses.map((l) => l.name);
-    const reimagineTerms = ['people', 'customer', 'experience', 'culture', 'workforce'];
-    bp.phaseLensPolicy = {
-      REIMAGINE: lensNames.filter((n) => {
-        const lower = n.toLowerCase();
-        return reimagineTerms.some((term) => lower.includes(term));
-      }),
-      CONSTRAINTS: [...lensNames],
-      DEFINE_APPROACH: [...lensNames],
-    };
-    if (bp.phaseLensPolicy.REIMAGINE.length === 0) {
-      bp.phaseLensPolicy.REIMAGINE = lensNames.slice(0, Math.min(3, lensNames.length));
+      const industryActorSet = getIndustryActors(input.industry ?? '');
+      if (industryActorSet) {
+        bp.actorTaxonomy = industryActorSet.actors.map((a) => ({
+          key: a.name.toLowerCase().replace(/[\s/]+/g, '_').replace(/[^a-z0-9_]/g, ''),
+          label: a.name,
+          description: a.tier,
+        }));
+      }
     }
   }
 
   // Layer 4: Question constraints from domain + engagement type
   // Only use domainPack when explicitly provided — no implicit fallback for ENTERPRISE track
   const domainKey = input.domainPack?.toLowerCase() ?? '';
-  const etKey = input.engagementType?.toLowerCase() ?? '';
+  const etKey = inferCanonicalEngagementType({ engagementType: input.engagementType });
 
   const domainConstraints = DOMAIN_QUESTION_CONSTRAINTS[domainKey];
   const engagementModifier = ENGAGEMENT_QUESTION_MODIFIERS[etKey];

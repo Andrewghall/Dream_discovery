@@ -92,19 +92,21 @@ interface Workshop {
 
 const LENS_HEADER_COLORS: Record<string, string> = {
   People: 'bg-blue-50 border-blue-200 text-blue-800',
-  Organisation: 'bg-green-50 border-green-200 text-green-800',
-  Customer: 'bg-purple-50 border-purple-200 text-purple-800',
+  Operations: 'bg-green-50 border-green-200 text-green-800',
   Technology: 'bg-orange-50 border-orange-200 text-orange-800',
-  Regulation: 'bg-red-50 border-red-200 text-red-800',
+  Commercial: 'bg-amber-50 border-amber-200 text-amber-800',
+  'Risk/Compliance': 'bg-red-50 border-red-200 text-red-800',
+  Partners: 'bg-indigo-50 border-indigo-200 text-indigo-800',
   General: 'bg-slate-50 border-slate-200 text-slate-700',
 };
 
 const LENS_DOT_COLORS: Record<string, string> = {
   People: 'bg-blue-500',
-  Organisation: 'bg-green-500',
-  Customer: 'bg-purple-500',
+  Operations: 'bg-green-500',
   Technology: 'bg-orange-500',
-  Regulation: 'bg-red-500',
+  Commercial: 'bg-amber-500',
+  'Risk/Compliance': 'bg-red-500',
+  Partners: 'bg-indigo-500',
   General: 'bg-slate-400',
 };
 
@@ -279,9 +281,19 @@ export default function InvitePage({ params }: PageProps) {
       const data = await res.json().catch(() => null);
 
       if (res.ok) {
-        if (data?.errors?.length) {
-          const list: Array<{ email?: string; error?: string }> = data.errors;
-          const errorText = list.map((e) => `${e.email}: ${e.error}`).join('\n');
+        const failedList: Array<{ email?: string; error?: string }> = Array.isArray(data?.errors)
+          ? data.errors
+          : Array.isArray(data?.results)
+            ? data.results.filter((entry: { ok?: boolean }) => !entry.ok)
+            : [];
+
+        if (failedList.length) {
+          const errorText = failedList.map((e) => `${e.email}: ${e.error}`).join('\n');
+          if ((data?.emailsSent ?? 0) === 0) {
+            alert(`No invitations were sent:\n\n${errorText}`);
+            return;
+          }
+
           alert(`Some emails failed to send:\n\n${errorText}`);
         }
         if (data?.emailsSent === 0 && data?.message) {

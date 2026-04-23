@@ -93,8 +93,8 @@ export type SignalType =
 // SYNTHESIS: Collective viewpoint from individual AI discovery interviews.
 //            Pre-populated from stored reports --no live audio needed.
 // REIMAGINE: Pure business vision, goals, actors. NO constraints, NO technology.
-// CONSTRAINTS: Right-to-left across lenses --Regulation → Customer → Technology → Organisation → People.
-// DEFINE_APPROACH: Left-to-right solution design --People → Organisation → Technology → Customer → Regulation.
+// CONSTRAINTS: Right-to-left across the canonical lenses.
+// DEFINE_APPROACH: Left-to-right solution design across the canonical lenses.
 export type DialoguePhase = 'SYNTHESIS' | 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
 
 export const ALL_PHASES: DialoguePhase[] = ['SYNTHESIS', 'REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'];
@@ -115,7 +115,7 @@ const PHASE_ALLOWED_SIGNALS: Record<DialoguePhase, Set<SignalType>> = {
   ]),
   REIMAGINE: new Set([
     'repeated_theme',        // themes are always relevant
-    'missing_dimension',     // but only People, Customer, Organisation lenses
+    'missing_dimension',     // but only the visionary subset of canonical lenses
     'unanswered_question',   // questions should always be tracked
     'contradiction',         // belief tension is phase-agnostic
   ]),
@@ -139,9 +139,8 @@ const PHASE_ALLOWED_SIGNALS: Record<DialoguePhase, Set<SignalType>> = {
   ]),
 };
 
-// In REIMAGINE, only these lenses should trigger missing_dimension signals
-// (Technology, Operations, Commercial, Risk/Compliance are excluded from the visionary phase)
-const REIMAGINE_LENSES: Set<Lens> = new Set(['People', 'Customer', 'Partners']);
+// In REIMAGINE, only these lenses should trigger missing_dimension signals.
+const REIMAGINE_LENSES: Set<Lens> = new Set(['People', 'Commercial', 'Partners']);
 
 // ── Blueprint-aware helpers ────────────────────────────────
 
@@ -237,7 +236,7 @@ export type StickyPad = {
   grounding: string | null;               // Why this question matters (from FacilitationQuestion.purpose)
   coveragePercent: number;                // 0-100: how well the team is covering this question
   coverageState: CoverageState;           // Lifecycle: queued → active → covered
-  lens: string | null;                    // Lens name for colouring (People, Organisation, etc.)
+  lens: string | null;                    // Lens name for colouring (canonical workshop lens)
   mainQuestionIndex: number | null;       // Which main question this sub-pad belongs to
   journeyGapId: string | null;           // Links to a JourneyGap.id for gap-driven coverage tracking
   padLabel: string | null;               // Display label e.g. "Journey Mapping" or "Journey: Registration"
@@ -289,7 +288,7 @@ export type AiAgencyLevel = 'human' | 'assisted' | 'autonomous';
 
 export type JourneyConstraintFlag = {
   id: string;
-  type: 'regulatory' | 'technical' | 'organisational' | 'people' | 'customer' | 'budget';
+  type: 'regulatory' | 'technical' | 'operational' | 'people' | 'commercial' | 'budget';
   label: string;
   severity: 'blocking' | 'significant' | 'manageable';
   sourceNodeIds: string[];
@@ -432,18 +431,19 @@ export function categoriseNode(
 const DEFAULT_DOMAIN_TO_LENS: Record<string, Lens> = {
   People: 'People',
   Operations: 'Operations',
-  Customer: 'Customer',
   Technology: 'Technology',
   Commercial: 'Commercial',
   'Risk/Compliance': 'Risk/Compliance',
   Partners: 'Partners',
+  Customer: 'Commercial',
+  Organisation: 'Operations',
+  Regulation: 'Risk/Compliance',
 };
 
 /** Reverse map: lens name → CaptureAPI domain name (for hemisphere positioning) */
 export const DEFAULT_LENS_TO_DOMAIN: Record<string, string> = {
   People: 'People',
   Operations: 'Operations',
-  Customer: 'Customer',
   Technology: 'Technology',
   Commercial: 'Commercial',
   'Risk/Compliance': 'Risk/Compliance',
@@ -478,12 +478,11 @@ const LENS_RELEVANCE_THRESHOLD = 0.3;
 
 /** Default keyword patterns per lens --used as fallback when CaptureAPI under-classifies */
 const DEFAULT_KEYWORD_LENS_MAP: [string, RegExp][] = [
-  ['Customer', /\b(customer\w*|client\w*|consumer\w*|buyer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*|user\w*|experience\w*|journey\w*|satisfaction|retention|churn|onboard\w*|loyalt\w*|feedback)\b/i],
+  ['Commercial', /\b(customer\w*|client\w*|consumer\w*|buyer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*|user\w*|experience\w*|journey\w*|satisfaction|retention|churn|onboard\w*|loyalt\w*|feedback|commerci\w*|revenue|pric\w*|profit|margin|growth|market\w*|sales\w*|contract\w*|monetis\w*|competitive|ROI)\b/i],
   ['Technology', /\b(technolog\w*|AI|machine.?learning|system\w*|platform\w*|software|digital\w*|automat\w*|data\b|cloud|infra\w*|algorithm\w*|API|integrat\w*|cyber\w*|server\w*|database\w*|scal\w*|architect\w*|deploy\w*|devops|pipeline\w*)\b/i],
   ['Risk/Compliance', /\b(regulat\w*|complian\w*|legal\w*|GDPR|FCA|licen[cs]\w*|governance|audit\w*|polic[iy]\w*|legislat\w*|mandate\w*|standard\w*|accredit\w*|certif\w*|oversight|enforce\w*|statute\w*|jurisdict\w*|scrutin\w*|risk\b|control\w*)\b/i],
   ['Operations', /\b(organi[sz]\w*|department\w*|team\w*|structure\w*|process\w*|workflow\w*|operat\w*|management|staff\w*|employ\w*|HR|budget\w*|resource\w*|efficien\w*|productiv\w*|strategy\w*|decision\w*|cost\w*|revenue\w*|resilien\w*|rigid\w*|agil\w*)\b/i],
   ['People', /\b(people|person\w*|human\w*|culture\w*|skill\w*|training|talent\w*|recruit\w*|wellbeing|engagement|stakeholder\w*|leader\w*|stress\w*|burnout|morale|empower\w*|collaborat\w*|mentor\w*|divers\w*|inclusi\w*)\b/i],
-  ['Commercial', /\b(commerci\w*|revenue|pric\w*|profit|margin|growth|market\w*|sales\w*|contract\w*|monetis\w*|competitive|ROI)\b/i],
   ['Partners', /\b(partner\w*|supplier\w*|vendor\w*|third.party|ecosystem|alliance|outsourc\w*|contractor\w*|supply.chain)\b/i],
 ];
 
@@ -835,7 +834,7 @@ const MAX_ACTIVE_PADS = 8;
  * Template-based string interpolation only --no LLM, no fabrication.
  *
  * Phase-aware: only generates pads appropriate for the current DREAM phase.
- * - REIMAGINE: vision, goals, actors only. No constraints/technology/regulation.
+ * - REIMAGINE: vision, goals, actors only. No constraint or solutioning signals.
  * - CONSTRAINTS: all constraint/risk signals unlocked.
  * - DEFINE_APPROACH: enablers, actions, ownership.
  */
@@ -863,7 +862,7 @@ export function generateStickyPads(
     // Phase gate: skip signals not appropriate for current phase
     if (!allowedSignals.has(signal.type)) continue;
 
-    // In REIMAGINE, missing_dimension only fires for People/Customer/Organisation
+    // In REIMAGINE, missing_dimension only fires for the visionary lens subset
     if (phase === 'REIMAGINE' && signal.type === 'missing_dimension') {
       const signalLensesInPhase = signal.lenses.filter(l => reimagineLensFilter.has(l));
       if (signalLensesInPhase.length === 0) continue;

@@ -8,13 +8,52 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getSession } from '@/lib/auth/session';
-import { runDiscoveryQuestionAgent } from '@/lib/cognition/agents/discovery-question-agent';
+import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
+import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
+import {
+  runDiscoveryQuestionAgent,
+  sanitizeDiscoveryQuestionSet,
+} from '@/lib/cognition/agents/discovery-question-agent';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
+import {
+  assertWorkshopContextIntegrity,
+  decryptWorkshopContext,
+  WorkshopContextIntegrityError,
+} from '@/lib/workshop/context-integrity';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+async function loadDiscoveryWorkshop(workshopId: string) {
+  const user = await getAuthenticatedUser();
+  if (!user) return { error: 'Unauthorized', status: 401, workshop: null };
+
+  const validation = await validateWorkshopAccess(workshopId, user.organizationId, user.role, user.userId);
+  if (!validation.valid) return { error: validation.error, status: 403, workshop: null };
+
+  const workshop = await prisma.workshop.findUnique({
+    where: { id: workshopId },
+    select: {
+      id: true,
+      workshopType: true,
+      clientName: true,
+      businessContext: true,
+      industry: true,
+      companyWebsite: true,
+      dreamTrack: true,
+      targetDomain: true,
+      prepResearch: true,
+      domainPack: true,
+      domainPackConfig: true,
+      blueprint: true,
+      discoveryQuestions: true,
+    },
+  });
+
+  if (!workshop) return { error: 'Workshop not found', status: 404, workshop: null };
+  return { error: null, status: 200, workshop };
+}
 
 // ══════════════════════════════════════════════════════════════
 // GET - Return current Discovery question set
@@ -24,24 +63,35 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   const { id: workshopId } = await params;
-
-  const workshop = await prisma.workshop.findUnique({
-    where: { id: workshopId },
-    select: { discoveryQuestions: true },
-  });
-
-  if (!workshop) {
-    return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+  const { error, status, workshop } = await loadDiscoveryWorkshop(workshopId);
+  if (error || !workshop) {
+    return NextResponse.json({ error }, { status });
   }
+
+  const decryptedWorkshop = decryptWorkshopContext(workshop);
+  const blueprint = readBlueprintFromJson(decryptedWorkshop.blueprint);
+  try {
+    assertWorkshopContextIntegrity({
+      clientName: decryptedWorkshop.clientName,
+      industry: decryptedWorkshop.industry,
+      desiredOutcomes: decryptedWorkshop.businessContext,
+      prepResearch: decryptedWorkshop.prepResearch as any,
+      blueprint,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Workshop context failed integrity checks' },
+      { status: error instanceof WorkshopContextIntegrityError ? 422 : 500 },
+    );
+  }
+  const sanitizedDiscoveryQuestions = sanitizeDiscoveryQuestionSet(
+    decryptedWorkshop.discoveryQuestions as any,
+    blueprint,
+  );
 
   return NextResponse.json({
-    discoveryQuestions: workshop.discoveryQuestions || null,
+    discoveryQuestions: sanitizedDiscoveryQuestions,
   });
 }
 
@@ -53,15 +103,14 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession();
-  if (!session) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
+  const { id: workshopId } = await params;
+  const { error, status, workshop } = await loadDiscoveryWorkshop(workshopId);
+  if (error || !workshop) {
+    return new Response(JSON.stringify({ error }), {
+      status,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-
-  const { id: workshopId } = await params;
 
   // Parse optional facilitator direction from request body
   let direction: string | null = null;
@@ -74,32 +123,30 @@ export async function POST(
     // No body or invalid JSON -- direction stays null
   }
 
-  const workshop = await prisma.workshop.findUnique({
-    where: { id: workshopId },
-    select: {
-      id: true,
-      clientName: true,
-      domainPack: true,
-      domainPackConfig: true,
-      blueprint: true,
-    },
-  });
+  const decryptedWorkshop = decryptWorkshopContext(workshop);
+  const blueprint = readBlueprintFromJson(decryptedWorkshop.blueprint);
 
-  if (!workshop) {
-    return new Response(JSON.stringify({ error: 'Workshop not found' }), {
-      status: 404,
+  try {
+    assertWorkshopContextIntegrity({
+      clientName: decryptedWorkshop.clientName,
+      industry: decryptedWorkshop.industry,
+      desiredOutcomes: decryptedWorkshop.businessContext,
+      prepResearch: decryptedWorkshop.prepResearch as any,
+      blueprint,
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Workshop context failed integrity checks' }), {
+      status: error instanceof WorkshopContextIntegrityError ? 422 : 500,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  if (!workshop.domainPack && !workshop.domainPackConfig) {
-    return new Response(JSON.stringify({ error: 'Workshop has no domain pack configured' }), {
+  if (!blueprint?.lenses?.length && !decryptedWorkshop.domainPack && !decryptedWorkshop.domainPackConfig) {
+    return new Response(JSON.stringify({ error: 'Workshop has no blueprint lenses or domain pack configured' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-
-  const blueprint = readBlueprintFromJson(workshop.blueprint);
 
   const encoder = new TextEncoder();
 
@@ -114,7 +161,7 @@ export async function POST(
 
       sendEvent('discovery-questions.generating', {
         workshopId,
-        clientName: workshop.clientName,
+        clientName: decryptedWorkshop.clientName,
       });
 
       // Opening handoff from orchestrator
@@ -122,7 +169,7 @@ export async function POST(
         timestampMs: Date.now(),
         agent: 'prep-orchestrator',
         to: 'discovery-question-agent',
-        message: `Discovery Question Agent, please generate tailored interview questions for ${workshop.clientName || 'the client'}. Use the blueprint lenses, research findings, and workshop context to produce specific, grounded questions for each lens.${direction ? `\n\nFacilitator direction: "${direction}"` : ''}`,
+        message: `Discovery Question Agent, please generate tailored interview questions for ${decryptedWorkshop.clientName || 'the client'}. Use the blueprint lenses, research findings, and workshop context to produce specific, grounded questions for each lens.${direction ? `\n\nFacilitator direction: "${direction}"` : ''}`,
         type: 'handoff',
       } satisfies AgentConversationEntry);
 
@@ -187,28 +234,23 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   const { id: workshopId } = await params;
-
-  const workshop = await prisma.workshop.findUnique({
-    where: { id: workshopId },
-    select: { id: true },
-  });
-
-  if (!workshop) {
-    return NextResponse.json({ error: 'Workshop not found' }, { status: 404 });
+  const { error, status, workshop } = await loadDiscoveryWorkshop(workshopId);
+  if (error || !workshop) {
+    return NextResponse.json({ error }, { status });
   }
 
   const body = await request.json();
+  const blueprint = readBlueprintFromJson(decryptWorkshopContext(workshop).blueprint);
+  const sanitizedDiscoveryQuestions = sanitizeDiscoveryQuestionSet(
+    body.discoveryQuestions,
+    blueprint,
+  );
 
   await prisma.workshop.update({
     where: { id: workshopId },
     data: {
-      discoveryQuestions: JSON.parse(JSON.stringify(body.discoveryQuestions)) as any,
+      discoveryQuestions: JSON.parse(JSON.stringify(sanitizedDiscoveryQuestions)) as any,
     },
   });
 

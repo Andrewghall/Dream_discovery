@@ -1,8 +1,11 @@
+import path from "path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
+  turbopack: {
+    root: path.resolve(process.cwd()),
+  },
   images: {
     remotePatterns: [
       {
@@ -23,11 +26,12 @@ const nextConfig: NextConfig = {
     const captureApiUrl = process.env.NEXT_PUBLIC_CAPTUREAPI_URL || 'https://captureapi-production.up.railway.app';
     const captureApiWss = captureApiUrl.replace(/^https?:\/\//, 'wss://');
     const captureApiHttps = captureApiUrl.replace(/^https?:\/\//, 'https://');
+    const isDev = process.env.NODE_ENV === 'development';
     const csp = [
       "default-src 'self'",
-      // 'unsafe-eval' is NOT included — Next.js production builds don't require it.
-      // It is only needed in dev mode (HMR). Removing it strengthens XSS protection.
-      "script-src 'self' 'unsafe-inline'",
+      // 'unsafe-eval' is required in dev mode for React error overlays and HMR.
+      // Excluded in production to strengthen XSS protection.
+      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.supabase.co",
       "font-src 'self' data:",

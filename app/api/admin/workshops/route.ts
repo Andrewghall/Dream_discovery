@@ -7,6 +7,11 @@ import type { EngagementType } from '@prisma/client';
 import { auditLog, getClientIp } from '@/lib/audit/log-action';
 import { encryptWorkshopData } from '@/lib/workshop-encryption';
 import { CreateWorkshopSchema, zodError } from '@/lib/validation/schemas';
+import {
+  inferWorkshopRuntimeType,
+  toLegacyStoredEngagementType,
+  toLegacyStoredWorkshopType,
+} from '@/lib/workshop/workshop-definition';
 
 export const dynamic = 'force-dynamic';
 
@@ -193,7 +198,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
     }
 
-    const normalizedEngagementType = toEngagementEnum(engagementType);
+    const runtimeWorkshopType = inferWorkshopRuntimeType({ workshopType, engagementType });
+    const legacyStoredEngagementType = toLegacyStoredEngagementType(engagementType);
+    const normalizedEngagementType = toEngagementEnum(legacyStoredEngagementType);
 
     // Resolve industry-specific domain pack from industry + engagement type + dream track.
     // This replaces the old manual domainPack key selection.
@@ -205,6 +212,7 @@ export async function POST(request: NextRequest) {
     const blueprint = generateBlueprint({
       industry: industry || null,
       dreamTrack: dreamTrack || null,
+      workshopType: runtimeWorkshopType,
       engagementType: engagementType || null,
       domainPack: resolvedPack?.key || null,
       purpose: description || null,
@@ -216,7 +224,7 @@ export async function POST(request: NextRequest) {
       name,
       description,
       businessContext,
-      workshopType: workshopType || 'CUSTOM',
+      workshopType: toLegacyStoredWorkshopType(runtimeWorkshopType) as any,
       includeRegulation: includeRegulation ?? true,
       scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
       responseDeadline: responseDeadline ? new Date(responseDeadline) : undefined,

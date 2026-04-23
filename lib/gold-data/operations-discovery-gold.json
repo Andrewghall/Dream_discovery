@@ -1,0 +1,298 @@
+{
+  "workshop_type": "OPERATIONS",
+  "purpose": "Determine what work can be sold, delivered, and repeated reliably by exposing delivery reality, scalability limits, execution fragility, and post-sale failure patterns using evidence from live operations and delivered outcomes.",
+  "generation_sequence": [
+    "workshop",
+    "context",
+    "gtm_intent",
+    "signal",
+    "question"
+  ],
+  "rules": {
+    "must_anchor_to": [
+      "won_deals",
+      "lost_deals",
+      "live_pipeline",
+      "delivered_outcomes",
+      "post_sale_metrics",
+      "delivery_behaviour"
+    ],
+    "single_signal_only": true,
+    "force_decision": [
+      "pursue",
+      "avoid",
+      "fix",
+      "scale",
+      "sequence",
+      "invest"
+    ],
+    "must_force_evidence": true,
+    "must_link": [
+      "what_was_sold",
+      "how_it_was_delivered",
+      "operational_reality",
+      "outcome",
+      "decision",
+      "consequence"
+    ],
+    "prohibit_context_leakage": true,
+    "invalid_if_generic": true,
+    "invalid_if_reusable_without_context_change": true,
+    "invalid_if_answerable_without_dataset": true
+  },
+  "signals": [
+    "delivery_constraint",
+    "delivery_misalignment",
+    "scalability_limit",
+    "operational_fragility",
+    "process_breakpoint",
+    "handoff_failure",
+    "execution_variability",
+    "capacity_constraint",
+    "quality_variance",
+    "cycle_time_constraint",
+    "dependency_risk",
+    "operating_model_fit",
+    "post_sale_failure_pattern",
+    "delivery_cost_pressure",
+    "service_complexity_mismatch",
+    "standardisation_gap",
+    "operational_readiness_gap",
+    "operations_anti_icp"
+  ],
+  "question_archetypes": [
+    {
+      "signal": "delivery_constraint",
+      "examples": [
+        "In recent losses, where did buyers lose confidence because delivery capability could not support what was being proposed?",
+        "Which opportunities became harder to win because delivery could not credibly support the promise?",
+        "Where does delivery capability currently limit what can be sold with confidence?"
+      ]
+    },
+    {
+      "signal": "delivery_misalignment",
+      "examples": [
+        "In won deals, where did delivery inherit commitments that could not be executed as sold?",
+        "Which deals exposed a gap between what was promised during the sale and what delivery could actually support?",
+        "Where does the transition from sale to delivery break down most often?"
+      ]
+    },
+    {
+      "signal": "scalability_limit",
+      "examples": [
+        "Which services perform adequately at small scale but break when volume or complexity increases?",
+        "Where does delivery capability fail to scale without degrading performance?",
+        "Which types of work cannot currently be expanded without creating instability?"
+      ]
+    },
+    {
+      "signal": "operational_fragility",
+      "examples": [
+        "Which work types repeatedly become unstable once delivery begins?",
+        "Where do small disruptions create disproportionate delivery problems?",
+        "Which parts of the operating model are too fragile to support consistent growth?"
+      ]
+    },
+    {
+      "signal": "process_breakpoint",
+      "examples": [
+        "Where do current processes fail under the demands of real delivery?",
+        "Which workflows cannot support the work being won today?",
+        "Where do existing operational processes break when new work is introduced?"
+      ]
+    },
+    {
+      "signal": "handoff_failure",
+      "examples": [
+        "Where do handoffs between teams repeatedly introduce delay, confusion, or quality loss?",
+        "Which transitions most often cause delivery failure or rework?",
+        "Where does ownership become unclear during execution?"
+      ]
+    },
+    {
+      "signal": "execution_variability",
+      "examples": [
+        "Where does delivery performance vary significantly between teams for the same type of work?",
+        "Which services produce inconsistent outcomes depending on who executes them?",
+        "Where is execution not yet repeatable enough to support scaled growth?"
+      ]
+    },
+    {
+      "signal": "capacity_constraint",
+      "examples": [
+        "Which opportunities cannot be pursued safely because operational capacity is already too stretched?",
+        "Where is growth being limited by resource availability rather than market demand?",
+        "Which types of work would overload current delivery if won in higher volume?"
+      ]
+    },
+    {
+      "signal": "quality_variance",
+      "examples": [
+        "Where does delivered quality fall below what was sold or expected?",
+        "Which services show inconsistent quality once delivery is underway?",
+        "Where is quality too variable to support strong references or repeatable growth?"
+      ]
+    },
+    {
+      "signal": "cycle_time_constraint",
+      "examples": [
+        "Where do delivery timelines extend beyond what was committed at sale?",
+        "Which operational stages slow down delivery enough to damage outcomes or trust?",
+        "Where is speed of execution becoming a limiting factor?"
+      ]
+    },
+    {
+      "signal": "dependency_risk",
+      "examples": [
+        "Where does delivery depend on inputs or dependencies that are not fully controlled?",
+        "Which outcomes are repeatedly weakened by external or cross-functional dependencies?",
+        "Where do dependencies introduce delay, uncertainty, or execution risk?"
+      ]
+    },
+    {
+      "signal": "operating_model_fit",
+      "examples": [
+        "Which types of work align naturally with the current operating model and therefore deliver cleanly?",
+        "Where does the operating model support reliable, repeatable execution?",
+        "Which services fit the way the business is structured to deliver today?"
+      ]
+    },
+    {
+      "signal": "post_sale_failure_pattern",
+      "examples": [
+        "Across delivered work, which deals have failed to meet expectations after go-live?",
+        "Where do similar delivery failures repeat across different clients or services?",
+        "Which post-sale issues recur often enough to reveal a structural pattern?"
+      ]
+    },
+    {
+      "signal": "delivery_cost_pressure",
+      "examples": [
+        "Which deals become materially more expensive to deliver than expected?",
+        "Where does cost-to-serve increase after delivery starts in ways that weaken viability?",
+        "Which work types create operational cost pressure that was not visible at sale?"
+      ]
+    },
+    {
+      "signal": "service_complexity_mismatch",
+      "examples": [
+        "Which opportunities become difficult because service complexity is higher than the operating model can absorb?",
+        "Where is work being won that is too complex for consistent delivery?",
+        "Which service types look attractive commercially but create operational strain due to complexity?"
+      ]
+    },
+    {
+      "signal": "standardisation_gap",
+      "examples": [
+        "Where does lack of standardisation make delivery too dependent on individuals or workarounds?",
+        "Which services cannot yet be delivered consistently because methods vary too widely?",
+        "Where is standardisation missing strongly enough to weaken repeatability?"
+      ]
+    },
+    {
+      "signal": "operational_readiness_gap",
+      "examples": [
+        "Which opportunities are being pursued before operations is truly ready to support them?",
+        "Where is work moving into delivery ahead of operational readiness?",
+        "Which growth ambitions are being constrained because readiness is weaker than assumed?"
+      ]
+    },
+    {
+      "signal": "operations_anti_icp",
+      "examples": [
+        "Which opportunities should be avoided even if winnable because delivery cannot support them reliably?",
+        "Which deals create operational risk that outweighs commercial benefit?",
+        "Where would winning the work create instability rather than healthy growth?"
+      ]
+    }
+  ],
+  "workshop_dataset": {
+    "data_inputs": [
+      "won_deals_dataset",
+      "lost_deals_dataset",
+      "live_pipeline_dataset",
+      "statement_of_work_data",
+      "solution_design_documents",
+      "transition_and_implementation_logs",
+      "delivery_performance_metrics",
+      "quality_scores",
+      "sla_breaches",
+      "cycle_time_data",
+      "cost_to_serve_data",
+      "resource_utilisation_data",
+      "capacity_plans",
+      "handoff_logs",
+      "incident_reports",
+      "root_cause_analysis_records",
+      "client_feedback",
+      "complaint_data",
+      "escalation_logs",
+      "post_implementation_reviews",
+      "go_live_reviews",
+      "service_change_records"
+    ],
+    "derived_views": [
+      "sale_vs_delivery_gap_view",
+      "repeat_failure_pattern_view",
+      "deliverable_vs_non_deliverable_work_view",
+      "scalable_vs_non_scalable_work_view",
+      "quality_consistency_map",
+      "handoff_failure_map",
+      "capacity_vs_demand_view",
+      "cost_variance_view",
+      "service_complexity_heatmap",
+      "operational_readiness_view",
+      "cycle_time_constraint_view",
+      "dependency_risk_map"
+    ],
+    "expected_outputs": [
+      "clear_definition_of_work_that_can_be_delivered_reliably",
+      "identified_non_repeatable_work_types",
+      "operations_anti_icp_definition",
+      "priority_operational_constraints",
+      "handoff_and_process_breakpoint_map",
+      "scaling_barrier_list",
+      "delivery_risk_map",
+      "operational_readiness_gaps",
+      "recommended_fix_before_scale_areas"
+    ]
+  },
+  "dataset_rules": {
+    "must_use_at_least": [
+      "won_deals_dataset",
+      "delivered_outcomes",
+      "delivery_performance_metrics"
+    ],
+    "preferred_supporting_inputs": [
+      "quality_scores",
+      "cost_to_serve_data",
+      "client_feedback",
+      "handoff_logs",
+      "post_implementation_reviews"
+    ],
+    "invalid_if_missing_required_dataset": true,
+    "invalid_if_questions_not_grounded_in_dataset": true,
+    "require_evidence_reference": true
+  },
+  "anti_patterns": [
+    "process_mapping_without_outcomes",
+    "efficiency_discussion_without_delivery_link",
+    "generic_operations_questions",
+    "questions_about_best_practice_without_real_evidence",
+    "questions_answerable_without_dataset",
+    "multi_signal_questions",
+    "internal_focus_without_commercial_link",
+    "operational_maturity_language_without_consequence",
+    "questions_that_do_not_expose_repeatability_or_risk"
+  ],
+  "validation": [
+    "each_question_requires_real_delivery_or_post_sale_evidence",
+    "each_question_forces_a_clear_decision",
+    "each_question_links_operations_to_commercial_viability",
+    "each_question_distinguishes_repeatable_from_non_repeatable_work",
+    "each_question_exposes_a_constraint_failure_or_scaling_limit",
+    "each_question_is_context_dependent",
+    "no_question_reusable_without_change",
+    "if_the_question_cannot_be_answered_using_the_dataset_it_is_invalid"
+  ]
+}

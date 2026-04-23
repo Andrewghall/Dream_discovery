@@ -52,3 +52,9 @@ public/PAMWellness/
 roles.sql
 schema.sql
 data.sql
+
+# Claude Code internal files — not source code
+.claude/
+
+# PDF reference documents — not source code
+*.pdf

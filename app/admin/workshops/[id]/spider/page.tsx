@@ -25,14 +25,21 @@ function polar(cx: number, cy: number, r: number, angleRad: number) {
   };
 }
 
-type AxisKey = 'people' | 'corporate' | 'customer' | 'technology' | 'regulation';
+type AxisKey =
+  | 'people'
+  | 'operations'
+  | 'technology'
+  | 'commercial'
+  | 'risk_compliance'
+  | 'partners';
 
 const AXES: Array<{ key: AxisKey; labelLines: string[] }> = [
   { key: 'people', labelLines: ['People'] },
-  { key: 'corporate', labelLines: ['Organisation'] },
-  { key: 'customer', labelLines: ['Customer'] },
+  { key: 'operations', labelLines: ['Operations'] },
   { key: 'technology', labelLines: ['Technology'] },
-  { key: 'regulation', labelLines: ['Regulation'] },
+  { key: 'commercial', labelLines: ['Commercial'] },
+  { key: 'risk_compliance', labelLines: ['Risk', '/ Compliance'] },
+  { key: 'partners', labelLines: ['Partners'] },
 ];
 
 type SpiderAxisStat = {
@@ -50,15 +57,16 @@ type SpiderApiResponse = {
   error?: string;
 };
 
-type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
+type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6';
 
 const FOCUS_OPTIONS: Array<{ value: Focus; label: string }> = [
   { value: 'MASTER', label: 'Master overview' },
   { value: 'D1', label: 'D1 — People' },
-  { value: 'D2', label: 'D2 — Organisation' },
-  { value: 'D3', label: 'D3 — Customer' },
-  { value: 'D4', label: 'D4 — Technology' },
-  { value: 'D5', label: 'D5 — Regulation' },
+  { value: 'D2', label: 'D2 — Operations' },
+  { value: 'D3', label: 'D3 — Technology' },
+  { value: 'D4', label: 'D4 — Commercial' },
+  { value: 'D5', label: 'D5 — Risk / Compliance' },
+  { value: 'D6', label: 'D6 — Partners' },
 ];
 
 type AssumptionsApiResponse = {
@@ -151,19 +159,21 @@ function EmphasisedQuestionText({ text }: { text: string }) {
 
 function axisKeyForFocus(focus: Focus): AxisKey | null {
   if (focus === 'D1') return 'people';
-  if (focus === 'D2') return 'corporate';
-  if (focus === 'D3') return 'customer';
-  if (focus === 'D4') return 'technology';
-  if (focus === 'D5') return 'regulation';
+  if (focus === 'D2') return 'operations';
+  if (focus === 'D3') return 'technology';
+  if (focus === 'D4') return 'commercial';
+  if (focus === 'D5') return 'risk_compliance';
+  if (focus === 'D6') return 'partners';
   return null;
 }
 
 function dimensionKeyForAxis(axis: AxisKey): DimensionMedians['key'] {
   if (axis === 'people') return 'People';
-  if (axis === 'corporate') return 'Organisation';
-  if (axis === 'customer') return 'Customer';
+  if (axis === 'operations') return 'Operations';
   if (axis === 'technology') return 'Technology';
-  return 'Regulation';
+  if (axis === 'commercial') return 'Commercial';
+  if (axis === 'risk_compliance') return 'Risk/Compliance';
+  return 'Partners';
 }
 
 export default function WorkshopSpiderPage({ params }: PageProps) {

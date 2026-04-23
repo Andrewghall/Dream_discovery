@@ -4,6 +4,7 @@ import { sendDiscoveryInvitation } from '@/lib/email/send-invitation';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
+import { decryptParticipantData } from '@/lib/workshop-encryption';
 
 export async function POST(
   request: NextRequest,
@@ -50,7 +51,9 @@ export async function POST(
       });
     }
 
-    const eligibleParticipants = workshop.participants.filter(
+    const participants = workshop.participants.map((participant) => decryptParticipantData(participant));
+
+    const eligibleParticipants = participants.filter(
       (p) => !(p as { doNotSendAgain?: boolean | null }).doNotSendAgain
     );
 
@@ -65,7 +68,7 @@ export async function POST(
         message: 'All participants have already been sent an invitation. Use Clear Email Status if you need to resend.',
         diagnostics: {
           ...diagnostics,
-          participantsConsidered: workshop.participants.length,
+          participantsConsidered: participants.length,
           participantsEligible: eligibleParticipants.length,
           participantsToSend: 0,
           resend,
@@ -74,9 +77,7 @@ export async function POST(
       });
     }
 
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
     let emailsSent = 0;
     const results: Array<{ email: string; ok: boolean; resendId?: string | null; error?: string }> = [];
 
@@ -162,12 +163,13 @@ export async function POST(
       diagnostics: {
         ...diagnostics,
         appUrl,
-        participantsConsidered: workshop.participants.length,
+        participantsConsidered: participants.length,
         participantsEligible: eligibleParticipants.length,
         participantsToSend: participantsToSend.length,
         resend,
       },
       results,
+      errors: results.filter((result) => !result.ok),
     });
   } catch (error) {
     console.error('Error sending invitations:', error);

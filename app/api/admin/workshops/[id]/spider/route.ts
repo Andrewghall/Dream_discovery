@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
 
 type RunType = 'BASELINE' | 'FOLLOWUP';
 
-type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5';
+type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6';
 
 type SpiderAxis = {
   axisId: string;
@@ -56,16 +56,17 @@ function safeRunType(value: string | null | undefined): RunType {
 
 function safeFocus(value: string | null | undefined): Focus {
   const v = (value || '').trim().toUpperCase();
-  if (v === 'D1' || v === 'D2' || v === 'D3' || v === 'D4' || v === 'D5') return v;
+  if (v === 'D1' || v === 'D2' || v === 'D3' || v === 'D4' || v === 'D5' || v === 'D6') return v;
   return 'MASTER';
 }
 
 function focusKeywords(focus: Focus): string[] {
   if (focus === 'D1') return ['people', 'team', 'teams', 'colleagues', 'skills', 'capability'];
-  if (focus === 'D2') return ['organisation', 'organization', 'corporate', 'process', 'processes', 'governance', 'decision', 'decisions'];
-  if (focus === 'D3') return ['customer', 'customers', 'client', 'clients', 'service'];
-  if (focus === 'D4') return ['technology', 'tech', 'system', 'systems', 'tool', 'tools', 'data', 'platform'];
-  if (focus === 'D5') return ['regulation', 'regulatory', 'compliance', 'risk'];
+  if (focus === 'D2') return ['operations', 'process', 'processes', 'workflow', 'handoff', 'governance', 'decision', 'decisions'];
+  if (focus === 'D3') return ['technology', 'tech', 'system', 'systems', 'tool', 'tools', 'data', 'platform'];
+  if (focus === 'D4') return ['commercial', 'customer', 'customers', 'client', 'clients', 'market', 'revenue', 'growth', 'pricing'];
+  if (focus === 'D5') return ['regulation', 'regulatory', 'compliance', 'risk', 'control'];
+  if (focus === 'D6') return ['partner', 'partners', 'supplier', 'suppliers', 'vendor', 'vendors', 'ecosystem'];
   return [];
 }
 

@@ -1,6 +1,12 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
+import { createRequire } from 'module';
 import { FIXED_QUESTIONS } from '@/lib/conversation/fixed-questions';
+import { canonicalizeConversationPhase } from '@/lib/workshop/canonical-lenses';
+
+// Use regular puppeteer in development so localhost relies on the bundled browser.
+const requireFromModule = createRequire(import.meta.url);
+const puppeteerFull = (() => { try { return requireFromModule('puppeteer'); } catch { return null; } })();
 
 type InputQuality = {
   score: number;
@@ -37,6 +43,18 @@ type PhaseInsight = {
 
 type WordCloudTheme = { text: string; value: number };
 
+type Participant = {
+  name?: string | null;
+  role?: string | null;
+  department?: string | null;
+};
+
+type AboutYou = {
+  roleContext?: string | null;
+  bestThing?: string | null;
+  frustration?: string | null;
+};
+
 const MATURITY_BANDS: Array<{ label: string; bg: string }> = [
   { label: 'Reactive', bg: '#ffcccc' },
   { label: 'Emerging', bg: '#ffe6cc' },
@@ -46,11 +64,18 @@ const MATURITY_BANDS: Array<{ label: string; bg: string }> = [
 ];
 
 function phaseLabel(phase: string): string {
-  if (phase === 'people') return 'D1 — People';
-  if (phase === 'corporate') return 'D2 — Corporate / Organisational';
-  if (phase === 'customer') return 'D3 — Customer';
-  if (phase === 'technology') return 'D4 — Technology';
-  if (phase === 'regulation') return 'D5 — Regulation';
+  const canonicalPhase = canonicalizeConversationPhase(phase);
+  if (canonicalPhase) {
+    const labels = {
+      people: 'D1 — People',
+      operations: 'D2 — Operations',
+      technology: 'D3 — Technology',
+      commercial: 'D4 — Commercial',
+      risk_compliance: 'D5 — Risk / Compliance',
+      partners: 'D6 — Partners',
+    } as const;
+    return labels[canonicalPhase];
+  }
   return phase;
 }
 
@@ -213,6 +238,25 @@ function listBlock(title: string, items?: string[]) {
   `;
 }
 
+async function launchPdfBrowser() {
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  if (isDev && puppeteerFull) {
+    return await puppeteerFull.launch({
+      headless: true,
+      defaultViewport: { width: 1280, height: 720 },
+    });
+  }
+
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath());
+  return await puppeteer.launch({
+    args: chromium.args,
+    executablePath,
+    headless: true,
+    defaultViewport: { width: 1280, height: 720 },
+  });
+}
+
 export async function generateDiscoveryReportPdf(params: {
   participantName: string;
   workshopName: string | null | undefined;
@@ -220,26 +264,125 @@ export async function generateDiscoveryReportPdf(params: {
   executiveSummary: string;
   tone: string | null;
   feedback: string;
+  participant?: Participant;
+  aboutYou?: AboutYou;
   inputQuality?: InputQuality;
   keyInsights?: KeyInsight[];
   phaseInsights: PhaseInsight[];
   wordCloudThemes?: WordCloudTheme[];
   orgName?: string | null;
 }): Promise<Buffer> {
+  const discoveryUrl = (params.discoveryUrl || '').trim();
+
+  if (discoveryUrl) {
+    const url = new URL(discoveryUrl);
+    url.searchParams.set('pdf', '1');
+    url.searchParams.set('pdf_ts', Date.now().toString());
+
+    const browser = await launchPdfBrowser();
+
+    try {
+      const page = await browser.newPage();
+      await page.emulateMediaType('screen');
+      await page.goto(url.toString(), { waitUntil: 'networkidle0', timeout: 120000 });
+      await page.waitForSelector('#discovery-report', { timeout: 120000 });
+
+      await page.addStyleTag({
+        content: `
+          .no-print { display: none !important; }
+          .print-only { display: none !important; }
+          body { background: #fff !important; }
+          nextjs-portal,
+          [data-next-badge-root],
+          [data-nextjs-toast],
+          [data-nextjs-dialog],
+          [data-nextjs-dialog-overlay],
+          [data-next-mark],
+          #__next-build-watcher,
+          #__next-dev-overlay,
+          [aria-label="Next.js Dev Tools Items"] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+          }
+          #discovery-report { max-width: none !important; margin: 0 auto !important; padding-top: 8px !important; }
+          .report-charts-grid { grid-template-columns: 1fr !important; justify-items: center !important; }
+          .report-charts-grid > * { width: 100% !important; max-width: 560px !important; }
+          .report-radar-content { align-items: center !important; text-align: center !important; }
+          .report-radar-content svg { display: block !important; margin: 0 auto !important; width: 360px !important; height: 360px !important; }
+          .report-themes-card, .report-phase-card, .report-charts-grid > * { break-inside: avoid !important; page-break-inside: avoid !important; }
+          .report-domain-grid { gap: 20px !important; }
+        `,
+      });
+
+      const pdf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        displayHeaderFooter: false,
+        margin: { top: '12mm', bottom: '12mm', left: '10mm', right: '10mm' },
+      });
+
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
+  }
+
   const orgName = params.orgName || 'DREAM Discovery';
   const reportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   const safeWorkshopName = params.workshopName ? escapeHtml(params.workshopName) : 'DREAM Discovery';
   const safeParticipant = escapeHtml(params.participantName);
+  const participantRole = typeof params.participant?.role === 'string' ? params.participant.role.trim() : '';
+  const participantDepartment = typeof params.participant?.department === 'string' ? params.participant.department.trim() : '';
+  const aboutRoleContext = typeof params.aboutYou?.roleContext === 'string' ? params.aboutYou.roleContext.trim() : '';
+  const aboutBestThing = typeof params.aboutYou?.bestThing === 'string' ? params.aboutYou.bestThing.trim() : '';
+  const aboutFrustration = typeof params.aboutYou?.frustration === 'string' ? params.aboutYou.frustration.trim() : '';
+  const aboutYouBlock =
+    participantRole || participantDepartment || aboutRoleContext || aboutBestThing || aboutFrustration
+      ? `
+        <div class="card">
+          <div class="section-title">About You</div>
+          <div class="muted" style="font-size:11px; margin-bottom:10px;">The participant profile and opening context from the discovery interview</div>
+          ${(participantRole || participantDepartment) ? `
+            <div class="about-grid">
+              ${participantRole ? `
+                <div class="about-cell">
+                  <div class="block-title">Role</div>
+                  <div class="pre">${escapeHtml(participantRole)}</div>
+                </div>
+              ` : ''}
+              ${participantDepartment ? `
+                <div class="about-cell">
+                  <div class="block-title">Department</div>
+                  <div class="pre">${escapeHtml(participantDepartment)}</div>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+          ${aboutRoleContext ? `
+            <div class="block">
+              <div class="block-title">Role, tenure, and day-to-day focus</div>
+              <div class="pre">${escapeHtml(aboutRoleContext)}</div>
+            </div>
+          ` : ''}
+          ${aboutBestThing ? `
+            <div class="block">
+              <div class="block-title">Best thing about working here</div>
+              <div class="pre">${escapeHtml(aboutBestThing)}</div>
+            </div>
+          ` : ''}
+          ${aboutFrustration ? `
+            <div class="block">
+              <div class="block-title">Most frustrating thing</div>
+              <div class="pre">${escapeHtml(aboutFrustration)}</div>
+            </div>
+          ` : ''}
+        </div>
+      `
+      : '';
 
   const axes = params.phaseInsights.map((p) => p.phase);
-  const labels = axes.map((p) => {
-    if (p === 'people') return 'D1 — People';
-    if (p === 'corporate') return 'D2 — Corporate / Organisational';
-    if (p === 'customer') return 'D3 — Customer';
-    if (p === 'technology') return 'D4 — Technology';
-    if (p === 'regulation') return 'D5 — Regulation';
-    return p;
-  });
+  const labels = axes.map((p) => phaseLabel(p));
 
   const current = params.phaseInsights.map((p) => p.currentScore ?? 0);
   const target = params.phaseInsights.map((p) => p.targetScore ?? 0);
@@ -378,6 +521,8 @@ export async function generateDiscoveryReportPdf(params: {
           .scores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 12px; margin-bottom: 10px; }
           .block { margin-top: 8px; }
           .block-title { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 4px; }
+          .about-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 6px; }
+          .about-cell { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; }
           .list { margin: 0; padding-left: 16px; }
           .list li { font-size: 12px; white-space: pre-wrap; line-height: 1.35; margin: 0 0 2px; }
           .question { margin-bottom: 8px; }
@@ -386,7 +531,6 @@ export async function generateDiscoveryReportPdf(params: {
           .band { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; font-size: 11px; margin-bottom: 6px; line-height: 1.25; }
           .band-label { font-weight: 700; }
           .page-break { break-inside: avoid; page-break-inside: avoid; }
-          .page-break + .page-break { break-before: page; page-break-before: always; }
         </style>
       </head>
       <body>
@@ -399,6 +543,8 @@ export async function generateDiscoveryReportPdf(params: {
             ${params.tone ? `<div class="muted" style="font-size:11px; margin-bottom:6px;">Tone: <span class="strong">${escapeHtml(params.tone)}</span></div>` : ''}
             <div class="pre">${escapeHtml(params.executiveSummary)}</div>
           </div>
+
+          ${aboutYouBlock}
 
           ${params.inputQuality ? `
             <div class="card">
@@ -445,13 +591,7 @@ export async function generateDiscoveryReportPdf(params: {
     </html>
   `;
 
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath());
-  const browser = await puppeteer.launch({
-    args: chromium.args,
-    executablePath,
-    headless: true,
-    defaultViewport: { width: 1280, height: 720 },
-  });
+  const browser = await launchPdfBrowser();
 
   try {
     const page = await browser.newPage();

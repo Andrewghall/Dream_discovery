@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, ChevronRight, Radio, Square, X, Maximize2, Zap, 
 import {
   HemisphereNodes,
   type HemisphereNodeDatum,
+  type PendingHemisphereNode,
   type HemispherePrimaryType,
 } from '@/components/live/hemisphere-nodes';
 
@@ -73,6 +74,16 @@ import {
 import { NodeDetailModal } from './_components/NodeDetailModal';
 import { DebugOverlay } from '@/components/cognitive-guidance/debug-overlay';
 import { emitDebug } from '@/lib/debug/pipeline-debug-bus';
+import {
+  applyMatchingDomainFeedback,
+  CANONICAL_RENDER_DOMAINS,
+  type DomainFeedbackExample,
+  normalizeRenderDomain,
+  promotePrimaryDomain,
+  projectSemanticUnitDomains,
+  removeDomain,
+  setDomainPercentage,
+} from '@/lib/live/semantic-unit-domain-projection';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -91,6 +102,7 @@ type DataPointCreatedPayload = {
   dataPoint: {
     id: string;
     rawText: string;
+    semanticUnits?: string[];
     source: string;
     speakerId?: string | null;
     createdAt: string | Date;
@@ -149,6 +161,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // ── Core state ─────────────────────────────────────────
   const [cogNodes, setCogNodes] = useState<Map<string, CogNode>>(new Map());
   const [hemisphereNodes, setHemisphereNodes] = useState<Record<string, HemisphereNodeDatum>>({});
+  const [pendingNodes, setPendingNodes] = useState<Record<string, PendingHemisphereNode>>({});
+  const [domainOverrides, setDomainOverrides] = useState<Record<string, Array<{ domain: string; relevance: number; reasoning: string }>>>({});
+  const [domainFeedbackExamples, setDomainFeedbackExamples] = useState<DomainFeedbackExample[]>([]);
+  const [trainingFeedbackStatus, setTrainingFeedbackStatus] = useState<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
   // NOTE: Do NOT use Date.now() or Math.random() in useState initialisers —
   // they cause React hydration mismatch (#418) because server and client get different values.
   // Seed data is populated in a client-only useEffect below.
@@ -184,6 +200,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
   // ── Auto-save to LiveWorkshopSnapshot ─────────────────
   const [workshopName, setWorkshopName] = useState<string>('');
+  const [workshopType, setWorkshopType] = useState<string | null>(null);
   const [cgSnapshots, setCgSnapshots] = useState<Array<{ id: string; name: string; dialoguePhase: string }>>([]);
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
   const [lastSavedSnapshotId, setLastSavedSnapshotId] = useState<string | null>(null);
@@ -201,9 +218,17 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/session-versions`,
     [workshopId]
   );
+  const committedSessionUrl = useMemo(
+    () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/committed-session`,
+    [workshopId]
+  );
 
   const snapshotUrl = useMemo(
     () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/live/snapshots`,
+    [workshopId]
+  );
+  const domainFeedbackUrl = useMemo(
+    () => `/api/admin/workshops/${encodeURIComponent(workshopId)}/domain-feedback`,
     [workshopId]
   );
 
@@ -218,6 +243,17 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   const audio = useAudioCapture({
     workshopId,
     getDialoguePhase: () => dialoguePhaseRef.current,
+    onPendingUtteranceUpdate: useCallback((pending: PendingHemisphereNode) => {
+      setPendingNodes((prev) => ({ ...prev, [pending.id]: pending }));
+    }, []),
+    onUtteranceResolved: useCallback((utteranceId: string) => {
+      setPendingNodes((prev) => {
+        if (!prev[utteranceId]) return prev;
+        const next = { ...prev };
+        delete next[utteranceId];
+        return next;
+      });
+    }, []),
   });
   const [micDialogOpen, setMicDialogOpen] = useState(false);
 
@@ -227,6 +263,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   useEffect(() => { dialoguePhaseRef.current = dialoguePhase; }, [dialoguePhase]);
   const [expandedNode, setExpandedNode] = useState<HemisphereNodeDatum | null>(null);
   const [hemisphereExpanded, setHemisphereExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!audio.capturing) setPendingNodes({});
+  }, [audio.capturing]);
 
   // ── Theme + Agent state ─────────────────────────────────
   const [themes, setThemes] = useState<GuidedTheme[]>([]);
@@ -323,6 +363,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         People: 'In the ideal world, how would people experience this? Describe the perfect day.',
         Organisation: 'What would the ideal points of engagement look like — with no friction at all?',
         Customer: 'Describe the perfect experience from the customer\'s perspective — what does amazing look like?',
+        Partners: 'What would the ideal partner ecosystem look like in this future state?',
         Technology: 'If technology were limitless, what would this look like?',
         Regulation: 'Imagine a world with no regulatory barriers — what becomes possible?',
         General: 'Paint the picture — what does the ideal future state look like here?',
@@ -332,6 +373,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         Organisation: 'What organisational constraints — structure, budget, politics — block progress here?',
         Customer: 'What customer-side barriers exist? Adoption, behaviour, access?',
         Technology: 'What technology constraints are we dealing with — legacy systems, integration, data?',
+        Partners: 'What partner, supplier, or ecosystem constraints stand in the way here?',
         Regulation: 'What regulatory or compliance requirements must we work within here?',
         General: 'What\'s the biggest blocker standing in the way?',
       },
@@ -340,6 +382,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
         Organisation: 'How does the organisation need to change to deliver this?',
         Customer: 'How do we prove the customer outcome? What does the journey look like in practice?',
         Technology: 'What technology enables this approach? Build, buy, or integrate?',
+        Partners: 'What role should partners play in delivery and how do we align them to the outcome?',
         Regulation: 'How do we satisfy the regulatory requirements while still delivering the vision?',
         General: 'Who owns this and what\'s the first step?',
       },
@@ -804,216 +847,6 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     const es = new EventSource(eventUrl);
     esRef.current = es;
 
-    // ── datapoint.created → Stage 1 (initial) ──────────
-    es.addEventListener('datapoint.created', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        const p = evt.payload as DataPointCreatedPayload;
-        const dataPointId = p?.dataPoint?.id;
-        if (!dataPointId) return;
-
-        // ── Debug: SSE received ─────────────────────────
-        emitDebug({
-          stage: 'sse',
-          event: 'DATAPOINT.CREATED',
-          status: 'pass',
-          dataPointId,
-          thoughtWindowId: (evt.payload as Record<string, unknown>)?.thoughtWindowId as string | undefined,
-        });
-
-        const createdAtMs =
-          typeof p.dataPoint.createdAt === 'string'
-            ? Date.parse(p.dataPoint.createdAt)
-            : p.dataPoint.createdAt instanceof Date
-              ? p.dataPoint.createdAt.getTime()
-              : Date.now();
-
-        // Create CogNode (Stage 1 — UNCLASSIFIED initially)
-        const cogNode = createInitialNode(
-          dataPointId,
-          String(p.dataPoint.rawText ?? ''),
-          p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
-          createdAtMs,
-        );
-        setCogNodes(prev => {
-          if (prev.has(dataPointId)) return prev;
-          const next = new Map(prev);
-          next.set(dataPointId, cogNode);
-          return next;
-        });
-
-        // ── Hemisphere node — only for meaningful phrases ──
-        // Short fragments ("Just see.", "the", "in particular") are noise.
-        // Require at least 4 words to appear as a dot on the hemisphere.
-        const nodeRawText = String(p.dataPoint.rawText ?? '');
-        const wordCount = nodeRawText.trim().split(/\s+/).filter(w => w.length > 0).length;
-
-        if (wordCount >= 4) {
-          // Run keyword inference so dots position correctly
-          // (CaptureAPI sends raw transcripts with no domain classification)
-          const kwLensResults = nodeRawText.length >= 3 ? inferKeywordLenses(nodeRawText, customKeywordMapRef.current) : [];
-          const kwDomains = kwLensResults.map(kw => ({
-                domain: (customLensToDomainRef.current ?? LENS_TO_DOMAIN)[kw.lens] ?? kw.lens,
-                relevance: Math.min(0.95, kw.relevance + 0.4),
-                reasoning: kw.evidence,
-              })).filter(d => !!d.domain);
-
-
-          const hNode: HemisphereNodeDatum = {
-            dataPointId,
-            createdAtMs,
-            rawText: nodeRawText,
-            dataPointSource: String(p.dataPoint.source ?? ''),
-            speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
-            dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
-              ? (dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
-              : null,
-            transcriptChunk: p.transcriptChunk
-              ? {
-                  speakerId: p.transcriptChunk.speakerId || null,
-                  startTimeMs: Number(p.transcriptChunk.startTimeMs ?? 0),
-                  endTimeMs: Number(p.transcriptChunk.endTimeMs ?? 0),
-                  confidence: typeof p.transcriptChunk.confidence === 'number' ? p.transcriptChunk.confidence : null,
-                  source: String(p.transcriptChunk.source ?? ''),
-                }
-              : null,
-            classification: null,
-            agenticAnalysis: kwDomains.length > 0 ? {
-              domains: kwDomains,
-              themes: [],
-              actors: [],
-              semanticMeaning: '',
-              sentimentTone: 'neutral',
-              overallConfidence: 0.5,
-            } : null,
-          };
-          setHemisphereNodes(prev => {
-            if (prev[dataPointId]) {
-              emitDebug({ stage: 'hemisphere', event: 'OVERWRITE_PREVENTED', status: 'info', nodeId: dataPointId, nodeCount: Object.keys(prev).length, hemisphereAction: 'overwrite-prevented' });
-              return prev;
-            }
-            const newCount = Object.keys(prev).length + 1;
-            emitDebug({ stage: 'hemisphere', event: 'NODE_ADDED', status: 'pass', nodeId: dataPointId, nodeCount: newCount, text: nodeRawText.substring(0, 70), hemisphereAction: 'added', thoughtWindowId: (evt.payload as Record<string, unknown>)?.thoughtWindowId as string | undefined });
-            return { ...prev, [dataPointId]: hNode };
-          });
-
-          setNodeCount(c => c + 1);
-          nodeCountSinceLastRunRef.current++;
-        }
-      } catch { /* ignore */ }
-    });
-
-    // ── classification.updated → Stage 1 (recategorise) ──
-    es.addEventListener('classification.updated', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        const p = evt.payload as ClassificationUpdatedPayload;
-        const dataPointId = p?.dataPointId;
-        if (!dataPointId) return;
-
-        const cls = p.classification;
-        setCogNodes(prev => {
-          const existing = prev.get(dataPointId);
-          if (!existing) return prev;
-          const updated = categoriseNode(existing, {
-            primaryType: cls.primaryType,
-            confidence: cls.confidence,
-            keywords: Array.isArray(cls.keywords) ? cls.keywords : [],
-          });
-          const next = new Map(prev);
-          next.set(dataPointId, updated);
-          return next;
-        });
-
-        // Update hemisphere node too
-        setHemisphereNodes(prev => {
-          const existing = prev[dataPointId];
-          if (!existing) return prev;
-          return {
-            ...prev,
-            [dataPointId]: {
-              ...existing,
-              classification: {
-                primaryType: cls.primaryType as HemisphereNodeDatum['classification'] extends null ? never : NonNullable<HemisphereNodeDatum['classification']>['primaryType'],
-                confidence: cls.confidence,
-                keywords: Array.isArray(cls.keywords) ? cls.keywords : [],
-                suggestedArea: cls.suggestedArea ?? null,
-                updatedAt: cls.updatedAt,
-              },
-            },
-          };
-        });
-      } catch { /* ignore */ }
-    });
-
-    // ── agentic.analyzed → Stage 2 (lens mapping) ────────
-    es.addEventListener('agentic.analyzed', (e) => {
-      try {
-        const evt = JSON.parse((e as MessageEvent).data) as RealtimeEvent;
-        const p = evt.payload as AgenticAnalyzedPayload;
-        const dataPointId = p?.dataPointId;
-        if (!dataPointId) return;
-
-        const analysis = {
-          domains: p.analysis.domains,
-          themes: p.analysis.themes,
-          actors: Array.isArray(p.analysis.actors) ? p.analysis.actors : [],
-          semanticMeaning: p.analysis.interpretation.semanticMeaning,
-          sentimentTone: p.analysis.interpretation.sentimentTone,
-          overallConfidence: p.analysis.overallConfidence,
-        };
-
-        setCogNodes(prev => {
-          const existing = prev.get(dataPointId);
-          if (!existing) return prev;
-          const updated = applyLensMapping(existing, analysis, {
-            effectiveLenses: blueprintLensNamesRef.current.length ? blueprintLensNamesRef.current : undefined,
-            keywordMap: customKeywordMapRef.current ?? undefined,
-          });
-          const next = new Map(prev);
-          next.set(dataPointId, updated);
-          return next;
-        });
-
-        // Update hemisphere node — enrich domains with keyword inference
-        setHemisphereNodes(prev => {
-          const existing = prev[dataPointId];
-          if (!existing) return prev;
-
-          // Merge CaptureAPI domains with keyword-inferred domains
-          // Keyword domains get max CaptureAPI relevance so they can compete
-          const maxApiRelevance = analysis.domains.reduce((m, d) => Math.max(m, d.relevance), 0.5);
-          const enrichedDomains = [...analysis.domains];
-          if (existing.rawText && existing.rawText.length >= 3) {
-            const kwLenses = inferKeywordLenses(existing.rawText, customKeywordMapRef.current);
-            const existingDomains = new Set(enrichedDomains.map(d => d.domain));
-            for (const kw of kwLenses) {
-              const domain = (customLensToDomainRef.current ?? LENS_TO_DOMAIN)[kw.lens];
-              if (!domain) continue;
-              if (existingDomains.has(domain)) {
-                // Boost existing domain to at least match CaptureAPI max
-                const idx = enrichedDomains.findIndex(d => d.domain === domain);
-                if (idx >= 0) {
-                  enrichedDomains[idx] = { ...enrichedDomains[idx], relevance: Math.max(enrichedDomains[idx].relevance, maxApiRelevance) };
-                }
-              } else {
-                // Add keyword domain at same relevance as CaptureAPI's best
-                enrichedDomains.push({ domain, relevance: maxApiRelevance, reasoning: kw.evidence });
-              }
-            }
-          }
-
-          return {
-            ...prev,
-            [dataPointId]: {
-              ...existing,
-              agenticAnalysis: { ...analysis, domains: enrichedDomains },
-            },
-          };
-        });
-      } catch { /* ignore */ }
-    });
-
     // ── Belief events → feed into Stage 3 ────────────────
     es.addEventListener('belief.stabilised', () => {
       stabilisedCountRef.current++;
@@ -1151,7 +984,10 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   useEffect(() => {
     fetch(`/api/admin/workshops/${encodeURIComponent(workshopId)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data?.workshop?.name) setWorkshopName(data.workshop.name); })
+      .then((data) => {
+        if (data?.workshop?.name) setWorkshopName(data.workshop.name);
+        if (typeof data?.workshop?.workshopType === 'string') setWorkshopType(data.workshop.workshopType);
+      })
       .catch(() => {});
   }, [workshopId]);
 
@@ -1258,6 +1094,28 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     hasAutoRestoredRef.current = true;
     void restoreFromVersion(sessionVersions[0].id);
   }, [sessionVersions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hasCommittedRestoreRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoRestoredRef.current) return;
+    if (hasCommittedRestoreRef.current) return;
+    if (cogNodes.size > 0) return;
+    if (Object.keys(hemisphereNodes).length > 0) return;
+    if (sessionVersions.length > 0) return;
+
+    hasCommittedRestoreRef.current = true;
+    void (async () => {
+      try {
+        const response = await fetch(committedSessionUrl, { cache: 'no-store' });
+        const json = await response.json().catch(() => null);
+        if (!response.ok || !json?.ok || !json?.hemisphereNodes) return;
+        setHemisphereNodes(json.hemisphereNodes as Record<string, HemisphereNodeDatum>);
+        setNodeCount(Object.keys(json.hemisphereNodes as Record<string, HemisphereNodeDatum>).length);
+      } catch (error) {
+        console.error('[cognitive-guidance] failed to restore committed session', error);
+      }
+    })();
+  }, [cogNodes.size, committedSessionUrl, hemisphereNodes, sessionVersions.length]);
 
   const autoSaveVersion = useCallback(async () => {
     // Build permanent hemisphere nodes (filter out live: streaming nodes)
@@ -1380,6 +1238,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
   // serverless (different isolates). The outbox table is the source of truth.
   // SSE listeners above are kept as best-effort bonus (work in local dev).
   const lastOutboxCursorRef = useRef<string>(new Date().toISOString());
+  const lastOutboxCursorIdRef = useRef<string>('');
   const seenEventIdsRef = useRef<Set<string>>(new Set());
   const mainQuestionIndexRef = useRef(mainQuestionIndex);
   useEffect(() => { mainQuestionIndexRef.current = mainQuestionIndex; }, [mainQuestionIndex]);
@@ -1461,6 +1320,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                     dataPointId,
                     createdAtMs,
                     rawText: nodeRawText,
+                    semanticUnits: Array.isArray(p.dataPoint.semanticUnits) ? p.dataPoint.semanticUnits : [],
                     dataPointSource: String(p.dataPoint.source ?? ''),
                     speakerId: p.dataPoint.speakerId || p.transcriptChunk?.speakerId || null,
                     dialoguePhase: (['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const).includes(dialoguePhaseRef.current as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH')
@@ -1646,7 +1506,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     const poll = async () => {
       try {
         const res = await fetch(
-          `/api/workshops/${encodeURIComponent(workshopId)}/events/poll?after=${encodeURIComponent(lastOutboxCursorRef.current)}&types=${POLL_TYPES}`
+          `/api/workshops/${encodeURIComponent(workshopId)}/events/poll?after=${encodeURIComponent(lastOutboxCursorRef.current)}&afterId=${encodeURIComponent(lastOutboxCursorIdRef.current)}&types=${POLL_TYPES}`
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -1660,6 +1520,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
 
         // Advance cursor to latest event
         lastOutboxCursorRef.current = events[events.length - 1].createdAt;
+        lastOutboxCursorIdRef.current = events[events.length - 1].id;
 
         // Dispatch each event with dedup (SSE may also deliver these — idempotent)
         for (const evt of events) {
@@ -1670,15 +1531,99 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
       } catch { /* polling errors are non-fatal */ }
     };
 
-    const interval = setInterval(poll, 3000);
+    const interval = setInterval(poll, 750);
     poll(); // Immediate first poll
     return () => clearInterval(interval);
   }, [listening, workshopId]);
 
-  // Use real nodes if available; otherwise empty array.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(domainFeedbackUrl, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const body = await response.json();
+        if (cancelled) return;
+        setDomainFeedbackExamples(Array.isArray(body.feedback) ? body.feedback : []);
+      } catch (error) {
+        console.error('[cognitive-guidance] failed to load domain feedback', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [domainFeedbackUrl]);
+
   const hemisphereNodeArray = useMemo(() => {
-    return Object.values(hemisphereNodes);
-  }, [hemisphereNodes]);
+    const nodes = Object.values(hemisphereNodes);
+    const out: HemisphereNodeDatum[] = [];
+
+    for (const n of nodes) {
+      const semanticUnits = Array.isArray(n.semanticUnits)
+        ? n.semanticUnits.map((unit) => String(unit || '').trim()).filter(Boolean)
+        : [];
+      if (semanticUnits.length === 0) continue;
+
+      const parts = semanticUnits;
+
+      const startMs = n.transcriptChunk?.startTimeMs ?? 0;
+      const endMs = n.transcriptChunk?.endTimeMs ?? startMs;
+      const span = Math.max(500, endMs - startMs);
+      const step = span / Math.max(1, parts.length);
+
+      for (let i = 0; i < parts.length; i++) {
+        const unitText = parts[i];
+        const inheritedDomains = Array.isArray(n.agenticAnalysis?.domains)
+          ? n.agenticAnalysis.domains.map((domain) => ({
+              ...domain,
+              domain: normalizeRenderDomain(domain.domain),
+            }))
+          : [];
+        const normalizedDomains = projectSemanticUnitDomains({
+          unitText,
+          inheritedDomains,
+          customKeywordMap: customKeywordMapRef.current,
+          lensToDomain: customLensToDomainRef.current ?? LENS_TO_DOMAIN,
+          workshopType,
+        });
+        const learnedDomains = applyMatchingDomainFeedback(unitText, normalizedDomains, domainFeedbackExamples);
+        const learnedFromFeedback = JSON.stringify(learnedDomains) !== JSON.stringify(normalizedDomains);
+        const renderNodeId = `${n.dataPointId}::su${i}`;
+        const overriddenDomains = domainOverrides[renderNodeId] ?? learnedDomains;
+
+        out.push({
+          ...n,
+          dataPointId: renderNodeId,
+          rawText: unitText,
+          createdAtMs: n.createdAtMs + Math.floor(i * Math.max(250, step)),
+          semanticUnits: undefined,
+          domainLearningSource: domainOverrides[renderNodeId]
+            ? null
+            : (learnedFromFeedback ? 'saved_feedback' : null),
+          agenticAnalysis: overriddenDomains.length > 0
+            ? {
+                ...(n.agenticAnalysis ?? {
+                  themes: [],
+                  actors: [],
+                  semanticMeaning: '',
+                  sentimentTone: 'neutral',
+                  overallConfidence: 0.5,
+                }),
+                domains: overriddenDomains,
+                semanticMeaning: '',
+                // Semantic-unit nodes inherit canonical domain context but do not
+                // inherit a unit-specific LLM confidence verdict. Let the renderer
+                // fall back to deterministic/classification confidence for radial placement.
+                overallConfidence: 0,
+              }
+            : null,
+        });
+      }
+    }
+
+    out.sort((a, b) => a.createdAtMs - b.createdAtMs);
+    return out;
+  }, [domainFeedbackExamples, domainOverrides, hemisphereNodes]);
 
   // ── Sticky pad actions ─────────────────────────────────
   const handleDismissPad = useCallback((id: string) => {
@@ -1855,8 +1800,8 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
             onRefreshDevices={() => void audio.refreshMicDevices()}
             onGoLive={async () => {
               setMicDialogOpen(false);
-              await audio.startCapture();
               startListening();
+              await audio.startCapture();
             }}
           />
         </div>
@@ -2070,6 +2015,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                 originTimeMs={null}
                 onNodeClick={(node) => setExpandedNode(node)}
                 lensNames={blueprintLensNames}
+                pendingNodes={Object.values(pendingNodes)}
               />
             </div>
           </div>
@@ -2111,6 +2057,7 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
                   originTimeMs={null}
                   onNodeClick={(node) => { setExpandedNode(node); }}
                   lensNames={blueprintLensNames}
+                  pendingNodes={Object.values(pendingNodes)}
                 />
               </div>
             </div>
@@ -2122,6 +2069,139 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
           <NodeDetailModal
             node={expandedNode}
             onClose={() => setExpandedNode(null)}
+            availableDomains={[...CANONICAL_RENDER_DOMAINS]}
+            trainingFeedbackStatus={trainingFeedbackStatus[expandedNode.dataPointId] ?? 'idle'}
+            onReprioritizeDomain={(domain) => {
+              const domains = expandedNode.agenticAnalysis?.domains ?? [];
+              const reordered = promotePrimaryDomain(domains, domain);
+              setDomainOverrides((prev) => ({
+                ...prev,
+                [expandedNode.dataPointId]: reordered,
+              }));
+              setExpandedNode((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  agenticAnalysis: prev.agenticAnalysis
+                    ? {
+                        ...prev.agenticAnalysis,
+                        domains: reordered,
+                      }
+                    : prev.agenticAnalysis,
+                };
+              });
+            }}
+            onRemoveDomain={(domain) => {
+              const domains = expandedNode.agenticAnalysis?.domains ?? [];
+              const nextDomains = removeDomain(domains, domain);
+              setDomainOverrides((prev) => ({
+                ...prev,
+                [expandedNode.dataPointId]: nextDomains,
+              }));
+              setExpandedNode((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  agenticAnalysis: prev.agenticAnalysis
+                    ? {
+                        ...prev.agenticAnalysis,
+                        domains: nextDomains,
+                      }
+                    : prev.agenticAnalysis,
+                };
+              });
+            }}
+            onSetDomainPercentage={(domain, percent) => {
+              const domains = expandedNode.agenticAnalysis?.domains ?? [];
+              const nextDomains = setDomainPercentage(domains, domain, percent);
+              setDomainOverrides((prev) => ({
+                ...prev,
+                [expandedNode.dataPointId]: nextDomains,
+              }));
+              setExpandedNode((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  agenticAnalysis: prev.agenticAnalysis
+                    ? {
+                        ...prev.agenticAnalysis,
+                        domains: nextDomains,
+                      }
+                    : prev.agenticAnalysis,
+                };
+              });
+            }}
+            onSaveTrainingFeedback={async () => {
+              const match = expandedNode.dataPointId.match(/^(.*)::su(\d+)$/);
+              if (!match) {
+                toast.error('Only semantic-unit nodes can be saved as training feedback.');
+                return;
+              }
+              const [, canonicalNodeId, unitIndexText] = match;
+              const unitIndex = Number(unitIndexText);
+              const canonicalNode = Object.values(hemisphereNodes).find((node) => node.dataPointId === canonicalNodeId);
+              if (!canonicalNode) {
+                toast.error('Could not resolve the original node for this semantic unit.');
+                return;
+              }
+              const semanticUnits = Array.isArray(canonicalNode.semanticUnits)
+                ? canonicalNode.semanticUnits.map((unit) => String(unit || '').trim()).filter(Boolean)
+                : [];
+              const unitText = semanticUnits[unitIndex] ?? expandedNode.rawText;
+              const inheritedDomains = Array.isArray(canonicalNode.agenticAnalysis?.domains)
+                ? canonicalNode.agenticAnalysis.domains.map((domain) => ({
+                    ...domain,
+                    domain: normalizeRenderDomain(domain.domain),
+                  }))
+                : [];
+              const originalDomains = projectSemanticUnitDomains({
+                unitText,
+                inheritedDomains,
+                customKeywordMap: customKeywordMapRef.current,
+                lensToDomain: customLensToDomainRef.current ?? LENS_TO_DOMAIN,
+                workshopType,
+              });
+              const correctedDomains = expandedNode.agenticAnalysis?.domains ?? [];
+
+              setTrainingFeedbackStatus((prev) => ({
+                ...prev,
+                [expandedNode.dataPointId]: 'saving',
+              }));
+
+              try {
+                const response = await fetch(domainFeedbackUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    renderNodeId: expandedNode.dataPointId,
+                    text: expandedNode.rawText,
+                    originalDomains,
+                    correctedDomains,
+                  }),
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                setDomainFeedbackExamples((prev) => [
+                  {
+                    text: expandedNode.rawText,
+                    correctedDomains,
+                  },
+                  ...prev.filter((example) => example.text !== expandedNode.rawText),
+                ]);
+                setTrainingFeedbackStatus((prev) => ({
+                  ...prev,
+                  [expandedNode.dataPointId]: 'saved',
+                }));
+                toast.success('Saved as training feedback for future exact matches.');
+              } catch (error) {
+                console.error('[cognitive-guidance] failed to save training feedback', error);
+                setTrainingFeedbackStatus((prev) => ({
+                  ...prev,
+                  [expandedNode.dataPointId]: 'error',
+                }));
+                toast.error('Failed to save training feedback.');
+              }
+            }}
           />
         )}
 
@@ -2142,4 +2222,3 @@ export default function CognitiveGuidancePage({ params }: PageProps) {
     </div>
   );
 }
-

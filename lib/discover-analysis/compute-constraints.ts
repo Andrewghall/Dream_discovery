@@ -159,11 +159,11 @@ function severityFromNumber(sev: number | null): 'critical' | 'significant' | 'm
 function categoryToDomain(category: string | null): string {
   if (!category) return 'General';
   const map: Record<string, string> = {
-    BUSINESS: 'Organisation',
+    BUSINESS: 'Operations',
     TECHNOLOGY: 'Technology',
     PEOPLE: 'People',
-    CUSTOMER: 'Customer',
-    REGULATION: 'Regulation',
+    CUSTOMER: 'Commercial',
+    REGULATION: 'Risk/Compliance',
   };
   return map[category] || category;
 }

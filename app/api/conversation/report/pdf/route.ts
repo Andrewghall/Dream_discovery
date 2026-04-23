@@ -21,6 +21,18 @@ type PhaseInsightPayload = {
   support?: string[];
 };
 
+type ParticipantPayload = {
+  name?: string | null;
+  role?: string | null;
+  department?: string | null;
+};
+
+type AboutYouPayload = {
+  roleContext?: string | null;
+  bestThing?: string | null;
+  frustration?: string | null;
+};
+
 export async function POST(request: NextRequest) {
   try {
     // Rate limit PDF generation (no DB auth available — participant-facing endpoint)
@@ -37,6 +49,8 @@ export async function POST(request: NextRequest) {
       executiveSummary: string;
       tone?: string | null;
       feedback: string;
+      participant?: ParticipantPayload;
+      aboutYou?: AboutYouPayload;
       inputQuality?: {
         score: number;
         label: 'high' | 'medium' | 'low';
@@ -63,6 +77,8 @@ export async function POST(request: NextRequest) {
       executiveSummary: body.executiveSummary,
       tone: body.tone ?? null,
       feedback: body.feedback,
+      participant: body.participant,
+      aboutYou: body.aboutYou,
       inputQuality: body.inputQuality,
       keyInsights: body.keyInsights,
       phaseInsights: body.phaseInsights,

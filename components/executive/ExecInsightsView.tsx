@@ -4,10 +4,12 @@ import { useState } from 'react';
 
 const LENS_COLOR: Record<string, string> = {
   People:       '#3b82f6',
-  Organisation: '#22c55e',
-  Customer:     '#a855f7',
+  Operations:   '#22c55e',
   Technology:   '#f97316',
-  Regulation:   '#ef4444',
+  Commercial:   '#f2c65c',
+  'Risk/Compliance': '#ef4444',
+  Finance:      '#8b5cf6',
+  Partners:     '#6366f1',
 };
 
 const SEV_COLOR: Record<string, string> = {

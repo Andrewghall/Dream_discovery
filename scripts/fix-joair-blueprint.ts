@@ -50,6 +50,7 @@ async function main() {
   const generatorInput = {
     industry: (existingBp as any)?.industry ?? 'Aviation / Airline',
     dreamTrack: (existingBp as any)?.dreamTrack ?? 'DOMAIN',
+    workshopType: (existingBp as any)?.workshopType ?? 'OPERATIONS',
     engagementType: workshop.engagementType ?? 'diagnostic_baseline',
     domainPack: DOMAIN_PACK_KEY,
     purpose: (existingBp as any)?.purpose ?? 'Transform Jo Air contact centre operations to deliver consistent, personalised customer experiences at scale',

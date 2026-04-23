@@ -18,9 +18,14 @@ import { hasDiscoveryData } from '@/lib/cognition/agents/agent-types';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry, WorkshopPrepResearch, WorkshopQuestionSet } from '@/lib/cognition/agents/agent-types';
 import { validateQuestionSet } from '@/lib/cognition/agents/question-set-validator';
+import {
+  assertWorkshopContextIntegrity,
+  decryptWorkshopContext,
+  WorkshopContextIntegrityError,
+} from '@/lib/workshop/context-integrity';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // ── Helper: auth + load workshop ──────────────────────────
 
@@ -35,6 +40,7 @@ async function loadWorkshopPrep(workshopId: string) {
     where: { id: workshopId },
     select: {
       id: true,
+      workshopType: true,
       description: true,
       businessContext: true,
       clientName: true,
@@ -50,7 +56,26 @@ async function loadWorkshopPrep(workshopId: string) {
   });
 
   if (!workshop) return { error: 'Workshop not found', status: 404, workshop: null };
-  return { error: null, status: 200, workshop };
+  const decryptedWorkshop = decryptWorkshopContext(workshop);
+  const blueprint = readBlueprintFromJson(decryptedWorkshop.blueprint);
+  const research = decryptedWorkshop.prepResearch as unknown as WorkshopPrepResearch | null;
+  try {
+    assertWorkshopContextIntegrity({
+      clientName: decryptedWorkshop.clientName,
+      industry: decryptedWorkshop.industry,
+      desiredOutcomes: decryptedWorkshop.businessContext,
+      prepResearch: research,
+      blueprint,
+    });
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : 'Workshop context failed integrity checks',
+      status: error instanceof WorkshopContextIntegrityError ? 422 : 500,
+      workshop: null,
+    };
+  }
+
+  return { error: null, status: 200, workshop: decryptedWorkshop };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -71,8 +96,11 @@ export async function POST(
     });
   }
 
+  const blueprint = readBlueprintFromJson(workshop.blueprint);
+
   const context: PrepContext = {
     workshopId,
+    workshopType: blueprint?.workshopType ?? workshop.workshopType,
     workshopPurpose: workshop.description,
     desiredOutcomes: workshop.businessContext,
     clientName: workshop.clientName,
@@ -80,7 +108,9 @@ export async function POST(
     companyWebsite: workshop.companyWebsite,
     dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
     targetDomain: workshop.targetDomain,
-    blueprint: readBlueprintFromJson(workshop.blueprint),
+    engagementType: blueprint?.engagementType ?? null,
+    domainPack: blueprint?.domainPack ?? null,
+    blueprint,
   };
 
   const research = workshop.prepResearch as unknown as WorkshopPrepResearch | null;

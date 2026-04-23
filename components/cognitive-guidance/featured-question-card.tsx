@@ -8,9 +8,9 @@ const LENS_DOT_COLORS: Record<string, string> = {
   People: '#3b82f6',
   Operations: '#10b981',
   Technology: '#f97316',
-  Customer: '#8b5cf6',
   Commercial: '#ca8a04',
   'Risk/Compliance': '#ef4444',
+  Finance: '#16a34a',
   Partners: '#6366f1',
   General: '#94a3b8',
 };

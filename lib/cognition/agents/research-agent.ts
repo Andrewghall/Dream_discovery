@@ -17,7 +17,8 @@ import { env } from '@/lib/env';
 import { openAiBreaker } from '@/lib/circuit-breaker';
 import type { WorkshopPrepResearch, PrepContext, AgentConversationCallback, AgentReview } from './agent-types';
 import type { GuidanceState } from '../guidance-state';
-import { getEngagementType } from '@/lib/domain-packs/engagement-types';
+import { getEngagementTypeProfile, getWorkshopTypeProfile } from '@/lib/workshop/workshop-definition';
+import { getWorkshopPack } from '@/lib/workshop/workshop-packs';
 
 // ══════════════════════════════════════════════════════════════
 // ERRORS
@@ -61,6 +62,89 @@ const BANNED_SOURCE_DOMAINS = [
   '1840andco.com',         // outsourcing vendor comparison blog
   'outsourceaccelerator.com', // BPO marketplace / content marketing
 ];
+
+const WEAK_COMPANY_VERIFICATION_HOSTS = [
+  'linkedin.com',
+  'brandfolder.com',
+  'facebook.com',
+  'instagram.com',
+  'x.com',
+  'twitter.com',
+  'zoominfo.com',
+  'bloomberg.com',
+  'wikipedia.org',
+  '2b1international.com',
+  'crunchbase.com',
+];
+
+function normalizeVerificationText(value: string | null | undefined): string {
+  return (value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractHostname(value: string | null | undefined): string {
+  if (!value) return '';
+  try {
+    const parsed = new URL(value.startsWith('http') ? value : `https://${value}`);
+    return parsed.hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function isWeakVerificationHost(hostname: string): boolean {
+  return WEAK_COMPANY_VERIFICATION_HOSTS.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+}
+
+function looksLikePlaceholderCompanyName(value: string | null | undefined): boolean {
+  const normalized = normalizeVerificationText(value);
+  if (!normalized) return true;
+
+  const compact = normalized.replace(/\s+/g, '');
+  if (compact.length < 3) return true;
+  if (/^(test|testing|demo|example|sample|placeholder|temp|unknown|null|company)$/i.test(compact)) return true;
+  if (/(asdf|qwer|zxcv|poiuy|lorem|ipsum|foobar|foo|bar)/i.test(compact)) return true;
+  if (/^(.{2,6})\1+$/.test(compact)) return true;
+
+  return false;
+}
+
+function resultClearlyMatchesCompany(
+  result: { title?: string | null; url?: string | null; content?: string | null },
+  companyName: string,
+  providedWebsite: string,
+): boolean {
+  const normalizedCompany = normalizeVerificationText(companyName);
+  if (!normalizedCompany) return false;
+
+  const hostname = extractHostname(result.url);
+  const providedHost = extractHostname(providedWebsite);
+  const title = normalizeVerificationText(result.title);
+  const content = normalizeVerificationText(`${result.title || ''} ${result.content || ''}`);
+  const companyWords = normalizedCompany.split(' ').filter((word) => word.length > 2);
+  const exactNameMentioned = title.includes(normalizedCompany) || content.includes(normalizedCompany);
+
+  if (providedHost) {
+    return hostname === providedHost || hostname.endsWith(`.${providedHost}`);
+  }
+
+  if (!hostname || isWeakVerificationHost(hostname) || !exactNameMentioned) {
+    return false;
+  }
+
+  if (companyWords.length === 1) {
+    return hostname.includes(companyWords[0]);
+  }
+
+  const matchedWordsInHost = companyWords.filter((word) => hostname.includes(word)).length;
+  const matchedWordsInTitle = companyWords.filter((word) => title.includes(word)).length;
+
+  return matchedWordsInHost >= Math.max(1, companyWords.length - 1)
+    || matchedWordsInTitle === companyWords.length;
+}
 
 // ══════════════════════════════════════════════════════════════
 // TOOL DEFINITIONS
@@ -534,6 +618,21 @@ async function executeResearchTool(
       const searchQuery = String(args.searchQuery || `${context.clientName} official website`);
       const providedWebsite = String(args.companyWebsite || context.companyWebsite || '');
 
+      if (looksLikePlaceholderCompanyName(context.clientName) && !providedWebsite.trim()) {
+        return {
+          result: JSON.stringify({
+            verified: false,
+            searchQuery,
+            providedWebsite,
+            confirmedCount: 0,
+            confirmedResults: [],
+            allResults: [],
+            instruction: 'STOP. Company name looks like placeholder or test input. You MUST call request_clarification immediately and ask for the real company name or official website.',
+          }),
+          summary: `🚨 **COMPANY NOT VERIFIED**: "${context.clientName}" looks like placeholder or invalid input. No verification attempt was accepted.\n\n⚠️ INSTRUCTION: You MUST call request_clarification now. Ask for the correct company name and official website URL. Do NOT proceed with research.`,
+        };
+      }
+
       if (hasTavily()) {
         try {
           // Search specifically for the company's official website / confirmed existence
@@ -543,19 +642,9 @@ async function executeResearchTool(
           const tavily = await tavilySearch(query, { searchDepth: 'advanced', maxResults: 7 });
           const results = tavily.results;
 
-          // Check whether any result clearly and unambiguously matches the company name
-          const companyName = (context.clientName || '').toLowerCase().trim();
-          const nameWords = companyName.split(/\s+/).filter((w) => w.length > 2);
-
-          // A result is a confirmed match if:
-          // - The provided website URL appears in the result URL, OR
-          // - The majority of the company name words appear in title+URL+snippet
-          const confirmedResults = results.filter((r) => {
-            const content = (r.title + ' ' + r.url + ' ' + r.content).toLowerCase();
-            if (providedWebsite && content.includes(providedWebsite.replace(/^https?:\/\//, '').replace(/\/$/, ''))) return true;
-            const matchCount = nameWords.filter((w) => content.includes(w)).length;
-            return matchCount >= Math.ceil(nameWords.length * 0.7);
-          });
+          const confirmedResults = results.filter((r) =>
+            resultClearlyMatchesCompany(r, context.clientName || '', providedWebsite),
+          );
 
           const verified = confirmedResults.length > 0;
           const sources = results.map((r) => `• ${r.title}\n  ${r.url}\n  ${r.content.slice(0, 300)}`).join('\n\n');
@@ -952,6 +1041,7 @@ function buildResearchSystemPrompt(context: PrepContext): string {
   const searchMode = hasTavily()
     ? 'You have LIVE WEB SEARCH via Tavily. Your search tools return real, current web results with full page content and source URLs. Use many different queries to build a thorough, evidence-based picture. Each search gives you fresh material — use it extensively.'
     : '⚠️ No web search API configured. Your search tools use parametric knowledge only. Results should be treated as general knowledge that needs verification. Even so, provide thorough, detailed multi-paragraph responses.';
+  const workshopPack = getWorkshopPack(context.workshopType);
 
   return `You are the DREAM Research Agent. Your job is to build a DEEP, PURPOSEFUL research briefing on a client company before their full-day strategic workshop.
 
@@ -963,7 +1053,15 @@ Client: ${context.clientName || 'Unknown'}
 Industry: ${context.industry || 'Unknown'}
 Website: ${context.companyWebsite || 'Not provided'}
 ${trackDesc}
-${context.engagementType ? (() => { const et = getEngagementType(context.engagementType!); return et ? `\n═══ ENGAGEMENT TYPE: ${et.label.toUpperCase()} ═══\n${et.researchAngle}\n` : ''; })() : ''}
+${context.workshopType ? (() => {
+  const wt = getWorkshopTypeProfile(context.workshopType);
+  return `\n═══ WORKSHOP TYPE: ${wt.label.toUpperCase()} ═══\n${wt.structuralFocus}\n`;
+})() : ''}
+${context.workshopType ? `\n═══ WORKSHOP PACK CONTRACT: ${workshopPack.label.toUpperCase()} ═══\n${workshopPack.researchDirective}\n` : ''}
+${context.engagementType ? (() => {
+  const et = getEngagementTypeProfile(context.engagementType!);
+  return `\n═══ ENGAGEMENT TYPE: ${et.label.toUpperCase()} ═══\n${et.researchPromptModifier}\n`;
+})() : ''}
 ${context.workshopPurpose ? `\n═══ WORKSHOP PURPOSE — THIS IS YOUR NORTH STAR ═══\n${context.workshopPurpose}\n\n⟹ EVERY search you run should be motivated by this purpose. Before each search ask: "will this help the facilitator achieve one of these purposes?" If not, search for something else instead.\n⟹ When you find something relevant to a specific purpose, note it. You will need to map every major finding back to a purpose in your workshopBrief.\n⟹ Key search angles this purpose demands: ${context.workshopPurpose.toLowerCase().includes('ai') ? `Search specifically for what ${context.clientName || 'the company'} currently uses for AI/automation today — their actual tools, products, initiatives. The facilitator needs to know their starting point.` : ''} ${context.workshopPurpose.toLowerCase().includes('align') ? `Search for evidence of internal fragmentation, competing views, or strategic misalignment at ${context.clientName || 'the company'}.` : ''} ${context.workshopPurpose.toLowerCase().includes('root cause') ? `Search for what the company or analysts identify as the underlying causes of their performance challenges — not just symptoms.` : ''}` : ''}
 ${context.desiredOutcomes ? `\n═══ DESIRED OUTCOMES ═══\n${context.desiredOutcomes}\n⟹ These outcomes tell you what the room must leave with. Use them to prioritise what you research and what you surface.` : ''}
 
@@ -1093,7 +1191,7 @@ You MUST conduct at least ${minSearches} different searches before calling commi
 
 When you call commit_research, EACH field must be SUBSTANTIVE and CITED:
 
-- companyOverview: 3-4 detailed paragraphs minimum. Cover history and founding, what they do today in detail, market position and size, key products/services, recent strategic direction, leadership. Every specific fact must have an inline citation (Source: title, URL). ONLY include facts you verified for this exact company.
+- companyOverview: 3-4 detailed paragraphs minimum. Cover history and founding, what they do today in detail, market position and size, key products/services, recent strategic direction, leadership. Every specific fact must have an inline citation (Source: title, URL). ONLY include facts you verified for this exact company. IMPORTANT: The very first sentence must include the client name exactly as provided ("${context.clientName}") and any common abbreviations or alternative names the company is known by (e.g. if the client is "Marks and Spencer", also include "Marks & Spencer" and "M&S"; if "International Business Machines", also include "IBM"). This ensures all name variants are captured.
 
 - industryContext: 2-3 paragraphs. Write about TENSIONS, not trends. What are the structural contradictions in this industry that make it hard to operate in right now? What pressure does AI create (not just "AI is changing things" — what specific tension does it introduce for companies like this)? What is the conflict between scale and margin, between client-centricity and standardisation? Give the facilitator something they can use to frame the room — not something they already know.
 

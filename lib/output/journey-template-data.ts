@@ -315,7 +315,7 @@ export const TEMPLATE_CONSTRAINED: LiveJourneyData = {
       idealBusinessIntensity: 0.4, idealCustomerIntensity: 0.1,
       constraintFlags: [
         { id: 'cf-7', type: 'regulatory', label: 'FOS complaints-handling rules require human decision on outcomes', severity: 'blocking', sourceNodeIds: [], addedBy: 'ai' },
-        { id: 'cf-8', type: 'organisational', label: 'Complaints team not yet trained on AI-assist tooling', severity: 'manageable', sourceNodeIds: [], addedBy: 'ai' },
+        { id: 'cf-8', type: 'operational', label: 'Complaints team not yet trained on AI-assist tooling', severity: 'manageable', sourceNodeIds: [], addedBy: 'ai' },
       ],
       sourceNodeIds: [], addedBy: 'ai', createdAtMs: 0, phaseAdded: 'CONSTRAINTS',
     },

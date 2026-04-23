@@ -12,10 +12,12 @@ interface ConstraintMapProps {
 // Domain chip colours
 const DOMAIN_COLORS: Record<string, { bg: string; text: string }> = {
   People:       { bg: '#dbeafe', text: '#1d4ed8' },
+  Operations:   { bg: '#d1fae5', text: '#065f46' },
   Technology:   { bg: '#ffedd5', text: '#c2410c' },
-  Customer:     { bg: '#ede9fe', text: '#6d28d9' },
-  Organisation: { bg: '#d1fae5', text: '#065f46' },
-  Regulation:   { bg: '#fee2e2', text: '#b91c1c' },
+  Commercial:   { bg: '#fef9c3', text: '#a16207' },
+  'Risk/Compliance': { bg: '#fee2e2', text: '#b91c1c' },
+  Finance:      { bg: '#dcfce7', text: '#166534' },
+  Partners:     { bg: '#e0e7ff', text: '#4338ca' },
   General:      { bg: '#f1f5f9', text: '#475569' },
 };
 

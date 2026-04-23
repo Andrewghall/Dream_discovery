@@ -17,6 +17,11 @@ import { runResearchAgent, ResearchClarificationNeededError } from '@/lib/cognit
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry } from '@/lib/cognition/agents/agent-types';
+import {
+  assertReadableDesiredOutcomes,
+  decryptWorkshopContext,
+  WorkshopContextIntegrityError,
+} from '@/lib/workshop/context-integrity';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes — GPT-4o + 8-10 Tavily searches needs ~4-5 min
@@ -49,6 +54,7 @@ export async function POST(
     where: { id: workshopId },
     select: {
       id: true,
+      workshopType: true,
       description: true,
       businessContext: true,
       clientName: true,
@@ -70,15 +76,32 @@ export async function POST(
     });
   }
 
+  const decryptedWorkshop = decryptWorkshopContext(workshop);
+  const blueprint = readBlueprintFromJson(decryptedWorkshop.blueprint);
+
+  try {
+    assertReadableDesiredOutcomes(decryptedWorkshop.businessContext);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Workshop context failed integrity checks';
+    return new Response(JSON.stringify({ error: message }), {
+      status: error instanceof WorkshopContextIntegrityError ? 422 : 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const context: PrepContext = {
     workshopId,
-    workshopPurpose: workshop.description,
-    desiredOutcomes: workshop.businessContext,
-    clientName: workshop.clientName,
-    industry: workshop.industry,
-    companyWebsite: workshop.companyWebsite,
-    dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
-    targetDomain: workshop.targetDomain,
+    workshopType: blueprint?.workshopType ?? decryptedWorkshop.workshopType,
+    workshopPurpose: decryptedWorkshop.description,
+    desiredOutcomes: decryptedWorkshop.businessContext,
+    clientName: decryptedWorkshop.clientName,
+    industry: decryptedWorkshop.industry,
+    companyWebsite: decryptedWorkshop.companyWebsite,
+    dreamTrack: decryptedWorkshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
+    targetDomain: decryptedWorkshop.targetDomain,
+    engagementType: blueprint?.engagementType ?? decryptedWorkshop.engagementType?.toLowerCase() ?? null,
+    domainPack: blueprint?.domainPack ?? decryptedWorkshop.domainPack ?? null,
+    blueprint,
   };
 
   // ── SSE stream ─────────────────────────────────────
@@ -124,15 +147,16 @@ export async function POST(
         });
 
         // Regenerate blueprint with research-derived journey stages and dimensions
-        const existingBp = readBlueprintFromJson(workshop.blueprint);
+        const existingBp = blueprint;
         const updatedBlueprint = generateBlueprint({
-          industry: workshop.industry ?? null,
-          dreamTrack: (workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null) ?? null,
-          engagementType: workshop.engagementType?.toLowerCase() ?? null,
-          domainPack: workshop.domainPack ?? null,
-          purpose: workshop.description ?? null,
-          outcomes: workshop.businessContext ?? null,
-          clientName: workshop.clientName ?? null,
+          industry: decryptedWorkshop.industry ?? null,
+          dreamTrack: (decryptedWorkshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null) ?? null,
+          workshopType: context.workshopType ?? null,
+          engagementType: decryptedWorkshop.engagementType?.toLowerCase() ?? null,
+          domainPack: decryptedWorkshop.domainPack ?? null,
+          purpose: decryptedWorkshop.description ?? null,
+          outcomes: decryptedWorkshop.businessContext ?? null,
+          clientName: decryptedWorkshop.clientName ?? null,
           researchJourneyStages: research.journeyStages ?? null,
           researchDimensions: research.industryDimensions ?? null,
           researchActors: research.actorTaxonomy ?? null,

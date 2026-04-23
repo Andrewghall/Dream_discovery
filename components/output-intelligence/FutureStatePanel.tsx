@@ -82,10 +82,12 @@ function ActorIcon({ actor }: { actor: string }) {
 
 const LENS_COLOURS: Record<string, { bg: string; text: string; dot: string }> = {
   People:       { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-400' },
-  Organisation: { bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-400' },
-  Customer:     { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
+  Operations:   { bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-400' },
   Technology:   { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
-  Regulation:   { bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-400' },
+  Commercial:   { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
+  'Risk/Compliance': { bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-400' },
+  Finance:      { bg: 'bg-violet-50', text: 'text-violet-700', dot: 'bg-violet-400' },
+  Partners:     { bg: 'bg-indigo-50', text: 'text-indigo-700', dot: 'bg-indigo-400' },
   General:      { bg: 'bg-slate-50',  text: 'text-slate-600',  dot: 'bg-slate-400' },
 };
 

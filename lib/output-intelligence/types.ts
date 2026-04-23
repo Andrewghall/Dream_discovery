@@ -275,7 +275,7 @@ export interface FutureStateDesign {
     keyVoices: Array<{
       /** The specific insight, idea or position stated in the session */
       insight: string;
-      /** Which lens this connects to: People, Organisation, Customer, Technology, Regulation, General */
+      /** Which lens this connects to: People, Operations, Technology, Commercial, Risk/Compliance, Partners, General */
       lens: string;
     }>;
     /** Legacy: per-actor journeys — retained for backwards compat when actors are named */

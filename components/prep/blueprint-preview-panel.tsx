@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronUp, Pencil, Save, X, Plus, ArrowUp, ArrowDown } from 'lucide-react';
-import type { WorkshopBlueprint, LensPolicyEntry, JourneyStageEntry, ActorEntry } from '@/lib/workshop/blueprint';
+import type { WorkshopBlueprint, JourneyStageEntry, ActorEntry } from '@/lib/workshop/blueprint';
 
 type Props = {
   blueprint: WorkshopBlueprint;
@@ -19,11 +19,6 @@ function formatInterval(ms: number): string {
   if (seconds < 60) return `${seconds}s`;
   return `${Math.round(seconds / 60)}m`;
 }
-
-const DEFAULT_LENS_COLORS = [
-  '#bfdbfe', '#a7f3d0', '#ddd6fe', '#fed7aa', '#fecaca',
-  '#fde68a', '#c7d2fe', '#fbcfe8', '#99f6e4', '#e2e8f0',
-];
 
 export default function BlueprintPreviewPanel({ blueprint, onSave }: Props) {
   const [collapsed, setCollapsed] = useState(true);
@@ -47,27 +42,6 @@ export default function BlueprintPreviewPanel({ blueprint, onSave }: Props) {
     onSave(draft);
     setEditing(false);
     setSaving(false);
-  };
-
-  // --- Lens editing helpers ---
-  const updateLens = (index: number, patch: Partial<LensPolicyEntry>) => {
-    if (!draft) return;
-    const lenses = [...draft.lenses];
-    lenses[index] = { ...lenses[index], ...patch };
-    setDraft({ ...draft, lenses });
-  };
-
-  const removeLens = (index: number) => {
-    if (!draft) return;
-    const lenses = draft.lenses.filter((_, i) => i !== index);
-    setDraft({ ...draft, lenses });
-  };
-
-  const addLens = () => {
-    if (!draft) return;
-    const color = DEFAULT_LENS_COLORS[draft.lenses.length % DEFAULT_LENS_COLORS.length];
-    const newLens: LensPolicyEntry = { name: '', description: '', color, keywords: [] };
-    setDraft({ ...draft, lenses: [...draft.lenses, newLens] });
   };
 
   // --- Journey stage editing helpers ---
@@ -183,42 +157,10 @@ export default function BlueprintPreviewPanel({ blueprint, onSave }: Props) {
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               Lenses ({bp.lenses.length})
             </h3>
-            {editing ? (
-              <div className="space-y-2">
-                {bp.lenses.map((lens, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={lens.color}
-                      onChange={(e) => updateLens(i, { color: e.target.value })}
-                      className="w-6 h-6 rounded-full border cursor-pointer shrink-0"
-                      style={{ padding: 0 }}
-                    />
-                    <input
-                      type="text"
-                      value={lens.name}
-                      onChange={(e) => updateLens(i, { name: e.target.value })}
-                      placeholder="Lens name"
-                      className="flex-1 px-2 py-1 rounded-md border text-xs bg-background"
-                    />
-                    <button
-                      onClick={() => removeLens(i)}
-                      className="p-1 rounded hover:bg-red-100 text-red-500 transition-colors shrink-0"
-                      title="Remove lens"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  onClick={addLens}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-dashed text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
-                >
-                  <Plus className="h-3 w-3" />
-                  Add lens
-                </button>
-              </div>
-            ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Lenses are fixed platform-wide and cannot be edited per workshop.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {bp.lenses.map((lens) => (
                   <div
@@ -233,7 +175,7 @@ export default function BlueprintPreviewPanel({ blueprint, onSave }: Props) {
                   </div>
                 ))}
               </div>
-            )}
+            </div>
           </div>
 
           {/* Journey Stages */}

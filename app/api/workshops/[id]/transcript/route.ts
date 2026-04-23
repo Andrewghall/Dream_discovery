@@ -149,6 +149,7 @@ async function processResolvedThought(
   clientDomainHint?: ClientDomainHint | null,
   skipServerGuard = false,
   passageMeta?: PassageMeta,
+  semanticUnits?: string[],
 ) {
   const trace = traceId ? `[trace:${traceId}]` : '';
   const text = utterance.text;
@@ -244,6 +245,7 @@ async function processResolvedThought(
         sourceWindowId: dataPoint.sourceWindowId,
         sequenceIndex: dataPoint.sequenceIndex,
         reasoningRole: dataPoint.reasoningRole,
+        semanticUnits: Array.isArray(semanticUnits) ? semanticUnits : [],
       },
       // Lineage metadata — not used for reasoning, only for UI/audit
       thoughtWindowId: window.windowId,
@@ -743,7 +745,26 @@ export async function POST(
     const startTimeMs = Number.isFinite(body.startTime) ? Math.max(0, Math.round(body.startTime)) : 0;
     const endTimeMs = Number.isFinite(body.endTime) ? Math.max(startTimeMs, Math.round(body.endTime)) : startTimeMs;
 
-    // ── Trivial fragments — raw transcript already stored at receipt time ────
+    // Normalise spoken records from the request body.
+    // New clients send an array of individual Deepgram results.
+    // Legacy/fallback clients send no array — we synthesise one record.
+    const incomingSpokenRecords: IncomingSpokenRecord[] = Array.isArray(body.spokenRecords) && body.spokenRecords.length > 0
+      ? body.spokenRecords.map((r: IncomingSpokenRecord) => ({
+          text: r.text || text,
+          startTimeMs: Number(r.startTimeMs) || startTimeMs,
+          endTimeMs: Number(r.endTimeMs) || endTimeMs,
+          confidence: typeof r.confidence === 'number' ? r.confidence : null,
+          source: body.source,
+        }))
+      : [{
+          text,
+          startTimeMs,
+          endTimeMs,
+          confidence: typeof body.confidence === 'number' ? body.confidence : null,
+          source: body.source,
+        }];
+
+    // ── Trivial fragments — raw transcript stored at CaptureAPI receipt time ─
     // No ThoughtWindow or DataPoint created for noise.
     if (isTextTrivial(text)) {
       return NextResponse.json({ ok: true, skipped: true, reason: 'Trivial fragment' });
@@ -767,25 +788,6 @@ export async function POST(
       slmMetadata: body.slmMetadata as Record<string, unknown> | undefined,
       dialoguePhase: body.dialoguePhase || null,
     };
-
-    // Normalise spoken records from the request body.
-    // New clients send an array of individual Deepgram results.
-    // Legacy/fallback clients send no array — we synthesise one record.
-    const incomingSpokenRecords: IncomingSpokenRecord[] = Array.isArray(body.spokenRecords) && body.spokenRecords.length > 0
-      ? body.spokenRecords.map((r: IncomingSpokenRecord) => ({
-          text: r.text || text,
-          startTimeMs: Number(r.startTimeMs) || startTimeMs,
-          endTimeMs: Number(r.endTimeMs) || endTimeMs,
-          confidence: typeof r.confidence === 'number' ? r.confidence : null,
-          source: body.source,
-        }))
-      : [{
-          text,
-          startTimeMs,
-          endTimeMs,
-          confidence: typeof body.confidence === 'number' ? body.confidence : null,
-          source: body.source,
-        }];
 
     // ── Meaning extraction ───────────────────────────────────────────────────
     // Extract 0–N meaning units from the committed passage.
@@ -853,6 +855,7 @@ export async function POST(
           sequenceIndex: 0,
           reasoningRole: classifyReasoningRole(text),
         },
+        extraction.fallback ? [] : extraction.units.map((unit) => unit.extractedText),
       );
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);

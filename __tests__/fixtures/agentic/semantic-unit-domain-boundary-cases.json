@@ -1,0 +1,106 @@
+{
+  "dataset": [
+    {
+      "text": "We’ve invested heavily in automation to reduce cost, but it’s actually increasing repeat contact because customers don’t trust the outcomes and agents are having to fix things afterwards.",
+      "primary_domain": "Customer",
+      "secondary_domain": "Technology",
+      "tertiary_domain": "Operations"
+    },
+    {
+      "text": "Agents are following the process exactly as designed, but the process itself doesn’t reflect what customers actually need, so performance looks good on paper but fails in reality.",
+      "primary_domain": "Operations",
+      "secondary_domain": "Customer",
+      "tertiary_domain": "People"
+    },
+    {
+      "text": "Sales is driving aggressive growth targets, but the operation hasn’t scaled capability or training, so service quality is dropping and complaints are rising.",
+      "primary_domain": "Commercial",
+      "secondary_domain": "Operations",
+      "tertiary_domain": "People"
+    },
+    {
+      "text": "Compliance requirements are technically being met, but agents don’t fully understand why they exist, so behaviours are inconsistent and risk is still present.",
+      "primary_domain": "Risk/Compliance",
+      "secondary_domain": "People",
+      "tertiary_domain": "Operations"
+    },
+    {
+      "text": "We’ve implemented new systems to support agents, but because they don’t align with how decisions are actually made in real conversations, agents ignore them and revert to old habits.",
+      "primary_domain": "Technology",
+      "secondary_domain": "People",
+      "tertiary_domain": "Operations"
+    },
+    {
+      "text": "Customers are being passed between internal teams and external partners, but no one owns the end-to-end experience, so issues remain unresolved.",
+      "primary_domain": "Operations",
+      "secondary_domain": "Partners",
+      "tertiary_domain": "Customer"
+    },
+    {
+      "text": "Partners are incentivised on volume rather than quality, which is driving behaviours that conflict with both customer outcomes and regulatory expectations.",
+      "primary_domain": "Partners",
+      "secondary_domain": "Commercial",
+      "tertiary_domain": "Risk/Compliance"
+    },
+    {
+      "text": "Agents are expected to deliver personalised experiences, but the data available to them is fragmented across systems, making it impossible to act effectively in the moment.",
+      "primary_domain": "Technology",
+      "secondary_domain": "People",
+      "tertiary_domain": "Customer"
+    },
+    {
+      "text": "Operational metrics show efficiency improvements, but they are masking the fact that customers are contacting more frequently to resolve the same issues.",
+      "primary_domain": "Customer",
+      "secondary_domain": "Operations",
+      "tertiary_domain": "Commercial"
+    },
+    {
+      "text": "The business has introduced AI to support decision-making, but without clear accountability or trust from agents, it is not being used in practice.",
+      "primary_domain": "People",
+      "secondary_domain": "Technology",
+      "tertiary_domain": "Operations"
+    },
+    {
+      "text": "Customers cannot complete simple tasks without contacting us because the journey design still assumes internal process steps they cannot see.",
+      "primary_domain": "Customer",
+      "secondary_domain": "Operations",
+      "tertiary_domain": "Technology"
+    },
+    {
+      "text": "The platform architecture cannot support real-time visibility across channels, so teams are making decisions on stale and fragmented information.",
+      "primary_domain": "Technology",
+      "secondary_domain": "Operations",
+      "tertiary_domain": "People"
+    },
+    {
+      "text": "There is no consistent ownership model for resolving cross-functional issues, so work is repeatedly handed off and slows down delivery.",
+      "primary_domain": "Operations",
+      "secondary_domain": "People",
+      "tertiary_domain": "Customer"
+    },
+    {
+      "text": "Managers are being asked to lead transformation without the coaching, confidence, or behavioural support required to do it well.",
+      "primary_domain": "People",
+      "secondary_domain": "Operations",
+      "tertiary_domain": "Technology"
+    },
+    {
+      "text": "The current pricing structure rewards short-term volume growth even when it damages service quality and increases operational strain.",
+      "primary_domain": "Commercial",
+      "secondary_domain": "Operations",
+      "tertiary_domain": "Customer"
+    },
+    {
+      "text": "Key partners are critical to delivery, but their incentives, governance, and reporting lines are misaligned with the outcomes we need.",
+      "primary_domain": "Partners",
+      "secondary_domain": "Operations",
+      "tertiary_domain": "Commercial"
+    },
+    {
+      "text": "Regulatory obligations are increasing faster than our control framework is evolving, which leaves the organisation exposed despite good intentions.",
+      "primary_domain": "Risk/Compliance",
+      "secondary_domain": "Operations",
+      "tertiary_domain": "People"
+    }
+  ]
+}

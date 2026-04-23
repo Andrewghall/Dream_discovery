@@ -28,20 +28,10 @@ export function resolveIndustryPack(
 }
 
 function applyEngagementVariant(pack: DomainPack, variant: EngagementVariant): DomainPack {
-  let lenses = pack.lenses;
-
-  if (variant.lenses) {
-    lenses = variant.lenses;
-  } else {
-    if (variant.addLenses?.length) {
-      lenses = [...lenses, ...variant.addLenses.filter(l => !lenses.includes(l))];
-    }
-    if (variant.excludeLenses?.length) {
-      lenses = lenses.filter(l => !variant.excludeLenses!.includes(l));
-    }
-  }
-
-  return { ...pack, lenses };
+  // Canonical lens structure is fixed platform-wide.
+  // Engagement variants may still carry practitioner notes, but they must not
+  // alter the lens array at runtime.
+  return { ...pack, engagementVariants: pack.engagementVariants };
 }
 
 /**

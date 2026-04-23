@@ -1,0 +1,92 @@
+[
+  {
+    "id": "contact-centre-handle-time",
+    "lens": "Contact Centre Transformation",
+    "input": "So, I mean, what we see a lot is, um, agents are kind of measured on handle time, right, but, but actually the customer calls back again, because it wasn’t really fixed, so you’re sort of optimising the wrong thing there.",
+    "expected_units": [
+      "Agents are often measured on handle time rather than whether the issue is resolved.",
+      "Customers frequently call back because their issue was not properly resolved.",
+      "Focusing on handle time optimises the wrong outcome."
+    ]
+  },
+  {
+    "id": "ai-decisions-disconnected",
+    "lens": "AI Strategy",
+    "input": "We’ve, we’ve put AI in, in a few places, but, um, I don’t think we’ve really thought through, like, how decisions actually happen today, so it’s a bit, it’s a bit disconnected if I’m honest.",
+    "expected_units": [
+      "AI has been implemented without fully understanding how decisions are currently made.",
+      "This creates a disconnect between AI capabilities and how the business actually operates."
+    ]
+  },
+  {
+    "id": "gtm-serve-everyone",
+    "lens": "Go-To-Market",
+    "input": "We kind of say, you know, we serve everyone, but, if I’m honest, that probably just means we don’t really know who we’re best for, and that shows up in the messaging.",
+    "expected_units": [
+      "Targeting everyone indicates a lack of clarity about the ideal customer.",
+      "A lack of clarity about the ideal customer leads to weak messaging."
+    ]
+  },
+  {
+    "id": "finance-past-not-next",
+    "lens": "Finance",
+    "input": "Finance is, um, it’s mostly telling us what happened last month, right, but it’s not really helping us decide what we should do next, which is where we need it.",
+    "expected_units": [
+      "Finance typically reports past performance rather than guiding future decisions.",
+      "Finance should support decision-making about what to do next."
+    ]
+  },
+  {
+    "id": "cx-journey-friction",
+    "lens": "Customer Experience",
+    "input": "The customer doesn’t see, like, our structure internally, they just, they just feel the journey, and when things don’t join up, they feel that friction.",
+    "expected_units": [
+      "Customers experience the journey rather than the organisation’s internal structure.",
+      "Disconnected internal processes create friction in the customer experience."
+    ]
+  },
+  {
+    "id": "operations-workarounds",
+    "lens": "Operations",
+    "input": "People kind of build workarounds to get things done, and then over time those workarounds just become the process, and then it gets messy.",
+    "expected_units": [
+      "Workarounds are often created to get things done within processes.",
+      "Over time, workarounds become embedded as the actual process.",
+      "This leads to increased operational complexity."
+    ]
+  },
+  {
+    "id": "transformation-tech-first",
+    "lens": "Transformation",
+    "input": "We sort of picked the tech first, and then tried to fit the problem to it, which, now I say it out loud, probably isn’t the right way round.",
+    "expected_units": [
+      "The organisation selected technology before clearly defining the problem.",
+      "Fitting the problem to the technology is the wrong approach to transformation."
+    ]
+  },
+  {
+    "id": "ai-fragmented-initiatives",
+    "lens": "AI Strategy",
+    "input": "There’s loads of little AI things happening, like everywhere, but they don’t really connect into anything bigger, so it’s not really moving the business.",
+    "expected_units": [
+      "AI initiatives are often fragmented across the organisation.",
+      "A lack of integration prevents AI from driving meaningful business progress."
+    ]
+  },
+  {
+    "id": "contact-centre-complex-calls",
+    "lens": "Contact Centre",
+    "input": "What’s happening is the easy stuff is going away, and agents are left with the really difficult calls, which take longer and need more skill.",
+    "expected_units": [
+      "Simple queries are being removed from contact centres.",
+      "Agents are increasingly handling more complex interactions.",
+      "Complex interactions require more time and skill."
+    ]
+  },
+  {
+    "id": "edge-think-about-it",
+    "lens": "Edge Case",
+    "input": "Yeah, I mean, it’s just, you know, kind of, we need to think about it really.",
+    "expected_units": []
+  }
+]

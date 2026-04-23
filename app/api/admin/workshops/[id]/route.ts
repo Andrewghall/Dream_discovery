@@ -4,13 +4,23 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { PatchWorkshopBodySchema, zodError } from '@/lib/validation/schemas';
 import { getDomainPack } from '@/lib/domain-packs';
+import { resolveIndustryPack } from '@/lib/domain-packs/resolution';
 import { generateBlueprint } from '@/lib/cognition/workshop-blueprint-generator';
 import { readBlueprintFromJson, WorkshopBlueprintSchema } from '@/lib/workshop/blueprint';
-import type { EngagementType } from '@prisma/client';
+import { Prisma, type EngagementType } from '@prisma/client';
 import type { WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
 import { validateQuestionSet } from '@/lib/cognition/agents/question-set-validator';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
 import { encryptWorkshopData, decryptWorkshopData, decryptParticipantData } from '@/lib/workshop-encryption';
+import {
+  inferWorkshopRuntimeType,
+  toLegacyStoredEngagementType,
+  toLegacyStoredWorkshopType,
+} from '@/lib/workshop/workshop-definition';
+import {
+  decryptWorkshopContext,
+  workshopContractChanged,
+} from '@/lib/workshop/context-integrity';
 
 export const dynamic = 'force-dynamic';
 
@@ -527,6 +537,11 @@ export async function PATCH(
     if (typeof body.name === 'string') updateData.name = body.name;
     if (typeof body.description === 'string') updateData.description = body.description || null;
     if (typeof body.businessContext === 'string') updateData.businessContext = body.businessContext || null;
+    if (typeof body.workshopType === 'string') {
+      updateData.workshopType = toLegacyStoredWorkshopType(
+        inferWorkshopRuntimeType({ workshopType: body.workshopType, engagementType: body.engagementType }),
+      ) as any;
+    }
     // JSON fields -- stored directly
     if (body.prepResearch !== undefined) updateData.prepResearch = body.prepResearch;
     if (body.customQuestions !== undefined) {
@@ -538,7 +553,9 @@ export async function PATCH(
     }
     if (body.discoveryBriefing !== undefined) updateData.discoveryBriefing = body.discoveryBriefing;
     // Field Discovery / Diagnostic extension
-    if (typeof body.engagementType === 'string') updateData.engagementType = toEngagementEnum(body.engagementType);
+    if (typeof body.engagementType === 'string') {
+      updateData.engagementType = toEngagementEnum(toLegacyStoredEngagementType(body.engagementType));
+    }
     if (typeof body.domainPack === 'string') {
       updateData.domainPack = body.domainPack || null;
       updateData.domainPackConfig = body.domainPack ? (getDomainPack(body.domainPack) as any ?? undefined) : null;
@@ -559,6 +576,7 @@ export async function PATCH(
 
     // Recompose blueprint if any blueprint-relevant field changed (skip if direct override provided)
     const blueprintFields = [
+      'workshopType',
       'engagementType', 'domainPack', 'dreamTrack',
       'description', 'businessContext', 'industry', 'clientName',
       'prepResearch', // research output must trigger blueprint regeneration
@@ -572,6 +590,8 @@ export async function PATCH(
           clientName: true,
           industry: true,
           dreamTrack: true,
+          targetDomain: true,
+          workshopType: true,
           engagementType: true,
           domainPack: true,
           description: true,
@@ -581,27 +601,77 @@ export async function PATCH(
         },
       });
       if (current) {
+        const decryptedCurrent = decryptWorkshopContext(current);
         // Use incoming prepResearch if being saved now, otherwise fall back to stored value.
         // This ensures blueprint regeneration always uses the freshest research data.
         const research = (updateData.prepResearch as WorkshopPrepResearch | null)
-          ?? (current.prepResearch as WorkshopPrepResearch | null);
-        const existingBp = readBlueprintFromJson(current.blueprint);
+          ?? (decryptedCurrent.prepResearch as WorkshopPrepResearch | null);
+        const existingBp = readBlueprintFromJson(decryptedCurrent.blueprint);
+        const nextWorkshopType = (body.workshopType as string | null | undefined)
+          ?? existingBp?.workshopType
+          ?? decryptedCurrent.workshopType;
+        const nextEngagementType = (body.engagementType as string | null | undefined)
+          ?? existingBp?.engagementType
+          ?? (decryptedCurrent.engagementType ? decryptedCurrent.engagementType.toLowerCase() : null);
+        const nextIndustry = (updateData.industry as string | null) ?? decryptedCurrent.industry ?? null;
+        const resolvedPack = resolveIndustryPack(
+          nextIndustry,
+          nextEngagementType,
+          ((updateData.dreamTrack as string | null) ?? decryptedCurrent.dreamTrack ?? null),
+        );
+        const explicitLegacyDomainPack = Object.prototype.hasOwnProperty.call(updateData, 'domainPack');
+        const nextDomainPack = explicitLegacyDomainPack
+          ? ((updateData.domainPack as string | null) ?? null)
+          : null;
+
+        if (!explicitLegacyDomainPack) {
+          updateData.domainPack = null;
+          updateData.domainPackConfig = resolvedPack ? (resolvedPack as any) : null;
+        }
 
         const merged = {
-          industry: (updateData.industry as string | null) ?? current.industry ?? null,
-          dreamTrack: ((updateData.dreamTrack as string | null) ?? current.dreamTrack ?? null) as 'ENTERPRISE' | 'DOMAIN' | null,
-          engagementType: (updateData.engagementType as string | null)
-            ?? (current.engagementType ? current.engagementType.toLowerCase() : null),
-          domainPack: (updateData.domainPack as string | null) ?? current.domainPack ?? null,
-          purpose: (updateData.description as string | null) ?? current.description ?? null,
-          outcomes: (updateData.businessContext as string | null) ?? current.businessContext ?? null,
-          clientName: (updateData.clientName as string | null) ?? current.clientName ?? null,
+          industry: nextIndustry,
+          dreamTrack: ((updateData.dreamTrack as string | null) ?? decryptedCurrent.dreamTrack ?? null) as 'ENTERPRISE' | 'DOMAIN' | null,
+          workshopType: nextWorkshopType ?? null,
+          engagementType: nextEngagementType,
+          domainPack: nextDomainPack ?? resolvedPack?.key ?? null,
+          purpose: (updateData.description as string | null) ?? decryptedCurrent.description ?? null,
+          outcomes: (updateData.businessContext as string | null) ?? decryptedCurrent.businessContext ?? null,
+          clientName: (updateData.clientName as string | null) ?? decryptedCurrent.clientName ?? null,
           researchJourneyStages: research?.journeyStages ?? null,
           researchDimensions: research?.industryDimensions ?? null,
           researchActors: research?.actorTaxonomy ?? null,
           previousVersion: existingBp?.blueprintVersion ?? 0,
         };
         updateData.blueprint = generateBlueprint(merged) as any;
+
+        const contractDidChange = workshopContractChanged(
+          {
+            clientName: decryptedCurrent.clientName,
+            industry: decryptedCurrent.industry,
+            dreamTrack: decryptedCurrent.dreamTrack,
+            targetDomain: decryptedCurrent.targetDomain,
+            workshopType: existingBp?.workshopType ?? decryptedCurrent.workshopType,
+            engagementType: existingBp?.engagementType ?? (decryptedCurrent.engagementType ? decryptedCurrent.engagementType.toLowerCase() : null),
+            domainPack: decryptedCurrent.domainPack,
+          },
+          {
+            clientName: (updateData.clientName as string | null) ?? decryptedCurrent.clientName,
+            industry: nextIndustry,
+            dreamTrack: (updateData.dreamTrack as string | null) ?? decryptedCurrent.dreamTrack,
+            targetDomain: (updateData.targetDomain as string | null) ?? decryptedCurrent.targetDomain,
+            workshopType: nextWorkshopType,
+            engagementType: nextEngagementType,
+            domainPack: nextDomainPack,
+          },
+        );
+
+        if (contractDidChange && body.prepResearch === undefined) {
+          updateData.prepResearch = Prisma.JsonNull;
+          updateData.discoveryBriefing = Prisma.JsonNull;
+          updateData.discoveryQuestions = Prisma.JsonNull;
+          updateData.customQuestions = Prisma.JsonNull;
+        }
       }
     }
 
@@ -616,7 +686,7 @@ export async function PATCH(
       logAuditEvent({ organizationId: user.organizationId, userId: user.userId ?? undefined, userEmail: user.email ?? undefined, action: 'UPDATE_WORKSHOP', resourceType: 'workshop', resourceId: id, metadata: { fieldsUpdated: Object.keys(updateData) }, success: true }).catch(err => console.error('[audit] update_workshop:', err));
     }
 
-    return NextResponse.json({ workshop: updated });
+    return NextResponse.json({ workshop: decryptWorkshopData(updated) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const isSchemaError = message.toLowerCase().includes('does not exist in the current database')

@@ -88,6 +88,36 @@ function getCaptureAPIKey(): string {
 }
 
 /**
+ * Best-effort warm-up for CaptureAPI before opening a streaming WebSocket.
+ *
+ * Railway cold starts can delay the stream's initial `ready` message enough
+ * for the browser handshake path to look broken even though the service is
+ * simply waking up. This does not alter auth or trust boundaries; it just
+ * primes the existing health endpoint already used elsewhere in the platform.
+ */
+export async function warmCaptureAPI(): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_CAPTUREAPI_URL || process.env.CAPTUREAPI_URL
+  if (!url) return
+
+  try {
+    if (typeof window !== 'undefined') {
+      await fetch(`${url}/health`, {
+        method: 'GET',
+        mode: 'no-cors',
+      })
+      return
+    }
+
+    await fetch(`${url}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(8000),
+    })
+  } catch {
+    // Best-effort only. The WebSocket connect path remains the source of truth.
+  }
+}
+
+/**
  * Transcribe audio blob using CaptureAPI with SLM processing.
  *
  * @param audioBlob - Audio data as Blob
@@ -230,6 +260,7 @@ export async function transcribeAudio(
 export interface StreamTranscript {
   type: 'transcript'
   speaker: number | null
+  sourceChunkId?: string
   /** SLM-cleaned text */
   text?: string
   rawText: string
@@ -295,7 +326,9 @@ export class CaptureAPIStream {
   }
 
   /** Open the WebSocket connection. Resolves when the server sends 'ready'. */
-  connect(): Promise<void> {
+  async connect(): Promise<void> {
+    await warmCaptureAPI()
+
     return new Promise((resolve, reject) => {
       if (this._closed) {
         reject(new Error('Stream already closed'))
@@ -313,7 +346,7 @@ export class CaptureAPIStream {
       const timeout = setTimeout(() => {
         reject(new Error('WebSocket connection timed out'))
         this.close()
-      }, 10_000)
+      }, 20_000)
 
       this.ws.onopen = () => { /* connected */ }
 

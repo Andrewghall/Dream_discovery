@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { strictLimiter } from '@/lib/rate-limit';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { normalizeConversationPhase } from '@/lib/types/conversation';
 import {
   getFixedQuestion,
   getFixedQuestionObject,
@@ -11,6 +12,41 @@ import {
   type FixedQuestion,
 } from '@/lib/conversation/fixed-questions';
 
+function sessionNeedsRestart(session: any): boolean {
+  const canonicalCurrentPhase = normalizeConversationPhase(session?.currentPhase);
+  if (!session || canonicalCurrentPhase !== session?.currentPhase) {
+    return true;
+  }
+
+  const messages = Array.isArray(session?.messages) ? session.messages : [];
+  const firstAiQuestion = messages.find((message: any) => {
+    if (message?.role !== 'AI' || !message?.metadata || typeof message.metadata !== 'object') return false;
+    const meta = message.metadata as Record<string, unknown>;
+    return meta.kind === 'question';
+  });
+
+  if (!firstAiQuestion || !firstAiQuestion.metadata || typeof firstAiQuestion.metadata !== 'object') {
+    return true;
+  }
+
+  const firstMeta = firstAiQuestion.metadata as Record<string, unknown>;
+  if (firstMeta.phase !== 'intro' || firstMeta.index !== 0) {
+    return true;
+  }
+
+  return messages.some((message: any) => {
+    const normalizedMessagePhase = normalizeConversationPhase(message?.phase);
+    if (message?.phase && normalizedMessagePhase !== message.phase) {
+      return true;
+    }
+
+    if (!message?.metadata || typeof message.metadata !== 'object') return false;
+    const meta = message.metadata as Record<string, unknown>;
+    if (meta.kind !== 'question' || typeof meta.phase !== 'string') return false;
+    return normalizeConversationPhase(meta.phase) !== meta.phase;
+  });
+}
+
 /**
  * Resolve the question configuration for a new session using the
  * three-tier cascade: discoveryQuestions > blueprint > legacy.
@@ -18,7 +54,44 @@ import {
 function getLensLabels(workshop: any): Array<{ key: string; label: string }> | null {
   const lenses = workshop?.discoveryQuestions?.lenses;
   if (!Array.isArray(lenses) || lenses.length === 0) return null;
-  return lenses.map((l: any) => ({ key: l.key, label: l.label }));
+  return lenses.map((l: any) => ({
+    key: l.key,
+    label: l.label,
+    questionCount: Array.isArray(l.questions) ? l.questions.length : 0,
+  }));
+}
+
+function computeDisplayedPhaseProgress(params: {
+  currentPhase: string;
+  messages: Array<{ role: string; metadata?: unknown }>;
+  workshop: any;
+  questionSetVersion: string;
+}): number {
+  const currentPhase = String(params.currentPhase || '').trim();
+  if (!currentPhase) return 0;
+
+  const customQs = buildQuestionsFromDiscoverySet(params.workshop.discoveryQuestions);
+  const blueprint = readBlueprintFromJson(params.workshop.blueprint);
+  const blueprintQs =
+    !customQs && blueprint
+      ? buildQuestionsFromBlueprint(blueprint, params.questionSetVersion)
+      : null;
+  const qs = customQs || blueprintQs;
+  const totalQuestions = qs?.[currentPhase]?.length ?? 0;
+  if (totalQuestions === 0) return 0;
+
+  const lastAiQuestion = [...params.messages]
+    .reverse()
+    .find((message) => {
+      if (message.role !== 'AI' || !message.metadata || typeof message.metadata !== 'object') return false;
+      const meta = message.metadata as Record<string, unknown>;
+      return meta.kind === 'question' && meta.phase === currentPhase && typeof meta.index === 'number';
+    });
+
+  if (!lastAiQuestion || !lastAiQuestion.metadata || typeof lastAiQuestion.metadata !== 'object') return 0;
+  const meta = lastAiQuestion.metadata as Record<string, unknown>;
+  const index = typeof meta.index === 'number' ? meta.index : 0;
+  return Math.max(0, Math.min(100, Math.round(((index + 1) / totalQuestions) * 100)));
 }
 
 function resolveSessionConfig(workshop: any, questionSetVersion: string) {
@@ -178,7 +251,12 @@ export async function POST(request: NextRequest) {
         sessionId: refetchedSession.id,
         status: refetchedSession.status,
         currentPhase: refetchedSession.currentPhase,
-        phaseProgress: refetchedSession.phaseProgress,
+        phaseProgress: computeDisplayedPhaseProgress({
+          currentPhase: refetchedSession.currentPhase,
+          messages: refetchedSession.messages || [],
+          workshop: participant.workshop,
+          questionSetVersion,
+        }),
         language: refetchedSession.language,
         voiceEnabled: refetchedSession.voiceEnabled,
         includeRegulation: refetchedSession.includeRegulation,
@@ -227,6 +305,15 @@ export async function POST(request: NextRequest) {
           },
         },
       });
+    }
+
+    if (session?.status === 'IN_PROGRESS' && sessionNeedsRestart(session)) {
+      await (prisma as any).conversationSession.deleteMany({
+        where: {
+          id: session.id,
+        },
+      });
+      session = null;
     }
 
     // Create new session if no session exists for this run type.
@@ -334,8 +421,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       sessionId: session.id,
       status: session.status,
-      currentPhase: session.currentPhase,
-      phaseProgress: session.phaseProgress,
+      currentPhase: normalizeConversationPhase(session.currentPhase),
+      phaseProgress: computeDisplayedPhaseProgress({
+        currentPhase: normalizeConversationPhase(session.currentPhase),
+        messages: ((session as any).messages || []) as Array<{ role: string; metadata?: unknown }>,
+        workshop: participant.workshop,
+        questionSetVersion,
+      }),
       language: session.language,
       voiceEnabled: session.voiceEnabled,
       includeRegulation: session.includeRegulation,

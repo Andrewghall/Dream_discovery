@@ -3,10 +3,10 @@
  *
  * Generates a sample discovery report PDF using the workshop's actual prep
  * lenses (from discoveryQuestions), so the example reflects the exact
- * structure participants will experience for this specific workshop.
+ * canonical lens structure participants will experience for this specific workshop.
  *
  * If no discovery questions have been generated yet, falls back to the
- * workshop's configured domain pack lenses or a sensible generic default.
+ * canonical seven-lens default.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,6 +14,7 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { prisma } from '@/lib/prisma';
 import { generateDiscoveryReportPdf } from '@/lib/pdf/discovery-report';
+import { CANONICAL_LENSES, canonicalizeLensName } from '@/lib/workshop/canonical-lenses';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -75,46 +76,7 @@ const LENS_CONTENT: Record<string, {
     support: ['Digital skills bootcamp programme', 'Dedicated change management resource'],
   },
 
-  organisation: {
-    currentScore: 4, targetScore: 7, projectedScore: 5,
-    strengths: [
-      'Leadership team is aligned on the need for change',
-      'Clear strategic direction communicated from the top',
-    ],
-    working: ['Monthly cross-functional forums provide some coordination', 'Budget approval is reasonably fast for operational spend'],
-    gaps: [
-      'Accountability for cross-departmental outcomes is unclear',
-      'Decision-making is slow for anything requiring sign-off above team manager level',
-      'Change management capability is thin — initiatives regularly under-resourced for adoption',
-    ],
-    painPoints: ['Projects stall waiting for governance approvals', 'Ownership disputes between departments create work duplication'],
-    frictions: ['Multiple reporting lines create ambiguity about priorities'],
-    barriers: ['Annual budgeting cycle prevents agile funding of emerging needs', 'Risk-averse culture — experimentation is not rewarded'],
-    constraint: ['Outsourcing contract limits ability to change certain processes'],
-    future: [
-      'Product-owner model for core journeys spanning all departments',
-      'Fast-track approval pathway for low-risk digital experiments',
-    ],
-    support: ['External organisational design expertise', 'Executive sponsorship programme for transformation initiatives'],
-  },
-
-  corporate: {
-    currentScore: 4, targetScore: 7, projectedScore: 5,
-    strengths: ['Leadership alignment on strategic direction', 'Reasonable speed for operational budget approvals'],
-    working: ['Cross-functional forums exist and are attended', 'Risk management process is mature'],
-    gaps: [
-      'Cross-departmental accountability gaps slow decision-making',
-      'Project governance creates bottlenecks for technology change',
-    ],
-    painPoints: ['Six-week average for IT change approval on even minor updates'],
-    frictions: ['Shadow IT prevalent — teams maintain their own spreadsheets outside sanctioned systems'],
-    barriers: ['Legacy ERP not yet funded for replacement'],
-    constraint: ['Outsourcing contract restricts certain process changes'],
-    future: ['Streamlined governance with clear product ownership', 'Fast-track pathway for AI pilots'],
-    support: ['Organisational design review', 'Change management investment'],
-  },
-
-  customer: {
+  commercial: {
     currentScore: 6, targetScore: 9, projectedScore: 7,
     strengths: [
       'High satisfaction scores for face-to-face and phone interactions',
@@ -165,7 +127,7 @@ const LENS_CONTENT: Record<string, {
     support: ['Technology strategy and architecture review', 'Proof-of-concept funding for AI automation pilots'],
   },
 
-  regulation: {
+  'risk/compliance': {
     currentScore: 6, targetScore: 7, projectedScore: 6,
     strengths: ['Compliance team is experienced and well-resourced', 'Good track record with regulatory audits'],
     working: ['GDPR processes are mature and consistently applied', 'Mandatory regulatory training is well-attended'],
@@ -216,16 +178,19 @@ const LENS_CONTENT: Record<string, {
   },
 };
 
-// Maps lens display labels to the internal FIXED_QUESTIONS phase keys
-// Mirrors LENS_NAME_TO_PHASE in lib/conversation/fixed-questions.ts
+// Maps lens display labels to the internal FIXED_QUESTIONS phase keys.
 const LABEL_TO_PHASE_KEY: Record<string, string> = {
   People: 'people',
-  Operations: 'corporate',
-  Organisation: 'corporate',
-  Corporate: 'corporate',
-  Customer: 'customer',
+  Operations: 'operations',
+  Organisation: 'operations',
+  Corporate: 'operations',
   Technology: 'technology',
-  Regulation: 'regulation',
+  Commercial: 'commercial',
+  Customer: 'commercial',
+  'Risk/Compliance': 'risk_compliance',
+  Regulation: 'risk_compliance',
+  Finance: 'finance',
+  Partners: 'partners',
 };
 
 // Generic maturity scale used for custom lenses that have no FIXED_QUESTIONS entry
@@ -367,22 +332,34 @@ export async function GET(
       lenses = dq.lenses;
     }
 
-    // Fallback: use a sensible generic set if no questions generated yet
+    // Fallback: use the canonical lens set if no questions generated yet.
     if (lenses.length === 0) {
-      lenses = [
-        { key: 'people', label: 'People', questions: [] },
-        { key: 'organisation', label: 'Organisation', questions: [] },
-        { key: 'customer', label: 'Customer', questions: [] },
-        { key: 'technology', label: 'Technology', questions: [] },
-      ];
+      lenses = CANONICAL_LENSES.map((lens) => ({
+        key: lens.phase,
+        label: lens.name,
+        questions: [],
+      }));
     }
+
+    lenses = lenses.map((lens) => {
+      const canonicalLabel = canonicalizeLensName(lens.label);
+      if (!canonicalLabel) {
+        return lens;
+      }
+      const canonicalLens = CANONICAL_LENSES.find((entry) => entry.name === canonicalLabel);
+      return {
+        ...lens,
+        key: canonicalLens?.phase ?? lens.key,
+        label: canonicalLabel,
+      };
+    });
 
     const lensLabels = lenses.map((l) => l.label);
 
     // ── Build phase insights from actual lenses ────────────────────────────
     const phaseInsights = lenses.map((lens, idx) => {
       // Look up example narrative content by normalised label
-      const contentKey = lens.label.toLowerCase();
+      const contentKey = lens.label.toLowerCase().replace(/\s+/g, '').replace(/risk\/compliance/, 'risk/compliance');
       const content = LENS_CONTENT[contentKey] ?? genericLensContent(lens.label, idx);
 
       // Map to the internal FIXED_QUESTIONS phase key so the maturity scale

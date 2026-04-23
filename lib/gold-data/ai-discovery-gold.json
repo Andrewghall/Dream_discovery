@@ -1,0 +1,217 @@
+{
+  "workshop_type": "AI",
+  "purpose": "Assess how AI enables or constrains business growth by testing the alignment between capability, business readiness, adoption, delivered value, and commercial impact.",
+  "generation_sequence": ["workshop", "context", "gtm_intent", "signal", "question"],
+  "rules": {
+    "must_anchor_to": ["won_deals", "lost_deals", "live_pipeline", "delivered_outcomes", "user_behaviour", "operating_model"],
+    "single_signal_only": true,
+    "force_decision": ["pursue", "avoid", "fix", "invest"],
+    "must_force_evidence": true,
+    "must_link": ["AI_capability", "business_readiness", "adoption", "outcome", "decision", "consequence"],
+    "prohibit_context_leakage": true,
+    "invalid_if_generic": true
+  },
+  "signals": [
+    "ai_differentiation",
+    "ai_credibility_gap",
+    "ai_overpromise_pattern",
+    "ai_delivery_gap",
+    "ai_value_realisation",
+    "ai_adoption_success",
+    "ai_adoption_friction",
+    "ai_adoption_gap",
+    "ai_business_readiness",
+    "ai_readiness_gap",
+    "ai_operating_model_alignment",
+    "ai_change_resistance",
+    "ai_enablement_of_growth",
+    "ai_constraint_on_growth",
+    "ai_use_case_viability",
+    "ai_investment_gap",
+    "ai_competitive_exposure",
+    "ai_trust_risk",
+    "ai_scalability_limit",
+    "ai_anti_icp"
+  ],
+  "question_archetypes": [
+    {
+      "signal": "ai_differentiation",
+      "examples": [
+        "In recent wins, where did AI clearly strengthen the reason the buyer chose the offer?",
+        "Which opportunities were won because AI created a credible advantage?",
+        "Where did AI materially improve perceived value?"
+      ]
+    },
+    {
+      "signal": "ai_credibility_gap",
+      "examples": [
+        "In recent losses, where did buyers doubt the AI story enough to weaken confidence?",
+        "Which opportunities failed because AI claims were not believable?",
+        "Where did the AI proposition fail to earn trust?"
+      ]
+    },
+    {
+      "signal": "ai_overpromise_pattern",
+      "examples": [
+        "Across live deals, where is AI being positioned beyond what can be delivered?",
+        "Which pursuits carry risk because the AI story is ahead of capability?",
+        "Where is promise stretching beyond operational reality?"
+      ]
+    },
+    {
+      "signal": "ai_delivery_gap",
+      "examples": [
+        "In delivered work, where has AI failed to perform as sold?",
+        "Which use cases exposed a gap between proposed and actual capability?",
+        "Where has AI under-delivered against expectation?"
+      ]
+    },
+    {
+      "signal": "ai_value_realisation",
+      "examples": [
+        "Where is AI creating measurable business value rather than noise?",
+        "Which use cases are producing clear operational or financial impact?",
+        "Where is AI improving outcomes in a way that matters?"
+      ]
+    },
+    {
+      "signal": "ai_adoption_success",
+      "examples": [
+        "Which AI use cases are consistently used in day-to-day operations?",
+        "Where has AI become embedded in how work is done?",
+        "Which use cases show sustained usage rather than initial interest?"
+      ]
+    },
+    {
+      "signal": "ai_adoption_friction",
+      "examples": [
+        "Where are users resisting AI strongly enough to limit its impact?",
+        "Which use cases fail because teams do not adopt them?",
+        "Where is behaviour preventing AI from being effective?"
+      ]
+    },
+    {
+      "signal": "ai_adoption_gap",
+      "examples": [
+        "Where has AI been deployed but is not used enough to create value?",
+        "Which use cases exist but are ignored in real workflows?",
+        "Where is capability present but adoption is weak?"
+      ]
+    },
+    {
+      "signal": "ai_business_readiness",
+      "examples": [
+        "Which parts of the business are structurally ready to adopt AI at scale?",
+        "Where does the operating model already support AI integration?",
+        "Which teams can absorb AI without major disruption?"
+      ]
+    },
+    {
+      "signal": "ai_readiness_gap",
+      "examples": [
+        "Where is AI failing because the business is not ready to support it?",
+        "Which use cases break due to missing processes, skills, or governance?",
+        "Where does lack of readiness undermine AI outcomes?"
+      ]
+    },
+    {
+      "signal": "ai_operating_model_alignment",
+      "examples": [
+        "Where does AI align cleanly with how work is structured today?",
+        "Which use cases fit naturally into existing workflows?",
+        "Where is AI succeeding because the operating model supports it?"
+      ]
+    },
+    {
+      "signal": "ai_change_resistance",
+      "examples": [
+        "Where is organisational resistance limiting AI adoption or impact?",
+        "Which teams reject or bypass AI capabilities?",
+        "Where does culture block AI from being effective?"
+      ]
+    },
+    {
+      "signal": "ai_enablement_of_growth",
+      "examples": [
+        "Where has AI made it easier to win or scale target opportunities?",
+        "Which growth ambitions are now achievable because of AI?",
+        "Where does AI unlock access to higher-value work?"
+      ]
+    },
+    {
+      "signal": "ai_constraint_on_growth",
+      "examples": [
+        "Which opportunities are harder to win because AI capability is not strong enough?",
+        "Where is lack of AI limiting growth ambition?",
+        "Which target opportunities remain out of reach?"
+      ]
+    },
+    {
+      "signal": "ai_use_case_viability",
+      "examples": [
+        "Which AI use cases are viable enough to scale commercially?",
+        "Where are use cases attractive in theory but weak in practice?",
+        "Which use cases should be expanded because they work reliably?"
+      ]
+    },
+    {
+      "signal": "ai_investment_gap",
+      "examples": [
+        "Which opportunities are being missed because AI capability has not been invested in enough?",
+        "Where is underinvestment limiting impact?",
+        "What must be funded before AI can support growth?"
+      ]
+    },
+    {
+      "signal": "ai_competitive_exposure",
+      "examples": [
+        "In recent losses, where did competitors expose AI weakness?",
+        "Which opportunities showed weaker AI maturity versus alternatives?",
+        "Where is AI positioning not competitive?"
+      ]
+    },
+    {
+      "signal": "ai_trust_risk",
+      "examples": [
+        "Where is AI creating risk to trust with users or clients?",
+        "Which use cases introduce uncertainty the business cannot manage?",
+        "Where does AI weaken confidence?"
+      ]
+    },
+    {
+      "signal": "ai_scalability_limit",
+      "examples": [
+        "Which AI use cases cannot scale reliably?",
+        "Where does AI work in pilots but fail at scale?",
+        "Which capabilities break under broader adoption?"
+      ]
+    },
+    {
+      "signal": "ai_anti_icp",
+      "examples": [
+        "Which opportunities should be avoided even if winnable because AI expectations are too high to meet?",
+        "Where would winning create delivery risk due to AI gaps?",
+        "Which deals depend too heavily on unproven AI capability?"
+      ]
+    }
+  ],
+  "anti_patterns": [
+    "ai_strategy_without_execution",
+    "no_link_to_real_behaviour",
+    "future_speculation",
+    "technology_without_outcome",
+    "no_adoption_focus",
+    "no_readiness_focus",
+    "multi_signal_questions",
+    "generic_ai_questions"
+  ],
+  "validation": [
+    "each_question_requires_real_evidence",
+    "each_question_links_ai_to_readiness_and_adoption",
+    "each_question_forces_decision",
+    "each_question_exposes_real_vs_claimed_capability",
+    "each_question_tests_readiness_not_just_capability",
+    "each_question_is_context_dependent",
+    "no_question_reusable_without_change"
+  ]
+}

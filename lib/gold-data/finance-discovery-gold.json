@@ -1,0 +1,170 @@
+{
+  "workshop_type": "FINANCE",
+  "purpose": "Assess how the Finance function enables, shapes, or constrains business growth by linking deal behaviour to financial outcomes and strategic decisions.",
+  "generation_sequence": ["workshop", "context", "gtm_intent", "signal", "question"],
+  "rules": {
+    "must_anchor_to": ["won_deals", "lost_deals", "live_pipeline", "delivered_outcomes"],
+    "single_signal_only": true,
+    "force_decision": ["pursue", "avoid", "fix", "invest"],
+    "must_force_evidence": true,
+    "must_link": ["deal", "financial_outcome", "decision", "consequence"],
+    "prohibit_context_leakage": true,
+    "invalid_if_generic": true
+  },
+  "signals": [
+    "profitable_growth",
+    "revenue_quality",
+    "cost_to_serve_variance",
+    "margin_erosion_pattern",
+    "pricing_power",
+    "pricing_constraint",
+    "investment_enablement",
+    "investment_gap",
+    "growth_vs_margin_tradeoff",
+    "finance_enablement",
+    "finance_constraint",
+    "deal_structuring_capability",
+    "forecast_reliability",
+    "cash_flow_pressure",
+    "finance_anti_icp"
+  ],
+  "question_archetypes": [
+    {
+      "signal": "profitable_growth",
+      "examples": [
+        "In recent wins, which deals represent growth that should be actively supported because they deliver both revenue and sustainable margin?",
+        "Which recent deals scaled without increasing cost-to-serve disproportionately?",
+        "Where is growth being achieved with strong contribution rather than volume dilution?"
+      ]
+    },
+    {
+      "signal": "revenue_quality",
+      "examples": [
+        "Across recent wins, which deals looked attractive at sale but created financial strain after delivery began?",
+        "Which revenue streams consistently underperform expected margin?",
+        "Where is revenue being won that does not translate into long-term value?"
+      ]
+    },
+    {
+      "signal": "cost_to_serve_variance",
+      "examples": [
+        "In delivered work, where has actual cost-to-serve exceeded pricing assumptions?",
+        "Which deal types consistently require more effort or cost than expected?",
+        "Where do hidden costs appear after contract signature?"
+      ]
+    },
+    {
+      "signal": "margin_erosion_pattern",
+      "examples": [
+        "Where do margins degrade over time after deals are secured?",
+        "Which work types show consistent margin erosion due to delivery complexity or scope expansion?",
+        "Where is profitability lost after initial deal success?"
+      ]
+    },
+    {
+      "signal": "pricing_power",
+      "examples": [
+        "In recent wins, where was pricing maintained or improved due to strong perceived value?",
+        "Which deal types allow pricing strength without losing competitiveness?",
+        "Where are buyers willing to pay a premium and why?"
+      ]
+    },
+    {
+      "signal": "pricing_constraint",
+      "examples": [
+        "In recent losses, where did pricing make the offer uncompetitive despite strong capability?",
+        "Which deals required discounting to win and what does that indicate?",
+        "Where does pricing limit access to target opportunities?"
+      ]
+    },
+    {
+      "signal": "investment_enablement",
+      "examples": [
+        "Where has investment directly improved win rates or delivery capability?",
+        "Which capabilities exist today because investment decisions were made early?",
+        "Where has funding flexibility strengthened competitiveness?"
+      ]
+    },
+    {
+      "signal": "investment_gap",
+      "examples": [
+        "Which opportunities are being lost because required capabilities have not been funded?",
+        "Where is lack of investment limiting entry into higher-value work?",
+        "Which deals require investment to become viable but are currently missed?"
+      ]
+    },
+    {
+      "signal": "growth_vs_margin_tradeoff",
+      "examples": [
+        "Where is revenue growth being prioritised at the expense of margin quality?",
+        "Which deals highlight trade-offs between short-term revenue and long-term profitability?",
+        "Where are growth targets distorting financial discipline?"
+      ]
+    },
+    {
+      "signal": "finance_enablement",
+      "examples": [
+        "In recent wins, where did Finance shape deal structure to improve both competitiveness and delivery viability?",
+        "Where has Finance enabled deals that would otherwise not close?",
+        "Which deals succeeded because of strong financial structuring?"
+      ]
+    },
+    {
+      "signal": "finance_constraint",
+      "examples": [
+        "Where is Finance slowing or constraining deals due to risk, margin, or approval thresholds?",
+        "Which deals are lost because financial governance does not match market reality?",
+        "Where do approval processes reduce commercial agility?"
+      ]
+    },
+    {
+      "signal": "deal_structuring_capability",
+      "examples": [
+        "Which deals required complex structuring to win, and how effectively was that supported?",
+        "Where does lack of structuring capability reduce competitiveness?",
+        "Which opportunities could be won with better structuring?"
+      ]
+    },
+    {
+      "signal": "forecast_reliability",
+      "examples": [
+        "Where have revenue or margin forecasts proven inaccurate after delivery started?",
+        "Which deal types consistently underperform against forecast expectations?",
+        "Where is forecasting failing to reflect operational reality?"
+      ]
+    },
+    {
+      "signal": "cash_flow_pressure",
+      "examples": [
+        "Which deals create cash flow strain despite appearing profitable?",
+        "Where do payment terms or cost timing create financial pressure?",
+        "Which client types delay value realisation due to cash flow impact?"
+      ]
+    },
+    {
+      "signal": "finance_anti_icp",
+      "examples": [
+        "Which opportunities should be avoided even if winnable because the financial profile makes them unattractive to deliver or scale?",
+        "Which deals create revenue but damage long-term financial health?",
+        "Where should Finance draw a hard line despite commercial pressure?"
+      ]
+    }
+  ],
+  "anti_patterns": [
+    "finance_as_reporting_only",
+    "no_link_to_deal_behaviour",
+    "generic_margin_discussion",
+    "no_tradeoff_visibility",
+    "questions_answerable_without_evidence",
+    "multi_signal_questions",
+    "lack_of_growth_focus"
+  ],
+  "validation": [
+    "each_question_requires_real_deal_or_delivery_evidence",
+    "each_question_forces_clear_decision",
+    "each_question_links_finance_to_growth_outcome",
+    "each_question_exposes_tradeoffs",
+    "each_question_is_context_dependent",
+    "no_question_reusable_without_change"
+  ]
+}

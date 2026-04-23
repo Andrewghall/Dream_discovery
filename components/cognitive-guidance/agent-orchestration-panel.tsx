@@ -146,9 +146,17 @@ export function AgentOrchestrationPanel({
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggleCollapse}
-        className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleCollapse();
+          }
+        }}
+        className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
       >
         <div className="flex items-center gap-3">
           <span className="text-xs font-mono text-gray-500 tracking-wider">{title}</span>
@@ -180,7 +188,7 @@ export function AgentOrchestrationPanel({
         ) : (
           <ChevronUp className="w-4 h-4 text-gray-400" />
         )}
-      </button>
+      </div>
 
       {/* Collapsed summary bar */}
       {collapsed && displayEntries.length > 0 && (

@@ -14,6 +14,8 @@ import {
   getPhaseOrder,
 } from '@/lib/conversation/fixed-questions';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
+import { normalizeConversationPhase } from '@/lib/types/conversation';
+import { getConversationPhaseAliases } from '@/lib/workshop/canonical-lenses';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -134,7 +136,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const currentPhase = session.currentPhase as string;
+    const currentPhase = normalizeConversationPhase(session.currentPhase);
+    const currentPhaseAliases = getConversationPhaseAliases(currentPhase);
     let newPhase: string = currentPhase;
     let newProgress = session.phaseProgress;
     const includeRegulation = session.includeRegulation ?? session.workshop.includeRegulation ?? true;
@@ -167,7 +170,7 @@ export async function POST(request: NextRequest) {
       const normalizedOriginal = userMessage.trim().toLowerCase();
       const normalizedTranslated = translatedToEnglish.trim().toLowerCase();
       const isSkipRegulation =
-        (normalizedOriginal === 'skip' || normalizedTranslated === 'skip') && currentPhase === 'regulation';
+        (normalizedOriginal === 'skip' || normalizedTranslated === 'skip') && currentPhase === 'risk_compliance';
 
       // Save user message
       await prisma.conversationMessage.create({
@@ -175,7 +178,7 @@ export async function POST(request: NextRequest) {
           sessionId: session.id,
           role: 'PARTICIPANT',
           content: userMessage,
-          phase: session.currentPhase,
+          phase: currentPhase,
           metadata: {
             ...(isSkipRegulation ? { kind: 'skip' } : clarification ? { kind: 'clarification' } : {}),
             ...(sessionLanguage && sessionLanguage !== 'en'
@@ -223,10 +226,10 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (isSkipRegulation) {
-        const nextIncludeRegulation = false;
-        const nextPhase = getNextPhase('regulation', nextIncludeRegulation);
-        const nextQuestionIndex = 0;
+    if (isSkipRegulation) {
+      const nextIncludeRegulation = false;
+      const nextPhase = getNextPhase('risk_compliance', nextIncludeRegulation);
+      const nextQuestionIndex = 0;
 
         // Use 3-tier cascade for next question after skip
         const skipQs = customQs || blueprintQs;
@@ -259,17 +262,19 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        await prisma.conversationSession.update({
-          where: { id: session.id },
-          data: {
-            includeRegulation: nextIncludeRegulation,
-            currentPhase: nextPhase,
-            phaseProgress: 0,
-            updatedAt: new Date(),
-          },
-        });
+      await prisma.conversationSession.update({
+        where: { id: session.id },
+        data: {
+          includeRegulation: nextIncludeRegulation,
+          currentPhase: nextPhase,
+          phaseProgress: skipQs?.[nextPhase]?.length
+            ? Math.max(0, Math.min(100, Math.round(((nextQuestionIndex + 1) / skipQs[nextPhase].length) * 100)))
+            : 0,
+          updatedAt: new Date(),
+        },
+      });
 
-        return NextResponse.json({
+      return NextResponse.json({
           message: {
             id: aiMessage.id,
             role: aiMessage.role,
@@ -279,7 +284,9 @@ export async function POST(request: NextRequest) {
             createdAt: aiMessage.createdAt,
           },
           currentPhase: nextPhase,
-          phaseProgress: 0,
+          phaseProgress: skipQs?.[nextPhase]?.length
+            ? Math.max(0, Math.min(100, Math.round(((nextQuestionIndex + 1) / skipQs[nextPhase].length) * 100)))
+            : 0,
           includeRegulation: nextIncludeRegulation,
           status: session.status,
         });
@@ -334,7 +341,9 @@ export async function POST(request: NextRequest) {
       where: {
         sessionId: session.id,
         role: 'PARTICIPANT',
-        phase: currentPhase,
+        phase: {
+          in: currentPhaseAliases.length > 0 ? currentPhaseAliases : [currentPhase],
+        },
       },
     });
 
@@ -342,7 +351,9 @@ export async function POST(request: NextRequest) {
       where: {
         sessionId: session.id,
         role: 'PARTICIPANT',
-        phase: currentPhase,
+        phase: {
+          in: currentPhaseAliases.length > 0 ? currentPhaseAliases : [currentPhase],
+        },
         metadata: {
           equals: { kind: 'clarification' },
         },
@@ -364,12 +375,15 @@ export async function POST(request: NextRequest) {
       const idx = phaseOrder.indexOf(currentPhase);
       newPhase = phaseOrder[Math.min(idx + 1, phaseOrder.length - 1)];
       nextQuestionIndex = 0;
-      newProgress = 0;
+      const nextPhaseQuestionCount = qs[newPhase]?.length || 0;
+      newProgress = nextPhaseQuestionCount > 0
+        ? Math.max(0, Math.min(100, Math.round(((nextQuestionIndex + 1) / nextPhaseQuestionCount) * 100)))
+        : 0;
     } else {
       newPhase = currentPhase;
       const total = qs[newPhase]?.length || 0;
       const progressPercent = total > 0
-        ? Math.max(0, Math.min(100, Math.round((answeredCountCurrentPhase / total) * 100)))
+        ? Math.max(0, Math.min(100, Math.round(((nextQuestionIndex + 1) / total) * 100)))
         : 0;
       newProgress = progressPercent;
     }

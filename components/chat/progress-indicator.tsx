@@ -1,4 +1,4 @@
-import { PHASE_CONFIGS, ConversationPhase } from '@/lib/types/conversation';
+import { PHASE_CONFIGS, ConversationPhase, normalizeConversationPhase } from '@/lib/types/conversation';
 import { Check } from 'lucide-react';
 
 interface LensLabel {
@@ -16,16 +16,12 @@ interface ProgressIndicatorProps {
 function getIconForPhase(key: string): string {
   const icons: Record<string, string> = {
     people: '👥',
-    corporate: '🏢',
-    organisation: '🏢',
-    organization: '🏢',
-    customer: '🎯',
-    technology: '💻',
-    regulation: '⚖️',
-    finance: '💰',
     operations: '⚙️',
-    strategy: '🗺️',
-    digital: '🌐',
+    technology: '💻',
+    commercial: '📈',
+    risk_compliance: '⚖️',
+    finance: '💰',
+    partners: '🤝',
   };
   return icons[key.toLowerCase()] ?? '📋';
 }
@@ -33,23 +29,23 @@ function getIconForPhase(key: string): string {
 export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulation = true, lensLabels }: ProgressIndicatorProps) {
   const staticAreas = [
     { phase: 'people', name: 'People', icon: '👥' },
-    { phase: 'corporate', name: 'Organisation', icon: '🏢' },
-    { phase: 'customer', name: 'Customer', icon: '🎯' },
+    { phase: 'operations', name: 'Operations', icon: '⚙️' },
     { phase: 'technology', name: 'Technology', icon: '💻' },
-    { phase: 'regulation', name: 'Regulation', icon: '⚖️' },
+    { phase: 'commercial', name: 'Commercial', icon: '📈' },
+    { phase: 'risk_compliance', name: 'Risk / Compliance', icon: '⚖️' },
+    { phase: 'partners', name: 'Partners', icon: '🤝' },
   ];
 
   // Use dynamic lens labels when available, otherwise fall back to static areas
   const competencyAreas: Array<{ phase: string; name: string; icon: string }> = lensLabels?.length
     ? lensLabels.map((l) => ({ phase: l.key, name: l.label, icon: getIconForPhase(l.key) }))
-    : includeRegulation
-      ? staticAreas
-      : staticAreas.filter((a) => a.phase !== 'regulation');
+    : staticAreas;
 
   const phaseOrder = ['intro', ...competencyAreas.map((a) => a.phase), 'prioritization', 'summary'];
+  const normalizedCurrentPhase = normalizeConversationPhase(currentPhase);
 
   const getCompletionPercentage = (phase: string): number => {
-    const currentIndex = phaseOrder.indexOf(currentPhase);
+    const currentIndex = phaseOrder.indexOf(normalizedCurrentPhase);
     const phaseIndex = phaseOrder.indexOf(phase);
     if (phaseIndex === -1) return 0;
     if (currentIndex > phaseIndex) return 100; // Completed
@@ -57,7 +53,7 @@ export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulati
     return 0; // Not started
   };
 
-  const isCurrentPhase = (phase: string) => currentPhase === phase;
+  const isCurrentPhase = (phase: string) => normalizedCurrentPhase === phase;
   const isCompleted = (phase: string) => getCompletionPercentage(phase) === 100;
 
   return (
@@ -104,7 +100,7 @@ export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulati
                 </div>
                 {current && (
                   <p className="text-xs text-muted-foreground">
-                    {PHASE_CONFIGS[currentPhase as ConversationPhase]?.objective}
+                    {PHASE_CONFIGS[normalizedCurrentPhase as ConversationPhase]?.objective}
                   </p>
                 )}
               </div>
@@ -112,20 +108,20 @@ export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulati
           })}
         </div>
 
-        {(currentPhase === 'prioritization' || currentPhase === 'summary') && (
+        {(normalizedCurrentPhase === 'prioritization' || normalizedCurrentPhase === 'summary') && (
           <div className="pt-4 border-t space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">
-                {currentPhase === 'prioritization' ? '📊 Prioritization' : '✅ Summary'}
+                {normalizedCurrentPhase === 'prioritization' ? '📊 Prioritization' : '✅ Summary'}
               </span>
               <span className="text-xs text-primary font-semibold">
-                {currentPhase === 'summary' ? '100%' : `${Math.round(phaseProgress)}%`}
+                {normalizedCurrentPhase === 'summary' ? '100%' : `${Math.round(phaseProgress)}%`}
               </span>
             </div>
             <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
               <div 
                 className="h-full bg-primary transition-all duration-300"
-                style={{ width: `${currentPhase === 'summary' ? 100 : phaseProgress}%` }}
+                style={{ width: `${normalizedCurrentPhase === 'summary' ? 100 : phaseProgress}%` }}
               />
             </div>
           </div>

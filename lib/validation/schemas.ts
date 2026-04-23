@@ -90,6 +90,15 @@ const ENGAGEMENT_TYPE_KEYS = [
   'transformation_sprint',
   'cultural_alignment',
   'go_to_market',
+  'deep_dive',
+  'sprint',
+  'alignment',
+] as const;
+
+const CANONICAL_ENGAGEMENT_TYPES = [
+  'DEEP_DIVE',
+  'SPRINT',
+  'ALIGNMENT',
 ] as const;
 
 const DREAM_TRACKS = ['ENTERPRISE', 'DOMAIN'] as const;
@@ -106,11 +115,19 @@ const WORKSHOP_TYPES = [
   'SALES',
 ] as const;
 
+const CANONICAL_WORKSHOP_TYPES = [
+  'TRANSFORMATION',
+  'OPERATIONS',
+  'AI',
+  'GO_TO_MARKET',
+  'FINANCE',
+] as const;
+
 export const CreateWorkshopSchema = z.object({
   name: nonEmptyStr(200),
   description: optStr(2000),
   businessContext: optStr(5000),
-  workshopType: z.enum(WORKSHOP_TYPES).optional(),
+  workshopType: z.enum([...WORKSHOP_TYPES, ...CANONICAL_WORKSHOP_TYPES]).optional(),
   scheduledDate: z.string().datetime().optional().or(z.null()).optional(),
   responseDeadline: z.string().datetime().optional().or(z.null()).optional(),
   includeRegulation: z.boolean().optional(),
@@ -122,7 +139,7 @@ export const CreateWorkshopSchema = z.object({
   targetDomain: optStr(200),
   // Accept both lowercase UI keys and uppercase Prisma enum values.
   // Normalisation to the DB enum is handled by toEngagementEnum() in the route handler.
-  engagementType: z.enum([...ENGAGEMENT_TYPES, ...ENGAGEMENT_TYPE_KEYS]).optional().or(z.null()).optional(),
+  engagementType: z.enum([...ENGAGEMENT_TYPES, ...ENGAGEMENT_TYPE_KEYS, ...CANONICAL_ENGAGEMENT_TYPES]).optional().or(z.null()).optional(),
 });
 
 export const PatchWorkshopSchema = z.object({
@@ -135,7 +152,8 @@ export const PatchWorkshopSchema = z.object({
   companyWebsite: z.string().url('Invalid URL').max(500).optional().or(z.literal('')).optional(),
   dreamTrack: z.enum(DREAM_TRACKS).optional().or(z.null()).optional(),
   targetDomain: optStr(200),
-  engagementType: z.enum(ENGAGEMENT_TYPES).optional().or(z.null()).optional(),
+  workshopType: z.enum([...WORKSHOP_TYPES, ...CANONICAL_WORKSHOP_TYPES]).optional().or(z.null()).optional(),
+  engagementType: z.enum([...ENGAGEMENT_TYPES, ...CANONICAL_ENGAGEMENT_TYPES]).optional().or(z.null()).optional(),
   domainPack: optStr(100),
   // JSON blobs — validated as non-null objects but not deeply validated here
   prepResearch: z.record(z.string(), z.unknown()).optional().or(z.null()).optional(),
@@ -304,6 +322,7 @@ export const PatchWorkshopBodySchema = z.object({
   name: z.string().min(1).max(200).trim().optional(),
   description: optStr(2000),
   businessContext: optStr(10000),
+  workshopType: optStr(100),
   includeRegulation: z.boolean().optional(),
   clientName: optStr(200),
   industry: optStr(100),

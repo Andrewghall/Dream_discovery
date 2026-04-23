@@ -14,6 +14,11 @@ import { runDiscoveryIntelligenceAgent } from '@/lib/cognition/agents/discovery-
 import { hasDiscoveryData } from '@/lib/cognition/agents/agent-types';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import type { PrepContext, AgentConversationEntry, WorkshopPrepResearch } from '@/lib/cognition/agents/agent-types';
+import {
+  assertWorkshopContextIntegrity,
+  decryptWorkshopContext,
+  WorkshopContextIntegrityError,
+} from '@/lib/workshop/context-integrity';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -44,6 +49,7 @@ export async function POST(
     where: { id: workshopId },
     select: {
       id: true,
+      workshopType: true,
       description: true,
       businessContext: true,
       clientName: true,
@@ -63,19 +69,41 @@ export async function POST(
     });
   }
 
+  const decryptedWorkshop = decryptWorkshopContext(workshop);
+  const blueprint = readBlueprintFromJson(decryptedWorkshop.blueprint);
+  const research = decryptedWorkshop.prepResearch as unknown as WorkshopPrepResearch | null;
+
+  try {
+    assertWorkshopContextIntegrity({
+      clientName: decryptedWorkshop.clientName,
+      industry: decryptedWorkshop.industry,
+      desiredOutcomes: decryptedWorkshop.businessContext,
+      prepResearch: research,
+      blueprint,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Workshop context failed integrity checks';
+    return new Response(JSON.stringify({ error: message }), {
+      status: error instanceof WorkshopContextIntegrityError ? 422 : 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const context: PrepContext = {
     workshopId,
-    workshopPurpose: workshop.description,
-    desiredOutcomes: workshop.businessContext,
-    clientName: workshop.clientName,
-    industry: workshop.industry,
-    companyWebsite: workshop.companyWebsite,
-    dreamTrack: workshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
-    targetDomain: workshop.targetDomain,
-    blueprint: readBlueprintFromJson(workshop.blueprint),
+    workshopType: blueprint?.workshopType ?? decryptedWorkshop.workshopType,
+    workshopPurpose: decryptedWorkshop.description,
+    desiredOutcomes: decryptedWorkshop.businessContext,
+    clientName: decryptedWorkshop.clientName,
+    industry: decryptedWorkshop.industry,
+    companyWebsite: decryptedWorkshop.companyWebsite,
+    dreamTrack: decryptedWorkshop.dreamTrack as 'ENTERPRISE' | 'DOMAIN' | null,
+    targetDomain: decryptedWorkshop.targetDomain,
+    engagementType: blueprint?.engagementType ?? null,
+    domainPack: blueprint?.domainPack ?? null,
+    blueprint,
   };
 
-  const research = workshop.prepResearch as unknown as WorkshopPrepResearch | null;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({

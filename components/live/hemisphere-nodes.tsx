@@ -18,12 +18,14 @@ export type HemisphereNodeDatum = {
   dataPointId: string;
   createdAtMs: number;
   rawText: string;
+  semanticUnits?: string[];
   dataPointSource: string;
   speakerId?: string | null;
   dialoguePhase: HemisphereDialoguePhase | null;
   intent?: string | null;
   themeId?: string | null;
   themeLabel?: string | null;
+  domainLearningSource?: 'saved_feedback' | null;
   // Deterministic confidence from EthentaFlow domain scorer.
   // Set once at commit time; never overwritten by LLM updates.
   // Drives initial radial placement before LLM agenticAnalysis arrives.
@@ -91,6 +93,10 @@ function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
 function primaryColor(type: HemispherePrimaryType | null) {
   switch (type) {
     case 'VISIONARY':
@@ -132,13 +138,105 @@ function intentColor(intent: string) {
 function buildDomainAngles(lensNames: string[]): Record<string, number> {
   const angles: Record<string, number> = {};
   const count = lensNames.length;
+  if (count === 0) return angles;
   lensNames.forEach((name, i) => {
-    // Evenly distribute across the half-circle (PI to 0, left to right)
-    angles[name] = count > 1
-      ? Math.PI - (i / (count - 1)) * Math.PI
-      : Math.PI / 2; // single lens goes to center
+    // Domain centers sit BETWEEN the sector boundary lines.
+    angles[name] = Math.PI - ((i + 0.5) / count) * Math.PI;
   });
   return angles;
+}
+
+function buildDomainSpokeAngles(lensNames: string[]): number[] {
+  const count = lensNames.length;
+  if (count <= 1) return count === 1 ? [Math.PI / 2] : [];
+
+  return Array.from({ length: count + 1 }, (_, i) => Math.PI - (i / count) * Math.PI);
+}
+
+function getDomainLabelLayout(
+  name: string,
+  theta: number
+): {
+  radiusMultiplier: number;
+  dx: number;
+  dy: number;
+  anchor: 'start' | 'middle' | 'end';
+  fontSize: number;
+  lines: string[];
+} {
+  const normalized = name.toLowerCase();
+  const anchor: 'start' | 'middle' | 'end' =
+    theta > (2 * Math.PI) / 3 ? 'start' : theta < Math.PI / 3 ? 'end' : 'middle';
+
+  if (normalized === 'risk/compliance') {
+    return {
+      radiusMultiplier: 1.09,
+      dx: 14,
+      dy: 0,
+      anchor: 'start',
+      fontSize: 10,
+      lines: ['Risk/', 'Compliance'],
+    };
+  }
+  if (normalized === 'operations') {
+    return {
+      radiusMultiplier: 1.095,
+      dx: -18,
+      dy: -2,
+      anchor: 'end',
+      fontSize: 10,
+      lines: ['Operations'],
+    };
+  }
+  if (normalized === 'technology') {
+    return {
+      radiusMultiplier: 1.08,
+      dx: 0,
+      dy: -4,
+      anchor: 'middle',
+      fontSize: 10,
+      lines: ['Technology'],
+    };
+  }
+  if (normalized === 'commercial') {
+    return {
+      radiusMultiplier: 1.08,
+      dx: 0,
+      dy: -4,
+      anchor: 'middle',
+      fontSize: 10,
+      lines: ['Commercial'],
+    };
+  }
+  if (normalized === 'partners') {
+    return {
+      radiusMultiplier: 1.095,
+      dx: 18,
+      dy: -2,
+      anchor: 'start',
+      fontSize: 10,
+      lines: ['Partners'],
+    };
+  }
+  if (normalized === 'people') {
+    return {
+      radiusMultiplier: 1.095,
+      dx: -18,
+      dy: -2,
+      anchor: 'end',
+      fontSize: 10,
+      lines: ['People'],
+    };
+  }
+
+  return {
+    radiusMultiplier: 1.065,
+    dx: 0,
+    dy: 0,
+    anchor,
+    fontSize: 11,
+    lines: [name],
+  };
 }
 
 /**
@@ -173,13 +271,200 @@ function findAngleForDomain(domain: string | null | undefined, domainAngles: Rec
   return bestScore > 0 ? bestAngle : undefined;
 }
 
+function normalizeDomainKey(domain: string | null | undefined): string {
+  return String(domain ?? '').toLowerCase().trim().replace(/[^a-z]+/g, ' ');
+}
+
+function getDomainSectorBounds(
+  domain: string | null | undefined,
+  domainAngles: Record<string, number>
+): { min: number; max: number; center: number } | null {
+  const center = findAngleForDomain(domain, domainAngles);
+  if (center == null) return null;
+
+  const sortedAngles = Array.from(
+    new Set(Object.values(domainAngles).filter((angle) => Number.isFinite(angle)))
+  ).sort((a, b) => a - b);
+  const index = sortedAngles.findIndex((angle) => angle === center);
+  if (index === -1) return null;
+
+  const min = index > 0 ? (sortedAngles[index - 1] + center) / 2 : 0;
+  const max = index < sortedAngles.length - 1 ? (center + sortedAngles[index + 1]) / 2 : Math.PI;
+  return { min, max, center };
+}
+
+function getPrimaryDomain(domains: Array<{ domain: string; relevance: number }>) {
+  return domains.reduce((best, current) => {
+    if (!best) return current;
+    return current.relevance > best.relevance ? current : best;
+  }, null as { domain: string; relevance: number } | null);
+}
+
+const PEOPLE_INTENT_CUES = [
+  'enable',
+  'enables',
+  'enabled',
+  'enablement',
+  'capability',
+  'capabilities',
+  'skills',
+  'skill',
+  'coach',
+  'coaching',
+  'training',
+  'guidance',
+  'guide',
+  'guided',
+  'support leaders',
+  'support team leaders',
+  'team leaders',
+  'leaders',
+  'leadership',
+  'behaviour',
+  'behaviors',
+  'behavioural',
+  'learning',
+  'development',
+  'decision support',
+  'confidence',
+  'adoption',
+  'literacy',
+  'upskill',
+  'upskilling',
+];
+
+const OPERATIONS_INTENT_CUES = [
+  'workflow',
+  'workflows',
+  'routing',
+  'process',
+  'processes',
+  'queue',
+  'queues',
+  'handoff',
+  'handoffs',
+  'triage',
+  'escalation',
+  'escalations',
+  'throughput',
+  'sla',
+  'case flow',
+  'operating model',
+  'execution',
+  'execution path',
+  'task',
+  'tasks',
+  'runbook',
+  'dispatch',
+  'capacity plan',
+];
+
+function countIntentCueHits(text: string, cues: string[]) {
+  const lower = text.toLowerCase();
+  let hits = 0;
+  for (const cue of cues) {
+    if (lower.includes(cue)) hits++;
+  }
+  return hits;
+}
+
+function getPlacementIntentBias(text: string) {
+  const peopleHits = countIntentCueHits(text, PEOPLE_INTENT_CUES);
+  const operationsHits = countIntentCueHits(text, OPERATIONS_INTENT_CUES);
+  const total = peopleHits + operationsHits;
+  if (total === 0) {
+    return { people: 0, operations: 0 };
+  }
+  return {
+    people: peopleHits / total,
+    operations: operationsHits / total,
+  };
+}
+
+type PlacementDomainWeight = {
+  angle: number;
+  weight: number;
+};
+
+export function getIntentAwarePlacementWeights(
+  text: string,
+  domains: Array<{ domain: string; relevance: number }>,
+  domainAngles: Record<string, number>
+): PlacementDomainWeight[] {
+  const bias = getPlacementIntentBias(text);
+  const weightedDomains: PlacementDomainWeight[] = [];
+
+  for (const domain of domains) {
+    const angle = findAngleForDomain(domain.domain, domainAngles);
+    if (angle == null) continue;
+
+    const normalized = normalizeDomainKey(domain.domain);
+    let multiplier = 1;
+
+    if (normalized.includes('people')) {
+      multiplier += bias.people * 0.55;
+      multiplier -= bias.operations * 0.15;
+    } else if (normalized.includes('operation')) {
+      multiplier += bias.operations * 0.55;
+      multiplier -= bias.people * 0.25;
+    }
+
+    weightedDomains.push({
+      angle,
+      weight: clamp(domain.relevance * Math.max(0.2, multiplier), 0.01, 2),
+    });
+  }
+
+  return weightedDomains;
+}
+
+export function getIntentAwareDomainTheta(
+  _text: string,
+  domains: Array<{ domain: string; relevance: number }>,
+  domainAngles: Record<string, number>
+): { theta: number | null; strength: number } {
+  if (domains.length === 0) {
+    return { theta: null, strength: 0 };
+  }
+
+  const primaryDomain = domains.reduce((best, current) => {
+    if (!best) return current;
+    return current.relevance > best.relevance ? current : best;
+  }, null as { domain: string; relevance: number } | null);
+
+  if (!primaryDomain) {
+    return { theta: null, strength: 0 };
+  }
+
+  const primaryAngle = findAngleForDomain(primaryDomain.domain, domainAngles);
+  if (primaryAngle == null) {
+    return { theta: null, strength: 0 };
+  }
+
+  return {
+    theta: primaryAngle,
+    strength: 0.72,
+  };
+}
+
 export type PendingHemisphereNode = {
-  /** Unique key — typically speakerId or a synthetic id. */
+  /** Stable utterance id from ThoughtStateMachine.attempt.id. */
   id: string;
+  speakerId?: string | null;
   /** Domain string from interpretLiveUtterance — drives angular position. */
   domain: string;
+  /** Live semantic phase from the evolving working passage. */
+  dialoguePhase?: HemisphereDialoguePhase | null;
+  /** Live semantic intent label for provisional-node motion and tooltip context. */
+  intent?: string | null;
   /** Timestamp when accumulation started — drives radial/time-axis position. */
   startedAtMs: number;
+  /** Cleaned in-memory working passage for tooltip/label only. */
+  workingText: string;
+  /** Deterministic domain confidence while the utterance is still provisional. */
+  domainConfidence?: number | null;
+  /** Interpretation confidence from the live semantic pass. */
+  semanticConfidence?: number | null;
 };
 
 export const HemisphereNodes = memo(function HemisphereNodes(props: {
@@ -200,7 +485,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
   }>;
   lensNames?: string[];
   className?: string;
-  /** Live in-progress utterances — displayed as pulsing rings, never stored as nodes. */
+  /** Live in-progress utterances — displayed as provisional grey nodes, never stored as nodes. */
   pendingNodes?: PendingHemisphereNode[];
 }) {
   const { nodes, originTimeMs, timeScaleMs = 10 * 60 * 1000, onNodeClick, themeAttractors, links, lensNames, className, pendingNodes } = props;
@@ -273,29 +558,34 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
               : baseTheta;
       const thetaAfterPhase = lerp(baseTheta, phaseTarget, phaseStrength);
 
-      // Layer 2: Domain bias — use STRONGEST domain to prevent multi-domain dilution
-      // (e.g. "regulator" + "team" would average toward center instead of Regulation)
+      // Layer 2: Domain bias — preserve multi-domain shape, then apply a narrow
+      // intent-aware bias so enablement statements land nearer People than Operations.
       const allDomains = n.agenticAnalysis?.domains ?? [];
       let theta = thetaAfterPhase;
       if (allDomains.length > 0) {
-        let bestAngle: number | null = null;
-        let bestRelevance = -1;
-        for (const d of allDomains) {
-          // Use fuzzy matching — handles "Customer" vs "Customer Experience", etc.
-          const angle = findAngleForDomain(d.domain, domainAngles);
-          if (angle != null && d.relevance > bestRelevance) {
-            bestAngle = angle;
-            bestRelevance = d.relevance;
+        const primaryDomain = getPrimaryDomain(allDomains);
+        const sector = getDomainSectorBounds(primaryDomain?.domain, domainAngles);
+        if (sector) {
+          // Keep nodes visibly inside their owning domain zone by using the
+          // central band of the sector rather than the full boundary span.
+          const spreadU = hash01(`sector:${n.dataPointId}`);
+          const halfWidth = (sector.max - sector.min) / 2;
+          const centralBandHalfWidth = halfWidth * 0.45;
+          const sectorMin = sector.center - centralBandHalfWidth;
+          const sectorMax = sector.center + centralBandHalfWidth;
+          theta = lerp(sectorMin, sectorMax, spreadU);
+        } else {
+          const placement = getIntentAwareDomainTheta(n.rawText, allDomains, domainAngles);
+          if (placement.theta != null) {
+            theta = placement.theta;
           }
-        }
-        if (bestAngle != null) {
-          // 0.6 pull: strong enough to cluster to lens zone, weak enough for natural spread
-          theta = lerp(thetaAfterPhase, bestAngle, 0.6);
         }
       }
 
-      // Angular jitter — spreads nodes within their lens zone organically
-      const angularJitter = (hash01(`aj:${n.dataPointId}`) - 0.5) * 0.38;
+      // Angular jitter is only applied when no committed domain is available.
+      const angularJitter = allDomains.length > 0
+        ? 0
+        : (hash01(`aj:${n.dataPointId}`) - 0.5) * 0.38;
       theta += angularJitter;
 
       const clsType = n.classification?.primaryType ?? null;
@@ -453,8 +743,8 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
       return `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
     });
 
-    // Domain-aligned spokes — visually define domain zones
-    const domainSpokeAngles = Object.values(buildDomainAngles(activeLenses));
+    // Domain boundary spokes — visually define the sector edges
+    const domainSpokeAngles = buildDomainSpokeAngles(activeLenses);
     const spokes = domainSpokeAngles.map((theta) => {
       const x = cx + R * Math.cos(theta);
       const y = cy - R * Math.sin(theta);
@@ -499,7 +789,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
         <g pointerEvents="none">
           <text
             x={backdrop.cx - backdrop.R}
-            y={backdrop.cy + 18}
+            y={backdrop.cy + 28}
             fontSize={11}
             fill="rgba(15,23,42,0.55)"
             textAnchor="start"
@@ -508,7 +798,7 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
           </text>
           <text
             x={backdrop.cx + backdrop.R}
-            y={backdrop.cy + 18}
+            y={backdrop.cy + 28}
             fontSize={11}
             fill="rgba(15,23,42,0.55)"
             textAnchor="end"
@@ -518,32 +808,27 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
 
           {/* Domain zone labels — positioned along the arc with smart anchoring */}
           {Object.entries(buildDomainAngles(activeLenses)).map(([name, theta]) => {
-            // Place label just outside the arc edge
-            const labelR = backdrop.R * 1.06;
-            const x = backdrop.cx + labelR * Math.cos(theta);
-            const y = backdrop.cy - labelR * Math.sin(theta);
-            // Smart text anchor: left third → start, right third → end, center → middle
-            const anchor: 'start' | 'middle' | 'end' =
-              theta > (2 * Math.PI) / 3 ? 'start' : theta < Math.PI / 3 ? 'end' : 'middle';
-            // Split name on " & " or " and " for two-line labels
-            const parts = name.split(/\s*[&]\s*/);
+            const layout = getDomainLabelLayout(name, theta);
+            const labelR = backdrop.R * layout.radiusMultiplier;
+            const x = backdrop.cx + labelR * Math.cos(theta) + layout.dx;
+            const y = backdrop.cy - labelR * Math.sin(theta) + layout.dy;
             return (
               <text
                 key={`domain-${name}`}
                 x={x}
                 y={y}
-                fontSize={11}
+                fontSize={layout.fontSize}
                 fill="rgba(99,102,241,0.8)"
-                textAnchor={anchor}
+                textAnchor={layout.anchor}
                 fontWeight={600}
               >
-                {parts.length > 1 ? (
+                {layout.lines.length > 1 ? (
                   <>
-                    <tspan x={x} dy={0}>{parts[0]} &amp;</tspan>
-                    <tspan x={x} dy={14}>{parts[1]}</tspan>
+                    <tspan x={x} dy={0}>{layout.lines[0]}</tspan>
+                    <tspan x={x} dy={12}>{layout.lines[1]}</tspan>
                   </>
                 ) : (
-                  name
+                  layout.lines[0]
                 )}
               </text>
             );
@@ -672,34 +957,60 @@ export const HemisphereNodes = memo(function HemisphereNodes(props: {
           const cx = W / 2; const cy = H - pad;
           const R = Math.min(cx - pad, cy - pad);
           const domainAngles = buildDomainAngles(activeLenses);
-          const theta = findAngleForDomain(pn.domain, domainAngles) ?? Math.PI / 2;
-          const radial = R * 0.5; // mid-ring — confidence unknown during accumulation
+          const baseTheta = findAngleForDomain(pn.domain, domainAngles) ?? Math.PI / 2;
+          const phaseStrength = pn.dialoguePhase ? 0.35 : 0;
+          const phaseTarget =
+            pn.dialoguePhase === 'CONSTRAINTS'
+              ? (5 * Math.PI) / 6
+              : pn.dialoguePhase === 'DEFINE_APPROACH'
+                ? Math.PI / 2
+                : pn.dialoguePhase === 'REIMAGINE'
+                  ? Math.PI / 6
+                  : baseTheta;
+          let theta = lerp(baseTheta, phaseTarget, phaseStrength);
+          const intentJitterSeed = pn.intent || pn.workingText || pn.id;
+          theta += (hash01(`pending:${intentJitterSeed}`) - 0.5) * 0.26;
+          theta = Math.max(0.05, Math.min(Math.PI - 0.05, theta));
+          const provisionalConfidence = clamp01(
+            Math.max(pn.domainConfidence ?? 0, pn.semanticConfidence ?? 0, 0.35)
+          );
+          const radial = R * lerp(0.28, 0.72, provisionalConfidence);
           const px = cx + radial * Math.cos(theta);
           const py = cy - radial * Math.sin(theta);
           const transStyle = { transition: 'cx 0.6s ease, cy 0.6s ease' } as React.CSSProperties;
+          const label = pn.workingText.trim().split(/\s+/).slice(0, 6).join(' ');
           return (
             <g key={`pending:${pn.id}`}>
-              {/* Outer sonar ring — drifts with the thought */}
               <circle
-                cx={px} cy={py} r={18}
-                fill="none"
-                stroke="rgba(255,255,255,0.55)"
-                strokeWidth={1.5}
+                cx={px} cy={py} r={16}
+                fill="rgba(161,161,170,0.12)"
+                stroke="rgba(161,161,170,0.55)"
+                strokeWidth={1.25}
                 className="pending-ring-outer"
                 style={transStyle}
               />
-              {/* Inner pulsing ring */}
               <circle
-                cx={px} cy={py} r={10}
-                fill="rgba(255,255,255,0.08)"
-                stroke="rgba(255,255,255,0.9)"
-                strokeWidth={2}
+                cx={px} cy={py} r={8}
+                fill="rgba(212,212,216,0.78)"
+                stroke="rgba(244,244,245,0.9)"
+                strokeWidth={1.5}
                 className="pending-ring-inner"
                 style={transStyle}
               />
-              {/* Static centre dot */}
-              <circle cx={px} cy={py} r={3} fill="rgba(255,255,255,0.95)" style={transStyle} />
-              <title>Resolving thought…</title>
+              <circle cx={px} cy={py} r={2.5} fill="rgba(255,255,255,0.95)" style={transStyle} />
+              {label ? (
+                <text
+                  x={px}
+                  y={py - 22}
+                  textAnchor="middle"
+                  fill="rgba(228,228,231,0.88)"
+                  fontSize="10"
+                  style={{ transition: 'x 0.6s ease, y 0.6s ease' }}
+                >
+                  {label}
+                </text>
+              ) : null}
+              <title>{pn.workingText || 'Resolving thought…'}</title>
             </g>
           );
         })}

@@ -1,29 +1,34 @@
-import { ConversationPhase } from '@/lib/types/conversation';
+import { ConversationPhase, normalizeConversationPhase } from '@/lib/types/conversation';
 import type { WorkshopBlueprint } from '@/lib/workshop/blueprint';
+import {
+  CANONICAL_LENS_NAMES,
+  canonicalizeConversationPhase,
+  canonicalizeLensName,
+  type CanonicalConversationPhase,
+} from '@/lib/workshop/canonical-lenses';
 
 export const PHASE_ORDER: ConversationPhase[] = [
   'intro',
   'people',
-  'corporate',
-  'customer',
+  'operations',
   'technology',
-  'regulation',
+  'commercial',
+  'risk_compliance',
+  'partners',
   'prioritization',
   'summary',
 ];
 
-export function getPhaseOrder(includeRegulation: boolean): ConversationPhase[] {
-  return includeRegulation ? PHASE_ORDER : PHASE_ORDER.filter((p) => p !== 'regulation');
+export function getPhaseOrder(_includeRegulation: boolean): ConversationPhase[] {
+  return PHASE_ORDER;
 }
 
-export function getIntroMessage(includeRegulation: boolean): string {
+export function getIntroMessage(_includeRegulation: boolean): string {
   return "Please describe your role, how long you've been in the organisation, and what you spend most of your time doing.";
 }
 
-export function getPrioritizationAreaList(includeRegulation: boolean): string {
-  const areas = ['People', 'Processes', 'Customer', 'Technology'];
-  if (includeRegulation) areas.push('Regulation');
-  return areas.join(', ');
+export function getPrioritizationAreaList(_includeRegulation: boolean): string {
+  return CANONICAL_LENS_NAMES.join(', ');
 }
 
 export type FixedQuestionTag =
@@ -100,59 +105,29 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
       tag: 'future',
     },
   ],
-  corporate: [
+  operations: [
     {
       text:
-        "When looking specifically at Corporate/Organisational, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation's processes and decision-making help you do your job",
+        "When looking specifically at Operations, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation's operating model, processes, and decision flow help you do your job",
       tag: 'triple_rating',
       maturityScale: [
-        'Decisions take forever. Nobody knows who owns what. Constant firefighting.',
-        'Some structure exists but applied inconsistently. Approval is hit-or-miss.',
-        'Clear accountability. Policies make sense. Decisions happen at reasonable speed.',
-        'Governance adapts to context. Decisions with guardrails. AI informs choices.',
-        'Organisation runs smoothly. Policies evolve. Trust high. Bureaucracy minimal.',
+        'Work is fragmented. Handoffs fail. Ownership unclear. Constant firefighting.',
+        'Core processes exist but execution is inconsistent. Bottlenecks are common.',
+        'Roles and workflows are clear. Delivery is reasonably reliable and accountable.',
+        'Operations adapt quickly. Governance helps decisions move with control.',
+        'Execution is seamless. The operating model scales without unnecessary friction.',
       ],
     },
     {
-      text: "Describe something that should be simple but isn't. What makes it harder than it needs to be?",
+      text: "Describe something operational that should be simple but isn't. What makes it harder than it needs to be?",
       tag: 'friction',
     },
     {
-      text: "Are there rules or processes you work around to get things done? What does that tell us?",
+      text: 'Where do handoffs, approvals, or process rules create avoidable friction? What does that tell us?',
       tag: 'friction',
     },
     {
-      text: 'If you could fix one thing about how decisions get made or work gets approved, what would it be?',
-      tag: 'future',
-    },
-  ],
-  customer: [
-    {
-      text:
-        'When looking specifically at Customer, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation meets customer needs and expectations',
-      tag: 'triple_rating',
-      maturityScale: [
-        'Inconsistent experiences. Complaints pile up. No clear view of customer history.',
-        'Basic systems in place. Some visibility across channels. Service recovery reactive.',
-        'Single view of customer. Consistent across channels. AI helps with common queries.',
-        'Customer needs anticipated. Personalised service. AI and humans seamless.',
-        'Effortless experience. Issues resolved before noticed. Customers love us.',
-      ],
-    },
-    {
-      text: 'Think of a time when a customer had a great experience. What made it work?',
-      tag: 'working',
-    },
-    {
-      text: 'Think of a time when a customer had a poor experience. What went wrong and why?',
-      tag: 'pain_points',
-    },
-    {
-      text: "What do customers have to do that they shouldn't have to? Where is their time or effort wasted?",
-      tag: 'pain_points',
-    },
-    {
-      text: 'If customers could describe their ideal experience with us in 18 months, what would they say?',
+      text: 'If you could fix one thing about how work flows or decisions get made, what would it be?',
       tag: 'future',
     },
   ],
@@ -186,35 +161,91 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
       tag: 'future',
     },
   ],
-  regulation: [
+  commercial: [
     {
       text:
-        'When looking specifically at Regulation, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation handles regulatory and compliance requirements',
+        'When looking specifically at Commercial, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation converts customer need into value, growth, and commercial performance',
       tag: 'triple_rating',
       maturityScale: [
-        'Compliance reactive. Regulatory changes surprise us. Fines happen.',
-        'Framework exists. Some horizon scanning. Training available but basic.',
-        'Regulations tracked systematically. Compliance built into processes.',
-        'Changes anticipated. Compliance automated where possible.',
-        'Compliance invisible and embedded. AI monitors. Organisation shapes conversation.',
+        'Value is leaking. Customer demand is poorly understood. Growth feels reactive.',
+        'There is some commercial discipline, but pricing, proposition, and demand signals are inconsistent.',
+        'Customer value and commercial outcomes are mostly aligned. Teams can see what drives performance.',
+        'The organisation anticipates demand, sharpens value delivery, and makes better commercial decisions quickly.',
+        'Commercial strategy is clear, evidence-led, and consistently translated into sustainable growth.',
       ],
     },
     {
-      text: 'Do compliance or regulatory requirements make your job harder? How?',
+      text: 'Where does the organisation create clear value today, and what makes that work commercially?',
+      tag: 'working',
+    },
+    {
+      text: 'Where is value leaking through pricing, proposition, retention, conversion, or demand? What is driving that?',
+      tag: 'pain_points',
+    },
+    {
+      text: 'What customer or market signals should influence decisions more strongly than they do today?',
+      tag: 'gaps',
+    },
+    {
+      text: 'If the commercial model was working brilliantly in 18 months, what would be visibly different?',
+      tag: 'future',
+    },
+  ],
+  risk_compliance: [
+    {
+      text:
+        'When looking specifically at Risk / Compliance, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation manages compliance obligations, controls, and material risk',
+      tag: 'triple_rating',
+      maturityScale: [
+        'Compliance reactive. Regulatory changes surprise us. Control gaps emerge too late.',
+        'A framework exists, but oversight and accountability are inconsistent.',
+        'Risks and obligations are tracked systematically. Controls are usually embedded into delivery.',
+        'Changes are anticipated. Assurance is timely. Control burden is better targeted.',
+        'Risk and compliance are disciplined, transparent, and built into how the organisation operates.',
+      ],
+    },
+    {
+      text: 'Where do risk or compliance requirements create friction, delay, or uncertainty in practice?',
       tag: 'constraint',
     },
     {
-      text: 'Have you experienced a situation where a regulatory change caught the organisation off-guard? What happened?',
+      text: 'Have you experienced a situation where a control gap, risk event, or compliance issue caught the organisation off-guard? What happened?',
       tag: 'friction',
     },
     {
-      text: "Is there a rule or compliance requirement that doesn't make sense to you? What is it and why?",
+      text: 'What would stronger risk and compliance management look like without creating unnecessary bureaucracy?',
+      tag: 'future',
+    },
+  ],
+  partners: [
+    {
+      text:
+        'When looking specifically at Partners, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation works with external partners, suppliers, and ecosystem dependencies that materially affect outcomes',
+      tag: 'triple_rating',
+      maturityScale: [
+        'Critical external dependencies are poorly managed. Partner performance creates repeated surprises.',
+        'Key partners are known, but accountability, integration, and escalation are inconsistent.',
+        'Important partners are managed with reasonable clarity, governance, and visibility.',
+        'The organisation works with partners strategically and resolves dependency issues early.',
+        'Partner ecosystems operate as an aligned extension of the business with clear value, accountability, and control.',
+      ],
+    },
+    {
+      text: 'Which external partners or suppliers materially affect your ability to deliver outcomes today?',
+      tag: 'context',
+    },
+    {
+      text: 'Where do partner incentives, capability, or dependency risks create friction for the organisation?',
+      tag: 'constraint',
+    },
+    {
+      text: 'What would a stronger partner model or ecosystem relationship look like in practice?',
       tag: 'future',
     },
   ],
   prioritization: [
     {
-      text: 'Of the five areas (People, Processes, Customer, Technology, Regulation), which one gets in the way of your work the most?',
+      text: 'Of the six areas (People, Operations, Technology, Commercial, Risk / Compliance, Partners), which one gets in the way of your work the most?',
       tag: 'biggest_constraint',
     },
     {
@@ -242,16 +273,11 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   ],
 };
 
-/**
- * Returns the question set for a workshop, using custom (tailored) questions
- * when available, falling back to the standard versioned question set.
- */
 export function getQuestionsForWorkshop(
   workshopCustomQuestions: Record<string, { text: string; tag: string; maturityScale?: string[] }[]> | null,
   questionSetVersion: string | null,
 ): Record<ConversationPhase, FixedQuestion[]> {
   if (workshopCustomQuestions) {
-    // Convert tailored questions back to FixedQuestion format
     const result: Record<string, FixedQuestion[]> = {};
     for (const [phase, questions] of Object.entries(workshopCustomQuestions)) {
       result[phase] = questions.map((q) => ({
@@ -292,17 +318,17 @@ export function getOverallQuestionNumber(
   phase: ConversationPhase,
   index: number,
   includeRegulation: boolean,
-  questionSetVersion?: string | null
+  questionSetVersion?: string | null,
 ): number | null {
   if (phase === 'summary') return null;
 
   const qs = fixedQuestionsForVersion(questionSetVersion);
-
   const phases = getPhaseOrder(includeRegulation).filter((p) => p !== 'summary');
   let offset = 0;
-  for (const p of phases) {
-    if (p === phase) return offset + index + 1;
-    offset += qs[p]?.length || 0;
+
+  for (const current of phases) {
+    if (current === phase) return offset + index + 1;
+    offset += qs[current]?.length || 0;
   }
 
   return null;
@@ -310,14 +336,15 @@ export function getOverallQuestionNumber(
 
 export function getNextPhase(current: ConversationPhase, includeRegulation: boolean = true): ConversationPhase {
   const order = getPhaseOrder(includeRegulation);
-  const idx = order.indexOf(current);
+  const normalized = normalizeConversationPhase(current);
+  const idx = order.indexOf(normalized);
   return order[Math.min(idx + 1, order.length - 1)];
 }
 
 export function getPhaseProgressPercent(
   phase: ConversationPhase,
   answeredCount: number,
-  questionSetVersion?: string | null
+  questionSetVersion?: string | null,
 ): number {
   const qs = fixedQuestionsForVersion(questionSetVersion);
   const total = qs[phase].length;
@@ -329,11 +356,10 @@ export function getFixedQuestion(
   phase: ConversationPhase,
   index: number,
   includeRegulation: boolean,
-  questionSetVersion?: string | null
+  questionSetVersion?: string | null,
 ): string {
   const q = fixedQuestionsForVersion(questionSetVersion)[phase]?.[index];
   if (!q) return '';
-
   return q.text;
 }
 
@@ -341,61 +367,43 @@ export function getFixedQuestionObject(
   phase: ConversationPhase,
   index: number,
   includeRegulation: boolean,
-  questionSetVersion?: string | null
+  questionSetVersion?: string | null,
 ): FixedQuestion | null {
   return fixedQuestionsForVersion(questionSetVersion)[phase]?.[index] ?? null;
 }
 
-// ── Blueprint-driven Discovery helpers ────────────────────────
-
-/**
- * Maps standard blueprint lens names to conversation phase keys.
- * When a blueprint lens name is not in this map it is silently ignored,
- * which means research-overridden non-standard lens names (e.g.
- * "Agent Experience") gracefully fall through to the legacy path.
- */
 const LENS_NAME_TO_PHASE: Record<string, ConversationPhase> = {
   People: 'people',
-  Operations: 'corporate',
-  Organisation: 'corporate',
-  Customer: 'customer',
+  Operations: 'operations',
+  Organisation: 'operations',
   Technology: 'technology',
-  Regulation: 'regulation',
+  Commercial: 'commercial',
+  Customer: 'commercial',
+  'Customer Experience': 'commercial',
+  'Risk/Compliance': 'risk_compliance',
+  Regulation: 'risk_compliance',
+  Partners: 'partners',
 };
 
-/**
- * Derive the conversation phase order from blueprint lenses.
- * Wraps the mapped lens phases with intro, prioritization, and summary.
- * If no lenses map to standard phases, returns a safe default without
- * regulation.
- */
 export function getPhaseOrderFromBlueprint(
   blueprint: WorkshopBlueprint,
 ): ConversationPhase[] {
   const lensPhases: ConversationPhase[] = [];
+
   for (const lens of blueprint.lenses) {
-    const phase = LENS_NAME_TO_PHASE[lens.name];
+    const canonicalLens = canonicalizeLensName(lens.name);
+    const phase = canonicalLens
+      ? LENS_NAME_TO_PHASE[canonicalLens]
+      : LENS_NAME_TO_PHASE[lens.name];
     if (phase && !lensPhases.includes(phase)) {
       lensPhases.push(phase);
     }
   }
-  if (lensPhases.length === 0) {
-    return PHASE_ORDER.filter((p) => p !== 'regulation');
-  }
+
+  if (lensPhases.length === 0) return PHASE_ORDER;
   return ['intro', ...lensPhases, 'prioritization', 'summary'];
 }
 
-/**
- * Build a question set by filtering FIXED_QUESTIONS to only the phases
- * that match the blueprint's active lenses.
- *
- * Returns null when none of the blueprint lens names map to standard
- * conversation phases (e.g. research-overridden custom dimension names).
- * In that case the caller should fall through to legacy FIXED_QUESTIONS.
- *
- * Prioritization questions are rebuilt dynamically to list the blueprint
- * lens names rather than the hardcoded area list.
- */
 export function buildQuestionsFromBlueprint(
   blueprint: WorkshopBlueprint,
   questionSetVersion?: string | null,
@@ -404,133 +412,93 @@ export function buildQuestionsFromBlueprint(
   const lensLabels: string[] = [];
 
   for (const lens of blueprint.lenses) {
-    const phase = LENS_NAME_TO_PHASE[lens.name];
+    const canonicalLens = canonicalizeLensName(lens.name);
+    const canonicalLabel = canonicalLens ?? lens.name;
+    const phase = canonicalLens
+      ? LENS_NAME_TO_PHASE[canonicalLabel]
+      : LENS_NAME_TO_PHASE[lens.name];
     if (phase && !lensPhases.includes(phase)) {
       lensPhases.push(phase);
-      lensLabels.push(lens.name);
+      lensLabels.push(canonicalLabel);
     }
   }
 
-  // If no blueprint lenses map to standard phases, gracefully degrade
   if (lensPhases.length === 0) return null;
 
   const base = fixedQuestionsForVersion(questionSetVersion);
   const result: Record<string, FixedQuestion[]> = {};
-
-  // Always include intro
   result.intro = [...base.intro];
 
-  // Include only phases matching blueprint lenses
   for (const phase of lensPhases) {
     result[phase] = [...base[phase]];
   }
 
-  // Build prioritization with dynamic area list from blueprint lenses
-  const areaList = lensLabels.join(', ');
   result.prioritization = [
     {
-      text: `Of the areas we have discussed (${areaList}), which one gets in the way of your work the most?`,
-      tag: 'biggest_constraint' as FixedQuestionTag,
+      text: `Of the areas we have discussed (${lensLabels.join(', ')}), which one gets in the way of your work the most?`,
+      tag: 'biggest_constraint',
     },
     ...base.prioritization.slice(1),
   ];
 
-  // Always include summary
   result.summary = [...base.summary];
-
   return result;
 }
 
-/**
- * Derive includeRegulation from blueprint lenses.
- * Returns true if a lens named 'Regulation' is present.
- */
 export function includeRegulationFromBlueprint(
   blueprint: WorkshopBlueprint,
 ): boolean {
-  return blueprint.lenses.some((l) => l.name === 'Regulation');
+  return blueprint.lenses.some((lens) => canonicalizeLensName(lens.name) === 'Risk/Compliance');
 }
 
-// ── Custom Discovery question helpers ─────────────────────────
-
-/**
- * Build a questions record from the workshop's discoveryQuestions JSON.
- * Maps lens-based questions into phase-compatible format.
- * Returns null if discoveryQuestions is not set or has no lenses.
- */
 export function buildQuestionsFromDiscoverySet(
   discoveryQuestions: any,
 ): Record<string, FixedQuestion[]> | null {
   if (!discoveryQuestions?.lenses?.length) return null;
 
   const result: Record<string, FixedQuestion[]> = {};
+  result.intro = [...FIXED_QUESTIONS.intro];
 
-  // Intro phase - standard intro questions
-  result.intro = [
-    {
-      text: "Please describe your role, how long you've been in the organisation, and what you spend most of your time doing.",
-      tag: 'context' as FixedQuestionTag,
-    },
-    {
-      text: 'What is the best thing about working here? What keeps you going?',
-      tag: 'working' as FixedQuestionTag,
-    },
-    {
-      text: 'And what is the single most frustrating thing?',
-      tag: 'pain_points' as FixedQuestionTag,
-    },
-  ];
-
-  // Map each lens to a phase
   for (const lens of discoveryQuestions.lenses) {
-    result[lens.key] = lens.questions.map((q: any) => ({
+    const phaseKey = canonicalizeConversationPhase(lens.key) ?? String(lens.key || '').trim().toLowerCase();
+    result[phaseKey] = lens.questions.map((q: any) => ({
       text: q.text,
       tag: (q.tag || 'context') as FixedQuestionTag,
       maturityScale: q.maturityScale,
     }));
   }
 
-  // Prioritization phase - dynamically list the lens labels
-  const lensLabels = discoveryQuestions.lenses.map((l: any) => l.label).join(', ');
+  const lensLabels = discoveryQuestions.lenses.map((lens: any) => lens.label).join(', ');
   result.prioritization = [
     {
       text: `Of the areas we have discussed (${lensLabels}), which one gets in the way of your work the most?`,
-      tag: 'biggest_constraint' as FixedQuestionTag,
+      tag: 'biggest_constraint',
     },
     {
       text: 'Which area, if fixed, would make the biggest positive difference to your ability to do your job?',
-      tag: 'high_impact' as FixedQuestionTag,
+      tag: 'high_impact',
     },
     {
       text: 'Overall, do you believe this organisation can genuinely change for the better? What makes you think that?',
-      tag: 'optimism' as FixedQuestionTag,
+      tag: 'optimism',
     },
     {
       text: "What else should we know? What question should we have asked but didn't?",
-      tag: 'final_thoughts' as FixedQuestionTag,
+      tag: 'final_thoughts',
     },
   ];
-
-  // Summary phase
-  result.summary = [
-    {
-      text: 'Thank you for candidly sharing your experiences. Your input will help shape the workshop, and you will receive a summary report based on what you shared.',
-      tag: 'closing' as FixedQuestionTag,
-    },
-  ];
-
+  result.summary = [...FIXED_QUESTIONS.summary];
   return result;
 }
 
-/**
- * Get the phase order for a workshop with custom Discovery questions.
- * Returns lens keys wrapped with intro, prioritization, summary.
- */
 export function getPhaseOrderForDiscovery(
   discoveryQuestions: any,
 ): string[] {
   if (!discoveryQuestions?.lenses?.length) return PHASE_ORDER as string[];
 
-  const lensKeys = discoveryQuestions.lenses.map((l: any) => l.key);
+  const lensKeys = discoveryQuestions.lenses
+    .map((lens: any) => canonicalizeConversationPhase(lens.key) ?? String(lens.key || '').trim().toLowerCase())
+    .filter(Boolean);
+
   return ['intro', ...lensKeys, 'prioritization', 'summary'];
 }

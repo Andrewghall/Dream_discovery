@@ -955,6 +955,9 @@ model RawTranscriptEntry {
   id          String   @id @default(cuid())
   workshopId  String
   speakerId   String?
+  sourceChunkId String? @map("source_chunk_id")
+  capturedAt  DateTime? @map("captured_at")
+  sourcePath  RawTranscriptSourcePath? @map("source_path")
   text        String   // verbatim Deepgram text — not trimmed, not cleaned, not rewritten
   startTimeMs BigInt
   endTimeMs   BigInt
@@ -968,7 +971,13 @@ model RawTranscriptEntry {
   @@index([workshopId])
   @@index([workshopId, startTimeMs])
   @@index([workshopId, speakerId, startTimeMs])
+  @@unique([workshopId, sourceChunkId])
   @@map("raw_transcript_entries")
+}
+
+enum RawTranscriptSourcePath {
+  BROWSER
+  CAPTUREAPI_S2S
 }
 
 // ═══════════════════════════════════════════════════════════════

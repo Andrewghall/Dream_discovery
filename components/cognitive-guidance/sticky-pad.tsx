@@ -8,9 +8,9 @@ export const LENS_COLORS: Record<string, { bg: string; text: string; accent: str
   People:           { bg: '#bfdbfe', text: '#1e3a5f', accent: '#93c5fd', label: 'People' },
   Operations:       { bg: '#a7f3d0', text: '#064e3b', accent: '#6ee7b7', label: 'Operations' },
   Technology:       { bg: '#fed7aa', text: '#7c2d12', accent: '#fdba74', label: 'Technology' },
-  Customer:         { bg: '#ddd6fe', text: '#3b0764', accent: '#c4b5fd', label: 'Customer' },
   Commercial:       { bg: '#fef9c3', text: '#713f12', accent: '#fde68a', label: 'Commercial' },
   'Risk/Compliance':{ bg: '#fecaca', text: '#7f1d1d', accent: '#fca5a5', label: 'Risk/Compliance' },
+  Finance:          { bg: '#dcfce7', text: '#166534', accent: '#86efac', label: 'Finance' },
   Partners:         { bg: '#e0e7ff', text: '#3730a3', accent: '#c7d2fe', label: 'Partners' },
   General:          { bg: '#e2e8f0', text: '#1e293b', accent: '#cbd5e1', label: 'Explore' },
 };
@@ -22,7 +22,7 @@ const PAD_TYPE_COLORS: Record<PadType, { bg: string; text: string; accent: strin
   CONTRADICTION_PROBE: { bg: '#fecaca', text: '#7f1d1d', accent: '#fca5a5', label: 'Contradiction' },
   RISK_PROBE:          { bg: '#fed7aa', text: '#7c2d12', accent: '#fdba74', label: 'Risk' },
   ENABLER_PROBE:       { bg: '#a7f3d0', text: '#064e3b', accent: '#6ee7b7', label: 'Enabler' },
-  CUSTOMER_IMPACT:     { bg: '#ddd6fe', text: '#3b0764', accent: '#c4b5fd', label: 'Customer' },
+  CUSTOMER_IMPACT:     { bg: '#fef9c3', text: '#713f12', accent: '#fde68a', label: 'Commercial' },
   OWNERSHIP_ACTION:    { bg: '#e2e8f0', text: '#1e293b', accent: '#cbd5e1', label: 'Action' },
   METRIC_CHALLENGE:    { bg: '#fef3c7', text: '#92400e', accent: '#fcd34d', label: 'Metric Check' },
 };

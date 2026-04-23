@@ -10,7 +10,7 @@ import { TypingIndicator } from '@/components/chat/typing-indicator';
 import { WhisperVoiceInput } from '@/components/chat/whisper-voice-input';
 import { LanguageSelector } from '@/components/chat/language-selector';
 import { TripleRatingInput } from '@/components/chat/triple-rating-input';
-import { ConversationPhase, Message } from '@/lib/types/conversation';
+import { ConversationPhase, Message, normalizeConversationPhase } from '@/lib/types/conversation';
 import { getOverallQuestionNumber, getTotalQuestionCount } from '@/lib/conversation/fixed-questions';
 import { setTtsEnabled, speakWithOpenAI } from '@/lib/utils/openai-tts';
 import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
@@ -27,10 +27,11 @@ type QuestionMeta = {
 const ALL_PHASES: readonly ConversationPhase[] = [
   'intro',
   'people',
-  'corporate',
-  'customer',
+  'operations',
   'technology',
-  'regulation',
+  'commercial',
+  'risk_compliance',
+  'partners',
   'prioritization',
   'summary',
 ];
@@ -56,6 +57,30 @@ interface PageProps {
     workshopId: string;
     token: string;
   }>;
+}
+
+function getSectionLabel(
+  phase: ConversationPhase | null,
+  lensLabels: Array<{ key: string; label: string }> | null,
+): string | null {
+  if (!phase) return null;
+  if (phase === 'intro') return 'About You';
+  if (phase === 'prioritization') return 'Overall Perspective';
+  if (phase === 'summary') return 'Summary';
+
+  const match = lensLabels?.find((lens) => normalizeConversationPhase(lens.key) === phase);
+  if (match?.label) return match.label;
+
+  const fallbackLabels: Record<string, string> = {
+    people: 'People',
+    operations: 'Operations',
+    technology: 'Technology',
+    commercial: 'Commercial',
+    risk_compliance: 'Risk / Compliance',
+    partners: 'Partners',
+  };
+
+  return fallbackLabels[phase] ?? null;
 }
 
 export default function DiscoveryConversationPage({ params }: PageProps) {
@@ -84,6 +109,17 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     executiveSummary: string;
     tone: string | null;
     feedback: string;
+    questionSetVersion?: string | null;
+    participant?: {
+      name?: string | null;
+      role?: string | null;
+      department?: string | null;
+    };
+    aboutYou?: {
+      roleContext?: string | null;
+      bestThing?: string | null;
+      frustration?: string | null;
+    };
     inputQuality?: {
       score: number;
       label: 'high' | 'medium' | 'low';
@@ -104,6 +140,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastSpokenMessageIdRef = useRef<string | null>(null);
+  const sessionEpochRef = useRef(0);
+  const activeSessionIdRef = useRef<string | null>(null);
 
   const getRunConfig = (): { runType: 'BASELINE' | 'FOLLOWUP'; questionSetVersion: string } => {
     const sp = new URLSearchParams(window.location.search);
@@ -117,9 +155,12 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     .reverse()
     .find((m) => m.role === 'AI' && isQuestionMeta(m.metadata));
   const lastQuestionMeta = isQuestionMeta(lastAiQuestionMessage?.metadata) ? lastAiQuestionMessage?.metadata : null;
+  const questionPhase = lastQuestionMeta
+    ? normalizeConversationPhase(lastQuestionMeta.phase)
+    : null;
   const questionNumber =
-    lastQuestionMeta
-      ? getOverallQuestionNumber(lastQuestionMeta.phase as ConversationPhase, lastQuestionMeta.index, includeRegulation)
+    questionPhase && lastQuestionMeta
+      ? getOverallQuestionNumber(questionPhase, lastQuestionMeta.index, includeRegulation)
       : null;
   const totalQuestions = getTotalQuestionCount(includeRegulation);
   const isTripleRatingQuestion = !!lastQuestionMeta && lastQuestionMeta.tag === 'triple_rating';
@@ -128,6 +169,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     lastQuestionMeta && Array.isArray(lastQuestionMeta.maturityScale)
       ? lastQuestionMeta.maturityScale
       : undefined;
+  const currentSectionLabel = getSectionLabel(questionPhase ?? currentPhase, lensLabels);
 
   const displayMessages =
     isTripleRatingQuestion && lastAiQuestionMessage?.id
@@ -136,6 +178,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
   useEffect(() => {
     // Reset all state when token changes (new user/session)
+    sessionEpochRef.current += 1;
+    activeSessionIdRef.current = null;
     setHasStarted(false);
     setMessages([]);
     setSessionId(null);
@@ -150,6 +194,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setIsLoading(false);
     setReport(null);
     setIsPdfMode(false);
+    setLensLabels(null);
+    lastSpokenMessageIdRef.current = null;
   }, [workshopId, token]);
 
   // Fetch org branding on mount so landing page shows branded colours before "Begin"
@@ -192,6 +238,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   }, [pendingVoiceTranscript, sessionId, isLoading]);
 
   const initializeSession = async () => {
+    const requestEpoch = ++sessionEpochRef.current;
     try {
       const runConfig = getRunConfig();
       const response = await fetch(`/api/conversation/init`, {
@@ -203,34 +250,14 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       if (!response.ok) throw new Error('Failed to initialize session');
 
       const data = await response.json();
+      if (sessionEpochRef.current !== requestEpoch) return;
+
+      activeSessionIdRef.current = data.sessionId;
       setSessionId(data.sessionId);
       if (data.organization) setOrganization(data.organization);
       const incomingMessages = (data.messages || []) as Message[];
-      const shouldPrependIntroHeader =
-        incomingMessages.length > 0 &&
-        incomingMessages[0]?.role === 'AI' &&
-        isQuestionMeta(incomingMessages[0]?.metadata) &&
-        incomingMessages[0].metadata.phase === 'intro' &&
-        incomingMessages[0].metadata.index === 0;
-
-      const hasIntroHeaderAlready =
-        incomingMessages.length > 0 && incomingMessages[0]?.role === 'AI' && incomingMessages[0]?.content === 'About You';
-
-      setMessages(
-        shouldPrependIntroHeader && !hasIntroHeaderAlready
-          ? ([
-              {
-                id: `section-intro-${Date.now()}`,
-                role: 'AI',
-                content: 'About You',
-                phase: 'intro',
-                createdAt: new Date(),
-              } as Message,
-              ...incomingMessages,
-            ] as Message[])
-          : incomingMessages
-      );
-      setCurrentPhase(data.currentPhase || 'intro');
+      setMessages(incomingMessages);
+      setCurrentPhase(normalizeConversationPhase(data.currentPhase));
       setPhaseProgress(data.phaseProgress || 0);
       setSessionStatus(data.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS');
       setLanguage(data.language || 'en');
@@ -246,22 +273,34 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
       if (data.status === 'COMPLETED' && data.sessionId) {
         setIsPreparingReport(true);
-        const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(data.sessionId)}&token=${encodeURIComponent(token)}`);
-        if (r.ok) {
-          const reportData = await r.json();
-          setReport({
-            executiveSummary: reportData.executiveSummary,
-            tone: reportData.tone,
-            feedback: reportData.feedback,
-            inputQuality: reportData.inputQuality,
-            keyInsights: reportData.keyInsights,
-            phaseInsights: reportData.phaseInsights,
-            wordCloudThemes: reportData.wordCloudThemes,
-            workshopName: reportData.workshopName,
-            participantName: reportData.participantName,
-          });
+        try {
+          const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(data.sessionId)}&token=${encodeURIComponent(token)}&skipEmail=1`);
+          if (sessionEpochRef.current !== requestEpoch) return;
+          if (r.ok) {
+            const reportData = await r.json();
+            if (sessionEpochRef.current !== requestEpoch) return;
+            setReport({
+              executiveSummary: reportData.executiveSummary,
+              tone: reportData.tone,
+              feedback: reportData.feedback,
+              participant: reportData.participant,
+              aboutYou: reportData.aboutYou,
+              inputQuality: reportData.inputQuality,
+              keyInsights: reportData.keyInsights,
+              phaseInsights: reportData.phaseInsights,
+              wordCloudThemes: reportData.wordCloudThemes,
+              questionSetVersion: reportData.questionSetVersion,
+              workshopName: reportData.workshopName,
+              participantName: reportData.participantName,
+            });
+          } else {
+            throw new Error(`Failed to load report (HTTP ${r.status})`);
+          }
+        } finally {
+          if (sessionEpochRef.current === requestEpoch) {
+            setIsPreparingReport(false);
+          }
         }
-        setIsPreparingReport(false);
       }
     } catch (error) {
       console.error('Failed to initialize session:', error);
@@ -274,6 +313,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       return;
     }
 
+    const requestEpoch = ++sessionEpochRef.current;
+    activeSessionIdRef.current = null;
     setMessages([]);
     setSessionId(null);
     setCurrentPhase('intro');
@@ -284,6 +325,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setPendingVoiceTranscript(null);
     setDraftMessage('');
     setIsLoading(false);
+    setLensLabels(null);
+    lastSpokenMessageIdRef.current = null;
 
     try {
       const runConfig = getRunConfig();
@@ -296,34 +339,14 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       if (!response.ok) throw new Error('Failed to restart session');
 
       const data = await response.json();
+      if (sessionEpochRef.current !== requestEpoch) return;
+
+      activeSessionIdRef.current = data.sessionId;
       setSessionId(data.sessionId);
       const incomingMessages = (data.messages || []) as Message[];
-      const shouldPrependIntroHeader =
-        incomingMessages.length > 0 &&
-        incomingMessages[0]?.role === 'AI' &&
-        isQuestionMeta(incomingMessages[0]?.metadata) &&
-        incomingMessages[0].metadata.phase === 'intro' &&
-        incomingMessages[0].metadata.index === 0;
+      setMessages(incomingMessages);
 
-      const hasIntroHeaderAlready =
-        incomingMessages.length > 0 && incomingMessages[0]?.role === 'AI' && incomingMessages[0]?.content === 'About You';
-
-      setMessages(
-        shouldPrependIntroHeader && !hasIntroHeaderAlready
-          ? ([
-              {
-                id: `section-intro-${Date.now()}`,
-                role: 'AI',
-                content: 'About You',
-                phase: 'intro',
-                createdAt: new Date(),
-              } as Message,
-              ...incomingMessages,
-            ] as Message[])
-          : incomingMessages
-      );
-
-      setCurrentPhase(data.currentPhase || 'intro');
+      setCurrentPhase(normalizeConversationPhase(data.currentPhase));
       setPhaseProgress(data.phaseProgress || 0);
       setSessionStatus(data.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS');
       setLanguage(data.language || 'en');
@@ -344,6 +367,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
   const handleSendMessage = async (content: string) => {
     if (!sessionId) return;
+    const requestEpoch = sessionEpochRef.current;
+    const requestSessionId = sessionId;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -356,7 +381,6 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setIsLoading(true);
 
     try {
-      const phaseBefore = currentPhase;
       // Send user message and get AI response in one call
       const response = await fetch(`/api/conversation/message`, {
         method: 'POST',
@@ -370,109 +394,60 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       if (!response.ok) throw new Error('Failed to get AI response');
 
       const data = await response.json();
+      if (sessionEpochRef.current !== requestEpoch || activeSessionIdRef.current !== requestSessionId) {
+        return;
+      }
 
-      const transitions: Record<string, string> = {
-        intro: "Thanks for that context. Let's dig into some specific areas, starting with people and skills.",
-        people: "That's really helpful. Now let's talk about how things get done around here - decisions, processes, approvals.",
-        corporate: "I appreciate your honesty. Let's shift to thinking about customers and their experience.",
-        customer: "Great insights. Now let's talk about the tools and systems you work with every day.",
-        technology: "Nearly there. A few questions about regulation and compliance - feel free to skip if these don't apply to your role.",
-        regulation: 'Just a few final questions to wrap up.',
-      };
-
-      const sectionLabels: Record<string, string> = {
-        intro: 'About You',
-        people: 'People & Skills',
-        corporate: 'How Things Work',
-        customer: 'Customer Experience',
-        technology: 'Technology & Tools',
-        regulation: 'Regulation & Compliance',
-        prioritization: 'Overall Perspective',
-      };
-
-      const phaseAfter = data.currentPhase as string;
-      const phaseChanged = !!phaseAfter && phaseAfter !== phaseBefore;
-
-      setCurrentPhase(data.currentPhase);
+      setCurrentPhase(normalizeConversationPhase(data.currentPhase));
       setPhaseProgress(data.phaseProgress);
       if (typeof data.includeRegulation === 'boolean') setIncludeRegulation(data.includeRegulation);
       if (data.lensLabels) setLensLabels(data.lensLabels);
 
-      const now = Date.now();
-      if (phaseChanged) {
-        const transitionText =
-          phaseBefore === 'technology' && phaseAfter === 'prioritization'
-            ? 'Just a few final questions to wrap up.'
-            : transitions[phaseBefore];
-        const sectionHeader = sectionLabels[phaseAfter];
+      setMessages((prev) => [...prev, data.message]);
+      setIsLoading(false);
 
-        const preMessages: Message[] = [];
-        if (transitionText) {
-          preMessages.push({
-            id: `transition-${now}`,
-            role: 'AI',
-            content: transitionText,
-            phase: phaseBefore,
-            createdAt: new Date(),
-          } as Message);
-        }
-        if (sectionHeader) {
-          preMessages.push({
-            id: `section-${now}`,
-            role: 'AI',
-            content: sectionHeader,
-            phase: phaseAfter,
-            createdAt: new Date(),
-          } as Message);
-        }
-
-        window.setTimeout(() => {
-          if (preMessages.length) {
-            setMessages((prev) => [...prev, ...preMessages, data.message]);
-          } else {
-            setMessages((prev) => [...prev, data.message]);
-          }
-
-          setIsLoading(false);
-
-          if (voiceEnabled) {
-            if (lastSpokenMessageIdRef.current !== data.message.id) {
-              lastSpokenMessageIdRef.current = data.message.id;
-              void speakWithOpenAI(data.message.content).catch(() => {});
-            }
-          }
-        }, 500);
-      } else {
-        setMessages((prev) => [...prev, data.message]);
-        setIsLoading(false);
-
-        if (voiceEnabled) {
-          if (lastSpokenMessageIdRef.current !== data.message.id) {
-            lastSpokenMessageIdRef.current = data.message.id;
-            void speakWithOpenAI(data.message.content).catch(() => {});
-          }
+      if (voiceEnabled) {
+        if (lastSpokenMessageIdRef.current !== data.message.id) {
+          lastSpokenMessageIdRef.current = data.message.id;
+          void speakWithOpenAI(data.message.content).catch(() => {});
         }
       }
 
       if (data.status === 'COMPLETED') {
         setSessionStatus('COMPLETED');
         setIsPreparingReport(true);
-        const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}`);
-        if (r.ok) {
-          const reportData = await r.json();
-          setReport({
-            executiveSummary: reportData.executiveSummary,
-            tone: reportData.tone,
-            feedback: reportData.feedback,
-            inputQuality: reportData.inputQuality,
-            keyInsights: reportData.keyInsights,
-            phaseInsights: reportData.phaseInsights,
-            wordCloudThemes: reportData.wordCloudThemes,
-            workshopName: reportData.workshopName,
-            participantName: reportData.participantName,
-          });
+        try {
+          const r = await fetch(`/api/conversation/report?sessionId=${encodeURIComponent(requestSessionId)}&token=${encodeURIComponent(token)}&skipEmail=1`);
+          if (sessionEpochRef.current !== requestEpoch || activeSessionIdRef.current !== requestSessionId) {
+            return;
+          }
+          if (r.ok) {
+            const reportData = await r.json();
+            if (sessionEpochRef.current !== requestEpoch || activeSessionIdRef.current !== requestSessionId) {
+              return;
+            }
+            setReport({
+              executiveSummary: reportData.executiveSummary,
+              tone: reportData.tone,
+              feedback: reportData.feedback,
+              participant: reportData.participant,
+              aboutYou: reportData.aboutYou,
+              inputQuality: reportData.inputQuality,
+              keyInsights: reportData.keyInsights,
+              phaseInsights: reportData.phaseInsights,
+              wordCloudThemes: reportData.wordCloudThemes,
+              questionSetVersion: reportData.questionSetVersion,
+              workshopName: reportData.workshopName,
+              participantName: reportData.participantName,
+            });
+          } else {
+            throw new Error(`Failed to load report (HTTP ${r.status})`);
+          }
+        } finally {
+          if (sessionEpochRef.current === requestEpoch && activeSessionIdRef.current === requestSessionId) {
+            setIsPreparingReport(false);
+          }
         }
-        setIsPreparingReport(false);
       }
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -558,10 +533,14 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
             executiveSummary={report.executiveSummary}
             tone={report.tone}
             feedback={report.feedback}
+            participant={report.participant}
+            aboutYou={report.aboutYou}
             inputQuality={report.inputQuality}
             keyInsights={report.keyInsights}
             phaseInsights={report.phaseInsights}
             wordCloudThemes={report.wordCloudThemes}
+            questionSetVersion={report.questionSetVersion}
+            pdfMode={isPdfMode}
           />
         ) : null}
       </div>
@@ -585,7 +564,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                   <span className="font-medium text-foreground">{totalQuestions}</span>
                 </div>
               )}
-              <Button variant="outline" size="sm" onClick={restartDiscovery}>
+              <Button variant="outline" size="sm" onClick={restartDiscovery} disabled={isLoading}>
                 Start Over
               </Button>
             </div>
@@ -613,10 +592,13 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                 executiveSummary={report.executiveSummary}
                 tone={report.tone}
                 feedback={report.feedback}
+                participant={report.participant}
+                aboutYou={report.aboutYou}
                 inputQuality={report.inputQuality}
                 keyInsights={report.keyInsights}
                 phaseInsights={report.phaseInsights}
                 wordCloudThemes={report.wordCloudThemes}
+                questionSetVersion={report.questionSetVersion}
                 pdfMode={isPdfMode}
                 onDownloadPdf={async () => {
                   try {
@@ -630,6 +612,8 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
                         executiveSummary: report.executiveSummary,
                         tone: report.tone,
                         feedback: report.feedback,
+                        participant: report.participant,
+                        aboutYou: report.aboutYou,
                         inputQuality: report.inputQuality,
                         keyInsights: report.keyInsights,
                         wordCloudThemes: report.wordCloudThemes,
@@ -675,6 +659,18 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
               />
             ) : (
               <div className="container max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+                {currentSectionLabel && (
+                  <div className="mb-4 flex justify-start">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left shadow-sm">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Current Section
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-slate-900">
+                        {currentSectionLabel}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {displayMessages.map((message) => (
                   <ChatMessage
                     key={message.id}

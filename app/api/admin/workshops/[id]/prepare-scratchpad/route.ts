@@ -189,15 +189,16 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       // Fallback: basic organization by classification
       const sections: OrderedSection[] = [
         { domain: 'People', content: [] },
-        { domain: 'Customer', content: [] },
+        { domain: 'Operations', content: [] },
         { domain: 'Technology', content: [] },
-        { domain: 'Regulation', content: [] },
-        { domain: 'Organisation', content: [] },
+        { domain: 'Commercial', content: [] },
+        { domain: 'Risk/Compliance', content: [] },
+        { domain: 'Partners', content: [] },
       ];
 
       for (const dp of dataPoints) {
-        const domain = dp.classification?.suggestedArea || 'Organisation';
-        const section = sections.find((s) => s.domain === domain) || sections[4];
+        const domain = dp.classification?.suggestedArea || 'Operations';
+        const section = sections.find((s) => s.domain === domain) || sections[1];
 
         section.content.push({
           type: dp.classification?.primaryType.toLowerCase() as any || 'opportunity',
@@ -232,7 +233,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
 
 Your task is to:
 1. Analyze all workshop data points and their agentic analyses
-2. Organize them into the five domains: People, Customer, Technology, Regulation, Organisation
+2. Organize them into the canonical domains: People, Operations, Technology, Commercial, Risk/Compliance, Partners
 3. Categorize each item as: aspiration, constraint, enabler, opportunity, or risk
 4. Order items within each domain by logical flow and importance
 5. Ensure coherent narrative progression within each domain
@@ -241,7 +242,7 @@ Return ONLY valid JSON with this schema:
 {
   "sections": [
     {
-      "domain": "People" | "Customer" | "Technology" | "Regulation" | "Organisation",
+      "domain": "People" | "Operations" | "Technology" | "Commercial" | "Risk/Compliance" | "Partners",
       "content": [
         {
           "type": "aspiration" | "constraint" | "enabler" | "opportunity" | "risk",

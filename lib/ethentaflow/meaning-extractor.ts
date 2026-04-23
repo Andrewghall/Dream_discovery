@@ -1,25 +1,15 @@
 import OpenAI from 'openai';
+import { SEMANTIC_UNIT_SYSTEM_PROMPT, buildSemanticUnitUserPrompt } from '@/lib/live/semantic-unit-prompt';
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Meaning Extractor
-//
-// Sits between TSM commit and DataPoint creation.
-// Takes a full committed passage and returns 0–N meaning units.
-//
-// Rules (enforced by prompt + validation):
-//   1. Near-verbatim extraction only — no paraphrase, no summarisation.
-//   2. Each unit must be a generalisable insight anchored to the speaker's words.
-//   3. Discard: rapport, filler, hesitation, meta commentary, incomplete phrases,
-//      moderator handoffs.
-//   4. If no valid unit exists, return empty array → no DataPoint created.
-//   5. Fallback: if extraction fails, return the full passage as a single unit
-//      so the pipeline never goes dark.
-// ══════════════════════════════════════════════════════════════════════════════
+// Semantic unit extractor.
+// Produces render-safe business meaning units from committed spoken evidence.
+// The DataPoint remains the canonical evidence artifact; these units are for
+// in-memory interpretation and hemisphere placement only.
 
 export interface MeaningUnit {
   extractedText: string;
-  sourceStart: number;   // char offset into the original passage
-  sourceEnd: number;     // char offset into the original passage
+  sourceStart: number;
+  sourceEnd: number;
   confidence: number;
 }
 
@@ -43,56 +33,15 @@ export interface ExtractionResult {
   fallback: boolean;   // true if LLM failed and full passage was returned as-is
 }
 
-const SYSTEM_PROMPT = `You extract meaning units from verbatim speech transcripts.
-
-A MEANING UNIT is:
-- A generalisable insight, observation, or claim about how the world works
-- Grounded in the speaker's direct experience or stated knowledge
-- Self-contained: a reader with no prior context can understand it
-- Expressed in the speaker's actual words — near-verbatim, not rewritten or improved
-
-ALWAYS DISCARD the following (never include in any unit):
-- Rapport and social pleasantries ("I love that you're a pilot", "thanks for sharing")
-- Filler words and hesitation markers ("um", "uh", "I mean", "you know")
-- Meta commentary about the conversation or the speaker's own process
-- Incomplete phrases that don't form a coherent, standalone thought
-- Moderator handoffs, transitions, and procedural statements
-- Personal compliments and non-generalisable asides
-- Phrases with unresolved references: if "it", "this", "that", "they", "them", "those", "the thing"
-  refer to something NOT named within the unit itself, discard it. A unit must be fully
-  self-contained — a reader with zero context must know exactly what is being talked about.
-  Example DISCARD: "I really see it becoming the intelligence hub of the organization." (what is "it"?)
-  Example KEEP: "I really see AI becoming the intelligence hub of the organization." (subject named)
-
-EXTRACTION RULES:
-1. Near-verbatim. Do NOT paraphrase, summarise, or improve the language.
-2. You may lightly stitch adjacent ASR fragments where the boundary is an ASR artifact
-   (e.g. "the technology was. Outdated." → "the technology was outdated") but never
-   rephrase the substance or add words that were not said.
-3. Do not invent wording. Every word in extractedText must appear in the passage.
-4. sourceStart and sourceEnd are character offsets into the original passage (0-indexed, exclusive end).
-5. If the passage contains no valid meaning unit, return an empty units array.
-
-OUTPUT: valid JSON only, no prose.
-
-{
-  "units": [
-    {
-      "extractedText": "near-verbatim text from passage",
-      "sourceStart": 0,
-      "sourceEnd": 100,
-      "confidence": 0.9
-    }
-  ],
-  "discarded": [
-    { "reason": "rapport", "text": "..." }
-  ]
-}
-
-Valid discard reasons: rapport | filler | hesitation | meta_commentary | incomplete | moderator_handoff | unresolved_reference`;
-
 type RawExtraction = {
-  units?: Array<{ extractedText?: unknown; sourceStart?: unknown; sourceEnd?: unknown; confidence?: unknown }>;
+  units?: Array<{
+    text?: unknown;
+    extractedText?: unknown;
+    quality?: Record<string, unknown>;
+    sourceStart?: unknown;
+    sourceEnd?: unknown;
+    confidence?: unknown;
+  }>;
   discarded?: Array<{ reason?: unknown; text?: unknown }>;
 };
 
@@ -128,7 +77,7 @@ function validateSpan(passage: string, start: number, end: number, extractedText
 
 export async function extractMeaningUnits(passage: string): Promise<ExtractionResult> {
   if (!process.env.OPENAI_API_KEY) {
-    console.warn('[MeaningExtractor] OPENAI_API_KEY not set — falling back to full passage');
+    console.warn('[MeaningExtractor] OPENAI_API_KEY not set — falling back to full passage for ingest continuity');
     return {
       units: [{ extractedText: passage, sourceStart: 0, sourceEnd: passage.length, confidence: 1.0 }],
       discarded: [],
@@ -144,11 +93,8 @@ export async function extractMeaningUnits(passage: string): Promise<ExtractionRe
       temperature: 0,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `Extract meaning units from this passage:\n\n${passage}`,
-        },
+        { role: 'system', content: SEMANTIC_UNIT_SYSTEM_PROMPT },
+        { role: 'user', content: buildSemanticUnitUserPrompt(passage) },
       ],
     });
     const content = completion.choices[0]?.message?.content ?? '{}';
@@ -165,18 +111,34 @@ export async function extractMeaningUnits(passage: string): Promise<ExtractionRe
   const units: MeaningUnit[] = [];
   if (Array.isArray(raw.units)) {
     for (const u of raw.units) {
-      const extractedText = typeof u.extractedText === 'string' ? u.extractedText.trim() : null;
+      const extractedText =
+        typeof u.text === 'string'
+          ? u.text.trim()
+          : typeof u.extractedText === 'string'
+            ? u.extractedText.trim()
+            : null;
       if (!extractedText) continue;
 
       const rawStart = typeof u.sourceStart === 'number' ? u.sourceStart : -1;
       const rawEnd = typeof u.sourceEnd === 'number' ? u.sourceEnd : -1;
       const { start, end } = validateSpan(passage, rawStart, rawEnd, extractedText);
 
+      const quality = u.quality ?? {};
+      const passesQualityGate =
+        quality.self_contained === true &&
+        quality.complete_thought === true &&
+        quality.non_fragment === true &&
+        quality.non_filler === true &&
+        quality.business_meaningful === true &&
+        quality.no_external_dependency === true;
+
+      if (!passesQualityGate) continue;
+
       units.push({
         extractedText,
         sourceStart: start,
         sourceEnd: end,
-        confidence: typeof u.confidence === 'number' ? Math.min(1, Math.max(0, u.confidence)) : 0.8,
+        confidence: typeof u.confidence === 'number' ? Math.min(1, Math.max(0, u.confidence)) : 0.9,
       });
     }
   }

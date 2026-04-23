@@ -5,6 +5,7 @@ import { sendDiscoveryReportEmail } from '@/lib/email/send-report';
 import { fixedQuestionsForVersion, FixedQuestion, buildQuestionsFromDiscoverySet } from '@/lib/conversation/fixed-questions';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { getDimensionNames } from '@/lib/cognition/workshop-dimensions';
+import { canonicalizeConversationPhase } from '@/lib/workshop/canonical-lenses';
 import { createHash } from 'crypto';
 import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 
@@ -15,8 +16,41 @@ function stableFingerprint(value: unknown): string {
   return createHash('sha256').update(json).digest('hex');
 }
 
+function countNarrativeEntries(phaseInsights: Array<{
+  strengths?: string[];
+  working?: string[];
+  gaps?: string[];
+  painPoints?: string[];
+  frictions?: string[];
+  barriers?: string[];
+  constraint?: string[];
+  future?: string[];
+  support?: string[];
+}> | null | undefined): number {
+  if (!Array.isArray(phaseInsights)) return 0;
+
+  return phaseInsights.reduce((count, phase) => {
+    return count
+      + (Array.isArray(phase?.strengths) ? phase.strengths.length : 0)
+      + (Array.isArray(phase?.working) ? phase.working.length : 0)
+      + (Array.isArray(phase?.gaps) ? phase.gaps.length : 0)
+      + (Array.isArray(phase?.painPoints) ? phase.painPoints.length : 0)
+      + (Array.isArray(phase?.frictions) ? phase.frictions.length : 0)
+      + (Array.isArray(phase?.barriers) ? phase.barriers.length : 0)
+      + (Array.isArray(phase?.constraint) ? phase.constraint.length : 0)
+      + (Array.isArray(phase?.future) ? phase.future.length : 0)
+      + (Array.isArray(phase?.support) ? phase.support.length : 0);
+  }, 0);
+}
+
 function isAgenticUnavailableText(text: unknown): boolean {
   return typeof text === 'string' && text.trim().toLowerCase().startsWith('agentic synthesis unavailable');
+}
+
+function normalizeLensLookupKey(key: string | null | undefined): string {
+  const raw = String(key ?? '').trim();
+  if (!raw) return '';
+  return canonicalizeConversationPhase(raw) ?? raw;
 }
 
 const STOPWORDS = new Set([
@@ -79,7 +113,7 @@ function inferTagFromQuestionText(question: string, phase: string | null): strin
   const isConfidence = q.includes('confiden');
   if (hasScale && isConfidence) return 'confidence_score';
 
-  if (p === 'regulation') {
+  if (p === 'risk_compliance') {
     if (q.includes('awareness') && hasScale && (q.includes('upcoming') || q.includes('current'))) return 'awareness_current';
     if (q.includes('awareness') && (q.includes('1.5') || q.includes('future') || q.includes('years'))) return 'awareness_future';
     if (q.includes('materially constrain') || q.includes('constrain your ability')) return 'constraint';
@@ -232,6 +266,22 @@ type ReviewedReportText = {
   inputQuality: ReportInputQuality;
   keyInsights: KeyInsight[];
 };
+
+function getTripleRatingConfigForLens(
+  discoveryQs: { lenses?: Array<{ key: string; questions?: Array<{ tag?: string; text?: string; maturityScale?: string[] }> }> } | null | undefined,
+  lensKey: string,
+): { overrideQuestion?: string; overrideMaturityScale?: string[] } {
+  const normalizedLensKey = normalizeLensLookupKey(lensKey);
+  const lens = discoveryQs?.lenses?.find((entry) => normalizeLensLookupKey(entry.key) === normalizedLensKey);
+  const triple = lens?.questions?.find((question) => question?.tag === 'triple_rating');
+
+  return {
+    ...(typeof triple?.text === 'string' && triple.text.trim() ? { overrideQuestion: triple.text.trim() } : {}),
+    ...(Array.isArray(triple?.maturityScale) && triple.maturityScale.length === 5
+      ? { overrideMaturityScale: triple.maturityScale }
+      : {}),
+  };
+}
 
 function clampScore(n: number): number {
   if (!Number.isFinite(n)) return 0;
@@ -497,24 +547,22 @@ async function generateReportText(params: {
 }
 
 function buildSyntheticResponse(includeRegulation: boolean) {
-  const phases = includeRegulation
-    ? ['people', 'corporate', 'customer', 'technology', 'regulation']
-    : ['people', 'corporate', 'customer', 'technology'];
+  const phases = ['people', 'operations', 'technology', 'commercial', 'risk_compliance', 'partners'];
 
   const phaseInsights = phases.map((phase) => {
-    const base = phase === 'technology' ? 4 : phase === 'customer' ? 6 : 5;
+    const base = phase === 'technology' ? 4 : phase === 'commercial' ? 6 : 5;
     return {
       phase,
       currentScore: base,
       targetScore: 8,
       projectedScore: 5,
       strengths: phase === 'people' ? ['Strong peer collaboration and resilience.'] : [],
-      working: phase === 'customer' ? ['Frontline teams are responsive when issues are escalated.'] : [],
+      working: phase === 'commercial' ? ['Frontline teams are responsive when issues are escalated.'] : [],
       gaps: phase === 'technology' ? ['Fragmented systems and inconsistent data quality.'] : [],
-      painPoints: phase === 'customer' ? ['Slow resolution for complex requests across channels.'] : [],
-      frictions: phase === 'corporate' ? ['Approvals and governance add delay and uncertainty.'] : [],
+      painPoints: phase === 'commercial' ? ['Slow resolution for complex requests across channels.'] : [],
+      frictions: phase === 'operations' ? ['Approvals and governance add delay and uncertainty.'] : [],
       barriers: phase === 'technology' ? ['Legacy platforms and unclear ownership of integration.'] : [],
-      constraint: phase === 'regulation' ? ['Compliance checks create rework and slow delivery.'] : [],
+      constraint: phase === 'risk_compliance' ? ['Compliance checks create rework and slow delivery.'] : [],
       future: phase === 'technology' ? ['Integrated data, AI-assisted workflows, and real-time reporting.'] : ['Clearer decision rights and faster execution.'],
       support: phase === 'people' ? ['Role clarity, targeted training, and capacity uplift.'] : [],
     };
@@ -522,7 +570,7 @@ function buildSyntheticResponse(includeRegulation: boolean) {
 
   const prioritization = {
     biggestConstraint: 'Technology',
-    highImpact: 'Corporate/Organisational',
+    highImpact: 'Operations',
     optimism: 'Mixed — optimistic about the vision, skeptical about the pace of change without clearer ownership.',
     finalThoughts: 'Focus on simplifying decisions and making data trustworthy and accessible.',
   };
@@ -692,6 +740,8 @@ export async function GET(request: NextRequest) {
 
     const narrativeTexts: string[] = [];
     let introContext: string | null = null;
+    let introWorking: string | null = null;
+    let introPainPoints: string | null = null;
 
     // Build custom Discovery questions for question-text lookups (null if not configured)
     const reportCustomQs = buildQuestionsFromDiscoverySet((session.workshop as any)?.discoveryQuestions);
@@ -710,6 +760,16 @@ export async function GET(request: NextRequest) {
 
         if (phase === 'intro' && tag === 'context') {
           introContext = answerText;
+          narrativeTexts.push(answerText);
+          continue;
+        }
+        if (phase === 'intro' && tag === 'working') {
+          introWorking = answerText;
+          narrativeTexts.push(answerText);
+          continue;
+        }
+        if (phase === 'intro' && tag === 'pain_points') {
+          introPainPoints = answerText;
           narrativeTexts.push(answerText);
           continue;
         }
@@ -805,6 +865,16 @@ export async function GET(request: NextRequest) {
           narrativeTexts.push(answerText);
           continue;
         }
+        if (phase === 'intro' && tag === 'working') {
+          introWorking = answerText;
+          narrativeTexts.push(answerText);
+          continue;
+        }
+        if (phase === 'intro' && tag === 'pain_points') {
+          introPainPoints = answerText;
+          narrativeTexts.push(answerText);
+          continue;
+        }
 
         if (phase && tag) {
           if (tag === 'triple_rating') {
@@ -879,7 +949,7 @@ export async function GET(request: NextRequest) {
     if (
       discoveryQsForScoring?.lenses?.length &&
       process.env.OPENAI_API_KEY &&
-      discoveryQsForScoring.lenses.every((lens) => currentByPhase[lens.key] == null)
+      discoveryQsForScoring.lenses.every((lens) => currentByPhase[normalizeLensLookupKey(lens.key)] == null)
     ) {
       try {
         const aiScores = await synthesiseLensScores({
@@ -947,7 +1017,8 @@ export async function GET(request: NextRequest) {
       // the display name to store. Direct lookup, zero fuzzy matching.
       phaseInsights = discoveryQs.lenses.map((lens) => ({
         phase: lens.label || lens.key,
-        ...dataFor(lens.key),
+        ...getTripleRatingConfigForLens(discoveryQs, lens.key),
+        ...dataFor(normalizeLensLookupKey(lens.key)),
       }));
 
     } else if (reportBlueprint?.lenses?.length) {
@@ -1006,6 +1077,7 @@ export async function GET(request: NextRequest) {
     }
 
     const inputFingerprint = stableFingerprint({
+      reportContractVersion: '2026-04-22-narrative-phase-insights-v2',
       sessionId: session.id,
       includeRegulation,
       qaPairs: qaPairs.map((q) => ({
@@ -1033,13 +1105,22 @@ export async function GET(request: NextRequest) {
     const agenticConfigured = !!process.env.OPENAI_API_KEY;
     const existingUnavailable =
       isAgenticUnavailableText(session.report?.executiveSummary) || isAgenticUnavailableText(session.report?.feedback);
+    const currentNarrativeCount = countNarrativeEntries(phaseInsights);
+    const storedNarrativeCount = countNarrativeEntries(
+      Array.isArray(session.report?.phaseInsights) ? (session.report?.phaseInsights as Array<Record<string, unknown>>) : null,
+    );
+    const staleNarrativeShape = currentNarrativeCount > 0 && storedNarrativeCount === 0;
+    const phaseInsightsFingerprint = stableFingerprint(phaseInsights);
+    const storedPhaseInsightsFingerprint = stableFingerprint(session.report?.phaseInsights ?? null);
+    const staleDerivedArtifacts = staleNarrativeShape || storedPhaseInsightsFingerprint !== phaseInsightsFingerprint;
 
     const canReuse =
       !force &&
       !!session.report &&
       storedFingerprint === inputFingerprint &&
       (!agenticConfigured || !existingUnavailable) &&
-      !!storedInputQuality;
+      !!storedInputQuality &&
+      !staleNarrativeShape;
 
     const reviewed = canReuse
       ? {
@@ -1056,10 +1137,10 @@ export async function GET(request: NextRequest) {
           prioritization,
         });
 
-    const wordCloudThemes = canReuse && session.report?.wordCloudThemes ? session.report.wordCloudThemes : buildWordFrequencies(narrativeTexts);
+    const wordCloudThemes = buildWordFrequencies(narrativeTexts);
 
     // Persist report so the reuse path activates on subsequent calls
-    if (!canReuse) {
+    if (!canReuse || staleDerivedArtifacts) {
       try {
         const persistedInputQuality = {
           ...reviewed.inputQuality,
@@ -1216,13 +1297,19 @@ export async function GET(request: NextRequest) {
         role: session.participant?.role || null,
         department: session.participant?.department || null,
       },
+      aboutYou: {
+        roleContext: introContext,
+        bestThing: introWorking,
+        frustration: introPainPoints,
+      },
+      questionSetVersion: session.questionSetVersion || 'v1',
       executiveSummary: reviewed.executiveSummary,
       tone: reviewed.tone,
       feedback: reviewed.feedback,
       inputQuality: reviewed.inputQuality,
       keyInsights: canReuse && session.report?.keyInsights ? session.report.keyInsights : reviewed.keyInsights,
       introContext,
-      phaseInsights: canReuse && session.report?.phaseInsights ? session.report.phaseInsights : phaseInsights,
+      phaseInsights,
       wordCloudThemes,
       qaPairs,
     });
