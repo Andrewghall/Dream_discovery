@@ -590,8 +590,8 @@ function executeQuestionSetTool(
           issues.push(`Q${index + 1}: ${mainErr} [MAIN: "${question.text.slice(0, 70)}"]`);
         }
         // lensAngle presence check — must be submitted for every question.
-        const lensAngle = typeof (q as Record<string, unknown>).lensAngle === 'string'
-          ? ((q as Record<string, unknown>).lensAngle as string).trim()
+        const lensAngle = typeof (questions[index] as Record<string, unknown>).lensAngle === 'string'
+          ? ((questions[index] as Record<string, unknown>).lensAngle as string).trim()
           : '';
         if (!lensAngle || lensAngle.length < 20) {
           issues.push(
@@ -604,8 +604,8 @@ function executeQuestionSetTool(
         // Edge tension marker check — enforced at submission time.
         // The tensionWord field is the model's pre-commitment; the check confirms it was honoured.
         if (question.depth === 'edge') {
-          const declaredWord = typeof (q as Record<string, unknown>).tensionWord === 'string'
-            ? ((q as Record<string, unknown>).tensionWord as string).trim().toLowerCase()
+          const declaredWord = typeof (questions[index] as Record<string, unknown>).tensionWord === 'string'
+            ? ((questions[index] as Record<string, unknown>).tensionWord as string).trim().toLowerCase()
             : '';
           if (!declaredWord) {
             issues.push(
