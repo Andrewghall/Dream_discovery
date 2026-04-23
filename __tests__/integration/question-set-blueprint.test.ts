@@ -206,13 +206,14 @@ describe('buildQuestionSetSystemPrompt -- blueprint constraints', () => {
     expect(prompt).not.toContain('QUESTION CONSTRAINTS');
   });
 
-  it('uses blueprint question count in YOUR APPROACH section', () => {
+  it('uses contract-driven depth count in YOUR APPROACH section', () => {
     const bp = ccBlueprint();
     const ctx: PrepContext = { ...baseContext, blueprint: bp };
     const prompt = buildQuestionSetSystemPrompt(ctx, mockResearch, null);
 
-    const qPerPhase = bp.questionPolicy.questionsPerPhase;
-    expect(prompt).toContain(`Design ${qPerPhase} facilitation questions per phase`);
+    // Contract-driven system: 3 depths (surface/depth/edge) per lens, not a fixed count per phase
+    expect(prompt).toContain('3 questions per lens');
+    expect(prompt).toContain('surface, depth, edge');
   });
 
   it('includes diagnosticFocus when present in blueprint', () => {

@@ -66,7 +66,7 @@ async function main() {
         blueprint,
       };
 
-      // 3-minute timeout per workshop — no HTTP deadline pressure in a script
+      // 10-minute timeout per workshop (contract-driven: 3 depths x lenses = many questions)
       const questionSet = await runQuestionSetAgent(
         context,
         research,
@@ -76,7 +76,7 @@ async function main() {
           }
         },
         discoveryBriefing,
-        { timeoutMs: 240_000, maxIterations: 15 },
+        { timeoutMs: 600_000, maxIterations: 20 },
       );
 
       // Validate before saving
@@ -104,7 +104,8 @@ async function main() {
         console.log(`\n  [${phase}]`);
         for (const q of phaseData.questions) {
           const sub = q.subQuestions?.length ? ` (+${q.subQuestions.length} sub)` : '';
-          console.log(`    [${q.lens}] ${q.text}${sub}`);
+          const depth = q.depth ? ` [${q.depth}]` : '';
+          console.log(`    [${q.lens}]${depth} ${q.text}${sub}`);
         }
       }
     } catch (err) {

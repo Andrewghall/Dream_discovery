@@ -110,6 +110,7 @@ export type FacilitationQuestion = {
   order: number;
   isEdited: boolean;          // Has the facilitator edited this?
   subQuestions: SubQuestion[]; // 2-3 starter sub-questions for live session post-its
+  depth?: 'surface' | 'depth' | 'edge'; // Contract depth level — surface opens the space, depth makes it concrete, edge surfaces the unspoken
 };
 
 export type DataConfidence = 'high' | 'moderate' | 'low';
@@ -221,6 +222,7 @@ export type AgentReview = {
 
 export type PrepContext = {
   workshopId: string;
+  workshopType?: string | null;
   workshopPurpose: string | null;
   desiredOutcomes: string | null;
   clientName: string | null;

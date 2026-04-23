@@ -38,6 +38,7 @@ import {
 } from './question-set-validator';
 import { inferCanonicalWorkshopType } from '@/lib/workshop/workshop-definition';
 import { buildLiveWorkshopContractBlock } from '@/lib/workshop/live-stage-contracts';
+import { getQuestionContract, buildLensContractBlock } from '@/lib/workshop/question-contracts';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -150,7 +151,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: 'design_phase_questions',
       description:
-        'Propose facilitation questions for a specific workshop phase. Each question should guide the facilitator in drawing out the right insights from participants. Questions should be grounded in what we know from research and Discovery interviews.',
+        'Propose facilitation questions for a specific workshop phase. Submit questions in any grouping you like -- all lenses at once, lens by lens, or depth by depth. Each call accumulates into per-lens depth slots (phase → lens → depth), so partial submissions are preserved and you never lose progress. A phase completes when every expected lens has a question at surface, depth, AND edge. The response tells you exactly which lens+depth slots are still empty. Consult contractsByPhase (from get_workshop_phases) for what each depth must achieve per lens.',
       parameters: {
         type: 'object',
         properties: {
@@ -168,9 +169,14 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                   type: 'string',
                   description: 'The dimension/lens this question addresses. CRITICAL: Use EXACTLY the lens names returned by get_workshop_phases — copy them character-for-character. For example, if get_workshop_phases returns "Risk/Compliance", use "Risk/Compliance" NOT "Regulation". If it returns "Operations", use "Operations" NOT "Organisation". Use "General" only for cross-cutting questions that span multiple lenses.',
                 },
+                depth: {
+                  type: 'string',
+                  enum: ['surface', 'depth', 'edge'],
+                  description: 'The depth level of this question within its lens. Each lens MUST have exactly one question at each depth: surface (opens the space — observable, grounded in lived experience), depth (makes it concrete — structural, company-specific), edge (surfaces the most ambitious, unspoken version — what nobody in the room has fully committed to yet). See contractsByPhase in get_workshop_phases for what each depth must achieve per lens.',
+                },
                 text: {
                   type: 'string',
-                  description: 'The facilitation question text - what the facilitator would ask the room. MUST start with an observable starter such as "What happens", "Where do you see", "What makes it difficult", "What works well", "Where does", "What slows", "What helps", "What gets in the way", "Which parts", or "When". Do NOT start with "How", "Why", "Who owns", or abstract strategy wording.',
+                  description: 'The facilitation question text — what the facilitator asks the room. Must be a genuine English question. Any standard question form is valid: "What...", "Where...", "How...", "Which...", "When...", "Who...", "In what...", "Across the...", etc. Do NOT open with instructional openers: Consider, Imagine, Describe, Think about, Reflect on, Tell me, Please, Let\'s, Building on, Leveraging, Driving, Delivering, Ensuring, Achieving, Focus on, Note that, You should, They should, Participants should, The facilitator.',
                 },
                 purpose: {
                   type: 'string',
@@ -192,7 +198,7 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                       },
                       text: {
                         type: 'string',
-                        description: 'The sub-question text - a specific angle or probe. MUST start with one of: "What happens", "Where do you see", "What makes it difficult", "What works well", "Where does", "What slows", "What helps", "What gets in the way", "Which parts", "When", "How does", "How do", "How would", "How many", "How often". Do NOT start with "Why", "Who owns", or abstract strategy wording.',
+                        description: 'The seed prompt text — a specific angle or probe the facilitator uses to open or deepen this question. Serves two purposes: (1) coverage insurance — ensures important areas are touched; (2) onion-peeling — if responses are shallow, this drives deeper. Must be a genuine English question. Any standard form is valid. Do NOT open with: Consider, Imagine, Describe, Think about, Reflect on, Tell me, Please, Let\'s, Building on, Leveraging, Driving, Delivering, Ensuring, Achieving, Focus on, Note that, You should, They should.',
                       },
                       purpose: {
                         type: 'string',
@@ -203,9 +209,9 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                   },
                 },
               },
-              required: ['lens', 'text', 'purpose', 'grounding', 'subQuestions'],
+              required: ['lens', 'depth', 'text', 'purpose', 'grounding', 'subQuestions'],
             },
-            description: 'The facilitation questions for this phase (typically 5-8 per phase).',
+            description: 'The facilitation questions to add. Any size: 1 question, 3 questions for 1 lens, all 18 for a 6-lens phase, or any other grouping. Each question is stored in its lens+depth slot. You can submit surface questions for all lenses, then depth questions, then edge questions, across multiple calls — progress accumulates. Tag every question with its depth field.',
           },
         },
         required: ['phase', 'questions'],
@@ -256,6 +262,7 @@ function executeQuestionSetTool(
   research: WorkshopPrepResearch | null,
   discoveryBriefing: Record<string, unknown> | null,
   designedPhases: Map<WorkshopPhase, FacilitationQuestion[]>,
+  designedDepthSlots: Map<WorkshopPhase, Map<string, Map<string, FacilitationQuestion>>>,
 ): { result: string; summary: string } {
   switch (toolName) {
     case 'get_research_context': {
@@ -440,6 +447,28 @@ function executeQuestionSetTool(
         ? bp.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')
         : null;
 
+      // Build contract blocks — exact spec of what each depth level must achieve per lens
+      const workshopType = inferCanonicalWorkshopType({ workshopType: context.workshopType });
+      const clientName = context.clientName || 'the client';
+
+      // Use compact form to keep context size manageable for large workshops (6+ lenses)
+      const contractsByPhase: Record<string, string> = {};
+      for (const [phaseName, lensResult] of [
+        ['REIMAGINE', reimagine],
+        ['CONSTRAINTS', constraints],
+        ['DEFINE_APPROACH', defineApproach],
+      ] as Array<[string, { lenses: string[] }]>) {
+        const contract = getQuestionContract(phaseName as 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH', workshopType);
+        contractsByPhase[phaseName] = lensResult.lenses.map(lens =>
+          buildLensContractBlock(contract, lens, clientName, true), // compact=true
+        ).join('\n');
+      }
+
+      // Question count: 3 depths × num_lenses per phase
+      const reimagineCount = reimagine.lenses.length * 3;
+      const constraintsCount = constraints.lenses.length * 3;
+      const defineApproachCount = defineApproach.lenses.length * 3;
+
       return {
         result: JSON.stringify({
           dreamTrack: context.dreamTrack,
@@ -447,33 +476,37 @@ function executeQuestionSetTool(
           trackGuidance: trackContext,
           hasResearchedDimensions: lensSource === 'research_dimensions' || lensSource === 'domain_pack',
           lensSource,
-          questionPolicy: { questionsPerPhase: qPerPhase, subQuestionsPerMain: subPerMain },
+          questionPolicy: {
+            questionsPerPhase: `3 per lens (surface + depth + edge). REIMAGINE: ${reimagineCount}, CONSTRAINTS: ${constraintsCount}, DEFINE_APPROACH: ${defineApproachCount}`,
+            subQuestionsPerMain: subPerMain,
+          },
           journeyStages: bp?.journeyStages || null,
           phases: {
             REIMAGINE: {
               label: 'Reimagine',
               purpose: PHASE_GUIDANCE.REIMAGINE,
               lensOrder: reimagine.lenses,
-              questionCount: questionCountLabel,
-              keyPrinciple: 'NO constraints. Pure vision. Dream big.',
+              questionCount: `${reimagineCount} (3 per lens × ${reimagine.lenses.length} lenses)`,
+              keyPrinciple: 'Pure 100% vision. NO constraint language of any kind. Customer is north star.',
             },
             CONSTRAINTS: {
               label: 'Constraints',
               purpose: PHASE_GUIDANCE.CONSTRAINTS,
               lensOrder: constraints.lenses,
-              questionCount: questionCountLabel,
-              keyPrinciple: 'Map what stands in the way. Right-to-left through lenses.',
+              questionCount: `${constraintsCount} (3 per lens × ${constraints.lenses.length} lenses)`,
+              keyPrinciple: 'Map what stands between today and the vision. Surface → structural → what it protects.',
             },
             DEFINE_APPROACH: {
               label: 'Define Approach',
               purpose: PHASE_GUIDANCE.DEFINE_APPROACH,
               lensOrder: defineApproach.lenses,
-              questionCount: questionCountLabel,
-              keyPrinciple: 'Build the practical path forward. Left-to-right through lenses.',
+              questionCount: `${defineApproachCount} (3 per lens × ${defineApproach.lenses.length} lenses)`,
+              keyPrinciple: 'Practical path from today to the vision. First step → conditions → failure modes.',
             },
           },
+          contractsByPhase,
         }),
-        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} dimensions), CONSTRAINTS (${constraints.lenses.length} dimensions), DEFINE_APPROACH (${defineApproach.lenses.length} dimensions). Using ${lensSource} dimensions: ${reimagine.lenses.join(', ')}. Target: ${qPerPhase} questions/phase, ${subPerMain} sub-questions/main.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
+        summary: `Retrieved workshop phase structure (lensSource: ${lensSource}). ${trackContext}\n\n3 phases: REIMAGINE (${reimagine.lenses.length} lenses × 3 depths = ${reimagineCount}q), CONSTRAINTS (${constraints.lenses.length} lenses × 3 depths = ${constraintsCount}q), DEFINE_APPROACH (${defineApproach.lenses.length} lenses × 3 depths = ${defineApproachCount}q). Lenses: ${reimagine.lenses.join(', ')}. Contract blocks for all phases included in contractsByPhase.${journeyStages ? `\n\n**Journey Stages:**\n${journeyStages}` : ''}`,
       };
     }
 
@@ -502,40 +535,43 @@ function executeQuestionSetTool(
         return LENS_NORMALISE[raw] ?? raw;
       }
 
-      // Build facilitation questions with starter sub-questions
-      const facilitation: FacilitationQuestion[] = questions.map((q, i) => ({
-        id: nanoid(8),
-        phase,
-        lens: normaliseLens(String(q.lens || 'General')),
-        text: String(q.text || ''),
-        purpose: String(q.purpose || ''),
-        grounding: String(q.grounding || ''),
-        order: i + 1,
-        isEdited: false,
-        subQuestions: Array.isArray(q.subQuestions)
-          ? q.subQuestions.map((sq: Record<string, unknown>) => ({
-              id: nanoid(8),
-              lens: normaliseLens(String(sq.lens || 'General')),
-              text: String(sq.text || ''),
-              purpose: String(sq.purpose || ''),
-            }))
-          : [],
-      }));
-
-      // Enforce minimum question count before running per-question validation
-      const minQuestionsRequired = context.blueprint?.questionPolicy?.questionsPerPhase ?? 5;
-      if (facilitation.length < minQuestionsRequired) {
-        const countRemediation = `You submitted ${facilitation.length} question(s) but this phase requires ${minQuestionsRequired}. Design ALL ${minQuestionsRequired} questions (one per lens in the phase order) and resubmit in a single call.`;
-        return {
-          result: JSON.stringify({
-            error: `Too few questions — ${facilitation.length} submitted, ${minQuestionsRequired} required`,
-            phase,
-            remediation: countRemediation,
-          }),
-          summary: `**${phase} rejected** — only ${facilitation.length}/${minQuestionsRequired} questions provided.\n- ${countRemediation}`,
-        };
+      // Determine expected lenses for this phase
+      const VALID_DEPTHS = ['surface', 'depth', 'edge'] as const;
+      type ValidDepth = typeof VALID_DEPTHS[number];
+      const DEPTH_ORDER: Record<string, number> = { surface: 0, depth: 1, edge: 2 };
+      let expectedLenses: string[] = [];
+      try {
+        expectedLenses = getPhaseLensOrder(phase, research, context.blueprint).lenses.map(normaliseLens);
+      } catch {
+        // Lens info unavailable — fall back to blueprint policy count
       }
 
+      // Build facilitation questions from submitted data
+      const facilitation: FacilitationQuestion[] = questions.map((q, i) => {
+        // Normalise depth: accept 'Surface' → 'surface', 'Depth' → 'depth', 'Edge' → 'edge'
+        const rawDepth = String(q.depth || '').toLowerCase().trim();
+        return {
+          id: nanoid(8),
+          phase,
+          lens: normaliseLens(String(q.lens || 'General')),
+          text: String(q.text || ''),
+          purpose: String(q.purpose || ''),
+          grounding: String(q.grounding || ''),
+          depth: VALID_DEPTHS.includes(rawDepth as ValidDepth) ? rawDepth as ValidDepth : undefined,
+          order: i + 1,
+          isEdited: false,
+          subQuestions: Array.isArray(q.subQuestions)
+            ? q.subQuestions.map((sq: Record<string, unknown>) => ({
+                id: nanoid(8),
+                lens: normaliseLens(String(sq.lens || 'General')),
+                text: String(sq.text || ''),
+                purpose: String(sq.purpose || ''),
+              }))
+            : [],
+        };
+      });
+
+      // --- STEP 1: Text validation (reject entire submission if any question fails) ---
       const validationIssues = facilitation.flatMap((question, index) => {
         const issues: string[] = [];
         const mainErr = validateFacilitationQuestionText(question.text, question.lens, false);
@@ -572,14 +608,121 @@ function executeQuestionSetTool(
         };
       }
 
+      // --- STEP 2: Per-depth slot accumulation (accepts any valid questions, accumulates across calls) ---
+      // The model may submit questions depth-by-depth (all-surface then all-depth then all-edge).
+      // This accumulator tracks per-phase → per-lens → per-depth, accepting each valid question
+      // and preserving progress so the model doesn't lose work across iterations.
+      if (expectedLenses.length > 0) {
+        // Ensure accumulator exists for this phase
+        if (!designedDepthSlots.has(phase)) designedDepthSlots.set(phase, new Map());
+        const phaseSlots = designedDepthSlots.get(phase)!;
+
+        // Group submitted questions by lens for debug logging
+        const byLens = new Map<string, FacilitationQuestion[]>();
+        for (const q of facilitation) {
+          const lens = q.lens || 'General';
+          if (!byLens.has(lens)) byLens.set(lens, []);
+          byLens.get(lens)!.push(q);
+        }
+        console.log(`[Question Set Agent] ${phase} submission: ${[...byLens.entries()].map(([l, qs]) => `${l}:[${qs.map(q => q.depth ?? '?').join(',')}]`).join(' ')}`);
+
+        // Accumulate each submitted question into its phase → lens → depth slot
+        // Only accept questions with a valid depth tag
+        for (const q of facilitation) {
+          if (!q.depth) continue; // skip questions without a depth tag
+          const lens = q.lens || 'General';
+          if (!phaseSlots.has(lens)) phaseSlots.set(lens, new Map());
+          phaseSlots.get(lens)!.set(q.depth, q); // latest wins per slot
+        }
+
+        // Compute per-lens completion status
+        const REQUIRED_DEPTHS = ['surface', 'depth', 'edge'] as const;
+        const completedLenses: string[] = [];
+        const incompleteLenses: Array<{ lens: string; missing: string[] }> = [];
+
+        for (const lens of expectedLenses) {
+          const lensSlots = phaseSlots.get(lens);
+          const missing = REQUIRED_DEPTHS.filter(d => !lensSlots?.has(d));
+          if (missing.length === 0) {
+            completedLenses.push(lens);
+          } else {
+            incompleteLenses.push({ lens, missing });
+          }
+        }
+
+        const stillMissing = incompleteLenses.map(l => l.lens);
+
+        if (stillMissing.length > 0) {
+          // Phase not yet complete — return progress guidance
+          const pct = `${completedLenses.length}/${expectedLenses.length}`;
+          const progressNote = completedLenses.length > 0
+            ? `Progress: ${pct} lenses complete (${completedLenses.join(', ')}).`
+            : `Progress: 0/${expectedLenses.length} lenses complete.`;
+          const missingDetail = incompleteLenses.map(l => `${l.lens} needs: ${l.missing.join(', ')}`).join('; ');
+
+          return {
+            result: JSON.stringify({
+              status: 'partial',
+              phase,
+              completedLenses,
+              stillMissing,
+              depthsNeeded: Object.fromEntries(incompleteLenses.map(l => [l.lens, l.missing])),
+            }),
+            summary: `**${phase} partial** — ${pct} lenses complete.\n- ${progressNote}\n- Still needed: ${missingDetail}. Call design_phase_questions again for the missing depths.`,
+          };
+        }
+
+        // All expected lenses complete — flatten into ordered question list
+        const ordered: FacilitationQuestion[] = [];
+        for (const lens of expectedLenses) {
+          for (const d of REQUIRED_DEPTHS) {
+            const q = phaseSlots.get(lens)?.get(d);
+            if (q) ordered.push(q);
+          }
+        }
+        ordered.forEach((q, i) => { q.order = i + 1; });
+        designedPhases.set(phase, ordered);
+
+        const phaseLabel = phase === 'DEFINE_APPROACH' ? 'Define Approach' : phase.charAt(0) + phase.slice(1).toLowerCase();
+        const qLines = ordered.map(q => {
+          const depthTag = q.depth ? ` [${q.depth}]` : '';
+          return `  ${q.order}. **[${q.lens}]${depthTag}** "${q.text}"`;
+        }).join('\n');
+
+        return {
+          result: JSON.stringify({
+            phase,
+            questionsStored: ordered.length,
+            lensDistribution: ordered.reduce((acc, q) => {
+              const lens = q.lens || 'General';
+              acc[lens] = (acc[lens] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+          }),
+          summary: `**Designed ${phaseLabel} phase** - ${ordered.length} facilitation questions\n\n${qLines}`,
+        };
+      }
+
+      // --- Fallback: no expected lenses — use original count-based validation ---
+      const minQuestionsRequired = context.blueprint?.questionPolicy?.questionsPerPhase ?? 5;
+      if (facilitation.length < minQuestionsRequired) {
+        const countRemediation = `You submitted ${facilitation.length} question(s) but this phase requires ${minQuestionsRequired}. Design ALL ${minQuestionsRequired} questions and resubmit in a single call.`;
+        return {
+          result: JSON.stringify({
+            error: `Too few questions — ${facilitation.length} submitted, ${minQuestionsRequired} required`,
+            phase,
+            remediation: countRemediation,
+          }),
+          summary: `**${phase} rejected** — only ${facilitation.length}/${minQuestionsRequired} questions provided.\n- ${countRemediation}`,
+        };
+      }
       designedPhases.set(phase, facilitation);
 
-      // Build summary with full question listing
-      const qLines = facilitation.map((q) => {
-        return `  ${q.order}. **[${q.lens}]** "${q.text}"\n     _Purpose:_ ${q.purpose}\n     _Grounding:_ ${q.grounding}`;
+      const phaseLabel2 = phase === 'DEFINE_APPROACH' ? 'Define Approach' : phase.charAt(0) + phase.slice(1).toLowerCase();
+      const qLines2 = facilitation.map(q => {
+        const depthTag = q.depth ? ` [${q.depth}]` : '';
+        return `  ${q.order}. **[${q.lens}]${depthTag}** "${q.text}"\n     _Purpose:_ ${q.purpose}`;
       }).join('\n\n');
-
-      const phaseLabel = phase === 'DEFINE_APPROACH' ? 'Define Approach' : phase.charAt(0) + phase.slice(1).toLowerCase();
 
       return {
         result: JSON.stringify({
@@ -591,7 +734,7 @@ function executeQuestionSetTool(
             return acc;
           }, {} as Record<string, number>),
         }),
-        summary: `**Designed ${phaseLabel} phase** - ${facilitation.length} facilitation questions\n\n${qLines}`,
+        summary: `**Designed ${phaseLabel2} phase** - ${facilitation.length} facilitation questions\n\n${qLines2}`,
       };
     }
 
@@ -723,50 +866,78 @@ generic People/Organisation/Customer/Technology/Regulation names.
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, sequence-focused, measurable. Ask what would need to happen in practice, where the first move is, and how the room would know it is working.
 `}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}${constraintsBlock}
+CONTRACT-DRIVEN DEPTH STRUCTURE (NON-NEGOTIABLE):
+For each lens in each phase, generate exactly 3 questions at increasing depth levels:
+
+  surface: Opens the space. Observable, grounded in what participants actually experience.
+           The question must be answerable by anyone in the room from lived experience.
+           Avoids constraint language in REIMAGINE. Reveals the visible form of the constraint
+           in CONSTRAINTS. Identifies the concrete first step in DEFINE_APPROACH.
+
+  depth:   Makes it concrete and structural. Company-specific. Gets beneath symptoms to causes
+           (CONSTRAINTS), or beneath aspiration to daily reality (REIMAGINE), or beneath first
+           step to what conditions must hold (DEFINE_APPROACH).
+
+  edge:    Surfaces the most ambitious, challenging, or unspoken version. The question nobody
+           in the room has fully committed to yet. In REIMAGINE: the transformative possibility.
+           In CONSTRAINTS: what the constraint is actually protecting. In DEFINE_APPROACH: where
+           this approach will quietly fail and what nobody is saying about it.
+
+The get_workshop_phases tool returns contractsByPhase -- read it carefully. It specifies exactly
+what each depth level must achieve for each specific lens. Follow the contract, not your intuition.
+
+QUESTION COUNT: For each phase, total questions = 3 depths x number of lenses. If a phase has
+6 lenses, submit 18 questions (6 lenses x 3 depths each). Tag each question with its "depth"
+field. Group by lens when designing: do all 3 depths for one lens before moving on.
+
+REIMAGINE HARD RULE: Zero constraint language at any depth level. Not even at edge depth.
+No mention of barriers, gaps, what needs to change, limitations, or what stands in the way.
+Pure vision -- what becomes possible. Customer is the north star. Sub-actors (operational and
+commercial roles) appear in seed prompts to ground the vision in real working experience.
+
 YOUR APPROACH:
-1. First, get the research context (company, industry, challenges).
+1. Get the research context (company, industry, challenges).
 2. Get Discovery insights if available (what participants already told us).
 3. Get blueprint constraints (required/forbidden topics, focus areas, metrics).
 4. Get historical metrics if available (operational baselines and trends).
-5. Get the workshop phase structure (lens order, purpose).
-6. Design questions for ALL THREE phases. You MUST call design_phase_questions three times — once for REIMAGINE, once for CONSTRAINTS, once for DEFINE_APPROACH. You can call all three in a single parallel tool call to save time. DO NOT commit until all three phases have been designed.
-   - Design ${bp?.questionPolicy?.questionsPerPhase ?? 5} facilitation questions per phase
-   - Each question should follow the lens order for that phase
-   - Questions MUST reference specific company context where possible
-   - Questions should BUILD ON Discovery insights, not repeat them
-   - If Discovery revealed a pain point, ask "how does this play into the
-     constraints?" - don't ask "what are your pain points?" again
-   - If the workshop type is GO-TO-MARKET / Strategy, every phase question must stay tied to win/loss, ICP fit, proposition credibility, delivery-against-promise, buyer trust, or deal viability. Do NOT fall back to generic transformation or operations workshop questions.
-   - For EACH main question, generate ${bp?.questionPolicy?.subQuestionsPerMain ?? 3} starter sub-questions. These are
-     specific angles or probes that immediately trigger dialogue when the
-     facilitator activates the main question. Sub-questions should:
+5. Get the workshop phase structure. CRITICAL: read contractsByPhase carefully before designing.
+6. Design questions for ALL THREE phases. Call design_phase_questions for each phase.
+   You may submit questions in any grouping -- all at once, per-lens, or even per-depth.
+   Each call accumulates into per-lens depth slots: your progress is preserved across calls.
+   A phase completes when every lens has questions at all 3 depths. DO NOT commit until all
+   three phases are complete.
+   - Follow the contract for each phase x lens combination (from contractsByPhase)
+   - Each lens needs exactly 3 depth levels: surface, depth, edge -- tag each with "depth" field
+   - Questions MUST be deeply specific to ${context.clientName || 'the client'}.
+     Reference actual challenges, industry dynamics, and Discovery insights.
+     Do NOT write generic template questions with a company name inserted.
+   - Questions should BUILD ON Discovery insights, not repeat them.
+   - If the workshop type is GO-TO-MARKET, every phase question must stay tied to
+     proposition credibility, buyer experience, win/loss, ICP fit, deal viability.
+     Do NOT fall back to generic transformation or operations questions.
+   - For EACH main question, generate ${bp?.questionPolicy?.subQuestionsPerMain ?? 3} seed prompts (subQuestions).
+     Seed prompts serve two purposes: (1) coverage insurance -- ensure key areas the contract
+     specifies are touched; (2) onion-peeling -- drive deeper if responses are shallow.
+     Seed prompts must:
+     * Follow the promptIntents from the contract for that depth level
      * Each target a specific dimension from the workshop's lens set
      * Be directly scoped to the parent main question's topic
-     * Reference concrete research/Discovery findings where possible
-     * Give the room something tangible to discuss immediately
-     * MUST be genuine questions — any standard English question form is valid:
-       "What happens...", "Where do you see...", "How does...", "How might...",
-       "Which teams...", "When does...", "In what ways...", "Across the...", etc.
+     * Reference specific research/Discovery findings where possible
+     * MUST be genuine questions -- any standard English question form is valid
      * Do NOT start with instructional openers: "Consider", "Imagine", "Describe",
        "Think about", "Let's", "Focus on", "Building on", "Leveraging", "Driving",
        "Ensuring", "Achieving", "You should", "They should"
      * Do NOT use financial terms (ROI, budget, revenue, profit, margin, investment)
      * Do NOT name specific senior roles (board, C-suite, shareholder, executive committee)
-     * CRITICAL - sub-questions must NOT repeat the main question's framing.
-       The main question already sets the aspirational/constraint/action frame.
-       Sub-questions drill into SPECIFIC angles:
-       REIMAGINE subs: The main question handles the aspiration framing.
-         Subs must probe SPECIFIC aspects - name a real finding from Discovery
-         or research and ask about it through lived experience. NEVER use
-         generic patterns like "In your ideal...", "Describe the perfect...",
-         "Paint the picture...", "What does the ideal future look like...",
-         "Imagine a world where...". Instead use observable forms like:
-         "Where do you see that friction today, and what would be different if it worked brilliantly?"
+     * Must NOT repeat the main question's framing. Probe SPECIFIC angles:
+       REIMAGINE subs: Observable, grounded in actual experience. NEVER "Imagine a world
+         where...", "Describe the perfect...", "Paint the picture...". Instead:
          "What happens for customers when that part of the journey works really well?"
-       CONSTRAINTS subs should be specific, probing, grounded in the vision.
-         Ask observable versions such as "Where do you see this getting blocked?" or "What makes this difficult in practice?"
-       DEFINE_APPROACH subs should be actionable and practical.
-         Ask observable versions such as "What happens first if we try to do this in practice?", "Where does this approach depend on cleaner handoffs?", "What helps this work reliably day to day?"
+         "Where do you see that friction today, and what would be different?"
+       CONSTRAINTS subs: Specific and probing. "Where do you see this getting blocked?"
+         "What makes this difficult in practice?"
+       DEFINE_APPROACH subs: Actionable and practical. "What happens first if we try this
+         in practice?" "Where does this depend on cleaner handoffs?"
 7. Commit the final question set with a design rationale and data confidence assessment.
 
 QUESTION DESIGN PRINCIPLES:
@@ -856,6 +1027,9 @@ export async function runQuestionSetAgent(
 
   // Track designed phases as they come in
   const designedPhases = new Map<WorkshopPhase, FacilitationQuestion[]>();
+  // Per-depth accumulator: preserves progress across partial submissions (per phase → lens → depth → question)
+  // Allows model to submit 1 depth per lens per call and accumulate toward completion.
+  const designedDepthSlots = new Map<WorkshopPhase, Map<string, Map<string, FacilitationQuestion>>>();
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
@@ -992,7 +1166,7 @@ export async function runQuestionSetAgent(
           });
         } else {
           const toolResult = executeQuestionSetTool(
-            fnName, fnArgs, context, research, discoveryBriefing || null, designedPhases,
+            fnName, fnArgs, context, research, discoveryBriefing || null, designedPhases, designedDepthSlots,
           );
 
           // Emit conversation entries for substantive tool results
