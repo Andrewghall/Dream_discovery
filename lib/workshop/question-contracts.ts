@@ -148,16 +148,16 @@ const CONSTRAINTS_DEFAULT: PhaseQuestionContract = {
     },
     {
       depth: 'depth',
-      questionIntent: 'Expose what creates and maintains this constraint — what\'s structural about it, not just symptomatic?',
+      questionIntent: 'Make the constraint real and specific — what actually happens when this hits, who deals with it, and why does it keep coming back? Use behavioural or grounding question shapes, not academic language about causes.',
       promptIntents: [
-        'What originally created this constraint and what keeps it in place today',
+        'What it looks like in practice when this constraint surfaces — who is involved and what they have to do',
         'What other parts of the operation depend on this constraint remaining as it is',
         'Where the constraint has gotten worse or better recently and what drove that change',
       ],
     },
     {
       depth: 'edge',
-      questionIntent: 'Surface the real cost and what removal would require — what is this constraint actually protecting?',
+      questionIntent: 'Surface the consequence or the trade-off — what is this actually protecting, or what breaks if it stays in place? Use consequence or pressure question shapes. Do NOT ask "what would removing X require" or "what is the real cost of maintaining".',
       promptIntents: [
         'What the business would have to fundamentally change or stop doing to remove this constraint',
         'Who in the organisation has the most to lose if this constraint is removed',
@@ -185,16 +185,16 @@ const CONSTRAINTS_GTM: PhaseQuestionContract = {
     },
     {
       depth: 'depth',
-      questionIntent: 'Expose what creates and maintains this commercial constraint — what\'s structural about it?',
+      questionIntent: 'Make the commercial constraint specific and observable — what does it look like in a live deal, who feels it first, and what do they have to do because of it? Avoid academic language about causes or structures.',
       promptIntents: [
-        'What in the current go-to-market model creates this constraint and what keeps it in place',
+        'What it looks like in a live deal or buyer conversation when this constraint surfaces',
         'What internal dependencies or ways of working depend on this constraint remaining',
         'Where this constraint has gotten worse or better recently and what drove that',
       ],
     },
     {
       depth: 'edge',
-      questionIntent: 'Surface what removing this constraint would actually require — what is it protecting?',
+      questionIntent: 'Surface the consequence or trade-off — what is this protecting, or what does staying here cost? Use consequence or pressure question shapes. Do NOT ask "what would removing X require" or "what is it actually protecting".',
       promptIntents: [
         'What the commercial model or proposition would have to fundamentally change to remove this constraint',
         'Who internally has the most to lose if this constraint is removed',
@@ -228,7 +228,7 @@ const DEFINE_APPROACH_DEFAULT: PhaseQuestionContract = {
     },
     {
       depth: 'depth',
-      questionIntent: 'Map what needs to be true for this approach to hold — what conditions, changes, and dependencies are required?',
+      questionIntent: 'Get specific about what needs to already be working — who or what moves first, what the sequence looks like, and what early signal tells us this is working. Avoid "conditions must be true" language. Use grounding or accountability question shapes.',
       promptIntents: [
         'What has to change in how people work together, hand off, or make decisions for this to stick',
         'What the sequence of change looks like — what enables what, and what can\'t happen until something else does',
@@ -237,7 +237,7 @@ const DEFINE_APPROACH_DEFAULT: PhaseQuestionContract = {
     },
     {
       depth: 'edge',
-      questionIntent: 'Surface where this approach will stall and what the failure mode looks like — what is nobody saying?',
+      questionIntent: 'Surface where this approach will quietly stall — the failure mode nobody is naming. Use consequence or pressure question shapes. Do NOT ask "what potential resistance might arise" or "what conditions must be true".',
       promptIntents: [
         'Where this approach will hit its hardest resistance and what form that resistance will take',
         'What the slow failure mode looks like — the version that fails quietly rather than visibly',
@@ -265,7 +265,7 @@ const DEFINE_APPROACH_GTM: PhaseQuestionContract = {
     },
     {
       depth: 'depth',
-      questionIntent: 'Map what needs to be true commercially for this approach to hold — what internal and external conditions are required?',
+      questionIntent: 'Get specific about what has to change commercially for this to be executable — who moves first, what the sequence is, and what early signal tells us it is working. Avoid "conditions must be true" language.',
       promptIntents: [
         'What has to change internally (proposition clarity, commercial model, pricing, enablement) for this to be executable',
         'What the sequence looks like — what commercial changes enable others, and what can\'t happen until something else does',
@@ -274,7 +274,7 @@ const DEFINE_APPROACH_GTM: PhaseQuestionContract = {
     },
     {
       depth: 'edge',
-      questionIntent: 'Surface where this commercial approach will stall — what is nobody saying about why it might not work?',
+      questionIntent: 'Surface where this commercial approach will quietly drift or stall — the failure mode nobody is naming. Use consequence or pressure question shapes. Do NOT ask "what potential resistance might arise".',
       promptIntents: [
         'Where this approach will hit its hardest internal or market resistance and what form that takes',
         'What the slow commercial failure mode looks like — the version where it drifts rather than fails clearly',
