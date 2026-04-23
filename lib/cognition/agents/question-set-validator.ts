@@ -17,6 +17,11 @@
 
 export const REQUIRED_QUESTION_PHASES = ['REIMAGINE', 'CONSTRAINTS', 'DEFINE_APPROACH'] as const;
 
+// Edge questions must surface tension, doubt, sacrifice, or what is unspoken.
+// Used to enforce that edge-depth questions are not generic surface questions re-labelled.
+export const EDGE_TENSION_MARKERS =
+  /\b(?:privately|quietly|doubt(?:s|ed|ing)?|liabilit(?:y|ies)|contradict(?:s|ed|ing)?|undermin(?:e|es|ed|ing)|trade[\s-]?off|sacrific(?:e|es|ed|ing)|deprioritii?s(?:e?d?)?|wors(?:e|en|ens|ened)|unsolved|nobody|hasn'?t|haven'?t|stop(?:s|ped|ping)|block(?:s|ing|ed)?|abandon(?:s|ed|ing)?|unrecogni(?:s|z)able?|protect(?:s|ing|ed)?|would\s+say|give\s+up|walk(?:s|ed|ing)?\s+away|first\s+to\s+(?:go|be|get)|disappear(?:s|ed|ing)?|stop\s+doing)\b/i;
+
 // "cost" and "costs" are everyday operational words — banned terms target pure finance/strategy analysis
 const FINANCIAL_TERMS = /\b(roi|ebitda|margin|margins|cash flow|p&l|budget|budgets|funding|investment|investments|invest|revenue|profit|profitability|financial performance|investment discipline|strategy effectiveness|payback|opex|capex)\b/i;
 const ROLE_SPECIFIC_TERMS = /\b(board|c-suite|executive committee|shareholder|investor|leadership decisions?|capital allocation|esg|corporate strategy|enterprise strategy)\b/i;
@@ -98,6 +103,19 @@ export function validateQuestionSet(qs: unknown): string | null {
         return `Phase ${phase} question ${index + 1} failed validation: ${validationError}`;
       }
 
+      // Edge depth questions must contain a tension or discomfort signal.
+      // Only applied to questions with depth === 'edge' that have not been
+      // manually edited by the facilitator (isEdited protects human rewrites).
+      const questionDepth = typeof questionObj.depth === 'string' ? questionObj.depth : null;
+      const isEdited = questionObj.isEdited === true;
+      if (questionDepth === 'edge' && !isEdited && !EDGE_TENSION_MARKERS.test(text)) {
+        return (
+          `Phase ${phase} question ${index + 1} (${lens ?? 'unknown'} — edge) lacks a tension signal. ` +
+          `Edge questions must surface doubt, sacrifice, unspoken risk, or what has been avoided. ` +
+          `Add a tension marker (e.g. privately, doubt, liability, worse, walk away, hasn't been fixed, nobody has said).`
+        );
+      }
+
       const subQuestions = Array.isArray(questionObj.subQuestions) ? questionObj.subQuestions : [];
       for (const [subIndex, subQuestion] of subQuestions.entries()) {
         if (!subQuestion || typeof subQuestion !== 'object' || Array.isArray(subQuestion)) {
@@ -111,6 +129,36 @@ export function validateQuestionSet(qs: unknown): string | null {
           return `Phase ${phase} question ${index + 1} sub-question ${subIndex + 1} failed validation: ${subValidationError}`;
         }
       }
+    }
+  }
+
+  // --- Pass 3: cross-lens exact-text duplicate detection ---
+  // Identical question text used across different lenses in the same phase is a
+  // structural defect — it means the agent copy-pasted rather than designed
+  // lens-specific questions. Hard fail so the caller is forced to fix it.
+  for (const phase of REQUIRED_QUESTION_PHASES) {
+    const phaseObj = (phases[phase] as Record<string, unknown>);
+    const questions = phaseObj.questions as unknown[];
+
+    const seenTexts = new Map<string, string>(); // normalised text → "lens/depth" label
+    for (const question of questions) {
+      const q = question as Record<string, unknown>;
+      const qLens = typeof q.lens === 'string' ? q.lens : 'General';
+      const qDepth = typeof q.depth === 'string' ? q.depth : 'unknown';
+      const rawText = typeof q.text === 'string' ? q.text : '';
+      const normalisedText = rawText.toLowerCase().trim();
+
+      if (!normalisedText) continue;
+
+      if (seenTexts.has(normalisedText)) {
+        const firstSlot = seenTexts.get(normalisedText)!;
+        return (
+          `Phase ${phase}: identical question text found in "${qLens}/${qDepth}" and ${firstSlot}. ` +
+          `Each lens must ask a fundamentally different question that only that lens can answer. ` +
+          `Rewrite the duplicate to be specific to the ${qLens} lens.`
+        );
+      }
+      seenTexts.set(normalisedText, `${qLens}/${qDepth}`);
     }
   }
 

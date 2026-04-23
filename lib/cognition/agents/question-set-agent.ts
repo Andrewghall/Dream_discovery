@@ -45,7 +45,7 @@ import { getQuestionContract, buildLensContractBlock } from '@/lib/workshop/ques
 
 const MAX_ITERATIONS = 12;
 const LOOP_TIMEOUT_MS = 240_000;
-const MODEL = 'gpt-4o-mini';
+const MODEL = 'gpt-4o';
 const MAX_SLOT_REWRITES = 2; // Hard escalation after this many rewrites per lens/depth slot
 /**
  * Get lens order for a phase.
@@ -589,53 +589,18 @@ function executeQuestionSetTool(
         if (mainErr) {
           issues.push(`Q${index + 1}: ${mainErr} [MAIN: "${question.text.slice(0, 70)}"]`);
         }
-        // lensAngle presence check — must be submitted for every question.
-        const lensAngle = typeof (questions[index] as Record<string, unknown>).lensAngle === 'string'
-          ? ((questions[index] as Record<string, unknown>).lensAngle as string).trim()
-          : '';
-        if (!lensAngle || lensAngle.length < 20) {
+        // Edge tension marker check — the regex is the single source of truth.
+        // Updated regex handles word variants (doubts, doubted, stops, stopped, etc.)
+        if (question.depth === 'edge' && !EDGE_TENSION_MARKERS.test(question.text)) {
           issues.push(
-            `Q${index + 1}: missing or too short lensAngle. ` +
-            `Explain in one sentence why this question can only be asked from the ${question.lens} lens. ` +
+            `Q${index + 1}: edge question lacks a tension signal. ` +
+            `The question text must contain at least one of: privately, quietly, doubt/doubts/doubted, ` +
+            `liability, contradict, undermine, trade-off, sacrifice, worse/worsen, unsolved, nobody, ` +
+            `hasn't/haven't, stops/stopped/stopping, blocking/blocked, abandoned, unrecognisable, ` +
+            `walk away, give up, first to go, disappeared, stop doing. ` +
+            `Rewrite so the tension word is central to the question's meaning. ` +
             `[MAIN: "${question.text.slice(0, 70)}"]`,
           );
-        }
-
-        // Edge tension marker check — enforced at submission time.
-        // The tensionWord field is the model's pre-commitment; the check confirms it was honoured.
-        if (question.depth === 'edge') {
-          const declaredWord = typeof (questions[index] as Record<string, unknown>).tensionWord === 'string'
-            ? ((questions[index] as Record<string, unknown>).tensionWord as string).trim().toLowerCase()
-            : '';
-          if (!declaredWord) {
-            issues.push(
-              `Q${index + 1}: edge question is missing the required tensionWord field. ` +
-              `You must declare the tension word before writing the question. ` +
-              `[MAIN: "${question.text.slice(0, 70)}"]`,
-            );
-          } else if (!question.text.toLowerCase().includes(declaredWord.replace("'", '\u2019').replace("'", "'"))) {
-            // Check both straight and curly apostrophes
-            const straight = declaredWord;
-            const found = question.text.toLowerCase().includes(straight) ||
-              question.text.toLowerCase().includes(straight.replace("'", '\u2019'));
-            if (!found) {
-              issues.push(
-                `Q${index + 1}: tensionWord "${declaredWord}" does not appear in the question text. ` +
-                `Your declared tension word must appear verbatim in the question. Rewrite the question to include "${declaredWord}". ` +
-                `[MAIN: "${question.text.slice(0, 70)}"]`,
-              );
-            }
-          } else if (!EDGE_TENSION_MARKERS.test(question.text)) {
-            // tensionWord present but not in the approved marker list
-            issues.push(
-              `Q${index + 1}: tensionWord "${declaredWord}" is not an approved tension signal. ` +
-              `Use one of: privately, quietly, doubt, liability, contradict, undermine, ` +
-              `trade-off, sacrifice, deprioritised, worse, unsolved, nobody, hasn't, haven't, ` +
-              `stopped, blocking, abandoned, unrecognisable, walk away, give up, first to go, ` +
-              `disappeared, stop doing. ` +
-              `[MAIN: "${question.text.slice(0, 70)}"]`,
-            );
-          }
         }
         for (const [si, sq] of question.subQuestions.entries()) {
           const sqErr = validateFacilitationQuestionText(sq.text, sq.lens ?? question.lens, true);
