@@ -709,7 +709,11 @@ function executeQuestionSetTool(
             depthOpenerMap.get(opener)!.push(`[${q.lens}] "${q.text.slice(0, 80)}"`);
           }
           for (const [opener, qs] of depthOpenerMap.entries()) {
-            if (qs.length > 1) {
+            // Only flag when 3+ questions at the same depth share an opener.
+            // Threshold of 2 proved unachievable (model oscillates fixing one pair
+            // while creating another). Threshold of 3 still catches the main failure
+            // mode (all 6 lenses opening identically) while converging reliably.
+            if (qs.length >= 3) {
               allDuplicates.push({ depthLevel, opener, questions: qs });
             }
           }
