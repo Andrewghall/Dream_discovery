@@ -35,6 +35,7 @@ import { analyzeMetricTrends } from '@/lib/historical-metrics/summarize';
 import {
   validateFacilitationQuestionText,
   validateQuestionSet,
+  EDGE_TENSION_MARKERS,
 } from './question-set-validator';
 import { inferCanonicalWorkshopType } from '@/lib/workshop/workshop-definition';
 import { buildLiveWorkshopContractBlock } from '@/lib/workshop/live-stage-contracts';
@@ -45,6 +46,7 @@ import { getQuestionContract, buildLensContractBlock } from '@/lib/workshop/ques
 const MAX_ITERATIONS = 12;
 const LOOP_TIMEOUT_MS = 240_000;
 const MODEL = 'gpt-4o-mini';
+const MAX_SLOT_REWRITES = 2; // Hard escalation after this many rewrites per lens/depth slot
 /**
  * Get lens order for a phase.
  * Priority: blueprint phaseLensPolicy > research dimensions.
@@ -263,6 +265,7 @@ function executeQuestionSetTool(
   discoveryBriefing: Record<string, unknown> | null,
   designedPhases: Map<WorkshopPhase, FacilitationQuestion[]>,
   designedDepthSlots: Map<WorkshopPhase, Map<string, Map<string, FacilitationQuestion>>>,
+  rewriteCounters: Map<string, number>,
 ): { result: string; summary: string } {
   switch (toolName) {
     case 'get_research_context': {
@@ -578,6 +581,18 @@ function executeQuestionSetTool(
         if (mainErr) {
           issues.push(`Q${index + 1}: ${mainErr} [MAIN: "${question.text.slice(0, 70)}"]`);
         }
+        // Edge tension marker check — applied here (not just at commit time) so the agent
+        // gets immediate feedback and can rewrite the failing question in the same iteration.
+        if (question.depth === 'edge' && !EDGE_TENSION_MARKERS.test(question.text)) {
+          issues.push(
+            `Q${index + 1}: edge question lacks a tension signal. ` +
+            `Add at least one of: privately, quietly, doubt, liability, contradict, undermine, ` +
+            `trade-off, sacrifice, deprioritised, worse, unsolved, nobody, hasn't/haven't, ` +
+            `stopped, blocking, abandoned, unrecognisable, walk away, give up, first to go, ` +
+            `disappeared, stop doing. ` +
+            `[MAIN: "${question.text.slice(0, 70)}"]`,
+          );
+        }
         for (const [si, sq] of question.subQuestions.entries()) {
           const sqErr = validateFacilitationQuestionText(sq.text, sq.lens ?? question.lens, true);
           if (sqErr) {
@@ -626,12 +641,42 @@ function executeQuestionSetTool(
         }
         console.log(`[Question Set Agent] ${phase} submission: ${[...byLens.entries()].map(([l, qs]) => `${l}:[${qs.map(q => q.depth ?? '?').join(',')}]`).join(' ')}`);
 
-        // Accumulate each submitted question into its phase → lens → depth slot
-        // Only accept questions with a valid depth tag
+        // Accumulate each submitted question into its phase → lens → depth slot.
+        // Tracks rewrites per slot — escalates if the same slot fails MAX_SLOT_REWRITES times.
+        // This prevents infinite correction loops on a single broken slot.
         for (const q of facilitation) {
           if (!q.depth) continue; // skip questions without a depth tag
           const lens = q.lens || 'General';
+          const slotKey = `${phase}:${lens}:${q.depth}`;
+
           if (!phaseSlots.has(lens)) phaseSlots.set(lens, new Map());
+
+          if (phaseSlots.get(lens)!.has(q.depth)) {
+            // This is a rewrite of an existing slot — track and gate
+            const rewriteCount = (rewriteCounters.get(slotKey) ?? 0) + 1;
+            rewriteCounters.set(slotKey, rewriteCount);
+
+            if (rewriteCount >= MAX_SLOT_REWRITES) {
+              console.log(`[Question Set Agent] Slot ${slotKey} exceeded max rewrites (${rewriteCount}/${MAX_SLOT_REWRITES})`);
+              return {
+                result: JSON.stringify({
+                  error: 'max-rewrites-exceeded',
+                  slot: slotKey,
+                  rewriteCount,
+                  maxRewrites: MAX_SLOT_REWRITES,
+                  message:
+                    `Slot ${slotKey} has been rewritten ${rewriteCount} times without passing validation. ` +
+                    `This indicates a systematic problem with this lens/depth combination. ` +
+                    `Check that the question is genuinely specific to the ${lens} lens, ` +
+                    `uses the correct depth-level signals, and does not share text with another lens.`,
+                }),
+                summary:
+                  `**ESCALATION: slot ${slotKey} exceeded max rewrites (${rewriteCount}/${MAX_SLOT_REWRITES})**\n` +
+                  `This slot cannot be automatically corrected. Review the lens contract for ${lens} and resubmit with a fundamentally different approach.`,
+              };
+            }
+          }
+
           phaseSlots.get(lens)!.set(q.depth, q); // latest wins per slot
         }
 
@@ -681,6 +726,51 @@ function executeQuestionSetTool(
           }
         }
         ordered.forEach((q, i) => { q.order = i + 1; });
+
+        // ── Cross-lens exact-text duplicate detection (hard reject) ───────────
+        // Identical question text across different lenses is a structural defect.
+        // Hard reject forces the agent to rewrite only the duplicate slots —
+        // the accumulator preserves all other correctly-submitted questions.
+        const crossLensTextMap = new Map<string, string[]>(); // normalisedText → [lens/depth slots]
+        for (const q of ordered) {
+          const key = q.text.toLowerCase().trim();
+          const slot = `${q.lens ?? 'General'}/${q.depth ?? '?'}`;
+          if (!crossLensTextMap.has(key)) crossLensTextMap.set(key, []);
+          crossLensTextMap.get(key)!.push(slot);
+        }
+
+        const duplicateGroups = [...crossLensTextMap.values()].filter(slots => slots.length > 1);
+
+        if (duplicateGroups.length > 0) {
+          // Do NOT store the phase — force the agent to rewrite only the duplicate slots.
+          const details = duplicateGroups
+            .map(slots => `Duplicated across: ${slots.join(', ')}`)
+            .join('\n');
+          // Keep the first occurrence, mark the rest as needing rewrite
+          const slotsToFix = duplicateGroups.flatMap(slots => slots.slice(1));
+          console.log(`[Question Set Agent] ${phase} rejected — ${duplicateGroups.length} cross-lens duplicate(s): ${slotsToFix.join(', ')}`);
+
+          return {
+            result: JSON.stringify({
+              error: 'cross-lens-identical-text',
+              phase,
+              duplicateCount: duplicateGroups.length,
+              duplicateGroups: duplicateGroups.map(slots => ({ slots })),
+              slotsToFix,
+              remediation:
+                `The slot accumulator preserves all other questions. Resubmit ONLY the failing slots with ` +
+                `new, lens-specific questions. Each lens must address a fundamentally different part of the ` +
+                `problem — ask yourself: could only the ${slotsToFix[0]?.split('/')[0] ?? 'lens'} lens produce this answer? ` +
+                `If not, rewrite it until the answer is lens-specific.`,
+            }),
+            summary:
+              `**${phase} REJECTED — ${duplicateGroups.length} cross-lens identical question(s)**\n` +
+              `${details}\n\n` +
+              `Resubmit only the failing slots: ${slotsToFix.join(', ')}. ` +
+              `All other slots are preserved in the accumulator.`,
+          };
+        }
+        // ── End cross-lens duplicate check ───────────────────────────────────
 
         // ── Opener duplication guard (per depth level) ───────────────────────
         // Within each depth level (surface / depth / edge), every question across
@@ -1092,6 +1182,15 @@ Edge questions must NOT be aspirational superlatives. They must create discomfor
   CONSTRAINTS edge: What the constraint is protecting. The politics or habits that keep it alive. "Who benefits from this staying unsolved?", "What would change for someone in this room if this constraint disappeared?", "What has stopped this from being fixed every time it's been raised?"
   DEFINE_APPROACH edge: Where this approach will quietly fail. What nobody is saying. "What does the half-implemented version of this look like - and why would that be worse?", "Which part of this will be the first to get deprioritised when pressure hits?", "What does the room know about this plan that they haven't said yet?"
 
+EDGE QUESTIONS — TENSION SIGNAL REQUIRED:
+Every edge question you submit must contain at least one explicit tension signal. The question will be rejected if it reads like a surface or depth question re-labelled as edge.
+Required: at least one of these signals must appear in the question text:
+  privately, quietly, doubt, liability, contradict, undermine, trade-off, sacrifice, deprioritised,
+  worse, unsolved, nobody, hasn't/haven't [been said/fixed/resolved], stopped, blocking, abandoned,
+  unrecognisable, would say, give up, walk away, first to go, disappeared, stop doing.
+
+Test: Could this edge question have been the surface question for this lens? If yes — it is NOT an edge question. Rewrite until it creates genuine discomfort.
+
 GROUNDING REQUIREMENT:
 At least ONE question per lens must anchor to something observable and real:
 a specific place, a person who deals with it, or a moment when it shows up.
@@ -1103,6 +1202,7 @@ Before submitting each phase, run all four checks:
   2. Does it sound like something a real facilitator would ask in a live room? → If no, rewrite it.
   3. Does it add a genuinely different angle from the other two questions for this lens? → If no, rewrite it.
   4. List all 18 question openers in this phase. Are any two identical or near-identical? → If yes, rewrite the duplicates before submitting.
+  5. (GO-TO-MARKET workshops only) Does this question move the room from commercial truth to a practical GTM choice? If it could fit any company or any workshop type, rewrite it.
 
 LENS-SPECIFIC RULES:
 - Operations: ask about flow, bottlenecks, delays, queueing, handoffs, and where work breaks down.
@@ -1177,6 +1277,9 @@ export async function runQuestionSetAgent(
   // Per-depth accumulator: preserves progress across partial submissions (per phase → lens → depth → question)
   // Allows model to submit 1 depth per lens per call and accumulate toward completion.
   const designedDepthSlots = new Map<WorkshopPhase, Map<string, Map<string, FacilitationQuestion>>>();
+  // Tracks per-slot rewrite attempts. Key: `${phase}:${lens}:${depth}`.
+  // Escalates when a slot is rewritten more than MAX_SLOT_REWRITES times without success.
+  const rewriteCounters = new Map<string, number>();
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
@@ -1313,7 +1416,7 @@ export async function runQuestionSetAgent(
           });
         } else {
           const toolResult = executeQuestionSetTool(
-            fnName, fnArgs, context, research, discoveryBriefing || null, designedPhases, designedDepthSlots,
+            fnName, fnArgs, context, research, discoveryBriefing || null, designedPhases, designedDepthSlots, rewriteCounters,
           );
 
           // Emit conversation entries for substantive tool results
