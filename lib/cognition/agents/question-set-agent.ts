@@ -188,6 +188,14 @@ const QUESTION_SET_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
                   type: 'string',
                   description: 'How this question connects to research findings or Discovery interview data.',
                 },
+                lensAngle: {
+                  type: 'string',
+                  description: 'REQUIRED for every question. One sentence explaining the specific angle that ONLY this lens can ask — what makes this question impossible to ask from any other lens. Example for People/surface in REIMAGINE: "Only the People lens can ask what behaviours buyers would need to see from Capita\'s staff." If you cannot write a genuinely lens-specific angle, you have not differentiated this question enough — redesign before submitting.',
+                },
+                tensionWord: {
+                  type: 'string',
+                  description: 'REQUIRED for edge questions only. Declare the exact tension word you will use before writing the question. Must be one of: privately, quietly, doubt, trade-off, sacrifice, worse, nobody, hasn\'t, haven\'t, stopped, blocking, abandoned, unrecognisable, walk away, give up, first to go, stop doing, liability, contradict, undermine, unsolved, disappeared. This word MUST appear verbatim in the question text.',
+                },
                 subQuestions: {
                   type: 'array',
                   description: '2-3 starter sub-questions that explore specific angles within this main question. These become the initial post-it notes when the facilitator activates this question in the live session.',
@@ -581,17 +589,53 @@ function executeQuestionSetTool(
         if (mainErr) {
           issues.push(`Q${index + 1}: ${mainErr} [MAIN: "${question.text.slice(0, 70)}"]`);
         }
-        // Edge tension marker check — applied here (not just at commit time) so the agent
-        // gets immediate feedback and can rewrite the failing question in the same iteration.
-        if (question.depth === 'edge' && !EDGE_TENSION_MARKERS.test(question.text)) {
+        // lensAngle presence check — must be submitted for every question.
+        const lensAngle = typeof (q as Record<string, unknown>).lensAngle === 'string'
+          ? ((q as Record<string, unknown>).lensAngle as string).trim()
+          : '';
+        if (!lensAngle || lensAngle.length < 20) {
           issues.push(
-            `Q${index + 1}: edge question lacks a tension signal. ` +
-            `Add at least one of: privately, quietly, doubt, liability, contradict, undermine, ` +
-            `trade-off, sacrifice, deprioritised, worse, unsolved, nobody, hasn't/haven't, ` +
-            `stopped, blocking, abandoned, unrecognisable, walk away, give up, first to go, ` +
-            `disappeared, stop doing. ` +
+            `Q${index + 1}: missing or too short lensAngle. ` +
+            `Explain in one sentence why this question can only be asked from the ${question.lens} lens. ` +
             `[MAIN: "${question.text.slice(0, 70)}"]`,
           );
+        }
+
+        // Edge tension marker check — enforced at submission time.
+        // The tensionWord field is the model's pre-commitment; the check confirms it was honoured.
+        if (question.depth === 'edge') {
+          const declaredWord = typeof (q as Record<string, unknown>).tensionWord === 'string'
+            ? ((q as Record<string, unknown>).tensionWord as string).trim().toLowerCase()
+            : '';
+          if (!declaredWord) {
+            issues.push(
+              `Q${index + 1}: edge question is missing the required tensionWord field. ` +
+              `You must declare the tension word before writing the question. ` +
+              `[MAIN: "${question.text.slice(0, 70)}"]`,
+            );
+          } else if (!question.text.toLowerCase().includes(declaredWord.replace("'", '\u2019').replace("'", "'"))) {
+            // Check both straight and curly apostrophes
+            const straight = declaredWord;
+            const found = question.text.toLowerCase().includes(straight) ||
+              question.text.toLowerCase().includes(straight.replace("'", '\u2019'));
+            if (!found) {
+              issues.push(
+                `Q${index + 1}: tensionWord "${declaredWord}" does not appear in the question text. ` +
+                `Your declared tension word must appear verbatim in the question. Rewrite the question to include "${declaredWord}". ` +
+                `[MAIN: "${question.text.slice(0, 70)}"]`,
+              );
+            }
+          } else if (!EDGE_TENSION_MARKERS.test(question.text)) {
+            // tensionWord present but not in the approved marker list
+            issues.push(
+              `Q${index + 1}: tensionWord "${declaredWord}" is not an approved tension signal. ` +
+              `Use one of: privately, quietly, doubt, liability, contradict, undermine, ` +
+              `trade-off, sacrifice, deprioritised, worse, unsolved, nobody, hasn't, haven't, ` +
+              `stopped, blocking, abandoned, unrecognisable, walk away, give up, first to go, ` +
+              `disappeared, stop doing. ` +
+              `[MAIN: "${question.text.slice(0, 70)}"]`,
+            );
+          }
         }
         for (const [si, sq] of question.subQuestions.entries()) {
           const sqErr = validateFacilitationQuestionText(sq.text, sq.lens ?? question.lens, true);
@@ -1053,7 +1097,13 @@ what each depth level must achieve for each specific lens. Follow the contract, 
 
 QUESTION COUNT: 3 questions per lens (surface, depth, edge) for every phase. For a phase
 with 6 lenses: 18 questions total (6 x 3). Tag each question with its "depth" field.
-Group by lens when designing: do all 3 depths for one lens before moving on.
+
+SUBMISSION RULE — ONE LENS PER CALL:
+Submit questions for exactly ONE lens per design_phase_questions call. Complete all 3 depths
+for that lens, then call again for the next lens. Do not batch multiple lenses in one call.
+This prevents cross-lens duplication and gives you a clean lens-by-lens record.
+Before writing each lens, state internally: "The [X] lens asks about [specific angle] that
+no other lens covers." Then write 3 questions that only that lens can ask.
 
 REIMAGINE RULE — surface and depth: Zero constraint language. No mention of barriers, gaps,
 limitations, or what needs to change from today. Pure vision — what becomes possible.
@@ -1333,7 +1383,7 @@ export async function runQuestionSetAgent(
 
       const completion = await openAiBreaker.execute(() => openai.chat.completions.create({
         model: MODEL,
-        temperature: 0.4,
+        temperature: 0,
         messages,
         tools: QUESTION_SET_TOOLS,
         tool_choice: toolChoice,
