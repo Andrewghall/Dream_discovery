@@ -775,23 +775,26 @@ function executeQuestionSetTool(
         // Identical question text across different lenses is a structural defect.
         // Hard reject forces the agent to rewrite only the duplicate slots —
         // the accumulator preserves all other correctly-submitted questions.
-        const crossLensTextMap = new Map<string, string[]>(); // normalisedText → [lens/depth slots]
+        const crossLensTextMap = new Map<string, { slots: string[]; text: string }>(); // normalisedText → { slots, original text }
         for (const q of ordered) {
           const key = q.text.toLowerCase().trim();
           const slot = `${q.lens ?? 'General'}/${q.depth ?? '?'}`;
-          if (!crossLensTextMap.has(key)) crossLensTextMap.set(key, []);
-          crossLensTextMap.get(key)!.push(slot);
+          if (!crossLensTextMap.has(key)) crossLensTextMap.set(key, { slots: [], text: q.text });
+          crossLensTextMap.get(key)!.slots.push(slot);
         }
 
-        const duplicateGroups = [...crossLensTextMap.values()].filter(slots => slots.length > 1);
+        const duplicateGroups = [...crossLensTextMap.values()].filter(g => g.slots.length > 1);
 
         if (duplicateGroups.length > 0) {
           // Do NOT store the phase — force the agent to rewrite only the duplicate slots.
+          // Include the colliding text so the model knows exactly what to avoid at temperature=0.
           const details = duplicateGroups
-            .map(slots => `Duplicated across: ${slots.join(', ')}`)
+            .map(g => `Duplicated across: ${g.slots.join(', ')}\n  Conflicting text: "${g.text}"`)
             .join('\n');
-          // Keep the first occurrence, mark the rest as needing rewrite
-          const slotsToFix = duplicateGroups.flatMap(slots => slots.slice(1));
+          const slotsToFix = duplicateGroups.flatMap(g => g.slots.slice(1));
+          const conflictExamples = duplicateGroups
+            .map(g => `  • "${g.text}" (used in: ${g.slots.join(', ')})`)
+            .join('\n');
           console.log(`[Question Set Agent] ${phase} rejected — ${duplicateGroups.length} cross-lens duplicate(s): ${slotsToFix.join(', ')}`);
 
           return {
@@ -799,13 +802,15 @@ function executeQuestionSetTool(
               error: 'cross-lens-identical-text',
               phase,
               duplicateCount: duplicateGroups.length,
-              duplicateGroups: duplicateGroups.map(slots => ({ slots })),
+              duplicateGroups: duplicateGroups.map(g => ({ slots: g.slots, conflictingText: g.text })),
               slotsToFix,
               remediation:
-                `The slot accumulator preserves all other questions. Resubmit ONLY the failing slots with ` +
-                `new, lens-specific questions. Each lens must address a fundamentally different part of the ` +
-                `problem — ask yourself: could only the ${slotsToFix[0]?.split('/')[0] ?? 'lens'} lens produce this answer? ` +
-                `If not, rewrite it until the answer is lens-specific.`,
+                `The accumulator preserves all other questions. Resubmit ONLY the failing slots: ${slotsToFix.join(', ')}. ` +
+                `The following texts are BANNED — do not use or paraphrase them:\n${conflictExamples}\n` +
+                `Each rewritten question must address something that ONLY its lens can answer. ` +
+                `For example: People = human behaviour and belief; Commercial = buyer value and pricing; ` +
+                `Partners = ecosystem dependencies and third-party control. ` +
+                `Write the lensAngle sentence first, then the question.`,
             }),
             summary:
               `**${phase} REJECTED — ${duplicateGroups.length} cross-lens identical question(s)**\n` +
@@ -1110,11 +1115,23 @@ limitations, or what needs to change from today. Pure vision — what becomes po
 Customer is the north star.
 
 REIMAGINE edge: Different rule. Edge must surface what is privately doubted or unspoken about
-the vision itself — not constraints, but the tension inside the aspiration. Examples:
-"What part of this vision do people in this room privately doubt?",
-"What would this version of Capita require its people to stop doing entirely?",
-"Which part of this proposition would become unrecognisable if it succeeded?".
+the vision itself — not constraints, but the tension inside the aspiration.
 Edge for REIMAGINE is NOT "most ambitious" — it is the thing people believe but haven't said.
+
+REIMAGINE LENS DIFFERENTIATION — each lens covers a completely separate territory:
+  People lens:     Human behaviour, belief, and capability. What Capita's people would need to
+                   be, believe, or do differently. What they privately doubt. What they'd need
+                   to stop doing. Questions only a People lens can ask.
+  Commercial lens: Buyer value, deal economics, what customers pay for and how they justify it.
+                   What the proposition means in a real commercial relationship. What a buyer
+                   would doubt or find hard to defend internally. NOT about Capita's people.
+  Partners lens:   Ecosystem dependencies, third-party relationships, who else makes this work.
+                   What Capita can't deliver alone. What partners would need to do or believe.
+                   NOT about buyers or Capita's own people.
+
+Before generating each REIMAGINE lens, write: "The [X] lens asks about [specific territory].
+The People lens already covered [Y]. The Commercial lens already covered [Z]." Then write
+a question that cannot be answered by a participant speaking about the other two territories.
 
 YOUR APPROACH:
 1. Get the research context (company, industry, challenges).
