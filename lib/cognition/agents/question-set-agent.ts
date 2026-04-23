@@ -969,23 +969,40 @@ QUESTION DESIGN PRINCIPLES:
 - Each question should have a clear purpose and connection to known data
 
 BANNED TEMPLATE PATTERNS - NEVER produce these sentence shapes:
-These patterns appeared in earlier runs and produced generic corporate answers.
-Do not use them even as inspiration for a rewrite.
+These patterns appeared in earlier runs and produced generic, evasive corporate answers.
+Do not use them even as inspiration for a rewrite. The ban is absolute.
+
   x "What are the root causes of..."
   x "What structural factors create and maintain..."
   x "What conditions must be true for X to be effective"
   x "What would removing X require from [company]?"
   x "What potential resistance might arise when implementing..."
+  x "Where might this [lens] approach face resistance..."
   x "What is the real cost of maintaining these constraints"
   x "What specific X would need to happen for Y to succeed?"
-  x "What would be the most ambitious/transformative/groundbreaking X that Y could achieve?"
+  x "What would be the most ambitious/transformative/groundbreaking/radical X that Y could achieve?"
+  x "What is the most ambitious/transformative/innovative X that [company] could..."
   x "[Company] can take to improve X for better Y" (formulaic surface opener)
   x "What conditions need to be true for this X to be successful?"
+  x "What is the first concrete step that can be taken to improve [lens]..." (do not use for more than one lens)
+  x "What specific changes in [lens] are necessary to support..." (do not use for more than one lens)
+  x "What happens in [location] when [lens] issues arise, and who is involved in resolving them?" (do not repeat across lenses)
+  x "What is this [lens] constraint actually protecting, and what would happen if it were removed?" (do not repeat across lenses)
+  x "What are the long-term consequences/implications of maintaining current [lens] constraints..." (do not repeat across lenses)
+
+NO REPEATED OPENERS (THE MOST CRITICAL RULE):
+Within any single phase, every main question must start differently.
+If People surface starts "Walk me through...", Operations surface CANNOT also start "Walk me through...".
+If Technology depth starts "Where do you see...", Commercial depth CANNOT also start "Where do you see...".
+BEFORE submitting a phase, list all your question opening words/phrases.
+If ANY two questions in that phase share the same opener, rewrite the duplicates before submitting.
+
+The test: could you print all 18 question openers in a phase and see 18 distinct patterns? Yes = submit. No = rewrite.
 
 QUESTION SHAPE VARIETY (MANDATORY):
-Use a different opening shape for each question within a lens.
-Across lenses in the same phase, vary shapes so no pattern repeats more than twice.
-Draw from this library - do not default to "What does X look like":
+Use a different opening shape for each question within a lens, AND across lenses in the same phase.
+In a 6-lens phase with 3 depths = 18 questions. Every one of those 18 should open differently.
+Draw from this library - rotate through it, do not default to "What does X look like" or "What is the...":
 
   Observational:   "Where do you see...", "Which part of X creates the most Y..."
   Behavioural:     "Walk me through what happens when...", "When X comes up - what does that actually look like?"
@@ -995,6 +1012,14 @@ Draw from this library - do not default to "What does X look like":
   Pressure:        "Why hasn't this been fixed yet?", "What's been protecting this from being resolved?"
   Prioritising:    "Which X creates the most Y...", "What's the one thing you'd change first?"
   Temporal:        "How long has that been a problem?", "When was the last time this worked well?"
+  Diagnostic:      "What does [X] actually look like in practice here?", "How often does this come up?"
+  Exposure:        "What would a new joiner notice about this in week one?", "What do customers never say out loud but always feel?"
+
+PHASE-SPECIFIC EDGE GUIDANCE:
+Edge questions must NOT be aspirational superlatives. They must create discomfort and surface what is unspoken.
+  REIMAGINE edge: The thing the room hasn't said yet. Not "most transformative" - instead: "What would we have to stop doing entirely?", "What would make this version of [company] unrecognisable from today?", "What part of this vision do people in this room privately doubt?"
+  CONSTRAINTS edge: What the constraint is protecting. The politics or habits that keep it alive. "Who benefits from this staying unsolved?", "What would change for someone in this room if this constraint disappeared?", "What has stopped this from being fixed every time it's been raised?"
+  DEFINE_APPROACH edge: Where this approach will quietly fail. What nobody is saying. "What does the half-implemented version of this look like - and why would that be worse?", "Which part of this will be the first to get deprioritised when pressure hits?", "What does the room know about this plan that they haven't said yet?"
 
 GROUNDING REQUIREMENT:
 At least ONE question per lens must anchor to something observable and real:
@@ -1002,10 +1027,11 @@ a specific place, a person who deals with it, or a moment when it shows up.
 Not "what is the impact of X" - but "where does X show up", "who feels it first", "what does it look like when X happens".
 
 MANDATORY QUALITY SELF-CHECK:
-Before submitting any question, verify all three:
+Before submitting each phase, run all four checks:
   1. Could a participant answer this with a safe, generic corporate response? → If yes, rewrite it.
   2. Does it sound like something a real facilitator would ask in a live room? → If no, rewrite it.
   3. Does it add a genuinely different angle from the other two questions for this lens? → If no, rewrite it.
+  4. List all 18 question openers in this phase. Are any two identical or near-identical? → If yes, rewrite the duplicates before submitting.
 
 LENS-SPECIFIC RULES:
 - Operations: ask about flow, bottlenecks, delays, queueing, handoffs, and where work breaks down.
@@ -1015,26 +1041,39 @@ LENS-SPECIFIC RULES:
 - Partners: ask about external dependencies, outsourced delivery, cross-team handoffs, and accountability gaps.
 - Risk/Compliance: ask about rules, approvals, controls, and where they help or slow the work down.
 
-EXAMPLES OF GOOD vs BAD QUESTIONS:
+EXAMPLES - WHAT GOOD VARIETY LOOKS LIKE ACROSS A PHASE:
 
-BAD (generic shell - do not write like this):
-  "What does the ideal customer experience look like?"
-  "What structural factors maintain the technology constraint?"
-  "What conditions must be true for this improvement to be effective?"
-  "What would removing these constraints require from the organisation?"
-  "What is the real cost of maintaining current compliance constraints?"
+BAD (same opener shape repeated across lenses - do not write like this):
+  [People surface]     "What is the first concrete step to improve the people experience?"
+  [Operations surface] "What is the first concrete step to improve operational efficiency?"
+  [Technology surface] "What is the first concrete step to improve technology integration?"
+  [People depth]       "What specific changes in people processes are necessary to support this?"
+  [Operations depth]   "What specific changes in operational processes are necessary to support this?"
+  [People edge]        "Where might this people approach face resistance?"
+  [Operations edge]    "Where might this operational approach face resistance?"
 
-GOOD (varied shapes, grounded, conversational):
-  "Walk me through what happens when the technology fails mid-call for an agent."
-  "Where in the operation does time get lost most often - and who carries that?"
-  "Which partnership creates the most friction in the day-to-day right now?"
-  "If you fixed this tomorrow, what would it immediately expose?"
-  "What's been stopping this from being sorted - and what would finally shift it?"
-  "When a compliance issue comes up - who deals with it, and what does that actually look like?"
-  "What does the half-implemented version of this look like - and why would that be worse?"
+GOOD (18 distinct openers across one DEFINE_APPROACH phase):
+  [People surface]        "Walk me through how the team currently hands off a difficult case - where does it break?"
+  [Operations surface]    "Which process wastes the most time for staff right now, and what does that look like in practice?"
+  [Technology surface]    "When the system lets agents down mid-interaction - what do they actually do?"
+  [Commercial surface]    "How do customers experience the gap between what they expect and what they get?"
+  [Risk/Compliance surf]  "Where do compliance requirements slow things down in ways that feel unnecessary?"
+  [Partners surface]      "Who in the partner chain ends up absorbing the problems your systems create?"
+  [People depth]          "What has to change in how the team works together before this approach can hold?"
+  [Operations depth]      "What does the sequence of change actually look like - what moves first, and what depends on that?"
+  [Technology depth]      "Which existing tool could do this if it were configured differently - and why hasn't that happened?"
+  [Commercial depth]      "What do customers currently do to work around the problem - and what does that tell us?"
+  [Risk/Compliance depth] "How long would it take to get the compliance sign-off needed - and who controls that?"
+  [Partners depth]        "What would partners need to do differently for this to work - have they been asked?"
+  [People edge]           "What does the half-implemented version of this look like - and why would that be worse than today?"
+  [Operations edge]       "Which part of this plan gets quietly dropped when the next priority lands?"
+  [Technology edge]       "What does the room know about the technical debt here that hasn't been said yet?"
+  [Commercial edge]       "What would customers say about this plan if they were in the room right now?"
+  [Risk/Compliance edge]  "What is the compliance team privately worried about that they haven't flagged yet?"
+  [Partners edge]         "Which partner relationship is most likely to block this - and who knows it?"
 
-The key differences: varied opening shapes, specific and observable, pressure
-introduced through consequence not interrogation, no repeated template patterns.
+The key differences: 18 distinct openers, each lens gets a genuinely different angle at each depth,
+pressure comes from specificity and consequence not superlatives, no two questions start the same way.
 
 When communicating your findings, speak naturally as a colleague would.
 Be professional but warm. Explain your reasoning clearly and acknowledge
