@@ -39,6 +39,7 @@ import { HelpTooltip } from '@/components/help/HelpTooltip';
 import HistoricalMetricsPanel from '@/components/prep/historical-metrics-panel';
 import { readBlueprintFromJson, type WorkshopBlueprint } from '@/lib/workshop/blueprint';
 import { readHistoricalMetricsFromJson, type HistoricalMetricsData } from '@/lib/historical-metrics/types';
+import { getWorkshopTypeProfile } from '@/lib/workshop/workshop-definition';
 import { getDomainPack } from '@/lib/domain-packs/registry';
 import { toast } from 'sonner';
 import { INDUSTRY_OPTIONS } from '@/lib/cognition/industry-actor-model';
@@ -52,6 +53,7 @@ type PageProps = { params: Promise<{ id: string }> };
 type WorkshopPrep = {
   id: string;
   name: string;
+  workshopType?: string | null;
   description: string | null;
   businessContext: string | null;
   clientName: string | null;
@@ -107,10 +109,11 @@ const PHASE_COLORS: Record<string, string> = {
 
 const LENS_COLORS: Record<string, string> = {
   People: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  Organisation: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  Customer: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+  Operations: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   Technology: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
-  Regulation: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  Commercial: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+  'Risk/Compliance': 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  Partners: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
   General: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
 };
 
@@ -225,6 +228,7 @@ export default function PrepPage({ params }: PageProps) {
           setQuestionsData(w.customQuestions as Record<string, unknown> | null);
           setBriefingComplete(!!w.discoveryBriefing);
           setBriefingData(w.discoveryBriefing as BriefingOutput | null);
+          setDiscoveryQuestionsData((w as WorkshopPrep & { discoveryQuestions?: unknown }).discoveryQuestions as any ?? null);
 
           // Parse blueprint and metrics from workshop response
           const bp = readBlueprintFromJson(data.workshop.blueprint);
@@ -240,22 +244,21 @@ export default function PrepPage({ params }: PageProps) {
             }
           }
 
-          // Fetch Discovery interview questions
-          if (w.domainPack) {
-            try {
-              const dqRes = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`);
-              if (dqRes.ok) {
-                const dqData = await dqRes.json();
-                if (dqData.discoveryQuestions) {
-                  setDiscoveryQuestionsData(dqData.discoveryQuestions);
-                  if (dqData.discoveryQuestions.facilitatorDirection) {
-                    setDiscoveryDirection(dqData.discoveryQuestions.facilitatorDirection);
-                  }
+          // Fetch Discovery interview questions from the dedicated route so the page
+          // always reflects the canonical stored payload, even when no legacy domain pack is set.
+          try {
+            const dqRes = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`);
+            if (dqRes.ok) {
+              const dqData = await dqRes.json();
+              if (dqData.discoveryQuestions) {
+                setDiscoveryQuestionsData(dqData.discoveryQuestions);
+                if (dqData.discoveryQuestions.facilitatorDirection) {
+                  setDiscoveryDirection(dqData.discoveryQuestions.facilitatorDirection);
                 }
               }
-            } catch {
-              // fail silently
             }
+          } catch {
+            // fail silently
           }
         }
       } catch {
@@ -269,6 +272,7 @@ export default function PrepPage({ params }: PageProps) {
 
   // Gate: both purpose fields must be filled before agents can run
   const purposeComplete = description.trim().length > 0 && businessContext.trim().length > 0;
+  const workshopTypeProfile = getWorkshopTypeProfile(workshop?.workshopType);
 
   // ── Save workshop purpose ──────────────────────────
   const savePurpose = useCallback(async () => {
@@ -499,6 +503,17 @@ export default function PrepPage({ params }: PageProps) {
                 if (data && typeof data === 'object' && 'questions' in data) {
                   setQuestionsData(data.questions as Record<string, unknown>);
                 }
+              } else if (eventType === 'error') {
+                const errorMsg = (data && typeof data === 'object' && 'message' in data)
+                  ? String((data as Record<string, unknown>).message)
+                  : 'Unknown error';
+                setAgentConversation((prev) => [...prev, {
+                  timestampMs: Date.now(),
+                  agent: 'prep-orchestrator',
+                  to: '',
+                  message: `⚠️ Question generation failed: ${errorMsg}. Please try again.`,
+                  type: 'info',
+                } as AgentConversationEntry]);
               }
             } catch { /* ignore parse errors */ }
             eventType = '';
@@ -643,6 +658,17 @@ export default function PrepPage({ params }: PageProps) {
   // ── Generate Discovery Interview Questions via SSE ──────
   const generateDiscoveryQuestions = useCallback(async () => {
     setDiscoveryQuestionsLoading(true);
+    setDiscoveryQuestionsCollapsed(false);
+    setAgentConversation((prev) => [
+      ...prev,
+      {
+        timestampMs: Date.now(),
+        agent: 'prep-orchestrator',
+        to: 'discovery-question-agent',
+        message: 'Starting Discovery question generation using the current workshop context and stored research.',
+        type: 'handoff',
+      },
+    ]);
     try {
       const response = await fetch(`/api/workshops/${workshopId}/prep/discovery-questions`, {
         method: 'POST',
@@ -691,6 +717,7 @@ export default function PrepPage({ params }: PageProps) {
               } else if (eventType === 'discovery-questions.generated') {
                 if (data && typeof data === 'object' && 'discoveryQuestions' in data) {
                   setDiscoveryQuestionsData(data.discoveryQuestions);
+                  setDiscoveryQuestionsCollapsed(false);
                 }
               }
             } catch {
@@ -709,6 +736,7 @@ export default function PrepPage({ params }: PageProps) {
         const dqData = await dqRes.json();
         if (dqData.discoveryQuestions) {
           setDiscoveryQuestionsData(dqData.discoveryQuestions);
+          setDiscoveryQuestionsCollapsed(false);
         }
       }
     } catch (err) {
@@ -829,6 +857,14 @@ export default function PrepPage({ params }: PageProps) {
               <p className="text-sm text-muted-foreground">
                 {workshop?.name || 'Workshop'} — Research context, design workshop facilitation questions, and synthesize Discovery intelligence
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                  {workshopTypeProfile.label}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {workshopTypeProfile.description}
+                </p>
+              </div>
             </div>
           </div>
           <Link href={`/admin/workshops/${workshopId}/cognitive-guidance`}>

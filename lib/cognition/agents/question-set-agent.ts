@@ -42,8 +42,8 @@ import { getQuestionContract, buildLensContractBlock } from '@/lib/workshop/ques
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 9;
-const LOOP_TIMEOUT_MS = 55_000;
+const MAX_ITERATIONS = 12;
+const LOOP_TIMEOUT_MS = 240_000;
 const MODEL = 'gpt-4o-mini';
 /**
  * Get lens order for a phase.
@@ -748,6 +748,13 @@ function executeQuestionSetTool(
           return `  ${q.order}. **[${q.lens}]${depthTag}** "${q.text}"`;
         }).join('\n');
 
+        // Tell the model which phase to do next (enforces sequential processing)
+        const nextPhaseDirective = phase === 'REIMAGINE'
+          ? '\n\n✅ REIMAGINE is complete. Now design CONSTRAINTS in full (all lenses, all depths) before moving to DEFINE_APPROACH.'
+          : phase === 'CONSTRAINTS'
+            ? '\n\n✅ CONSTRAINTS is complete. Now design DEFINE_APPROACH in full (all lenses, all depths), then commit.'
+            : '\n\n✅ DEFINE_APPROACH is complete. All three phases are done — call commit_question_set now.';
+
         return {
           result: JSON.stringify({
             phase,
@@ -757,8 +764,11 @@ function executeQuestionSetTool(
               acc[lens] = (acc[lens] || 0) + 1;
               return acc;
             }, {} as Record<string, number>),
+            nextStep: phase === 'REIMAGINE' ? 'Design CONSTRAINTS next — do not start DEFINE_APPROACH yet.'
+              : phase === 'CONSTRAINTS' ? 'Design DEFINE_APPROACH next, then commit.'
+              : 'All phases complete — call commit_question_set now.',
           }),
-          summary: `**Designed ${phaseLabel} phase** - ${ordered.length} facilitation questions\n\n${qLines}${qualityWarning}`,
+          summary: `**Designed ${phaseLabel} phase** - ${ordered.length} facilitation questions\n\n${qLines}${qualityWarning}${nextPhaseDirective}`,
         };
       }
 
@@ -960,11 +970,13 @@ YOUR APPROACH:
 3. Get blueprint constraints (required/forbidden topics, focus areas, metrics).
 4. Get historical metrics if available (operational baselines and trends).
 5. Get the workshop phase structure. CRITICAL: read contractsByPhase carefully before designing.
-6. Design questions for ALL THREE phases. Call design_phase_questions for each phase.
-   You may submit questions in any grouping -- all at once, per-lens, or even per-depth.
+6. Design questions ONE PHASE AT A TIME in strict order: REIMAGINE → CONSTRAINTS → DEFINE_APPROACH.
+   CRITICAL SEQUENCING RULE: Do NOT call design_phase_questions for CONSTRAINTS until REIMAGINE is
+   fully complete (every lens has surface + depth + edge). Do NOT call design_phase_questions for
+   DEFINE_APPROACH until CONSTRAINTS is fully complete. Finish one phase entirely before starting the next.
+   You may submit questions in any grouping within a phase -- all lenses at once, lens by lens, or depth by depth.
    Each call accumulates into per-lens depth slots: your progress is preserved across calls.
-   A phase completes when every lens has questions at all 3 depths. DO NOT commit until all
-   three phases are complete.
+   A phase completes when every lens has questions at all 3 depths.
    - Follow the contract for each phase x lens combination (from contractsByPhase)
    - Each lens needs exactly 3 depth levels: surface, depth, edge -- tag each with "depth" field
    - Questions MUST be deeply specific to ${context.clientName || 'the client'}.
@@ -1170,7 +1182,7 @@ export async function runQuestionSetAgent(
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: `Please design a tailored set of workshop facilitation questions for ${context.clientName || 'this client'}. These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE_APPROACH. Start by reviewing the research context and Discovery insights, then the phase structure, then design questions for each phase in order.`,
+      content: `Please design a tailored set of workshop facilitation questions for ${context.clientName || 'this client'}. These questions will guide the facilitator through REIMAGINE, CONSTRAINTS, and DEFINE_APPROACH. Start by reviewing the research context and Discovery insights, then the blueprint constraints, then the phase structure. Then design questions STRICTLY ONE PHASE AT A TIME: complete all lenses in REIMAGINE before starting CONSTRAINTS, and complete all lenses in CONSTRAINTS before starting DEFINE_APPROACH. Do not submit questions for a later phase until the current phase is fully done.`,
     },
   ];
 
@@ -1195,7 +1207,7 @@ export async function runQuestionSetAgent(
         messages,
         tools: QUESTION_SET_TOOLS,
         tool_choice: toolChoice,
-        parallel_tool_calls: true,
+        parallel_tool_calls: false,
       }));
 
       const assistantMessage = completion.choices[0].message;
