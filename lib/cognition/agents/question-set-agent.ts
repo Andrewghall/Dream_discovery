@@ -704,8 +704,10 @@ function executeQuestionSetTool(
 
         const duplicates = [...openerMap.entries()].filter(([, qs]) => qs.length > 1);
         if (duplicates.length > 0) {
-          // Clear the accumulated phase so the model must resubmit everything
-          phaseSlots.clear();
+          // Do NOT clear phaseSlots — the model only needs to resubmit the specific
+          // duplicate questions. Slots use "latest wins", so resubmitting a fixed
+          // question for a lens+depth slot overwrites the old one. Phase re-validates
+          // on the next call once all lenses are still complete.
           const dupeDetail = duplicates
             .map(([opener, qs]) =>
               `Opener "${opener}..." repeated ${qs.length}x:\n${qs.map(q => `    ${q}`).join('\n')}`,
@@ -719,15 +721,16 @@ function executeQuestionSetTool(
               duplicates: duplicates.map(([opener, qs]) => ({ opener, questions: qs })),
               remediation:
                 'Every main question in this phase must start with a DIFFERENT word or phrase. ' +
-                'Rewrite all questions for this phase using distinct openers drawn from the shape library ' +
+                'Rewrite ONLY the duplicate questions listed above using distinct openers from the shape library ' +
                 '(Observational, Behavioural, Consequence, Grounding, Comparative, Pressure, Prioritising, Temporal, Diagnostic, Exposure). ' +
-                'Resubmit all 18 questions in a single call once rewritten.',
+                'Resubmit just the rewritten questions — your other questions are already stored. ' +
+                'The phase will re-validate automatically once all duplicates are resolved.',
             }),
             summary:
               `**${phase} REJECTED — ${duplicates.length} repeated opener(s) detected**\n\n` +
-              `Every question in this phase must begin with a different word/phrase. Rewrite the duplicates.\n\n` +
+              `Every question in this phase must begin with a different word/phrase. Rewrite ONLY the duplicates listed below — your other questions are already stored.\n\n` +
               `${dupeDetail}\n\n` +
-              `Fix: use a different shape from the library for each question. Resubmit all ${ordered.length} questions once rewritten.`,
+              `Fix: pick a different shape from the library for each duplicate and resubmit just those questions. The phase will re-validate automatically.`,
           };
         }
         // ── End opener guard ─────────────────────────────────────────────────
