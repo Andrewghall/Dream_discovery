@@ -165,19 +165,22 @@ export async function POST(
         return;
       }
 
-      // Step 2: Validate — OUTSIDE the catch block so validation failures cannot
-      // be silently swallowed. If validation fails the stream closes with an error;
-      // the DB is never written.
+      // Step 2: Validate — warn only, never block. The system must always save
+      // a complete question set. Validation issues are logged for quality review
+      // but cannot prevent the facilitator from getting a working question set.
       const qsValidationError = validateQuestionSet(questionSet);
       if (qsValidationError) {
-        sendEvent('error', {
-          message: `Question set failed validation before save: ${qsValidationError}`,
-        });
-        controller.close();
-        return;
+        console.warn(`[question-set] Validation warning (saving anyway): ${qsValidationError}`);
+        sendEvent('agent.conversation', {
+          timestampMs: Date.now(),
+          agent: 'prep-orchestrator',
+          to: '',
+          message: `Quality note: ${qsValidationError}. Questions saved — review and edit if needed.`,
+          type: 'info',
+        } satisfies AgentConversationEntry);
       }
 
-      // Step 3: Persist and acknowledge — only reached when validation passes.
+      // Step 3: Persist and acknowledge — always reached.
       try {
         await prisma.workshop.update({
           where: { id: workshopId },
@@ -257,7 +260,8 @@ export async function PUT(
 
   const validationError = validateQuestionSet(body.customQuestions);
   if (validationError) {
-    return NextResponse.json({ error: validationError }, { status: 422 });
+    // Warn only — never block a facilitator save
+    console.warn(`[question-set PUT] Validation warning (saving anyway): ${validationError}`);
   }
 
   await prisma.workshop.update({

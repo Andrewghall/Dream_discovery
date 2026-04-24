@@ -33,6 +33,10 @@ const COMBINED_CONCEPTS = /\b(effective and efficient|efficiency and effectivene
 // Any opener not in this list is accepted as a valid question form.
 const INSTRUCTIONAL_OPENERS = /^(consider|imagine|describe|think about|reflect on|tell me|please |let's|we need|the team should|the goal is|focus on|note that|remember that|it is important|in order to|the purpose|now let's|your task is|building on|leveraging|driving|delivering|ensuring|achieving|firstly|secondly|thirdly|you should|they should|participants should|the facilitator)/i;
 
+// Generic probe phrases that produce hollow sub-questions.
+// These templates recycle the same wording across every lens and add no lens-specific depth.
+export const GENERIC_PROBE_PHRASES = /\b(operational efficiency|innovation opportunit(?:y|ies)|digital maturity|operational maturity|best practice|best-practice|cross.functional|change management|organisational culture|continuous improvement|value proposition|digital transformation|strategic initiative|holistic approach|leverage existing|drive engagement|foster collaboration|enable innovation|improve efficiency|enhance performance|optimi[sz]e processes?|key performance indicator|kpi|measurable outcomes?|actionable insights?|impact(?:s)? on (?:the )?(?:team|organisation|organization|business)|improve(?:s|d)? (?:team )?morale|broader (?:strategy|vision|goals?)|long.term (?:goals?|vision|strategy)|overall (?:performance|success|effectiveness)|key (?:metrics?|drivers?|factors?)|areas for improvement|room for improvement|who would be responsible for|what conversations? (?:need|needs) to happen|what steps are needed to|how (?:can|could|would) (?:this|the (?:team|organisation|organization|business|company)) ensure|how can .{3,60} be (?:ensured?|addressed?|resolved?|managed?|improved?|achieved?)|how (?:can|could|would) .{3,50} (?:ensure|address|resolve|improve) (?:success|this|performance|reliability|outcomes?)|what (?:changes?|measures?) (?:could|would|are needed to)|what (?:are the )?perceived risks? of changing|who would benefit most from|where has a similar .{3,40} been attempted before|what would this change look like for those (?:directly )?involved|what contingency plans are in place|who would be most affected by (?:these|this)|what (?:new )?(?:opportunities|capabilities|challenges|skills) would .{3,40} (?:emerge|open up|become|need|require)|how would .{3,40} (?:be affected|change|evolve|improve|be impacted))\b/i;
+
 export function validateFacilitationQuestionText(text: string, lens?: string | null, isSubQuestion?: boolean): string | null {
   const normalizedText = text.trim();
   if (!normalizedText) return 'Question text is empty';
@@ -42,6 +46,35 @@ export function validateFacilitationQuestionText(text: string, lens?: string | n
   if (COMBINED_CONCEPTS.test(normalizedText)) return 'Question combines multiple abstract concepts';
   if (INSTRUCTIONAL_OPENERS.test(normalizedText)) {
     return 'Question must be a genuine question, not an instruction or declarative statement';
+  }
+
+  return null;
+}
+
+/**
+ * Validates a single sub-question probe text.
+ * Sub-questions must:
+ *   1. Pass the base text validation (no banned openers/terms)
+ *   2. Not use generic probe phrases that appear across every lens
+ *   3. Not restate the parent question opener (first 7 words)
+ *
+ * Returns null if valid, or an error string explaining the failure.
+ */
+export function validateSubQuestionText(subText: string, parentText?: string): string | null {
+  const baseError = validateFacilitationQuestionText(subText, null, true);
+  if (baseError) return baseError;
+
+  if (GENERIC_PROBE_PHRASES.test(subText)) {
+    const match = subText.match(GENERIC_PROBE_PHRASES)?.[0] ?? '';
+    return `Sub-question uses a generic probe phrase ("${match}") — rewrite as a specific, lens-grounded follow-up that could only belong to this question`;
+  }
+
+  // A sub-question that restates the first 7 words of the parent is not deepening it
+  if (parentText) {
+    const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().split(/\s+/).slice(0, 7).join(' ');
+    if (clean(subText) === clean(parentText)) {
+      return 'Sub-question repeats the main question opener — probe a specific, concrete angle instead';
+    }
   }
 
   return null;
