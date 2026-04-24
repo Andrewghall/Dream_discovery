@@ -22,7 +22,7 @@ const SYSTEM_PROMPT = loadSystemPrompt();
 const FALLBACK_PROBES: Record<SignalType, { drill: string; example: string }> = {
   people_issue: {
     drill: "What specifically about the team isn't working?",
-    example: "Tell me about a recent moment when that became obvious.",
+    example: "Can you walk me through a recent moment when that became obvious?",
   },
   growth_goal: {
     drill: "What does that growth actually look like in numbers?",
@@ -30,35 +30,35 @@ const FALLBACK_PROBES: Record<SignalType, { drill: string; example: string }> = 
   },
   icp_definition: {
     drill: "Who buys from you most consistently, and why them?",
-    example: "Walk me through your last three closed deals.",
+    example: "Can you walk me through your last two or three closed deals?",
   },
   channel_problem: {
     drill: "Where exactly does the lead flow break down?",
-    example: "Tell me about the last month of pipeline.",
+    example: "What did the last month of pipeline actually look like?",
   },
   constraint: {
     drill: "What's actually blocking it, in concrete terms?",
-    example: "When did you last hit that block?",
+    example: "When did you last hit that block, and what happened?",
   },
   partnership: {
     drill: "What would a good partner actually deliver for you?",
-    example: "Tell me about the partnership that worked best and what made it work.",
+    example: "Which partnership has worked best for you, and what made it work?",
   },
   tech_gap: {
     drill: "Which part of the stack is the real bottleneck?",
-    example: "Walk me through a workflow that breaks today.",
+    example: "Can you walk me through a workflow that breaks today?",
   },
   operational_friction: {
     drill: "Where does the handoff actually fall over?",
-    example: "Describe what happened the last time that went wrong.",
+    example: "What happened the last time that process went wrong?",
   },
   commercial_model: {
     drill: "What about the commercial model isn't landing?",
-    example: "Tell me about a deal where the pricing became the problem.",
+    example: "Can you tell me about a deal where the pricing became the issue?",
   },
   market_position: {
     drill: "Who do you actually lose to, and why?",
-    example: "Describe the last deal you lost to a competitor.",
+    example: "What was the last deal you lost to a competitor, and what did you hear?",
   },
 };
 
