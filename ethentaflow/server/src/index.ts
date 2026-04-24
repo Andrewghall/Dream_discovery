@@ -12,12 +12,8 @@ import { EndpointDetector } from './endpoint-detector.js';
 import { SessionState } from './state-engine.js';
 import { createDeepgramConnection } from './deepgram.js';
 import { SignalClassifier } from './signal-classifier.js';
-import {
-  ProbeEngine, isConfused, extractName, isConsentYes,
-  ONBOARDING_ASK_CONSENT, ONBOARDING_ASK_JOB_TITLE,
-  ONBOARDING_ASK_LOVES_JOB, ONBOARDING_ASK_FRUSTRATIONS,
-  ONBOARDING_TRANSITION,
-} from './probe-engine.js';
+import { ProbeEngine, isConfused, ONBOARDING_WELCOME } from './probe-engine.js';
+import { OnboardingAgent } from './onboarding-agent.js';
 import { DepthScorer } from './depth-scorer.js';
 import { synthesiseStream } from './tts.js';
 import { startCapture } from './capture.js';
@@ -67,6 +63,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
   const classifier = new SignalClassifier(ANTHROPIC_API_KEY);
   const probeEngine = new ProbeEngine(ANTHROPIC_API_KEY);
   const depthScorer = new DepthScorer(ANTHROPIC_API_KEY);
+  const onboardingAgent = new OnboardingAgent(ANTHROPIC_API_KEY);
   const capture = startCapture(state.sessionId);
 
   let lastProbeText: string | null = null;
@@ -135,14 +132,14 @@ async function handleSession(ws: WebSocket): Promise<void> {
     onOpen: () => {
       console.log(`[dg] open (${state.sessionId})`);
       send({ type: 'ready', sessionId: state.sessionId });
-      // Fire the opening context probe immediately after connection
-      // Small delay to let the client settle before audio starts
+      // Speak the welcome immediately; register it in the onboarding agent's
+      // history so it has full context for follow-up turns.
       setTimeout(() => {
         if (!state.openingDone) {
           state.markOpeningDone();
-          const openingText = probeEngine.getOpeningProbe();
-          void speakProbe(openingText, 'open_context');
-          console.log('[opening] sending context probe');
+          onboardingAgent.recordOpening(ONBOARDING_WELCOME);
+          void speakProbe(ONBOARDING_WELCOME, 'onboarding');
+          console.log('[opening] welcome sent');
         }
       }, 500);
     },
@@ -200,73 +197,29 @@ async function handleSession(ws: WebSocket): Promise<void> {
     console.log(`[endpoint] ${reason}: "${finalUtterance}"`);
 
     // ================================================================
-    // ONBOARDING PHASE — structured conversation before GTM discovery
+    // ONBOARDING PHASE — free-flowing LLM conversation
     // ================================================================
     if (!state.onboardingDone) {
-      const step = state.onboardingStep;
-      console.log(`[onboarding] step=${step} utterance="${finalUtterance}"`);
+      console.log(`[onboarding] user: "${finalUtterance}"`);
+      const turn = await state.commitTurn(finalUtterance, 0, false, lastProbeText);
+      capture.writeTurn(turn);
 
-      const recordTurn = () => state.commitTurn(finalUtterance, 0, false, lastProbeText)
-        .then(t => capture.writeTurn(t));
-
-      switch (step) {
-        case 'ask_name': {
-          await recordTurn();
-          const name = extractName(finalUtterance);
-          state.setParticipantDisplayName(name);
-          state.advanceOnboarding('ask_consent');
-          const q = ONBOARDING_ASK_CONSENT(name ?? 'there');
-          await state.recordSystemProbe(q);
-          await speakProbe(q, 'onboarding');
-          break;
+      try {
+        const result = await onboardingAgent.respond(finalUtterance);
+        await state.recordSystemProbe(result.text);
+        await speakProbe(result.text, 'onboarding');
+        if (result.done) {
+          state.markOnboardingDone();
+          console.log('[onboarding] complete — entering GTM discovery');
         }
-        case 'ask_consent': {
-          await recordTurn();
-          const yes = isConsentYes(finalUtterance);
-          state.setNameConsented(yes);
-          if (!yes) state.setParticipantDisplayName(null);
-          state.advanceOnboarding('ask_job_title');
-          const q = ONBOARDING_ASK_JOB_TITLE(state.participantDisplayName, state.nameConsented);
-          await state.recordSystemProbe(q);
-          await speakProbe(q, 'onboarding');
-          break;
-        }
-        case 'ask_job_title': {
-          await recordTurn();
-          const title = finalUtterance.trim().replace(/^(i'?m a?n?\s*|i work as a?n?\s*)/i, '').trim();
-          state.setJobTitle(title || finalUtterance.trim());
-          state.advanceOnboarding('ask_loves_job');
-          const q = ONBOARDING_ASK_LOVES_JOB(state.jobTitle ?? 'that');
-          await state.recordSystemProbe(q);
-          await speakProbe(q, 'onboarding');
-          break;
-        }
-        case 'ask_loves_job': {
-          await recordTurn();
-          state.setLovesJob(finalUtterance.trim());
-          state.advanceOnboarding('ask_frustrations');
-          const q = ONBOARDING_ASK_FRUSTRATIONS(state.participantDisplayName, state.nameConsented);
-          await state.recordSystemProbe(q);
-          await speakProbe(q, 'onboarding');
-          break;
-        }
-        case 'ask_frustrations': {
-          await recordTurn();
-          state.setFrustrations(finalUtterance.trim());
-          state.advanceOnboarding('done');
-          // Personalise the transition if we have a name
-          const name = state.nameConsented ? state.participantDisplayName : null;
-          const transition = name
-            ? `Thank you, ${name}. I really appreciate you sharing that. Now, let's talk about the bigger picture of your business. What's the biggest challenge you're trying to solve right now?`
-            : ONBOARDING_TRANSITION;
-          await state.recordSystemProbe(transition);
-          await speakProbe(transition, 'onboarding');
-          console.log(`[onboarding] done. name="${state.participantDisplayName}", title="${state.jobTitle}"`);
-          break;
-        }
-        default:
-          break;
+      } catch (err) {
+        console.error('[onboarding] agent error', err);
+        // Fallback: just ask the first GTM question
+        state.markOnboardingDone();
+        const fallback = "Right, let's get into it. What's the biggest challenge you're trying to solve in your business right now?";
+        await speakProbe(fallback, 'onboarding');
       }
+
       emitStateUpdate();
       return;
     }

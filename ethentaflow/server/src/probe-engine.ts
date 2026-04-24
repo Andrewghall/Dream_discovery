@@ -75,52 +75,11 @@ export function isConfused(text: string): boolean {
   return CONFUSION_RE.test(text);
 }
 
-/** Extract a first name from a natural response like "I'm Andrew" / "Andrew Hall" / "My name is Sarah" */
-export function extractName(utterance: string): string | null {
-  const t = utterance.trim().replace(/[.,!?]+$/, '');
-  // Strip common preambles
-  const stripped = t
-    .replace(/^(my name is|i'?m|i am|it'?s|they call me|people call me|call me)\s+/i, '')
-    .trim();
-  if (!stripped) return null;
-  // Take first 1-2 words that start with a capital or are short proper nouns
-  const words = stripped.split(/\s+/).slice(0, 2);
-  const name = words.join(' ');
-  // Sanity: at least 2 chars, not a common non-name word
-  if (name.length < 2) return null;
-  const nonNames = /^(yes|no|sure|fine|okay|ok|hi|hey|hello|good|great|well|um|uh)$/i;
-  if (nonNames.test(words[0])) return null;
-  // Capitalise first letter of each word
-  return name.replace(/\b\w/g, c => c.toUpperCase());
-}
 
-/** Returns true if the utterance is a positive consent (yes, sure, fine, of course…) */
-export function isConsentYes(utterance: string): boolean {
-  return /\b(yes|yeah|yep|sure|fine|of course|absolutely|go ahead|that'?s fine|no problem|happy to|ok|okay)\b/i.test(utterance);
-}
-
-// Onboarding questions — spoken in sequence before GTM discovery begins
+// Opening welcome — spoken immediately on connect, before user says anything.
+// After this the OnboardingAgent takes over free-flowing conversation.
 export const ONBOARDING_WELCOME =
-  "Welcome to DREAM. I am Dream Flow, here to have a conversation with you about you and your business. Before we dive in, could I ask — what's your name?";
-
-export const ONBOARDING_ASK_CONSENT = (name: string) =>
-  `Lovely to meet you, ${name}. Are you happy for me to use your name during our conversation?`;
-
-export const ONBOARDING_ASK_JOB_TITLE = (name: string | null, consented: boolean) =>
-  consented && name
-    ? `Thanks ${name}. And what's your job title?`
-    : "No problem at all. What's your job title?";
-
-export const ONBOARDING_ASK_LOVES_JOB = (title: string) =>
-  `${title} — brilliant. What do you love most about your work?`;
-
-export const ONBOARDING_ASK_FRUSTRATIONS = (name: string | null, consented: boolean) => {
-  const address = consented && name ? `, ${name}` : '';
-  return `That's great to hear. And what frustrates you about it${address}? What gets in the way?`;
-};
-
-export const ONBOARDING_TRANSITION =
-  "I really appreciate you sharing that. Now, let's talk about the bigger picture of your business. What's the biggest challenge you're trying to solve right now?";
+  "Welcome to DREAM. I am Dream Flow, here to have a conversation with you about you and your business. Before we dive in, what's your name?";
 
 // Hardcoded opening and reorient probes — fast, no LLM needed
 const OPENING_PROBE = ONBOARDING_WELCOME;
