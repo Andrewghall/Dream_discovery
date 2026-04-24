@@ -58,3 +58,4 @@ data.sql
 
 # PDF reference documents — not source code
 *.pdf
+.env*.local
