@@ -267,6 +267,7 @@ export async function POST(request: NextRequest) {
           workshopType: participant.workshop.workshopType,
           engagementType: participant.workshop.engagementType,
         }),
+        clientName: participant.workshop.clientName ?? null,
         messages: (refetchedSession.messages || []).map((msg: any) => ({
           id: msg.id,
           role: msg.role,
@@ -442,6 +443,7 @@ export async function POST(request: NextRequest) {
         workshopType: participant.workshop.workshopType,
         engagementType: participant.workshop.engagementType,
       }),
+      clientName: participant.workshop.clientName ?? null,
       messages: ((session as any).messages || []).map((msg: any) => ({
         id: msg.id,
         role: msg.role,

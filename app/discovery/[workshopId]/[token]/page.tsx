@@ -101,6 +101,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [lensLabels, setLensLabels] = useState<Array<{ key: string; label: string }> | null>(null);
   const [draftMessage, setDraftMessage] = useState('');
   const [workshopType, setWorkshopType] = useState<string | null>(null);
+  const [clientName, setClientName]     = useState<string | null>(null);
   const [organization, setOrganization] = useState<{ name: string; logoUrl: string | null; primaryColor: string | null } | null>(null);
   const [isPdfMode, setIsPdfMode] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -198,6 +199,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setIsPdfMode(false);
     setLensLabels(null);
     setWorkshopType(null);
+    setClientName(null);
     lastSpokenMessageIdRef.current = null;
   }, [workshopId, token]);
 
@@ -259,6 +261,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setSessionId(data.sessionId);
       if (data.organization) setOrganization(data.organization);
       if (data.workshopType) setWorkshopType(data.workshopType);
+      if (data.clientName)   setClientName(data.clientName);
       const incomingMessages = (data.messages || []) as Message[];
       setMessages(incomingMessages);
       setCurrentPhase(normalizeConversationPhase(data.currentPhase));
@@ -349,6 +352,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       activeSessionIdRef.current = data.sessionId;
       setSessionId(data.sessionId);
       if (data.workshopType) setWorkshopType(data.workshopType);
+      if (data.clientName)   setClientName(data.clientName);
       const incomingMessages = (data.messages || []) as Message[];
       setMessages(incomingMessages);
 
@@ -530,9 +534,14 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   if (hasStarted && workshopType === 'GO_TO_MARKET' && sessionId) {
     return (
       <GtmFreeFlowView
+        token={token}
         sessionId={sessionId}
         initialMessages={messages}
         sessionStatus={sessionStatus}
+        initialPhase={currentPhase}
+        initialPhaseProgress={phaseProgress}
+        lensLabels={lensLabels}
+        clientName={clientName}
         primaryColor={organization?.primaryColor}
         organizationName={organization?.name}
         logoUrl={organization?.logoUrl}
