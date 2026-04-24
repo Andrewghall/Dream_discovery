@@ -43,8 +43,8 @@ import { getQuestionContract, buildLensContractBlock } from '@/lib/workshop/ques
 
 // ── Constants ───────────────────────────────────────────────
 
-const MAX_ITERATIONS = 12;
-const LOOP_TIMEOUT_MS = 240_000;
+const MAX_ITERATIONS = 40; // gpt-4o + one-lens-per-call needs ~20-25 iterations minimum
+const LOOP_TIMEOUT_MS = 270_000; // 4.5 min — within the 5-min route maxDuration
 const MODEL = 'gpt-4o';
 const MAX_SLOT_REWRITES = 2; // Hard escalation after this many rewrites per lens/depth slot
 /**
