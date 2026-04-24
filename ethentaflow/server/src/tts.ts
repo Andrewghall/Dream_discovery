@@ -21,7 +21,7 @@ export function synthesiseStream(
       const response = await client.speak.request(
         { text },
         {
-          model: 'aura-2-thalia-en',
+          model: 'aura-2-arcas-en',  // British English male voice
           encoding: 'linear16',
           sample_rate: 24000,
           container: 'none',

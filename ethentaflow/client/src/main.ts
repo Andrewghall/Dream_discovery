@@ -12,6 +12,27 @@ let mic: MicCapture | null = null;
 let ws: WSClient | null = null;
 let playback: AudioPlayback | null = null;
 
+// Gate: stop sending mic audio to server while TTS is playing to prevent echo feedback loop.
+// The mic picks up the speaker output; without this gate Deepgram fires SpeechStarted on
+// the system's own voice, triggering barge-in and crashing the first sentence.
+let ttsActive = false;
+// Brief hold-off after TTS ends: echo reverb lingers ~300ms after audio stops.
+const TTS_HOLDOFF_MS = 350;
+let ttsHoldoffTimer: ReturnType<typeof setTimeout> | null = null;
+
+function setTtsActive(active: boolean): void {
+  if (active) {
+    if (ttsHoldoffTimer) { clearTimeout(ttsHoldoffTimer); ttsHoldoffTimer = null; }
+    ttsActive = true;
+  } else {
+    // Don't clear immediately — wait for echo to die
+    ttsHoldoffTimer = setTimeout(() => {
+      ttsActive = false;
+      ttsHoldoffTimer = null;
+    }, TTS_HOLDOFF_MS);
+  }
+}
+
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
 const endBtn = document.getElementById('endBtn') as HTMLButtonElement;
 
@@ -56,9 +77,11 @@ async function startSession(): Promise<void> {
         break;
       case 'tts_start':
         ui.setStatus('Listening (system speaking)');
+        setTtsActive(true);
         break;
       case 'tts_end':
         ui.setStatus('Listening');
+        setTtsActive(false);
         break;
       case 'error':
         ui.setStatus('Error: ' + msg.message);
@@ -75,6 +98,8 @@ async function startSession(): Promise<void> {
     ui.setStatus('Disconnected');
     endBtn.disabled = true;
     startBtn.disabled = false;
+    ttsActive = false;
+    if (ttsHoldoffTimer) { clearTimeout(ttsHoldoffTimer); ttsHoldoffTimer = null; }
   };
 
   playback = new AudioPlayback(24000);
@@ -82,9 +107,17 @@ async function startSession(): Promise<void> {
 
   mic = new MicCapture(16000);
   await mic.start(chunk => {
+    // Do NOT send audio to the server while TTS is playing (or during hold-off).
+    // This prevents the mic picking up speaker output and triggering barge-in
+    // on the system's own voice.
+    if (ttsActive) return;
+
     ws?.sendAudio(chunk);
-    // Barge-in: if playback is active AND mic level above threshold, send interrupt
-    if (playback?.isPlaying() && (mic?.currentLevel() ?? 0) > 0.05) {
+
+    // Barge-in: if playback is somehow still active and user is clearly speaking
+    // above echo threshold, interrupt. The ttsActive gate above handles the common
+    // case; this is a belt-and-braces check for edge cases.
+    if (playback?.isPlaying() && (mic?.currentLevel() ?? 0) > 0.08) {
       playback.stop();
       ws?.sendInterrupt();
     }
@@ -101,6 +134,8 @@ function stopSession(): void {
   mic = null;
   ws = null;
   playback = null;
+  ttsActive = false;
+  if (ttsHoldoffTimer) { clearTimeout(ttsHoldoffTimer); ttsHoldoffTimer = null; }
   ui.setLive(false);
   ui.setStatus('Disconnected');
   endBtn.disabled = true;
