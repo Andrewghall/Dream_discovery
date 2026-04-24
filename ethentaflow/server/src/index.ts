@@ -12,12 +12,12 @@ import { EndpointDetector } from './endpoint-detector.js';
 import { SessionState } from './state-engine.js';
 import { createDeepgramConnection } from './deepgram.js';
 import { SignalClassifier } from './signal-classifier.js';
-import { ProbeEngine } from './probe-engine.js';
+import { ProbeEngine, isConfused } from './probe-engine.js';
 import { DepthScorer } from './depth-scorer.js';
 import { synthesiseStream } from './tts.js';
 import { startCapture } from './capture.js';
 import type {
-  ClientMessage, ServerMessage, Signal, Lens, SignalType,
+  ClientMessage, ServerMessage, Signal, Lens, SignalType, ProbeStrategy, ProbeCandidate,
 } from './types.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -100,11 +100,46 @@ async function handleSession(ws: WebSocket): Promise<void> {
     });
   };
 
+  // Helper: speak a probe text via TTS and track it
+  async function speakProbe(probeText: string, probeStrategy: ProbeStrategy): Promise<void> {
+    const isDuplicate = state.trackProbe(probeText);
+    if (isDuplicate) {
+      console.log('[probe] skipping duplicate probe');
+      return;
+    }
+    lastProbeText = probeText;
+    send({ type: 'probe', text: probeText, strategy: probeStrategy });
+    send({ type: 'tts_start' });
+    detector.onSystemSpeakingStart();
+    const tts = synthesiseStream(DEEPGRAM_API_KEY, probeText, chunk => {
+      sendBinary(chunk);
+      capture.writeSystemAudio(chunk);
+    });
+    activeTts = tts;
+    tts.done.then(() => {
+      if (activeTts === tts) {
+        activeTts = null;
+        send({ type: 'tts_end' });
+        detector.onSystemSpeakingEnd();
+      }
+    });
+  }
+
   // Deepgram connection
   const dg = createDeepgramConnection(DEEPGRAM_API_KEY, {
     onOpen: () => {
       console.log(`[dg] open (${state.sessionId})`);
       send({ type: 'ready', sessionId: state.sessionId });
+      // Fire the opening context probe immediately after connection
+      // Small delay to let the client settle before audio starts
+      setTimeout(() => {
+        if (!state.openingDone) {
+          state.markOpeningDone();
+          const openingText = probeEngine.getOpeningProbe();
+          void speakProbe(openingText, 'open_context');
+          console.log('[opening] sending context probe');
+        }
+      }, 500);
     },
     onTranscript: msg => {
       detector.onTranscript(msg);
@@ -162,6 +197,42 @@ async function handleSession(ws: WebSocket): Promise<void> {
     const snap = state.snapshot();
     const currentSignalType = snap.currentSignal?.type ?? null;
 
+    // --- Confusion / no-signal gate ---
+    const confused = isConfused(finalUtterance);
+    const hasSignal = snap.currentSignal !== null;
+
+    if (confused || !hasSignal) {
+      // Commit the turn (low depth, no example) but don't run the full depth/probe pipeline
+      state.incrementConfusion();
+      const confCount = state.confusionCount;
+      const turn = await state.commitTurn(finalUtterance, 0, false, lastProbeText);
+      capture.writeTurn(turn);
+
+      let reorientText: string;
+      if (confCount <= 1) {
+        reorientText = probeEngine.getReorientProbe(0);
+      } else if (confCount <= 3) {
+        reorientText = probeEngine.getReorientProbe(confCount - 1);
+      } else {
+        reorientText = probeEngine.getEncourageProbe(confCount - 4);
+      }
+      console.log(`[reorient] confusion=${confCount}, confused=${confused}, hasSignal=${hasSignal}`);
+
+      const probeRecord: ProbeCandidate = {
+        text: reorientText, targetSignal: null, strategy: confused ? 'reorient' : 'encourage',
+        generatedBy: 'template_fallback', tokenLatencyMs: 0,
+        generatedAt: Date.now(), triggerUtterance: finalUtterance,
+      };
+      capture.writeProbe(probeRecord);
+      await state.recordSystemProbe(reorientText);
+      await speakProbe(reorientText, probeRecord.strategy);
+      emitStateUpdate();
+      return;
+    }
+
+    // --- Normal turn: we have a signal ---
+    state.resetConfusion();
+
     // 1. Score depth
     const depthResult = await depthScorer.score(finalUtterance, currentSignalType, lastProbeText);
     console.log(`[depth] ${depthResult.depth} (example=${depthResult.exampleProvided}): ${depthResult.reasoning}`);
@@ -180,7 +251,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
 
     // 4. Select probe strategy
     const canProgress = depthResult.depth >= 3 && depthResult.exampleProvided;
-    let strategy: 'drill_depth' | 'request_example' | 'transition_lens' | 'redirect';
+    let strategy: ProbeStrategy;
     if (!canProgress) {
       strategy = depthResult.depth >= 2 ? 'request_example' : 'drill_depth';
     } else {
@@ -198,29 +269,16 @@ async function handleSession(ws: WebSocket): Promise<void> {
       probe = await probeEngine.generate(currentSnap, strategy, 'sync');
     }
 
-    lastProbeText = probe.text;
+    // 6. Dedup check — if we're about to repeat, regenerate
+    const recentProbes = state.getRecentProbes();
+    if (recentProbes.slice(-3).includes(probe.text)) {
+      console.log('[probe] dedup: regenerating to avoid repeat');
+      probe = await probeEngine.generate(currentSnap, strategy, 'sync');
+    }
+
     capture.writeProbe(probe);
     await state.recordSystemProbe(probe.text);
-
-    // 6. Emit probe + TTS
-    send({ type: 'probe', text: probe.text, strategy: probe.strategy });
-    send({ type: 'tts_start' });
-    detector.onSystemSpeakingStart();
-
-    const tts = synthesiseStream(DEEPGRAM_API_KEY, probe.text, chunk => {
-      sendBinary(chunk);
-      capture.writeSystemAudio(chunk);
-    });
-    activeTts = tts;
-
-    tts.done.then(() => {
-      if (activeTts === tts) {
-        activeTts = null;
-        send({ type: 'tts_end' });
-        detector.onSystemSpeakingEnd();
-      }
-    });
-
+    await speakProbe(probe.text, probe.strategy);
     emitStateUpdate();
   });
 

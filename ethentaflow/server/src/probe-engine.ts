@@ -64,6 +64,33 @@ const FALLBACK_PROBES: Record<SignalType, { drill: string; example: string }> = 
 
 const OPENER_FILLER_RE = /^(great|interesting|i see|okay|ok|so|right|well|alright|perfect|thanks|hmm|mhm|yeah),?\s/i;
 
+// Confusion detection — things people say when they don't understand what this conversation is
+const CONFUSION_RE = /\b(i don'?t (know|understand|get it)|what (is this|are you talking|'?s this)|i have no idea|confused|huh|sorry\??|not sure what|what do you mean|what('?s| is) (going on|happening)|i('?m| am) lost)\b/i;
+
+/** Returns true if this utterance signals the participant is confused or disengaged */
+export function isConfused(text: string): boolean {
+  if (!text.trim()) return true;
+  const words = text.trim().split(/\s+/);
+  if (words.length <= 3) return true; // too short to be substantive
+  return CONFUSION_RE.test(text);
+}
+
+// Hardcoded opening and reorient probes — fast, no LLM needed
+const OPENING_PROBE =
+  "Hi, good to meet you. I'm an AI here to have a conversation about your business — specifically the commercial side of things, like how you find customers, what's working, what's not, and where the real friction is. There are no right or wrong answers, just tell me what's actually going on. So to get us started: what's the biggest challenge you're trying to solve in your business right now?";
+
+const REORIENT_PROBES = [
+  "Let me give you some context. I'm here to understand the commercial side of your business — things like customers, growth, the team, what's blocking you. Think of it as a structured thinking session. To kick things off simply: what's one thing that's not working the way it should be?",
+  "I realise I jumped in without much context. I'm here to help think through your business challenges — growth, customers, the team, whatever's front of mind. Don't overthink it. What's the thing that's keeping you up at night right now?",
+  "Let's slow down. I'm interested in your business and what's actually difficult. It might be customers, hiring, revenue, competition — anything you'd want to get clearer on. What would be most useful to dig into today?",
+];
+
+const ENCOURAGE_PROBES = [
+  "There's no wrong answer here. Even if things feel fine, there's usually one area that could be sharper. What comes to mind?",
+  "Take your time. What's one area of your business where you'd love to have more clarity or confidence?",
+  "If you had to pick one thing to fix or figure out by the end of the year, what would it be?",
+];
+
 export class ProbeEngine {
   private client: Anthropic;
 
@@ -71,9 +98,27 @@ export class ProbeEngine {
     this.client = new Anthropic({ apiKey });
   }
 
+  /** Get the hardcoded opening probe text (no LLM needed). */
+  getOpeningProbe(): string { return OPENING_PROBE; }
+
+  /** Get a reorient probe for the given confusion count (0-indexed). */
+  getReorientProbe(confusionCount: number): string {
+    return REORIENT_PROBES[Math.min(confusionCount, REORIENT_PROBES.length - 1)];
+  }
+
+  /** Get an encourage probe for stubborn silence/short responses. */
+  getEncourageProbe(confusionCount: number): string {
+    return ENCOURAGE_PROBES[Math.min(confusionCount, ENCOURAGE_PROBES.length - 1)];
+  }
+
   async generate(state: ConversationState, strategy: ProbeStrategy, mode: 'speculative' | 'sync'): Promise<ProbeCandidate> {
     const startedAt = Date.now();
     const triggerUtterance = state.liveUtterance || state.turns[state.turns.length - 1]?.finalTranscript || '';
+
+    // Opening/reorient/encourage strategies use hardcoded text — no LLM
+    if (strategy === 'open_context') {
+      return { text: OPENING_PROBE, targetSignal: null, strategy, generatedBy: 'template_fallback', tokenLatencyMs: 0, generatedAt: Date.now(), triggerUtterance };
+    }
 
     try {
       const text = await this.callHaiku(state, strategy, mode === 'sync' ? 800 : 3000);

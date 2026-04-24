@@ -15,7 +15,7 @@ export type SignalType =
   | 'commercial_model'
   | 'market_position';
 
-export type ProbeStrategy = 'drill_depth' | 'request_example' | 'redirect' | 'transition_lens';
+export type ProbeStrategy = 'drill_depth' | 'request_example' | 'redirect' | 'transition_lens' | 'open_context' | 'reorient' | 'encourage';
 
 export interface Signal {
   type: SignalType;

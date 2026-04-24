@@ -31,6 +31,9 @@ function initialLensScores(): Record<Lens, LensScore> {
 export class SessionState {
   private state: ConversationState;
   private mutationQueue: Promise<void> = Promise.resolve();
+  private _confusionCount = 0;
+  private _recentProbes: string[] = [];
+  private _openingDone = false;
 
   constructor(participantName?: string) {
     this.state = {
@@ -55,6 +58,23 @@ export class SessionState {
   get sessionId(): string {
     return this.state.sessionId;
   }
+
+  get openingDone(): boolean { return this._openingDone; }
+  markOpeningDone(): void { this._openingDone = true; }
+
+  get confusionCount(): number { return this._confusionCount; }
+  incrementConfusion(): void { this._confusionCount++; }
+  resetConfusion(): void { this._confusionCount = 0; }
+
+  /** Register a probe as sent; returns true if it was a duplicate of a recent one. */
+  trackProbe(text: string): boolean {
+    const isDuplicate = this._recentProbes.slice(-5).includes(text);
+    this._recentProbes.push(text);
+    if (this._recentProbes.length > 10) this._recentProbes = this._recentProbes.slice(-10);
+    return isDuplicate;
+  }
+
+  getRecentProbes(): string[] { return [...this._recentProbes]; }
 
   snapshot(): ConversationState {
     return structuredClone(this.state);
