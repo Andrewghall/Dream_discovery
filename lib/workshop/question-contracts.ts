@@ -25,6 +25,15 @@ export interface DepthContract {
   promptIntents: [string, string, string];
 }
 
+export interface LensSpecificIntent {
+  /** What this lens's surface question must force — distinct from every other lens */
+  surface: string;
+  /** What this lens's depth question must force — distinct from every other lens */
+  depth: string;
+  /** What this lens's edge question must force — distinct from every other lens */
+  edge: string;
+}
+
 export interface PhaseQuestionContract {
   phase: 'REIMAGINE' | 'CONSTRAINTS' | 'DEFINE_APPROACH';
   workshopType: CanonicalWorkshopType | 'DEFAULT';
@@ -42,6 +51,12 @@ export interface PhaseQuestionContract {
   phaseFocus: string;
   /** Three depth levels — always [surface, depth, edge] */
   depthLevels: [DepthContract, DepthContract, DepthContract];
+  /**
+   * Per-lens question intents that OVERRIDE the generic depthLevels.questionIntent.
+   * When present for a given lens, these replace the generic intent so each lens
+   * forces a genuinely different line of thinking rather than the same template.
+   */
+  lensSpecificGuidance?: Record<string, LensSpecificIntent>;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -114,7 +129,7 @@ const REIMAGINE_GTM: PhaseQuestionContract = {
     },
     {
       depth: 'edge',
-      questionIntent: 'Surface the most ambitious version of the proposition — the one nobody has fully committed to yet that would make this company genuinely different',
+      questionIntent: 'Surface what people in the room privately doubt or haven\'t committed to — what the proposition would require them to stop doing or what would become unrecognisable.',
       promptIntents: [
         'The version of this that competitors aren\'t doing and couldn\'t quickly copy',
         'What this company would have to fully commit to — and stop hedging on — to make this real',
@@ -122,6 +137,23 @@ const REIMAGINE_GTM: PhaseQuestionContract = {
       ],
     },
   ],
+  lensSpecificGuidance: {
+    'People': {
+      surface: 'Challenge the BEHAVIOUR dimension: if this proposition were real, what would buyers see Capita\'s people doing — or no longer doing — in every commercial conversation? Ask about observable human behaviour, not aspiration.',
+      depth: 'Make it concrete: what would a buyer experience differently in a conversation with Capita\'s people versus today? Ground in a specific type of interaction, not a general capability.',
+      edge: 'Surface what Capita\'s people privately doubt about their own ability to show up this way — or what they would have to stop doing entirely for this version to be credible.',
+    },
+    'Commercial': {
+      surface: 'Challenge the VALUE dimension: if this proposition existed today, what would a buyer be paying for — and could they explain that value clearly to someone who hadn\'t been in the room? Ask about buyer-side value perception, not internal pricing.',
+      depth: 'Make it concrete: how would the commercial relationship itself feel different — the contract, the conversation, the moment a buyer signs? What would a buyer say they got that they couldn\'t get elsewhere?',
+      edge: 'Surface the commercial commitment the room privately doubts is achievable — the version of the proposition that would require Capita to walk away from how it currently wins work.',
+    },
+    'Partners': {
+      surface: 'Challenge the ECOSYSTEM dimension: which relationships, partnerships, or third parties would make this proposition more credible than Capita could achieve alone? Ask about who else needs to be part of making this real.',
+      depth: 'Make it concrete: what would partners or ecosystem players need to do or commit to for this proposition to be deliverable? Where does Capita currently depend on others in ways buyers don\'t yet see?',
+      edge: 'Surface which existing partner relationships would quietly undermine this vision — or what Capita would have to sacrifice in its ecosystem to truly own the proposition rather than share it.',
+    },
+  },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -176,32 +208,64 @@ const CONSTRAINTS_GTM: PhaseQuestionContract = {
   depthLevels: [
     {
       depth: 'surface',
-      questionIntent: 'Make the commercial constraint visible — where does this limitation show up in how buyers experience the proposition or how deals move?',
+      questionIntent: 'Make the GTM constraint visible — where does this limitation show up in how buyers experience the proposition or how deals progress?',
       promptIntents: [
-        'The specific point in the deal cycle or buyer journey where this constraint is felt most acutely',
-        'Whether buyers or the internal commercial team hit this first — and what it looks like for each',
-        'How often this constraint forces a reshape, a delay, or a lost deal',
+        'The specific point in the deal cycle or buyer journey where this constraint surfaces',
+        'Whether buyers or the internal team feel it first — and what it looks like for each',
+        'How often this constraint forces a reshape, a delay, or a qualification loss',
       ],
     },
     {
       depth: 'depth',
-      questionIntent: 'Make the commercial constraint specific and observable — what does it look like in a live deal, who feels it first, and what do they have to do because of it? Avoid academic language about causes or structures.',
+      questionIntent: 'Make the constraint observable in a live situation — what actually happens, who is involved, and what must be done because of it. Do not ask "what does it look like" generically — name the specific type of failure this lens creates.',
       promptIntents: [
-        'What it looks like in a live deal or buyer conversation when this constraint surfaces',
-        'What internal dependencies or ways of working depend on this constraint remaining',
-        'Where this constraint has gotten worse or better recently and what drove that',
+        'What the specific breakdown looks like when this constraint surfaces in a real pursuit or conversation',
+        'What internal dependencies keep this constraint in place',
+        'Where this constraint has gotten materially worse or better recently',
       ],
     },
     {
       depth: 'edge',
-      questionIntent: 'Surface the consequence or trade-off — what is this protecting, or what does staying here cost? Use consequence or pressure question shapes. Do NOT ask "what would removing X require" or "what is it actually protecting".',
+      questionIntent: 'Force the trade-off or consequence question — what is this protecting, or what does keeping it cost the proposition? Use pressure or consequence shapes. Do NOT reuse "what is it actually protecting" as a template.',
       promptIntents: [
-        'What the commercial model or proposition would have to fundamentally change to remove this constraint',
+        'What the proposition would have to fundamentally change or stop doing to remove this constraint',
         'Who internally has the most to lose if this constraint is removed',
-        'What this constraint is actually protecting — the real commercial or organisational reason it persists',
+        'What has stopped this from being resolved every time it has been raised',
       ],
     },
   ],
+  lensSpecificGuidance: {
+    'Risk/Compliance': {
+      surface: 'Ask what gets EXCLUDED from the proposition because of regulatory exposure — not a general compliance challenge, but the specific promise that cannot be made or the specific buyer segment that cannot be pursued.',
+      depth: 'Ask what a buyer must accept, qualify, or sign off on because of Capita\'s regulatory position — the specific friction point in the deal, not a generic compliance burden.',
+      edge: 'Ask what Capita would have to stop promising entirely if it took this constraint seriously — the specific commitment that\'s being quietly overstated or left ambiguous.',
+    },
+    'Partners': {
+      surface: 'Ask which part of the proposition Capita cannot deliver alone and where that dependency first becomes visible or uncomfortable in a buyer conversation.',
+      depth: 'Ask what happens when a partner fails to perform or limits what Capita can guarantee — the specific accountability gap that surfaces in a live deal when Capita cannot answer for a third party.',
+      edge: 'Ask what Capita would have to sacrifice in its partner model to truly own the proposition — what is being protected in the ecosystem that limits differentiation.',
+    },
+    'Technology': {
+      surface: 'Ask what Capita can demonstrate versus what it is claiming — where the technology estate limits the credibility of the proposition in front of a buyer, not generically but at a specific moment.',
+      depth: 'Ask what a specific technology gap or integration complexity means for what Capita can realistically offer in a live deal — the commitment that becomes harder to honour once the buyer understands the estate.',
+      edge: 'Ask what in Capita\'s technology estate would need to be abandoned or replaced before the proposition could scale — what has been left unresolved because the cost of resolving it has been avoided.',
+    },
+    'Operations': {
+      surface: 'Ask where Capita\'s delivery model diverges from the proposition scope — the specific place where what has been sold cannot be operationalised as promised.',
+      depth: 'Ask what operational failure or handoff breakdown a buyer eventually discovers — the specific post-sale gap that undermines the proposition and damages renewal or expansion.',
+      edge: 'Ask which operational structure is being kept in place even though it limits what can be offered — the model that nobody has publicly challenged because changing it would be disruptive.',
+    },
+    'Commercial': {
+      surface: 'Ask where Capita\'s pricing, packaging, or contract structure makes the proposition harder to position — the specific commercial friction that appears in the GTM motion, not a generic commercial challenge.',
+      depth: 'Ask what in the commercial model causes a buyer to question the value claim — the specific point in a live deal where the numbers, terms, or structure create doubt rather than confidence.',
+      edge: 'Ask which part of Capita\'s commercial model has become a liability — where the pricing or contract structure actively works against the proposition it is supposed to support.',
+    },
+    'People': {
+      surface: 'Ask where Capita\'s people capability creates a gap between how the proposition is positioned and how buyers actually experience it — the specific conversation that doesn\'t go the way it should.',
+      depth: 'Ask what a buyer sees in a live deal when Capita\'s people cannot credibly deliver the proposition — the specific moment that shifts buyer confidence, not a general capability concern.',
+      edge: 'Ask what Capita\'s people have privately accepted as their ceiling — the capability limitation that has never been publicly named and that the proposition is quietly written around.',
+    },
+  },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -256,32 +320,64 @@ const DEFINE_APPROACH_GTM: PhaseQuestionContract = {
   depthLevels: [
     {
       depth: 'surface',
-      questionIntent: 'Identify the first concrete commercial step — what exists today in how this company goes to market that gives this approach a foothold?',
+      questionIntent: 'Identify the first concrete, real-world step — what already exists today that gives this approach a foothold? Do NOT ask "what existing practices" — ask what happens first.',
       promptIntents: [
-        'Where a version of this commercial approach is already working, even partially, today',
-        'What the smallest viable version looks like for the commercial team in their next live deal or conversation',
-        'Who in the commercial team moves first and what they do differently from tomorrow',
+        'Where a version of this approach is already working, even partially, in a live deal or conversation today',
+        'What the smallest viable version looks like in practice for the team doing the work tomorrow',
+        'Who moves first and what they do differently — not a programme, a specific action',
       ],
     },
     {
       depth: 'depth',
-      questionIntent: 'Get specific about what has to change commercially for this to be executable — who moves first, what the sequence is, and what early signal tells us it is working. Avoid "conditions must be true" language.',
+      questionIntent: 'Force the question of what must be PROVEN or STOPPED for this to be executable — not what changes are needed generically, but what specific decision cannot be avoided.',
       promptIntents: [
-        'What has to change internally (proposition clarity, commercial model, pricing, enablement) for this to be executable',
-        'What the sequence looks like — what commercial changes enable others, and what can\'t happen until something else does',
-        'What early commercial signal within 60-90 days would tell us this is working',
+        'What must change in how people work together, hand off, or make decisions for this to stick',
+        'What the sequence of change looks like — what enables what, and what cannot happen until something else does',
+        'What early signal within 60-90 days would tell us this is working before the full outcome is visible',
       ],
     },
     {
       depth: 'edge',
-      questionIntent: 'Surface where this commercial approach will quietly drift or stall — the failure mode nobody is naming. Use consequence or pressure question shapes. Do NOT ask "what potential resistance might arise".',
+      questionIntent: 'Surface where this approach will quietly fail — the mode nobody is naming. Do NOT ask "where might this drift or stall" generically — name the specific failure type for this lens.',
       promptIntents: [
-        'Where this approach will hit its hardest internal or market resistance and what form that takes',
-        'What the slow commercial failure mode looks like — the version where it drifts rather than fails clearly',
-        'What we\'re not saying about this approach that would make it more honest and more executable',
+        'Where this approach hits its hardest resistance and what form that resistance takes',
+        'What the slow failure mode looks like — the version that fails quietly rather than visibly',
+        'What is being avoided in this room that would make the approach more honest and more likely to work',
       ],
     },
   ],
+  lensSpecificGuidance: {
+    'People': {
+      surface: 'Ask what the first VISIBLE behaviour change looks like — not a plan or initiative, but a specific conversation that happens differently this week. Force the room to name a person and an action, not a programme.',
+      depth: 'Ask what people must STOP doing to make space for this approach — not what must change broadly, but what specific habit or practice must end for this to be credible.',
+      edge: 'Ask where this people approach will quietly get deprioritised — who reverts first and why the organisation allows it, not where it might stall generically.',
+    },
+    'Operations': {
+      surface: 'Ask what operational change MUST happen first before anything else can work — the single unlocking step in the delivery model, not the first item on a roadmap.',
+      depth: 'Ask what breaks in the operation if this approach is adopted but delivery hasn\'t changed — the specific failure point that emerges when a promise meets an unchanged process.',
+      edge: 'Ask which operational structure will prevent this approach from scaling — what nobody has been willing to say needs to go because removing it would be disruptive to people in the room.',
+    },
+    'Technology': {
+      surface: 'Ask what must be demonstrated in a live environment before the proposition can be credibly made — the specific technical proof point that turns a claim into evidence.',
+      depth: 'Ask what technical commitment Capita must make that it has not yet made — the decision being avoided that the technology approach actually depends on.',
+      edge: 'Ask where the technology dependency quietly becomes untenable at scale — what is being assumed about capability or integration that will not hold when deal volume or complexity increases.',
+    },
+    'Commercial': {
+      surface: 'Ask what the first commercial WIN under the new approach looks like — not a deal type, but a specific buyer conversation that goes differently. What does a buyer say or do that doesn\'t happen today?',
+      depth: 'Ask what the commercial model must stop doing to support the proposition — which existing commercial habit (pricing method, contract term, incentive structure) undermines the new approach.',
+      edge: 'Ask what the buyer doubts about this commercial approach when they try to justify it internally — the specific point where the value claim does not survive scrutiny in the buyer\'s own organisation.',
+    },
+    'Risk/Compliance': {
+      surface: 'Ask what compliance position must be established BEFORE the proposition can be made at scale — the specific regulatory proof point that unlocks the approach rather than blocking it.',
+      depth: 'Ask what Capita is privately limiting in the proposition because the compliance position is not resolved — the specific exclusion or caveat that nobody has named but that buyers will eventually find.',
+      edge: 'Ask what this compliance approach makes worse for buyers who need certainty — what is being sacrificed in the name of risk management that buyers would trade for a different offer entirely.',
+    },
+    'Partners': {
+      surface: 'Ask which specific partner dependency must be resolved before the proposition is truly ownable — the third-party reliance that limits what can be promised, not partnerships generically.',
+      depth: 'Ask what Capita gives up control of when it depends on partners — the specific accountability gap that a buyer will eventually discover and that Capita cannot fully answer for.',
+      edge: 'Ask what Capita quietly sacrifices in proposition differentiation by relying on partners — what would be genuinely different if Capita owned this capability rather than sourcing it.',
+    },
+  },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -343,15 +439,21 @@ export function buildLensContractBlock(
     return s.replace(/this company/g, clientName).replace(/this lens/g, lens);
   }
 
+  // Use lens-specific intents when available — these override the generic questionIntent
+  // and force each lens to introduce a distinct line of thinking.
+  const lensGuidance = contract.lensSpecificGuidance?.[lens];
+
   if (compact) {
-    // Compact form: one line per depth, seeds as short list
     const lines: string[] = [
       `[${lens}] Customer: ${sub(contract.customerAnchor)}`,
       `Sub-actors: ${sub(contract.subActorGuidance)}`,
       '',
     ];
     for (const slot of contract.depthLevels) {
-      lines.push(`  ${slot.depth.toUpperCase()}: ${sub(slot.questionIntent)}`);
+      const intent = lensGuidance
+        ? sub(lensGuidance[slot.depth])
+        : sub(slot.questionIntent);
+      lines.push(`  ${slot.depth.toUpperCase()}: ${intent}`);
       lines.push(`    Seeds: ${slot.promptIntents.map((p, i) => `(${i + 1}) ${sub(p)}`).join(' | ')}`);
     }
     lines.push('');
@@ -368,11 +470,17 @@ export function buildLensContractBlock(
   ];
 
   for (const slot of contract.depthLevels) {
+    const intent = lensGuidance
+      ? sub(lensGuidance[slot.depth])
+      : sub(slot.questionIntent);
     lines.push(`[${slot.depth.toUpperCase()}]`);
-    lines.push(`Purpose: ${sub(slot.questionIntent)}`);
+    lines.push(`Purpose: ${intent}`);
+    if (lensGuidance) {
+      lines.push(`NOTE: This intent is specific to the ${lens} lens. Do NOT reuse this question shape for any other lens.`);
+    }
     lines.push('Seed prompts must cover:');
-    for (const [i, intent] of slot.promptIntents.entries()) {
-      lines.push(`  ${i + 1}. ${sub(intent)}`);
+    for (const [i, promptIntent] of slot.promptIntents.entries()) {
+      lines.push(`  ${i + 1}. ${sub(promptIntent)}`);
     }
     lines.push('');
   }
