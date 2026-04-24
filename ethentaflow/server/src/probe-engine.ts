@@ -77,12 +77,12 @@ export function isConfused(text: string): boolean {
 
 // Hardcoded opening and reorient probes — fast, no LLM needed
 const OPENING_PROBE =
-  "Hi, good to meet you. I'm DREAMflow, an AI here to have a conversation about your business — specifically the commercial side of things, like how you find customers, what's working, what's not, and where the real friction is. There are no right or wrong answers, just tell me what's actually going on. So to get us started: what's the biggest challenge you're trying to solve in your business right now?";
+  "Welcome to DREAM. I am Dream Flow, here to have a conversation with you about you — your business, what's working, what's not, and where the real friction is. There are no right or wrong answers, just tell me what's actually going on. So to get us started: what's the biggest challenge you're trying to solve right now?";
 
 const REORIENT_PROBES = [
-  "Let me give you some context. I'm DREAMflow, and I'm here to understand the commercial side of your business — things like customers, growth, the team, what's blocking you. Think of it as a structured thinking session. To kick things off simply: what's one thing that's not working the way it should be?",
-  "I realise I jumped in without much context. I'm DREAMflow, and I'm here to help think through your business challenges — growth, customers, the team, whatever's front of mind. Don't overthink it. What's the thing that's keeping you up at night right now?",
-  "Let's slow down. DREAMflow is here to understand what's actually difficult in your business. It might be customers, hiring, revenue, competition — anything you'd want to get clearer on. What would be most useful to dig into today?",
+  "Let me give you some context. I'm Dream Flow, and I'm here to understand the commercial side of your business — things like customers, growth, the team, what's blocking you. Think of it as a structured thinking session. To kick things off: what's one thing that's not working the way it should be?",
+  "I realise I jumped in without much context. I'm Dream Flow, and I'm here to help think through your business challenges — growth, customers, the team, whatever's front of mind. Don't overthink it. What's the thing that's keeping you up at night right now?",
+  "Let's slow down. Dream Flow is here to understand what's actually difficult in your business. It might be customers, hiring, revenue, competition — anything you'd want to get clearer on. What would be most useful to dig into today?",
 ];
 
 const ENCOURAGE_PROBES = [
