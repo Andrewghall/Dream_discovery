@@ -6,6 +6,7 @@ import type {
   ConversationState,
   Lens,
   LensScore,
+  OnboardingStep,
   ProbeCandidate,
   Signal,
   SignalType,
@@ -34,6 +35,12 @@ export class SessionState {
   private _confusionCount = 0;
   private _recentProbes: string[] = [];
   private _openingDone = false;
+  private _onboardingStep: OnboardingStep = 'ask_name';
+  private _participantDisplayName: string | null = null;
+  private _nameConsented = true;
+  private _jobTitle: string | null = null;
+  private _lovesJob: string | null = null;
+  private _frustrations: string | null = null;
 
   constructor(participantName?: string) {
     this.state = {
@@ -75,6 +82,22 @@ export class SessionState {
   }
 
   getRecentProbes(): string[] { return [...this._recentProbes]; }
+
+  // --- Onboarding ---
+  get onboardingStep(): OnboardingStep { return this._onboardingStep; }
+  get onboardingDone(): boolean { return this._onboardingStep === 'done'; }
+  get participantDisplayName(): string | null { return this._participantDisplayName; }
+  get nameConsented(): boolean { return this._nameConsented; }
+  get jobTitle(): string | null { return this._jobTitle; }
+  get lovesJob(): string | null { return this._lovesJob; }
+  get frustrations(): string | null { return this._frustrations; }
+
+  advanceOnboarding(step: OnboardingStep): void { this._onboardingStep = step; }
+  setParticipantDisplayName(name: string | null): void { this._participantDisplayName = name; }
+  setNameConsented(v: boolean): void { this._nameConsented = v; }
+  setJobTitle(v: string): void { this._jobTitle = v; }
+  setLovesJob(v: string): void { this._lovesJob = v; }
+  setFrustrations(v: string): void { this._frustrations = v; }
 
   snapshot(): ConversationState {
     return structuredClone(this.state);

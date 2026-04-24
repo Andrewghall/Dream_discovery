@@ -15,7 +15,10 @@ export type SignalType =
   | 'commercial_model'
   | 'market_position';
 
-export type ProbeStrategy = 'drill_depth' | 'request_example' | 'redirect' | 'transition_lens' | 'open_context' | 'reorient' | 'encourage';
+export type ProbeStrategy = 'drill_depth' | 'request_example' | 'redirect' | 'transition_lens' | 'open_context' | 'reorient' | 'encourage' | 'onboarding';
+
+// Onboarding phase — conversation steps before GTM discovery begins
+export type OnboardingStep = 'ask_name' | 'ask_consent' | 'ask_job_title' | 'ask_loves_job' | 'ask_frustrations' | 'done';
 
 export interface Signal {
   type: SignalType;
