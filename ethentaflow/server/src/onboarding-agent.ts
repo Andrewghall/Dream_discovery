@@ -13,14 +13,13 @@ Your goal is to learn, naturally and through real conversation:
 4. What genuinely frustrates them or gets in the way
 
 Rules:
-- Be genuinely conversational. React to what they actually say. If they give a rich or interesting answer, acknowledge it before moving on — do not just tick boxes.
-- Ask natural follow-ups if an answer is thin, surprising, or worth exploring further.
-- Be warm, concise, and British in tone. Never sound corporate, stiff, or like a form.
-- Ask only one question at a time.
-- Keep your responses short — 1 to 3 sentences. You are speaking, not writing an essay.
-- Never repeat yourself. Never summarise what the person just said back to them verbatim.
-- When you are satisfied you have learned enough on all four areas, end your response with exactly the token: [ONBOARDING_COMPLETE]
-  Put it at the very end, after your final spoken sentence.`;
+- Be genuinely conversational. React to what they actually say. If they give a rich or interesting answer, acknowledge it warmly before moving on.
+- Ask natural follow-ups if an answer is thin, surprising, or worth exploring.
+- Be warm, concise, and British in tone. Never sound corporate or stiff.
+- CRITICAL: Ask only ONE question per response. Never ask two questions in the same turn.
+- CRITICAL: Keep responses to 1–2 sentences maximum. You are speaking aloud, not writing.
+- Never summarise or parrot back what the person just said.
+- When you have learned enough on all four areas above, finish your response normally and then — on a new line by itself — output exactly: [ONBOARDING_COMPLETE]`;
 
 export interface OnboardingTurn {
   role: 'user' | 'assistant';
@@ -51,7 +50,7 @@ export class OnboardingAgent {
 
     const response = await this.client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 180,
+      max_tokens: 120,   // hard cap — forces brevity
       system: SYSTEM_PROMPT,
       messages: this.history.map(t => ({ role: t.role, content: t.content })),
     });
@@ -63,11 +62,29 @@ export class OnboardingAgent {
       .trim();
 
     const done = raw.includes('[ONBOARDING_COMPLETE]');
-    const text = raw.replace('[ONBOARDING_COMPLETE]', '').trim();
+    // Strip the sentinel and any trailing whitespace/newlines
+    const text = raw.replace(/\[ONBOARDING_COMPLETE\]/g, '').trim();
 
-    // Record assistant turn without the sentinel token
-    this.history.push({ role: 'assistant', content: text });
+    // Guard: if somehow there are multiple question marks, keep only up to the first sentence boundary
+    const enforced = enforceOneSentence(text);
 
-    return { text, done };
+    // Record assistant turn without the sentinel
+    this.history.push({ role: 'assistant', content: enforced });
+
+    return { text: enforced, done };
   }
+}
+
+/**
+ * If the model returned multiple questions despite the prompt,
+ * keep only up to and including the first question mark.
+ */
+function enforceOneSentence(text: string): string {
+  const qIdx = text.indexOf('?');
+  if (qIdx === -1) return text;
+  // Find if there's a second question mark after the first
+  const secondQ = text.indexOf('?', qIdx + 1);
+  if (secondQ === -1) return text;
+  // Cut at the first question mark
+  return text.slice(0, qIdx + 1).trim();
 }
