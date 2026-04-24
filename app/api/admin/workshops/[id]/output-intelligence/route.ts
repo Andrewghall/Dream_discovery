@@ -11,7 +11,7 @@ import { getAuthenticatedUser } from '@/lib/auth/get-session-user';
 import { validateWorkshopAccess } from '@/lib/middleware/validate-workshop-access';
 import { aggregateWorkshopSignals, computeSignalsHash } from '@/lib/output-intelligence/signal-aggregator';
 import { runIntelligencePipeline } from '@/lib/output-intelligence/pipeline';
-import type { StoredOutputIntelligence, EngineKey } from '@/lib/output-intelligence/types';
+import type { StoredOutputIntelligence } from '@/lib/output-intelligence/types';
 import { strictLimiter } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
@@ -19,12 +19,19 @@ export const maxDuration = 120;
 
 // ── Engine metadata ───────────────────────────────────────────────────────────
 
-const ENGINE_LABELS: Record<EngineKey, string> = {
+const ENGINE_LABELS: Record<string, string> = {
+  // Standard pipeline
   discoveryValidation: 'Discovery Validation',
   rootCause: 'Root Cause Intelligence',
   futureState: 'Future State Design',
   roadmap: 'Execution Roadmap',
   strategicImpact: 'Strategic Impact',
+  // GTM pipeline
+  gtmReality: 'GTM Reality Map',
+  gtmIdealState: 'GTM Ideal State',
+  gtmConstraints: 'GTM Constraints',
+  gtmWayForward: 'GTM Way Forward',
+  gtmExecutive: 'GTM Executive View',
 };
 
 // ── GET: Return stored intelligence ──────────────────────────────────────────
@@ -104,15 +111,16 @@ export async function POST(
         const signals = await aggregateWorkshopSignals(workshopId);
         const signalsHash = computeSignalsHash(signals);
 
+        // 2. Run the appropriate pipeline (GTM or standard) with SSE progress
+        const pipelineLabel = signals.context.workshopType === 'GO_TO_MARKET' ? 'GTM' : 'standard';
         sendEvent('status', {
-          message: `Signals collected. Lenses: ${signals.context.lenses.join(', ')}. Launching 5 intelligence agents…`,
+          message: `Signals collected. Lenses: ${signals.context.lenses.join(', ')}. Launching ${pipelineLabel} intelligence pipeline…`,
         });
 
-        // 2. Run all 5 engines in parallel with SSE progress
-        const { intelligence, errors } = await runIntelligencePipeline(
+        const result = await runIntelligencePipeline(
           signals,
-          (engine: EngineKey, event: 'started' | 'complete' | 'error', detail?: string) => {
-            const label = ENGINE_LABELS[engine];
+          (engine, event, detail) => {
+            const label = ENGINE_LABELS[engine] ?? engine;
             if (event === 'started') {
               sendEvent('engine.started', { engine, label });
             } else if (event === 'complete') {
@@ -124,13 +132,19 @@ export async function POST(
         );
 
         // 3. Store to DB
+        const generatedAtMs = result.intelligence?.generatedAtMs ?? result.gtmIntelligence?.generatedAtMs ?? Date.now();
+        const lensesUsed = result.intelligence?.lensesUsed ?? result.gtmIntelligence?.lensesUsed ?? signals.context.lenses;
+
         const stored: StoredOutputIntelligence = {
           version: 1,
-          generatedAtMs: intelligence.generatedAtMs,
-          lensesUsed: intelligence.lensesUsed,
+          type: result.type,
+          generatedAtMs,
+          lensesUsed,
           signalsHash,
-          intelligence,
-          errors: Object.keys(errors).length > 0 ? errors : undefined,
+          ...(result.type === 'gtm'
+            ? { gtmIntelligence: result.gtmIntelligence }
+            : { intelligence: result.intelligence }),
+          errors: Object.keys(result.errors).length > 0 ? result.errors : undefined,
         };
 
         await prisma.workshop.update({
@@ -140,15 +154,17 @@ export async function POST(
         });
 
         // 4. Report any engine errors
-        if (Object.keys(errors).length > 0) {
-          sendEvent('partial.errors', { errors });
+        if (Object.keys(result.errors).length > 0) {
+          sendEvent('partial.errors', { errors: result.errors });
         }
 
         // 5. Complete
         sendEvent('complete', {
-          intelligence,
-          lensesUsed: intelligence.lensesUsed,
-          generatedAtMs: intelligence.generatedAtMs,
+          type: result.type,
+          intelligence: result.intelligence,
+          gtmIntelligence: result.gtmIntelligence,
+          lensesUsed,
+          generatedAtMs,
         });
       } catch (error) {
         console.error('[Output Intelligence POST] Error:', error);

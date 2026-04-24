@@ -80,6 +80,8 @@ import {
   BehaviouralInterventionsBlock,
 } from './_components/DiscoveryBlocks';
 import type { BehaviouralInterventionsOutput } from '@/lib/behavioural-interventions/types';
+import { GtmReportView } from './_components/GtmBlocks';
+import type { GtmOutputIntelligence } from '@/lib/output-intelligence/gtm/types';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -98,6 +100,7 @@ export default function DownloadReportPage({ params }: PageProps) {
 
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [intelligence, setIntelligence] = useState<WorkshopOutputIntelligence | null>(null);
+  const [gtmIntelligence, setGtmIntelligence] = useState<GtmOutputIntelligence | null>(null);
   const [reportSummary, setReportSummary] = useState<ReportSummary | null>(null);
   const [liveJourneyData, setLiveJourneyData] = useState<LiveJourneyData | null>(null);
   const [journeyRegenerating, setJourneyRegenerating] = useState(false);
@@ -162,7 +165,11 @@ export default function DownloadReportPage({ params }: PageProps) {
       if (intelligenceRes.ok) {
         const d = await intelligenceRes.json();
         const stored = d.intelligence as StoredOutputIntelligence | null;
-        if (stored?.intelligence) setIntelligence(stored.intelligence);
+        if (stored?.type === 'gtm' && stored.gtmIntelligence) {
+          setGtmIntelligence(stored.gtmIntelligence);
+        } else if (stored?.intelligence) {
+          setIntelligence(stored.intelligence);
+        }
       }
 
       if (summaryRes.ok) {
@@ -831,8 +838,13 @@ export default function DownloadReportPage({ params }: PageProps) {
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-10">
 
+        {/* ── GTM REPORT — rendered when workshop type is Go-To-Market ────────── */}
+        {gtmIntelligence && (
+          <GtmReportView intelligence={gtmIntelligence} />
+        )}
+
         {/* ── AGENTIC PROMPT BAR — generated content drops straight into the report ── */}
-        {intelligence && (
+        {intelligence && !gtmIntelligence && (
           <AgenticPromptBar
             workshopId={workshopId}
             layout={layout}
@@ -841,7 +853,7 @@ export default function DownloadReportPage({ params }: PageProps) {
         )}
 
         {/* No intelligence yet */}
-        {!intelligence && (
+        {!intelligence && !gtmIntelligence && (
           <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
             <div className="flex items-center gap-3">
               <Sparkles className="h-4 w-4 text-amber-600 shrink-0" />
@@ -867,7 +879,7 @@ export default function DownloadReportPage({ params }: PageProps) {
         )}
 
         {/* ── REPORT CONTENTS INDEX ────────────────────────────────────── */}
-        {intelligence && (
+        {intelligence && !gtmIntelligence && (
           <div className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/20">
               <div>

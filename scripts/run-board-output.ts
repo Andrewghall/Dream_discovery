@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   // ── Step 2: Run intelligence pipeline ──────────────────────────────────
   console.log('\n  [2/2] Running LLM intelligence pipeline (6 agents)…');
   const t1 = Date.now();
-  const { intelligence, errors } = await runIntelligencePipeline(
+  const result = await runIntelligencePipeline(
     signals,
     (engine, event, detail) => {
       const icon = event === 'complete' ? '✓' : event === 'error' ? '✗' : '…';
@@ -107,12 +107,19 @@ async function main(): Promise<void> {
   );
   console.log(`        done in ${((Date.now() - t1) / 1000).toFixed(1)}s`);
 
+  const { intelligence, errors } = result;
+
   // ── Pipeline errors ─────────────────────────────────────────────────────
   if (Object.keys(errors).length > 0) {
     console.log('\n  ⚠  Pipeline errors:');
     for (const [engine, msg] of Object.entries(errors)) {
       console.log(`    ${engine}: ${msg}`);
     }
+  }
+
+  if (!intelligence) {
+    console.log('\n  ⚠  No standard intelligence output — this may be a GTM workshop.');
+    return;
   }
 
   // ── Causal intelligence ────────────────────────────────────────────────

@@ -19,6 +19,8 @@ export interface WorkshopSignals {
     industry: string;
     lenses: string[];
     objectives: string;
+    /** Canonical workshop type — used to route to the correct output pipeline */
+    workshopType?: string;
   };
   discovery: {
     themes: string[];
@@ -546,11 +548,20 @@ export interface WorkshopOutputIntelligence {
 
 export interface StoredOutputIntelligence {
   version: 1;
+  /**
+   * Pipeline type discriminator.
+   * 'standard' (default, backwards compatible) = transformation/operations/AI pipeline.
+   * 'gtm' = Go-To-Market pipeline using GtmOutputIntelligence.
+   */
+  type?: 'standard' | 'gtm';
   generatedAtMs: number;
   lensesUsed: string[];
   signalsHash: string;
-  intelligence: WorkshopOutputIntelligence;
-  errors?: Partial<Record<EngineKey, string>>;
+  /** Present when type === 'standard' or type is absent (backwards compat) */
+  intelligence?: WorkshopOutputIntelligence;
+  /** Present when type === 'gtm' */
+  gtmIntelligence?: import('./gtm/types').GtmOutputIntelligence;
+  errors?: Partial<Record<string, string>>;
 }
 
 // ── Report Summary (single GPT-4o synthesis) ─────────────────────────────────

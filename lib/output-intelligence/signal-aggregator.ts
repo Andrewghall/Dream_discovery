@@ -13,6 +13,7 @@ import type { WorkshopSignals } from './types';
 import { retrieveRelevant } from '@/lib/embeddings/retrieve';
 import { groupRole } from '@/lib/discover-analysis/compute-alignment';
 import { buildWorkshopGraphIntelligence } from '@/lib/output/build-workshop-graph';
+import { inferWorkshopRuntimeType } from '@/lib/workshop/workshop-definition';
 
 // ── Types from DB shapes ─────────────────────────────────────────────────────
 
@@ -70,6 +71,8 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
         clientName: true,
         businessContext: true,
         industry: true,
+        workshopType: true,
+        engagementType: true,
         discoveryQuestions: true,
         blueprint: true,
         prepResearch: true,
@@ -566,6 +569,10 @@ export async function aggregateWorkshopSignals(workshopId: string): Promise<Work
       industry: workshop.industry ?? '',
       lenses,
       objectives,
+      workshopType: inferWorkshopRuntimeType({
+        workshopType: workshop.workshopType as string | undefined,
+        engagementType: workshop.engagementType as string | undefined,
+      }),
     },
     discovery: {
       themes,

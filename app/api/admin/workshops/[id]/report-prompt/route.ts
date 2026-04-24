@@ -86,6 +86,13 @@ export async function POST(
     const intel = stored.intelligence;
     const reportSummary = workshop.reportSummary as ReportSummary | null;
 
+    // GTM workshops use a different output model — agentic prompts are not supported
+    if (!intel) {
+      return NextResponse.json({
+        error: 'Agentic prompts are not available for this workshop type. Use the GTM report view instead.',
+      }, { status: 422 });
+    }
+
     // Build compact context dump
     const contextLines: string[] = [];
     contextLines.push(`Client: ${workshop.clientName || 'Not specified'} | Industry: ${workshop.industry || 'Not specified'}`);

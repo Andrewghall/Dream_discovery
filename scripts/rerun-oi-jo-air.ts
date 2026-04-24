@@ -52,6 +52,11 @@ async function main() {
     console.warn('\nEngine errors:', errors);
   }
 
+  if (!intelligence) {
+    console.error('\n✗ No standard intelligence generated (GTM workshop?) — stopping.');
+    process.exit(1);
+  }
+
   // ── 3. Inspect causal intelligence output ────────────────────────────────
   const ci = intelligence.causalIntelligence;
   if (!ci) {
@@ -100,6 +105,7 @@ async function main() {
 
   const stored: StoredOutputIntelligence = {
     version: 1,
+    type: 'standard',
     generatedAtMs: Date.now(),
     lensesUsed: intelligence.lensesUsed,
     signalsHash,

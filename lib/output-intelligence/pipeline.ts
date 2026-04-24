@@ -14,6 +14,8 @@ import {
   computeDiscoveryEvidenceScore,
   gateDiscoveryValidation,
 } from './evidence-gating';
+import { runGtmPipeline } from './gtm/pipeline';
+import type { GtmEngineKey } from './gtm/types';
 import { runDiscoveryValidationAgent } from './agents/discovery-validation-agent';
 import { runReportSummaryAgent } from './agents/report-summary-agent';
 import { runRootCauseAgent } from './agents/root-cause-agent';
@@ -23,11 +25,13 @@ import { runStrategicImpactAgent } from './agents/strategic-impact-agent';
 import { runCausalSynthesisAgent } from './agents/causal-synthesis-agent';
 import { buildTransformationLogicMap } from './engines/transformation-logic-engine';
 
-export type EngineProgressCallback = (engine: EngineKey, event: 'started' | 'complete' | 'error', detail?: string) => void;
+export type EngineProgressCallback = (engine: EngineKey | GtmEngineKey, event: 'started' | 'complete' | 'error', detail?: string) => void;
 
 export interface PipelineResult {
-  intelligence: WorkshopOutputIntelligence;
-  errors: Partial<Record<EngineKey, string>>;
+  intelligence?: WorkshopOutputIntelligence;
+  gtmIntelligence?: import('./gtm/types').GtmOutputIntelligence;
+  type: 'standard' | 'gtm';
+  errors: Partial<Record<string, string>>;
 }
 
 // ── Fallback values for failed engines ───────────────────────────────────────
@@ -111,6 +115,17 @@ export async function runIntelligencePipeline(
   signals: WorkshopSignals,
   onEngineProgress?: EngineProgressCallback
 ): Promise<PipelineResult> {
+  // ── GTM routing ────────────────────────────────────────────────────────────
+  // Go-To-Market workshops use a completely different output model.
+  if (signals.context.workshopType === 'GO_TO_MARKET') {
+    const { intelligence: gtmIntelligence, errors } = await runGtmPipeline(
+      signals,
+      (engine, event, detail) => onEngineProgress?.(engine, event, detail)
+    );
+    return { type: 'gtm', gtmIntelligence, errors };
+  }
+
+  // ── Standard pipeline ──────────────────────────────────────────────────────
   const errors: Partial<Record<EngineKey, string>> = {};
 
   // Notify all engines starting
@@ -208,7 +223,7 @@ export async function runIntelligencePipeline(
     lensesUsed: signals.context.lenses,
   };
 
-  return { intelligence, errors };
+  return { type: 'standard', intelligence, errors };
 }
 
 // ── Report Summary Pipeline ───────────────────────────────────────────────────
@@ -233,11 +248,21 @@ export async function runReportSummaryPipeline(
   }
 
   const stored = workshop.outputIntelligence as unknown as StoredOutputIntelligence;
+
+  // GTM workshops use a different output model — report summary is not applicable
+  if (stored.type === 'gtm') {
+    throw new Error('Report summary is not available for GTM workshops. Use the GTM report view instead.');
+  }
+
   const intelligence = stored.intelligence;
 
   // 2. Aggregate signals for context
   onProgress?.('Aggregating workshop signals…');
   const signals = await aggregateWorkshopSignals(workshopId);
+
+  if (!intelligence) {
+    throw new Error('Output intelligence data is missing. Re-run the intelligence pipeline.');
+  }
 
   // 3. Run single GPT-4o report summary agent
   const generatedReportSummary = await runReportSummaryAgent(signals, intelligence, onProgress);
