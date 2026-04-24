@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { strictLimiter } from '@/lib/rate-limit';
 import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { normalizeConversationPhase } from '@/lib/types/conversation';
+import { inferWorkshopRuntimeType } from '@/lib/workshop/workshop-definition';
 import {
   getFixedQuestion,
   getFixedQuestionObject,
@@ -262,6 +263,10 @@ export async function POST(request: NextRequest) {
         includeRegulation: refetchedSession.includeRegulation,
         lensLabels: getLensLabels(participant.workshop),
         organization: participant.workshop.organization,
+        workshopType: inferWorkshopRuntimeType({
+          workshopType: participant.workshop.workshopType,
+          engagementType: participant.workshop.engagementType,
+        }),
         messages: (refetchedSession.messages || []).map((msg: any) => ({
           id: msg.id,
           role: msg.role,
@@ -433,6 +438,10 @@ export async function POST(request: NextRequest) {
       includeRegulation: session.includeRegulation,
       lensLabels: getLensLabels(participant.workshop),
       organization: participant.workshop.organization,
+      workshopType: inferWorkshopRuntimeType({
+        workshopType: participant.workshop.workshopType,
+        engagementType: participant.workshop.engagementType,
+      }),
       messages: ((session as any).messages || []).map((msg: any) => ({
         id: msg.id,
         role: msg.role,

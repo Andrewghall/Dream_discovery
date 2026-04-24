@@ -14,6 +14,7 @@ import { ConversationPhase, Message, normalizeConversationPhase } from '@/lib/ty
 import { getOverallQuestionNumber, getTotalQuestionCount } from '@/lib/conversation/fixed-questions';
 import { setTtsEnabled, speakWithOpenAI } from '@/lib/utils/openai-tts';
 import { ConversationReport, PhaseInsight } from '@/components/report/conversation-report';
+import { GtmFreeFlowView } from '@/components/chat/gtm-free-flow-view';
 import { Button } from '@/components/ui/button';
 
 type QuestionMeta = {
@@ -99,6 +100,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
   const [includeRegulation, setIncludeRegulation] = useState(true);
   const [lensLabels, setLensLabels] = useState<Array<{ key: string; label: string }> | null>(null);
   const [draftMessage, setDraftMessage] = useState('');
+  const [workshopType, setWorkshopType] = useState<string | null>(null);
   const [organization, setOrganization] = useState<{ name: string; logoUrl: string | null; primaryColor: string | null } | null>(null);
   const [isPdfMode, setIsPdfMode] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -195,6 +197,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
     setReport(null);
     setIsPdfMode(false);
     setLensLabels(null);
+    setWorkshopType(null);
     lastSpokenMessageIdRef.current = null;
   }, [workshopId, token]);
 
@@ -255,6 +258,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       activeSessionIdRef.current = data.sessionId;
       setSessionId(data.sessionId);
       if (data.organization) setOrganization(data.organization);
+      if (data.workshopType) setWorkshopType(data.workshopType);
       const incomingMessages = (data.messages || []) as Message[];
       setMessages(incomingMessages);
       setCurrentPhase(normalizeConversationPhase(data.currentPhase));
@@ -265,8 +269,9 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setIncludeRegulation(data.includeRegulation ?? true);
       if (data.lensLabels) setLensLabels(data.lensLabels);
 
+      // GTM workshops use the free-flow voice UI — TTS is managed by GtmFreeFlowView
       const last = data.messages?.[data.messages.length - 1];
-      if (last && last.role === 'AI' && (data.voiceEnabled ?? true)) {
+      if (last && last.role === 'AI' && (data.voiceEnabled ?? true) && data.workshopType !== 'GO_TO_MARKET') {
         lastSpokenMessageIdRef.current = last.id;
         void speakWithOpenAI(last.content).catch(() => {});
       }
@@ -343,6 +348,7 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
 
       activeSessionIdRef.current = data.sessionId;
       setSessionId(data.sessionId);
+      if (data.workshopType) setWorkshopType(data.workshopType);
       const incomingMessages = (data.messages || []) as Message[];
       setMessages(incomingMessages);
 
@@ -354,8 +360,9 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
       setIncludeRegulation(data.includeRegulation ?? true);
       if (data.lensLabels) setLensLabels(data.lensLabels);
 
+      // GTM workshops use the free-flow voice UI — TTS is managed by GtmFreeFlowView
       const last = incomingMessages?.[incomingMessages.length - 1];
-      if (last && last.role === 'AI' && (data.voiceEnabled ?? true)) {
+      if (last && last.role === 'AI' && (data.voiceEnabled ?? true) && data.workshopType !== 'GO_TO_MARKET') {
         lastSpokenMessageIdRef.current = last.id;
         void speakWithOpenAI(last.content).catch(() => {});
       }
@@ -516,6 +523,21 @@ export default function DiscoveryConversationPage({ params }: PageProps) {
           <div className="mt-10 text-xs text-muted-foreground">© {organization?.name || 'DREAM Discovery'}</div>
         </div>
       </div>
+    );
+  }
+
+  // ── GTM Free-Flow: voice-first ambient conversation (no transcript displayed) ──
+  if (hasStarted && workshopType === 'GO_TO_MARKET' && sessionId) {
+    return (
+      <GtmFreeFlowView
+        sessionId={sessionId}
+        initialMessages={messages}
+        sessionStatus={sessionStatus}
+        primaryColor={organization?.primaryColor}
+        organizationName={organization?.name}
+        logoUrl={organization?.logoUrl}
+        onSessionComplete={() => setSessionStatus('COMPLETED')}
+      />
     );
   }
 
