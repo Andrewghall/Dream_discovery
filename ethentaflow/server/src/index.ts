@@ -1009,9 +1009,6 @@ async function handleSession(ws: WebSocket): Promise<void> {
 
       if (!isFromPrimarySpeaker(alt.words ?? [])) return;
 
-      // Liveness watchdog: track every moment user speech arrives.
-      if (alt.transcript.trim()) lastUserSpeechAt = Date.now();
-
       // Mark speculative stale when any new transcript arrives after pre-fire.
       // onSpeechStarted (VAD) is not always reliable for continuous speech;
       // transcript events are the ground truth for "more words came in".
@@ -1157,6 +1154,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
     const thisTurnId = ++currentTurnId;
     let perTurnSpoken = false;
     detector.onSystemSpeakingStart();
+    lastUserSpeechAt = Date.now();
 
     // Clear streaming cognition state — this utterance is committed, next
     // speech turn will build fresh context.
