@@ -110,6 +110,36 @@ function expandNumbers(text: string): string {
   });
 }
 
+// Consulting-speak clichés to strip from spoken output.
+// Each entry is [pattern, replacement]. Patterns are case-insensitive.
+// These phrases sound robotic or formulaic when spoken aloud.
+const CLICHE_STRIPS: [RegExp, string][] = [
+  [/\blet'?s drill (?:down|into|deeper)(?: on| into)?\b,?\s*/gi, ''],
+  [/\blet'?s dive (?:in|into|deeper)(?: on| into)?\b,?\s*/gi, ''],
+  [/\blet'?s dig (?:into|deeper|in|down)(?: on| into| further)?\b,?\s*/gi, ''],
+  [/\blet'?s explore(?: that| this| further)?\b,?\s*/gi, ''],
+  [/\blet'?s unpack(?: that| this)?\b,?\s*/gi, ''],
+  [/\blet me (?:push|dig|drill|probe)(?: on| into| further| deeper| down)?\b,?\s*/gi, ''],
+  [/\bbuilding on that,?\s*/gi, ''],
+  [/\bthat'?s (?:interesting|fascinating|insightful),?\s*/gi, ''],
+  [/\bgoing deeper(?: on| into)?\b,?\s*/gi, ''],
+  [/\bdrilling (?:into|down on|deeper into)\b,?\s*/gi, ''],
+  [/\bdiving (?:into|deeper into)\b,?\s*/gi, ''],
+];
+
+/**
+ * Strip consulting clichés that sound robotic when spoken.
+ * Applied after contractions so we catch "let's" after expansion.
+ */
+function stripCliches(text: string): string {
+  let out = text;
+  for (const [pattern, replacement] of CLICHE_STRIPS) {
+    out = out.replace(pattern, replacement);
+  }
+  // Capitalise after stripping if the result starts lowercase
+  return out.replace(/^([a-z])/, (c) => c.toUpperCase()).replace(/\s{2,}/g, ' ').trim();
+}
+
 /**
  * Apply natural spoken contractions to text before it goes to TTS.
  * Preserves original casing on the first word of each contraction.
@@ -129,5 +159,7 @@ export function relaxText(text: string): string {
       return replacement;
     });
   }
+  // Strip consulting clichés last — after contractions so "let us" → "let's" is already done
+  out = stripCliches(out);
   return out;
 }

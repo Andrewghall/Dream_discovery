@@ -1069,14 +1069,25 @@ async function askModelForDecision(params: {
     'In that case: do NOT quote the number back in your probe. Instead ask a brief confirming question to clarify what they actually meant (e.g. "You mentioned a number — was that a score or something else?").',
     'Always trust 1–5 scale numbers when they appear with adjacent rating context (today/target/nothing changes). Never second-guess those.',
     '',
+    '── Banned language (absolutely forbidden) ──',
+    'Never start with or include: "let\'s drill down", "let\'s dive in", "let\'s dig into", "let\'s dig deeper",',
+    '"let\'s explore", "let\'s unpack", "let me push on that", "building on that", "that\'s interesting",',
+    '"let me probe", "let\'s probe", "let me dig into", "let\'s get into", "let\'s look at",',
+    '"going deeper", "drilling into", "diving into".',
+    'These phrases are consulting clichés. Nobody talks like that in real life. Write like a sharp person in an actual conversation.',
+    '',
     '── Weak vs sharp probe examples ──',
     'WEAK (forbidden): "What specifically is holding you at a three?"',
     'WEAK (forbidden): "Can you tell me more about the challenges?"',
     'WEAK (forbidden): "How do you feel about the current state?"',
+    'WEAK (forbidden): "Let\'s drill down on that."',
+    'WEAK (forbidden): "Let\'s dive into the specifics."',
+    'WEAK (forbidden): "Let me dig into that a bit more."',
     '',
     'GOOD (guide question, lightly adapted): participant said morale is low after acquisition → "What would actually help people do their best work here, given everything that is happening?"',
     'GOOD (single follow-up on named signal): participant named a specific lost deal → "Walk me through that deal — what actually happened?"',
     'GOOD (next guide question): all signals on current area covered → move to next guide question verbatim or near-verbatim.',
+    'GOOD (natural pivot): "The acquisition sounds like it\'s still unsettled. How is that landing with customers?"',
     '',
     '── Output ──',
     'Return JSON only. Keys:',
@@ -1252,9 +1263,11 @@ export async function generateAgenticTurn(params: AgenticTurnParams): Promise<Ag
   const usedGuideIndexes = new Set(phaseQuestionMetas.map((m) => m.index));
   const hasAskedGuideQuestion = phaseQuestionMetas.some((m) => m.index > 0);
   const requiresLensProbeBeforeAdvance = !['prioritization', 'summary'].includes(params.currentPhase);
-  // Advance is gated only on having asked at least one guide question (vs the old
-  // word-count / turn-count gates). The LLM sufficiency check below is the real gate.
-  const canAdvanceFromCurrentLens = !requiresLensProbeBeforeAdvance || hasAskedGuideQuestion;
+  // Must have asked at least 2 guide questions and received at least 3 participant answers
+  // (Q1 + 2 exploration answers minimum) before advancing.
+  const guidesAskedCount = phaseQuestionMetas.filter((m) => m.index > 0).length;
+  const canAdvanceFromCurrentLens = !requiresLensProbeBeforeAdvance ||
+    (hasAskedGuideQuestion && guidesAskedCount >= 2 && participantAnswers.length >= 3);
 
   const guideCandidates = phaseQuestions
     .map((q, index) => ({ index, question: q }))
@@ -1312,7 +1325,7 @@ export async function generateAgenticTurn(params: AgenticTurnParams): Promise<Ag
     const nextPhase = getNextPhase(params.currentPhase, params.phaseOrder);
     const transition = buildTransitionMessage(nextPhase, questionsByPhase);
     return {
-      assistantMessage: transition.assistantMessage || "Good. Let's move on.",
+      assistantMessage: transition.assistantMessage || "Okay.",
       nextPhase,
       metadata: transition.metadata,
       phaseProgress: Math.max(0, Math.min(100, Math.round((1 / Math.max((questionsByPhase[nextPhase] || []).length, 1)) * 100))),
@@ -1327,7 +1340,7 @@ export async function generateAgenticTurn(params: AgenticTurnParams): Promise<Ag
     const nextPhase = getNextPhase(params.currentPhase, params.phaseOrder);
     const transition = buildTransitionMessage(nextPhase, questionsByPhase);
     return {
-      assistantMessage: transition.assistantMessage || "Let's move on.",
+      assistantMessage: transition.assistantMessage || "",
       nextPhase,
       metadata: transition.metadata,
       phaseProgress: Math.max(0, Math.min(100, Math.round((1 / Math.max((questionsByPhase[nextPhase] || []).length, 1)) * 100))),
@@ -1336,10 +1349,14 @@ export async function generateAgenticTurn(params: AgenticTurnParams): Promise<Ag
   }
 
   // ── LLM sufficiency check (gpt-4o-mini, temp 0.1) ─────────────────────────
-  // Runs from turn 2+ once there are real answers to judge.
-  // Replaces shouldAdvanceDeterministically — the LLM can advance after one strong
-  // answer or hold past the old 5-minute / word-count thresholds if evidence is thin.
-  if (params.openai && participantAnswers.length >= 2 && requiresLensProbeBeforeAdvance) {
+  // Runs from turn 4+ (Q1 opener + at least 3 exploration answers) AND requires
+  // at least 2 guide questions asked. This prevents a 1-answer advance where the
+  // model decides it has "enough" after the opening rating answer alone.
+  const MIN_ANSWERS_BEFORE_SUFFICIENCY = 4;
+  const usedGuideCount = usedGuideIndexes.size - (usedGuideIndexes.has(0) ? 1 : 0); // exclude opener
+  const enoughGuidesCovered = usedGuideCount >= 2;
+  if (params.openai && participantAnswers.length >= MIN_ANSWERS_BEFORE_SUFFICIENCY &&
+      requiresLensProbeBeforeAdvance && enoughGuidesCovered) {
     const sufficiency = await lensSufficiencyCheck(params.openai, {
       lens: params.currentPhase,
       participantAnswers,
@@ -1357,7 +1374,7 @@ export async function generateAgenticTurn(params: AgenticTurnParams): Promise<Ag
         const nextPhase = getNextPhase(params.currentPhase, params.phaseOrder);
         const transition = buildTransitionMessage(nextPhase, questionsByPhase);
         return {
-          assistantMessage: transition.assistantMessage || "Let's move on.",
+          assistantMessage: transition.assistantMessage || "",
           nextPhase,
           metadata: transition.metadata,
           phaseProgress: Math.max(0, Math.min(100, Math.round((1 / Math.max((questionsByPhase[nextPhase] || []).length, 1)) * 100))),
@@ -1439,7 +1456,7 @@ export async function generateAgenticTurn(params: AgenticTurnParams): Promise<Ag
       const nextPhase = getNextPhase(params.currentPhase, params.phaseOrder);
       const transition = buildTransitionMessage(nextPhase, questionsByPhase);
       return {
-        assistantMessage: transition.assistantMessage || "Good. Let me move on.",
+        assistantMessage: transition.assistantMessage || "Okay.",
         nextPhase,
         metadata: transition.metadata,
         phaseProgress: Math.max(0, Math.min(100, Math.round((1 / Math.max((questionsByPhase[nextPhase] || []).length, 1)) * 100))),
@@ -1474,7 +1491,7 @@ export async function generateAgenticTurn(params: AgenticTurnParams): Promise<Ag
       const nextPhase = getNextPhase(params.currentPhase, params.phaseOrder);
       const transition = buildTransitionMessage(nextPhase, questionsByPhase);
       return {
-        assistantMessage: transition.assistantMessage || "Good. Let me move on.",
+        assistantMessage: transition.assistantMessage || "Okay.",
         nextPhase,
         metadata: transition.metadata,
         phaseProgress: Math.max(0, Math.min(100, Math.round((1 / Math.max((questionsByPhase[nextPhase] || []).length, 1)) * 100))),
