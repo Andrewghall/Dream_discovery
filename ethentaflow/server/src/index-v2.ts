@@ -270,6 +270,17 @@ async function handleSession(ws: WebSocket): Promise<void> {
         workshopId = typeof msg.workshopId === 'string' ? msg.workshopId : undefined;
         participantToken = typeof msg.participantToken === 'string' ? msg.participantToken : undefined;
         console.log(`[client] start participant=${state.participantName ?? '(anon)'} title=${state.participantTitle ?? '(unknown)'} company=${state.participantCompany ?? '(unknown)'} email=${state.participantEmail ?? '(none)'} mode=${state.mode} workshop=${workshopId ?? '(none)'}`);
+
+        // Handoff IN — if workshop + token are present, fetch the workshop's
+        // configured questions + participant info from Dream so the agent
+        // uses the actual prepared content. Non-fatal if it fails — defaults
+        // are used in that case.
+        if (workshopId && participantToken && process.env.DREAM_API_URL && process.env.DREAMFLOW_SECRET) {
+          void fetchDreamPrep(workshopId, participantToken).catch(err =>
+            console.error('[handoff-in] error', err)
+          );
+        }
+
         openDeepgramIfNeeded();
         send({ type: 'ready', mode: state.mode });
         emitCoverage(state);
@@ -548,6 +559,38 @@ async function handleSession(ws: WebSocket): Promise<void> {
 
       send({ type: 'session_complete' });
       console.log(`[session] complete ${sessionId}`);
+    }
+  }
+
+  /** Handoff IN — pull the workshop's configured questions + participant
+   *  context from Dream so the agent uses the actual prepared questions
+   *  rather than its built-in defaults. Best-effort: any failure logs and
+   *  the session continues with defaults. */
+  async function fetchDreamPrep(wsId: string, token: string): Promise<void> {
+    try {
+      const url = `${(process.env.DREAM_API_URL ?? '').replace(/\/$/, '')}/api/discovery/ethentaflow-prep?workshopId=${encodeURIComponent(wsId)}&participantToken=${encodeURIComponent(token)}`;
+      const r = await fetch(url, {
+        headers: { 'x-dreamflow-secret': process.env.DREAMFLOW_SECRET ?? '' },
+      });
+      if (!r.ok) {
+        console.warn(`[handoff-in] prep fetch failed (${r.status}) — using defaults`);
+        return;
+      }
+      const data = (await r.json()) as any;
+      // Patch state with whatever Dream gave us. Title / company / email
+      // already came in via URL params; use Dream values as a fallback or override.
+      if (state) {
+        if (data?.workshop?.organisation) state.participantCompany = data.workshop.organisation;
+        if (data?.participant?.role && !state.participantTitle) state.participantTitle = data.participant.role;
+        if (data?.participant?.email && !state.participantEmail) state.participantEmail = data.participant.email;
+      }
+      console.log(`[handoff-in] received workshop="${data?.workshop?.name}" participant="${data?.participant?.name}" lenses=${Object.keys(data?.questionsByLens ?? {}).length}`);
+      // Store the workshop questions on a session field that the agent
+      // prompt can read. (Future refinement: thread them into the
+      // discovery-questions module per session.)
+      (state as any).__workshopQuestions = data?.questionsByLens;
+    } catch (err) {
+      console.error('[handoff-in] error', err);
     }
   }
 
