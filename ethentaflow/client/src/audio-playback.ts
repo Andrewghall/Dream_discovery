@@ -9,6 +9,9 @@ export class AudioPlayback {
   private activeSources: AudioBufferSourceNode[] = [];
   private playing = false;
 
+  /** Called when the last queued audio chunk has finished playing naturally. */
+  onEnded: (() => void) | null = null;
+
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate;
   }
@@ -22,6 +25,14 @@ export class AudioPlayback {
 
   push(chunk: ArrayBuffer): void {
     if (!this.ctx) return;
+
+    // Browsers suspend the AudioContext when the page has been idle or lost focus.
+    // Scheduling audio on a suspended context queues it but nothing plays until resumed.
+    // Kick resume() here so the first chunk of every probe actually plays.
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(err => console.warn('[audio] resume failed:', err));
+    }
+
     const int16 = new Int16Array(chunk);
     const float32 = new Float32Array(int16.length);
     for (let i = 0; i < int16.length; i++) {
@@ -35,7 +46,9 @@ export class AudioPlayback {
     source.connect(this.ctx.destination);
 
     const now = this.ctx.currentTime;
-    const startAt = Math.max(now, this.nextStartTime);
+    // Guard against stale nextStartTime (gap between probes, context was reset, etc.)
+    if (this.nextStartTime < now) this.nextStartTime = now;
+    const startAt = this.nextStartTime;
     source.start(startAt);
     this.nextStartTime = startAt + buffer.duration;
     this.activeSources.push(source);
@@ -43,17 +56,24 @@ export class AudioPlayback {
 
     source.onended = () => {
       this.activeSources = this.activeSources.filter(s => s !== source);
-      if (this.activeSources.length === 0) this.playing = false;
+      if (this.activeSources.length === 0) {
+        this.playing = false;
+        this.onEnded?.();
+      }
     };
   }
 
   stop(): void {
+    const wasPlaying = this.playing;
     for (const source of this.activeSources) {
       try { source.stop(); } catch { /* ignore */ }
     }
     this.activeSources = [];
     this.nextStartTime = this.ctx?.currentTime ?? 0;
     this.playing = false;
+    // Fire onEnded if we were playing — callers (barge-in, interrupt) depend on this
+    // to reopen the mic gate. Without it, the gate stays closed for the rest of the session.
+    if (wasPlaying) this.onEnded?.();
   }
 
   isPlaying(): boolean {
