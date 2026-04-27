@@ -1,0 +1,2 @@
+# Subprojects with their own deployments — keep out of Vercel build
+ethentaflow/
