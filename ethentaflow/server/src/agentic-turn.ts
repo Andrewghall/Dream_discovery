@@ -1019,6 +1019,8 @@ async function askModelForDecision(params: {
   preferredInteractionMode: PreferredInteractionMode;
   tripleRatings: TripleRatings;
   tripleRatingGuidance: string[];
+  /** Prep themes from DREAM — what matters for this engagement. Context only, not a script. */
+  prepThemes: string[];
 }): Promise<AgenticDecision | null> {
   const prompt = {
     lens: params.currentPhase,
@@ -1036,6 +1038,9 @@ async function askModelForDecision(params: {
     phase_objective: params.phaseObjective,
     role_guidance: params.roleGuidance,
     participant_answers_in_this_lens: params.participantAnswers,
+    // Prep themes: what matters for this specific engagement.
+    // Use these to orient the conversation — not as questions to read out.
+    ...(params.prepThemes.length > 0 ? { prep_themes: params.prepThemes } : {}),
     guide_questions: params.guideCandidates.map((c) => ({
       index: c.index,
       tag: c.question.tag,
@@ -1063,18 +1068,23 @@ async function askModelForDecision(params: {
     "If the participant's role is unfamiliar, infer their likely ownership, metrics, and decision rights from their title and department.",
     '',
     '── How to generate the next question ──',
-    'Read the participant\'s last answer. Find the most specific thing they said — a named person, a situation, a problem, a tension, a feeling, a result.',
+    'Read the participant\'s last answer. Find the most specific thing they said — a named person, a situation, a problem, a tension, a result.',
     'Build your question from THAT specific thing. Use their words back at them. Make it clear you were listening.',
     '',
-    'The guide questions tell you what TOPICS to cover in this lens. They are not a script.',
-    'Your job is to reach those topics through the conversation — not to read them out in order.',
-    'If the participant just gave you an opening into a guide question topic, take it. If not, find the sharpest thread in what they just said and pull on that.',
+    'If prep_themes are provided: these are areas carefully identified as important for this specific engagement.',
+    'They are NOT questions to ask. They are orientation — what this conversation should illuminate if the participant opens the door.',
+    'When the conversation naturally touches a prep theme, that is your signal to go deeper on it.',
+    'Never introduce a prep theme artificially. Let the participant bring it up first.',
+    '',
+    'The guide_questions are a fallback scaffold — topic areas to cover if the conversation has not opened a better path.',
+    'They are not a script. Never read them verbatim unless the participant has given you nothing specific to work from.',
     '',
     'Priority order for each turn:',
     '1. If the participant named something specific (a situation, a person, a problem, a result) that has not been explored — build from that directly.',
     '   The question should make clear you heard it: reference the specific thing they said.',
-    '2. If their answer opened a natural door into one of the guide question topics — ask that guide question, adapted to what they just said.',
-    '3. If neither applies — ask the next guide question, adapted slightly so it connects to the conversation so far.',
+    '2. If their answer connects to one of the prep_themes — follow that thread naturally.',
+    '3. If their answer opened a door into a guide question topic — ask that, adapted to what they just said.',
+    '4. If none of the above — adapt the next guide question to connect to the conversation so far.',
     '',
     'NEVER ask a generic follow-up that could apply to any answer ("Can you elaborate?", "Tell me more.", "What\'s the root cause?").',
     'NEVER drill the same angle twice. If they answered something, it\'s done — move forward.',
@@ -1251,13 +1261,16 @@ function buildClarificationFallback(lastProbeText: string, _phase: string): stri
 // ── Main turn generator ──────────────────────────────────────────────────────
 
 export async function generateAgenticTurn(params: AgenticTurnParams): Promise<AgenticTurnResult> {
-  // Merge session overrides on top of built-in PHASE_QUESTIONS.
-  // DREAM prep questions take priority per lens; fallback to built-ins for
-  // any lens not covered by the override.
+  // Structural questions (PHASE_QUESTIONS) drive the guide candidate list and
+  // the phase objective text — they are the fallback scaffold.
+  // Prep questions from DREAM (params.sessionQuestions) are passed to the model
+  // as THEMATIC CONTEXT only — they tell the model what matters for this engagement
+  // but are never treated as a checklist to ask in order.
   const questionsByPhase: Record<string, FixedQuestion[]> = { ...PHASE_QUESTIONS };
-  for (const [lens, qs] of Object.entries(params.sessionQuestions ?? {})) {
-    if (qs && qs.length > 0) questionsByPhase[lens] = qs;
-  }
+  const prepThemes: string[] = (params.sessionQuestions?.[params.currentPhase] ?? [])
+    .filter(q => q.tag !== 'triple_rating')
+    .map(q => q.text.trim())
+    .filter(Boolean);
   const phaseQuestions = questionsByPhase[params.currentPhase] || [];
   const phaseMessages = params.sessionMessages.filter((m) => m.phase === params.currentPhase);
   const participantAnswers = phaseMessages
@@ -1432,6 +1445,7 @@ export async function generateAgenticTurn(params: AgenticTurnParams): Promise<Ag
       preferredInteractionMode: params.preferredInteractionMode,
       tripleRatings,
       tripleRatingGuidance,
+      prepThemes,
     }).catch(() => null);
   }
 
