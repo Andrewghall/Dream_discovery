@@ -1,2 +1,3 @@
 # Subprojects with their own deployments — keep out of Vercel build
-ethentaflow/
+# Leading slash anchors to repo root — does NOT match lib/ethentaflow/
+/ethentaflow/
